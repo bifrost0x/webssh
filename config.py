@@ -40,7 +40,14 @@ SECRET_KEY = _secret_key
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = not DEBUG
+# Allow override via env var for HTTP-only access (homelab without TLS)
+_session_secure = os.environ.get('SESSION_COOKIE_SECURE', '').lower()
+if _session_secure == 'false':
+    SESSION_COOKIE_SECURE = False
+elif _session_secure == 'true':
+    SESSION_COOKIE_SECURE = True
+else:
+    SESSION_COOKIE_SECURE = not DEBUG  # Default: secure in production
 PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
 
 MIN_PASSWORD_LENGTH = 8
