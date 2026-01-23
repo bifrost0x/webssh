@@ -12,7 +12,8 @@
 
 services:
   webssh:
-    build: .
+    image: ghcr.io/bifrost0x/webssh:latest
+    # build: .  # Uncomment to build locally instead
     container_name: webssh
     restart: unless-stopped
     ports:
