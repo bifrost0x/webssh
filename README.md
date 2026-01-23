@@ -86,38 +86,21 @@ Open http://localhost:5000 and create your first account.
 
 ### Docker Compose
 
-1. Create a `.env` file:
 ```bash
-# Generate secret key
-SECRET_KEY=$(openssl rand -hex 32)
-CORS_ORIGINS=http://localhost:5000
-TRUSTED_PROXIES=0
-```
+# Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml
 
-2. Create `docker-compose.yml`:
-```yaml
-services:
-  webssh:
-    image: ghcr.io/bifrost0x/webssh:latest
-    container_name: webssh
-    restart: unless-stopped
-    ports:
-      - "5000:5000"
-    environment:
-      - SECRET_KEY=${SECRET_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-0}
-    volumes:
-      - webssh_data:/app/data
+# Generate and insert your secret key
+SECRET=$(openssl rand -hex 32)
+sed -i "s/<YOUR-SECRET-KEY>/$SECRET/" docker-compose.yml
 
-volumes:
-  webssh_data:
-```
-
-3. Start the service:
-```bash
+# Start the service
 docker compose up -d
 ```
+
+Open http://localhost:5000 and create your first account.
+
+> **Tip:** Edit `docker-compose.yml` directly to change settings. No `.env` file needed!
 
 ## Installation
 
@@ -136,9 +119,9 @@ source venv/bin/activate  # Linux/macOS
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
-cp .env.example .env
-# Edit .env and set SECRET_KEY
+# Set required environment variables
+export SECRET_KEY=$(openssl rand -hex 32)
+export CORS_ORIGINS="http://localhost:5000"
 
 # Run the application
 python start.py

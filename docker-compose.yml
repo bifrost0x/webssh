@@ -1,38 +1,42 @@
 ##############################################
-# Web SSH Terminal - Docker Compose
+# Web SSH Terminal - All-in-One Docker Compose
 #
-# SECURITY: Before running in production:
-# 1. Set SECRET_KEY to a secure random value
-# 2. Set CORS_ORIGINS to your domain(s)
-# 3. Use a reverse proxy with TLS
+# No .env file needed - edit values directly below
 #
-# Generate SECRET_KEY:
-#   openssl rand -hex 32
+# BEFORE RUNNING:
+# 1. Replace <YOUR-SECRET-KEY> with output of: openssl rand -hex 32
+# 2. Set CORS_ORIGINS to your domain or * for homelab
+# 3. Set ALLOW_CORS_WILDCARD=true if using * for CORS
 ##############################################
 
 services:
   webssh:
     image: ghcr.io/bifrost0x/webssh:latest
-    # build: .  # Uncomment to build locally instead
     container_name: webssh
     restart: unless-stopped
     ports:
       - "5000:5000"
     environment:
+      # === REQUIRED: Generate with: openssl rand -hex 32 ===
+      - SECRET_KEY=<YOUR-SECRET-KEY>
+
+      # === REQUIRED: Your domain or * for homelab ===
+      - CORS_ORIGINS=*
+
+      # === Set to true when using CORS_ORIGINS=* ===
+      - ALLOW_CORS_WILDCARD=true
+
+      # === Set to 1 if behind reverse proxy (Traefik, nginx, etc.) ===
+      - TRUSTED_PROXIES=0
+
+      # === Set to false if accessing via HTTP without TLS ===
+      - SESSION_COOKIE_SECURE=false
+
+      # === Optional: Usually no changes needed ===
       - DEBUG=False
       - HOST=0.0.0.0
       - PORT=5000
       - DATA_DIR=/app/data
-      # SECURITY: SECRET_KEY is required - no default provided
-      # Generate with: openssl rand -hex 32
-      - "SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required - generate with openssl rand -hex 32}"
-      # SECURITY: CORS_ORIGINS is required - no wildcard default
-      # Set to your domain, e.g., https://ssh.example.com
-      - "CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS is required - set to your domain}"
-      # Set to true to allow CORS wildcard in production (homelab use)
-      - ALLOW_CORS_WILDCARD=${ALLOW_CORS_WILDCARD:-false}
-      # Set to 1 if behind a reverse proxy (Traefik, nginx, etc.)
-      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-0}
     volumes:
       - webssh_data:/app/data
     healthcheck:
