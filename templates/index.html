@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web SSH Terminal</title>
+
+    <!-- xterm.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+
+    <!-- Highlight.js for code preview -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" />
+
+    <!-- Material Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
+</head>
+<body data-theme="{{ theme|default('glass') }}">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-title-row">
+                <h1 class="app-title" data-i18n="app.title">Web SSH Terminal</h1>
+                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu">☰</button>
+            </div>
+            <div class="header-buttons">
+                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">New Connection</span> ✨</button>
+                <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.library">Commands</span> 📚</button>
+                <button id="manageKeysBtn" class="btn btn-secondary"><span data-i18n="keys.manageKeys">Manage Keys</span> 🔑</button>
+                <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
+
+                <!-- Theme Selector -->
+                <div class="theme-selector">
+                    <button class="btn btn-secondary theme-btn-header" id="themeBtnHeader" onclick="toggleThemeDropdownHeader(event)">
+                        <span id="currentThemeLabel">Theme</span> 🎨
+                    </button>
+                    <div class="theme-dropdown-header" id="themeDropdownHeader"></div>
+                </div>
+
+                <button id="changePasswordBtn" class="btn btn-secondary"><span data-i18n="auth.changePassword">Change Password</span> 🔐</button>
+
+                <!-- Language Selector -->
+                <div class="language-selector">
+                    <button class="btn btn-secondary lang-btn-header" id="langBtnHeader" onclick="toggleLangDropdownHeader(event)">
+                        <span id="currentLangFlagHeader">🇬🇧</span>
+                    </button>
+                    <div class="lang-dropdown-header" id="langDropdownHeader"></div>
+                </div>
+
+                <button id="logoutBtn" class="btn btn-secondary"><span data-i18n="auth.logout">Logout</span> 🚪</button>
+            </div>
+        </div>
+
+        <!-- Session Tabs -->
+        <div class="session-tabs" id="sessionTabs"></div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="session-bar hidden" id="sessionBar">
+            <div class="session-meta" id="sessionMeta" aria-live="polite">
+                <div class="session-meta-title" id="sessionMetaTitle"></div>
+                <div class="session-meta-notes empty" id="sessionMetaNotes">No notes yet</div>
+            </div>
+            <div class="session-actions">
+                <div class="split-controls" aria-label="Split layout">
+                    <button class="btn btn-secondary split-btn active" data-layout="1" title="Single">1</button>
+                    <button class="btn btn-secondary split-btn" data-layout="2" title="Split">2</button>
+                    <button class="btn btn-secondary split-btn" data-layout="4" title="Quad">4</button>
+                </div>
+                <div class="session-toolbar" id="sessionToolbar" aria-label="Session actions">
+                    <button class="btn btn-secondary toolbar-btn" id="copySelectionBtn" title="Copy Selection" aria-label="Copy selection">
+                        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                            <rect x="4" y="4" width="11" height="11" rx="2"></rect>
+                        </svg>
+                    </button>
+                    <button class="btn btn-secondary toolbar-btn" id="pasteClipboardBtn" title="Paste Clipboard" aria-label="Paste clipboard">
+                        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 4h6a2 2 0 0 1 2 2v1h-2V6H9v1H7V6a2 2 0 0 1 2-2z"></path>
+                            <rect x="6" y="7" width="12" height="13" rx="2"></rect>
+                            <path d="M9 12h6M9 16h6"></path>
+                        </svg>
+                    </button>
+                    <button class="btn btn-secondary toolbar-btn" id="saveTranscriptBtn" title="Save Transcript" aria-label="Save transcript">
+                        <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 4h10l4 4v12H5z"></path>
+                            <rect x="8" y="4" width="8" height="5"></rect>
+                            <rect x="8" y="15" width="8" height="4" rx="1"></rect>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="workspace" id="workspace">
+            <div class="terminal-area">
+                <!-- Terminals Container -->
+                <div class="terminals-container" id="terminalsContainer">
+                    <div class="terminal-grid split-1" id="terminalGrid"></div>
+                    <div class="drop-overlay hidden" id="dropOverlay">
+                        <div class="drop-overlay-content">
+                            <div class="drop-title">Drop file to upload</div>
+                            <div class="drop-subtitle">Release to choose destination path</div>
+                        </div>
+                    </div>
+                    <div class="no-sessions" id="noSessions">
+                        <div class="no-sessions-content">
+                            <h2 data-i18n="connection.noActiveSessions">No Active Sessions</h2>
+                            <p data-i18n="connection.clickToStart">Click "New Connection" to start an SSH session</p>
+                        </div>
+                    </div>
+                    <!-- Terminal Search Bar -->
+                    <div class="terminal-search-bar hidden" id="terminalSearchBar">
+                        <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." autocomplete="off" />
+                        <span class="search-count" id="terminalSearchCount"></span>
+                        <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)">▲</button>
+                        <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)">▼</button>
+                        <button class="search-btn search-close" id="terminalSearchClose" title="Close (Escape)">✕</button>
+                    </div>
+                </div>
+            </div>
+            <div class="resize-handle" id="resizeHandle" title="Drag to resize">
+                <div class="resize-handle-line"></div>
+            </div>
+            <aside class="notepad-panel" id="notepadPanel">
+                <div class="notepad-header">
+                    <div class="notepad-title-row">
+                        <div class="notepad-title">Notepad</div>
+                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
+                    </div>
+                    <div class="notepad-meta">Personal scratchpad</div>
+                </div>
+                <textarea id="sessionNotepad" class="notepad-input" placeholder="Write notes, commands, or snippets here..."></textarea>
+            </aside>
+        </div>
+    </main>
+
+    <!-- Connection Modal -->
+    <div class="modal" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">New SSH Connection</h2>
+                <span class="close" id="closeConnectionModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="connectionForm">
+                    <!-- Recent Connections -->
+                    <div class="form-group" id="recentConnectionsGroup" style="display: none;">
+                        <label data-i18n="connection.recentConnections">Recent Connections</label>
+                        <div id="recentConnectionsList" class="recent-connections-list"></div>
+                    </div>
+
+                    <!-- Profile Selector -->
+                    <div class="form-group">
+                        <label for="profileSelect" data-i18n="connection.loadProfile">Load Profile (Optional)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="profileSelect" class="form-control" style="flex: 1;">
+                                <option value="" data-i18n="connection.selectProfile">-- Select Profile --</option>
+                            </select>
+                            <button type="button" id="deleteProfileBtn" class="btn btn-danger" style="display: none;"><span data-i18n="common.delete">Delete</span> 🗑️</button>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label for="hostInput" data-i18n="connection.host">Host *</label>
+                            <input type="text" id="hostInput" class="form-control" placeholder="192.168.1.100" required>
+                            <div class="field-hint" id="hostHint"></div>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="portInput" data-i18n="connection.port">Port *</label>
+                            <input type="number" id="portInput" class="form-control" value="22" required>
+                            <div class="field-hint" id="portHint"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="usernameInput" data-i18n="auth.username">Username *</label>
+                        <input type="text" id="usernameInput" class="form-control" placeholder="root" required>
+                        <div class="field-hint" id="usernameHint"></div>
+                    </div>
+
+                    <!-- Authentication Method -->
+                    <div class="form-group">
+                        <label data-i18n="connection.authMethod">Authentication Method</label>
+                        <div class="auth-type-selector">
+                            <label class="radio-label">
+                                <input type="radio" name="authType" value="password" checked> <span data-i18n="auth.password">Password</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="authType" value="key"> <span data-i18n="connection.sshKey">SSH Key</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Password Input -->
+                    <div class="form-group" id="passwordGroup">
+                        <label for="passwordInput" data-i18n="auth.password">Password *</label>
+                        <div class="input-wrapper with-toggle">
+                            <input type="password" id="passwordInput" class="form-control" data-i18n="auth.password" placeholder="Password">
+                            <button type="button" class="password-toggle" data-target="passwordInput" aria-label="Toggle password visibility">👁️</button>
+                        </div>
+                        <div class="field-hint" id="passwordHint"></div>
+                    </div>
+
+                    <!-- Key Selector -->
+                    <div class="form-group hidden" id="keyGroup">
+                        <label for="keySelect" data-i18n="connection.sshKey">SSH Key *</label>
+                        <select id="keySelect" class="form-control">
+                            <option value="" data-i18n="connection.selectSSHKey">-- Select SSH Key --</option>
+                        </select>
+                        <div class="field-hint" id="keyHint"></div>
+                    </div>
+
+                    <!-- Save Profile Option -->
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="saveProfileCheck">
+                            <span data-i18n="connection.saveAsProfile">Save as profile</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group hidden" id="profileNameGroup">
+                        <label for="profileNameInput" data-i18n="connection.profileName">Profile Name</label>
+                        <input type="text" id="profileNameInput" class="form-control" data-i18n="connection.profileNamePlaceholder" placeholder="My Server">
+                        <div class="field-hint" id="profileHint"></div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelConnectionBtn" data-i18n="common.cancel">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="connectBtn">
+                            <span class="btn-label" data-i18n="connection.connect">Connect</span>
+                            <span class="btn-spinner hidden" id="connectSpinner"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Management Modal -->
+    <div class="modal" id="keyManagementModal" role="dialog" aria-modal="true" aria-labelledby="keyManagementTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="keyManagementTitle" data-i18n="keys.manageSSHKeys">Manage SSH Keys</h2>
+                <span class="close" id="closeKeyModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Upload Key Form -->
+                <div class="key-upload-section">
+                    <h3 data-i18n="keys.uploadNewKey">Upload New Key</h3>
+                    <form id="keyUploadForm">
+                        <div class="form-group">
+                            <label for="keyNameInput" data-i18n="keys.keyName">Key Name</label>
+                            <input type="text" id="keyNameInput" class="form-control" data-i18n="keys.keyNamePlaceholder" placeholder="Production Server Key" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="keyContentInput" data-i18n="keys.privateKey">Private Key</label>
+                            <textarea id="keyContentInput" class="form-control" rows="10" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
+..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><span data-i18n="keys.uploadKey">Upload Key</span> ⬆️</button>
+                    </form>
+                </div>
+
+                <!-- Keys List -->
+                <div class="keys-list-section">
+                    <h3 data-i18n="keys.storedKeys">Stored Keys</h3>
+                    <div id="keysList" class="keys-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Transfer Modal -->
+    <div class="modal" id="fileTransferModal" role="dialog" aria-modal="true" aria-labelledby="fileTransferTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="fileTransferTitle" data-i18n="files.fileTransfer">File Transfer</h2>
+                <span class="close" id="closeFileTransferModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="transfer-section">
+                    <h3 data-i18n="files.uploadToServer">Upload File to Server</h3>
+                    <form id="uploadForm">
+                        <div class="form-group">
+                            <label for="uploadSessionSelect" data-i18n="files.selectSession">Select Session</label>
+                            <select id="uploadSessionSelect" class="form-control" required>
+                                <option value="" data-i18n="files.selectActiveSession">-- Select Active Session --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="uploadFileInput" data-i18n="files.localFile">Local File</label>
+                            <input type="file" id="uploadFileInput" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="uploadRemotePathInput" data-i18n="files.remotePath">Remote Path</label>
+                            <input type="text" id="uploadRemotePathInput" class="form-control" placeholder="/home/user/file.txt" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><span data-i18n="files.upload">Upload</span> ⬆️</button>
+                    </form>
+                    <div class="progress-container hidden" id="uploadProgress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="uploadProgressFill"></div>
+                        </div>
+                        <div class="progress-text" id="uploadProgressText">0%</div>
+                    </div>
+                </div>
+
+                <div class="transfer-section">
+                    <h3 data-i18n="files.downloadFromServer">Download File from Server</h3>
+                    <form id="downloadForm">
+                        <div class="form-group">
+                            <label for="downloadSessionSelect" data-i18n="files.selectSession">Select Session</label>
+                            <select id="downloadSessionSelect" class="form-control" required>
+                                <option value="" data-i18n="files.selectActiveSession">-- Select Active Session --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="downloadRemotePathInput" data-i18n="files.remotePath">Remote Path</label>
+                            <input type="text" id="downloadRemotePathInput" class="form-control" placeholder="/home/user/file.txt" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><span data-i18n="files.download">Download</span> ⬇️</button>
+                    </form>
+                    <div class="progress-container hidden" id="downloadProgress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="downloadProgressFill"></div>
+                        </div>
+                        <div class="progress-text" id="downloadProgressText">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- Command Library Modal -->
+    <div class="modal" id="commandLibraryModal" role="dialog" aria-modal="true" aria-labelledby="commandLibraryTitle">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="commandLibraryTitle" data-i18n="commands.library">Command Library</h2>
+                <span class="close" id="closeCommandLibraryModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Search and Actions Bar -->
+                <div class="command-toolbar">
+                    <input
+                        type="text"
+                        id="commandSearchInput"
+                        class="form-control search-input"
+                        data-i18n="commands.searchPlaceholder"
+                        placeholder="Search commands, parameters, or descriptions..."
+                    >
+                    <button class="btn btn-primary" id="addCommandBtn">
+                        <span data-i18n="commands.addCommand">Add Command</span> ➕
+                    </button>
+                </div>
+
+                <!-- OS Filter Selection -->
+                <div class="os-filter-toolbar">
+                    <span data-i18n="commands.filterByOs">Filter by OS:</span>
+                    <div class="os-filter-buttons">
+                        <button class="os-filter-btn active" data-os="all">
+                            <span data-i18n="commands.osAll">All</span>
+                        </button>
+                        <button class="os-filter-btn" data-os="linux">
+                            Linux
+                        </button>
+                        <button class="os-filter-btn" data-os="macos">
+                            macOS
+                        </button>
+                        <button class="os-filter-btn" data-os="bsd">
+                            BSD
+                        </button>
+                        <button class="os-filter-btn" data-os="windows">
+                            Windows
+                        </button>
+                    </div>
+                    <div class="os-detected">
+                        <span data-i18n="commands.detected">Detected</span>: <strong id="currentOsDisplay">-</strong>
+                    </div>
+                </div>
+
+                <!-- Commands Table -->
+                <div class="commands-table-wrapper">
+                    <div class="commands-table-header">
+                        <div class="command-cell command-name" data-i18n="commands.name">Name</div>
+                        <div class="command-cell command-text" data-i18n="commands.command">Command</div>
+                        <div class="command-cell command-params" data-i18n="commands.parameters">Parameters</div>
+                        <div class="command-cell command-desc" data-i18n="commands.description">Description</div>
+                        <div class="command-cell command-actions" data-i18n="commands.actions">Actions</div>
+                    </div>
+                    <div class="commands-table-body" id="commandsList">
+                        <!-- Commands will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- Help Text -->
+                <div class="command-help">
+                    <p>💡 <strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Click ▶️ to insert command into terminal.</span></p>
+                    <p>🔒 <span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Form Modal (Add/Edit) -->
+    <div class="modal" id="commandFormModal" role="dialog" aria-modal="true" aria-labelledby="commandFormTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="commandFormTitle" data-i18n="commands.addCommand">Add New Command</h2>
+                <span class="close" id="closeCommandFormModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="commandForm">
+                    <div class="form-group">
+                        <label for="commandFormName"><span data-i18n="commands.name">Name</span> *</label>
+                        <input type="text" id="commandFormName" class="form-control" data-i18n="commands.namePlaceholder" placeholder="e.g., Update System" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="commandFormCommand"><span data-i18n="commands.command">Command</span> *</label>
+                        <input type="text" id="commandFormCommand" class="form-control" data-i18n="commands.commandPlaceholder" placeholder="e.g., apt update" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="commandFormParams"><span data-i18n="commands.parameters">Parameters</span> (<span data-i18n="common.optional">Optional</span>)</label>
+                        <input type="text" id="commandFormParams" class="form-control" data-i18n="commands.parametersPlaceholder" placeholder="e.g., -y">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="commandFormDescription"><span data-i18n="commands.description">Description</span> *</label>
+                        <textarea id="commandFormDescription" class="form-control" rows="3" data-i18n="commands.descriptionPlaceholder" placeholder="e.g., Update package repository lists" required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="commandFormCategory" data-i18n="commands.category">Category</label>
+                        <select id="commandFormCategory" class="form-control">
+                            <option value="custom" data-i18n="commands.categoryCustom">Custom</option>
+                            <option value="system" data-i18n="commands.categorySystem">System</option>
+                            <option value="network" data-i18n="commands.categoryNetwork">Network</option>
+                            <option value="files" data-i18n="commands.categoryFiles">Files</option>
+                            <option value="docker" data-i18n="commands.categoryDocker">Docker</option>
+                            <option value="database" data-i18n="commands.categoryDatabase">Database</option>
+                            <option value="git" data-i18n="commands.categoryGit">Git</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label data-i18n="commands.operatingSystems">Operating Systems *</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" name="commandOs" value="all" id="osAll"> <span data-i18n="commands.osAll">All</span></label>
+                            <label><input type="checkbox" name="commandOs" value="linux"> Linux</label>
+                            <label><input type="checkbox" name="commandOs" value="macos"> macOS</label>
+                            <label><input type="checkbox" name="commandOs" value="bsd"> BSD</label>
+                            <label><input type="checkbox" name="commandOs" value="windows"> Windows</label>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelCommandFormBtn">
+                            <span data-i18n="common.cancel">Cancel</span>
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <span data-i18n="common.save">Save</span> ✅
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Palette -->
+    <div class="modal" id="commandPaletteModal" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2 id="commandPaletteTitle">Command Palette</h2>
+                <span class="close" id="closeCommandPaletteModal" aria-label="Close command palette">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="commandPaletteInput" class="form-control" placeholder="Type a command..." autocomplete="off">
+                <div class="palette-list" id="commandPaletteList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shortcuts Help -->
+    <div class="modal" id="shortcutsModal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2 id="shortcutsTitle">Keyboard Shortcuts</h2>
+                <span class="close" id="closeShortcutsModal" aria-label="Close shortcuts">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="shortcuts-list" id="shortcutsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drop Upload Modal -->
+    <div class="modal" id="dropUploadModal" role="dialog" aria-modal="true" aria-labelledby="dropUploadTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="dropUploadTitle">Upload File</h2>
+                <span class="close" id="closeDropUploadModal" aria-label="Close upload dialog">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="dropUploadForm">
+                    <div class="form-group">
+                        <label for="dropUploadFileName">File</label>
+                        <input type="text" id="dropUploadFileName" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="dropUploadPath">Remote Path</label>
+                        <input type="text" id="dropUploadPath" class="form-control" placeholder="./file.txt" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelDropUploadBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Upload</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pane Assignment Modal -->
+    <div class="modal" id="paneAssignmentModal" role="dialog" aria-modal="true" aria-labelledby="paneAssignmentTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="paneAssignmentTitle" data-i18n="panes.assignTitle">Assign Sessions to Panes</h2>
+                <span class="close" id="closePaneAssignmentModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="pane-assignment-info">
+                    <p data-i18n="panes.assignInfo">Select which sessions to display in each pane. You can assign existing sessions or create new connections.</p>
+                </div>
+                <div id="paneAssignmentList" class="pane-assignment-list">
+                    <!-- Panes will be rendered here dynamically -->
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelPaneAssignment" data-i18n="common.cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="applyPaneAssignment" data-i18n="common.apply">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div class="modal" id="filePreviewModal" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
+        <div class="modal-content modal-xlarge">
+            <div class="modal-header">
+                <div class="preview-header-info">
+                    <h2 id="filePreviewTitle">File Preview</h2>
+                    <span class="preview-filename" id="previewFilename"></span>
+                    <span class="preview-size" id="previewSize"></span>
+                </div>
+                <div class="preview-header-actions">
+                    <button class="btn btn-icon" id="previewCopyBtn" title="Copy to clipboard">
+                        <span class="material-icons">content_copy</span>
+                    </button>
+                    <button class="btn btn-icon" id="previewDownloadBtn" title="Download file">
+                        <span class="material-icons">download</span>
+                    </button>
+                    <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh">
+                        <span class="material-icons">refresh</span>
+                    </button>
+                    <span class="close" id="closeFilePreviewModal" aria-label="Close">&times;</span>
+                </div>
+            </div>
+            <div class="modal-body preview-modal-body">
+                <div class="preview-loading hidden" id="previewLoading">
+                    <div class="spinner"></div>
+                    <span>Loading preview...</span>
+                </div>
+                <div class="preview-error hidden" id="previewError">
+                    <span class="material-icons">error_outline</span>
+                    <span id="previewErrorMessage"></span>
+                </div>
+                <div class="preview-binary hidden" id="previewBinary">
+                    <span class="material-icons">insert_drive_file</span>
+                    <p>Binary file - cannot display preview</p>
+                    <button class="btn btn-primary" id="previewBinaryDownload">Download File</button>
+                </div>
+                <div class="preview-image hidden" id="previewImage">
+                    <img id="previewImageElement" alt="Image preview" />
+                </div>
+                <div class="preview-content" id="previewContent">
+                    <div class="preview-line-numbers" id="previewLineNumbers"></div>
+                    <pre><code id="previewCode"></code></pre>
+                </div>
+                <div class="preview-truncated hidden" id="previewTruncated">
+                    <span class="material-icons">info</span>
+                    <span>File truncated - showing first <span id="previewTruncatedSize"></span> of <span id="previewTotalSize"></span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-search@0.13.0/lib/xterm-addon-search.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <!-- i18n Support -->
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+
+    <!-- Binary Transfer & Drag-Drop -->
+    <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
+
+    <!-- Application Scripts -->
+    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/command-library.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/file-transfer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
+        flashedMessages.forEach(([category, message]) => {
+            if (!window.showNotification) {
+                return;
+            }
+            const type = category === 'error' ? 'error' : (category === 'success' ? 'success' : 'info');
+            showNotification(message, type);
+        });
+    </script>
+
+    <script>
+        // Theme Dropdown in Header
+        function toggleThemeDropdownHeader(event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            const dropdown = document.getElementById('themeDropdownHeader');
+            dropdown.classList.toggle('show');
+        }
+
+        function initThemeSelectorHeader() {
+            const dropdown = document.getElementById('themeDropdownHeader');
+            const themes = [
+                // Original themes
+                { id: 'glass', name: 'Glass Ops', color: '#58a6ff' },
+                { id: 'nordic', name: 'Nordic Studio', color: '#6bd3e1' },
+                { id: 'retro', name: 'Retro Future', color: '#ffb454' },
+                { id: 'ember', name: 'Ember Signal', color: '#ff7a4e' },
+                { id: 'forest', name: 'Forest Lab', color: '#62d48c' },
+                { id: 'solar', name: 'Solar Drift', color: '#6ea8ff' },
+                { id: 'paper', name: 'Paper Ops', color: '#c77d48', light: true },
+                { id: 'noir', name: 'Noir Terminal', color: '#7f91ff' },
+                // New themes
+                { id: 'midnight-azure', name: 'Midnight Azure', color: '#3b82f6' },
+                { id: 'arctic-ice', name: 'Arctic Ice', color: '#06b6d4' },
+                { id: 'sunset-blaze', name: 'Sunset Blaze', color: '#f97316' },
+                { id: 'rose-gold', name: 'Rose Gold', color: '#f43f5e' },
+                { id: 'cherry-blossom', name: 'Cherry Blossom', color: '#ec4899' },
+                { id: 'lavender-dreams', name: 'Lavender Dreams', color: '#a855f7' },
+                { id: 'cyberpunk-neon', name: 'Cyberpunk Neon', color: '#d946ef' },
+                { id: 'emerald-matrix', name: 'Emerald Matrix', color: '#10b981' },
+                { id: 'forest-canopy', name: 'Forest Canopy', color: '#22c55e' },
+                { id: 'ocean-depth', name: 'Ocean Depth', color: '#0ea5e9' },
+                { id: 'desert-mirage', name: 'Desert Mirage', color: '#d97706' },
+                { id: 'amber-alert', name: 'Amber Alert', color: '#f59e0b' },
+                { id: 'monochrome-elite', name: 'Monochrome Elite', color: '#a1a1aa' },
+                { id: 'obsidian', name: 'Obsidian', color: '#ffffff' },
+                { id: 'ivory', name: 'Ivory', color: '#78716c', light: true }
+            ];
+            const currentTheme = document.body.getAttribute('data-theme') || 'glass';
+
+            dropdown.innerHTML = '';
+            themes.forEach(theme => {
+                const option = document.createElement('div');
+                option.className = 'theme-option' + (theme.id === currentTheme ? ' active' : '');
+                option.innerHTML = `<span class="theme-color-dot" style="background:${theme.color};${theme.light ? 'border:1px solid #666;' : ''}"></span>${theme.name}`;
+                option.dataset.themeId = theme.id;
+                option.onclick = () => {
+                    applyTheme(theme.id);
+                    updateCurrentThemeLabel(theme.name, theme.color);
+                    toggleThemeDropdownHeader();
+                };
+                dropdown.appendChild(option);
+            });
+
+            const current = themes.find(t => t.id === currentTheme);
+            if (current) {
+                updateCurrentThemeLabel(current.name, current.color);
+            }
+        }
+
+        function updateCurrentThemeLabel(name, color) {
+            const label = document.getElementById('currentThemeLabel');
+            if (color) {
+                label.innerHTML = `<span class="theme-color-dot" style="background:${color}"></span>${name}`;
+            } else {
+                label.textContent = name;
+            }
+        }
+
+        function applyTheme(themeId) {
+            document.body.setAttribute('data-theme', themeId);
+            if (window.socket) {
+                window.socket.emit('set_theme', { theme: themeId });
+            }
+            const dropdown = document.getElementById('themeDropdownHeader');
+            if (dropdown) {
+                dropdown.querySelectorAll('.theme-option').forEach(option => {
+                    option.classList.toggle('active', option.dataset.themeId === themeId);
+                });
+            }
+            setTimeout(() => {
+                window.location.reload();
+            }, 150);
+        }
+
+        // Language Dropdown in Header
+        function toggleLangDropdownHeader(event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            const dropdown = document.getElementById('langDropdownHeader');
+            dropdown.classList.toggle('show');
+        }
+
+        function initLanguageSelectorHeader() {
+            const dropdown = document.getElementById('langDropdownHeader');
+            const languages = i18n.getLanguages();
+            const currentLang = i18n.getLanguage();
+
+            dropdown.innerHTML = '';
+            languages.forEach(lang => {
+                const option = document.createElement('div');
+                option.className = 'lang-option' + (lang.code === currentLang ? ' active' : '');
+                option.innerHTML = `${lang.flag} ${lang.name}`;
+                option.onclick = () => {
+                    i18n.setLanguage(lang.code);
+                    updateCurrentLangHeader(lang);
+                    toggleLangDropdownHeader();
+                };
+                dropdown.appendChild(option);
+            });
+
+            // Set current language display
+            const current = languages.find(l => l.code === currentLang);
+            if (current) {
+                updateCurrentLangHeader(current);
+            }
+        }
+
+        function updateCurrentLangHeader(lang) {
+            document.getElementById('currentLangFlagHeader').textContent = lang.flag;
+        }
+
+        // Close dropdown when clicking outside
+        window.addEventListener('click', (e) => {
+            if (!e.target.closest('.language-selector')) {
+                const dropdown = document.getElementById('langDropdownHeader');
+                if (dropdown) {
+                    dropdown.classList.remove('show');
+                }
+            }
+            if (!e.target.closest('.theme-selector')) {
+                const dropdown = document.getElementById('themeDropdownHeader');
+                if (dropdown) {
+                    dropdown.classList.remove('show');
+                }
+            }
+        });
+
+        // Initialize selectors on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initThemeSelectorHeader();
+            initLanguageSelectorHeader();
+        });
+    </script>
+</body>
+</html>

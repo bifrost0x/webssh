@@ -1,0 +1,46 @@
+##############################################
+# Web SSH Terminal - Docker Compose
+#
+# SECURITY: Before running in production:
+# 1. Set SECRET_KEY to a secure random value
+# 2. Set CORS_ORIGINS to your domain(s)
+# 3. Use a reverse proxy with TLS
+#
+# Generate SECRET_KEY:
+#   openssl rand -hex 32
+##############################################
+
+services:
+  webssh:
+    build: .
+    container_name: webssh
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - DEBUG=False
+      - HOST=0.0.0.0
+      - PORT=5000
+      - DATA_DIR=/app/data
+      # SECURITY: SECRET_KEY is required - no default provided
+      # Generate with: openssl rand -hex 32
+      - "SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required - generate with openssl rand -hex 32}"
+      # SECURITY: CORS_ORIGINS is required - no wildcard default
+      # Set to your domain, e.g., https://ssh.example.com
+      - "CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS is required - set to your domain}"
+      # Set to true to allow CORS wildcard in production (homelab use)
+      - ALLOW_CORS_WILDCARD=${ALLOW_CORS_WILDCARD:-false}
+      # Set to 1 if behind a reverse proxy (Traefik, nginx, etc.)
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-0}
+    volumes:
+      - webssh_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1', 5000), 2); s.close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  webssh_data:
+    driver: local

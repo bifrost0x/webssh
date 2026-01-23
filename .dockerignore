@@ -1,0 +1,66 @@
+# Git
+.git/
+.github/
+.gitignore
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets - CRITICAL
+.env
+.env.local
+.env.production
+
+# User data directory - contains sensitive data
+data/
+
+# Claude Code / AI assistant files
+CLAUDE.md
+.claude/
+
+# Logs
+*.log
+logs/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Documentation (not needed in container)
+README.md
+docs/
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Backup files
+*.bak
+*.backup
+*.orig

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Web SSH Terminal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <!-- Language Selector -->
+    <div class="language-selector">
+        <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
+            <span id="currentLangFlag">🇬🇧</span>
+            <span id="currentLangName">English</span>
+        </button>
+        <div class="lang-dropdown" id="langDropdown"></div>
+    </div>
+
+    <!-- Background Glow Effects -->
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    <div class="glow-orb glow-orb-3"></div>
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <div class="logo">🖥️</div>
+                <h1 data-i18n="auth.register">Create Account</h1>
+                <p data-i18n="auth.registerPrompt">Join us and start your journey</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('register') }}" id="registerForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="form-group">
+                    <label for="username" data-i18n="auth.username">Username</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input type="text" id="username" name="username" class="form-control"
+                               data-i18n="auth.username" placeholder="Username" required autofocus
+                               pattern="[a-zA-Z0-9_]{3,32}"
+                               title="3-32 characters, letters, numbers, and underscore only">
+                    </div>
+                    <div class="field-hint" id="usernameHint"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" data-i18n="auth.password">Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input type="password" id="password" name="password" class="form-control"
+                               data-i18n="auth.password" placeholder="Password" required minlength="8">
+                        <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility">👁️</button>
+                    </div>
+                    <div class="field-hint" data-i18n="auth.passwordHint">Minimum 8 characters</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password" data-i18n="auth.confirmPassword">Confirm Password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-control"
+                               data-i18n="auth.confirmPassword" placeholder="Confirm Password" required>
+                        <button type="button" class="password-toggle" data-target="confirm_password" aria-label="Toggle password visibility">👁️</button>
+                    </div>
+                    <div class="password-match-indicator" id="passwordMatchIndicator"></div>
+                </div>
+
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    <span data-i18n="auth.createAccount">Create Account</span> 🚀
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                <span data-i18n="auth.haveAccount">Already have an account?</span>
+                <a href="{{ url_for('login') }}" data-i18n="auth.loginHere">Sign in here</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script>
+        // Language Dropdown
+        function toggleLangDropdown() {
+            document.getElementById('langDropdown').classList.toggle('show');
+        }
+
+        function initLanguageSelector() {
+            const dropdown = document.getElementById('langDropdown');
+            const languages = i18n.getLanguages();
+            const currentLang = i18n.getLanguage();
+
+            dropdown.innerHTML = '';
+            languages.forEach(lang => {
+                const option = document.createElement('div');
+                option.className = 'lang-option' + (lang.code === currentLang ? ' active' : '');
+                option.innerHTML = `${lang.flag} ${lang.name}`;
+                option.onclick = () => {
+                    i18n.setLanguage(lang.code);
+                    updateCurrentLang(lang);
+                    toggleLangDropdown();
+                };
+                dropdown.appendChild(option);
+            });
+
+            const current = languages.find(l => l.code === currentLang);
+            if (current) {
+                updateCurrentLang(current);
+            }
+        }
+
+        function updateCurrentLang(lang) {
+            document.getElementById('currentLangFlag').textContent = lang.flag;
+            document.getElementById('currentLangName').textContent = lang.name;
+        }
+
+        // Password match validation
+        function checkPasswordMatch() {
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const indicator = document.getElementById('passwordMatchIndicator');
+
+            if (confirmPassword.length === 0) {
+                indicator.textContent = '';
+                indicator.className = 'password-match-indicator';
+                return true;
+            }
+
+            if (password === confirmPassword) {
+                indicator.innerHTML = '✓ ' + (i18n.t('auth.passwordsMatch') || 'Passwords match');
+                indicator.className = 'password-match-indicator match';
+                return true;
+            } else {
+                indicator.innerHTML = '✗ ' + (i18n.t('auth.passwordsNoMatch') || 'Passwords do not match');
+                indicator.className = 'password-match-indicator no-match';
+                return false;
+            }
+        }
+
+        // Form validation
+        document.getElementById('registerForm').addEventListener('submit', (e) => {
+            if (!checkPasswordMatch()) {
+                e.preventDefault();
+                document.getElementById('confirm_password').focus();
+            }
+        });
+
+        // Close dropdown when clicking outside
+        window.addEventListener('click', (e) => {
+            if (!e.target.closest('.language-selector')) {
+                document.getElementById('langDropdown').classList.remove('show');
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initLanguageSelector();
+            document.getElementById('password').addEventListener('input', checkPasswordMatch);
+            document.getElementById('confirm_password').addEventListener('input', checkPasswordMatch);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,3991 @@
+[
+  {
+    "id": "sys-001",
+    "name": "Update Package Lists",
+    "command": "apt update",
+    "parameters": "",
+    "description": "Update APT package repository lists",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-002",
+    "name": "Upgrade Packages",
+    "command": "apt upgrade",
+    "parameters": "-y",
+    "description": "Upgrade all installed packages",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-003",
+    "name": "Install Package",
+    "command": "apt install",
+    "parameters": "package-name",
+    "description": "Install package using APT",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-004",
+    "name": "Remove Package",
+    "command": "apt remove",
+    "parameters": "package-name",
+    "description": "Remove package using APT",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-005",
+    "name": "Search Package",
+    "command": "apt search",
+    "parameters": "keyword",
+    "description": "Search for packages",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-006",
+    "name": "System Reboot",
+    "command": "reboot",
+    "parameters": "",
+    "description": "Reboot system immediately",
+    "os": [
+      "linux",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-007",
+    "name": "System Shutdown",
+    "command": "shutdown",
+    "parameters": "-h now",
+    "description": "Shutdown system immediately",
+    "os": [
+      "linux",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-008",
+    "name": "List Services",
+    "command": "systemctl list-units",
+    "parameters": "--type=service",
+    "description": "List all systemd services",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-009",
+    "name": "Start Service",
+    "command": "systemctl start",
+    "parameters": "service-name",
+    "description": "Start a systemd service",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-010",
+    "name": "Stop Service",
+    "command": "systemctl stop",
+    "parameters": "service-name",
+    "description": "Stop a systemd service",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-011",
+    "name": "Restart Service",
+    "command": "systemctl restart",
+    "parameters": "service-name",
+    "description": "Restart a systemd service",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-012",
+    "name": "Enable Service",
+    "command": "systemctl enable",
+    "parameters": "service-name",
+    "description": "Enable service at boot",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-013",
+    "name": "Disable Service",
+    "command": "systemctl disable",
+    "parameters": "service-name",
+    "description": "Disable service at boot",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-014",
+    "name": "Service Status",
+    "command": "systemctl status",
+    "parameters": "service-name",
+    "description": "Check service status",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-015",
+    "name": "View Service Logs",
+    "command": "journalctl -u",
+    "parameters": "service-name -f",
+    "description": "Follow service logs",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-016",
+    "name": "Disk Usage",
+    "command": "df",
+    "parameters": "-h",
+    "description": "Show disk usage",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-017",
+    "name": "Directory Size",
+    "command": "du",
+    "parameters": "-sh *",
+    "description": "Show directory sizes",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "sys-018",
+    "name": "Free Memory",
+    "command": "free",
+    "parameters": "-h",
+    "description": "Display memory usage",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-019",
+    "name": "Top Processes",
+    "command": "top",
+    "parameters": "",
+    "description": "Display process monitor",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-020",
+    "name": "Process List",
+    "command": "ps aux",
+    "parameters": "",
+    "description": "List all processes",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-021",
+    "name": "Kill Process",
+    "command": "kill",
+    "parameters": "-9 PID",
+    "description": "Force kill process",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-022",
+    "name": "Find Process",
+    "command": "pgrep",
+    "parameters": "process-name",
+    "description": "Find process by name",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-023",
+    "name": "System Uptime",
+    "command": "uptime",
+    "parameters": "",
+    "description": "Show system uptime",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-024",
+    "name": "Kernel Version",
+    "command": "uname",
+    "parameters": "-r",
+    "description": "Display kernel version",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-025",
+    "name": "System Info",
+    "command": "uname",
+    "parameters": "-a",
+    "description": "Display system info",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-026",
+    "name": "CPU Info",
+    "command": "lscpu",
+    "parameters": "",
+    "description": "Display CPU info",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-027",
+    "name": "Memory Info",
+    "command": "cat /proc/meminfo",
+    "parameters": "",
+    "description": "Display memory details",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-028",
+    "name": "Block Devices",
+    "command": "lsblk",
+    "parameters": "",
+    "description": "List block devices",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-029",
+    "name": "PCI Devices",
+    "command": "lspci",
+    "parameters": "",
+    "description": "List PCI devices",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "sys-030",
+    "name": "USB Devices",
+    "command": "lsusb",
+    "parameters": "",
+    "description": "List USB devices",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "net-001",
+    "name": "IP Address",
+    "command": "ip addr show",
+    "parameters": "",
+    "description": "Show all network interfaces",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-002",
+    "name": "ifconfig",
+    "command": "ifconfig",
+    "parameters": "",
+    "description": "Network configuration (legacy)",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-003",
+    "name": "Ping Host",
+    "command": "ping",
+    "parameters": "-c 4 hostname",
+    "description": "Test connectivity",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-004",
+    "name": "Trace Route",
+    "command": "traceroute",
+    "parameters": "hostname",
+    "description": "Trace network path",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-005",
+    "name": "DNS Lookup",
+    "command": "nslookup",
+    "parameters": "hostname",
+    "description": "DNS query",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-006",
+    "name": "Dig Query",
+    "command": "dig",
+    "parameters": "hostname",
+    "description": "Detailed DNS query",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-007",
+    "name": "Network Stats",
+    "command": "netstat",
+    "parameters": "-tuln",
+    "description": "Show listening ports",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-008",
+    "name": "Socket Stats",
+    "command": "ss",
+    "parameters": "-tuln",
+    "description": "Modern netstat",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-009",
+    "name": "Download File",
+    "command": "wget",
+    "parameters": "URL",
+    "description": "Download from URL",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-010",
+    "name": "cURL Request",
+    "command": "curl",
+    "parameters": "-I URL",
+    "description": "HTTP request",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-011",
+    "name": "Test Port",
+    "command": "nc",
+    "parameters": "-zv hostname port",
+    "description": "Test port connectivity",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-012",
+    "name": "Firewall Status",
+    "command": "ufw status",
+    "parameters": "",
+    "description": "Check UFW firewall",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-013",
+    "name": "Enable Firewall",
+    "command": "ufw enable",
+    "parameters": "",
+    "description": "Enable UFW",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-014",
+    "name": "Allow Port",
+    "command": "ufw allow",
+    "parameters": "port",
+    "description": "Allow port through firewall",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-015",
+    "name": "Deny Port",
+    "command": "ufw deny",
+    "parameters": "port",
+    "description": "Deny port",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-016",
+    "name": "iptables List",
+    "command": "iptables",
+    "parameters": "-L -n -v",
+    "description": "List firewall rules",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-017",
+    "name": "Routing Table",
+    "command": "ip route show",
+    "parameters": "",
+    "description": "Display routing table",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-018",
+    "name": "ARP Cache",
+    "command": "arp",
+    "parameters": "-a",
+    "description": "Display ARP cache",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-019",
+    "name": "Network Scan",
+    "command": "nmap",
+    "parameters": "-sn 192.168.1.0/24",
+    "description": "Scan network",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-020",
+    "name": "Port Scan",
+    "command": "nmap",
+    "parameters": "-p- hostname",
+    "description": "Scan all ports",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-021",
+    "name": "IP Link Show",
+    "command": "ip link show",
+    "parameters": "",
+    "description": "Show network interfaces",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-022",
+    "name": "Set IP Address",
+    "command": "ip addr add",
+    "parameters": "192.168.1.10/24 dev eth0",
+    "description": "Configure IP address",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-023",
+    "name": "Bring Interface Up",
+    "command": "ip link set",
+    "parameters": "eth0 up",
+    "description": "Enable network interface",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-024",
+    "name": "Bring Interface Down",
+    "command": "ip link set",
+    "parameters": "eth0 down",
+    "description": "Disable network interface",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-025",
+    "name": "MTU Size",
+    "command": "ip link set",
+    "parameters": "eth0 mtu 1500",
+    "description": "Set MTU size",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-026",
+    "name": "Flush IP",
+    "command": "ip addr flush",
+    "parameters": "dev eth0",
+    "description": "Remove all IPs",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-027",
+    "name": "Add Route",
+    "command": "ip route add",
+    "parameters": "10.0.0.0/8 via 192.168.1.1",
+    "description": "Add static route",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-028",
+    "name": "Delete Route",
+    "command": "ip route del",
+    "parameters": "10.0.0.0/8",
+    "description": "Remove route",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-029",
+    "name": "TCP Dump",
+    "command": "tcpdump",
+    "parameters": "-i eth0 -n",
+    "description": "Capture network packets",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-030",
+    "name": "List Connections",
+    "command": "lsof",
+    "parameters": "-i",
+    "description": "List open network connections",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-031",
+    "name": "Who is",
+    "command": "whois",
+    "parameters": "domain.com",
+    "description": "WHOIS lookup",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-032",
+    "name": "Bandwidth Monitor",
+    "command": "iftop",
+    "parameters": "",
+    "description": "Monitor bandwidth usage",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-033",
+    "name": "Network Speed",
+    "command": "speedtest-cli",
+    "parameters": "",
+    "description": "Test internet speed",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-034",
+    "name": "Hosts File",
+    "command": "cat /etc/hosts",
+    "parameters": "",
+    "description": "View hosts file",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-035",
+    "name": "DNS Config",
+    "command": "cat /etc/resolv.conf",
+    "parameters": "",
+    "description": "View DNS configuration",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-036",
+    "name": "MAC Address",
+    "command": "ip link show",
+    "parameters": "eth0 | grep link/ether",
+    "description": "Show MAC address",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-037",
+    "name": "Change MAC",
+    "command": "ip link set",
+    "parameters": "eth0 address 00:11:22:33:44:55",
+    "description": "Spoof MAC address",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-038",
+    "name": "SSH Tunnel",
+    "command": "ssh",
+    "parameters": "-L 8080:localhost:80 user@host",
+    "description": "Create SSH tunnel",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-039",
+    "name": "Reverse SSH",
+    "command": "ssh",
+    "parameters": "-R 8080:localhost:80 user@host",
+    "description": "Reverse SSH tunnel",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-040",
+    "name": "SCP Upload",
+    "command": "scp",
+    "parameters": "file user@host:/path",
+    "description": "Secure copy to remote",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-041",
+    "name": "SCP Download",
+    "command": "scp",
+    "parameters": "user@host:/path/file .",
+    "description": "Secure copy from remote",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-042",
+    "name": "Rsync Over SSH",
+    "command": "rsync",
+    "parameters": "-avz -e ssh source/ user@host:/dest/",
+    "description": "Sync via SSH",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-043",
+    "name": "HTTP Server",
+    "command": "python3 -m http.server",
+    "parameters": "8000",
+    "description": "Quick HTTP server",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-044",
+    "name": "Listen on Port",
+    "command": "nc",
+    "parameters": "-l -p 1234",
+    "description": "Listen on port with netcat",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-045",
+    "name": "Send Data",
+    "command": "nc",
+    "parameters": "hostname 1234 < file",
+    "description": "Send file via netcat",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-046",
+    "name": "Telnet Test",
+    "command": "telnet",
+    "parameters": "hostname port",
+    "description": "Test TCP connection",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-047",
+    "name": "Show Gateway",
+    "command": "ip route",
+    "parameters": "| grep default",
+    "description": "Show default gateway",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-048",
+    "name": "Flush DNS Cache",
+    "command": "systemd-resolve --flush-caches",
+    "parameters": "",
+    "description": "Clear DNS cache",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-049",
+    "name": "Network Interfaces",
+    "command": "ip -s link",
+    "parameters": "",
+    "description": "Show interface statistics",
+    "os": [
+      "linux"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "net-050",
+    "name": "Ping Flood",
+    "command": "ping",
+    "parameters": "-f hostname",
+    "description": "Flood ping (testing)",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "file-001",
+    "name": "List Files",
+    "command": "ls",
+    "parameters": "-lah",
+    "description": "List all files with details",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-002",
+    "name": "Change Directory",
+    "command": "cd",
+    "parameters": "/path",
+    "description": "Change directory",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-003",
+    "name": "Print Working Dir",
+    "command": "pwd",
+    "parameters": "",
+    "description": "Show current directory",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-004",
+    "name": "Make Directory",
+    "command": "mkdir",
+    "parameters": "-p path/to/dir",
+    "description": "Create directories",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-005",
+    "name": "Remove Directory",
+    "command": "rmdir",
+    "parameters": "directory",
+    "description": "Remove empty directory",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-006",
+    "name": "Remove Recursive",
+    "command": "rm",
+    "parameters": "-rf path",
+    "description": "Remove files/dirs recursively",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-007",
+    "name": "Copy Files",
+    "command": "cp",
+    "parameters": "-r source dest",
+    "description": "Copy recursively",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-008",
+    "name": "Move Files",
+    "command": "mv",
+    "parameters": "source dest",
+    "description": "Move or rename",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-009",
+    "name": "View File",
+    "command": "cat",
+    "parameters": "filename",
+    "description": "Display file contents",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-010",
+    "name": "Page File",
+    "command": "less",
+    "parameters": "filename",
+    "description": "View file with paging",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-011",
+    "name": "Head",
+    "command": "head",
+    "parameters": "-n 20 filename",
+    "description": "First 20 lines",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-012",
+    "name": "Tail",
+    "command": "tail",
+    "parameters": "-n 20 filename",
+    "description": "Last 20 lines",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-013",
+    "name": "Follow Log",
+    "command": "tail",
+    "parameters": "-f filename",
+    "description": "Follow file updates",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-014",
+    "name": "Grep Search",
+    "command": "grep",
+    "parameters": "-r \"pattern\" .",
+    "description": "Search in files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-015",
+    "name": "Find by Name",
+    "command": "find",
+    "parameters": ". -name \"*.txt\"",
+    "description": "Find files by name",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-016",
+    "name": "Find by Size",
+    "command": "find",
+    "parameters": ". -size +100M",
+    "description": "Find large files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-017",
+    "name": "Find Modified",
+    "command": "find",
+    "parameters": ". -mtime -7",
+    "description": "Find recent files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-018",
+    "name": "Change Permissions",
+    "command": "chmod",
+    "parameters": "755 filename",
+    "description": "Set file permissions",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-019",
+    "name": "Change Owner",
+    "command": "chown",
+    "parameters": "user:group file",
+    "description": "Change ownership",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-020",
+    "name": "File Type",
+    "command": "file",
+    "parameters": "filename",
+    "description": "Determine file type",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-021",
+    "name": "Word Count",
+    "command": "wc",
+    "parameters": "-l filename",
+    "description": "Count lines",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-022",
+    "name": "Touch File",
+    "command": "touch",
+    "parameters": "filename",
+    "description": "Create empty file",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-023",
+    "name": "Diff Files",
+    "command": "diff",
+    "parameters": "file1 file2",
+    "description": "Compare files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-024",
+    "name": "Symbolic Link",
+    "command": "ln",
+    "parameters": "-s /path/to/file link",
+    "description": "Create symlink",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-025",
+    "name": "Tar Create",
+    "command": "tar",
+    "parameters": "-czf archive.tar.gz dir/",
+    "description": "Create tar.gz",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-026",
+    "name": "Tar Extract",
+    "command": "tar",
+    "parameters": "-xzf archive.tar.gz",
+    "description": "Extract tar.gz",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-027",
+    "name": "Zip Create",
+    "command": "zip",
+    "parameters": "-r archive.zip dir/",
+    "description": "Create zip",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-028",
+    "name": "Unzip",
+    "command": "unzip",
+    "parameters": "archive.zip",
+    "description": "Extract zip",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-029",
+    "name": "Rsync Copy",
+    "command": "rsync",
+    "parameters": "-avz source/ dest/",
+    "description": "Sync files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-030",
+    "name": "Disk Free",
+    "command": "df",
+    "parameters": "-h .",
+    "description": "Show disk space",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-031",
+    "name": "Disk Usage Summary",
+    "command": "du",
+    "parameters": "-sh",
+    "description": "Total directory size",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-032",
+    "name": "Sort Large Dirs",
+    "command": "du",
+    "parameters": "-h | sort -rh | head -20",
+    "description": "Find largest directories",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-033",
+    "name": "Find Empty Files",
+    "command": "find",
+    "parameters": ". -type f -empty",
+    "description": "Find empty files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-034",
+    "name": "Find Empty Dirs",
+    "command": "find",
+    "parameters": ". -type d -empty",
+    "description": "Find empty directories",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-035",
+    "name": "File Count",
+    "command": "find",
+    "parameters": ". -type f | wc -l",
+    "description": "Count files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-036",
+    "name": "Tree View",
+    "command": "tree",
+    "parameters": "-L 2",
+    "description": "Directory tree (2 levels)",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-037",
+    "name": "Stat File",
+    "command": "stat",
+    "parameters": "filename",
+    "description": "File detailed info",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-038",
+    "name": "Checksum MD5",
+    "command": "md5sum",
+    "parameters": "filename",
+    "description": "Calculate MD5 hash",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-039",
+    "name": "Checksum SHA256",
+    "command": "sha256sum",
+    "parameters": "filename",
+    "description": "Calculate SHA256 hash",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-040",
+    "name": "Compare Checksums",
+    "command": "md5sum",
+    "parameters": "-c checksums.txt",
+    "description": "Verify file integrity",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-041",
+    "name": "Split File",
+    "command": "split",
+    "parameters": "-b 100M file",
+    "description": "Split into 100MB parts",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-042",
+    "name": "Join Files",
+    "command": "cat",
+    "parameters": "file.part* > file",
+    "description": "Merge split files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-043",
+    "name": "Rename Extension",
+    "command": "rename",
+    "parameters": "'s/\\.txt$/\\.md/' *.txt",
+    "description": "Batch rename",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-044",
+    "name": "Convert Encoding",
+    "command": "iconv",
+    "parameters": "-f ISO-8859-1 -t UTF-8 file",
+    "description": "Convert file encoding",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-045",
+    "name": "Remove Duplicates",
+    "command": "sort file | uniq",
+    "parameters": "",
+    "description": "Remove duplicate lines",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-046",
+    "name": "Count Duplicates",
+    "command": "sort file | uniq -c",
+    "parameters": "",
+    "description": "Count occurrences",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-047",
+    "name": "Reverse File",
+    "command": "tac",
+    "parameters": "filename",
+    "description": "Display file reversed",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-048",
+    "name": "Truncate File",
+    "command": "truncate",
+    "parameters": "-s 0 filename",
+    "description": "Empty file contents",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-049",
+    "name": "Watch File",
+    "command": "watch",
+    "parameters": "-n 1 cat filename",
+    "description": "Monitor file changes",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-050",
+    "name": "Hex Dump",
+    "command": "hexdump",
+    "parameters": "-C filename",
+    "description": "View file in hex",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-051",
+    "name": "Base64 Encode",
+    "command": "base64",
+    "parameters": "filename",
+    "description": "Encode to base64",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-052",
+    "name": "Base64 Decode",
+    "command": "base64",
+    "parameters": "-d filename",
+    "description": "Decode from base64",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-053",
+    "name": "List ACL",
+    "command": "getfacl",
+    "parameters": "filename",
+    "description": "Show file ACL",
+    "os": [
+      "linux"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-054",
+    "name": "Set ACL",
+    "command": "setfacl",
+    "parameters": "-m u:user:rw filename",
+    "description": "Set file ACL",
+    "os": [
+      "linux"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-055",
+    "name": "List Attributes",
+    "command": "lsattr",
+    "parameters": "filename",
+    "description": "Show file attributes",
+    "os": [
+      "linux"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-056",
+    "name": "Set Immutable",
+    "command": "chattr",
+    "parameters": "+i filename",
+    "description": "Make file immutable",
+    "os": [
+      "linux"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-057",
+    "name": "Remove Immutable",
+    "command": "chattr",
+    "parameters": "-i filename",
+    "description": "Remove immutable flag",
+    "os": [
+      "linux"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-058",
+    "name": "Find Setuid",
+    "command": "find",
+    "parameters": "/ -perm -4000",
+    "description": "Find SUID files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-059",
+    "name": "Find World Writable",
+    "command": "find",
+    "parameters": "/ -perm -002",
+    "description": "Find writable files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "file-060",
+    "name": "Shred File",
+    "command": "shred",
+    "parameters": "-u filename",
+    "description": "Securely delete file",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "docker-001",
+    "name": "Docker Version",
+    "command": "docker",
+    "parameters": "--version",
+    "description": "Show Docker version",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-002",
+    "name": "List Containers",
+    "command": "docker ps",
+    "parameters": "-a",
+    "description": "List all containers",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-003",
+    "name": "List Images",
+    "command": "docker images",
+    "parameters": "",
+    "description": "List all images",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-004",
+    "name": "Pull Image",
+    "command": "docker pull",
+    "parameters": "image:tag",
+    "description": "Pull image from registry",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-005",
+    "name": "Run Container",
+    "command": "docker run",
+    "parameters": "-d --name name image",
+    "description": "Run detached container",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-006",
+    "name": "Start Container",
+    "command": "docker start",
+    "parameters": "container",
+    "description": "Start stopped container",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-007",
+    "name": "Stop Container",
+    "command": "docker stop",
+    "parameters": "container",
+    "description": "Stop running container",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-008",
+    "name": "Remove Container",
+    "command": "docker rm",
+    "parameters": "container",
+    "description": "Remove container",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-009",
+    "name": "Remove Image",
+    "command": "docker rmi",
+    "parameters": "image",
+    "description": "Remove image",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-010",
+    "name": "Container Logs",
+    "command": "docker logs",
+    "parameters": "-f container",
+    "description": "Follow container logs",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-011",
+    "name": "Exec in Container",
+    "command": "docker exec",
+    "parameters": "-it container /bin/bash",
+    "description": "Shell into container",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-012",
+    "name": "Container Stats",
+    "command": "docker stats",
+    "parameters": "",
+    "description": "Resource usage stats",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-013",
+    "name": "Inspect Container",
+    "command": "docker inspect",
+    "parameters": "container",
+    "description": "Detailed container info",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-014",
+    "name": "Docker Networks",
+    "command": "docker network ls",
+    "parameters": "",
+    "description": "List networks",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-015",
+    "name": "Docker Volumes",
+    "command": "docker volume ls",
+    "parameters": "",
+    "description": "List volumes",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-016",
+    "name": "Compose Up",
+    "command": "docker-compose up",
+    "parameters": "-d",
+    "description": "Start compose services",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-017",
+    "name": "Compose Down",
+    "command": "docker-compose down",
+    "parameters": "",
+    "description": "Stop compose services",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-018",
+    "name": "Prune Containers",
+    "command": "docker container prune",
+    "parameters": "-f",
+    "description": "Remove stopped containers",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-019",
+    "name": "Prune Images",
+    "command": "docker image prune",
+    "parameters": "-a",
+    "description": "Remove unused images",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-020",
+    "name": "System Prune",
+    "command": "docker system prune",
+    "parameters": "-a --volumes",
+    "description": "Clean everything",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-021",
+    "name": "Build Image",
+    "command": "docker build",
+    "parameters": "-t myimage .",
+    "description": "Build from Dockerfile",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-022",
+    "name": "Tag Image",
+    "command": "docker tag",
+    "parameters": "image newtag",
+    "description": "Tag an image",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-023",
+    "name": "Push Image",
+    "command": "docker push",
+    "parameters": "image:tag",
+    "description": "Push to registry",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-024",
+    "name": "Copy from Container",
+    "command": "docker cp",
+    "parameters": "container:/path ./local",
+    "description": "Copy files out",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-025",
+    "name": "Copy to Container",
+    "command": "docker cp",
+    "parameters": "./local container:/path",
+    "description": "Copy files in",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-026",
+    "name": "Export Container",
+    "command": "docker export",
+    "parameters": "container > backup.tar",
+    "description": "Export container",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-027",
+    "name": "Import Image",
+    "command": "docker import",
+    "parameters": "backup.tar",
+    "description": "Import as image",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-028",
+    "name": "Save Image",
+    "command": "docker save",
+    "parameters": "-o image.tar image",
+    "description": "Save image to tar",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-029",
+    "name": "Load Image",
+    "command": "docker load",
+    "parameters": "-i image.tar",
+    "description": "Load image from tar",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "docker-030",
+    "name": "Container Processes",
+    "command": "docker top",
+    "parameters": "container",
+    "description": "Show container processes",
+    "os": [
+      "all"
+    ],
+    "category": "docker",
+    "isSystem": true
+  },
+  {
+    "id": "git-001",
+    "name": "Git Clone",
+    "command": "git clone",
+    "parameters": "repo-url",
+    "description": "Clone repository",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-002",
+    "name": "Git Status",
+    "command": "git status",
+    "parameters": "",
+    "description": "Show working tree status",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-003",
+    "name": "Git Add All",
+    "command": "git add",
+    "parameters": ".",
+    "description": "Stage all changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-004",
+    "name": "Git Commit",
+    "command": "git commit",
+    "parameters": "-m \"message\"",
+    "description": "Commit changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-005",
+    "name": "Git Push",
+    "command": "git push",
+    "parameters": "origin main",
+    "description": "Push to remote",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-006",
+    "name": "Git Pull",
+    "command": "git pull",
+    "parameters": "",
+    "description": "Fetch and merge",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-007",
+    "name": "Git Branch List",
+    "command": "git branch",
+    "parameters": "-a",
+    "description": "List all branches",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-008",
+    "name": "Git Checkout",
+    "command": "git checkout",
+    "parameters": "branch",
+    "description": "Switch branch",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-009",
+    "name": "Git New Branch",
+    "command": "git checkout",
+    "parameters": "-b newbranch",
+    "description": "Create new branch",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-010",
+    "name": "Git Merge",
+    "command": "git merge",
+    "parameters": "branch",
+    "description": "Merge branch",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-011",
+    "name": "Git Log",
+    "command": "git log",
+    "parameters": "--oneline --graph --all",
+    "description": "Show commit history",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-012",
+    "name": "Git Diff",
+    "command": "git diff",
+    "parameters": "",
+    "description": "Show unstaged changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-013",
+    "name": "Git Stash",
+    "command": "git stash",
+    "parameters": "",
+    "description": "Save uncommitted changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-014",
+    "name": "Git Stash Pop",
+    "command": "git stash pop",
+    "parameters": "",
+    "description": "Apply stashed changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-015",
+    "name": "Git Reset Hard",
+    "command": "git reset",
+    "parameters": "--hard HEAD",
+    "description": "Discard all changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-016",
+    "name": "Git Remote",
+    "command": "git remote",
+    "parameters": "-v",
+    "description": "Show remote URLs",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-017",
+    "name": "Git Fetch",
+    "command": "git fetch",
+    "parameters": "--all",
+    "description": "Download all branches",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-018",
+    "name": "Git Rebase",
+    "command": "git rebase",
+    "parameters": "main",
+    "description": "Rebase onto main",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-019",
+    "name": "Git Tag",
+    "command": "git tag",
+    "parameters": "v1.0.0",
+    "description": "Create tag",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-020",
+    "name": "Git Config User",
+    "command": "git config",
+    "parameters": "--global user.name \"Name\"",
+    "description": "Set username",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-021",
+    "name": "Git Config Email",
+    "command": "git config",
+    "parameters": "--global user.email \"email\"",
+    "description": "Set email",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-022",
+    "name": "Git Delete Branch",
+    "command": "git branch",
+    "parameters": "-d branchname",
+    "description": "Delete local branch",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-023",
+    "name": "Git Delete Remote",
+    "command": "git push origin",
+    "parameters": "--delete branchname",
+    "description": "Delete remote branch",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-024",
+    "name": "Git Show Commit",
+    "command": "git show",
+    "parameters": "commit-hash",
+    "description": "Show commit details",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-025",
+    "name": "Git Blame",
+    "command": "git blame",
+    "parameters": "filename",
+    "description": "Show line-by-line changes",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-026",
+    "name": "Git Reflog",
+    "command": "git reflog",
+    "parameters": "",
+    "description": "Show reference logs",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-027",
+    "name": "Git Cherry-pick",
+    "command": "git cherry-pick",
+    "parameters": "commit-hash",
+    "description": "Apply specific commit",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-028",
+    "name": "Git Clean",
+    "command": "git clean",
+    "parameters": "-fd",
+    "description": "Remove untracked files",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-029",
+    "name": "Git Submodule Init",
+    "command": "git submodule",
+    "parameters": "init",
+    "description": "Initialize submodules",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "git-030",
+    "name": "Git Submodule Update",
+    "command": "git submodule",
+    "parameters": "update --remote",
+    "description": "Update submodules",
+    "os": [
+      "all"
+    ],
+    "category": "git",
+    "isSystem": true
+  },
+  {
+    "id": "db-001",
+    "name": "MySQL Connect",
+    "command": "mysql",
+    "parameters": "-u user -p",
+    "description": "Connect to MySQL",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-002",
+    "name": "PostgreSQL Connect",
+    "command": "psql",
+    "parameters": "-U user -d database",
+    "description": "Connect to PostgreSQL",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-003",
+    "name": "MySQL Dump",
+    "command": "mysqldump",
+    "parameters": "-u user -p db > backup.sql",
+    "description": "Backup MySQL database",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-004",
+    "name": "MySQL Restore",
+    "command": "mysql",
+    "parameters": "-u user -p db < backup.sql",
+    "description": "Restore MySQL database",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-005",
+    "name": "PostgreSQL Dump",
+    "command": "pg_dump",
+    "parameters": "-U user db > backup.sql",
+    "description": "Backup PostgreSQL",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-006",
+    "name": "PostgreSQL Restore",
+    "command": "psql",
+    "parameters": "-U user db < backup.sql",
+    "description": "Restore PostgreSQL",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-007",
+    "name": "Redis CLI",
+    "command": "redis-cli",
+    "parameters": "",
+    "description": "Connect to Redis",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-008",
+    "name": "MongoDB Shell",
+    "command": "mongosh",
+    "parameters": "",
+    "description": "Connect to MongoDB",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-009",
+    "name": "SQLite Open",
+    "command": "sqlite3",
+    "parameters": "database.db",
+    "description": "Open SQLite database",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-010",
+    "name": "Redis Ping",
+    "command": "redis-cli",
+    "parameters": "ping",
+    "description": "Test Redis connection",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-011",
+    "name": "MySQL Show Databases",
+    "command": "mysql",
+    "parameters": "-u user -p -e 'SHOW DATABASES;'",
+    "description": "List databases",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-012",
+    "name": "PostgreSQL List DBs",
+    "command": "psql",
+    "parameters": "-U user -l",
+    "description": "List databases",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-013",
+    "name": "Redis Keys",
+    "command": "redis-cli",
+    "parameters": "KEYS '*'",
+    "description": "List all Redis keys",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-014",
+    "name": "MongoDB List DBs",
+    "command": "mongosh",
+    "parameters": "--eval 'show dbs'",
+    "description": "List databases",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-015",
+    "name": "MySQL Grant Access",
+    "command": "mysql",
+    "parameters": "-e \"GRANT ALL ON db.* TO 'user'@'%'\"",
+    "description": "Grant permissions",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-016",
+    "name": "PostgreSQL Create User",
+    "command": "createuser",
+    "parameters": "-U postgres username",
+    "description": "Create PostgreSQL user",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-017",
+    "name": "Redis Flush All",
+    "command": "redis-cli",
+    "parameters": "FLUSHALL",
+    "description": "Clear all Redis data",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-018",
+    "name": "MySQL Optimize Table",
+    "command": "mysqlcheck",
+    "parameters": "-o database",
+    "description": "Optimize MySQL tables",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-019",
+    "name": "PostgreSQL Vacuum",
+    "command": "vacuumdb",
+    "parameters": "-U user -d database",
+    "description": "Vacuum PostgreSQL",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "db-020",
+    "name": "SQLite Backup",
+    "command": "sqlite3",
+    "parameters": "db.sqlite \".backup backup.db\"",
+    "description": "Backup SQLite",
+    "os": [
+      "all"
+    ],
+    "category": "database",
+    "isSystem": true
+  },
+  {
+    "id": "mac-001",
+    "name": "Homebrew Install",
+    "command": "brew install",
+    "parameters": "package",
+    "description": "Install with Homebrew",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-002",
+    "name": "Homebrew Update",
+    "command": "brew update",
+    "parameters": "",
+    "description": "Update Homebrew",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-003",
+    "name": "Homebrew Upgrade",
+    "command": "brew upgrade",
+    "parameters": "",
+    "description": "Upgrade packages",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-004",
+    "name": "Homebrew Search",
+    "command": "brew search",
+    "parameters": "keyword",
+    "description": "Search packages",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-005",
+    "name": "macOS Version",
+    "command": "sw_vers",
+    "parameters": "",
+    "description": "Show macOS version",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-006",
+    "name": "Homebrew List",
+    "command": "brew list",
+    "parameters": "",
+    "description": "List installed packages",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-007",
+    "name": "Homebrew Info",
+    "command": "brew info",
+    "parameters": "package",
+    "description": "Show package info",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-008",
+    "name": "Flush DNS macOS",
+    "command": "sudo dscacheutil",
+    "parameters": "-flushcache",
+    "description": "Flush DNS cache",
+    "os": [
+      "macos"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "mac-009",
+    "name": "Show Hidden Files",
+    "command": "defaults write com.apple.finder",
+    "parameters": "AppleShowAllFiles YES",
+    "description": "Show hidden files in Finder",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "mac-010",
+    "name": "Restart Finder",
+    "command": "killall",
+    "parameters": "Finder",
+    "description": "Restart Finder",
+    "os": [
+      "macos"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-001",
+    "name": "List Users",
+    "command": "cat /etc/passwd",
+    "parameters": "",
+    "description": "List system users",
+    "os": [
+      "linux",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-002",
+    "name": "Add User",
+    "command": "useradd",
+    "parameters": "-m username",
+    "description": "Create user with home",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-003",
+    "name": "Delete User",
+    "command": "userdel",
+    "parameters": "-r username",
+    "description": "Delete user and home",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-004",
+    "name": "Change Password",
+    "command": "passwd",
+    "parameters": "username",
+    "description": "Change user password",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-005",
+    "name": "Who Logged In",
+    "command": "who",
+    "parameters": "",
+    "description": "Show logged-in users",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-006",
+    "name": "Last Logins",
+    "command": "last",
+    "parameters": "-n 10",
+    "description": "Show last 10 logins",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-007",
+    "name": "Current User",
+    "command": "whoami",
+    "parameters": "",
+    "description": "Show current username",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-008",
+    "name": "User Groups",
+    "command": "groups",
+    "parameters": "username",
+    "description": "Show user's groups",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-009",
+    "name": "Add to Group",
+    "command": "usermod",
+    "parameters": "-aG group username",
+    "description": "Add user to group",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-010",
+    "name": "Switch User",
+    "command": "su",
+    "parameters": "- username",
+    "description": "Switch to user",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-011",
+    "name": "Sudo Command",
+    "command": "sudo",
+    "parameters": "command",
+    "description": "Execute as superuser",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-012",
+    "name": "Sudo Edit",
+    "command": "visudo",
+    "parameters": "",
+    "description": "Edit sudoers file",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-013",
+    "name": "List Sudo Perms",
+    "command": "sudo",
+    "parameters": "-l",
+    "description": "List sudo permissions",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-014",
+    "name": "Set User Shell",
+    "command": "chsh",
+    "parameters": "-s /bin/bash username",
+    "description": "Change user shell",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "user-015",
+    "name": "Lock User",
+    "command": "passwd",
+    "parameters": "-l username",
+    "description": "Lock user account",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-001",
+    "name": "Generate SSH Key",
+    "command": "ssh-keygen",
+    "parameters": "-t ed25519 -C \"email\"",
+    "description": "Generate SSH key pair",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-002",
+    "name": "Copy SSH Key",
+    "command": "ssh-copy-id",
+    "parameters": "user@host",
+    "description": "Copy key to remote",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-003",
+    "name": "SSH Config",
+    "command": "cat ~/.ssh/config",
+    "parameters": "",
+    "description": "View SSH config",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-004",
+    "name": "Add to SSH Agent",
+    "command": "ssh-add",
+    "parameters": "~/.ssh/id_ed25519",
+    "description": "Add key to agent",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-005",
+    "name": "List SSH Keys",
+    "command": "ssh-add",
+    "parameters": "-l",
+    "description": "List loaded keys",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-006",
+    "name": "SSH Permissions",
+    "command": "chmod",
+    "parameters": "600 ~/.ssh/id_ed25519",
+    "description": "Fix SSH key permissions",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-007",
+    "name": "SSH Dir Permissions",
+    "command": "chmod",
+    "parameters": "700 ~/.ssh",
+    "description": "Fix SSH directory perms",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-008",
+    "name": "Known Hosts",
+    "command": "cat ~/.ssh/known_hosts",
+    "parameters": "",
+    "description": "View known hosts",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-009",
+    "name": "Remove Known Host",
+    "command": "ssh-keygen",
+    "parameters": "-R hostname",
+    "description": "Remove host from known_hosts",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-010",
+    "name": "SSH Agent Start",
+    "command": "eval $(ssh-agent)",
+    "parameters": "",
+    "description": "Start SSH agent",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-011",
+    "name": "SSL Cert Info",
+    "command": "openssl x509",
+    "parameters": "-in cert.pem -text -noout",
+    "description": "Show certificate details",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-012",
+    "name": "Generate Self-Signed",
+    "command": "openssl req",
+    "parameters": "-x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365",
+    "description": "Generate SSL cert",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-013",
+    "name": "Check Remote SSL",
+    "command": "openssl s_client",
+    "parameters": "-connect host:443",
+    "description": "Check SSL certificate",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-014",
+    "name": "SSH Fingerprint",
+    "command": "ssh-keygen",
+    "parameters": "-lf ~/.ssh/id_ed25519.pub",
+    "description": "Show key fingerprint",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "ssh-015",
+    "name": "SSH Verbose",
+    "command": "ssh",
+    "parameters": "-vvv user@host",
+    "description": "SSH with debug output",
+    "os": [
+      "all"
+    ],
+    "category": "network",
+    "isSystem": true
+  },
+  {
+    "id": "perf-001",
+    "name": "iostat",
+    "command": "iostat",
+    "parameters": "-x 1",
+    "description": "Monitor I/O stats",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-002",
+    "name": "vmstat",
+    "command": "vmstat",
+    "parameters": "1",
+    "description": "Virtual memory stats",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-003",
+    "name": "iotop",
+    "command": "iotop",
+    "parameters": "",
+    "description": "I/O usage by process",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-004",
+    "name": "htop",
+    "command": "htop",
+    "parameters": "",
+    "description": "Interactive process viewer",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-005",
+    "name": "Load Average",
+    "command": "cat /proc/loadavg",
+    "parameters": "",
+    "description": "Show load average",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-006",
+    "name": "CPU Usage",
+    "command": "mpstat",
+    "parameters": "1",
+    "description": "CPU statistics",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-007",
+    "name": "Memory Usage",
+    "command": "vmstat",
+    "parameters": "-s",
+    "description": "Memory statistics",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-008",
+    "name": "Swap Usage",
+    "command": "swapon",
+    "parameters": "--show",
+    "description": "Show swap usage",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-009",
+    "name": "Network Stats",
+    "command": "nstat",
+    "parameters": "",
+    "description": "Network statistics",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-010",
+    "name": "Disk I/O",
+    "command": "iotop",
+    "parameters": "-o",
+    "description": "Show only active I/O",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-011",
+    "name": "Process CPU",
+    "command": "ps aux",
+    "parameters": "--sort=-%cpu | head -10",
+    "description": "Top CPU processes",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-012",
+    "name": "Process Memory",
+    "command": "ps aux",
+    "parameters": "--sort=-%mem | head -10",
+    "description": "Top memory processes",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-013",
+    "name": "Open Files",
+    "command": "lsof",
+    "parameters": "",
+    "description": "List open files",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-014",
+    "name": "Process Threads",
+    "command": "ps",
+    "parameters": "-eLf",
+    "description": "List all threads",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "perf-015",
+    "name": "System Resources",
+    "command": "sar",
+    "parameters": "-u 1 5",
+    "description": "CPU usage over time",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "text-001",
+    "name": "sed Replace",
+    "command": "sed",
+    "parameters": "'s/old/new/g' file",
+    "description": "Replace text in file",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-002",
+    "name": "awk Columns",
+    "command": "awk",
+    "parameters": "'{print $1, $3}' file",
+    "description": "Print specific columns",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-003",
+    "name": "sort File",
+    "command": "sort",
+    "parameters": "file",
+    "description": "Sort lines alphabetically",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-004",
+    "name": "uniq Lines",
+    "command": "uniq",
+    "parameters": "file",
+    "description": "Remove duplicate lines",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-005",
+    "name": "cut Columns",
+    "command": "cut",
+    "parameters": "-d',' -f1,3 file.csv",
+    "description": "Extract CSV columns",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-006",
+    "name": "tr Translate",
+    "command": "tr",
+    "parameters": "'a-z' 'A-Z' < file",
+    "description": "Convert lowercase to uppercase",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-007",
+    "name": "Column Format",
+    "command": "column",
+    "parameters": "-t file",
+    "description": "Format into columns",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-008",
+    "name": "Paste Files",
+    "command": "paste",
+    "parameters": "file1 file2",
+    "description": "Merge files side-by-side",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-009",
+    "name": "Join Files",
+    "command": "join",
+    "parameters": "file1 file2",
+    "description": "Join files on common field",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-010",
+    "name": "Expand Tabs",
+    "command": "expand",
+    "parameters": "file",
+    "description": "Convert tabs to spaces",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-011",
+    "name": "Unexpand Spaces",
+    "command": "unexpand",
+    "parameters": "file",
+    "description": "Convert spaces to tabs",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-012",
+    "name": "Fold Lines",
+    "command": "fold",
+    "parameters": "-w 80 file",
+    "description": "Wrap lines at 80 chars",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-013",
+    "name": "Number Lines",
+    "command": "nl",
+    "parameters": "file",
+    "description": "Add line numbers",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-014",
+    "name": "Print Reversed",
+    "command": "rev",
+    "parameters": "file",
+    "description": "Reverse each line",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "text-015",
+    "name": "Remove Blank Lines",
+    "command": "grep",
+    "parameters": "-v '^$' file",
+    "description": "Remove empty lines",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "files",
+    "isSystem": true
+  },
+  {
+    "id": "cron-001",
+    "name": "List Cron Jobs",
+    "command": "crontab",
+    "parameters": "-l",
+    "description": "List user cron jobs",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "cron-002",
+    "name": "Edit Cron Jobs",
+    "command": "crontab",
+    "parameters": "-e",
+    "description": "Edit user cron jobs",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "cron-003",
+    "name": "System Cron",
+    "command": "cat /etc/crontab",
+    "parameters": "",
+    "description": "View system cron",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "cron-004",
+    "name": "Remove Cron",
+    "command": "crontab",
+    "parameters": "-r",
+    "description": "Remove all user crons",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "cron-005",
+    "name": "At Schedule",
+    "command": "at",
+    "parameters": "now + 1 hour",
+    "description": "Schedule one-time job",
+    "os": [
+      "all"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-001",
+    "name": "Nginx Test",
+    "command": "nginx",
+    "parameters": "-t",
+    "description": "Test Nginx config",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-002",
+    "name": "Nginx Reload",
+    "command": "nginx",
+    "parameters": "-s reload",
+    "description": "Reload Nginx",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-003",
+    "name": "Apache Test",
+    "command": "apachectl",
+    "parameters": "configtest",
+    "description": "Test Apache config",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-004",
+    "name": "Apache Restart",
+    "command": "apachectl",
+    "parameters": "restart",
+    "description": "Restart Apache",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-005",
+    "name": "Nginx Status",
+    "command": "systemctl status",
+    "parameters": "nginx",
+    "description": "Check Nginx status",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-006",
+    "name": "Apache Status",
+    "command": "systemctl status",
+    "parameters": "apache2",
+    "description": "Check Apache status",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-007",
+    "name": "Nginx Access Log",
+    "command": "tail",
+    "parameters": "-f /var/log/nginx/access.log",
+    "description": "Follow access log",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-008",
+    "name": "Nginx Error Log",
+    "command": "tail",
+    "parameters": "-f /var/log/nginx/error.log",
+    "description": "Follow error log",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-009",
+    "name": "Apache Access Log",
+    "command": "tail",
+    "parameters": "-f /var/log/apache2/access.log",
+    "description": "Follow access log",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "web-010",
+    "name": "Apache Error Log",
+    "command": "tail",
+    "parameters": "-f /var/log/apache2/error.log",
+    "description": "Follow error log",
+    "os": [
+      "linux",
+      "macos",
+      "bsd"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "kernel-001",
+    "name": "Load Module",
+    "command": "modprobe",
+    "parameters": "module-name",
+    "description": "Load kernel module",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "kernel-002",
+    "name": "List Modules",
+    "command": "lsmod",
+    "parameters": "",
+    "description": "List loaded modules",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "kernel-003",
+    "name": "Kernel Messages",
+    "command": "dmesg",
+    "parameters": "| tail -50",
+    "description": "Show kernel messages",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "kernel-004",
+    "name": "Remove Module",
+    "command": "modprobe",
+    "parameters": "-r module-name",
+    "description": "Unload kernel module",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  },
+  {
+    "id": "kernel-005",
+    "name": "Module Info",
+    "command": "modinfo",
+    "parameters": "module-name",
+    "description": "Show module information",
+    "os": [
+      "linux"
+    ],
+    "category": "system",
+    "isSystem": true
+  }
+]

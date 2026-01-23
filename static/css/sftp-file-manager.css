@@ -1,0 +1,1236 @@
+/* ============================================
+   SFTP Dual-Pane File Manager - Midnight Commander Style
+   ============================================ */
+
+/* Modal Fullscreen Override */
+#sftpFileManager .modal-content {
+    width: 95%;
+    max-width: 1400px;
+    height: 90vh;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+}
+
+#sftpFileManager .modal-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#sftpFileManager .modal-header h2 .material-icons {
+    font-size: 24px;
+    color: var(--accent-primary);
+}
+
+#sftpFileManager .modal-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    overflow: hidden;
+    gap: 12px;
+}
+
+/* ==================== QUICK CONNECT MODAL ==================== */
+#fmQuickConnectModal .fm-qc-modal {
+    max-width: 450px;
+}
+
+.fm-qc-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 16px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.fm-qc-divider::before,
+.fm-qc-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fm-qc-divider span {
+    padding: 0 12px;
+}
+
+#fmQuickConnectModal .form-control {
+    width: 100%;
+}
+
+#fmQuickConnectModal .form-row {
+    display: flex;
+    gap: 12px;
+}
+
+#fmQuickConnectModal .flex-1 {
+    flex: 1;
+}
+
+#fmQuickConnectModal .flex-2 {
+    flex: 2;
+}
+
+#fmQuickConnectModal .input-wrapper.with-toggle {
+    position: relative;
+}
+
+#fmQuickConnectModal .input-wrapper.with-toggle input {
+    padding-right: 40px;
+}
+
+#fmQuickConnectModal .password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#fmQuickConnectModal .password-toggle:hover {
+    color: var(--text-primary);
+}
+
+#fmQuickConnectModal .password-toggle .material-icons {
+    font-size: 18px;
+}
+
+#fmQuickConnectModal .btn-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+#fmQuickConnectModal .btn-spinner.hidden {
+    display: none;
+}
+
+/* ==================== TOOLBAR ==================== */
+.fm-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.fm-toolbar-left,
+.fm-toolbar-right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.fm-toolbar-center {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 0 auto;
+}
+
+.fm-toolbar .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+}
+
+.fm-toolbar .btn .material-icons {
+    font-size: 18px;
+}
+
+.fm-toolbar .btn .btn-text {
+    display: inline;
+}
+
+/* Hide button text on smaller screens */
+@media (max-width: 1100px) {
+    .fm-toolbar .btn .btn-text {
+        display: none;
+    }
+    .fm-toolbar .btn {
+        padding: 8px;
+    }
+}
+
+/* ==================== DUAL PANE CONTAINER ==================== */
+.fm-panes {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ==================== SINGLE PANE ==================== */
+.fm-pane {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-tertiary);
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+}
+
+.fm-pane.active {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+
+.fm-pane.drop-target {
+    border-color: var(--success-color);
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.2);
+    background: rgba(63, 185, 80, 0.05);
+}
+
+.fm-pane.drop-target::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(63, 185, 80, 0.1);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.fm-pane.drop-target[data-pane="left"]::after,
+.fm-pane.drop-target[data-pane="right"]::after {
+    content: 'Drop to transfer';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--success-color);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    z-index: 20;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Pane type indicators for drop targets */
+.fm-pane.drop-target.ssh::after {
+    content: '🖥️ Drop here (SSH Server)';
+    background: #48bb78;
+}
+
+/* ==================== PANE HEADER ==================== */
+.fm-pane-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* ==================== PANE NAVIGATION BAR ==================== */
+.fm-pane-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fm-nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.fm-nav-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.fm-nav-btn:active {
+    background: var(--bg-active);
+}
+
+.fm-nav-btn .material-icons {
+    font-size: 18px;
+}
+
+.fm-breadcrumb {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+/* ==================== PANE SOURCE SELECTOR ==================== */
+.fm-source-select {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 13px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fm-source-select:hover {
+    border-color: var(--border-hover);
+}
+
+.fm-source-select:focus {
+    border-color: var(--accent-primary);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+
+.fm-source-select option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 8px;
+}
+
+.fm-source-select optgroup {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-style: normal;
+}
+
+/* Host Badge */
+.fm-host-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 12px;
+    margin-left: 8px;
+}
+
+.fm-host-badge.browser-local {
+    background: rgba(99, 179, 237, 0.15);
+    color: #63b3ed;
+}
+
+.fm-host-badge.ssh {
+    background: rgba(72, 187, 120, 0.15);
+    color: #48bb78;
+}
+
+.fm-host-badge.quick-connect {
+    background: rgba(237, 137, 54, 0.15);
+    color: #ed8936;
+}
+
+.fm-host-badge-icon {
+    font-size: 14px;
+}
+
+.fm-path-input {
+    flex: 1;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+}
+
+.fm-path-input:focus {
+    border-color: var(--accent-primary);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+
+.fm-pane-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.fm-pane-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.fm-pane-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+/* ==================== FILE LIST ==================== */
+.fm-file-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px;
+}
+
+/* ==================== FILE ITEM ==================== */
+.fm-file-item {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    border: 1px solid transparent;
+}
+
+.fm-file-item:hover {
+    background: var(--bg-hover);
+}
+
+.fm-file-item.selected {
+    background: rgba(88, 166, 255, 0.15);
+    border-color: var(--accent-primary);
+}
+
+.fm-file-item.dragging {
+    opacity: 0.5;
+    transform: scale(0.98);
+}
+
+.fm-file-item.cut {
+    opacity: 0.5;
+}
+
+/* File Icon */
+.fm-file-icon {
+    font-size: 20px;
+    width: 24px;
+    text-align: center;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.fm-file-icon.folder {
+    color: #ffc107;
+}
+
+.fm-file-icon.file {
+    color: var(--text-secondary);
+    font-size: 18px;
+}
+
+.fm-file-icon.parent {
+    color: var(--accent-primary);
+    font-size: 18px;
+}
+
+/* File Info */
+.fm-file-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.fm-file-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fm-file-item.directory .fm-file-name {
+    font-weight: 600;
+}
+
+.fm-file-item.directory:hover {
+    background: rgba(255, 216, 102, 0.1);
+    border-color: rgba(255, 216, 102, 0.3);
+}
+
+.fm-file-item.directory:hover .fm-file-icon.folder {
+    transform: scale(1.1);
+    transition: transform 0.15s ease;
+}
+
+.fm-file-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* File Size */
+.fm-file-size {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    text-align: right;
+    min-width: 70px;
+}
+
+/* ==================== PANE FOOTER (STATUS) ==================== */
+.fm-pane-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.fm-pane-status {
+    display: flex;
+    gap: 16px;
+}
+
+.fm-pane-status span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ==================== DROP ZONE (LOCAL) ==================== */
+.fm-drop-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 40px 20px;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    margin: 12px;
+    text-align: center;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.fm-drop-zone:hover,
+.fm-drop-zone.drag-over {
+    border-color: var(--accent-primary);
+    background: rgba(88, 166, 255, 0.05);
+}
+
+.fm-drop-zone-icon {
+    font-size: 48px;
+    color: var(--text-muted);
+}
+
+.fm-drop-zone-text {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.fm-drop-zone-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.fm-select-folder-btn {
+    margin-top: 12px;
+    padding: 10px 24px;
+    font-size: 14px;
+}
+
+.fm-prompt-select {
+    background: linear-gradient(135deg, rgba(88, 166, 255, 0.05) 0%, rgba(88, 166, 255, 0.02) 100%);
+}
+
+.fm-prompt-select:hover {
+    background: linear-gradient(135deg, rgba(88, 166, 255, 0.1) 0%, rgba(88, 166, 255, 0.05) 100%);
+}
+
+/* ==================== TRANSFER QUEUE ==================== */
+.fm-queue {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    max-height: 180px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-queue.collapsed {
+    max-height: 44px;
+}
+
+.fm-queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+}
+
+.fm-queue-header:hover {
+    background: var(--bg-hover);
+}
+
+.fm-queue-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fm-queue-badge {
+    background: var(--accent-primary);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.fm-queue-toggle {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.fm-queue-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+/* ==================== TRANSFER ITEM ==================== */
+.fm-transfer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+
+.fm-transfer-item:last-child {
+    margin-bottom: 0;
+}
+
+.fm-transfer-icon {
+    font-size: 16px;
+    width: 24px;
+    text-align: center;
+}
+
+.fm-transfer-icon.upload {
+    color: var(--success-color);
+}
+
+.fm-transfer-icon.download {
+    color: var(--accent-primary);
+}
+
+.fm-transfer-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.fm-transfer-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fm-transfer-progress-bar {
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.fm-transfer-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.fm-transfer-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 60px;
+    text-align: right;
+}
+
+.fm-transfer-status.complete {
+    color: var(--success-color);
+}
+
+.fm-transfer-status.error {
+    color: var(--error-color);
+}
+
+.fm-transfer-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.fm-transfer-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.fm-transfer-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.fm-transfer-btn.cancel:hover {
+    color: var(--error-color);
+}
+
+/* ==================== CONTEXT MENU ==================== */
+.fm-context-menu {
+    position: fixed;
+    background: var(--bg-modal);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    z-index: 20000;
+    padding: 6px 0;
+    animation: contextMenuFadeIn 0.15s ease;
+}
+
+@keyframes contextMenuFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.fm-context-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.fm-context-item:hover {
+    background: var(--bg-hover);
+}
+
+.fm-context-item.danger {
+    color: var(--error-color);
+}
+
+.fm-context-item.danger:hover {
+    background: rgba(248, 81, 73, 0.1);
+}
+
+.fm-context-item.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.fm-context-icon {
+    width: 18px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.fm-context-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 6px 0;
+}
+
+/* ==================== CONFLICT DIALOG ==================== */
+.fm-conflict-dialog {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 25000;
+}
+
+.fm-conflict-content {
+    background: var(--bg-modal);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: var(--shadow-lg);
+}
+
+.fm-conflict-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.fm-conflict-title-icon {
+    color: var(--warning-color);
+    font-size: 24px;
+}
+
+.fm-conflict-message {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.fm-conflict-filename {
+    font-family: var(--font-mono);
+    color: var(--accent-primary);
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.fm-conflict-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.fm-conflict-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-secondary);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fm-conflict-option:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+}
+
+.fm-conflict-option.selected {
+    border-color: var(--accent-primary);
+    background: rgba(88, 166, 255, 0.1);
+}
+
+.fm-conflict-option input[type="radio"] {
+    accent-color: var(--accent-primary);
+}
+
+.fm-conflict-option-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.fm-conflict-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+}
+
+.fm-conflict-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* ==================== QUICK CONNECT MODAL ==================== */
+.fm-quick-connect-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.fm-quick-connect-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 12px;
+}
+
+.fm-quick-connect-row.full {
+    grid-template-columns: 1fr;
+}
+
+.fm-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fm-form-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fm-form-group input,
+.fm-form-group select {
+    padding: 10px 12px;
+    font-size: 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+
+.fm-form-group input:focus,
+.fm-form-group select:focus {
+    border-color: var(--accent-primary);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+
+.fm-form-group input::placeholder {
+    color: var(--text-muted);
+}
+
+.fm-auth-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.fm-auth-toggle-btn {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fm-auth-toggle-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+}
+
+.fm-auth-toggle-btn.active {
+    background: rgba(88, 166, 255, 0.1);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.fm-auth-section {
+    display: none;
+}
+
+.fm-auth-section.active {
+    display: block;
+}
+
+.fm-quick-connect-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ==================== LOADING STATE ==================== */
+.fm-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    gap: 12px;
+}
+
+.fm-loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ==================== ERROR STATE ==================== */
+.fm-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+    text-align: center;
+    gap: 12px;
+}
+
+.fm-error-icon {
+    font-size: 48px;
+    color: var(--error-color, #e74c3c);
+}
+
+.fm-error-text {
+    font-size: 14px;
+    color: var(--error-color, #e74c3c);
+    max-width: 300px;
+}
+
+.fm-error-retry {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fm-error-retry .material-icons {
+    font-size: 16px;
+}
+
+/* ==================== EMPTY STATE ==================== */
+.fm-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    text-align: center;
+    gap: 12px;
+}
+
+.fm-empty-icon {
+    font-size: 48px;
+    opacity: 0.4;
+    color: var(--text-muted);
+}
+
+.fm-empty-text {
+    font-size: 14px;
+}
+
+/* Prompt variant */
+.fm-prompt {
+    gap: 16px;
+}
+
+.fm-prompt .fm-select-folder-btn {
+    margin-top: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fm-prompt .fm-select-folder-btn .material-icons {
+    font-size: 18px;
+}
+
+.fm-prompt-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ==================== DRAG GHOST ==================== */
+.fm-drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 30000;
+    padding: 10px 14px;
+    background: var(--bg-modal);
+    border: 1px solid var(--accent-primary);
+    border-radius: 6px;
+    box-shadow: var(--shadow-lg);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.95;
+}
+
+.fm-drag-ghost-icon {
+    font-size: 16px;
+}
+
+.fm-drag-ghost-count {
+    background: var(--accent-primary);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+/* ==================== RENAME INPUT ==================== */
+.fm-rename-input {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--bg-primary);
+    border: 2px solid var(--accent-primary);
+    border-radius: 4px;
+    color: var(--text-primary);
+    outline: none;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 900px) {
+    .fm-panes {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 1fr;
+    }
+
+    #sftpFileManager .modal-content {
+        width: 98%;
+        height: 95vh;
+    }
+
+    .fm-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .fm-toolbar-left,
+    .fm-toolbar-right {
+        justify-content: center;
+    }
+
+    .fm-session-select {
+        max-width: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .fm-file-item {
+        grid-template-columns: 24px 1fr;
+    }
+
+    .fm-file-size {
+        display: none;
+    }
+
+    .fm-pane-header {
+        flex-wrap: wrap;
+    }
+
+    .fm-path-input {
+        order: 3;
+        width: 100%;
+        margin-top: 8px;
+    }
+}
+
+/* ==================== SCROLLBAR ==================== */
+.fm-file-list::-webkit-scrollbar,
+.fm-queue-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.fm-file-list::-webkit-scrollbar-track,
+.fm-queue-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.fm-file-list::-webkit-scrollbar-thumb,
+.fm-queue-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+.fm-file-list::-webkit-scrollbar-thumb:hover,
+.fm-queue-list::-webkit-scrollbar-thumb:hover {
+    background: var(--border-hover);
+}
