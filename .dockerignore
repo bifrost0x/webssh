@@ -38,7 +38,7 @@ Thumbs.db
 # User data directory - contains sensitive data
 data/
 
-# Claude Code / AI assistant files
+# AI assistant files
 CLAUDE.md
 .claude/
 
