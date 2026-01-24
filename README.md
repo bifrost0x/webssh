@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/.github/banner.png" alt="Web SSH Terminal" width="600">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/banner.svg" alt="Web SSH Terminal" width="500">
 </p>
-
-<h1 align="center">Web SSH Terminal</h1>
 
 <p align="center">
   <strong>A modern, feature-rich web-based SSH terminal with SFTP file manager</strong>
@@ -31,7 +29,7 @@
 Web SSH Terminal is a self-hosted web application that provides secure SSH access to your servers directly from your browser. Perfect for homelabs, server management, and teams that need browser-based terminal access.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/.github/screenshot.png" alt="Screenshot" width="800">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-demo.gif" alt="Demo" width="800">
 </p>
 
 ## Features
@@ -43,12 +41,20 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Copy/Paste** - Full clipboard support
 - **Keyboard Shortcuts** - Vim-style navigation supported
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/multi.png" alt="Multi-Session" width="700">
+</p>
+
 ### File Manager (SFTP)
 - **Dual-Pane Browser** - Side-by-side file browsing
 - **Drag & Drop** - Transfer files between local and remote
 - **Server-to-Server** - Direct transfer between SSH hosts
 - **Batch Operations** - Multi-select for bulk actions
 - **Context Menu** - Right-click for quick actions
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/filemanager.png" alt="File Manager" width="700">
+</p>
 
 ### Security
 - **Encrypted Key Storage** - SSH keys encrypted at rest (AES-256)
@@ -62,6 +68,13 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **4 Languages** - English, German, French, Spanish
 - **Connection Profiles** - Save server configurations
 - **Command Library** - Store frequently used commands
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/themes.png" alt="Themes" width="700">
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/commandlibrary.png" alt="Command Library" width="700">
+</p>
 
 ## Quick Start
 
