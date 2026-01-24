@@ -1,13 +1,13 @@
 Flask==3.0.0
 Flask-SocketIO==5.3.6
-python-socketio==5.12.1
+python-socketio==5.14.0
 paramiko==3.4.0
-cryptography==44.0.0
+cryptography==44.0.1
 python-dotenv==1.0.0
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
 bcrypt==4.1.2
 gunicorn==23.0.0
-eventlet==0.38.2
+eventlet==0.40.3
 Flask-WTF==1.2.1
 dnspython==2.7.0
