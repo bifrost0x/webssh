@@ -1,3 +1,7 @@
+import warnings
+# Suppress Paramiko's TripleDES deprecation warnings
+warnings.filterwarnings('ignore', message='.*TripleDES.*', category=DeprecationWarning)
+
 from app import create_app, socketio
 import config
 import os

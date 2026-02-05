@@ -26,6 +26,9 @@ RUN chown -R appuser:appuser /app && \
     chmod 700 /app/data/logs && \
     chmod 700 /app/data/keys
 
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 USER appuser
 
 EXPOSE 5000
@@ -33,4 +36,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import os, socket; s=socket.create_connection(('127.0.0.1', int(os.getenv('PORT','5000'))), 2); s.close()"
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "start:app"]

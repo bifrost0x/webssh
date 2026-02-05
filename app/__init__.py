@@ -57,8 +57,8 @@ def create_app():
                       "Using auto-generated SECRET_KEY will break sessions after restart. "
                       "Set SECRET_KEY environment variable for production deployment!")
 
-        # Check CORS is not wildcard
-        if config.CORS_ORIGINS == '*':
+        # Check CORS is not wildcard (unless explicitly allowed)
+        if config.CORS_ORIGINS == '*' and not os.environ.get('ALLOW_CORS_WILDCARD', '').lower() == 'true':
             log_warning("CORS_ORIGINS set to wildcard (*) in production mode! "
                         "This allows any domain to access your API - significant security risk. "
                         "Set CORS_ORIGINS to specific allowed origins.")

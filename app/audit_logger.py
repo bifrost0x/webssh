@@ -6,7 +6,14 @@ from datetime import datetime
 import config
 
 LOGS_DIR = config.DATA_DIR / 'logs'
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+except PermissionError:
+    # Fallback to /tmp if /app/data is not writable (e.g., volume permission issues)
+    import tempfile
+    LOGS_DIR = Path(tempfile.gettempdir()) / 'webssh_logs'
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"⚠️  WARNING: Cannot write to {config.DATA_DIR / 'logs'}, using {LOGS_DIR}")
 
 
 class StructuredFormatter(logging.Formatter):
