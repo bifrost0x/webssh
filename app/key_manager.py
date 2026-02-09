@@ -185,15 +185,3 @@ def detect_key_type(key_content):
     else:
         return None
 
-def validate_key_file(key_path):
-    """Validate that a key file exists and has proper permissions."""
-    try:
-        path = Path(key_path)
-        if not path.exists():
-            return False
-        stat = path.stat()
-        perms = oct(stat.st_mode)[-3:]
-        return perms == '600'
-    except Exception as e:
-        log_error(f"Error validating key", error=str(e))
-        return False

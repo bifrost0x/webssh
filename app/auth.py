@@ -1,6 +1,6 @@
 from flask import request
 from flask_login import LoginManager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 from .models import db, User, SocketSession
 
@@ -26,7 +26,7 @@ class RateLimiter:
         self.events = {}
 
     def allow(self, key, limit, window_seconds):
-        now = datetime.utcnow().timestamp()
+        now = datetime.now(timezone.utc).timestamp()
         window_start = now - window_seconds
         queue = self.events.get(key)
         if queue is None:
@@ -40,6 +40,13 @@ class RateLimiter:
             return False
 
         queue.append(now)
+
+        # Memory leak fix: clean up stale empty queues from other keys
+        if len(self.events) > 50:
+            stale = [k for k, q in self.events.items() if not q]
+            for k in stale:
+                del self.events[k]
+
         return True
 
 
@@ -119,7 +126,7 @@ def authenticate_user(username, password):
     """
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
-        user.last_login = datetime.utcnow()
+        user.last_login = datetime.now(timezone.utc)
         db.session.commit()
         return user, None
     return None, "Invalid username or password"
@@ -159,8 +166,24 @@ def get_user_from_socket(socket_sid):
     """
     socket_session = SocketSession.query.filter_by(socket_sid=socket_sid).first()
     if socket_session:
-        socket_session.last_activity = datetime.utcnow()
-        db.session.commit()
+        # Debounce: only update last_activity if >30s since last update.
+        # Writing to SQLite on every socket event blocks the eventlet event loop
+        # because SQLite's C extension doesn't yield to greenthreads.
+        import time as _time
+        now = datetime.now(timezone.utc)
+        last = socket_session.last_activity
+        needs_update = not last
+        if not needs_update and last:
+            # Handle both naive and aware datetimes from SQLite
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            needs_update = (now - last).total_seconds() > 30
+        if needs_update:
+            socket_session.last_activity = now
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
         return socket_session.user
     return None
 
@@ -171,7 +194,7 @@ def cleanup_inactive_socket_sessions(timeout_minutes=30):
     Args:
         timeout_minutes: Number of minutes of inactivity before cleanup
     """
-    timeout = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+    timeout = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
     deleted = SocketSession.query.filter(SocketSession.last_activity < timeout).delete()
     db.session.commit()
     return deleted

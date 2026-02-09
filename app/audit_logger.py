@@ -246,12 +246,6 @@ def log_key_delete(username, key_name, ip_address):
     audit_logger.info(f"KEY_DELETE | user={username} | key={key_name} | ip={ip_address}")
 
 
-def log_security_event(event_type, username, details, ip_address):
-    audit_logger.warning(
-        f"SECURITY_EVENT | type={event_type} | user={username} | "
-        f"details={details} | ip={ip_address}"
-    )
-
 
 def log_rate_limit_exceeded(endpoint, ip_address, user=None):
     user_info = f" | user={user}" if user else ""

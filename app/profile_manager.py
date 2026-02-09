@@ -100,20 +100,3 @@ def delete_profile(user_id, profile_id):
     except Exception as e:
         log_error(f"Error deleting profile", user_id=user_id, error=str(e))
         return False
-
-
-def update_profile(user_id, profile_id, **kwargs):
-    """Update an existing profile for a specific user."""
-    try:
-        profiles = load_profiles(user_id)
-        for i, profile in enumerate(profiles):
-            if profile['id'] == profile_id:
-                for key in ['name', 'host', 'port', 'username', 'auth_type', 'key_id']:
-                    if key in kwargs:
-                        profile[key] = kwargs[key]
-                profiles[i] = profile
-                return save_profiles(user_id, profiles)
-        return False
-    except Exception as e:
-        log_error(f"Error updating profile", user_id=user_id, error=str(e))
-        return False

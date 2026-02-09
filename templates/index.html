@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Web SSH Terminal</title>
 
     <!-- xterm.js CSS -->
@@ -34,7 +38,7 @@
 
                 <!-- Theme Selector -->
                 <div class="theme-selector">
-                    <button class="btn btn-secondary theme-btn-header" id="themeBtnHeader" onclick="toggleThemeDropdownHeader(event)">
+                    <button class="btn btn-secondary theme-btn-header" id="themeBtnHeader" onclick="toggleThemeDropdownHeader(event)" aria-label="Select theme" aria-haspopup="true">
                         <span id="currentThemeLabel">Theme</span> 🎨
                     </button>
                     <div class="theme-dropdown-header" id="themeDropdownHeader"></div>
@@ -44,7 +48,7 @@
 
                 <!-- Language Selector -->
                 <div class="language-selector">
-                    <button class="btn btn-secondary lang-btn-header" id="langBtnHeader" onclick="toggleLangDropdownHeader(event)">
+                    <button class="btn btn-secondary lang-btn-header" id="langBtnHeader" onclick="toggleLangDropdownHeader(event)" aria-label="Select language" aria-haspopup="true">
                         <span id="currentLangFlagHeader">🇬🇧</span>
                     </button>
                     <div class="lang-dropdown-header" id="langDropdownHeader"></div>
@@ -67,9 +71,9 @@
             </div>
             <div class="session-actions">
                 <div class="split-controls" aria-label="Split layout">
-                    <button class="btn btn-secondary split-btn active" data-layout="1" title="Single">1</button>
-                    <button class="btn btn-secondary split-btn" data-layout="2" title="Split">2</button>
-                    <button class="btn btn-secondary split-btn" data-layout="4" title="Quad">4</button>
+                    <button class="btn btn-secondary split-btn active" data-layout="1" title="Single" aria-label="Single pane layout">1</button>
+                    <button class="btn btn-secondary split-btn" data-layout="2" title="Split" aria-label="Split pane layout">2</button>
+                    <button class="btn btn-secondary split-btn" data-layout="4" title="Quad" aria-label="Quad pane layout">4</button>
                 </div>
                 <div class="session-toolbar" id="sessionToolbar" aria-label="Session actions">
                     <button class="btn btn-secondary toolbar-btn" id="copySelectionBtn" title="Copy Selection" aria-label="Copy selection">
@@ -124,6 +128,7 @@
             </div>
             <div class="resize-handle" id="resizeHandle" title="Drag to resize">
                 <div class="resize-handle-line"></div>
+                <button id="notepadToggle" class="notepad-toggle-btn" aria-label="Toggle notepad" title="Toggle notepad">◀</button>
             </div>
             <aside class="notepad-panel" id="notepadPanel">
                 <div class="notepad-header">
@@ -648,31 +653,16 @@
         function initThemeSelectorHeader() {
             const dropdown = document.getElementById('themeDropdownHeader');
             const themes = [
-                // Original themes
                 { id: 'glass', name: 'Glass Ops', color: '#58a6ff' },
-                { id: 'nordic', name: 'Nordic Studio', color: '#6bd3e1' },
                 { id: 'retro', name: 'Retro Future', color: '#ffb454' },
-                { id: 'ember', name: 'Ember Signal', color: '#ff7a4e' },
-                { id: 'forest', name: 'Forest Lab', color: '#62d48c' },
                 { id: 'solar', name: 'Solar Drift', color: '#6ea8ff' },
                 { id: 'paper', name: 'Paper Ops', color: '#c77d48', light: true },
                 { id: 'noir', name: 'Noir Terminal', color: '#7f91ff' },
-                // New themes
-                { id: 'midnight-azure', name: 'Midnight Azure', color: '#3b82f6' },
                 { id: 'arctic-ice', name: 'Arctic Ice', color: '#06b6d4' },
-                { id: 'sunset-blaze', name: 'Sunset Blaze', color: '#f97316' },
                 { id: 'rose-gold', name: 'Rose Gold', color: '#f43f5e' },
-                { id: 'cherry-blossom', name: 'Cherry Blossom', color: '#ec4899' },
-                { id: 'lavender-dreams', name: 'Lavender Dreams', color: '#a855f7' },
                 { id: 'cyberpunk-neon', name: 'Cyberpunk Neon', color: '#d946ef' },
                 { id: 'emerald-matrix', name: 'Emerald Matrix', color: '#10b981' },
-                { id: 'forest-canopy', name: 'Forest Canopy', color: '#22c55e' },
-                { id: 'ocean-depth', name: 'Ocean Depth', color: '#0ea5e9' },
-                { id: 'desert-mirage', name: 'Desert Mirage', color: '#d97706' },
-                { id: 'amber-alert', name: 'Amber Alert', color: '#f59e0b' },
-                { id: 'monochrome-elite', name: 'Monochrome Elite', color: '#a1a1aa' },
-                { id: 'obsidian', name: 'Obsidian', color: '#ffffff' },
-                { id: 'ivory', name: 'Ivory', color: '#78716c', light: true }
+                { id: 'obsidian', name: 'Obsidian', color: '#ffffff' }
             ];
             const currentTheme = document.body.getAttribute('data-theme') || 'glass';
 
@@ -716,9 +706,10 @@
                     option.classList.toggle('active', option.dataset.themeId === themeId);
                 });
             }
-            setTimeout(() => {
-                window.location.reload();
-            }, 150);
+            // Apply theme to terminals without reload
+            if (window.TerminalManager && typeof TerminalManager.applyThemeToAll === 'function') {
+                TerminalManager.applyThemeToAll();
+            }
         }
 
         // Language Dropdown in Header

@@ -194,13 +194,13 @@
 
 .fm-pane.active {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
 }
 
 .fm-pane.drop-target {
     border-color: var(--success-color);
-    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.2);
-    background: rgba(63, 185, 80, 0.05);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color) 20%, transparent);
+    background: color-mix(in srgb, var(--success-color) 5%, transparent);
 }
 
 .fm-pane.drop-target::before {
@@ -210,7 +210,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(63, 185, 80, 0.1);
+    background: color-mix(in srgb, var(--success-color) 10%, transparent);
     pointer-events: none;
     z-index: 10;
 }
@@ -230,13 +230,13 @@
     font-weight: 600;
     z-index: 20;
     pointer-events: none;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-lg);
 }
 
 /* Pane type indicators for drop targets */
 .fm-pane.drop-target.ssh::after {
     content: '🖥️ Drop here (SSH Server)';
-    background: #48bb78;
+    background: var(--success-color, #48bb78);
 }
 
 /* ==================== PANE HEADER ==================== */
@@ -315,7 +315,7 @@
 .fm-source-select:focus {
     border-color: var(--accent-primary);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
 }
 
 .fm-source-select option {
@@ -344,18 +344,18 @@
 }
 
 .fm-host-badge.browser-local {
-    background: rgba(99, 179, 237, 0.15);
-    color: #63b3ed;
+    background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+    color: var(--accent-primary);
 }
 
 .fm-host-badge.ssh {
-    background: rgba(72, 187, 120, 0.15);
-    color: #48bb78;
+    background: color-mix(in srgb, var(--success-color) 15%, transparent);
+    color: var(--success-color);
 }
 
 .fm-host-badge.quick-connect {
-    background: rgba(237, 137, 54, 0.15);
-    color: #ed8936;
+    background: color-mix(in srgb, var(--warning-color) 15%, transparent);
+    color: var(--warning-color);
 }
 
 .fm-host-badge-icon {
@@ -376,7 +376,7 @@
 .fm-path-input:focus {
     border-color: var(--accent-primary);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
 }
 
 .fm-pane-actions {
@@ -433,7 +433,7 @@
 }
 
 .fm-file-item.selected {
-    background: rgba(88, 166, 255, 0.15);
+    background: var(--accent-primary-glow);
     border-color: var(--accent-primary);
 }
 
@@ -456,7 +456,7 @@
 }
 
 .fm-file-icon.folder {
-    color: #ffc107;
+    color: var(--warning-color, #ffc107);
 }
 
 .fm-file-icon.file {
@@ -491,8 +491,8 @@
 }
 
 .fm-file-item.directory:hover {
-    background: rgba(255, 216, 102, 0.1);
-    border-color: rgba(255, 216, 102, 0.3);
+    background: color-mix(in srgb, var(--warning-color) 10%, transparent);
+    border-color: color-mix(in srgb, var(--warning-color) 30%, transparent);
 }
 
 .fm-file-item.directory:hover .fm-file-icon.folder {
@@ -557,7 +557,7 @@
 .fm-drop-zone:hover,
 .fm-drop-zone.drag-over {
     border-color: var(--accent-primary);
-    background: rgba(88, 166, 255, 0.05);
+    background: var(--accent-primary-glow);
 }
 
 .fm-drop-zone-icon {
@@ -582,11 +582,11 @@
 }
 
 .fm-prompt-select {
-    background: linear-gradient(135deg, rgba(88, 166, 255, 0.05) 0%, rgba(88, 166, 255, 0.02) 100%);
+    background: var(--bg-tertiary);
 }
 
 .fm-prompt-select:hover {
-    background: linear-gradient(135deg, rgba(88, 166, 255, 0.1) 0%, rgba(88, 166, 255, 0.05) 100%);
+    background: var(--bg-hover);
 }
 
 /* ==================== TRANSFER QUEUE ==================== */
@@ -629,7 +629,7 @@
 
 .fm-queue-badge {
     background: var(--accent-primary);
-    color: white;
+    color: var(--accent-on-text, #ffffff);
     font-size: 11px;
     font-weight: 700;
     padding: 2px 8px;
@@ -797,7 +797,7 @@
 }
 
 .fm-context-item.danger:hover {
-    background: rgba(248, 81, 73, 0.1);
+    background: color-mix(in srgb, var(--error-color) 10%, transparent);
 }
 
 .fm-context-item.disabled {
@@ -821,7 +821,7 @@
 .fm-conflict-dialog {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: color-mix(in srgb, black 70%, transparent);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
@@ -894,7 +894,7 @@
 
 .fm-conflict-option.selected {
     border-color: var(--accent-primary);
-    background: rgba(88, 166, 255, 0.1);
+    background: var(--accent-primary-glow);
 }
 
 .fm-conflict-option input[type="radio"] {
@@ -968,7 +968,7 @@
 .fm-form-group select:focus {
     border-color: var(--accent-primary);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
 }
 
 .fm-form-group input::placeholder {
@@ -1000,7 +1000,7 @@
 }
 
 .fm-auth-toggle-btn.active {
-    background: rgba(88, 166, 255, 0.1);
+    background: var(--accent-primary-glow);
     border-color: var(--accent-primary);
     color: var(--accent-primary);
 }
@@ -1193,6 +1193,131 @@
     }
 }
 
+/* Mobile: Single pane with tabs */
+@media (max-width: 767px) {
+    #sftpFileManager .modal-content {
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        margin: 0;
+        border-radius: 0;
+        max-height: none;
+        display: flex;
+        flex-direction: column;
+    }
+
+    #sftpFileManager .modal-header {
+        padding: 12px 16px;
+        padding-top: max(12px, env(safe-area-inset-top));
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        background: var(--bg-secondary);
+        z-index: 10;
+    }
+
+    #sftpFileManager .modal-header .close {
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+    }
+
+    #sftpFileManager .modal-body {
+        padding: 8px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+        gap: 8px;
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Touch-friendly toolbar buttons */
+    .fm-toolbar .btn {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 10px 12px;
+    }
+
+    /* Touch-friendly file items */
+    .fm-file-item {
+        min-height: 48px;
+        padding: 10px 12px;
+    }
+
+    /* Hide context menu on mobile, use action sheet */
+    .fm-context-menu {
+        display: none !important;
+    }
+
+    /* Mobile action sheet */
+    .fm-action-sheet {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-color);
+        padding: 8px;
+        padding-bottom: env(safe-area-inset-bottom, 8px);
+        z-index: 1100;
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+        border-radius: 16px 16px 0 0;
+    }
+
+    .fm-action-sheet.visible {
+        transform: translateY(0);
+    }
+
+    .fm-action-sheet-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        font-size: 15px;
+        cursor: pointer;
+        border-radius: 8px;
+        min-height: 48px;
+    }
+
+    .fm-action-sheet-item:active {
+        background: var(--bg-hover);
+    }
+
+    .fm-action-sheet-item.danger {
+        color: var(--error-color);
+    }
+
+    .fm-action-sheet-cancel {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    /* Navigation buttons larger for touch */
+    .fm-nav-btn {
+        min-width: 40px;
+        min-height: 40px;
+    }
+
+    /* Transfer queue adjustments */
+    .fm-queue {
+        max-height: 120px;
+    }
+
+    .fm-queue-item {
+        padding: 8px;
+    }
+}
+
 @media (max-width: 600px) {
     .fm-file-item {
         grid-template-columns: 24px 1fr;
@@ -1210,6 +1335,217 @@
         order: 3;
         width: 100%;
         margin-top: 8px;
+    }
+}
+
+/* ==================== MOBILE-ONLY ELEMENTS (hidden by default) ==================== */
+/* These are shown via media queries on mobile */
+
+.fm-pane-tabs {
+    display: none;
+}
+
+.fm-mobile-upload {
+    display: none;
+}
+
+.fm-action-sheet {
+    display: none;
+}
+
+/* ==================== JS-BASED MOBILE MODE (bypasses cache issues) ==================== */
+/* This class is added by JavaScript when isMobile() returns true */
+
+.fm-mobile-mode .fm-panes {
+    display: block !important;
+}
+
+.fm-mobile-mode #fmLeftPane {
+    display: none !important;
+}
+
+.fm-mobile-mode #fmRightPane {
+    display: flex !important;
+    flex-direction: column;
+    height: 100%;
+}
+
+.fm-mobile-mode .fm-pane-tabs {
+    display: none !important;
+}
+
+.fm-mobile-mode .fm-toolbar-center #fmTransfer {
+    display: none !important;
+}
+
+.fm-mobile-mode .fm-mobile-upload {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 52px;
+    box-shadow: 0 2px 8px var(--accent-primary-glow);
+}
+
+.fm-mobile-mode .fm-action-sheet-item[data-action="transfer"] {
+    display: none !important;
+}
+
+/* ==================== MOBILE OVERRIDE ==================== */
+@media (max-width: 767px) {
+    /* Toolbar: single row, all buttons side-by-side */
+    .fm-toolbar {
+        flex-wrap: nowrap;
+        padding: 6px 8px;
+        gap: 4px;
+        justify-content: center;
+    }
+
+    .fm-toolbar-left,
+    .fm-toolbar-center,
+    .fm-toolbar-right {
+        flex: 0 0 auto;
+        justify-content: center;
+        gap: 4px;
+    }
+
+    .fm-toolbar .btn .btn-text {
+        display: none;
+    }
+
+    .fm-toolbar .btn {
+        padding: 8px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+
+    /* Force single pane layout */
+    .fm-panes {
+        display: block !important;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .fm-pane {
+        display: none !important;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .fm-pane.active {
+        display: flex !important;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .fm-pane .fm-file-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Hide pane tabs on mobile - single pane only (local upload to server) */
+    .fm-pane-tabs {
+        display: none !important;
+    }
+
+    /* Hide transfer button on mobile - no server-to-server */
+    .fm-toolbar-center #fmTransfer {
+        display: none !important;
+    }
+
+    /* Hide source selector label on mobile - just show dropdown */
+    .fm-pane-header {
+        padding: 8px;
+    }
+
+    .fm-source-select {
+        width: 100%;
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    /* Compact navigation bar */
+    .fm-pane-nav {
+        padding: 8px;
+        gap: 4px;
+    }
+
+    .fm-nav-btn {
+        min-width: 40px;
+        min-height: 40px;
+        padding: 8px;
+    }
+
+    .fm-path-input {
+        font-size: 14px;
+        min-height: 40px;
+    }
+
+    /* Show mobile upload - prominent button at top */
+    .fm-mobile-upload {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        padding: 14px 16px;
+        margin-bottom: 8px;
+        background: var(--accent-primary);
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 52px;
+        box-shadow: 0 2px 8px var(--accent-primary-glow);
+        transition: all 0.2s ease;
+    }
+
+    .fm-mobile-upload:active {
+        background: var(--accent-secondary);
+        transform: scale(0.98);
+    }
+
+    .fm-mobile-upload .material-icons {
+        font-size: 22px;
+    }
+
+    /* Hide transfer action in action sheet - mobile is local-to-server only */
+    .fm-action-sheet-item[data-action="transfer"] {
+        display: none !important;
+    }
+
+    /* Action sheet */
+    .fm-action-sheet {
+        display: flex !important;
+        transform: translateY(100%);
+    }
+
+    .fm-action-sheet.visible {
+        transform: translateY(0);
+    }
+
+    /* Hide transfer queue collapse - always show minimal */
+    .fm-queue {
+        max-height: 100px;
+    }
+
+    .fm-queue-header {
+        padding: 8px 12px;
     }
 }
 

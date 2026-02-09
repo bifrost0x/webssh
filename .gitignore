@@ -13,7 +13,7 @@ __pycache__/
 
 # Environment variables
 .env
-.env.local
+.env.*
 
 # IDE
 .vscode/
@@ -29,6 +29,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Database
+*.db
+*.sqlite3
+
 # Flask
 instance/
 .webassets-cache
@@ -41,3 +45,4 @@ data/
 
 # AI assistant files
 CLAUDE.md
+.claude/

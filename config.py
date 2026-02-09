@@ -12,7 +12,7 @@ KEYS_FILE = KEYS_DIR / 'keys.json'
 SYSTEM_COMMANDS_FILE = BASE_DIR / 'app' / 'resources' / 'commands' / 'system_commands.json'
 KNOWN_HOSTS_FILE = DATA_DIR / 'known_hosts'
 
-SESSION_TIMEOUT = 300
+SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', '1800'))  # Default: 30 minutes
 MAX_SESSIONS = 10
 SSH_CONNECT_TIMEOUT = 10
 
@@ -24,13 +24,14 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 # SECURITY: SECRET_KEY handling
 _secret_key = os.environ.get('SECRET_KEY')
-if not _secret_key:
+_KNOWN_PLACEHOLDERS = {'<YOUR-SECRET-KEY>', 'changeme', 'secret', 'your-secret-key'}
+if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
     if DEBUG:
         # Allow auto-generated key in development only
         _secret_key = secrets.token_hex(32)
         print("⚠️  DEBUG MODE: Using auto-generated SECRET_KEY (not for production!)")
     else:
-        # FAIL in production if SECRET_KEY not set
+        # FAIL in production if SECRET_KEY not set or is a placeholder
         raise RuntimeError(
             "SECURITY ERROR: SECRET_KEY environment variable is required in production. "
             "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
@@ -49,6 +50,12 @@ elif _session_secure == 'true':
 else:
     SESSION_COOKIE_SECURE = not DEBUG  # Default: secure in production
 PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
+
+# Remember-me cookie security (Flask-Login)
+REMEMBER_COOKIE_HTTPONLY = True
+REMEMBER_COOKIE_SAMESITE = 'Lax'
+REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+REMEMBER_COOKIE_DURATION = timedelta(days=7)
 
 MIN_PASSWORD_LENGTH = 8
 MAX_USERNAME_LENGTH = 32
@@ -88,3 +95,10 @@ RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
+
+# Registration control
+REGISTRATION_ENABLED = os.environ.get('REGISTRATION_ENABLED', 'True') == 'True'
+
+# Download size limits
+MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))  # Default: same as upload (100MB)
+MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))  # Default: 500MB

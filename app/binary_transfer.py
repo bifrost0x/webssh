@@ -53,43 +53,46 @@ def handle_binary_upload(session_id, filename, binary_data, remote_path, socketi
         chunk_size = 65536  # 64KB chunks
         transferred = 0
 
-        # Write binary data in chunks
-        with sftp.file(safe_path, 'wb') as remote_file:
-            # Convert bytes to BytesIO for streaming
-            data_stream = io.BytesIO(binary_data)
+        try:
+            # Write binary data in chunks
+            with sftp.file(safe_path, 'wb') as remote_file:
+                # Convert bytes to BytesIO for streaming
+                data_stream = io.BytesIO(binary_data)
 
-            while True:
-                chunk = data_stream.read(chunk_size)
-                if not chunk:
-                    break
+                while True:
+                    chunk = data_stream.read(chunk_size)
+                    if not chunk:
+                        break
 
-                remote_file.write(chunk)
-                transferred += len(chunk)
+                    remote_file.write(chunk)
+                    transferred += len(chunk)
 
-                # Emit progress update
-                if socketio_instance:
-                    percent = int((transferred / total_size) * 100)
-                    socketio_instance.emit('file_progress', {
-                        'session_id': session_id,
-                        'type': 'upload',
-                        'filename': filename,
-                        'transferred': transferred,
-                        'total': total_size,
-                        'percent': percent
-                    })
+                    # Emit progress update
+                    if socketio_instance:
+                        percent = int((transferred / total_size) * 100)
+                        socketio_instance.emit('file_progress', {
+                            'session_id': session_id,
+                            'type': 'upload',
+                            'filename': filename,
+                            'transferred': transferred,
+                            'total': total_size,
+                            'percent': percent
+                        })
 
-        sftp.close()
+            # Emit completion
+            if socketio_instance:
+                socketio_instance.emit('file_complete', {
+                    'session_id': session_id,
+                    'type': 'upload',
+                    'filename': filename,
+                    'remote_path': safe_path
+                })
 
-        # Emit completion
-        if socketio_instance:
-            socketio_instance.emit('file_complete', {
-                'session_id': session_id,
-                'type': 'upload',
-                'filename': filename,
-                'remote_path': safe_path
-            })
-
-        return True, None
+            return True, None
+        finally:
+            # Only close non-cached (pool) clients; session clients are managed by cache
+            if source_type == 'pool':
+                sftp.close()
 
     except PermissionError:
         return False, "Permission denied: Cannot write to remote path"
@@ -122,47 +125,54 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
         if safe_path is None:
             return None, "Invalid remote path"
 
-        # Get file size
         try:
-            file_stat = sftp.stat(safe_path)
-            file_size = file_stat.st_size
-        except FileNotFoundError:
-            return None, "Remote file not found"
+            # Get file size and check limit
+            try:
+                file_stat = sftp.stat(safe_path)
+                file_size = file_stat.st_size
+            except FileNotFoundError:
+                return None, "Remote file not found"
 
-        filename = os.path.basename(safe_path)
-        chunk_size = 65536  # 64KB chunks
-        transferred = 0
+            if file_size > config.MAX_DOWNLOAD_SIZE:
+                max_mb = config.MAX_DOWNLOAD_SIZE // (1024 * 1024)
+                return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
 
-        # Read file in chunks
-        binary_data = io.BytesIO()
+            filename = os.path.basename(safe_path)
+            chunk_size = 65536  # 64KB chunks
+            transferred = 0
 
-        with sftp.file(safe_path, 'rb') as remote_file:
-            while True:
-                chunk = remote_file.read(chunk_size)
-                if not chunk:
-                    break
+            # Read file in chunks
+            binary_data = io.BytesIO()
 
-                binary_data.write(chunk)
-                transferred += len(chunk)
+            with sftp.file(safe_path, 'rb') as remote_file:
+                while True:
+                    chunk = remote_file.read(chunk_size)
+                    if not chunk:
+                        break
 
-                # Emit progress update
-                if socketio_instance:
-                    percent = int((transferred / file_size) * 100)
-                    socketio_instance.emit('file_progress', {
-                        'session_id': session_id,
-                        'type': 'download',
-                        'filename': filename,
-                        'transferred': transferred,
-                        'total': file_size,
-                        'percent': percent
-                    })
+                    binary_data.write(chunk)
+                    transferred += len(chunk)
 
-        sftp.close()
+                    # Emit progress update
+                    if socketio_instance:
+                        percent = int((transferred / file_size) * 100)
+                        socketio_instance.emit('file_progress', {
+                            'session_id': session_id,
+                            'type': 'download',
+                            'filename': filename,
+                            'transferred': transferred,
+                            'total': file_size,
+                            'percent': percent
+                        })
 
-        # Get binary data
-        result = binary_data.getvalue()
+            # Get binary data
+            result = binary_data.getvalue()
 
-        return result, None
+            return result, None
+        finally:
+            # Only close non-cached (pool) clients; session clients are managed by cache
+            if source_type == 'pool':
+                sftp.close()
 
     except PermissionError:
         return None, "Permission denied: Cannot read from remote path"
@@ -221,8 +231,6 @@ def stream_binary_upload_chunked(session_id, filename, chunks, remote_path, sock
                         'percent': percent
                     })
 
-        sftp.close()
-
         # Emit completion
         if socketio_instance:
             socketio_instance.emit('file_complete', {
@@ -259,7 +267,6 @@ def get_file_info(session_id, remote_path):
             return None, "Invalid remote path"
 
         stat = sftp.stat(safe_path)
-        sftp.close()
 
         info = {
             'filename': os.path.basename(safe_path),

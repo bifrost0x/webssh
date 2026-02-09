@@ -112,6 +112,16 @@ class SFTPFileManager {
                         </div>
                     </div>
 
+                    <!-- Mobile Pane Tabs -->
+                    <div class="fm-pane-tabs" id="fmPaneTabs">
+                        <button class="fm-pane-tab active" data-pane="left">
+                            <span class="material-icons">folder</span> Left
+                        </button>
+                        <button class="fm-pane-tab" data-pane="right">
+                            <span class="material-icons">folder</span> Right
+                        </button>
+                    </div>
+
                     <!-- Dual Pane -->
                     <div class="fm-panes">
                         <!-- Left Pane -->
@@ -201,6 +211,45 @@ class SFTPFileManager {
                             <span class="fm-queue-toggle material-icons" id="fmQueueToggle">expand_more</span>
                         </div>
                         <div class="fm-queue-list" id="fmQueueList"></div>
+                    </div>
+
+                    <!-- Mobile Upload Button -->
+                    <div class="fm-mobile-upload" id="fmMobileUpload">
+                        <span class="material-icons">cloud_upload</span>
+                        <span>Tap to upload files</span>
+                        <input type="file" id="fmMobileUploadInput" multiple hidden>
+                    </div>
+                </div>
+
+                <!-- Mobile Action Sheet -->
+                <div class="fm-action-sheet" id="fmActionSheet">
+                    <div class="fm-action-sheet-item" data-action="open">
+                        <span class="material-icons">folder_open</span>
+                        <span>Open</span>
+                    </div>
+                    <div class="fm-action-sheet-item" data-action="download">
+                        <span class="material-icons">download</span>
+                        <span>Download</span>
+                    </div>
+                    <div class="fm-action-sheet-item" data-action="transfer">
+                        <span class="material-icons">swap_horiz</span>
+                        <span>Transfer</span>
+                    </div>
+                    <div class="fm-action-sheet-item" data-action="rename">
+                        <span class="material-icons">edit</span>
+                        <span>Rename</span>
+                    </div>
+                    <div class="fm-action-sheet-item" data-action="newfolder">
+                        <span class="material-icons">create_new_folder</span>
+                        <span>New Folder</span>
+                    </div>
+                    <div class="fm-action-sheet-item danger" data-action="delete">
+                        <span class="material-icons">delete</span>
+                        <span>Delete</span>
+                    </div>
+                    <div class="fm-action-sheet-cancel fm-action-sheet-item" data-action="cancel">
+                        <span class="material-icons">close</span>
+                        <span>Cancel</span>
                     </div>
                 </div>
             </div>
@@ -394,6 +443,34 @@ class SFTPFileManager {
 
         // Context menu close
         document.addEventListener('click', () => this.closeContextMenu());
+
+        // Mobile: Pane tabs
+        document.querySelectorAll('.fm-pane-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const pane = e.currentTarget.dataset.pane;
+                this.setActivePane(pane);
+                this.updateMobilePaneTabs(pane);
+            });
+        });
+
+        // Mobile: Upload button
+        const mobileUpload = document.getElementById('fmMobileUpload');
+        const mobileUploadInput = document.getElementById('fmMobileUploadInput');
+        if (mobileUpload && mobileUploadInput) {
+            mobileUpload.addEventListener('click', () => mobileUploadInput.click());
+            mobileUploadInput.addEventListener('change', (e) => this.handleMobileUpload(e));
+        }
+
+        // Mobile: Action sheet
+        document.querySelectorAll('.fm-action-sheet-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const action = e.currentTarget.dataset.action;
+                this.handleActionSheetAction(action);
+            });
+        });
+
+        // Mobile: Long press for action sheet
+        this.setupLongPress();
     }
 
     setupDropZones() {
@@ -579,24 +656,21 @@ class SFTPFileManager {
             const errorMsg = data.error || data.message || 'Unknown error';
             console.error('[FM] SFTP Error received:', errorMsg, data);
 
-            // Check if error is related to directory listing
-            if (errorMsg.includes('directory') || errorMsg.includes('list') ||
-                errorMsg.includes('Session') || errorMsg.includes('Unauthorized')) {
-                // Find any pane that's currently loading and show error
-                ['left', 'right'].forEach(pane => {
-                    const state = this.panes[pane];
-                    if (state.loading && state.type === 'ssh') {
-                        // Clear loading timeout
-                        if (state.loadingTimeout) {
-                            clearTimeout(state.loadingTimeout);
-                            state.loadingTimeout = null;
-                        }
-                        state.loading = false;
-                        state.error = errorMsg;
-                        this.renderPane(pane);
+            // Always clear loading state for any SSH pane that's currently loading.
+            // Any server error during an SFTP operation should stop the loading spinner
+            // and show the error, regardless of the error message content.
+            ['left', 'right'].forEach(pane => {
+                const state = this.panes[pane];
+                if (state.loading && state.type === 'ssh') {
+                    if (state.loadingTimeout) {
+                        clearTimeout(state.loadingTimeout);
+                        state.loadingTimeout = null;
                     }
-                });
-            }
+                    state.loading = false;
+                    state.error = errorMsg;
+                    this.renderPane(pane);
+                }
+            });
 
             this.showNotification(errorMsg, 'error');
         });
@@ -679,13 +753,41 @@ class SFTPFileManager {
         this.applyTranslations();
         this.updateSessionLists();
 
-        // Auto-select current terminal session for right pane
+        // Get current terminal session
         const currentSession = typeof SessionManager !== 'undefined' ? SessionManager.getActiveSession() : null;
-        if (currentSession) {
-            document.getElementById('fmRightSource').value = `ssh:${currentSession}`;
-            this.onSourceChange('right', `ssh:${currentSession}`);
-        }
 
+        // CRITICAL: Apply mobile mode via JS class (bypasses CSS cache issues)
+        const isMobileNow = this.isMobile();
+        console.log('[FM] Opening file manager, isMobile:', isMobileNow, 'innerWidth:', window.innerWidth);
+
+        if (isMobileNow) {
+            // Mobile: Single pane mode - add class and force right pane
+            this.modal.classList.add('fm-mobile-mode');
+            document.getElementById('fmLeftPane').style.display = 'none';
+            document.getElementById('fmRightPane').style.display = 'flex';
+            document.getElementById('fmRightPane').classList.add('active');
+            document.getElementById('fmLeftPane').classList.remove('active');
+            this.activePane = 'right';
+
+            // Auto-connect to current session
+            if (currentSession) {
+                document.getElementById('fmRightSource').value = `ssh:${currentSession}`;
+                this.onSourceChange('right', `ssh:${currentSession}`);
+            }
+        } else {
+            // Desktop/Tablet: Normal dual-pane mode
+            this.modal.classList.remove('fm-mobile-mode');
+            document.getElementById('fmLeftPane').style.display = '';
+            document.getElementById('fmRightPane').style.display = '';
+            this.setActivePane('left');
+            this.updateMobilePaneTabs('left');
+
+            // Auto-select current terminal session for right pane
+            if (currentSession) {
+                document.getElementById('fmRightSource').value = `ssh:${currentSession}`;
+                this.onSourceChange('right', `ssh:${currentSession}`);
+            }
+        }
     }
 
     close() {
@@ -1386,9 +1488,211 @@ class SFTPFileManager {
     }
 
     setActivePane(pane) {
+        // Mobile: Always force right pane (server) - no pane switching allowed
+        if (this.isMobile()) {
+            pane = 'right';
+        }
+
         this.activePane = pane;
         document.getElementById('fmLeftPane').classList.toggle('active', pane === 'left');
         document.getElementById('fmRightPane').classList.toggle('active', pane === 'right');
+        this.updateMobilePaneTabs(pane);
+    }
+
+    // ==================== MOBILE UI ====================
+
+    isMobile() {
+        return window.innerWidth < 768;
+    }
+
+    updateMobilePaneTabs(pane) {
+        document.querySelectorAll('.fm-pane-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.pane === pane);
+        });
+    }
+
+    setupLongPress() {
+        let longPressTimer = null;
+        const longPressDuration = 500;
+
+        ['left', 'right'].forEach(pane => {
+            const listEl = document.getElementById(`fm${this.capitalize(pane)}List`);
+
+            listEl.addEventListener('touchstart', (e) => {
+                const item = e.target.closest('.fm-file-item');
+                if (!item) return;
+
+                longPressTimer = setTimeout(() => {
+                    e.preventDefault();
+                    const index = parseInt(item.dataset.index);
+                    this.setActivePane(pane);
+                    this.panes[pane].selected.clear();
+                    this.panes[pane].selected.add(index);
+                    this.updateSelectionVisual(pane);
+                    this.showActionSheet();
+                }, longPressDuration);
+            }, { passive: false });
+
+            listEl.addEventListener('touchend', () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            });
+
+            listEl.addEventListener('touchmove', () => {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+            });
+        });
+    }
+
+    showActionSheet() {
+        const sheet = document.getElementById('fmActionSheet');
+        if (sheet) {
+            sheet.classList.add('visible');
+        }
+    }
+
+    hideActionSheet() {
+        const sheet = document.getElementById('fmActionSheet');
+        if (sheet) {
+            sheet.classList.remove('visible');
+        }
+    }
+
+    handleActionSheetAction(action) {
+        this.hideActionSheet();
+
+        switch (action) {
+            case 'open':
+                const state = this.panes[this.activePane];
+                if (state.selected.size === 1) {
+                    const index = Array.from(state.selected)[0];
+                    const file = state.files[index];
+                    if (file && file.is_dir) {
+                        this.navigateToFile(this.activePane, file);
+                    }
+                }
+                break;
+            case 'download':
+                this.downloadSelected();
+                break;
+            case 'transfer':
+                this.executeTransfer();
+                break;
+            case 'rename':
+                this.renameSelected();
+                break;
+            case 'newfolder':
+                this.createNewFolder();
+                break;
+            case 'delete':
+                this.deleteSelected();
+                break;
+            case 'cancel':
+                // Just close the sheet
+                break;
+        }
+    }
+
+    handleMobileUpload(e) {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const state = this.panes[this.activePane];
+        console.log('[FM] Mobile upload - activePane:', this.activePane, 'state:', {
+            type: state.type,
+            sessionId: state.sessionId,
+            connectionId: state.connectionId,
+            path: state.path
+        });
+
+        if (!state.type) {
+            this.showNotification(this.t('fm.selectConnectionFirst', 'Please select a connection first'), 'warning');
+            return;
+        }
+
+        if (state.type === 'ssh') {
+            const sessionId = state.sessionId || state.connectionId;
+            if (!sessionId) {
+                this.showNotification(this.t('fm.noActiveConnection', 'No active connection'), 'error');
+                return;
+            }
+
+            console.log('[FM] Starting upload of', files.length, 'files to', state.path, 'via session', sessionId);
+            this.showNotification(`${this.t('fm.uploading', 'Uploading')} ${files.length} ${this.t('fm.files', 'file(s)')}...`, 'info');
+
+            Array.from(files).forEach(file => {
+                this.uploadFileToBrowser(file, state.path, sessionId);
+            });
+        } else {
+            this.showNotification(this.t('fm.uploadSSHOnly', 'Upload only available for SSH connections'), 'warning');
+        }
+
+        // Clear the input for next upload
+        e.target.value = '';
+    }
+
+    uploadFileToBrowser(file, remotePath, sessionId) {
+        const self = this;
+
+        // Build full remote path (directory + filename)
+        const fullRemotePath = remotePath.endsWith('/')
+            ? remotePath + file.name
+            : remotePath + '/' + file.name;
+
+        console.log('[FM] Starting HTTP upload:', file.name, 'size:', file.size, 'to:', fullRemotePath);
+
+        // Add to transfer queue
+        const transferId = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        self.queueTransfer({
+            id: transferId,
+            type: 'upload',
+            filename: file.name,
+            size: file.size,
+            source: 'local',
+            destination: remotePath
+        });
+
+        // Use HTTP POST for reliable file upload (bypasses Socket.IO binary issues)
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('session_id', sessionId);
+        formData.append('remote_path', fullRemotePath);
+
+        // Include CSRF token for security
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
+            || document.querySelector('input[name="csrf_token"]')?.value;
+        const headers = {};
+        if (csrfToken) {
+            headers['X-CSRFToken'] = csrfToken;
+        }
+
+        fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+            headers: headers,
+            credentials: 'same-origin'
+        })
+        .then(response => response.json().then(data => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status === 200 && data.success) {
+                self.completeTransferById(transferId);
+                self.refreshPane(self.activePane);
+                self.showNotification(`${file.name} ${self.t('fm.uploaded', 'uploaded')}`, 'success');
+            } else {
+                self.failTransferById(transferId, data.error || 'Upload failed');
+                self.showNotification(`${self.t('fm.uploadError', 'Upload error')}: ${data.error || self.t('fm.unknown', 'Unknown')}`, 'error');
+            }
+        })
+        .catch(err => {
+            console.error('[FM] Upload error:', err);
+            self.failTransferById(transferId, err.message);
+            self.showNotification(`${self.t('fm.uploadError', 'Upload error')}: ${err.message}`, 'error');
+        });
     }
 
     selectAll() {
@@ -1991,6 +2295,30 @@ class SFTPFileManager {
         }
     }
 
+    completeTransferById(transferId) {
+        const transfer = this.transferQueue.find(t => t.id === transferId);
+        if (transfer) {
+            transfer.status = 'complete';
+            transfer.progress = 100;
+            this.activeTransfers.delete(transfer.id);
+            this.isTransferring = false;
+            this.renderTransferQueue();
+            setTimeout(() => this.processTransferQueue(), 100);
+        }
+    }
+
+    failTransferById(transferId, error) {
+        const transfer = this.transferQueue.find(t => t.id === transferId);
+        if (transfer) {
+            transfer.status = 'error';
+            transfer.error = error;
+            this.activeTransfers.delete(transfer.id);
+            this.isTransferring = false;
+            this.renderTransferQueue();
+            setTimeout(() => this.processTransferQueue(), 100);
+        }
+    }
+
     /**
      * Download all selected items to the browser
      */
@@ -2171,7 +2499,10 @@ class SFTPFileManager {
                     items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
                 }
             }
-            items.push({ action: 'transfer', icon: '↔️', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
+            // Only show transfer option on desktop/tablet (not mobile - single pane mode)
+            if (!this.isMobile()) {
+                items.push({ action: 'transfer', icon: '↔️', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
+            }
             items.push({ divider: true });
             items.push({ action: 'rename', icon: '✏️', text: this.t('fm.rename', 'Rename') });
         }

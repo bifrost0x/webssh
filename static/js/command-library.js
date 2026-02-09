@@ -250,7 +250,7 @@ const CommandLibrary = {
                 <div class="command-cell command-name">
                     <strong>${this.escapeHtml(cmd.name)}</strong>
                     <div class="command-os-badges">
-                        ${cmd.os.map(os => `<span class="os-badge">${os}</span>`).join('')}
+                        ${cmd.os.map(os => `<span class="os-badge">${this.escapeHtml(os)}</span>`).join('')}
                     </div>
                 </div>
                 <div class="command-cell command-text">

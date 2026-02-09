@@ -16,15 +16,43 @@ const TerminalManager = {
 
     buildTheme() {
         return {
-            background: this.getCssVar('--bg-tertiary', '#1c2128'),
-            foreground: this.getCssVar('--text-primary', '#e6edf3'),
+            background: this.getCssVar('--term-background', '#1c2128'),
+            foreground: this.getCssVar('--term-foreground', '#e6edf3'),
             cursor: this.getCssVar('--accent-primary', '#58a6ff'),
-            selection: this.getCssVar('--accent-primary-glow', 'rgba(88, 166, 255, 0.4)')
+            cursorAccent: this.getCssVar('--term-background', '#1c2128'),
+            selectionBackground: this.getCssVar('--accent-primary-glow', 'rgba(88, 166, 255, 0.4)'),
+            black: this.getCssVar('--term-black', '#484848'),
+            red: this.getCssVar('--term-red', '#ff6b6b'),
+            green: this.getCssVar('--term-green', '#4ec97a'),
+            yellow: this.getCssVar('--term-yellow', '#e5c07b'),
+            blue: this.getCssVar('--term-blue', '#61afef'),
+            magenta: this.getCssVar('--term-magenta', '#c678dd'),
+            cyan: this.getCssVar('--term-cyan', '#56b6c2'),
+            white: this.getCssVar('--term-white', '#dcdfe4'),
+            brightBlack: this.getCssVar('--term-bright-black', '#636363'),
+            brightRed: this.getCssVar('--term-bright-red', '#ff8787'),
+            brightGreen: this.getCssVar('--term-bright-green', '#7ee0a0'),
+            brightYellow: this.getCssVar('--term-bright-yellow', '#ffd68a'),
+            brightBlue: this.getCssVar('--term-bright-blue', '#82c8f5'),
+            brightMagenta: this.getCssVar('--term-bright-magenta', '#d9a0e8'),
+            brightCyan: this.getCssVar('--term-bright-cyan', '#7ccbd4'),
+            brightWhite: this.getCssVar('--term-bright-white', '#ffffff')
         };
     },
 
     getMonoFont() {
         return this.getCssVar('--font-mono', 'monospace');
+    },
+
+    getResponsiveFontSize() {
+        const width = window.innerWidth;
+        if (width < 480) return 12;
+        if (width < 768) return 13;
+        return 14;
+    },
+
+    isMobile() {
+        return window.innerWidth < 768 || 'ontouchstart' in window;
     },
 
     createTerminal(sessionId, terminalKey = null) {
@@ -34,13 +62,14 @@ const TerminalManager = {
         const theme = this.buildTheme();
         const terminal = new Terminal({
             cursorBlink: true,
-            fontSize: 14,
+            fontSize: this.getResponsiveFontSize(),
             fontFamily: monoFont || 'monospace',
             theme: theme,
             scrollback: 50000,
             scrollOnOutput: true,
             scrollOnUserInput: true,
-            tabStopWidth: 4
+            tabStopWidth: 4,
+            allowProposedApi: true
         });
 
         // Create fit addon for responsive sizing
@@ -329,20 +358,25 @@ const TerminalManager = {
 
     applyThemeToTerminal(sessionId) {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
+        const theme = this.buildTheme();
+        const font = this.getMonoFont();
         terminalKeys.forEach(key => {
             const terminal = this.terminals[key];
             if (!terminal) {
                 return;
             }
-            terminal.setOption('theme', this.buildTheme());
-            terminal.setOption('fontFamily', this.getMonoFont());
+            terminal.options.theme = theme;
+            terminal.options.fontFamily = font;
             terminal.refresh(0, terminal.rows - 1);
         });
     },
 
     applyThemeToAll() {
-        Object.keys(this.sessionTerminals).forEach(sessionId => {
-            this.applyThemeToTerminal(sessionId);
+        // Delay briefly to let CSS variables recalculate after data-theme change
+        requestAnimationFrame(() => {
+            Object.keys(this.sessionTerminals).forEach(sessionId => {
+                this.applyThemeToTerminal(sessionId);
+            });
         });
     },
 
@@ -388,6 +422,32 @@ const TerminalManager = {
 
     hasSearchSupport() {
         return typeof SearchAddon !== 'undefined';
+    },
+
+    updateFontSize(newSize) {
+        Object.keys(this.terminals).forEach(key => {
+            const terminal = this.terminals[key];
+            if (terminal) {
+                terminal.options.fontSize = newSize;
+                const fitAddon = this.fitAddons[key];
+                if (fitAddon) {
+                    try {
+                        fitAddon.fit();
+                    } catch (e) {
+                        console.error('Error fitting terminal after font change:', e);
+                    }
+                }
+            }
+        });
+    },
+
+    handleOrientationChange() {
+        const newFontSize = this.getResponsiveFontSize();
+        this.updateFontSize(newFontSize);
+        // Small delay to let the browser settle after orientation change
+        setTimeout(() => {
+            this.fitAllTerminals();
+        }, 100);
     }
 };
 
@@ -401,3 +461,33 @@ window.addEventListener('resize', () => {
         TerminalManager.fitAllTerminals();
     }, 250);
 });
+
+// Handle orientation change on mobile
+window.addEventListener('orientationchange', () => {
+    TerminalManager.handleOrientationChange();
+});
+
+// Virtual Keyboard Detection using Visual Viewport API
+if (window.visualViewport) {
+    const initialHeight = window.visualViewport.height;
+    let keyboardVisible = false;
+
+    window.visualViewport.addEventListener('resize', () => {
+        const currentHeight = window.visualViewport.height;
+        const heightRatio = currentHeight / initialHeight;
+
+        // Keyboard is likely visible if viewport shrinks to less than 75% of original
+        const newKeyboardVisible = heightRatio < 0.75;
+
+        if (newKeyboardVisible !== keyboardVisible) {
+            keyboardVisible = newKeyboardVisible;
+            document.body.classList.toggle('keyboard-open', keyboardVisible);
+
+            // Refit terminals when keyboard state changes
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                TerminalManager.fitAllTerminals();
+            }, 100);
+        }
+    });
+}

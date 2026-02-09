@@ -102,6 +102,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         client.connect(**auth_kwargs)
 
+        # Enable SSH-level keepalive to prevent remote server from closing idle connections
+        transport = client.get_transport()
+        if transport:
+            transport.set_keepalive(30)  # Send keepalive every 30 seconds
+
         channel = client.invoke_shell(
             term='xterm-256color',
             width=80,
@@ -112,23 +117,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         session_id = str(uuid.uuid4())
 
-        # Wait longer for initial banner/motd and allow client terminal to initialize
-        time.sleep(1.0)
-
-        # Aggressively drain all initial output (banner, MOTD, etc)
-        drained_bytes = 0
-        while channel.recv_ready():
-            try:
-                chunk = channel.recv(65536)
-                if chunk:
-                    drained_bytes += len(chunk)
-                else:
-                    break
-            except:
-                break
-
-        if drained_bytes > 0:
-            log_debug(f"Cleared {drained_bytes} bytes of initial banner/MOTD")
+        # Brief pause for shell initialization (reduced from 1.0s)
+        time.sleep(0.1)
 
         with sessions_lock:
             sessions[session_id] = {
@@ -164,9 +154,43 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         return None, f"Unexpected error: {str(e)}"
 
 def read_ssh_output(session_id, socketio_instance, app):
-    """Background thread to continuously read SSH output and emit to client."""
+    """Background greenthread to continuously read SSH output and emit to client.
+
+    IMPORTANT: Do NOT use select.select() on the paramiko channel here.
+    Under eventlet, select.select() watches the transport socket FD, which
+    conflicts with paramiko's own transport reader greenthread and any
+    concurrent SFTP operations on the same transport. This causes SFTP
+    operations to hang intermittently.
+
+    Instead, use channel.recv() directly with a timeout. Paramiko's channel
+    internally uses green-compatible Events (monkey-patched threading.Event)
+    that properly yield to other greenthreads.
+    """
+    from datetime import datetime, timezone
+
+    # Cache room/user_id once at startup to avoid DB query per chunk
+    cached_room = None
+    last_db_update = 0
+
     try:
         with app.app_context():
+            from .models import SSHSession, db
+
+            # Wait for DB record (created by socket_events after create_ssh_connection returns)
+            db_session = None
+            for _attempt in range(30):  # Wait up to 3 seconds
+                db_session = SSHSession.query.filter_by(session_id=session_id).first()
+                if db_session:
+                    break
+                time.sleep(0.1)
+
+            if db_session:
+                cached_room = f'user_{db_session.user_id}'
+
+            if not cached_room:
+                log_error(f"No DB session found for output reader", session_id=session_id)
+                return
+
             while True:
                 with sessions_lock:
                     if session_id not in sessions:
@@ -176,38 +200,44 @@ def read_ssh_output(session_id, socketio_instance, app):
                         break
                     channel = session['channel']
 
-                # Use select with timeout instead of recv_ready
-                import select
-                ready = select.select([channel], [], [], 0.01)
+                try:
+                    # channel.recv() uses paramiko's internal buffer + green Event.
+                    # With channel.settimeout(0.1), this yields for up to 100ms
+                    # if no data, allowing other greenthreads (SFTP ops) to run.
+                    data = channel.recv(32768)
+                    if data:
+                        decoded_data = data.decode('utf-8', errors='replace')
+                        socketio_instance.emit('ssh_output', {
+                            'session_id': session_id,
+                            'data': decoded_data
+                        }, room=cached_room)
 
-                if ready[0]:
-                    try:
-                        data = channel.recv(4096)
-                        if data:
-                            from .models import SSHSession, db
-                            db_session = SSHSession.query.filter_by(session_id=session_id).first()
+                        now = time.time()
+                        with sessions_lock:
+                            if session_id in sessions:
+                                sessions[session_id]['last_activity'] = now
 
-                            if db_session:
-                                room = f'user_{db_session.user_id}'
-                                decoded_data = data.decode('utf-8', errors='replace')
-                                socketio_instance.emit('ssh_output', {
-                                    'session_id': session_id,
-                                    'data': decoded_data
-                                }, room=room)
-
-                                from datetime import datetime
-                                db_session.last_activity = datetime.utcnow()
-                                db.session.commit()
-
-                            with sessions_lock:
-                                if session_id in sessions:
-                                    sessions[session_id]['last_activity'] = time.time()
-                        else:
-                            # No data means connection closed
-                            break
-                    except Exception as e:
-                        log_error(f"Error reading from channel", error=str(e), exc_info=True)
-                        break
+                        # Debounce DB updates to reduce SQLite contention
+                        if now - last_db_update >= 10.0:
+                            last_db_update = now
+                            try:
+                                db_session = SSHSession.query.filter_by(session_id=session_id).first()
+                                if db_session:
+                                    db_session.last_activity = datetime.now(timezone.utc)
+                                    db.session.commit()
+                            except Exception:
+                                db.session.rollback()
+                    else:
+                        break  # Connection closed
+                except socket.timeout:
+                    # No data within channel timeout (0.1s) -- normal, loop back
+                    pass
+                except EOFError:
+                    # Channel closed by remote
+                    break
+                except Exception as e:
+                    log_error(f"Error reading from channel", error=str(e), exc_info=True)
+                    break
 
                 if channel.closed or channel.exit_status_ready():
                     break
@@ -222,11 +252,10 @@ def read_ssh_output(session_id, socketio_instance, app):
                 db_session.connected = False
                 db.session.commit()
 
-                room = f'user_{db_session.user_id}'
                 socketio_instance.emit('ssh_disconnected', {
                     'session_id': session_id,
                     'reason': 'Connection closed'
-                }, room=room)
+                }, room=cached_room or f'user_{db_session.user_id}')
 
         close_session(session_id)
 
@@ -271,6 +300,10 @@ def resize_terminal(session_id, rows, cols):
 def close_session(session_id):
     """Close SSH session and clean up resources."""
     try:
+        # Close cached SFTP client first
+        from .sftp_handler import close_sftp_cache
+        close_sftp_cache(session_id)
+
         with sessions_lock:
             if session_id not in sessions:
                 return False
@@ -281,14 +314,14 @@ def close_session(session_id):
             if session['channel']:
                 try:
                     session['channel'].close()
-                except:
-                    pass
+                except Exception as e:
+                    log_debug(f"Error closing channel", session_id=session_id, error=str(e))
 
             if session['client']:
                 try:
                     session['client'].close()
-                except:
-                    pass
+                except Exception as e:
+                    log_debug(f"Error closing SSH client", session_id=session_id, error=str(e))
 
             del sessions[session_id]
 
@@ -311,31 +344,39 @@ def get_session(session_id):
             }
     return None
 
-def get_all_sessions():
-    """Get info for all active sessions."""
-    with sessions_lock:
-        return [
-            {
-                'id': sid,
-                'host': s['host'],
-                'port': s['port'],
-                'username': s['username'],
-                'connected': s['connected']
-            }
-            for sid, s in sessions.items()
-        ]
-
 def cleanup_idle_sessions():
     """Clean up sessions that have been idle too long."""
     try:
+        from . import socketio
         current_time = time.time()
         to_close = []
+        to_warn = []
 
         with sessions_lock:
             for session_id, session in sessions.items():
-                if current_time - session['last_activity'] > config.SESSION_TIMEOUT:
-                    to_close.append(session_id)
+                idle_time = current_time - session['last_activity']
 
+                # Close session if timeout exceeded
+                if idle_time > config.SESSION_TIMEOUT:
+                    to_close.append(session_id)
+                # Warn 2 minutes before timeout if not already warned
+                elif idle_time > (config.SESSION_TIMEOUT - 120) and not session.get('_warned'):
+                    to_warn.append((session_id, session.get('user_id')))
+                    session['_warned'] = True
+                # Clear warning flag if session becomes active again
+                elif idle_time <= (config.SESSION_TIMEOUT - 120) and session.get('_warned'):
+                    session['_warned'] = False
+
+        # Send warnings
+        for session_id, user_id in to_warn:
+            if user_id:
+                room = f'user_{user_id}'
+                socketio.emit('session_timeout_warning', {
+                    'session_id': session_id
+                }, room=room)
+                log_debug(f"Sent timeout warning for session: {session_id}")
+
+        # Close timed-out sessions
         for session_id in to_close:
             close_session(session_id)
             log_info(f"Closed idle session: {session_id}")

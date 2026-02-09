@@ -120,6 +120,11 @@ class TemporaryConnectionPool:
 
             client.connect(**connect_kwargs)
 
+            # Enable SSH-level keepalive
+            transport = client.get_transport()
+            if transport:
+                transport.set_keepalive(30)
+
             # Open SFTP channel
             sftp = client.open_sftp()
 
@@ -162,33 +167,32 @@ class TemporaryConnectionPool:
         Returns:
             tuple: (sftp_client or None, error: str or None)
         """
+        # Get client reference with brief lock hold (no network I/O)
         with self.lock:
             if connection_id not in self.connections:
                 return None, "Connection not found or expired"
 
             conn = self.connections[connection_id]
 
-            # Check if connection is still alive
+            # Check if connection is still alive (transport check is local, not network)
             try:
                 transport = conn['client'].get_transport()
                 if transport is None or not transport.is_active():
                     self._close_connection(connection_id)
                     return None, "Connection has been closed"
             except Exception:
-                # Connection is dead, remove it
                 self._close_connection(connection_id)
                 return None, "Connection has been closed"
 
-            # Update last used time
             conn['last_used'] = time.time()
+            client = conn['client']
 
-            # Open a NEW SFTP channel for this request
-            # This avoids issues with reusing SFTP objects across threads
-            try:
-                sftp = conn['client'].open_sftp()
-                return sftp, None
-            except Exception as e:
-                return None, f"Failed to open SFTP channel: {str(e)}"
+        # Open SFTP channel outside lock (network operation)
+        try:
+            sftp = client.open_sftp()
+            return sftp, None
+        except Exception as e:
+            return None, f"Failed to open SFTP channel: {str(e)}"
 
     def close_connection(self, connection_id):
         """
@@ -217,6 +221,13 @@ class TemporaryConnectionPool:
             return False
 
         conn = self.connections[connection_id]
+
+        # Clear any cached SFTP client for this pool connection
+        try:
+            from .sftp_handler import close_sftp_cache
+            close_sftp_cache(connection_id)
+        except Exception:
+            pass
 
         try:
             # Close SFTP and SSH
@@ -293,26 +304,6 @@ class TemporaryConnectionPool:
                 'idle_seconds': time.time() - conn['last_used'],
                 'user_id': conn['user_id']
             }
-
-    def get_all_connections(self, user_id=None):
-        """
-        Get information about all connections, optionally filtered by user.
-
-        Args:
-            user_id (str, optional): Filter by user ID
-
-        Returns:
-            list: List of connection info dicts
-        """
-        with self.lock:
-            connections = []
-            for conn_id in self.connections:
-                if user_id is None or self.connections[conn_id]['user_id'] == user_id:
-                    info = self.get_connection_info(conn_id)
-                    if info:
-                        connections.append(info)
-
-            return connections
 
     def close_all_user_connections(self, user_id):
         """

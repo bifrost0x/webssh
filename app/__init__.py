@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 from flask_socketio import SocketIO
 from flask_login import login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -7,8 +7,10 @@ import config
 import os
 from .models import db
 from .auth import login_manager, init_auth, authenticate_user, register_user, check_rate_limit
-from .audit_logger import log_rate_limit_exceeded, log_info, log_warning, log_error
+from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
+                              log_login_attempt, log_logout, log_registration, log_password_change)
 from .user_settings import get_user_settings
+from . import sftp_handler
 
 socketio = SocketIO()
 csrf = CSRFProtect()
@@ -84,6 +86,7 @@ def create_app():
         async_mode=config.SOCKETIO_ASYNC_MODE,
         ping_timeout=config.SOCKETIO_PING_TIMEOUT,
         ping_interval=config.SOCKETIO_PING_INTERVAL,
+        max_http_buffer_size=110 * 1024 * 1024,  # 110MB (buffer for Base64 overhead)
         logger=False,
         engineio_logger=False
     )
@@ -127,13 +130,15 @@ def create_app():
 
     from . import socket_events, command_manager
 
-    # Background session cleanup (runs every 30 minutes)
+    # Background session cleanup
     def setup_background_tasks():
         """Setup background tasks like session cleanup."""
         import threading
         from .auth import cleanup_inactive_socket_sessions
+        from .ssh_manager import cleanup_idle_sessions
 
-        def cleanup_task():
+        # DB session cleanup (runs every 30 minutes)
+        def db_cleanup_task():
             while True:
                 import time
                 time.sleep(1800)  # 30 minutes
@@ -145,9 +150,21 @@ def create_app():
                 except Exception as e:
                     log_error(f"Session cleanup error", error=str(e))
 
-        cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
+        # SSH idle session cleanup (runs every 60 seconds)
+        def ssh_cleanup_task():
+            while True:
+                import time
+                time.sleep(60)
+                try:
+                    cleanup_idle_sessions()
+                except Exception as e:
+                    log_error(f"SSH cleanup error", error=str(e))
+
+        cleanup_thread = threading.Thread(target=db_cleanup_task, daemon=True)
         cleanup_thread.start()
-        log_info("Background session cleanup task started")
+        ssh_cleanup_thread = threading.Thread(target=ssh_cleanup_task, daemon=True)
+        ssh_cleanup_thread.start()
+        log_info("Background session cleanup tasks started")
 
     setup_background_tasks()
 
@@ -177,14 +194,20 @@ def create_app():
             password = request.form.get('password')
             user, error = authenticate_user(username, password)
             if user:
+                session.clear()  # Prevent session fixation attacks
                 login_user(user, remember=True)
+                log_login_attempt(username, True, client_ip, request.user_agent.string)
                 return redirect(url_for('index'))
             else:
+                log_login_attempt(username, False, client_ip, request.user_agent.string)
                 flash(error, 'error')
         return render_template('login.html')
 
     @app.route('/register', methods=['GET', 'POST'])
     def register():
+        if not config.REGISTRATION_ENABLED:
+            flash('Registration is currently disabled.', 'error')
+            return redirect(url_for('login'))
         if current_user.is_authenticated:
             return redirect(url_for('index'))
 
@@ -207,16 +230,20 @@ def create_app():
             else:
                 user, error = register_user(username, password)
                 if user:
+                    session.clear()  # Prevent session fixation attacks
                     login_user(user)
+                    log_registration(username, True, client_ip)
                     flash('Account created successfully!', 'success')
                     return redirect(url_for('index'))
                 else:
+                    log_registration(username, False, client_ip)
                     flash(error, 'error')
         return render_template('register.html')
 
-    @app.route('/logout')
+    @app.route('/logout', methods=['POST'])
     @login_required
     def logout():
+        log_logout(current_user.username, get_client_ip())
         logout_user()
         return redirect(url_for('login'))
 
@@ -242,7 +269,59 @@ def create_app():
             else:
                 current_user.set_password(new_password)
                 db.session.commit()
+                log_password_change(current_user.username, True, get_client_ip())
                 flash('Password updated successfully', 'success')
                 return redirect(url_for('index'))
-        return render_template('change_password.html')
+        settings = get_user_settings(current_user.id)
+        theme = settings.get('theme', 'glass')
+        return render_template('change_password.html', theme=theme)
+
+    @app.route('/api/upload', methods=['POST'])
+    @login_required
+    def api_upload():
+        """HTTP file upload endpoint for SFTP."""
+        try:
+            file = request.files.get('file')
+            session_id = request.form.get('session_id')
+            remote_path = request.form.get('remote_path')
+
+            if not all([file, session_id, remote_path]):
+                return jsonify({'error': 'Missing required fields'}), 400
+
+            # Size check
+            file_data = file.read()
+            if len(file_data) > config.MAX_UPLOAD_SIZE:
+                max_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
+                return jsonify({'error': f'File too large. Maximum: {max_mb}MB'}), 413
+
+            # Verify session ownership
+            from .socket_events import verify_session_ownership
+            from . import connection_pool
+            if not verify_session_ownership(session_id, current_user.id):
+                conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
+                if not conn_info or conn_info['user_id'] != str(current_user.id):
+                    return jsonify({'error': 'Unauthorized'}), 403
+
+            # Upload via SFTP
+            chunk_size = 65536
+            chunks = [file_data[i:i+chunk_size] for i in range(0, len(file_data), chunk_size)]
+
+            success, error = sftp_handler.upload_file_chunked(
+                session_id=session_id,
+                filename=file.filename,
+                chunks=chunks,
+                remote_path=remote_path,
+                socketio_instance=None
+            )
+
+            if error:
+                return jsonify({'error': f'Upload failed: {error}'}), 500
+
+            log_info(f"File uploaded via HTTP: {file.filename}", user=current_user.username, path=remote_path)
+            return jsonify({'success': True, 'filename': file.filename}), 200
+
+        except Exception as e:
+            log_error(f"Upload failed", error=str(e))
+            return jsonify({'error': 'Upload failed'}), 500
+
     return app

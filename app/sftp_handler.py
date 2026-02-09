@@ -1,14 +1,97 @@
 import os
 import stat
 from pathlib import Path
+from threading import Lock
+from contextlib import contextmanager
 import config
 from . import ssh_manager
 from .audit_logger import log_info, log_warning, log_error, log_debug
 
-def get_sftp_client(session_id):
-    """Get SFTP client from existing SSH session."""
+# SFTP client cache: reuse SFTP channels across operations per session
+_sftp_cache = {}
+_sftp_cache_lock = Lock()
+
+# Per-session SFTP operation locks.
+# Paramiko's SFTPClient is NOT safe for concurrent use from multiple
+# greenthreads -- its internal request_number counter and _request_queue
+# corrupt when two greenthreads interleave requests/responses.
+# This lock serializes all SFTP operations per session.
+_sftp_session_locks = {}
+_sftp_session_locks_lock = Lock()
+
+
+def _get_sftp_lock(session_id):
+    """Get or create a per-session lock for serializing SFTP operations."""
+    with _sftp_session_locks_lock:
+        if session_id not in _sftp_session_locks:
+            _sftp_session_locks[session_id] = Lock()
+        return _sftp_session_locks[session_id]
+
+
+def _cleanup_sftp_lock(session_id):
+    """Remove the per-session lock when session is closed."""
+    with _sftp_session_locks_lock:
+        _sftp_session_locks.pop(session_id, None)
+
+
+@contextmanager
+def sftp_session(identifier):
+    """Context manager: acquire per-session lock and provide SFTP client.
+
+    Ensures only one greenthread uses the cached SFTPClient at a time,
+    preventing Paramiko's internal request/response queue corruption.
+
+    Usage:
+        with sftp_session(session_id) as (sftp, source_type):
+            files = sftp.listdir_attr(path)
+
+    Raises SFTPOperationError if no connection is available.
+    """
+    lock = _get_sftp_lock(identifier)
+    lock.acquire()
     try:
-        sftp = None
+        sftp, error, source_type = get_any_sftp_client(identifier)
+        if error:
+            raise SFTPOperationError(error)
+        yield sftp, source_type
+    finally:
+        lock.release()
+
+
+class SFTPOperationError(Exception):
+    """Raised when an SFTP operation cannot be performed (no connection, etc.)."""
+    pass
+
+
+def get_sftp_client(session_id):
+    """Get cached or create new SFTP client from existing SSH session.
+
+    SFTP clients are cached per session to avoid the overhead of opening
+    a new SFTP channel for every operation (list, stat, read, etc.).
+    The cache is invalidated when the SFTP channel breaks or the session closes.
+    """
+    try:
+        # Check cache first (get ref inside lock, validate outside)
+        cached_sftp = None
+        with _sftp_cache_lock:
+            if session_id in _sftp_cache:
+                cached_sftp = _sftp_cache[session_id]
+
+        if cached_sftp is not None:
+            try:
+                cached_sftp.stat('.')  # Network I/O outside lock
+                return cached_sftp, None
+            except Exception:
+                # Stale channel, remove from cache
+                with _sftp_cache_lock:
+                    if _sftp_cache.get(session_id) is cached_sftp:
+                        del _sftp_cache[session_id]
+                try:
+                    cached_sftp.close()
+                except Exception:
+                    pass
+
+        # Get SSH client reference (brief lock hold, no network I/O)
         with ssh_manager.sessions_lock:
             if session_id not in ssh_manager.sessions:
                 return None, "Session not found"
@@ -19,104 +102,49 @@ def get_sftp_client(session_id):
 
             client = session['client']
 
-            sftp = client.open_sftp()
+        # Open SFTP channel outside lock (network operation)
+        sftp = client.open_sftp()
+
+        with _sftp_cache_lock:
+            _sftp_cache[session_id] = sftp
 
         return sftp, None
     except Exception as e:
         return None, str(e)
 
-def upload_file(session_id, local_file_path, remote_path, socketio_instance=None):
-    """Upload a file via SFTP with progress tracking."""
+
+def get_sftp_client_fresh(session_id):
+    """Get a NEW (uncached) SFTP client. Used for concurrent operations like S2S transfers."""
     try:
-        sftp, error = get_sftp_client(session_id)
-        if error:
-            return False, error
+        # Get SSH client reference (brief lock hold, no network I/O)
+        with ssh_manager.sessions_lock:
+            if session_id not in ssh_manager.sessions:
+                return None, "Session not found"
 
-        file_size = os.path.getsize(local_file_path)
-        transferred = 0
+            session = ssh_manager.sessions[session_id]
+            if not session['connected']:
+                return None, "Session not connected"
 
-        def progress_callback(transferred_bytes, total_bytes):
-            """Callback for progress updates."""
-            if socketio_instance:
-                percent = int((transferred_bytes / total_bytes) * 100)
-                socketio_instance.emit('file_progress', {
-                    'session_id': session_id,
-                    'type': 'upload',
-                    'filename': os.path.basename(local_file_path),
-                    'transferred': transferred_bytes,
-                    'total': total_bytes,
-                    'percent': percent
-                })
+            client = session['client']
 
-        # Upload file
-        sftp.put(
-            local_file_path,
-            remote_path,
-            callback=progress_callback
-        )
+        # Open SFTP channel outside lock (network operation)
+        sftp = client.open_sftp()
 
-        sftp.close()
-
-        # Emit completion
-        if socketio_instance:
-            socketio_instance.emit('file_complete', {
-                'session_id': session_id,
-                'type': 'upload',
-                'filename': os.path.basename(local_file_path),
-                'remote_path': remote_path
-            })
-
-        return True, None
+        return sftp, None
     except Exception as e:
-        return False, str(e)
+        return None, str(e)
 
-def download_file(session_id, remote_path, local_file_path, socketio_instance=None):
-    """Download a file via SFTP with progress tracking."""
-    try:
-        sftp, error = get_sftp_client(session_id)
-        if error:
-            return False, error
 
-        # Get remote file size
-        file_stat = sftp.stat(remote_path)
-        file_size = file_stat.st_size
-
-        def progress_callback(transferred_bytes, total_bytes):
-            """Callback for progress updates."""
-            if socketio_instance:
-                percent = int((transferred_bytes / total_bytes) * 100)
-                socketio_instance.emit('file_progress', {
-                    'session_id': session_id,
-                    'type': 'download',
-                    'filename': os.path.basename(remote_path),
-                    'transferred': transferred_bytes,
-                    'total': total_bytes,
-                    'percent': percent
-                })
-
-        # Download file
-        sftp.get(
-            remote_path,
-            local_file_path,
-            callback=progress_callback
-        )
-
-        sftp.close()
-
-        # Emit completion
-        if socketio_instance:
-            socketio_instance.emit('file_complete', {
-                'session_id': session_id,
-                'type': 'download',
-                'filename': os.path.basename(remote_path),
-                'local_path': local_file_path
-            })
-
-        return True, None
-    except FileNotFoundError:
-        return False, "Remote file not found"
-    except Exception as e:
-        return False, str(e)
+def close_sftp_cache(session_id):
+    """Close and remove cached SFTP client for a session. Called on session close."""
+    with _sftp_cache_lock:
+        sftp = _sftp_cache.pop(session_id, None)
+        if sftp:
+            try:
+                sftp.close()
+            except Exception:
+                pass
+    _cleanup_sftp_lock(session_id)
 
 def sanitize_path(remote_path):
     """Sanitize and validate remote path to prevent path traversal attacks.
@@ -158,14 +186,9 @@ def list_directory(session_id, remote_path='.'):
         if safe_path is None:
             return None, "Invalid path: path traversal detected"
 
-        # Try SSH session first, then connection pool
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
-        # List directory contents
-        files = []
-        try:
+        with sftp_session(session_id) as (sftp, source_type):
+            # List directory contents
+            files = []
             entries = sftp.listdir_attr(safe_path)
             for entry in entries:
                 # SECURITY: Detect symlinks for client-side warning
@@ -178,13 +201,9 @@ def list_directory(session_id, remote_path='.'):
                     'is_symlink': is_symlink,  # Symlink detection
                     'modified': entry.st_mtime
                 })
-        except Exception as listdir_error:
-            sftp.close()
-            raise
-
-        # Close SFTP channel after use
-        sftp.close()
         return files, None
+    except SFTPOperationError as e:
+        return None, str(e)
     except Exception as e:
         return None, str(e)
 
@@ -196,13 +215,11 @@ def create_directory(session_id, remote_path):
         if safe_path is None:
             return False, "Invalid path: path traversal or absolute path detected"
 
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return False, error
-
-        sftp.mkdir(safe_path)
-        sftp.close()
+        with sftp_session(session_id) as (sftp, source_type):
+            sftp.mkdir(safe_path)
         return True, None
+    except SFTPOperationError as e:
+        return False, str(e)
     except Exception as e:
         return False, str(e)
 
@@ -214,23 +231,17 @@ def delete_file(session_id, remote_path):
         if safe_path is None:
             return False, "Invalid path: path traversal or absolute path detected"
 
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return False, error
-
-        sftp.remove(safe_path)
-        sftp.close()
+        with sftp_session(session_id) as (sftp, source_type):
+            sftp.remove(safe_path)
         return True, None
+    except SFTPOperationError as e:
+        return False, str(e)
     except Exception as e:
         return False, str(e)
 
 def upload_file_chunked(session_id, filename, chunks, remote_path, socketio_instance=None):
     """Upload file from chunks sent by client."""
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return False, error
-
         # SECURITY: Sanitize remote path to prevent path traversal
         safe_path = sanitize_path(remote_path)
         if safe_path is None:
@@ -240,24 +251,23 @@ def upload_file_chunked(session_id, filename, chunks, remote_path, socketio_inst
         total_size = sum(len(chunk) for chunk in chunks)
         transferred = 0
 
-        with sftp.file(safe_path, 'wb') as remote_file:
-            for i, chunk in enumerate(chunks):
-                remote_file.write(chunk)
-                transferred += len(chunk)
+        with sftp_session(session_id) as (sftp, source_type):
+            with sftp.file(safe_path, 'wb') as remote_file:
+                for i, chunk in enumerate(chunks):
+                    remote_file.write(chunk)
+                    transferred += len(chunk)
 
-                # Emit progress
-                if socketio_instance:
-                    percent = int((transferred / total_size) * 100)
-                    socketio_instance.emit('file_progress', {
-                        'session_id': session_id,
-                        'type': 'upload',
-                        'filename': filename,
-                        'transferred': transferred,
-                        'total': total_size,
-                        'percent': percent
-                    })
-
-        sftp.close()
+                    # Emit progress
+                    if socketio_instance:
+                        percent = int((transferred / total_size) * 100)
+                        socketio_instance.emit('file_progress', {
+                            'session_id': session_id,
+                            'type': 'upload',
+                            'filename': filename,
+                            'transferred': transferred,
+                            'total': total_size,
+                            'percent': percent
+                        })
 
         # Emit completion
         if socketio_instance:
@@ -269,52 +279,55 @@ def upload_file_chunked(session_id, filename, chunks, remote_path, socketio_inst
             })
 
         return True, None
+    except SFTPOperationError as e:
+        return False, str(e)
     except Exception as e:
         return False, str(e)
 
 def download_file_chunked(session_id, remote_path, socketio_instance=None):
     """Download file and send in chunks to client."""
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
         # SECURITY: Sanitize remote path to prevent path traversal
         safe_path = sanitize_path(remote_path)
         if safe_path is None:
             return None, "Invalid remote path"
 
-        # Get file size
-        file_stat = sftp.stat(safe_path)
-        file_size = file_stat.st_size
-        filename = os.path.basename(remote_path)
+        with sftp_session(session_id) as (sftp, source_type):
+            # Get file size and check limit
+            file_stat = sftp.stat(safe_path)
+            file_size = file_stat.st_size
+            if file_size > config.MAX_DOWNLOAD_SIZE:
+                max_mb = config.MAX_DOWNLOAD_SIZE // (1024 * 1024)
+                return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
+            filename = os.path.basename(remote_path)
 
-        chunks = []
-        transferred = 0
+            chunks = []
+            transferred = 0
 
-        with sftp.file(safe_path, 'rb') as remote_file:
-            while True:
-                chunk = remote_file.read(config.CHUNK_SIZE)
-                if not chunk:
-                    break
+            with sftp.file(safe_path, 'rb') as remote_file:
+                while True:
+                    chunk = remote_file.read(config.CHUNK_SIZE)
+                    if not chunk:
+                        break
 
-                chunks.append(chunk)
-                transferred += len(chunk)
+                    chunks.append(chunk)
+                    transferred += len(chunk)
 
-                # Emit progress
-                if socketio_instance:
-                    percent = int((transferred / file_size) * 100)
-                    socketio_instance.emit('file_progress', {
-                        'session_id': session_id,
-                        'type': 'download',
-                        'filename': filename,
-                        'transferred': transferred,
-                        'total': file_size,
-                        'percent': percent
-                    })
+                    # Emit progress
+                    if socketio_instance:
+                        percent = int((transferred / file_size) * 100)
+                        socketio_instance.emit('file_progress', {
+                            'session_id': session_id,
+                            'type': 'download',
+                            'filename': filename,
+                            'transferred': transferred,
+                            'total': file_size,
+                            'percent': percent
+                        })
 
-        sftp.close()
         return {'filename': filename, 'chunks': chunks, 'size': file_size}, None
+    except SFTPOperationError as e:
+        return None, str(e)
     except Exception as e:
         return None, str(e)
 
@@ -322,19 +335,17 @@ def download_file_chunked(session_id, remote_path, socketio_instance=None):
 def rename_item(session_id, old_path, new_path):
     """Rename a file or directory on remote server."""
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return False, error
-
         # Sanitize paths
         safe_old = sanitize_path(old_path)
         safe_new = sanitize_path(new_path)
         if safe_old is None or safe_new is None:
             return False, "Invalid path"
 
-        sftp.rename(safe_old, safe_new)
-        sftp.close()
+        with sftp_session(session_id) as (sftp, source_type):
+            sftp.rename(safe_old, safe_new)
         return True, None
+    except SFTPOperationError as e:
+        return False, str(e)
     except Exception as e:
         return False, str(e)
 
@@ -344,10 +355,6 @@ def delete_directory_recursive(session_id, path):
     import stat as stat_module
 
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return False, error
-
         safe_path = sanitize_path(path)
         if safe_path is None:
             return False, "Invalid path"
@@ -378,19 +385,21 @@ def delete_directory_recursive(session_id, path):
                 else:
                     sftp_client.remove(full_path)
 
-        # Check if it's a directory (using lstat to not follow symlinks)
-        stat_result = sftp.lstat(safe_path)
-        if stat_module.S_ISDIR(stat_result.st_mode):
-            _delete_recursive(sftp, safe_path, safe_path)
-            sftp.rmdir(safe_path)
-        elif stat_module.S_ISLNK(stat_result.st_mode):
-            # If target is a symlink, just remove the link
-            sftp.remove(safe_path)
-        else:
-            sftp.remove(safe_path)
+        with sftp_session(session_id) as (sftp, source_type):
+            # Check if it's a directory (using lstat to not follow symlinks)
+            stat_result = sftp.lstat(safe_path)
+            if stat_module.S_ISDIR(stat_result.st_mode):
+                _delete_recursive(sftp, safe_path, safe_path)
+                sftp.rmdir(safe_path)
+            elif stat_module.S_ISLNK(stat_result.st_mode):
+                # If target is a symlink, just remove the link
+                sftp.remove(safe_path)
+            else:
+                sftp.remove(safe_path)
 
-        sftp.close()
         return True, None
+    except SFTPOperationError as e:
+        return False, str(e)
     except FileNotFoundError:
         return False, "File or directory not found"
     except Exception as e:
@@ -400,16 +409,12 @@ def delete_directory_recursive(session_id, path):
 def get_home_directory(session_id):
     """Get the home directory (current working directory) of the SFTP session."""
     try:
-        # Try SSH session first, then connection pool
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
-        # normalize('.') returns the absolute path of current directory
-        home_path = sftp.normalize('.')
-
-        sftp.close()
+        with sftp_session(session_id) as (sftp, source_type):
+            # normalize('.') returns the absolute path of current directory
+            home_path = sftp.normalize('.')
         return home_path, None
+    except SFTPOperationError as e:
+        return None, str(e)
     except Exception as e:
         return None, str(e)
 
@@ -417,22 +422,19 @@ def get_home_directory(session_id):
 def check_exists(session_id, path):
     """Check if a file or directory exists on remote server."""
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
         safe_path = sanitize_path(path)
         if safe_path is None:
             return None, "Invalid path"
 
-        try:
-            stat = sftp.stat(safe_path)
-            is_dir = stat.st_mode & 0o040000 != 0
-            sftp.close()
-            return {'exists': True, 'is_dir': is_dir, 'size': stat.st_size}, None
-        except FileNotFoundError:
-            sftp.close()
-            return {'exists': False, 'is_dir': False, 'size': 0}, None
+        with sftp_session(session_id) as (sftp, source_type):
+            try:
+                file_stat = sftp.stat(safe_path)
+                is_dir = file_stat.st_mode & 0o040000 != 0
+                return {'exists': True, 'is_dir': is_dir, 'size': file_stat.st_size}, None
+            except FileNotFoundError:
+                return {'exists': False, 'is_dir': False, 'size': 0}, None
+    except SFTPOperationError as e:
+        return None, str(e)
     except Exception as e:
         return None, str(e)
 
@@ -440,26 +442,24 @@ def check_exists(session_id, path):
 def get_file_stat(session_id, path):
     """Get detailed file/directory statistics."""
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
         safe_path = sanitize_path(path)
         if safe_path is None:
             return None, "Invalid path"
 
-        stat = sftp.stat(safe_path)
-        sftp.close()
+        with sftp_session(session_id) as (sftp, source_type):
+            file_stat = sftp.stat(safe_path)
 
         return {
             'name': os.path.basename(safe_path),
             'path': safe_path,
-            'size': stat.st_size,
-            'mode': stat.st_mode,
-            'is_dir': stat.st_mode & 0o040000 != 0,
-            'modified': stat.st_mtime,
-            'permissions': oct(stat.st_mode)[-3:]
+            'size': file_stat.st_size,
+            'mode': file_stat.st_mode,
+            'is_dir': file_stat.st_mode & 0o040000 != 0,
+            'modified': file_stat.st_mtime,
+            'permissions': oct(file_stat.st_mode)[-3:]
         }, None
+    except SFTPOperationError as e:
+        return None, str(e)
     except FileNotFoundError:
         return None, "File not found"
     except Exception as e:
@@ -482,64 +482,55 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
                content_dict contains: content, size, truncated, is_binary
     """
     try:
-        sftp, error, source_type = get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
         safe_path = sanitize_path(path)
         if safe_path is None:
             return None, "Invalid path"
 
-        # Get file info
-        file_stat = sftp.stat(safe_path)
-        file_size = file_stat.st_size
+        with sftp_session(session_id) as (sftp, source_type):
+            # Get file info
+            file_stat = sftp.stat(safe_path)
+            file_size = file_stat.st_size
 
-        # SECURITY: Limit max_bytes to configured limit
-        max_preview_size = getattr(config, 'MAX_PREVIEW_SIZE', 512000)  # 500KB default
-        max_bytes = min(max_bytes, max_preview_size)
+            # SECURITY: Limit max_bytes to configured limit
+            max_preview_size = getattr(config, 'MAX_PREVIEW_SIZE', 512000)  # 500KB default
+            max_bytes = min(max_bytes, max_preview_size)
 
-        # SECURITY: Sanity check - reject absurdly large files immediately
-        # This prevents memory issues even if we're only reading max_bytes
-        max_supported_file = getattr(config, 'MAX_SUPPORTED_FILE_SIZE', 1024 * 1024 * 1024)  # 1GB
-        if file_size > max_supported_file:
-            return None, f"File too large ({file_size} bytes). Maximum supported size is {max_supported_file} bytes."
+            # SECURITY: Sanity check - reject absurdly large files immediately
+            max_supported_file = getattr(config, 'MAX_SUPPORTED_FILE_SIZE', 1024 * 1024 * 1024)  # 1GB
+            if file_size > max_supported_file:
+                return None, f"File too large ({file_size} bytes). Maximum supported size is {max_supported_file} bytes."
 
-        # Check if file is too large and we need to truncate
-        truncated = file_size > max_bytes
-        read_size = min(file_size, max_bytes)
+            # Check if file is too large and we need to truncate
+            truncated = file_size > max_bytes
+            read_size = min(file_size, max_bytes)
 
-        content = b''
+            content = b''
 
-        with sftp.file(safe_path, 'rb') as remote_file:
-            if tail_lines:
-                # Read last N lines (for log files)
-                # Read a chunk from the end and find line breaks
-                seek_pos = max(0, file_size - max_bytes)
-                remote_file.seek(seek_pos)
-                content = remote_file.read(max_bytes)
+            with sftp.file(safe_path, 'rb') as remote_file:
+                if tail_lines:
+                    # Read last N lines (for log files)
+                    seek_pos = max(0, file_size - max_bytes)
+                    remote_file.seek(seek_pos)
+                    content = remote_file.read(max_bytes)
 
-                # Find line breaks and keep last N lines
-                lines = content.split(b'\n')
-                if len(lines) > tail_lines:
-                    content = b'\n'.join(lines[-tail_lines:])
-                    truncated = True
-            else:
-                # Read from offset
-                if offset > 0:
-                    remote_file.seek(offset)
-                content = remote_file.read(read_size)
-
-        sftp.close()
+                    # Find line breaks and keep last N lines
+                    lines = content.split(b'\n')
+                    if len(lines) > tail_lines:
+                        content = b'\n'.join(lines[-tail_lines:])
+                        truncated = True
+                else:
+                    # Read from offset
+                    if offset > 0:
+                        remote_file.seek(offset)
+                    content = remote_file.read(read_size)
 
         # Detect if binary
         is_binary = False
         try:
-            # Check for null bytes or non-text characters
             sample = content[:1024]
             if b'\x00' in sample:
                 is_binary = True
             else:
-                # Try to decode as UTF-8
                 sample.decode('utf-8')
         except UnicodeDecodeError:
             is_binary = True
@@ -566,6 +557,8 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
             'offset': offset
         }, None
 
+    except SFTPOperationError as e:
+        return None, str(e)
     except FileNotFoundError:
         return None, "File not found"
     except PermissionError:
@@ -583,7 +576,8 @@ def get_sftp_client_from_pool(connection_id):
 def get_any_sftp_client(identifier):
     """
     Get SFTP client from either an SSH session or temporary connection pool.
-    Tries SSH session first, then temporary connection pool.
+    Tries the shared cache first, then SSH session, then connection pool.
+    Pool clients are cached to avoid opening a new SFTP channel per operation.
 
     Args:
         identifier (str): Session ID or connection ID
@@ -592,7 +586,7 @@ def get_any_sftp_client(identifier):
         tuple: (sftp_client, error, source_type)
                source_type is 'session' or 'pool'
     """
-    # First try as SSH session
+    # First try as SSH session (checks cache, then opens from session)
     sftp, error = get_sftp_client(identifier)
     if sftp:
         return sftp, None, 'session'
@@ -600,9 +594,13 @@ def get_any_sftp_client(identifier):
     # Then try as temporary connection from pool
     sftp, error = get_sftp_client_from_pool(identifier)
     if sftp:
+        # Cache the pool SFTP client so subsequent calls reuse it
+        # instead of opening a new channel every time
+        with _sftp_cache_lock:
+            _sftp_cache[identifier] = sftp
         return sftp, None, 'pool'
 
-    return None, f"No active session or connection found for ID: {identifier}", None
+    return None, f"No active connection found for: {identifier}", None
 
 
 def transfer_server_to_server(source_session_id, source_path, dest_session_id,
@@ -629,17 +627,23 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     CHUNK_SIZE = 65536  # 64KB chunks
 
     try:
-        # Get source SFTP client
-        sftp_source, error, source_type = get_any_sftp_client(source_session_id)
+        # Get fresh (uncached) SFTP clients for concurrent S2S transfer
+        sftp_source, error = get_sftp_client_fresh(source_session_id)
+        source_type = 'session' if sftp_source else None
+        if error:
+            # Try pool
+            sftp_source, error = get_sftp_client_from_pool(source_session_id)
+            source_type = 'pool' if sftp_source else None
         if error:
             return False, f"Source connection error: {error}"
 
-        # Get destination SFTP client
-        sftp_dest, error, dest_type = get_any_sftp_client(dest_session_id)
+        sftp_dest, error = get_sftp_client_fresh(dest_session_id)
+        dest_type = 'session' if sftp_dest else None
         if error:
-            # Close source if it was from session (pool connections persist)
-            if source_type == 'session':
-                sftp_source.close()
+            sftp_dest, error = get_sftp_client_from_pool(dest_session_id)
+            dest_type = 'pool' if sftp_dest else None
+        if error:
+            sftp_source.close()
             return False, f"Destination connection error: {error}"
 
         def emit_progress(filename, transferred, total, status='transferring'):
@@ -687,9 +691,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
             emit_progress(filename, file_size, file_size, 'completed')
             return True, None
 
-        def transfer_directory_recursive(src_dir, dst_dir):
+        def transfer_directory_recursive(src_dir, dst_dir, depth=0):
             """Recursively transfer a directory."""
             nonlocal sftp_source, sftp_dest
+
+            if depth > 50:
+                return False, "Maximum directory depth exceeded (50 levels)"
 
             # Create destination directory
             try:
@@ -704,7 +711,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                 dst_entry_path = f"{dst_dir}/{entry.filename}"
 
                 if entry.st_mode & 0o040000:  # Is directory
-                    success, error = transfer_directory_recursive(src_entry_path, dst_entry_path)
+                    success, error = transfer_directory_recursive(src_entry_path, dst_entry_path, depth + 1)
                     if not success:
                         return False, error
                 else:

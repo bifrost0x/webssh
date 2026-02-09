@@ -14,7 +14,7 @@
     };
 
     // Notification system
-    window.showNotification = function(message, type = 'info') {
+    window.showNotification = function(message, type = 'info', duration = 5000) {
         const container = document.getElementById('notificationContainer');
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
@@ -22,11 +22,11 @@
 
         container.appendChild(notification);
 
-        // Auto-remove after 5 seconds
+        // Auto-remove after specified duration
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 300);
-        }, 5000);
+        }, duration);
     };
 
     // Modal manager with focus trapping
@@ -79,10 +79,23 @@
     const ConnectionHistory = {
         maxItems: 10,
         storageKey: 'recentConnections',
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
 
         getHistory() {
             try {
-                return JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+                const history = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+                const now = Date.now();
+                // Filter out entries older than 30 days
+                const filtered = history.filter(entry => {
+                    // Backwards compatibility: entries without timestamp are kept
+                    if (!entry.timestamp) return true;
+                    return (now - entry.timestamp) < this.maxAge;
+                });
+                // Save filtered history if anything was removed
+                if (filtered.length !== history.length) {
+                    localStorage.setItem(this.storageKey, JSON.stringify(filtered));
+                }
+                return filtered;
             } catch (e) {
                 return [];
             }
@@ -619,6 +632,29 @@
     // Socket.IO Event Handlers
     socket.on('connect', () => {
         console.log('Connected to server');
+        const reconnectBar = document.getElementById('reconnectBar');
+        if (reconnectBar && reconnectBar.style.display !== 'none') {
+            reconnectBar.style.display = 'none';
+            showNotification('Reconnected!', 'success', 2000);
+        }
+    });
+
+    // Keep-alive to prevent session timeout
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('keep_alive');
+        }
+    }, 60000);
+
+    // Reconnect attempt handler
+    socket.io.on('reconnect_attempt', (attempt) => {
+        const reconnectBar = document.getElementById('reconnectBar');
+        if (reconnectBar) {
+            const textEl = reconnectBar.querySelector('.reconnect-text');
+            if (textEl) {
+                textEl.textContent = `Connection lost. Reconnecting... (attempt ${attempt})`;
+            }
+        }
     });
 
     socket.on('connected', (data) => {
@@ -630,6 +666,10 @@
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
         showNotification('Disconnected from server', 'error');
+        const reconnectBar = document.getElementById('reconnectBar');
+        if (reconnectBar) {
+            reconnectBar.style.display = 'flex';
+        }
     });
 
     socket.on('ssh_connected', (data) => {
@@ -637,6 +677,16 @@
 
         if (data.client_request_id) {
             SessionManager.clearPendingConnection(data.client_request_id);
+        }
+
+        // Stop connection timer
+        if (connectTimer) {
+            clearInterval(connectTimer);
+            connectTimer = null;
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn) {
+                connectBtn.textContent = 'Connect';
+            }
         }
 
         setConnectLoading(false);
@@ -687,6 +737,17 @@
     socket.on('ssh_error', (data) => {
         console.error('SSH error:', data);
         showNotification(`SSH Error: ${data.error}`, 'error');
+
+        // Stop connection timer
+        if (connectTimer) {
+            clearInterval(connectTimer);
+            connectTimer = null;
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn) {
+                connectBtn.textContent = 'Connect';
+            }
+        }
+
         setConnectLoading(false);
         const requestId = data.client_request_id || currentConnectRequestId;
         if (requestId) {
@@ -705,6 +766,10 @@
         showNotification(`Session disconnected: ${data.reason}`, 'warning');
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
         FileTransferManager.updateSessionSelects();
+    });
+
+    socket.on('session_timeout_warning', (data) => {
+        showNotification(`Session "${data.session_id.substr(0,8)}..." will timeout in 2 minutes due to inactivity. Type anything to keep alive.`, 'warning', 10000);
     });
 
     socket.on('profiles_list', (data) => {
@@ -761,6 +826,8 @@
     let pendingPaneIndex = null;
     const pendingPaneQueue = [];
     const pendingRequestPaneMap = new Map();
+    let connectTimer = null;
+    let connectSeconds = 0;
 
     function openConnectionModalForPane(paneIndex) {
         pendingPaneIndex = paneIndex;
@@ -1087,11 +1154,17 @@
 
         const startResize = (e) => {
             isResizing = true;
-            startX = e.clientX;
+            // Support both mouse and touch via pointer events
+            startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
             startNotepadWidth = notepadPanel.offsetWidth;
 
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
+
+            // Capture pointer for reliable tracking
+            if (e.pointerId !== undefined) {
+                handle.setPointerCapture(e.pointerId);
+            }
 
             e.preventDefault();
         };
@@ -1101,7 +1174,9 @@
                 return;
             }
 
-            const deltaX = e.clientX - startX;
+            // Support both mouse and touch via pointer events
+            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+            const deltaX = clientX - startX;
             const workspaceWidth = workspace.offsetWidth;
 
             // Calculate new widths
@@ -1160,12 +1235,39 @@
             }
         };
 
-        handle.addEventListener('mousedown', startResize);
-        document.addEventListener('mousemove', resize);
-        document.addEventListener('mouseup', stopResize);
+        // Use pointer events for combined mouse + touch support
+        handle.addEventListener('pointerdown', startResize);
+        document.addEventListener('pointermove', resize);
+        document.addEventListener('pointerup', stopResize);
+        document.addEventListener('pointercancel', stopResize);
+
+        // Prevent default touch behavior on handle for smoother dragging
+        handle.style.touchAction = 'none';
 
         // Load saved layout on init
         loadLayout();
+
+        // Notepad collapse toggle
+        const notepadToggle = document.getElementById('notepadToggle');
+        if (notepadToggle && notepadPanel) {
+            // Restore collapsed state
+            if (localStorage.getItem('notepadCollapsed') === 'true') {
+                notepadPanel.classList.add('collapsed');
+                notepadToggle.textContent = '▶';
+            }
+            notepadToggle.addEventListener('click', () => {
+                notepadPanel.classList.toggle('collapsed');
+                const isCollapsed = notepadPanel.classList.contains('collapsed');
+                notepadToggle.textContent = isCollapsed ? '▶' : '◀';
+                localStorage.setItem('notepadCollapsed', isCollapsed);
+                // Trigger terminal refit after animation
+                setTimeout(() => {
+                    if (window.TerminalManager) {
+                        TerminalManager.fitAllTerminals();
+                    }
+                }, 300);
+            });
+        }
 
         // Double-click to reset to default
         handle.addEventListener('dblclick', () => {
@@ -1290,6 +1392,16 @@
             { keys: 'Ctrl+K', label: 'Open Command Palette' },
             { keys: 'Ctrl+?', label: 'Show Shortcuts' },
             { keys: 'Ctrl+Shift+N', label: 'New Connection' },
+            { keys: 'Ctrl+F', label: 'Search in Terminal' },
+            { keys: 'Ctrl+1-9', label: 'Switch to tab 1-9' },
+            { keys: 'Ctrl+Tab', label: 'Next tab' },
+            { keys: 'Ctrl+Shift+Tab', label: 'Previous tab' },
+            { keys: 'F2', label: 'Rename file (in File Manager)' },
+            { keys: 'F5', label: 'Transfer file (in File Manager)' },
+            { keys: 'F7', label: 'New folder (in File Manager)' },
+            { keys: 'Delete', label: 'Delete selected (in File Manager)' },
+            { keys: 'Tab', label: 'Switch pane (in File Manager)' },
+            { keys: 'Ctrl+A', label: 'Select all (in File Manager)' },
             { keys: 'Esc', label: 'Close modals' }
         ];
         if (!list) {
@@ -1406,6 +1518,17 @@
     let openPalette = null;
 
     document.addEventListener('DOMContentLoaded', () => {
+        // Create reconnect bar (once, at init)
+        const reconnectBar = document.createElement('div');
+        reconnectBar.id = 'reconnectBar';
+        reconnectBar.className = 'reconnect-bar';
+        reconnectBar.style.display = 'none';
+        reconnectBar.innerHTML = '<span class="reconnect-text">Connection lost. Reconnecting...</span>';
+        const header = document.querySelector('.header');
+        if (header) {
+            header.after(reconnectBar);
+        }
+
         // Initialize SessionManager for session restore
         SessionManager.init();
 
@@ -1498,6 +1621,16 @@
             } else {
                 connectionData.key_id = keyId;
             }
+
+            // Start connection timer feedback
+            const connectBtn = document.getElementById('connectBtn');
+            const originalText = connectBtn.textContent;
+            connectSeconds = 0;
+            connectBtn.textContent = 'Connecting... 0s';
+            connectTimer = setInterval(() => {
+                connectSeconds++;
+                connectBtn.textContent = `Connecting... ${connectSeconds}s`;
+            }, 1000);
 
             socket.emit('ssh_connect', connectionData);
             setConnectLoading(true);
@@ -1596,7 +1729,19 @@
         document.getElementById('logoutBtn').addEventListener('click', () => {
             const message = window.i18n ? i18n.t('auth.logoutConfirm') : 'Are you sure you want to logout? Active SSH sessions will be preserved.';
             if (confirm(message)) {
-                window.location.href = '/logout';
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/logout';
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                if (csrfToken) {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'csrf_token';
+                    input.value = csrfToken;
+                    form.appendChild(input);
+                }
+                document.body.appendChild(form);
+                form.submit();
             }
         });
 
@@ -1612,6 +1757,12 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            // Skip shortcuts when typing in form inputs (except F1/Escape)
+            const tag = document.activeElement?.tagName;
+            if ((tag === 'INPUT' || tag === 'TEXTAREA') && e.key !== 'F1' && e.key !== 'Escape') {
+                return;
+            }
+
             // F1: Open Command Library
             if (e.key === 'F1') {
                 e.preventDefault();
@@ -1647,6 +1798,29 @@
             if (e.ctrlKey && e.shiftKey && e.key === 'N') {
                 e.preventDefault();
                 document.getElementById('newConnectionBtn').click();
+            }
+
+            // Ctrl+1-9: Switch to tab by index
+            if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+                e.preventDefault();
+                const index = parseInt(e.key) - 1;
+                const tabs = document.querySelectorAll('.session-tab');
+                if (tabs[index]) {
+                    tabs[index].click();
+                }
+            }
+
+            // Ctrl+Tab / Ctrl+Shift+Tab: Next/Previous tab
+            if (e.ctrlKey && e.key === 'Tab') {
+                e.preventDefault();
+                const tabs = Array.from(document.querySelectorAll('.session-tab'));
+                const activeIndex = tabs.findIndex(t => t.classList.contains('active'));
+                if (tabs.length > 0) {
+                    const nextIndex = e.shiftKey
+                        ? (activeIndex - 1 + tabs.length) % tabs.length
+                        : (activeIndex + 1) % tabs.length;
+                    tabs[nextIndex].click();
+                }
             }
 
             // Escape: Close modals and search bar
