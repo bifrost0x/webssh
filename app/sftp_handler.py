@@ -753,10 +753,10 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
         return success, error
 
     except Exception as e:
-        error_msg = str(e)
+        log_error("S2S transfer failed", error=str(e), transfer_id=transfer_id)
         if socketio_instance and user_room:
             socketio_instance.emit('s2s_transfer_error', {
                 'transfer_id': transfer_id,
-                'error': error_msg
+                'error': 'Transfer failed'
             }, room=user_room)
-        return False, error_msg
+        return False, "Transfer failed"
