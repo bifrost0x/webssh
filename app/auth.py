@@ -6,7 +6,6 @@ from .models import db, User, SocketSession
 
 login_manager = LoginManager()
 
-
 class RateLimiter:
     """
     Simple in-memory rate limiter.
@@ -41,7 +40,6 @@ class RateLimiter:
 
         queue.append(now)
 
-        # Memory leak fix: clean up stale empty queues from other keys
         if len(self.events) > 50:
             stale = [k for k, q in self.events.items() if not q]
             for k in stale:
@@ -49,9 +47,7 @@ class RateLimiter:
 
         return True
 
-
 _rate_limiter = RateLimiter()
-
 
 def parse_rate_limit(limit_str, default_limit=5, default_window=60):
     """Parse rate limit strings like '5 per minute'."""
@@ -73,7 +69,6 @@ def parse_rate_limit(limit_str, default_limit=5, default_window=60):
         return limit, window
     except (ValueError, IndexError):
         return default_limit, default_window
-
 
 def check_rate_limit(ip_address, endpoint, limit_str):
     """Return True if request should be blocked."""
@@ -166,15 +161,11 @@ def get_user_from_socket(socket_sid):
     """
     socket_session = SocketSession.query.filter_by(socket_sid=socket_sid).first()
     if socket_session:
-        # Debounce: only update last_activity if >30s since last update.
-        # Writing to SQLite on every socket event blocks the eventlet event loop
-        # because SQLite's C extension doesn't yield to greenthreads.
         import time as _time
         now = datetime.now(timezone.utc)
         last = socket_session.last_activity
         needs_update = not last
         if not needs_update and last:
-            # Handle both naive and aware datetimes from SQLite
             if last.tzinfo is None:
                 last = last.replace(tzinfo=timezone.utc)
             needs_update = (now - last).total_seconds() > 30

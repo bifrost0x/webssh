@@ -15,7 +15,6 @@ from . import sftp_handler
 socketio = SocketIO()
 csrf = CSRFProtect()
 
-
 def get_client_ip():
     """
     Get the real client IP address.
@@ -26,9 +25,7 @@ def get_client_ip():
 
     Returns the IP address that should be used for rate limiting.
     """
-    # ProxyFix middleware sets request.remote_addr to the real client IP
     return request.remote_addr or 'unknown'
-
 
 def create_app():
     base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -37,29 +34,23 @@ def create_app():
     app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     app.config.from_object(config)
 
-    # SECURITY: Enable ProxyFix for trusted reverse proxy deployments
-    # This ensures X-Forwarded-For header is respected for rate limiting
-    # Set TRUSTED_PROXIES=1 (or number of proxies) when behind a reverse proxy
     trusted_proxies = int(os.environ.get('TRUSTED_PROXIES', '0'))
     if trusted_proxies > 0:
         app.wsgi_app = ProxyFix(
             app.wsgi_app,
-            x_for=trusted_proxies,  # Trust X-Forwarded-For
-            x_proto=trusted_proxies,  # Trust X-Forwarded-Proto
-            x_host=trusted_proxies,  # Trust X-Forwarded-Host
-            x_prefix=trusted_proxies  # Trust X-Forwarded-Prefix
+            x_for=trusted_proxies,
+            x_proto=trusted_proxies,
+            x_host=trusted_proxies,
+            x_prefix=trusted_proxies
         )
         log_info(f"ProxyFix enabled with {trusted_proxies} trusted proxy level(s)")
 
-    # SECURITY: Production readiness checks
     if not config.DEBUG:
-        # Check SECRET_KEY is not default/weak
         if not os.environ.get('SECRET_KEY'):
             log_error("CRITICAL: SECRET_KEY not set in environment variables! "
                       "Using auto-generated SECRET_KEY will break sessions after restart. "
                       "Set SECRET_KEY environment variable for production deployment!")
 
-        # Check CORS is not wildcard (unless explicitly allowed)
         if config.CORS_ORIGINS == '*' and not os.environ.get('ALLOW_CORS_WILDCARD', '').lower() == 'true':
             log_warning("CORS_ORIGINS set to wildcard (*) in production mode! "
                         "This allows any domain to access your API - significant security risk. "
@@ -86,16 +77,14 @@ def create_app():
         async_mode=config.SOCKETIO_ASYNC_MODE,
         ping_timeout=config.SOCKETIO_PING_TIMEOUT,
         ping_interval=config.SOCKETIO_PING_INTERVAL,
-        max_http_buffer_size=110 * 1024 * 1024,  # 110MB (buffer for Base64 overhead)
+        max_http_buffer_size=110 * 1024 * 1024,
         logger=False,
         engineio_logger=False
     )
 
-    # Security Headers Middleware
     @app.after_request
     def add_security_headers(response):
         """Add comprehensive security headers to all responses."""
-        # Content Security Policy
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
@@ -107,22 +96,16 @@ def create_app():
             "frame-ancestors 'none';"
         )
 
-        # Prevent clickjacking
         response.headers['X-Frame-Options'] = 'DENY'
 
-        # Prevent MIME type sniffing
         response.headers['X-Content-Type-Options'] = 'nosniff'
 
-        # XSS Protection
         response.headers['X-XSS-Protection'] = '1; mode=block'
 
-        # Referrer Policy
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
-        # Permissions Policy
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 
-        # HSTS (only if not in debug mode)
         if not config.DEBUG:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
@@ -130,18 +113,16 @@ def create_app():
 
     from . import socket_events, command_manager
 
-    # Background session cleanup
     def setup_background_tasks():
         """Setup background tasks like session cleanup."""
         import threading
         from .auth import cleanup_inactive_socket_sessions
         from .ssh_manager import cleanup_idle_sessions
 
-        # DB session cleanup (runs every 30 minutes)
         def db_cleanup_task():
             while True:
                 import time
-                time.sleep(1800)  # 30 minutes
+                time.sleep(1800)
                 try:
                     with app.app_context():
                         deleted = cleanup_inactive_socket_sessions(timeout_minutes=30)
@@ -150,7 +131,6 @@ def create_app():
                 except Exception as e:
                     log_error(f"Session cleanup error", error=str(e))
 
-        # SSH idle session cleanup (runs every 60 seconds)
         def ssh_cleanup_task():
             while True:
                 import time
@@ -194,7 +174,7 @@ def create_app():
             password = request.form.get('password')
             user, error = authenticate_user(username, password)
             if user:
-                session.clear()  # Prevent session fixation attacks
+                session.clear()
                 login_user(user, remember=True)
                 log_login_attempt(username, True, client_ip, request.user_agent.string)
                 return redirect(url_for('index'))
@@ -230,7 +210,7 @@ def create_app():
             else:
                 user, error = register_user(username, password)
                 if user:
-                    session.clear()  # Prevent session fixation attacks
+                    session.clear()
                     login_user(user)
                     log_registration(username, True, client_ip)
                     flash('Account created successfully!', 'success')
@@ -288,13 +268,11 @@ def create_app():
             if not all([file, session_id, remote_path]):
                 return jsonify({'error': 'Missing required fields'}), 400
 
-            # Size check
             file_data = file.read()
             if len(file_data) > config.MAX_UPLOAD_SIZE:
                 max_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
                 return jsonify({'error': f'File too large. Maximum: {max_mb}MB'}), 413
 
-            # Verify session ownership
             from .socket_events import verify_session_ownership
             from . import connection_pool
             if not verify_session_ownership(session_id, current_user.id):
@@ -302,7 +280,6 @@ def create_app():
                 if not conn_info or conn_info['user_id'] != str(current_user.id):
                     return jsonify({'error': 'Unauthorized'}), 403
 
-            # Upload via SFTP
             chunk_size = 65536
             chunks = [file_data[i:i+chunk_size] for i in range(0, len(file_data), chunk_size)]
 

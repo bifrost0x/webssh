@@ -19,7 +19,6 @@ def get_user_keys_dir(user_id):
     os.chmod(keys_dir, 0o700)
     return keys_dir
 
-
 def get_user_keys_file(user_id):
     """Get the keys metadata file path for a specific user."""
     keys_dir = get_user_keys_dir(user_id)
@@ -70,7 +69,6 @@ def save_key(user_id, name, key_content):
         if not key_type:
             return None, "Invalid key format"
 
-        # SECURITY: Write key encrypted at rest
         if not key_encryption.write_key_content(str(user_id), str(key_path), key_content):
             return None, "Failed to encrypt and save key"
 
@@ -79,7 +77,7 @@ def save_key(user_id, name, key_content):
             'name': name,
             'filename': filename,
             'key_type': key_type,
-            'encrypted': True,  # Mark as encrypted
+            'encrypted': True,
             'uploaded_at': datetime.utcnow().isoformat()
         }
         keys = load_keys(user_id)
@@ -106,7 +104,6 @@ def get_key_path(user_id, key_id):
             return str(keys_dir / key['filename'])
     return None
 
-
 def get_key(user_id, key_id):
     """Get key metadata by ID for a specific user."""
     keys = load_keys(user_id)
@@ -114,7 +111,6 @@ def get_key(user_id, key_id):
         if key['id'] == key_id:
             return key
     return None
-
 
 def read_key_content(user_id, key_id):
     """
@@ -135,7 +131,6 @@ def read_key_content(user_id, key_id):
         if not key_path:
             return None, "Key not found"
 
-        # Use key_encryption to read (handles both encrypted and legacy keys)
         content = key_encryption.read_key_content(str(user_id), key_path)
         return content, None
 
@@ -144,7 +139,6 @@ def read_key_content(user_id, key_id):
     except Exception as e:
         log_error(f"Error reading key content", user_id=user_id, key_id=key_id, error=str(e))
         return None, f"Failed to read key: {str(e)}"
-
 
 def delete_key(user_id, key_id):
     """Delete an SSH key and its metadata for a specific user."""
@@ -184,4 +178,3 @@ def detect_key_type(key_content):
         return 'Ed25519/Generic'
     else:
         return None
-

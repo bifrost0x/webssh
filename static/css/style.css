@@ -1,7 +1,4 @@
-/* Modern UI - Web SSH Terminal */
-/* ============================== */
 
-/* Global Styles & Reset */
 * {
     margin: 0;
     padding: 0;
@@ -10,7 +7,7 @@
 }
 
 :root {
-    /* Dark Theme with Modern Accents */
+
     --bg-primary: #0d1117;
     --bg-secondary: #161b22;
     --bg-tertiary: #1c2128;
@@ -18,50 +15,42 @@
     --bg-modal: rgba(22, 27, 34, 0.95);
     --bg-gradient: linear-gradient(135deg, #0d1117 0%, #1a1f2e 100%);
 
-    /* Text Colors */
     --text-primary: #e6edf3;
     --text-secondary: #8b949e;
     --text-muted: #6e7681;
 
-    /* Border & Dividers */
     --border-color: #30363d;
     --border-hover: #3d444d;
 
-    /* Accent Colors - Cyberpunk Inspired */
     --accent-primary: #58a6ff;
     --accent-primary-glow: rgba(88, 166, 255, 0.4);
     --accent-secondary: #bc8cff;
     --accent-tertiary: #56d364;
 
-    /* Status Colors */
     --success-color: #3fb950;
-    --success-glow: rgba(63, 185, 80, 0.4);
+    --success-glow: color-mix(in srgb, var(--success-color) 40%, transparent);
     --warning-color: #d29922;
-    --warning-glow: rgba(210, 153, 34, 0.4);
+    --warning-glow: color-mix(in srgb, var(--warning-color) 40%, transparent);
     --error-color: #f85149;
-    --error-glow: rgba(248, 81, 73, 0.4);
+    --error-glow: color-mix(in srgb, var(--error-color) 40%, transparent);
     --info-color: #58a6ff;
 
-    /* Button Gradient Endpoints (theme-aware) */
     --btn-primary-gradient-end: #4078c0;
     --btn-primary-text: #ffffff;
     --btn-danger-gradient-end: #c93030;
     --btn-danger-text: #ffffff;
     --btn-primary-shadow: rgba(88, 166, 255, 0.3);
     --btn-primary-shadow-hover: rgba(88, 166, 255, 0.4);
-    --accent-on-text: #ffffff; /* Text color when shown on accent-colored backgrounds */
+    --accent-on-text: #ffffff; 
 
-    /* Shadows & Glows */
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
     --shadow-glow: 0 0 20px var(--accent-primary-glow);
 
-    /* Typography */
     --font-sans: "Sora", "Space Grotesk", "Syne", "Noto Sans", sans-serif;
     --font-mono: "IBM Plex Mono", "JetBrains Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors (16-color palette) */
     --term-background: #1c2128;
     --term-foreground: #e6edf3;
     --term-black: #484848;
@@ -81,10 +70,8 @@
     --term-bright-cyan: #7ccbd4;
     --term-bright-white: #ffffff;
 
-    /* Active background (used in SFTP file manager) */
     --bg-active: rgba(88, 166, 255, 0.15);
 
-    /* Mobile/Touch Variables */
     --touch-target-min: 44px;
     --font-size-mobile: 12px;
     --font-size-tablet: 13px;
@@ -98,7 +85,7 @@ body {
     overflow: hidden;
     overflow-x: hidden !important;
     height: 100vh;
-    height: 100dvh; /* Dynamic viewport height for mobile */
+    height: 100dvh; 
     display: flex;
     flex-direction: column;
     overscroll-behavior: none;
@@ -115,7 +102,6 @@ html {
     max-width: 100vw;
 }
 
-/* Mobile: Enable scrolling and fix layout */
 @media (max-width: 767px) {
     html {
         overflow-y: auto;
@@ -134,7 +120,7 @@ html {
 }
 
 body[data-theme="retro"] {
-    /* Backgrounds */
+
     --bg-primary: #0d0a15;
     --bg-secondary: #151220;
     --bg-tertiary: #1d1a2c;
@@ -143,27 +129,22 @@ body[data-theme="retro"] {
     --bg-gradient: radial-gradient(circle at 30% 15%, #3d2415 0%, #1f1534 30%, #0d0a15 60%, #080610 100%);
     --bg-active: rgba(255, 180, 84, 0.18);
 
-    /* Text Colors */
     --text-primary: #fff4e8;
     --text-secondary: #d4bfa6;
     --text-muted: #8a7566;
 
-    /* Borders */
     --border-color: #3a2f28;
     --border-hover: #54453a;
 
-    /* Accent Colors - Amber, Blue, Green */
     --accent-primary: #ffb454;
     --accent-primary-glow: rgba(255, 180, 84, 0.4);
     --accent-secondary: #62b3ff;
     --accent-tertiary: #7bffb3;
 
-    /* Status Colors */
     --success-color: #7bffb3;
     --warning-color: #ffd166;
     --error-color: #ff8875;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #d48a30;
     --btn-primary-text: #000000;
     --btn-primary-shadow: rgba(255, 180, 84, 0.35);
@@ -172,11 +153,9 @@ body[data-theme="retro"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #000000;
 
-    /* Fonts */
     --font-sans: "Syne", "Sora", "Space Grotesk", sans-serif;
     --font-mono: "Source Code Pro", "IBM Plex Mono", "JetBrains Mono", monospace;
 
-    /* Terminal ANSI Colors - Warm Vintage CRT */
     --term-background: #1d1a2c;
     --term-foreground: #fff4e8;
     --term-black: #2a2230;
@@ -198,7 +177,7 @@ body[data-theme="retro"] {
 }
 
 body[data-theme="solar"] {
-    /* Backgrounds */
+
     --bg-primary: #0a0e18;
     --bg-secondary: #0f1524;
     --bg-tertiary: #151d30;
@@ -207,27 +186,22 @@ body[data-theme="solar"] {
     --bg-gradient: radial-gradient(circle at 85% 8%, #2a3d5a 0%, #1a2438 35%, #0a0e18 65%, #060810 100%);
     --bg-active: rgba(110, 168, 255, 0.16);
 
-    /* Text Colors */
     --text-primary: #eef5ff;
     --text-secondary: #b8cdeb;
     --text-muted: #6a7d9a;
 
-    /* Borders */
     --border-color: #283a52;
     --border-hover: #364b68;
 
-    /* Accent Colors - Blue, Gold, Teal */
     --accent-primary: #6ea8ff;
     --accent-primary-glow: rgba(110, 168, 255, 0.38);
     --accent-secondary: #ffd166;
     --accent-tertiary: #7ee0c4;
 
-    /* Status Colors */
     --success-color: #7ee0c4;
     --warning-color: #ffd166;
     --error-color: #ff8875;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #4a80cc;
     --btn-primary-text: #ffffff;
     --btn-primary-shadow: rgba(110, 168, 255, 0.32);
@@ -236,11 +210,9 @@ body[data-theme="solar"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #ffffff;
 
-    /* Fonts */
     --font-sans: "Syne", "Sora", "Space Grotesk", sans-serif;
     --font-mono: "Source Code Pro", "IBM Plex Mono", "JetBrains Mono", monospace;
 
-    /* Terminal ANSI Colors - Balanced Warm/Cool */
     --term-background: #151d30;
     --term-foreground: #eef5ff;
     --term-black: #2a3444;
@@ -262,7 +234,7 @@ body[data-theme="solar"] {
 }
 
 body[data-theme="paper"] {
-    /* Backgrounds */
+
     --bg-primary: #f8f4ec;
     --bg-secondary: #f2ede3;
     --bg-tertiary: #ebe4d8;
@@ -271,27 +243,22 @@ body[data-theme="paper"] {
     --bg-gradient: linear-gradient(150deg, #faf6ee 0%, #f0e8da 50%, #ebe2cf 100%);
     --bg-active: rgba(199, 125, 72, 0.14);
 
-    /* Text Colors */
     --text-primary: #2d2621;
     --text-secondary: #5e554c;
     --text-muted: #8e847a;
 
-    /* Borders */
     --border-color: #d4cbbf;
     --border-hover: #bdb2a3;
 
-    /* Accent Colors - Burnt Orange, Steel Blue, Forest Green */
     --accent-primary: #c77d48;
     --accent-primary-glow: rgba(199, 125, 72, 0.28);
     --accent-secondary: #6a8caf;
     --accent-tertiary: #6aa84f;
 
-    /* Status Colors */
     --success-color: #5b9a42;
     --warning-color: #c29316;
     --error-color: #c84638;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #a66338;
     --btn-primary-text: #ffffff;
     --btn-primary-shadow: rgba(199, 125, 72, 0.28);
@@ -300,16 +267,13 @@ body[data-theme="paper"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #ffffff;
 
-    /* Light Theme Shadows */
     --shadow-sm: 0 1px 3px rgba(45, 38, 33, 0.08);
     --shadow-md: 0 4px 12px rgba(45, 38, 33, 0.1);
     --shadow-lg: 0 8px 24px rgba(45, 38, 33, 0.12);
 
-    /* Fonts */
     --font-sans: "Space Grotesk", "Sora", "Noto Sans", sans-serif;
     --font-mono: "JetBrains Mono", "IBM Plex Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors - Warm Sepia Tones */
     --term-background: #ebe4d8;
     --term-foreground: #2d2621;
     --term-black: #4a3f38;
@@ -331,7 +295,7 @@ body[data-theme="paper"] {
 }
 
 body[data-theme="noir"] {
-    /* Backgrounds */
+
     --bg-primary: #06080d;
     --bg-secondary: #0c0f18;
     --bg-tertiary: #111620;
@@ -340,27 +304,22 @@ body[data-theme="noir"] {
     --bg-gradient: linear-gradient(145deg, #06080d 0%, #0d1120 40%, #0a0e1a 100%);
     --bg-active: rgba(127, 145, 255, 0.15);
 
-    /* Text Colors */
     --text-primary: #eff3fc;
     --text-secondary: #a8b2ca;
     --text-muted: #606b84;
 
-    /* Borders */
     --border-color: #1c2840;
     --border-hover: #283a58;
 
-    /* Accent Colors - Periwinkle, Teal, Warm Rose */
     --accent-primary: #7f91ff;
     --accent-primary-glow: rgba(127, 145, 255, 0.38);
     --accent-secondary: #4de6c4;
     --accent-tertiary: #ff8fa3;
 
-    /* Status Colors */
     --success-color: #4de6c4;
     --warning-color: #ffc769;
     --error-color: #ff8fa3;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #5a6acc;
     --btn-primary-text: #ffffff;
     --btn-primary-shadow: rgba(127, 145, 255, 0.35);
@@ -369,11 +328,9 @@ body[data-theme="noir"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #ffffff;
 
-    /* Fonts */
     --font-sans: "Syne", "Sora", "Space Grotesk", sans-serif;
     --font-mono: "IBM Plex Mono", "JetBrains Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors - Moody Cool */
     --term-background: #111620;
     --term-foreground: #eff3fc;
     --term-black: #1c2433;
@@ -394,9 +351,8 @@ body[data-theme="noir"] {
     --term-bright-white: #ffffff;
 }
 
-/* Arctic Ice - Cool teals reminiscent of Arctic ice */
 body[data-theme="arctic-ice"] {
-    /* Backgrounds */
+
     --bg-primary: #0a1316;
     --bg-secondary: #0f1b20;
     --bg-tertiary: #14252c;
@@ -405,27 +361,22 @@ body[data-theme="arctic-ice"] {
     --bg-gradient: linear-gradient(160deg, #0a1316 0%, #0f2838 45%, #164e63 100%);
     --bg-active: rgba(6, 182, 212, 0.16);
 
-    /* Text Colors */
     --text-primary: #ecf8fb;
     --text-secondary: #a8d4de;
     --text-muted: #649099;
 
-    /* Borders */
     --border-color: #1e3b48;
     --border-hover: #2d5260;
 
-    /* Accent Colors - Cyan, Soft Purple, Pale Gold */
     --accent-primary: #06b6d4;
     --accent-primary-glow: rgba(6, 182, 212, 0.38);
     --accent-secondary: #a78bfa;
     --accent-tertiary: #fde68a;
 
-    /* Status Colors */
     --success-color: #4de6c4;
     --warning-color: #fde68a;
     --error-color: #ff8fa3;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #0891a8;
     --btn-primary-text: #ffffff;
     --btn-primary-shadow: rgba(6, 182, 212, 0.35);
@@ -434,11 +385,9 @@ body[data-theme="arctic-ice"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #000000;
 
-    /* Fonts */
     --font-sans: "Syne", "Sora", "Space Grotesk", sans-serif;
     --font-mono: "IBM Plex Mono", "JetBrains Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors - Cool with Frost */
     --term-background: #14252c;
     --term-foreground: #ecf8fb;
     --term-black: #1c2d36;
@@ -459,9 +408,8 @@ body[data-theme="arctic-ice"] {
     --term-bright-white: #ffffff;
 }
 
-/* Rose Gold - Elegant pink golds */
 body[data-theme="rose-gold"] {
-    /* Backgrounds */
+
     --bg-primary: #160a10;
     --bg-secondary: #200e18;
     --bg-tertiary: #2c1320;
@@ -470,27 +418,22 @@ body[data-theme="rose-gold"] {
     --bg-gradient: linear-gradient(145deg, #160a10 0%, #2c1320 40%, #4a1d2b 100%);
     --bg-active: rgba(244, 63, 94, 0.18);
 
-    /* Text Colors */
     --text-primary: #fff2f6;
     --text-secondary: #edbcc8;
     --text-muted: #b07888;
 
-    /* Borders */
     --border-color: #4d2233;
     --border-hover: #662d42;
 
-    /* Accent Colors - Rose, Gold, Soft Teal */
     --accent-primary: #f43f5e;
     --accent-primary-glow: rgba(244, 63, 94, 0.4);
     --accent-secondary: #fbbf24;
     --accent-tertiary: #5eead4;
 
-    /* Status Colors */
     --success-color: #5eead4;
     --warning-color: #fbbf24;
     --error-color: #f87171;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #c4304a;
     --btn-primary-text: #ffffff;
     --btn-primary-shadow: rgba(244, 63, 94, 0.35);
@@ -499,11 +442,9 @@ body[data-theme="rose-gold"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #ffffff;
 
-    /* Fonts */
     --font-sans: "Sora", "Syne", "Space Grotesk", sans-serif;
     --font-mono: "JetBrains Mono", "IBM Plex Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors - Warm Romantic */
     --term-background: #2c1320;
     --term-foreground: #fff2f6;
     --term-black: #3a1f2b;
@@ -524,9 +465,8 @@ body[data-theme="rose-gold"] {
     --term-bright-white: #ffffff;
 }
 
-/* Cyberpunk Neon - Bright neon purples and pinks */
 body[data-theme="cyberpunk-neon"] {
-    /* Backgrounds */
+
     --bg-primary: #0d0815;
     --bg-secondary: #130e1e;
     --bg-tertiary: #1a1428;
@@ -535,27 +475,22 @@ body[data-theme="cyberpunk-neon"] {
     --bg-gradient: radial-gradient(circle at 15% 85%, #4a0f70 0%, #1f0d38 35%, #0d0815 65%, #080510 100%);
     --bg-active: rgba(217, 70, 239, 0.2);
 
-    /* Text Colors */
     --text-primary: #fbf3ff;
     --text-secondary: #dcc0f0;
     --text-muted: #9a75b8;
 
-    /* Borders */
     --border-color: #331c4c;
     --border-hover: #4a2868;
 
-    /* Accent Colors - Magenta, Electric Cyan, Acid Green */
     --accent-primary: #d946ef;
     --accent-primary-glow: rgba(217, 70, 239, 0.5);
     --accent-secondary: #00e5ff;
     --accent-tertiary: #b8ff57;
 
-    /* Status Colors */
     --success-color: #b8ff57;
     --warning-color: #ffba00;
     --error-color: #ff3366;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #a830c0;
     --btn-primary-text: #ffffff;
     --btn-primary-shadow: rgba(217, 70, 239, 0.4);
@@ -564,11 +499,9 @@ body[data-theme="cyberpunk-neon"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #000000;
 
-    /* Fonts */
     --font-sans: "Syne", "Space Grotesk", "Sora", sans-serif;
     --font-mono: "JetBrains Mono", "IBM Plex Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors - Neon Saturated */
     --term-background: #1a1428;
     --term-foreground: #fbf3ff;
     --term-black: #2a1c38;
@@ -589,9 +522,8 @@ body[data-theme="cyberpunk-neon"] {
     --term-bright-white: #ffffff;
 }
 
-/* Emerald Matrix - Matrix-inspired greens */
 body[data-theme="emerald-matrix"] {
-    /* Backgrounds */
+
     --bg-primary: #050c0a;
     --bg-secondary: #081410;
     --bg-tertiary: #0b1c18;
@@ -600,27 +532,22 @@ body[data-theme="emerald-matrix"] {
     --bg-gradient: linear-gradient(155deg, #050c0a 0%, #0b1c18 45%, #065f46 100%);
     --bg-active: rgba(16, 185, 129, 0.18);
 
-    /* Text Colors */
     --text-primary: #ebfff6;
     --text-secondary: #aeecd8;
     --text-muted: #62ac94;
 
-    /* Borders */
     --border-color: #133a2c;
     --border-hover: #1d5240;
 
-    /* Accent Colors - Emerald, Amber, Cyan */
     --accent-primary: #10b981;
     --accent-primary-glow: rgba(16, 185, 129, 0.4);
     --accent-secondary: #f59e0b;
     --accent-tertiary: #06b6d4;
 
-    /* Status Colors */
     --success-color: #4ade80;
     --warning-color: #f59e0b;
     --error-color: #ff6b6b;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #0a8f64;
     --btn-primary-text: #000000;
     --btn-primary-shadow: rgba(16, 185, 129, 0.35);
@@ -629,11 +556,9 @@ body[data-theme="emerald-matrix"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #000000;
 
-    /* Fonts */
     --font-sans: "Space Grotesk", "Sora", "Syne", sans-serif;
     --font-mono: "Source Code Pro", "IBM Plex Mono", "JetBrains Mono", monospace;
 
-    /* Terminal ANSI Colors - Matrix Green-Biased */
     --term-background: #0b1c18;
     --term-foreground: #ebfff6;
     --term-black: #1a2a26;
@@ -654,9 +579,8 @@ body[data-theme="emerald-matrix"] {
     --term-bright-white: #ffffff;
 }
 
-/* Obsidian - Pure dark high contrast theme */
 body[data-theme="obsidian"] {
-    /* Backgrounds */
+
     --bg-primary: #000000;
     --bg-secondary: #0b0b0b;
     --bg-tertiary: #151515;
@@ -665,27 +589,22 @@ body[data-theme="obsidian"] {
     --bg-gradient: linear-gradient(145deg, #000000 0%, #0d0d0d 50%, #1a1a1a 100%);
     --bg-active: rgba(255, 255, 255, 0.12);
 
-    /* Text Colors */
     --text-primary: #ffffff;
     --text-secondary: #b8b8b8;
     --text-muted: #757575;
 
-    /* Borders */
     --border-color: #2d2d2d;
     --border-hover: #404040;
 
-    /* Accent Colors - White, Red, Amber */
     --accent-primary: #ffffff;
     --accent-primary-glow: rgba(255, 255, 255, 0.28);
     --accent-secondary: #ef4444;
     --accent-tertiary: #f59e0b;
 
-    /* Status Colors */
     --success-color: #10b981;
     --warning-color: #f59e0b;
     --error-color: #ef4444;
 
-    /* Button Theming */
     --btn-primary-gradient-end: #c4c4c4;
     --btn-primary-text: #000000;
     --btn-primary-shadow: rgba(255, 255, 255, 0.18);
@@ -694,11 +613,9 @@ body[data-theme="obsidian"] {
     --btn-danger-text: #ffffff;
     --accent-on-text: #000000;
 
-    /* Fonts */
     --font-sans: "Space Grotesk", "Sora", "Noto Sans", sans-serif;
     --font-mono: "IBM Plex Mono", "JetBrains Mono", "Source Code Pro", monospace;
 
-    /* Terminal ANSI Colors - High Contrast B&W */
     --term-background: #000000;
     --term-foreground: #ffffff;
     --term-black: #1a1a1a;
@@ -719,7 +636,6 @@ body[data-theme="obsidian"] {
     --term-bright-white: #ffffff;
 }
 
-/* Header & Navigation */
 .header {
     background: var(--bg-secondary);
     backdrop-filter: blur(10px);
@@ -729,8 +645,8 @@ body[data-theme="obsidian"] {
     box-shadow: var(--shadow-md);
     position: relative;
     z-index: 1000;
-    overflow-x: visible; /* FIXED: Changed from hidden to visible to allow dropdowns */
-    overflow-y: visible; /* FIXED: Ensure vertical overflow is also visible */
+    overflow-x: visible; 
+    overflow-y: visible; 
     width: 100%;
     max-width: 100vw;
 }
@@ -773,15 +689,14 @@ body[data-theme="obsidian"] {
     align-items: center;
     flex-wrap: wrap;
     row-gap: 8px;
-    overflow: visible; /* Ensure dropdowns are not clipped */
-    position: relative; /* Create positioning context */
+    overflow: visible; 
+    position: relative; 
 }
 
 .header-buttons.is-open {
     display: flex;
 }
 
-/* Session Tabs */
 .session-tabs {
     display: flex;
     gap: 6px;
@@ -874,7 +789,6 @@ body[data-theme="obsidian"] {
     box-shadow: 0 0 8px rgba(255, 107, 107, 0.5);
 }
 
-/* Tab left border indicator */
 .session-tab:has(.status-dot.connected) {
     border-left-color: var(--success-color, #3fb950);
 }
@@ -950,7 +864,7 @@ body[data-theme="obsidian"] {
     padding: 4px;
     border-radius: 4px;
     transition: all 0.2s ease;
-    user-select: none; /* FIXED: Prevent text selection on tab close button */
+    user-select: none; 
 }
 
 .tab-close:hover {
@@ -958,20 +872,19 @@ body[data-theme="obsidian"] {
     background: rgba(248, 81, 73, 0.1);
 }
 
-/* Main Content */
 .main-content {
     flex: 1;
     overflow: hidden;
     overflow-x: hidden;
     position: relative;
     background: var(--bg-primary);
-    z-index: 1; /* FIXED: Ensure main content is below header and dropdowns */
+    z-index: 1; 
     display: flex;
     flex-direction: column;
     min-height: 0;
     width: 100%;
     max-width: 100vw;
-    isolation: isolate; /* FIXED: Create new stacking context to prevent z-index conflicts */
+    isolation: isolate; 
 }
 
 .session-bar {
@@ -1004,6 +917,51 @@ body[data-theme="obsidian"] {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+.mobile-input-bar {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.mobile-input-bar input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-mono);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.mobile-input-bar input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
+}
+
+.mobile-input-bar input::placeholder {
+    color: var(--text-muted);
+}
+
+.mobile-send-btn {
+    padding: 8px 12px !important;
+    min-width: 40px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.mobile-send-btn .material-icons {
+    font-size: 18px;
 }
 
 .split-controls {
@@ -1175,7 +1133,6 @@ body[data-theme="obsidian"] {
     max-width: 100%;
 }
 
-/* Terminal Search Bar */
 .terminal-search-bar {
     position: absolute;
     top: 16px;
@@ -1467,7 +1424,6 @@ body[data-theme="obsidian"] {
     margin-top: 8px;
 }
 
-
 .terminal-wrapper {
     display: block;
     width: 100%;
@@ -1486,8 +1442,6 @@ body[data-theme="obsidian"] {
     display: none;
 }
 
-/* CRITICAL FIX: Hide xterm.js character measurement element and helpers */
-/* These elements are used by xterm.js to measure character dimensions but should never be visible */
 .xterm-char-measure-element,
 .xterm .xterm-char-measure-element {
     position: absolute !important;
@@ -1541,7 +1495,6 @@ body[data-theme="obsidian"] {
     color: var(--text-secondary);
 }
 
-/* Buttons */
 .btn {
     padding: 10px 20px;
     border: none;
@@ -1553,7 +1506,7 @@ body[data-theme="obsidian"] {
     outline: none;
     position: relative;
     overflow: hidden;
-    white-space: nowrap; /* FIXED: Prevent button text from wrapping */
+    white-space: nowrap; 
 }
 
 .btn::before {
@@ -1625,8 +1578,8 @@ body[data-theme="obsidian"] {
 .btn-spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: #fff;
+    border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-top-color: currentColor;
     border-radius: 50%;
     display: inline-block;
     margin-left: 8px;
@@ -1639,17 +1592,16 @@ body[data-theme="obsidian"] {
     }
 }
 
-/* Modal Dialogs */
 .modal {
     display: none;
-    position: fixed; /* FIXED: Changed from absolute to fixed for proper layering */
+    position: fixed; 
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(4px);
-    z-index: 9000; /* FIXED: Increased from 1000, but still below dropdowns (10000+) */
+    z-index: 9000; 
     align-items: center;
     justify-content: center;
     animation: modalFadeIn 0.3s ease;
@@ -1768,7 +1720,7 @@ body[data-theme="obsidian"] {
     transition: all 0.2s ease;
     padding: 4px;
     border-radius: 6px;
-    user-select: none; /* FIXED: Prevent text selection on close button */
+    user-select: none; 
 }
 
 .close:hover {
@@ -1781,7 +1733,6 @@ body[data-theme="obsidian"] {
     padding: 24px;
 }
 
-/* Forms */
 .form-group {
     margin-bottom: 20px;
 }
@@ -1902,7 +1853,6 @@ textarea.form-control {
     min-height: 120px;
 }
 
-/* Recent Connections List */
 .recent-connections-list {
     display: flex;
     flex-wrap: wrap;
@@ -1980,7 +1930,6 @@ textarea.form-control {
     display: none !important;
 }
 
-/* Key Management */
 .key-upload-section,
 .keys-list-section {
     margin-bottom: 32px;
@@ -2054,7 +2003,6 @@ textarea.form-control {
     font-size: 14px;
 }
 
-/* File Transfer */
 .transfer-section {
     margin-bottom: 32px;
     padding-bottom: 32px;
@@ -2097,20 +2045,19 @@ textarea.form-control {
     color: var(--text-secondary);
 }
 
-/* Notifications */
 .notification-container {
-    position: fixed; /* FIXED: Changed from absolute to fixed for consistent positioning */
+    position: fixed; 
     top: 24px;
     right: 24px;
-    z-index: 11000; /* FIXED: Increased to appear above everything including dropdowns */
+    z-index: 11000; 
     display: flex;
     flex-direction: column;
     gap: 12px;
-    pointer-events: none; /* FIXED: Allow clicks to pass through container */
+    pointer-events: none; 
 }
 
 .notification {
-    pointer-events: auto; /* FIXED: But allow clicks on actual notifications */
+    pointer-events: auto; 
     padding: 16px 20px;
     border-radius: 10px;
     box-shadow: var(--shadow-lg);
@@ -2129,20 +2076,22 @@ textarea.form-control {
 }
 
 .notification-success {
-    background: linear-gradient(135deg, rgba(63, 185, 80, 0.9) 0%, rgba(63, 185, 80, 0.7) 100%);
+    background: linear-gradient(135deg, var(--success-color) 0%, color-mix(in srgb, var(--success-color) 80%, black) 100%);
     color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
     box-shadow: 0 4px 20px var(--success-glow);
 }
 
 .notification-warning {
-    background: linear-gradient(135deg, rgba(210, 153, 34, 0.9) 0%, rgba(210, 153, 34, 0.7) 100%);
-    color: white;
+    background: linear-gradient(135deg, var(--warning-color) 0%, color-mix(in srgb, var(--warning-color) 80%, black) 100%);
+    color: #000;
     box-shadow: 0 4px 20px var(--warning-glow);
 }
 
 .notification-error {
-    background: linear-gradient(135deg, rgba(248, 81, 73, 0.9) 0%, rgba(248, 81, 73, 0.7) 100%);
+    background: linear-gradient(135deg, var(--error-color) 0%, color-mix(in srgb, var(--error-color) 80%, black) 100%);
     color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
     box-shadow: 0 4px 20px var(--error-glow);
 }
 
@@ -2172,7 +2121,6 @@ textarea.form-control {
     }
 }
 
-/* Scrollbar Styling */
 ::-webkit-scrollbar {
     width: 12px;
     height: 12px;
@@ -2193,34 +2141,28 @@ textarea.form-control {
     background: var(--border-hover);
 }
 
-/* FIXED: Improved focus visibility for accessibility */
 :focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
 }
 
-/* FIXED: Ensure buttons have proper focus states */
 button:focus-visible,
 .btn:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
 }
 
-/* FIXED: Exception for dropdown options - use internal styling instead */
 .lang-option:focus-visible,
 .theme-option:focus-visible {
     outline: none;
     box-shadow: inset 0 0 0 2px var(--accent-primary);
 }
 
-/* ==================== Button Active Feedback & Focus Indicators ==================== */
-/* Button active feedback */
 .btn:active:not(:disabled) {
     transform: translateY(1px) scale(0.98);
     transition: transform 0.1s;
 }
 
-/* Focus indicators for custom elements */
 .session-tab:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
@@ -2232,7 +2174,6 @@ button:focus-visible,
     outline-offset: -2px;
 }
 
-/* Loading state for buttons */
 .btn.loading {
     opacity: 0.7;
     pointer-events: none;
@@ -2257,9 +2198,8 @@ button:focus-visible,
     to { transform: translateY(-50%) rotate(360deg); }
 }
 
-/* Responsive Design - Tablets & Mobile */
 @media (max-width: 768px) {
-    /* CRITICAL: Sticky header so it's always accessible */
+
     .header {
         position: sticky;
         top: 0;
@@ -2283,7 +2223,6 @@ button:focus-visible,
         align-items: center;
     }
 
-    /* Mobile menu button always visible */
     .mobile-menu-btn {
         display: inline-flex;
         align-items: center;
@@ -2293,7 +2232,6 @@ button:focus-visible,
         font-size: 20px;
     }
 
-    /* Header buttons hidden by default, shown when menu open */
     .header-buttons {
         width: 100%;
         flex-direction: column;
@@ -2316,7 +2254,6 @@ button:focus-visible,
         min-height: 48px;
     }
 
-    /* Dropdowns need special handling on mobile */
     .theme-selector,
     .language-selector {
         width: 100%;
@@ -2332,7 +2269,6 @@ button:focus-visible,
         overflow-y: auto;
     }
 
-    /* Session tabs */
     .session-tabs {
         padding: 8px 0;
         overflow-x: auto;
@@ -2351,7 +2287,6 @@ button:focus-visible,
         min-height: 40px;
     }
 
-    /* Main content area */
     .main-content {
         flex: 1;
         display: flex;
@@ -2360,7 +2295,6 @@ button:focus-visible,
         overflow: hidden;
     }
 
-    /* Session bar */
     .session-bar {
         flex-direction: column;
         align-items: stretch;
@@ -2375,17 +2309,17 @@ button:focus-visible,
     }
 
     .session-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
+        display: none;
     }
 
-    /* Hide split controls on mobile */
+    .mobile-input-bar {
+        display: flex;
+    }
+
     .split-controls {
         display: none;
     }
 
-    /* Workspace - scrollable column layout on mobile */
     .workspace {
         grid-template-columns: 1fr !important;
         grid-template-rows: 1fr auto;
@@ -2395,7 +2329,6 @@ button:focus-visible,
         overflow-x: hidden;
     }
 
-    /* Notepad visible below terminal on mobile */
     .notepad-panel {
         display: flex;
         border-left: none;
@@ -2408,7 +2341,6 @@ button:focus-visible,
         display: none;
     }
 
-    /* Terminal area fills workspace */
     .terminal-area {
         flex: 1;
         min-height: 300px;
@@ -2425,7 +2357,6 @@ button:focus-visible,
         height: 100%;
     }
 
-    /* Force single terminal on mobile */
     .terminal-grid.split-2,
     .terminal-grid.split-4 {
         grid-template-columns: 1fr !important;
@@ -2442,7 +2373,6 @@ button:focus-visible,
         min-height: 250px;
     }
 
-    /* Touch-friendly buttons */
     .btn {
         min-height: 44px;
         padding: 10px 16px;
@@ -2455,7 +2385,6 @@ button:focus-visible,
         min-height: 44px;
     }
 
-    /* Modals */
     .modal-content {
         width: 95%;
         max-width: none;
@@ -2476,15 +2405,13 @@ button:focus-visible,
 
     .form-control {
         min-height: 44px;
-        font-size: 16px; /* Prevents iOS zoom on focus */
+        font-size: 16px; 
     }
 
-    /* App title */
     .app-title {
         font-size: 18px;
     }
 
-    /* Notifications */
     .notification {
         left: 16px;
         right: 16px;
@@ -2493,7 +2420,6 @@ button:focus-visible,
     }
 }
 
-/* Small phones (320px - 480px) */
 @media (max-width: 480px) {
     .header {
         padding: 8px 12px;
@@ -2551,26 +2477,22 @@ button:focus-visible,
         min-height: 36px;
     }
 
-    /* Smaller header buttons */
     .header-buttons .btn {
         padding: 8px 14px;
         font-size: 12px;
     }
 
-    /* Connection modal fields */
     .form-control {
         padding: 12px;
         font-size: 16px;
     }
 
-    /* Command library */
     .commands-grid {
         grid-template-columns: 1fr;
     }
 }
 
-/* Virtual Keyboard open state */
-body.keyboard-open .notepad-panel {
+body.keyboard-open:not(.notepad-focused) .notepad-panel {
     display: none;
 }
 
@@ -2582,13 +2504,28 @@ body.keyboard-open .header {
     display: none;
 }
 
-body.keyboard-open .session-bar {
+body.keyboard-open:not(.notepad-focused) .session-tabs,
+body.keyboard-open:not(.notepad-focused) .session-info {
     display: none;
 }
 
-/* ==================== MOBILE UTILITIES ==================== */
+body.keyboard-open:not(.notepad-focused) .session-bar {
+    padding: 4px 8px;
+}
 
-/* Ensure touch targets are large enough */
+body.keyboard-open.notepad-focused .terminal-area {
+    display: none;
+}
+
+body.keyboard-open.notepad-focused .resize-handle {
+    display: none;
+}
+
+body.keyboard-open.notepad-focused .notepad-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
 @media (pointer: coarse) {
     .btn,
     .session-tab,
@@ -2600,7 +2537,6 @@ body.keyboard-open .session-bar {
         min-height: 44px;
     }
 
-    /* Larger close buttons */
     .modal .close {
         width: 44px;
         height: 44px;
@@ -2610,7 +2546,6 @@ body.keyboard-open .session-bar {
         font-size: 28px;
     }
 
-    /* Tab controls - close, edit buttons */
     .tab-close,
     .tab-edit {
         min-width: 44px;
@@ -2618,19 +2553,16 @@ body.keyboard-open .session-bar {
         padding: 12px;
     }
 
-    /* Password toggle button */
     .password-toggle {
         min-width: 44px;
         min-height: 44px;
         padding: 12px;
     }
 
-    /* Better spacing for form elements */
     .form-group {
         margin-bottom: 16px;
     }
 
-    /* Scrollable selects */
     select {
         appearance: none;
         -webkit-appearance: none;
@@ -2641,7 +2573,6 @@ body.keyboard-open .session-bar {
     }
 }
 
-/* Landscape mode on phones */
 @media (max-width: 767px) and (orientation: landscape) {
     .header {
         padding: 8px 16px;
@@ -2680,7 +2611,6 @@ body.keyboard-open .session-bar {
     }
 }
 
-/* Extra small devices */
 @media (max-width: 359px) {
     .header {
         padding: 6px 8px;
@@ -2705,7 +2635,6 @@ body.keyboard-open .session-bar {
     }
 }
 
-/* Safe area support for notched phones */
 @supports (padding: env(safe-area-inset-top)) {
     @media (max-width: 767px) {
         .header {
@@ -2734,7 +2663,6 @@ body.keyboard-open .session-bar {
     }
 }
 
-/* Terminal-specific adjustments */
 .xterm {
     height: 100%;
     padding: 8px;
@@ -2770,7 +2698,6 @@ body.keyboard-open .session-bar {
     background: var(--border-hover);
 }
 
-/* Loading Animation */
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
@@ -2784,7 +2711,6 @@ body.keyboard-open .session-bar {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Utility Classes */
 .glow-text {
     text-shadow: 0 0 10px var(--accent-primary-glow);
 }
@@ -2795,20 +2721,18 @@ body.keyboard-open .session-bar {
     border: 1px solid var(--border-color);
 }
 
-/* Language Selector in Header */
 .lang-btn-header {
     min-width: 50px;
     padding: 8px 12px;
-    position: relative; /* FIXED: For dropdown arrow positioning */
+    position: relative; 
 }
 
 .theme-btn-header {
     min-width: 120px;
     padding: 8px 12px;
-    position: relative; /* FIXED: For dropdown arrow positioning */
+    position: relative; 
 }
 
-/* FIXED: Add visual indicator that these are dropdowns */
 .theme-btn-header::after,
 .lang-btn-header::after {
     content: '▼';
@@ -2818,7 +2742,6 @@ body.keyboard-open .session-bar {
     transition: transform 0.2s ease;
 }
 
-/* FIXED: Rotate arrow when dropdown is open */
 .theme-selector:has(.theme-dropdown-header.show) .theme-btn-header::after,
 .language-selector:has(.lang-dropdown-header.show) .lang-btn-header::after {
     transform: rotate(180deg);
@@ -2827,7 +2750,7 @@ body.keyboard-open .session-bar {
 .theme-selector,
 .language-selector {
     position: relative;
-    z-index: 10000; /* FIXED: Reduced from 100000, still higher than header */
+    z-index: 10000; 
 }
 
 .lang-dropdown-header {
@@ -2839,10 +2762,10 @@ body.keyboard-open .session-bar {
     backdrop-filter: blur(20px);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5); /* FIXED: Enhanced shadow for better visibility */
-    overflow: visible; /* FIXED: Changed from hidden to visible */
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5); 
+    overflow: visible; 
     min-width: 180px;
-    z-index: 10001; /* FIXED: Must be higher than parent container */
+    z-index: 10001; 
     pointer-events: auto;
 }
 
@@ -2855,10 +2778,10 @@ body.keyboard-open .session-bar {
     backdrop-filter: blur(20px);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5); /* FIXED: Enhanced shadow for better visibility */
-    overflow: visible; /* FIXED: Changed from hidden to visible */
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5); 
+    overflow: visible; 
     min-width: 200px;
-    z-index: 10001; /* FIXED: Must be higher than parent container */
+    z-index: 10001; 
     pointer-events: auto;
 }
 
@@ -2886,33 +2809,33 @@ body.keyboard-open .session-bar {
 .lang-dropdown-header .lang-option {
     padding: 12px 16px;
     cursor: pointer;
-    transition: all 0.2s ease; /* FIXED: Changed to 'all' for smoother transitions */
+    transition: all 0.2s ease; 
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
-    user-select: none; /* FIXED: Prevent text selection */
-    border-left: 3px solid transparent; /* FIXED: Add hover indicator */
+    user-select: none; 
+    border-left: 3px solid transparent; 
 }
 
 .theme-dropdown-header .theme-option {
     padding: 12px 16px;
     cursor: pointer;
-    transition: all 0.2s ease; /* FIXED: Changed to 'all' for smoother transitions */
+    transition: all 0.2s ease; 
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
-    user-select: none; /* FIXED: Prevent text selection */
-    border-left: 3px solid transparent; /* FIXED: Add hover indicator */
+    user-select: none; 
+    border-left: 3px solid transparent; 
 }
 
 .lang-dropdown-header .lang-option:hover {
     background: var(--bg-hover);
-    border-left-color: var(--accent-primary); /* FIXED: Show colored border on hover */
+    border-left-color: var(--accent-primary); 
 }
 
 .theme-dropdown-header .theme-option:hover {
     background: var(--bg-hover);
-    border-left-color: var(--accent-primary); /* FIXED: Show colored border on hover */
+    border-left-color: var(--accent-primary); 
 }
 
 .lang-dropdown-header .lang-option.active {
@@ -2927,7 +2850,6 @@ body.keyboard-open .session-bar {
     border-left-color: var(--accent-on-text);
 }
 
-/* Theme color indicator dot */
 .theme-color-dot {
     display: inline-block;
     width: 12px;
@@ -2943,8 +2865,6 @@ body.keyboard-open .session-bar {
     height: 10px;
     margin-right: 8px;
 }
-
-/* ==================== PANE ASSIGNMENT MODAL STYLES ==================== */
 
 .pane-assignment-info {
     margin-bottom: 20px;
@@ -3062,9 +2982,6 @@ body.keyboard-open .session-bar {
     color: var(--text-secondary);
 }
 
-/* ==================== COMMAND LIBRARY STYLES ==================== */
-
-/* Large Modal for Command Library */
 .modal-large .modal-content {
     width: 95%;
     max-width: 1400px;
@@ -3079,9 +2996,8 @@ body.keyboard-open .session-bar {
     overflow: hidden;
 }
 
-/* Extra Large Modal for File Preview */
 #filePreviewModal {
-    z-index: 15000; /* Above SFTP File Manager (9000) but below context menus (20000+) */
+    z-index: 15000; 
 }
 
 .modal-xlarge .modal-content {
@@ -3254,7 +3170,6 @@ body.keyboard-open .session-bar {
     padding: 0;
 }
 
-/* Override highlight.js background */
 .preview-content .hljs {
     background: transparent !important;
     padding: 0;
@@ -3279,7 +3194,6 @@ body.keyboard-open .session-bar {
     to { transform: rotate(360deg); }
 }
 
-/* Command Toolbar */
 .command-toolbar {
     display: flex;
     gap: 12px;
@@ -3292,7 +3206,6 @@ body.keyboard-open .session-bar {
     font-size: 15px;
 }
 
-/* OS Filter Toolbar */
 .os-filter-toolbar {
     display: flex;
     align-items: center;
@@ -3347,7 +3260,6 @@ body.keyboard-open .session-bar {
     color: var(--accent-primary);
 }
 
-/* Commands Table */
 .commands-table-wrapper {
     flex: 1;
     display: flex;
@@ -3463,7 +3375,6 @@ body.keyboard-open .session-bar {
     transform: scale(1.2);
 }
 
-/* Command Help */
 .command-help {
     padding: 12px 16px;
     background: var(--bg-secondary);
@@ -3486,7 +3397,6 @@ body.keyboard-open .session-bar {
     color: var(--accent-primary);
 }
 
-/* Checkbox Group */
 .checkbox-group {
     display: flex;
     flex-wrap: wrap;
@@ -3504,7 +3414,6 @@ body.keyboard-open .session-bar {
     cursor: pointer;
 }
 
-/* Form Actions */
 .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -3514,7 +3423,6 @@ body.keyboard-open .session-bar {
     border-top: 1px solid var(--border-color);
 }
 
-/* No Items Message */
 .no-items {
     text-align: center;
     padding: 40px 20px;
@@ -3522,7 +3430,6 @@ body.keyboard-open .session-bar {
     font-size: 16px;
 }
 
-/* Responsive Design */
 @media (max-width: 1200px) {
     .commands-table-header,
     .command-row {
@@ -3553,7 +3460,6 @@ body.keyboard-open .session-bar {
     }
 }
 
-/* ==================== Notepad Toggle Button ==================== */
 .notepad-toggle-btn {
     position: absolute;
     top: 50%;
@@ -3587,7 +3493,6 @@ body.keyboard-open .session-bar {
     border: none;
 }
 
-/* When notepad is collapsed, give all grid space to terminal */
 .workspace:has(.notepad-panel.collapsed) {
     grid-template-columns: 1fr 0px !important;
 }
@@ -3596,9 +3501,6 @@ body.keyboard-open .session-bar {
     left: -24px;
 }
 
-
-
-/* Reconnect Bar */
 .reconnect-bar {
     display: flex;
     align-items: center;

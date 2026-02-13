@@ -37,7 +37,6 @@ class User(db.Model, UserMixin):
     def __repr__(self):
         return f'<User {self.username}>'
 
-
 class SocketSession(db.Model):
     """Tracks SocketIO sessions for users (browser connections)."""
     __tablename__ = 'socket_sessions'
@@ -51,7 +50,6 @@ class SocketSession(db.Model):
 
     def __repr__(self):
         return f'<SocketSession user_id={self.user_id} sid={self.socket_sid[:8]}...>'
-
 
 class SSHSession(db.Model):
     """Tracks SSH connections for users (persistent across browser reconnects)."""

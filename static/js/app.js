@@ -1,11 +1,8 @@
-// Main Application - Coordinates all components
 (function() {
     'use strict';
 
-    // Initialize Socket.IO connection
     window.socket = io();
 
-    // SECURITY: HTML escaping utility to prevent XSS
     window.escapeHtml = function(text) {
         if (!text) return '';
         const div = document.createElement('div');
@@ -13,23 +10,20 @@
         return div.innerHTML;
     };
 
-    // Notification system
-    window.showNotification = function(message, type = 'info', duration = 5000) {
+    window.showNotification = function(message, type = 'info', duration) {
         const container = document.getElementById('notificationContainer');
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.textContent = message;
-
         container.appendChild(notification);
 
-        // Auto-remove after specified duration
+        const timeout = duration || (type === 'success' || type === 'info' ? 2000 : 3000);
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 300);
-        }, duration);
+        }, timeout);
     };
 
-    // Modal manager with focus trapping
     window.ModalManager = {
         activeModal: null,
         focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
@@ -75,23 +69,19 @@
         }
     };
 
-    // Connection History (MRU - Most Recently Used)
     const ConnectionHistory = {
         maxItems: 10,
         storageKey: 'recentConnections',
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
+        maxAge: 30 * 24 * 60 * 60 * 1000,
 
         getHistory() {
             try {
                 const history = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
                 const now = Date.now();
-                // Filter out entries older than 30 days
                 const filtered = history.filter(entry => {
-                    // Backwards compatibility: entries without timestamp are kept
                     if (!entry.timestamp) return true;
                     return (now - entry.timestamp) < this.maxAge;
                 });
-                // Save filtered history if anything was removed
                 if (filtered.length !== history.length) {
                     localStorage.setItem(this.storageKey, JSON.stringify(filtered));
                 }
@@ -105,15 +95,12 @@
             const history = this.getHistory();
             const entry = { host, port: parseInt(port), username, timestamp: Date.now() };
 
-            // Remove duplicate if exists
             const filtered = history.filter(h =>
                 !(h.host === host && h.port === parseInt(port) && h.username === username)
             );
 
-            // Add to beginning
             filtered.unshift(entry);
 
-            // Keep only maxItems
             const trimmed = filtered.slice(0, this.maxItems);
 
             try {
@@ -140,7 +127,6 @@
             history.forEach(conn => {
                 const option = document.createElement('div');
                 option.className = 'recent-connection-item';
-                // SECURITY: Escape user-controlled data to prevent XSS
                 option.innerHTML = `
                     <span class="recent-conn-label">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}:${escapeHtml(String(conn.port))}</span>
                     <span class="recent-conn-time">${escapeHtml(this.formatTime(conn.timestamp))}</span>
@@ -149,7 +135,6 @@
                     document.getElementById('hostInput').value = conn.host;
                     document.getElementById('portInput').value = conn.port;
                     document.getElementById('usernameInput').value = conn.username;
-                    // Focus password field
                     document.getElementById('passwordInput').focus();
                 });
                 container.appendChild(option);
@@ -171,7 +156,6 @@
 
     window.ConnectionHistory = ConnectionHistory;
 
-    // Terminal Search Manager
     const TerminalSearch = {
         isOpen: false,
         searchBar: null,
@@ -185,12 +169,10 @@
 
             if (!this.searchBar || !this.searchInput) return;
 
-            // Search on input
             this.searchInput.addEventListener('input', () => {
                 this.performSearch();
             });
 
-            // Keyboard navigation in search input
             this.searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -205,7 +187,6 @@
                 }
             });
 
-            // Button handlers
             document.getElementById('terminalSearchNext')?.addEventListener('click', () => this.findNext());
             document.getElementById('terminalSearchPrev')?.addEventListener('click', () => this.findPrevious());
             document.getElementById('terminalSearchClose')?.addEventListener('click', () => this.close());
@@ -234,13 +215,11 @@
             this.searchBar?.classList.add('hidden');
             if (this.searchCount) this.searchCount.textContent = '';
 
-            // Clear search highlighting
             const activeSession = SessionManager.getActiveSession();
             if (activeSession) {
                 TerminalManager.clearSearch(activeSession);
             }
 
-            // Refocus terminal
             const terminalElement = document.querySelector('.terminal-pane.active .xterm-helper-textarea');
             terminalElement?.focus();
         },
@@ -296,13 +275,11 @@
 
     window.TerminalSearch = TerminalSearch;
 
-    // File Preview Manager
     const FilePreview = {
         modal: null,
         currentSessionId: null,
         currentPath: null,
 
-        // File type classifications
         textExtensions: ['.txt', '.md', '.json', '.yaml', '.yml', '.xml', '.csv', '.ini', '.conf', '.cfg', '.env', '.gitignore', '.dockerignore', '.editorconfig'],
         codeExtensions: ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.sql', '.html', '.htm', '.css', '.scss', '.sass', '.less', '.vue', '.svelte'],
         logExtensions: ['.log', '.out', '.err'],
@@ -316,36 +293,31 @@
             }
             console.log('[FilePreview] Initialized successfully');
 
-            // Close button
             document.getElementById('closeFilePreviewModal')?.addEventListener('click', () => this.close());
 
-            // Click outside modal content to close
             this.modal.addEventListener('click', (e) => {
                 if (e.target === this.modal) {
                     this.close();
                 }
             });
 
-            // Escape key to close
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && this.modal.classList.contains('show')) {
                     this.close();
                 }
             });
 
-            // Action buttons
             document.getElementById('previewCopyBtn')?.addEventListener('click', () => this.copyToClipboard());
             document.getElementById('previewDownloadBtn')?.addEventListener('click', () => this.downloadFile());
             document.getElementById('previewRefreshBtn')?.addEventListener('click', () => this.refresh());
             document.getElementById('previewBinaryDownload')?.addEventListener('click', () => this.downloadFile());
 
-            // Socket event handlers
+            socket.off('preview_data');
+            socket.off('preview_error');
             socket.on('preview_data', (data) => {
-                console.log('[FilePreview] preview_data received:', data);
                 this.handlePreviewData(data);
             });
             socket.on('preview_error', (data) => {
-                console.log('[FilePreview] preview_error received:', data);
                 this.handlePreviewError(data);
             });
         },
@@ -356,7 +328,6 @@
             if (this.logExtensions.includes(ext)) return 'log';
             if (this.codeExtensions.includes(ext)) return 'code';
             if (this.textExtensions.includes(ext)) return 'text';
-            // Check for files without extensions that are likely text
             if (!filename.includes('.')) return 'text';
             return 'unknown';
         },
@@ -396,23 +367,18 @@
             const fileType = this.getFileType(filename);
             console.log('[FilePreview] File type:', fileType);
 
-            // Show modal and loading state
             this.showLoading();
             window.ModalManager.open(this.modal);
 
-            // Set filename in header
             document.getElementById('previewFilename').textContent = filename;
             document.getElementById('previewSize').textContent = '';
 
             if (fileType === 'image') {
-                // For images, download and display as base64
                 console.log('[FilePreview] Loading image...');
                 this.loadImage(sessionId, path, filename);
             } else {
-                // For text/code files, use preview_file event
                 const options = { session_id: sessionId, path: path };
 
-                // For log files, use tail mode
                 if (fileType === 'log') {
                     options.tail_lines = 1000;
                 }
@@ -423,27 +389,25 @@
         },
 
         loadImage(sessionId, path, filename) {
-            // Use binary download for images with preview flag
-            console.log('[FilePreview] Requesting image:', { sessionId, path, filename });
+            if (this._pendingImageHandler) {
+                socket.off('file_download_ready_binary', this._pendingImageHandler);
+                this._pendingImageHandler = null;
+            }
+
+            const requestPath = path;
             socket.emit('download_file_binary', {
                 session_id: sessionId,
                 remote_path: path,
-                for_preview: true  // Flag to distinguish from actual downloads
+                for_preview: true
             });
 
-            // Listen for binary download response
             const handleBinaryDownload = (data) => {
-                // Only handle if this is a preview response
                 if (!data.for_preview) return;
 
-                console.log('[FilePreview] Received image data:', {
-                    hasFileData: !!data.file_data,
-                    encoding: data.encoding,
-                    size: data.size,
-                    filename: data.filename
-                });
-
                 socket.off('file_download_ready_binary', handleBinaryDownload);
+                this._pendingImageHandler = null;
+
+                if (this.currentPath !== requestPath) return;
 
                 if (data.error) {
                     this.showError(data.error);
@@ -455,11 +419,8 @@
                     let url;
 
                     if (data.encoding === 'base64') {
-                        // Create data URL from base64
                         url = `data:${mimeType};base64,${data.file_data}`;
-                        console.log('[FilePreview] Created data URL from base64');
                     } else {
-                        // Fallback: handle binary data
                         let binaryData = data.file_data;
                         if (binaryData && typeof binaryData === 'object') {
                             if (binaryData.data && Array.isArray(binaryData.data)) {
@@ -470,17 +431,16 @@
                         }
                         const blob = new Blob([binaryData], { type: mimeType });
                         url = URL.createObjectURL(blob);
-                        console.log('[FilePreview] Created blob URL:', url);
                     }
 
                     this.hideLoading();
                     this.showImage(url, data.size);
                 } catch (err) {
-                    console.error('[FilePreview] Error processing image:', err);
                     this.showError('Failed to display image: ' + err.message);
                 }
             };
 
+            this._pendingImageHandler = handleBinaryDownload;
             socket.on('file_download_ready_binary', handleBinaryDownload);
         },
 
@@ -497,7 +457,6 @@
         handlePreviewData(data) {
             this.hideLoading();
 
-            // Update size info
             document.getElementById('previewSize').textContent = this.formatFileSize(data.size);
 
             if (data.is_binary) {
@@ -505,7 +464,6 @@
                 return;
             }
 
-            // Show content
             this.showContent(data.content, data.filename, data.truncated, data.read_size, data.size);
         },
 
@@ -543,12 +501,12 @@
             imageContainer?.classList.remove('hidden');
             document.getElementById('previewSize').textContent = this.formatFileSize(size);
 
-            // Add load/error handlers
-            imageElement.onload = () => {
-                console.log('[FilePreview] Image loaded successfully');
-            };
+            if (imageElement.src && imageElement.src.startsWith('blob:')) {
+                URL.revokeObjectURL(imageElement.src);
+            }
+
+            imageElement.onload = () => {};
             imageElement.onerror = (e) => {
-                console.error('[FilePreview] Image failed to load:', e);
                 imageContainer?.classList.add('hidden');
                 this.showError('Failed to load image');
             };
@@ -563,21 +521,17 @@
 
             contentDiv?.classList.remove('hidden');
 
-            // Set content
             codeEl.textContent = content;
 
-            // Apply syntax highlighting if available
             const language = this.getLanguage(filename);
             if (typeof hljs !== 'undefined') {
                 codeEl.className = `language-${language}`;
                 hljs.highlightElement(codeEl);
             }
 
-            // Generate line numbers
             const lines = content.split('\n');
             lineNumbersEl.innerHTML = lines.map((_, i) => i + 1).join('<br>');
 
-            // Show truncation warning if needed
             if (truncated) {
                 document.getElementById('previewTruncated')?.classList.remove('hidden');
                 document.getElementById('previewTruncatedSize').textContent = this.formatFileSize(readSize);
@@ -599,7 +553,6 @@
         downloadFile() {
             if (!this.currentSessionId || !this.currentPath) return;
 
-            // Trigger download via existing download mechanism
             socket.emit('download_file_binary', {
                 session_id: this.currentSessionId,
                 remote_path: this.currentPath
@@ -618,7 +571,6 @@
             this.currentSessionId = null;
             this.currentPath = null;
 
-            // Clean up image blob URL
             const imgEl = document.getElementById('previewImageElement');
             if (imgEl && imgEl.src.startsWith('blob:')) {
                 URL.revokeObjectURL(imgEl.src);
@@ -629,7 +581,6 @@
 
     window.FilePreview = FilePreview;
 
-    // Socket.IO Event Handlers
     socket.on('connect', () => {
         console.log('Connected to server');
         const reconnectBar = document.getElementById('reconnectBar');
@@ -637,16 +588,21 @@
             reconnectBar.style.display = 'none';
             showNotification('Reconnected!', 'success', 2000);
         }
+        if (!keepAliveInterval) {
+            keepAliveInterval = setInterval(() => {
+                if (socket.connected) {
+                    socket.emit('keep_alive');
+                }
+            }, 60000);
+        }
     });
 
-    // Keep-alive to prevent session timeout
-    setInterval(() => {
+    let keepAliveInterval = setInterval(() => {
         if (socket.connected) {
             socket.emit('keep_alive');
         }
     }, 60000);
 
-    // Reconnect attempt handler
     socket.io.on('reconnect_attempt', (attempt) => {
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar) {
@@ -670,6 +626,10 @@
         if (reconnectBar) {
             reconnectBar.style.display = 'flex';
         }
+        if (keepAliveInterval) {
+            clearInterval(keepAliveInterval);
+            keepAliveInterval = null;
+        }
     });
 
     socket.on('ssh_connected', (data) => {
@@ -679,7 +639,6 @@
             SessionManager.clearPendingConnection(data.client_request_id);
         }
 
-        // Stop connection timer
         if (connectTimer) {
             clearInterval(connectTimer);
             connectTimer = null;
@@ -692,7 +651,6 @@
         setConnectLoading(false);
         currentConnectRequestId = null;
 
-        // Create session
         const sessionId = SessionManager.createSession(data);
 
         let targetPane = null;
@@ -706,24 +664,13 @@
         }
         SessionManager.assignSessionToPane(sessionId, targetPane);
 
-        // Prompt the shell to render immediately
-        setTimeout(() => {
-            socket.emit('ssh_input', {
-                session_id: sessionId,
-                data: '\n'
-            });
-        }, 200);
-
-        // Close connection modal
         window.ModalManager.close(document.getElementById('connectionModal'));
         processPaneQueue();
 
         showNotification(`Connected to ${data.username}@${data.host}`, 'success');
 
-        // Add to connection history
         ConnectionHistory.addConnection(data.host, data.port, data.username);
 
-        // Update file transfer session selects
         FileTransferManager.updateSessionSelects();
     });
 
@@ -731,14 +678,12 @@
         console.log(`[SSH_OUTPUT] Received for session ${data.session_id}, length: ${data.data.length}`);
         TerminalManager.writeOutput(data.session_id, data.data);
 
-        // OS detection disabled.
     });
 
     socket.on('ssh_error', (data) => {
         console.error('SSH error:', data);
         showNotification(`SSH Error: ${data.error}`, 'error');
 
-        // Stop connection timer
         if (connectTimer) {
             clearInterval(connectTimer);
             connectTimer = null;
@@ -766,6 +711,10 @@
         showNotification(`Session disconnected: ${data.reason}`, 'warning');
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
         FileTransferManager.updateSessionSelects();
+
+        if (window.sftpFileManager) {
+            window.sftpFileManager.handleSessionDisconnected(data.session_id);
+        }
     });
 
     socket.on('session_timeout_warning', (data) => {
@@ -810,6 +759,7 @@
     });
 
     socket.on('error', (data) => {
+        if (window.sftpFileManager && window.sftpFileManager.isOpen) return;
         showNotification(`Error: ${data.error}`, 'error');
     });
 
@@ -821,7 +771,6 @@
         notepad.value = (data && data.notepad) ? data.notepad : '';
     });
 
-    // UI Event Handlers
     let currentConnectRequestId = null;
     let pendingPaneIndex = null;
     const pendingPaneQueue = [];
@@ -835,7 +784,6 @@
             SessionManager.setActivePane(paneIndex);
         }
 
-        // Render connection history
         ConnectionHistory.renderHistoryDropdown();
         const historyGroup = document.getElementById('recentConnectionsGroup');
         if (historyGroup) {
@@ -1071,6 +1019,31 @@
             });
         }
 
+        const mobileInput = document.getElementById('mobileInput');
+        const mobileSendBtn = document.getElementById('mobileSendBtn');
+
+        const sendMobileInput = () => {
+            const active = SessionManager.getActiveSession();
+            if (!active || !mobileInput.value) return;
+            if (window.socket) {
+                window.socket.emit('ssh_input', { session_id: active, data: mobileInput.value + '\r' });
+            }
+            mobileInput.value = '';
+        };
+
+        if (mobileInput) {
+            mobileInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendMobileInput();
+                }
+            });
+        }
+
+        if (mobileSendBtn) {
+            mobileSendBtn.addEventListener('click', sendMobileInput);
+        }
+
     }
 
     function setupSplitControls() {
@@ -1079,11 +1052,9 @@
                 const layout = parseInt(btn.dataset.layout, 10);
                 const currentLayout = SessionManager.layout;
 
-                // If changing layout and we have sessions, show assignment modal
                 if (layout !== currentLayout && SessionManager.hasAnySessions()) {
                     SessionManager.showPaneAssignmentModal(layout);
                 } else {
-                    // No sessions yet, just change layout directly
                     SessionManager.setSplitLayout(layout);
                 }
             });
@@ -1105,13 +1076,21 @@
             } else if (status === 'saved') {
                 saveStatus.textContent = '✓ Saved';
                 saveStatus.className = 'notepad-save-status saved';
-                // Auto-hide after 2 seconds
                 setTimeout(() => {
                     saveStatus.className = 'notepad-save-status';
                     saveStatus.textContent = '';
                 }, 2000);
             }
         };
+
+        notepad.addEventListener('focus', () => {
+            if (document.body.classList.contains('keyboard-open')) {
+                document.body.classList.add('notepad-focused');
+            }
+        });
+        notepad.addEventListener('blur', () => {
+            document.body.classList.remove('notepad-focused');
+        });
 
         let timer;
         notepad.addEventListener('input', () => {
@@ -1154,14 +1133,12 @@
 
         const startResize = (e) => {
             isResizing = true;
-            // Support both mouse and touch via pointer events
             startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
             startNotepadWidth = notepadPanel.offsetWidth;
 
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
 
-            // Capture pointer for reliable tracking
             if (e.pointerId !== undefined) {
                 handle.setPointerCapture(e.pointerId);
             }
@@ -1174,15 +1151,12 @@
                 return;
             }
 
-            // Support both mouse and touch via pointer events
             const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
             const deltaX = clientX - startX;
             const workspaceWidth = workspace.offsetWidth;
 
-            // Calculate new widths
             let newNotepadWidth = startNotepadWidth - deltaX;
 
-            // Apply constraints
             const minNotepadWidth = 180;
             const maxNotepadWidth = workspaceWidth * 0.6;
             const minTerminalWidth = workspaceWidth * 0.3;
@@ -1195,10 +1169,8 @@
                 newNotepadWidth = workspaceWidth - minTerminalWidth;
             }
 
-            // Apply the new layout
             workspace.style.setProperty('--notepad-width', `${newNotepadWidth}px`);
 
-            // Trigger terminal resize
             if (SessionManager.hasAnySessions()) {
                 const activeSessionId = SessionManager.getActiveSession();
                 if (activeSessionId) {
@@ -1228,29 +1200,23 @@
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
 
-            // Save the current layout
             const notepadWidth = notepadPanel.getBoundingClientRect().width;
             if (!Number.isNaN(notepadWidth) && notepadWidth > 0) {
                 saveLayout(notepadWidth);
             }
         };
 
-        // Use pointer events for combined mouse + touch support
         handle.addEventListener('pointerdown', startResize);
         document.addEventListener('pointermove', resize);
         document.addEventListener('pointerup', stopResize);
         document.addEventListener('pointercancel', stopResize);
 
-        // Prevent default touch behavior on handle for smoother dragging
         handle.style.touchAction = 'none';
 
-        // Load saved layout on init
         loadLayout();
 
-        // Notepad collapse toggle
         const notepadToggle = document.getElementById('notepadToggle');
         if (notepadToggle && notepadPanel) {
-            // Restore collapsed state
             if (localStorage.getItem('notepadCollapsed') === 'true') {
                 notepadPanel.classList.add('collapsed');
                 notepadToggle.textContent = '▶';
@@ -1260,7 +1226,6 @@
                 const isCollapsed = notepadPanel.classList.contains('collapsed');
                 notepadToggle.textContent = isCollapsed ? '▶' : '◀';
                 localStorage.setItem('notepadCollapsed', isCollapsed);
-                // Trigger terminal refit after animation
                 setTimeout(() => {
                     if (window.TerminalManager) {
                         TerminalManager.fitAllTerminals();
@@ -1269,13 +1234,11 @@
             });
         }
 
-        // Double-click to reset to default
         handle.addEventListener('dblclick', () => {
             workspace.style.removeProperty('--notepad-width');
             localStorage.removeItem('workspace-notepad-width');
             showNotification('Layout reset to default', 'info');
 
-            // Trigger terminal resize
             if (SessionManager.hasAnySessions()) {
                 const activeSessionId = SessionManager.getActiveSession();
                 if (activeSessionId) {
@@ -1518,7 +1481,6 @@
     let openPalette = null;
 
     document.addEventListener('DOMContentLoaded', () => {
-        // Create reconnect bar (once, at init)
         const reconnectBar = document.createElement('div');
         reconnectBar.id = 'reconnectBar';
         reconnectBar.className = 'reconnect-bar';
@@ -1529,27 +1491,23 @@
             header.after(reconnectBar);
         }
 
-        // Initialize SessionManager for session restore
         SessionManager.init();
 
-        // Initialize Command Library
         CommandLibrary.init();
 
-        // Load profiles and keys on startup
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();
 
-        // New Connection Button
         document.getElementById('newConnectionBtn').addEventListener('click', () => {
             openConnectionModalForPane(getDefaultPaneIndex());
         });
 
-        // Close Connection Modal
         document.getElementById('closeConnectionModal').addEventListener('click', () => {
             window.ModalManager.close(document.getElementById('connectionModal'));
             setConnectLoading(false);
             currentConnectRequestId = null;
             clearPaneQueue();
+            if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
         });
 
         document.getElementById('cancelConnectionBtn').addEventListener('click', () => {
@@ -1557,9 +1515,9 @@
             setConnectLoading(false);
             currentConnectRequestId = null;
             clearPaneQueue();
+            if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
         });
 
-        // Connection Form Submit
         document.getElementById('connectionForm').addEventListener('submit', (e) => {
             e.preventDefault();
 
@@ -1574,7 +1532,6 @@
             const targetPane = pendingPaneIndex;
             pendingPaneIndex = null;
 
-            // Validate
             if (!host || !username) {
                 showNotification('Host and username are required', 'error');
                 return;
@@ -1590,7 +1547,6 @@
                 return;
             }
 
-            // Save profile if requested
             if (saveProfile && profileName) {
                 ProfileManager.saveProfile({
                     name: profileName,
@@ -1602,7 +1558,6 @@
                 });
             }
 
-            // Connect to SSH
             currentConnectRequestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
             SessionManager.createPendingConnection(currentConnectRequestId, host, username, port);
             if (targetPane !== null && targetPane !== undefined) {
@@ -1622,7 +1577,6 @@
                 connectionData.key_id = keyId;
             }
 
-            // Start connection timer feedback
             const connectBtn = document.getElementById('connectBtn');
             const originalText = connectBtn.textContent;
             connectSeconds = 0;
@@ -1635,11 +1589,9 @@
             socket.emit('ssh_connect', connectionData);
             setConnectLoading(true);
 
-            // Clear password field for security
             document.getElementById('passwordInput').value = '';
         });
 
-        // Profile Selection
         document.getElementById('profileSelect').addEventListener('change', (e) => {
             const profileId = e.target.value;
             const deleteBtn = document.getElementById('deleteProfileBtn');
@@ -1654,25 +1606,21 @@
             }
         });
 
-        // Delete Profile Button
         document.getElementById('deleteProfileBtn').addEventListener('click', (e) => {
             const profileId = e.target.dataset.profileId;
             if (profileId) {
                 ProfileManager.deleteProfile(profileId);
-                // Reset form after deletion
                 document.getElementById('profileSelect').value = '';
                 e.target.style.display = 'none';
             }
         });
 
-        // Auth Type Change
         document.querySelectorAll('input[name="authType"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 ProfileManager.handleAuthTypeChange(e.target.value);
             });
         });
 
-        // Save Profile Checkbox
         document.getElementById('saveProfileCheck').addEventListener('change', (e) => {
             const profileNameGroup = document.getElementById('profileNameGroup');
             if (e.target.checked) {
@@ -1684,18 +1632,15 @@
             }
         });
 
-        // Manage Keys Button
         document.getElementById('manageKeysBtn').addEventListener('click', () => {
             window.ModalManager.open(document.getElementById('keyManagementModal'));
             ProfileManager.loadKeys();
         });
 
-        // Close Key Management Modal
         document.getElementById('closeKeyModal').addEventListener('click', () => {
             window.ModalManager.close(document.getElementById('keyManagementModal'));
         });
 
-        // Key Upload Form
         document.getElementById('keyUploadForm').addEventListener('submit', (e) => {
             e.preventDefault();
 
@@ -1710,11 +1655,6 @@
             ProfileManager.uploadKey(name, keyContent);
         });
 
-        // File Transfer Button - Now handled by openFileManager() in sftp-file-manager.js
-        // The onclick handler is set directly in HTML: onclick="openFileManager()"
-        // Old modal code removed - we now use the new dual-pane file manager
-
-        // Change Password Button
         const changePasswordBtn = document.getElementById('changePasswordBtn');
         if (changePasswordBtn) {
             changePasswordBtn.addEventListener('click', () => {
@@ -1722,10 +1662,6 @@
             });
         }
 
-        // Old File Transfer Modal handlers removed - using new dual-pane file manager
-        // Legacy upload/download forms no longer needed
-
-        // Logout Button
         document.getElementById('logoutBtn').addEventListener('click', () => {
             const message = window.i18n ? i18n.t('auth.logoutConfirm') : 'Are you sure you want to logout? Active SSH sessions will be preserved.';
             if (confirm(message)) {
@@ -1745,40 +1681,34 @@
             }
         });
 
-        // Close modals when clicking outside
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
                 window.ModalManager.close(e.target);
                 if (e.target.id === 'connectionModal') {
                     clearPaneQueue();
+                    if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
                 }
             }
         });
 
-        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Skip shortcuts when typing in form inputs (except F1/Escape)
             const tag = document.activeElement?.tagName;
             if ((tag === 'INPUT' || tag === 'TEXTAREA') && e.key !== 'F1' && e.key !== 'Escape') {
                 return;
             }
 
-            // F1: Open Command Library
             if (e.key === 'F1') {
                 e.preventDefault();
                 CommandLibrary.openLibrary();
             }
 
-            // Ctrl+F: Terminal Search
             if (e.ctrlKey && e.key.toLowerCase() === 'f') {
-                // Only intercept if there's an active terminal session
                 if (SessionManager.hasAnySessions()) {
                     e.preventDefault();
                     TerminalSearch.toggle();
                 }
             }
 
-            // Ctrl+K: Command Palette
             if (e.ctrlKey && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 if (openPalette) {
@@ -1786,7 +1716,6 @@
                 }
             }
 
-            // Ctrl+?: Shortcuts help
             if (e.ctrlKey && (e.key === '/' || e.key === '?')) {
                 e.preventDefault();
                 if (openShortcuts) {
@@ -1794,13 +1723,11 @@
                 }
             }
 
-            // Ctrl+Shift+N: New Connection
             if (e.ctrlKey && e.shiftKey && e.key === 'N') {
                 e.preventDefault();
                 document.getElementById('newConnectionBtn').click();
             }
 
-            // Ctrl+1-9: Switch to tab by index
             if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
                 e.preventDefault();
                 const index = parseInt(e.key) - 1;
@@ -1810,7 +1737,6 @@
                 }
             }
 
-            // Ctrl+Tab / Ctrl+Shift+Tab: Next/Previous tab
             if (e.ctrlKey && e.key === 'Tab') {
                 e.preventDefault();
                 const tabs = Array.from(document.querySelectorAll('.session-tab'));
@@ -1823,7 +1749,6 @@
                 }
             }
 
-            // Escape: Close modals and search bar
             if (e.key === 'Escape') {
                 if (TerminalSearch.isOpen) {
                     TerminalSearch.close();
@@ -1875,7 +1800,6 @@
             window.ModalManager.close(document.getElementById('commandPaletteModal'));
         });
 
-        // Warning when closing with active sessions
         window.addEventListener('beforeunload', (e) => {
             const activeSessions = Object.values(SessionManager.sessions).filter(s => s.connected);
             if (activeSessions.length > 0) {

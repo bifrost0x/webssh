@@ -16,7 +16,6 @@ import io
 from . import sftp_handler
 import config
 
-
 def handle_binary_upload(session_id, filename, binary_data, remote_path, socketio_instance=None):
     """
     Upload binary data directly to SFTP without base64 encoding.
@@ -32,31 +31,21 @@ def handle_binary_upload(session_id, filename, binary_data, remote_path, socketi
         tuple: (success: bool, error: str or None)
     """
     try:
-        # SECURITY: Validate binary data size before processing
         max_size_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
         valid, error = validate_binary_data(binary_data, max_size_mb=max_size_mb)
         if not valid:
             return False, error
 
-        # Get SFTP client from either SSH session or Quick Connect pool
-        sftp, error, source_type = sftp_handler.get_any_sftp_client(session_id)
-        if error:
-            return False, error
-
-        # Sanitize remote path
         safe_path = sftp_handler.sanitize_path(remote_path)
         if safe_path is None:
             return False, "Invalid remote path"
 
-        # Calculate total size
         total_size = len(binary_data)
-        chunk_size = 65536  # 64KB chunks
+        chunk_size = 65536
         transferred = 0
 
-        try:
-            # Write binary data in chunks
+        with sftp_handler.sftp_session(session_id) as (sftp, source_type):
             with sftp.file(safe_path, 'wb') as remote_file:
-                # Convert bytes to BytesIO for streaming
                 data_stream = io.BytesIO(binary_data)
 
                 while True:
@@ -67,7 +56,6 @@ def handle_binary_upload(session_id, filename, binary_data, remote_path, socketi
                     remote_file.write(chunk)
                     transferred += len(chunk)
 
-                    # Emit progress update
                     if socketio_instance:
                         percent = int((transferred / total_size) * 100)
                         socketio_instance.emit('file_progress', {
@@ -79,7 +67,6 @@ def handle_binary_upload(session_id, filename, binary_data, remote_path, socketi
                             'percent': percent
                         })
 
-            # Emit completion
             if socketio_instance:
                 socketio_instance.emit('file_complete', {
                     'session_id': session_id,
@@ -88,19 +75,16 @@ def handle_binary_upload(session_id, filename, binary_data, remote_path, socketi
                     'remote_path': safe_path
                 })
 
-            return True, None
-        finally:
-            # Only close non-cached (pool) clients; session clients are managed by cache
-            if source_type == 'pool':
-                sftp.close()
+        return True, None
 
+    except sftp_handler.SFTPOperationError as e:
+        return False, str(e)
     except PermissionError:
         return False, "Permission denied: Cannot write to remote path"
     except FileNotFoundError:
         return False, "Remote directory not found"
     except Exception as e:
         return False, str(e)
-
 
 def handle_binary_download(session_id, remote_path, socketio_instance=None):
     """
@@ -115,18 +99,11 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
         tuple: (binary_data: bytes or None, error: str or None)
     """
     try:
-        # Get SFTP client from either SSH session or Quick Connect pool
-        sftp, error, source_type = sftp_handler.get_any_sftp_client(session_id)
-        if error:
-            return None, error
-
-        # Sanitize remote path
         safe_path = sftp_handler.sanitize_path(remote_path)
         if safe_path is None:
             return None, "Invalid remote path"
 
-        try:
-            # Get file size and check limit
+        with sftp_handler.sftp_session(session_id) as (sftp, source_type):
             try:
                 file_stat = sftp.stat(safe_path)
                 file_size = file_stat.st_size
@@ -138,10 +115,9 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
                 return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
 
             filename = os.path.basename(safe_path)
-            chunk_size = 65536  # 64KB chunks
+            chunk_size = 65536
             transferred = 0
 
-            # Read file in chunks
             binary_data = io.BytesIO()
 
             with sftp.file(safe_path, 'rb') as remote_file:
@@ -153,7 +129,6 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
                     binary_data.write(chunk)
                     transferred += len(chunk)
 
-                    # Emit progress update
                     if socketio_instance:
                         percent = int((transferred / file_size) * 100)
                         socketio_instance.emit('file_progress', {
@@ -165,22 +140,16 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
                             'percent': percent
                         })
 
-            # Get binary data
-            result = binary_data.getvalue()
+            return binary_data.getvalue(), None
 
-            return result, None
-        finally:
-            # Only close non-cached (pool) clients; session clients are managed by cache
-            if source_type == 'pool':
-                sftp.close()
-
+    except sftp_handler.SFTPOperationError as e:
+        return None, str(e)
     except PermissionError:
         return None, "Permission denied: Cannot read from remote path"
     except FileNotFoundError:
         return None, "Remote file not found"
     except Exception as e:
         return None, str(e)
-
 
 def stream_binary_upload_chunked(session_id, filename, chunks, remote_path, socketio_instance=None):
     """
@@ -199,52 +168,44 @@ def stream_binary_upload_chunked(session_id, filename, chunks, remote_path, sock
         tuple: (success: bool, error: str or None)
     """
     try:
-        # Get SFTP client
-        sftp, error = sftp_handler.get_sftp_client(session_id)
-        if error:
-            return False, error
-
-        # Sanitize path
         safe_path = sftp_handler.sanitize_path(remote_path)
         if safe_path is None:
             return False, "Invalid remote path"
 
-        # Calculate total size
         total_size = sum(len(chunk) for chunk in chunks)
         transferred = 0
 
-        # Write chunks to remote file
-        with sftp.file(safe_path, 'wb') as remote_file:
-            for i, chunk in enumerate(chunks):
-                remote_file.write(chunk)
-                transferred += len(chunk)
+        with sftp_handler.sftp_session(session_id) as (sftp, source_type):
+            with sftp.file(safe_path, 'wb') as remote_file:
+                for i, chunk in enumerate(chunks):
+                    remote_file.write(chunk)
+                    transferred += len(chunk)
 
-                # Emit progress (only every 10 chunks to reduce overhead)
-                if socketio_instance and (i % 10 == 0 or i == len(chunks) - 1):
-                    percent = int((transferred / total_size) * 100)
-                    socketio_instance.emit('file_progress', {
-                        'session_id': session_id,
-                        'type': 'upload',
-                        'filename': filename,
-                        'transferred': transferred,
-                        'total': total_size,
-                        'percent': percent
-                    })
+                    if socketio_instance and (i % 10 == 0 or i == len(chunks) - 1):
+                        percent = int((transferred / total_size) * 100)
+                        socketio_instance.emit('file_progress', {
+                            'session_id': session_id,
+                            'type': 'upload',
+                            'filename': filename,
+                            'transferred': transferred,
+                            'total': total_size,
+                            'percent': percent
+                        })
 
-        # Emit completion
-        if socketio_instance:
-            socketio_instance.emit('file_complete', {
-                'session_id': session_id,
-                'type': 'upload',
-                'filename': filename,
-                'remote_path': safe_path
-            })
+            if socketio_instance:
+                socketio_instance.emit('file_complete', {
+                    'session_id': session_id,
+                    'type': 'upload',
+                    'filename': filename,
+                    'remote_path': safe_path
+                })
 
         return True, None
 
+    except sftp_handler.SFTPOperationError as e:
+        return False, str(e)
     except Exception as e:
         return False, str(e)
-
 
 def get_file_info(session_id, remote_path):
     """
@@ -258,31 +219,29 @@ def get_file_info(session_id, remote_path):
         tuple: (file_info: dict or None, error: str or None)
     """
     try:
-        sftp, error = sftp_handler.get_sftp_client(session_id)
-        if error:
-            return None, error
-
         safe_path = sftp_handler.sanitize_path(remote_path)
         if safe_path is None:
             return None, "Invalid remote path"
 
-        stat = sftp.stat(safe_path)
+        with sftp_handler.sftp_session(session_id) as (sftp, source_type):
+            stat = sftp.stat(safe_path)
 
-        info = {
-            'filename': os.path.basename(safe_path),
-            'size': stat.st_size,
-            'modified': stat.st_mtime,
-            'is_dir': stat.st_mode & 0o040000 != 0,
-            'permissions': oct(stat.st_mode)[-3:]
-        }
+            info = {
+                'filename': os.path.basename(safe_path),
+                'size': stat.st_size,
+                'modified': stat.st_mtime,
+                'is_dir': stat.st_mode & 0o040000 != 0,
+                'permissions': oct(stat.st_mode)[-3:]
+            }
 
-        return info, None
+            return info, None
 
+    except sftp_handler.SFTPOperationError as e:
+        return None, str(e)
     except FileNotFoundError:
         return None, "File not found"
     except Exception as e:
         return None, str(e)
-
 
 def validate_binary_data(binary_data, max_size_mb=1024):
     """

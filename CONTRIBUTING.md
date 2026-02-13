@@ -13,7 +13,6 @@ Thanks for your interest in contributing! This project is open to contributions 
 ### Prerequisites
 
 - Python 3.11+
-- Node.js (for frontend development)
 - Docker (optional, for testing)
 
 ### Local Development Setup
@@ -31,9 +30,8 @@ source venv/bin/activate  # Linux/macOS
 # Install dependencies
 pip install -r requirements.txt
 
-# Set required environment variables
+# Set required environment variable
 export SECRET_KEY=$(openssl rand -hex 32)
-export CORS_ORIGINS="http://localhost:5000"
 export DEBUG=True
 
 # Run the application
@@ -46,22 +44,27 @@ Open http://localhost:5000 and create a test account.
 
 ```
 webssh/
-├── app/                    # Flask application
+├── app/                    # Flask application (15 modules)
 │   ├── __init__.py        # App factory, routes, security headers
 │   ├── auth.py            # Authentication, rate limiting
 │   ├── models.py          # SQLAlchemy models
 │   ├── socket_events.py   # WebSocket event handlers
 │   ├── ssh_manager.py     # SSH connection management
-│   ├── sftp_handler.py    # SFTP operations
-│   ├── key_encryption.py  # SSH key encryption at rest
+│   ├── sftp_handler.py    # SFTP file operations
+│   ├── connection_pool.py # SSH connection pooling
 │   ├── key_manager.py     # SSH key storage
-│   └── ...
+│   ├── key_encryption.py  # SSH key encryption at rest
+│   ├── profile_manager.py # Connection profiles
+│   ├── command_manager.py # Command library
+│   ├── binary_transfer.py # Binary file transfer protocol
+│   ├── user_settings.py   # User preferences
+│   ├── audit_logger.py    # Security audit logging
+│   └── decorators.py      # Shared decorators
 ├── static/
-│   ├── css/               # Stylesheets
-│   ├── js/                # Frontend JavaScript
-│   └── themes/            # Theme definitions
-├── templates/             # Jinja2 templates
-├── config.py              # Configuration
+│   ├── css/               # Stylesheets (3 files)
+│   └── js/                # Frontend JavaScript (12 modules)
+├── templates/             # Jinja2 templates (4 files)
+├── config.py              # Central configuration
 ├── start.py               # Entry point
 └── requirements.txt       # Python dependencies
 ```
@@ -114,13 +117,13 @@ Feature requests are welcome! Please include:
 **Python:**
 - Follow PEP 8
 - Use meaningful variable names
-- Add docstrings to functions
 - Keep functions focused and small
+- Lean code: no unnecessary comments, docstrings only where logic is non-obvious
 
 **JavaScript:**
+- Vanilla JS only (no frameworks - intentional architecture decision)
 - Use consistent indentation (4 spaces)
 - Prefer `const` over `let`, avoid `var`
-- Comment complex logic
 
 **General:**
 - No trailing whitespace

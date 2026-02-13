@@ -1,13 +1,9 @@
-// Multilingual Support - i18n System
-// Languages: English, German, French, Spanish
 
 const translations = {
     en: {
-        // App Title
         'app.title': 'Web SSH Terminal',
         'app.subtitle': 'Modern Terminal Access',
 
-        // Login & Auth
         'auth.login': 'Sign In',
         'auth.register': 'Create Account',
         'auth.logout': 'Logout',
@@ -33,7 +29,6 @@ const translations = {
         'auth.passwordsMatch': '✓ Passwords match',
         'auth.passwordsNoMatch': '✗ Passwords do not match',
 
-        // Connection
         'connection.recentConnections': 'Recent Connections',
         'connection.newConnection': 'New Connection',
         'connection.newSSHConnection': 'New SSH Connection',
@@ -51,7 +46,6 @@ const translations = {
         'connection.profileNamePlaceholder': 'My Server',
         'connection.connect': 'Connect',
 
-        // Keys
         'keys.manageKeys': 'Manage Keys',
         'keys.manageSSHKeys': 'Manage SSH Keys',
         'keys.uploadNewKey': 'Upload New Key',
@@ -61,7 +55,6 @@ const translations = {
         'keys.uploadKey': 'Upload Key',
         'keys.storedKeys': 'Stored Keys',
 
-        // Files
         'files.fileTransfer': 'File Transfer',
         'files.fileManager': 'File Manager',
         'files.uploadToServer': 'Upload File to Server',
@@ -73,7 +66,6 @@ const translations = {
         'files.upload': 'Upload',
         'files.download': 'Download',
 
-        // File Manager (SFTP)
         'fm.title': 'File Manager',
         'fm.refresh': 'Refresh',
         'fm.newFolder': 'New Folder',
@@ -118,7 +110,6 @@ const translations = {
         'fm.overwrite': 'Overwrite',
         'fm.skip': 'Skip',
         'fm.applyToAll': 'Apply to all',
-        // Quick Connect
         'fm.qc.title': 'Connect to Server',
         'fm.qc.savedProfiles': 'Saved Profiles',
         'fm.qc.enterManually': '-- Enter manually --',
@@ -135,7 +126,6 @@ const translations = {
         'fm.qc.passwordRequired': 'Password is required',
         'fm.qc.selectSshKey': 'Please select an SSH key',
         'fm.qc.connectionFailed': 'Connection failed',
-        // Additional FM keys
         'fm.selectSourceFirst': 'Please select a source first',
         'fm.noActiveSession': 'No active SSH session',
         'fm.invalidFolderName': 'Invalid folder name',
@@ -174,7 +164,6 @@ const translations = {
         'fm.uploadComplete': 'Upload complete',
         'fm.filesUploaded': 'files uploaded',
 
-        // Common
         'common.delete': 'Delete',
         'common.cancel': 'Cancel',
         'common.save': 'Save',
@@ -184,7 +173,6 @@ const translations = {
         'common.apply': 'Apply',
         'common.error': 'Error',
 
-        // Pane Assignment
         'panes.assignTitle': 'Assign Sessions to Panes',
         'panes.assignInfo': 'Select which sessions to display in each pane. You can assign existing sessions or create new connections.',
         'panes.pane': 'Pane',
@@ -197,7 +185,6 @@ const translations = {
         'panes.emptyPane': 'Empty pane',
         'panes.selectSession': 'Select a session or open a connection',
 
-        // Commands
         'commands.library': 'Command Library',
         'commands.addCommand': 'Add Command',
         'commands.editCommand': 'Edit Command',
@@ -235,11 +222,9 @@ const translations = {
     },
 
     de: {
-        // App Title
         'app.title': 'Web SSH Terminal',
         'app.subtitle': 'Moderner Terminal-Zugang',
 
-        // Login & Auth
         'auth.login': 'Anmelden',
         'auth.register': 'Konto erstellen',
         'auth.logout': 'Abmelden',
@@ -265,7 +250,6 @@ const translations = {
         'auth.passwordsMatch': '✓ Passwörter stimmen überein',
         'auth.passwordsNoMatch': '✗ Passwörter stimmen nicht überein',
 
-        // Connection
         'connection.recentConnections': 'Letzte Verbindungen',
         'connection.newConnection': 'Neue Verbindung',
         'connection.newSSHConnection': 'Neue SSH-Verbindung',
@@ -283,7 +267,6 @@ const translations = {
         'connection.profileNamePlaceholder': 'Mein Server',
         'connection.connect': 'Verbinden',
 
-        // Keys
         'keys.manageKeys': 'Schlüssel verwalten',
         'keys.manageSSHKeys': 'SSH-Schlüssel verwalten',
         'keys.uploadNewKey': 'Neuen Schlüssel hochladen',
@@ -293,7 +276,6 @@ const translations = {
         'keys.uploadKey': 'Schlüssel hochladen',
         'keys.storedKeys': 'Gespeicherte Schlüssel',
 
-        // Files
         'files.fileTransfer': 'Dateiübertragung',
         'files.fileManager': 'Dateimanager',
         'files.uploadToServer': 'Datei zum Server hochladen',
@@ -305,7 +287,6 @@ const translations = {
         'files.upload': 'Hochladen',
         'files.download': 'Herunterladen',
 
-        // File Manager (SFTP)
         'fm.title': 'Dateimanager',
         'fm.refresh': 'Aktualisieren',
         'fm.newFolder': 'Neuer Ordner',
@@ -350,7 +331,6 @@ const translations = {
         'fm.overwrite': 'Überschreiben',
         'fm.skip': 'Überspringen',
         'fm.applyToAll': 'Auf alle anwenden',
-        // Quick Connect
         'fm.qc.title': 'Mit Server verbinden',
         'fm.qc.savedProfiles': 'Gespeicherte Profile',
         'fm.qc.enterManually': '-- Manuell eingeben --',
@@ -367,7 +347,6 @@ const translations = {
         'fm.qc.passwordRequired': 'Passwort ist erforderlich',
         'fm.qc.selectSshKey': 'Bitte wählen Sie einen SSH-Schlüssel',
         'fm.qc.connectionFailed': 'Verbindung fehlgeschlagen',
-        // Additional FM keys
         'fm.selectSourceFirst': 'Bitte wählen Sie zuerst eine Quelle aus',
         'fm.noActiveSession': 'Keine aktive SSH-Sitzung',
         'fm.invalidFolderName': 'Ungültiger Ordnername',
@@ -406,7 +385,6 @@ const translations = {
         'fm.uploadComplete': 'Upload abgeschlossen',
         'fm.filesUploaded': 'Dateien hochgeladen',
 
-        // Common
         'common.delete': 'Löschen',
         'common.cancel': 'Abbrechen',
         'common.save': 'Speichern',
@@ -416,7 +394,6 @@ const translations = {
         'common.apply': 'Anwenden',
         'common.error': 'Fehler',
 
-        // Pane Assignment
         'panes.assignTitle': 'Sitzungen zu Panes zuweisen',
         'panes.assignInfo': 'Wählen Sie, welche Sitzungen in welchem Pane angezeigt werden sollen. Sie können bestehende Sitzungen zuweisen oder neue Verbindungen erstellen.',
         'panes.pane': 'Pane',
@@ -429,7 +406,6 @@ const translations = {
         'panes.emptyPane': 'Leeres Pane',
         'panes.selectSession': 'Wählen Sie eine Sitzung oder öffnen Sie eine Verbindung',
 
-        // Commands
         'commands.library': 'Befehlsbibliothek',
         'commands.addCommand': 'Befehl hinzufügen',
         'commands.editCommand': 'Befehl bearbeiten',
@@ -467,11 +443,9 @@ const translations = {
     },
 
     fr: {
-        // App Title
         'app.title': 'Terminal SSH Web',
         'app.subtitle': 'Accès Terminal Moderne',
 
-        // Login & Auth
         'auth.login': 'Se connecter',
         'auth.register': 'Créer un compte',
         'auth.logout': 'Déconnexion',
@@ -497,7 +471,6 @@ const translations = {
         'auth.passwordsMatch': '✓ Les mots de passe correspondent',
         'auth.passwordsNoMatch': '✗ Les mots de passe ne correspondent pas',
 
-        // Connection
         'connection.recentConnections': 'Connexions récentes',
         'connection.newConnection': 'Nouvelle connexion',
         'connection.newSSHConnection': 'Nouvelle connexion SSH',
@@ -515,7 +488,6 @@ const translations = {
         'connection.profileNamePlaceholder': 'Mon serveur',
         'connection.connect': 'Connecter',
 
-        // Keys
         'keys.manageKeys': 'Gérer les clés',
         'keys.manageSSHKeys': 'Gérer les clés SSH',
         'keys.uploadNewKey': 'Télécharger une nouvelle clé',
@@ -525,7 +497,6 @@ const translations = {
         'keys.uploadKey': 'Télécharger la clé',
         'keys.storedKeys': 'Clés stockées',
 
-        // Files
         'files.fileTransfer': 'Transfert de fichiers',
         'files.fileManager': 'Gestionnaire de fichiers',
         'files.uploadToServer': 'Télécharger un fichier vers le serveur',
@@ -537,7 +508,6 @@ const translations = {
         'files.upload': 'Télécharger',
         'files.download': 'Télécharger',
 
-        // File Manager (SFTP)
         'fm.title': 'Gestionnaire de fichiers',
         'fm.refresh': 'Actualiser',
         'fm.newFolder': 'Nouveau dossier',
@@ -582,7 +552,6 @@ const translations = {
         'fm.overwrite': 'Écraser',
         'fm.skip': 'Ignorer',
         'fm.applyToAll': 'Appliquer à tous',
-        // Quick Connect
         'fm.qc.title': 'Connexion au serveur',
         'fm.qc.savedProfiles': 'Profils enregistrés',
         'fm.qc.enterManually': '-- Saisie manuelle --',
@@ -599,7 +568,6 @@ const translations = {
         'fm.qc.passwordRequired': 'Mot de passe requis',
         'fm.qc.selectSshKey': 'Veuillez sélectionner une clé SSH',
         'fm.qc.connectionFailed': 'Échec de la connexion',
-        // Additional FM keys
         'fm.selectSourceFirst': "Veuillez d'abord sélectionner une source",
         'fm.noActiveSession': 'Aucune session SSH active',
         'fm.invalidFolderName': 'Nom de dossier invalide',
@@ -638,7 +606,6 @@ const translations = {
         'fm.uploadComplete': 'Téléversement terminé',
         'fm.filesUploaded': 'fichiers téléversés',
 
-        // Common
         'common.delete': 'Supprimer',
         'common.cancel': 'Annuler',
         'common.save': 'Enregistrer',
@@ -647,7 +614,6 @@ const translations = {
         'common.optional': 'Optionnel',
         'common.error': 'Erreur',
 
-        // Commands
         'commands.library': 'Bibliothèque de commandes',
         'commands.addCommand': 'Ajouter une commande',
         'commands.editCommand': 'Modifier la commande',
@@ -685,11 +651,9 @@ const translations = {
     },
 
     es: {
-        // App Title
         'app.title': 'Terminal SSH Web',
         'app.subtitle': 'Acceso Terminal Moderno',
 
-        // Login & Auth
         'auth.login': 'Iniciar sesión',
         'auth.register': 'Crear cuenta',
         'auth.logout': 'Cerrar sesión',
@@ -715,7 +679,6 @@ const translations = {
         'auth.passwordsMatch': '✓ Las contraseñas coinciden',
         'auth.passwordsNoMatch': '✗ Las contraseñas no coinciden',
 
-        // Connection
         'connection.recentConnections': 'Conexiones recientes',
         'connection.newConnection': 'Nueva conexión',
         'connection.newSSHConnection': 'Nueva conexión SSH',
@@ -733,7 +696,6 @@ const translations = {
         'connection.profileNamePlaceholder': 'Mi servidor',
         'connection.connect': 'Conectar',
 
-        // Keys
         'keys.manageKeys': 'Administrar claves',
         'keys.manageSSHKeys': 'Administrar claves SSH',
         'keys.uploadNewKey': 'Subir nueva clave',
@@ -743,7 +705,6 @@ const translations = {
         'keys.uploadKey': 'Subir clave',
         'keys.storedKeys': 'Claves almacenadas',
 
-        // Files
         'files.fileTransfer': 'Transferencia de archivos',
         'files.fileManager': 'Gestor de archivos',
         'files.uploadToServer': 'Subir archivo al servidor',
@@ -755,7 +716,6 @@ const translations = {
         'files.upload': 'Subir',
         'files.download': 'Descargar',
 
-        // File Manager (SFTP)
         'fm.title': 'Gestor de archivos',
         'fm.refresh': 'Actualizar',
         'fm.newFolder': 'Nueva carpeta',
@@ -800,7 +760,6 @@ const translations = {
         'fm.overwrite': 'Sobrescribir',
         'fm.skip': 'Omitir',
         'fm.applyToAll': 'Aplicar a todos',
-        // Quick Connect
         'fm.qc.title': 'Conectar al servidor',
         'fm.qc.savedProfiles': 'Perfiles guardados',
         'fm.qc.enterManually': '-- Introducir manualmente --',
@@ -817,7 +776,6 @@ const translations = {
         'fm.qc.passwordRequired': 'Contraseña requerida',
         'fm.qc.selectSshKey': 'Por favor selecciona una clave SSH',
         'fm.qc.connectionFailed': 'Conexión fallida',
-        // Additional FM keys
         'fm.selectSourceFirst': 'Por favor selecciona primero una fuente',
         'fm.noActiveSession': 'No hay sesión SSH activa',
         'fm.invalidFolderName': 'Nombre de carpeta inválido',
@@ -856,7 +814,6 @@ const translations = {
         'fm.uploadComplete': 'Subida completa',
         'fm.filesUploaded': 'archivos subidos',
 
-        // Common
         'common.delete': 'Eliminar',
         'common.cancel': 'Cancelar',
         'common.save': 'Guardar',
@@ -865,7 +822,6 @@ const translations = {
         'common.optional': 'Opcional',
         'common.error': 'Error',
 
-        // Commands
         'commands.library': 'Biblioteca de comandos',
         'commands.addCommand': 'Agregar comando',
         'commands.editCommand': 'Editar comando',
@@ -903,35 +859,29 @@ const translations = {
     }
 };
 
-// i18n Manager
 const i18n = {
     currentLang: localStorage.getItem('language') || 'en',
 
-    // Get translation
     t(key) {
         return translations[this.currentLang][key] || translations['en'][key] || key;
     },
 
-    // Set language
     setLanguage(lang) {
         if (translations[lang]) {
             this.currentLang = lang;
             localStorage.setItem('language', lang);
             this.updatePageText();
 
-            // Trigger custom event for dynamic content updates
             window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang } }));
             return true;
         }
         return false;
     },
 
-    // Get current language
     getLanguage() {
         return this.currentLang;
     },
 
-    // Get available languages
     getLanguages() {
         return [
             { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -941,7 +891,6 @@ const i18n = {
         ];
     },
 
-    // Update all text on page
     updatePageText() {
         document.querySelectorAll('[data-i18n]').forEach(element => {
             const key = element.getAttribute('data-i18n');
@@ -954,17 +903,14 @@ const i18n = {
             }
         });
 
-        // Update title
         if (document.title.includes('SSH Terminal')) {
             document.title = this.t('app.title');
         }
     }
 };
 
-// Make i18n globally available
 window.i18n = i18n;
 
-// Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
     i18n.updatePageText();
 });

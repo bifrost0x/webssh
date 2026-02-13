@@ -1,6 +1,5 @@
 import warnings
-# Suppress Paramiko's TripleDES deprecation warnings
-warnings.filterwarnings('ignore', message='.*TripleDES.*', category=DeprecationWarning)
+warnings.filterwarnings('ignore', message='.*TripleDES.*')
 
 from app import create_app, socketio
 import config
@@ -13,6 +12,8 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', '5000'))
     print("Starting Web SSH Terminal...")
     print(f"Server running at http://{host}:{port}")
+    if host == '127.0.0.1':
+        print("Note: Listening on localhost only. Set HOST=0.0.0.0 to accept external connections.")
     print("Press Ctrl+C to stop the server")
 
     socketio.run(

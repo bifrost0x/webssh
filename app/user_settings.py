@@ -1,11 +1,9 @@
 import json
 
-
 DEFAULT_SETTINGS = {
     'theme': 'glass',
     'notepad': ''
 }
-
 
 def get_user_settings(user_id):
     """Load user settings from disk with defaults."""
@@ -26,7 +24,6 @@ def get_user_settings(user_id):
             return settings
     except Exception:
         return DEFAULT_SETTINGS.copy()
-
 
 def save_user_settings(user_id, settings):
     """Persist user settings to disk."""

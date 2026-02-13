@@ -1,4 +1,3 @@
-// Profile Manager - Manages connection profiles
 const ProfileManager = {
     profiles: [],
     keys: [],
@@ -30,10 +29,8 @@ const ProfileManager = {
         const select = document.getElementById('profileSelect');
         if (!select) return;
 
-        // Clear existing options except the first one
         select.innerHTML = '<option value="">-- Select Profile --</option>';
 
-        // Add profile options
         this.profiles.forEach(profile => {
             const option = document.createElement('option');
             option.value = profile.id;
@@ -46,10 +43,8 @@ const ProfileManager = {
         const select = document.getElementById('keySelect');
         if (!select) return;
 
-        // Clear existing options except the first one
         select.innerHTML = '<option value="">-- Select SSH Key --</option>';
 
-        // Add key options
         this.keys.forEach(key => {
             const option = document.createElement('option');
             option.value = key.id;
@@ -72,7 +67,6 @@ const ProfileManager = {
             const keyItem = document.createElement('div');
             keyItem.className = 'key-item';
 
-            // Security Fix: Use DOM methods instead of innerHTML to prevent XSS
             const keyInfo = document.createElement('div');
             keyInfo.className = 'key-info';
 
@@ -99,7 +93,6 @@ const ProfileManager = {
             keyItem.appendChild(keyInfo);
             keyItem.appendChild(deleteBtn);
 
-            // Delete button handler
             deleteBtn.addEventListener('click', (e) => {
                 const keyId = e.target.dataset.keyId;
                 this.deleteKey(keyId);
@@ -113,21 +106,17 @@ const ProfileManager = {
         const profile = this.profiles.find(p => p.id === profileId);
         if (!profile) return;
 
-        // Fill connection form
         document.getElementById('hostInput').value = profile.host;
         document.getElementById('portInput').value = profile.port;
         document.getElementById('usernameInput').value = profile.username;
 
-        // Set auth type
         const authTypeRadios = document.querySelectorAll('input[name="authType"]');
         authTypeRadios.forEach(radio => {
             radio.checked = (radio.value === profile.auth_type);
         });
 
-        // Trigger auth type change
         this.handleAuthTypeChange(profile.auth_type);
 
-        // Set key if applicable
         if (profile.auth_type === 'key' && profile.key_id) {
             document.getElementById('keySelect').value = profile.key_id;
         }

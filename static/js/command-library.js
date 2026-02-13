@@ -1,18 +1,15 @@
-// Command Library Manager - Handles command popup, search, and execution
 const CommandLibrary = {
     commands: [],
     filteredCommands: [],
-    currentOs: 'all',  // Current detected OS
+    currentOs: 'all',
     editingCommandId: null,
     detectingOsForSession: null,
     renderCursor: 0,
     chunkSize: 40,
 
     init() {
-        // Load commands on startup
         this.loadCommands();
 
-        // Listen for command events
         if (window.socket) {
             window.socket.on('commands_list', (data) => {
                 this.setCommands(data.commands);
@@ -32,17 +29,14 @@ const CommandLibrary = {
 
             window.socket.on('os_detection_started', (data) => {
                 console.log('OS detection started for session:', data.session_id);
-                // Set flag to capture next output
                 this.detectingOsForSession = data.session_id;
             });
         }
 
-        // Setup DOM event listeners
         this.setupEventListeners();
     },
 
     setupEventListeners() {
-        // Command Library Modal
         const commandLibraryBtn = document.getElementById('commandLibraryBtn');
         if (commandLibraryBtn) {
             commandLibraryBtn.addEventListener('click', () => this.openLibrary());
@@ -53,19 +47,16 @@ const CommandLibrary = {
             closeCommandLibraryModal.addEventListener('click', () => this.closeLibrary());
         }
 
-        // Search input
         const commandSearchInput = document.getElementById('commandSearchInput');
         if (commandSearchInput) {
             commandSearchInput.addEventListener('input', (e) => this.searchCommands(e.target.value));
         }
 
-        // Add command button
         const addCommandBtn = document.getElementById('addCommandBtn');
         if (addCommandBtn) {
             addCommandBtn.addEventListener('click', () => this.showAddCommandForm());
         }
 
-        // Command Form Modal
         const closeCommandFormModal = document.getElementById('closeCommandFormModal');
         if (closeCommandFormModal) {
             closeCommandFormModal.addEventListener('click', () => this.closeCommandForm());
@@ -84,7 +75,6 @@ const CommandLibrary = {
             });
         }
 
-        // Close modals on outside click
         window.addEventListener('click', (e) => {
             const commandLibraryModal = document.getElementById('commandLibraryModal');
             const commandFormModal = document.getElementById('commandFormModal');
@@ -97,14 +87,10 @@ const CommandLibrary = {
             }
         });
 
-        // OS filter buttons
         document.querySelectorAll('.os-filter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                // Remove active from all buttons
                 document.querySelectorAll('.os-filter-btn').forEach(b => b.classList.remove('active'));
-                // Add active to clicked button
                 e.currentTarget.classList.add('active');
-                // Update filter
                 this.currentOs = e.currentTarget.dataset.os;
                 this.loadCommands();
             });
@@ -123,7 +109,6 @@ const CommandLibrary = {
         this.commands = commands;
         this.filteredCommands = commands;
         this.renderCommandsList();
-        // Update OS display
         const osDisplay = document.getElementById('currentOsDisplay');
         if (osDisplay) {
             osDisplay.textContent = this.currentOs.charAt(0).toUpperCase() + this.currentOs.slice(1);
@@ -133,21 +118,17 @@ const CommandLibrary = {
     openLibrary() {
         const activeSessionId = SessionManager.getActiveSession();
 
-        // No auto OS detection to avoid terminal noise.
         if (!activeSessionId) {
-            // No active session - show all commands without OS filter
             this.currentOs = 'all';
             this.loadCommands();
         }
 
-        // Show modal
         if (window.ModalManager) {
             window.ModalManager.open(document.getElementById('commandLibraryModal'));
         } else {
             document.getElementById('commandLibraryModal').classList.add('show');
         }
 
-        // Focus search input
         setTimeout(() => {
             document.getElementById('commandSearchInput').focus();
         }, 100);
@@ -159,14 +140,12 @@ const CommandLibrary = {
         } else {
             document.getElementById('commandLibraryModal').classList.remove('show');
         }
-        // Clear search
         document.getElementById('commandSearchInput').value = '';
         this.filteredCommands = this.commands;
         this.renderCommandsList();
     },
 
     detectOs() {
-        // Auto detection disabled.
     },
 
     searchCommands(query) {
@@ -175,7 +154,6 @@ const CommandLibrary = {
         } else {
             const lowerQuery = query.toLowerCase();
             this.filteredCommands = this.commands.filter(cmd => {
-                // 1. Always search in English (actual command data - name, command, parameters, description)
                 const matchesEnglish = (
                     cmd.name.toLowerCase().includes(lowerQuery) ||
                     cmd.command.toLowerCase().includes(lowerQuery) ||
@@ -187,13 +165,11 @@ const CommandLibrary = {
                     return true;
                 }
 
-                // 2. Search in current language category translations
                 if (window.i18n) {
                     const currentLang = window.i18n.getLanguage();
                     const translations = window.i18n.translations[currentLang];
 
                     if (translations) {
-                        // Search in translated category name
                         const categoryKey = 'commands.category' + cmd.category.charAt(0).toUpperCase() + cmd.category.slice(1);
                         if (translations[categoryKey] && translations[categoryKey].toLowerCase().includes(lowerQuery)) {
                             return true;
@@ -276,30 +252,25 @@ const CommandLibrary = {
             container.appendChild(row);
         });
 
-        // Attach event listeners (secure - no inline JS)
         this.attachCommandListeners(container);
     },
 
     attachCommandListeners(container) {
-        // Execute buttons
         container.querySelectorAll('.cmd-execute').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.executeCommand(btn.dataset.cmdId);
             });
         });
-        // Copy buttons
         container.querySelectorAll('.cmd-copy').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.copyCommand(btn.dataset.cmdId);
             });
         });
-        // Edit buttons
         container.querySelectorAll('.cmd-edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editCommand(btn.dataset.cmdId);
             });
         });
-        // Delete buttons
         container.querySelectorAll('.cmd-delete').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.deleteCommand(btn.dataset.cmdId);
@@ -317,13 +288,11 @@ const CommandLibrary = {
             return;
         }
 
-        // Build full command string
         let fullCommand = cmd.command;
         if (cmd.parameters) {
             fullCommand += ' ' + cmd.parameters;
         }
 
-        // Send to terminal (but don't auto-execute with \n, let user press Enter)
         if (window.socket) {
             window.socket.emit('ssh_input', {
                 session_id: activeSessionId,
@@ -331,7 +300,6 @@ const CommandLibrary = {
             });
         }
 
-        // Close library after execution
         this.closeLibrary();
 
         window.showNotification(`Command inserted: ${cmd.name}`, 'success');
@@ -346,7 +314,6 @@ const CommandLibrary = {
         document.getElementById('commandFormDescription').value = '';
         document.getElementById('commandFormCategory').value = 'custom';
 
-        // Reset OS checkboxes
         document.querySelectorAll('input[name="commandOs"]').forEach(cb => cb.checked = false);
         document.getElementById('osAll').checked = true;
 
@@ -361,8 +328,7 @@ const CommandLibrary = {
         const cmd = this.commands.find(c => c.id === commandId);
         if (!cmd) return;
 
-        // Pre-fill form with system command data for user to customize
-        this.editingCommandId = null; // This is a new command, not an edit
+        this.editingCommandId = null;
         document.getElementById('commandFormTitle').textContent = 'Copy Command to My Library';
         document.getElementById('commandFormName').value = cmd.name;
         document.getElementById('commandFormCommand').value = cmd.command;
@@ -370,7 +336,6 @@ const CommandLibrary = {
         document.getElementById('commandFormDescription').value = cmd.description;
         document.getElementById('commandFormCategory').value = cmd.category || 'custom';
 
-        // Set OS checkboxes
         document.querySelectorAll('input[name="commandOs"]').forEach(cb => {
             cb.checked = cmd.os.includes(cb.value);
         });
@@ -394,7 +359,6 @@ const CommandLibrary = {
         document.getElementById('commandFormDescription').value = cmd.description;
         document.getElementById('commandFormCategory').value = cmd.category || 'custom';
 
-        // Set OS checkboxes
         document.querySelectorAll('input[name="commandOs"]').forEach(cb => {
             cb.checked = cmd.os.includes(cb.value);
         });
@@ -413,7 +377,6 @@ const CommandLibrary = {
         const description = document.getElementById('commandFormDescription').value.trim();
         const category = document.getElementById('commandFormCategory').value;
 
-        // Get selected OS
         const osList = [];
         document.querySelectorAll('input[name="commandOs"]:checked').forEach(cb => {
             osList.push(cb.value);
@@ -439,11 +402,9 @@ const CommandLibrary = {
         };
 
         if (this.editingCommandId) {
-            // Update
             data.command_id = this.editingCommandId;
             window.socket.emit('update_command', data);
         } else {
-            // Add
             window.socket.emit('add_command', data);
         }
 

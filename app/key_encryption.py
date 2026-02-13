@@ -17,10 +17,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import config
 from .audit_logger import log_info, log_warning, log_error
 
-# Salt for key derivation (fixed per installation)
-# In production, this could be stored separately for additional security
 _DERIVATION_SALT = b'webssh_key_encryption_v1'
-
 
 def _derive_key(secret: str, user_id: str) -> bytes:
     """
@@ -35,19 +32,17 @@ def _derive_key(secret: str, user_id: str) -> bytes:
     Returns:
         32-byte key suitable for Fernet encryption
     """
-    # Combine secret with user_id to create per-user keys
     combined = f"{secret}:{user_id}".encode()
 
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=_DERIVATION_SALT,
-        iterations=600000,  # OWASP recommended minimum for PBKDF2-SHA256
+        iterations=600000,
     )
 
     key = kdf.derive(combined)
     return base64.urlsafe_b64encode(key)
-
 
 def get_user_fernet(user_id: str) -> Fernet:
     """
@@ -62,7 +57,6 @@ def get_user_fernet(user_id: str) -> Fernet:
     key = _derive_key(config.SECRET_KEY, str(user_id))
     return Fernet(key)
 
-
 def encrypt_key_content(user_id: str, key_content: str) -> bytes:
     """
     Encrypt SSH key content for storage.
@@ -76,7 +70,6 @@ def encrypt_key_content(user_id: str, key_content: str) -> bytes:
     """
     fernet = get_user_fernet(user_id)
     return fernet.encrypt(key_content.encode('utf-8'))
-
 
 def decrypt_key_content(user_id: str, encrypted_data: bytes) -> str:
     """
@@ -96,7 +89,6 @@ def decrypt_key_content(user_id: str, encrypted_data: bytes) -> str:
     decrypted = fernet.decrypt(encrypted_data)
     return decrypted.decode('utf-8')
 
-
 def is_encrypted(data: bytes) -> bool:
     """
     Check if data appears to be Fernet-encrypted.
@@ -114,30 +106,21 @@ def is_encrypted(data: bytes) -> bool:
     if isinstance(data, str):
         data = data.encode()
 
-    # PEM-encoded SSH keys start with '-----BEGIN' - NOT encrypted by us
     if data.strip().startswith(b'-----BEGIN'):
         return False
 
-    # Fernet tokens are base64 urlsafe encoded
     try:
-        # Check minimum length for Fernet token
         if len(data) < 50:
             return False
 
-        # Fernet tokens use urlsafe base64 (with - and _ instead of + and /)
-        # and have a specific structure
         decoded = base64.urlsafe_b64decode(data)
 
-        # Fernet format: version (1) + timestamp (8) + IV (16) + ciphertext + HMAC (32)
-        # Minimum size: 1 + 8 + 16 + 16 + 32 = 73 bytes
-        # Also check version byte is 0x80 (Fernet version)
         if len(decoded) >= 73 and decoded[0] == 0x80:
             return True
 
         return False
     except:
         return False
-
 
 def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
     """
@@ -162,30 +145,24 @@ def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
             log_warning(f"Key file not found for migration", path=key_path)
             return False
 
-        # Read current content
         with open(path, 'rb') as f:
             content = f.read()
 
-        # Check if already encrypted
         if is_encrypted(content):
             log_info(f"Key already encrypted", path=key_path)
             return True
 
-        # Encrypt the content
         encrypted = encrypt_key_content(user_id, content.decode('utf-8'))
 
-        # Create backup
         backup_path = str(path) + '.bak'
         with open(backup_path, 'wb') as f:
             f.write(content)
         os.chmod(backup_path, 0o600)
 
-        # Write encrypted content
         with open(path, 'wb') as f:
             f.write(encrypted)
         os.chmod(path, 0o600)
 
-        # Remove backup after successful write
         Path(backup_path).unlink(missing_ok=True)
 
         log_info(f"Key encrypted successfully", path=key_path, user_id=user_id)
@@ -194,7 +171,6 @@ def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
     except Exception as e:
         log_error(f"Failed to encrypt key", path=key_path, error=str(e))
         return False
-
 
 def read_key_content(user_id: str, key_path: str) -> str:
     """
@@ -223,19 +199,15 @@ def read_key_content(user_id: str, key_path: str) -> str:
     with open(path, 'rb') as f:
         content = f.read()
 
-    # Check if encrypted
     if is_encrypted(content):
         return decrypt_key_content(user_id, content)
     else:
-        # Legacy unencrypted key - migrate it
         log_warning(f"Found unencrypted legacy key, migrating", path=key_path)
         plaintext = content.decode('utf-8')
 
-        # Migrate to encrypted format
         migrate_key_to_encrypted(user_id, key_path)
 
         return plaintext
-
 
 def write_key_content(user_id: str, key_path: str, key_content: str) -> bool:
     """
@@ -261,7 +233,6 @@ def write_key_content(user_id: str, key_path: str, key_content: str) -> bool:
         with open(path, 'wb') as f:
             f.write(encrypted)
 
-        # Set restrictive permissions
         os.chmod(path, 0o600)
 
         return True

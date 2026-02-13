@@ -1,18 +1,3 @@
-/**
- * Global Drag & Drop Manager
- *
- * Handles drag-and-drop file uploads anywhere on the page.
- * Features:
- * - Visual feedback with overlay
- * - Multi-file and folder support
- * - Quick connection if no session active
- * - Drag preview with file count
- * - Integration with binary transfer client
- *
- * Usage:
- * const manager = new DragDropManager();
- * manager.init();
- */
 
 class DragDropManager {
   constructor() {
@@ -23,7 +8,6 @@ class DragDropManager {
     this.transferClient = null;
     this.defaultSessionId = null;
 
-    // Bindings
     this.handleDragEnter = this.handleDragEnter.bind(this);
     this.handleDragOver = this.handleDragOver.bind(this);
     this.handleDragLeave = this.handleDragLeave.bind(this);
@@ -34,7 +18,6 @@ class DragDropManager {
     this.createOverlay();
     this.attachGlobalListeners();
 
-    // Initialize transfer client if available
     if (window.socket && window.BinaryTransferClient) {
       this.transferClient = new BinaryTransferClient(window.socket);
     }
@@ -116,7 +99,6 @@ class DragDropManager {
   }
 
   attachGlobalListeners() {
-    // Prevent default drag behavior on entire document
     document.addEventListener('dragover', (e) => {
       e.preventDefault();
     });
@@ -125,20 +107,16 @@ class DragDropManager {
       e.preventDefault();
     });
 
-    // Track drag enter/leave for overlay
     document.addEventListener('dragenter', this.handleDragEnter);
     document.addEventListener('dragleave', this.handleDragLeave);
     document.addEventListener('dragover', this.handleDragOver);
     document.addEventListener('drop', this.handleDrop);
 
-    // Ensure overlay is hidden when drag ends for any reason
     document.addEventListener('dragend', () => {
       this.reset();
     });
 
-    // Also listen for mouseup as a fallback to catch edge cases
     document.addEventListener('mouseup', () => {
-      // Small delay to allow drop event to fire first
       setTimeout(() => {
         if (this.dragCounter > 0) {
           this.reset();
@@ -148,7 +126,6 @@ class DragDropManager {
   }
 
   handleDragEnter(e) {
-    // Only handle file drags
     if (!this.isFileDrag(e)) return;
 
     this.dragCounter++;
@@ -165,7 +142,6 @@ class DragDropManager {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
 
-    // Update file count in overlay
     const items = e.dataTransfer?.items;
     if (items && items.length > 0) {
       const count = items.length;
@@ -199,16 +175,13 @@ class DragDropManager {
     const items = e.dataTransfer?.items;
     const files = e.dataTransfer?.files;
 
-    // Check if we have an active session
     const session = this.getActiveSession();
 
     if (!session) {
-      // Show quick connection dialog
       this.showQuickConnectDialog(items || files);
       return;
     }
 
-    // Process files
     if (items) {
       await this.processDataTransferItems(items, session);
     } else if (files) {
@@ -237,11 +210,9 @@ class DragDropManager {
   async uploadDirectory(directoryEntry, session, basePath = null) {
     if (!this.transferClient) return;
 
-    // Use current path from active file browser or default to home
     const currentPath = basePath || this.getCurrentPath() || '/';
     const dirPath = `${currentPath}/${directoryEntry.name}`;
 
-    // Create directory on remote
     if (window.socket) {
       window.socket.emit('create_directory', {
         session_id: session.id,
@@ -249,13 +220,11 @@ class DragDropManager {
       });
     }
 
-    // Read directory contents
     const reader = directoryEntry.createReader();
     const entries = await new Promise((resolve, reject) => {
       reader.readEntries(resolve, reject);
     });
 
-    // Process all entries
     for (const entry of entries) {
       if (entry.isFile) {
         entry.file(file => {
@@ -268,16 +237,8 @@ class DragDropManager {
     }
   }
 
-  /**
-   * SECURITY: Maximum file size for drag-drop uploads (100MB)
-   */
   maxFileSize = 100 * 1024 * 1024;
 
-  /**
-   * Validate file before upload
-   * @param {File} file - File to validate
-   * @returns {string|null} Error message or null if valid
-   */
   validateFile(file) {
     if (file.size > this.maxFileSize) {
       return `File "${file.name}" too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Max size: ${this.maxFileSize / 1024 / 1024}MB`;
@@ -289,7 +250,6 @@ class DragDropManager {
   }
 
   uploadFile(file, session) {
-    // SECURITY: Validate file before upload
     const error = this.validateFile(file);
     if (error) {
       if (window.showNotification) {
@@ -311,20 +271,18 @@ class DragDropManager {
 
     this.transferClient.uploadFile(file, remotePath, session.id);
 
-    // Show notification
     if (window.showNotification) {
       window.showNotification(`Uploading ${file.name}...`, 'info');
     }
   }
 
   getActiveSession() {
-    // Try to get from SessionManager
     if (window.SessionManager) {
       const sessions = window.SessionManager.getAllSessions();
       const connected = sessions.filter(s => s.connected);
 
       if (connected.length > 0) {
-        return connected[0]; // Return first connected session
+        return connected[0];
       }
     }
 
@@ -332,17 +290,14 @@ class DragDropManager {
   }
 
   getCurrentPath() {
-    // Return default path - file browser not available
     return '/';
   }
 
   showQuickConnectDialog(filesOrItems) {
-    // Show notification to connect first and open connection modal
     if (window.showNotification) {
       window.showNotification('Please connect to a server first, then try uploading again.', 'warning');
     }
 
-    // Open the connection modal if available
     const connectionModal = document.getElementById('connectionModal');
     if (connectionModal && window.ModalManager) {
       window.ModalManager.open(connectionModal);
@@ -359,13 +314,9 @@ class DragDropManager {
     if (this.overlay) {
       this.overlay.style.display = 'none';
     }
-    // Reset drag counter to prevent stuck state
     this.dragCounter = 0;
   }
 
-  /**
-   * Force reset all drag state - call this when closing modals or changing views
-   */
   reset() {
     this.dragCounter = 0;
     this.hideOverlay();
@@ -386,7 +337,6 @@ class DragDropManager {
   }
 
   isFileDrag(e) {
-    // Check if drag contains files
     const types = e.dataTransfer?.types;
     return types && types.includes('Files');
   }
@@ -415,7 +365,6 @@ class DragDropManager {
   }
 }
 
-// Auto-initialize on page load
 if (typeof window !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => {
     window.dragDropManager = new DragDropManager();
@@ -423,7 +372,6 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = DragDropManager;
 }

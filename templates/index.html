@@ -9,21 +9,17 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Web SSH Terminal</title>
 
-    <!-- xterm.js CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
 
-    <!-- Highlight.js for code preview -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" />
 
-    <!-- Material Icons -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 
-    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
-    <!-- Header -->
+
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
@@ -36,7 +32,6 @@
                 <button id="manageKeysBtn" class="btn btn-secondary"><span data-i18n="keys.manageKeys">Manage Keys</span> 🔑</button>
                 <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
 
-                <!-- Theme Selector -->
                 <div class="theme-selector">
                     <button class="btn btn-secondary theme-btn-header" id="themeBtnHeader" onclick="toggleThemeDropdownHeader(event)" aria-label="Select theme" aria-haspopup="true">
                         <span id="currentThemeLabel">Theme</span> 🎨
@@ -46,7 +41,6 @@
 
                 <button id="changePasswordBtn" class="btn btn-secondary"><span data-i18n="auth.changePassword">Change Password</span> 🔐</button>
 
-                <!-- Language Selector -->
                 <div class="language-selector">
                     <button class="btn btn-secondary lang-btn-header" id="langBtnHeader" onclick="toggleLangDropdownHeader(event)" aria-label="Select language" aria-haspopup="true">
                         <span id="currentLangFlagHeader">🇬🇧</span>
@@ -58,11 +52,9 @@
             </div>
         </div>
 
-        <!-- Session Tabs -->
         <div class="session-tabs" id="sessionTabs"></div>
     </header>
 
-    <!-- Main Content -->
     <main class="main-content">
         <div class="session-bar hidden" id="sessionBar">
             <div class="session-meta" id="sessionMeta" aria-live="polite">
@@ -97,11 +89,18 @@
                         </svg>
                     </button>
                 </div>
+                <div class="mobile-input-bar" id="mobileInputBar">
+                    <input type="text" id="mobileInput" data-i18n-placeholder="terminal.mobileInputPlaceholder" placeholder="Type or paste here..."
+                           maxlength="4096" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <button class="btn btn-primary mobile-send-btn" id="mobileSendBtn" aria-label="Send">
+                        <span class="material-icons">send</span>
+                    </button>
+                </div>
             </div>
         </div>
         <div class="workspace" id="workspace">
             <div class="terminal-area">
-                <!-- Terminals Container -->
+
                 <div class="terminals-container" id="terminalsContainer">
                     <div class="terminal-grid split-1" id="terminalGrid"></div>
                     <div class="drop-overlay hidden" id="dropOverlay">
@@ -116,7 +115,7 @@
                             <p data-i18n="connection.clickToStart">Click "New Connection" to start an SSH session</p>
                         </div>
                     </div>
-                    <!-- Terminal Search Bar -->
+
                     <div class="terminal-search-bar hidden" id="terminalSearchBar">
                         <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." autocomplete="off" />
                         <span class="search-count" id="terminalSearchCount"></span>
@@ -143,7 +142,6 @@
         </div>
     </main>
 
-    <!-- Connection Modal -->
     <div class="modal" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -152,13 +150,12 @@
             </div>
             <div class="modal-body">
                 <form id="connectionForm">
-                    <!-- Recent Connections -->
+
                     <div class="form-group" id="recentConnectionsGroup" style="display: none;">
                         <label data-i18n="connection.recentConnections">Recent Connections</label>
                         <div id="recentConnectionsList" class="recent-connections-list"></div>
                     </div>
 
-                    <!-- Profile Selector -->
                     <div class="form-group">
                         <label for="profileSelect" data-i18n="connection.loadProfile">Load Profile (Optional)</label>
                         <div style="display: flex; gap: 10px;">
@@ -188,7 +185,6 @@
                         <div class="field-hint" id="usernameHint"></div>
                     </div>
 
-                    <!-- Authentication Method -->
                     <div class="form-group">
                         <label data-i18n="connection.authMethod">Authentication Method</label>
                         <div class="auth-type-selector">
@@ -201,7 +197,6 @@
                         </div>
                     </div>
 
-                    <!-- Password Input -->
                     <div class="form-group" id="passwordGroup">
                         <label for="passwordInput" data-i18n="auth.password">Password *</label>
                         <div class="input-wrapper with-toggle">
@@ -211,7 +206,6 @@
                         <div class="field-hint" id="passwordHint"></div>
                     </div>
 
-                    <!-- Key Selector -->
                     <div class="form-group hidden" id="keyGroup">
                         <label for="keySelect" data-i18n="connection.sshKey">SSH Key *</label>
                         <select id="keySelect" class="form-control">
@@ -220,7 +214,6 @@
                         <div class="field-hint" id="keyHint"></div>
                     </div>
 
-                    <!-- Save Profile Option -->
                     <div class="form-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="saveProfileCheck">
@@ -246,7 +239,6 @@
         </div>
     </div>
 
-    <!-- Key Management Modal -->
     <div class="modal" id="keyManagementModal" role="dialog" aria-modal="true" aria-labelledby="keyManagementTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -254,7 +246,7 @@
                 <span class="close" id="closeKeyModal" aria-label="Close">&times;</span>
             </div>
             <div class="modal-body">
-                <!-- Upload Key Form -->
+
                 <div class="key-upload-section">
                     <h3 data-i18n="keys.uploadNewKey">Upload New Key</h3>
                     <form id="keyUploadForm">
@@ -271,7 +263,6 @@
                     </form>
                 </div>
 
-                <!-- Keys List -->
                 <div class="keys-list-section">
                     <h3 data-i18n="keys.storedKeys">Stored Keys</h3>
                     <div id="keysList" class="keys-list"></div>
@@ -280,7 +271,6 @@
         </div>
     </div>
 
-    <!-- File Transfer Modal -->
     <div class="modal" id="fileTransferModal" role="dialog" aria-modal="true" aria-labelledby="fileTransferTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -341,10 +331,8 @@
         </div>
     </div>
 
-    <!-- Notification Container -->
     <div class="notification-container" id="notificationContainer"></div>
 
-    <!-- Command Library Modal -->
     <div class="modal" id="commandLibraryModal" role="dialog" aria-modal="true" aria-labelledby="commandLibraryTitle">
         <div class="modal-content modal-large">
             <div class="modal-header">
@@ -352,7 +340,7 @@
                 <span class="close" id="closeCommandLibraryModal" aria-label="Close">&times;</span>
             </div>
             <div class="modal-body">
-                <!-- Search and Actions Bar -->
+
                 <div class="command-toolbar">
                     <input
                         type="text"
@@ -366,7 +354,6 @@
                     </button>
                 </div>
 
-                <!-- OS Filter Selection -->
                 <div class="os-filter-toolbar">
                     <span data-i18n="commands.filterByOs">Filter by OS:</span>
                     <div class="os-filter-buttons">
@@ -391,7 +378,6 @@
                     </div>
                 </div>
 
-                <!-- Commands Table -->
                 <div class="commands-table-wrapper">
                     <div class="commands-table-header">
                         <div class="command-cell command-name" data-i18n="commands.name">Name</div>
@@ -401,11 +387,10 @@
                         <div class="command-cell command-actions" data-i18n="commands.actions">Actions</div>
                     </div>
                     <div class="commands-table-body" id="commandsList">
-                        <!-- Commands will be rendered here -->
+
                     </div>
                 </div>
 
-                <!-- Help Text -->
                 <div class="command-help">
                     <p>💡 <strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Click ▶️ to insert command into terminal.</span></p>
                     <p>🔒 <span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
@@ -414,7 +399,6 @@
         </div>
     </div>
 
-    <!-- Command Form Modal (Add/Edit) -->
     <div class="modal" id="commandFormModal" role="dialog" aria-modal="true" aria-labelledby="commandFormTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -480,7 +464,6 @@
         </div>
     </div>
 
-    <!-- Command Palette -->
     <div class="modal" id="commandPaletteModal" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
         <div class="modal-content modal-small">
             <div class="modal-header">
@@ -494,7 +477,6 @@
         </div>
     </div>
 
-    <!-- Shortcuts Help -->
     <div class="modal" id="shortcutsModal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
         <div class="modal-content modal-small">
             <div class="modal-header">
@@ -507,7 +489,6 @@
         </div>
     </div>
 
-    <!-- Drop Upload Modal -->
     <div class="modal" id="dropUploadModal" role="dialog" aria-modal="true" aria-labelledby="dropUploadTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -533,7 +514,6 @@
         </div>
     </div>
 
-    <!-- Pane Assignment Modal -->
     <div class="modal" id="paneAssignmentModal" role="dialog" aria-modal="true" aria-labelledby="paneAssignmentTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -545,7 +525,7 @@
                     <p data-i18n="panes.assignInfo">Select which sessions to display in each pane. You can assign existing sessions or create new connections.</p>
                 </div>
                 <div id="paneAssignmentList" class="pane-assignment-list">
-                    <!-- Panes will be rendered here dynamically -->
+
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancelPaneAssignment" data-i18n="common.cancel">Cancel</button>
@@ -555,7 +535,6 @@
         </div>
     </div>
 
-    <!-- File Preview Modal -->
     <div class="modal" id="filePreviewModal" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
         <div class="modal-content modal-xlarge">
             <div class="modal-header">
@@ -606,21 +585,17 @@
         </div>
     </div>
 
-    <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-search@0.13.0/lib/xterm-addon-search.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
-    <!-- i18n Support -->
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
 
-    <!-- Binary Transfer & Drag-Drop -->
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
 
-    <!-- Application Scripts -->
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}"></script>
@@ -641,7 +616,6 @@
     </script>
 
     <script>
-        // Theme Dropdown in Header
         function toggleThemeDropdownHeader(event) {
             if (event) {
                 event.stopPropagation();
@@ -706,13 +680,11 @@
                     option.classList.toggle('active', option.dataset.themeId === themeId);
                 });
             }
-            // Apply theme to terminals without reload
             if (window.TerminalManager && typeof TerminalManager.applyThemeToAll === 'function') {
                 TerminalManager.applyThemeToAll();
             }
         }
 
-        // Language Dropdown in Header
         function toggleLangDropdownHeader(event) {
             if (event) {
                 event.stopPropagation();
@@ -739,7 +711,6 @@
                 dropdown.appendChild(option);
             });
 
-            // Set current language display
             const current = languages.find(l => l.code === currentLang);
             if (current) {
                 updateCurrentLangHeader(current);
@@ -750,7 +721,6 @@
             document.getElementById('currentLangFlagHeader').textContent = lang.flag;
         }
 
-        // Close dropdown when clicking outside
         window.addEventListener('click', (e) => {
             if (!e.target.closest('.language-selector')) {
                 const dropdown = document.getElementById('langDropdownHeader');
@@ -766,7 +736,6 @@
             }
         });
 
-        // Initialize selectors on page load
         document.addEventListener('DOMContentLoaded', () => {
             initThemeSelectorHeader();
             initLanguageSelectorHeader();

@@ -64,7 +64,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Security Headers** - HSTS, CSP, X-Frame-Options
 
 ### Customization
-- **23 Themes** - Dark, light, and colorful options
+- **10 Themes** - Dark, light, and colorful options
 - **4 Languages** - English, German, French, Spanish
 - **Connection Profiles** - Save server configurations
 - **Command Library** - Store frequently used commands
@@ -132,9 +132,8 @@ source venv/bin/activate  # Linux/macOS
 # Install dependencies
 pip install -r requirements.txt
 
-# Set required environment variables
+# Set required environment variable
 export SECRET_KEY=$(openssl rand -hex 32)
-export CORS_ORIGINS="http://localhost:5000"
 
 # Run the application
 python start.py
@@ -153,11 +152,11 @@ docker build -t webssh:local .
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `SECRET_KEY` | **Yes** | - | Session encryption key. Generate with `openssl rand -hex 32` |
-| `CORS_ORIGINS` | **Yes** | - | Allowed origins for CORS (comma-separated) |
+| `CORS_ORIGINS` | No | `localhost:5000` | Allowed origins for CORS (comma-separated) |
 | `ALLOW_CORS_WILDCARD` | No | `false` | Set `true` to allow `*` as CORS origin (homelab use) |
 | `TRUSTED_PROXIES` | No | `0` | Set `1` when behind a reverse proxy |
 | `DEBUG` | No | `False` | Enable debug mode (development only) |
-| `HOST` | No | `0.0.0.0` | Bind address |
+| `HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | No | `5000` | Listen port |
 | `DATA_DIR` | No | `/app/data` | Persistent data directory |
 
@@ -210,22 +209,15 @@ TRUSTED_PROXIES=1
 
 ## Themes
 
-Web SSH Terminal includes 23 beautiful themes:
+Web SSH Terminal includes 10 themes:
 
 | Theme | Style | Theme | Style |
 |-------|-------|-------|-------|
 | Glass Ops | Dark Blue | Paper Ops | Light |
-| Nordic Studio | Teal | Ivory | Light Minimal |
-| Retro Future | Amber | Obsidian | Pure Black |
-| Ember Signal | Orange/Red | Monochrome Elite | Grayscale |
-| Forest Lab | Green | Midnight Azure | Deep Blue |
+| Retro Future | Amber | Noir Terminal | Purple |
 | Solar Drift | Blue/Gold | Arctic Ice | Cyan |
-| Noir Terminal | Purple | Sunset Blaze | Orange |
-| Cyberpunk Neon | Magenta | Cherry Blossom | Pink |
-| Lavender Dreams | Purple | Rose Gold | Rose |
-| Emerald Matrix | Matrix Green | Desert Mirage | Sand |
-| Forest Canopy | Forest Green | Amber Alert | High Contrast |
-| Ocean Depth | Sea Blue | | |
+| Rose Gold | Rose | Cyberpunk Neon | Magenta |
+| Emerald Matrix | Matrix Green | Obsidian | Pure Black |
 
 ## Security
 
@@ -240,7 +232,7 @@ Web SSH Terminal includes 23 beautiful themes:
 ### Security Features
 
 - **Password Hashing**: bcrypt with automatic salt
-- **Key Encryption**: Fernet (AES-128-CBC) for SSH keys at rest
+- **Key Encryption**: Fernet (AES-128-CBC + HMAC) for SSH keys at rest
 - **Rate Limiting**: 5 login attempts per minute per IP
 - **CSRF Tokens**: All forms protected
 - **Secure Cookies**: HttpOnly, SameSite=Lax, Secure (in production)
@@ -252,16 +244,17 @@ Please report security vulnerabilities by opening a GitHub issue or contacting t
 
 ## API
 
-Web SSH Terminal uses WebSocket for real-time communication. The main endpoints:
+Web SSH Terminal uses WebSocket (Socket.IO) for real-time communication. HTTP routes handle authentication, the main UI is served over WebSocket.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Main application |
 | `/login` | GET/POST | Authentication |
 | `/register` | GET/POST | User registration |
-| `/api/profiles` | GET/POST | Connection profiles |
-| `/api/keys` | GET/POST | SSH key management |
-| `/socket.io/` | WS | Real-time terminal & SFTP |
+| `/logout` | POST | End session |
+| `/change-password` | GET/POST | Password change |
+| `/api/upload` | POST | File upload (multipart) |
+| `/socket.io/` | WS | Terminal, SFTP, profiles, keys, commands |
 
 ## Development
 
@@ -285,18 +278,27 @@ flake8 .
 
 ```
 webssh/
-├── app/                    # Flask application
-│   ├── __init__.py        # App factory
-│   ├── routes.py          # HTTP routes
-│   ├── socket_events.py   # WebSocket handlers
+├── app/                    # Flask application (15 modules)
+│   ├── __init__.py        # App factory, routes, security headers
+│   ├── auth.py            # Authentication + rate limiting
+│   ├── models.py          # SQLAlchemy models
+│   ├── socket_events.py   # WebSocket event handlers
 │   ├── ssh_manager.py     # SSH connection management
-│   └── models.py          # Database models
-├── static/                 # Frontend assets
-│   ├── css/               # Stylesheets
-│   ├── js/                # JavaScript
-│   └── themes/            # Theme definitions
-├── templates/             # Jinja2 templates
-├── config.py              # Configuration
+│   ├── sftp_handler.py    # SFTP file operations
+│   ├── connection_pool.py # SSH connection pooling
+│   ├── key_manager.py     # SSH key storage
+│   ├── key_encryption.py  # SSH key encryption at rest
+│   ├── profile_manager.py # Connection profiles
+│   ├── command_manager.py # Command library
+│   ├── binary_transfer.py # Binary file transfer protocol
+│   ├── user_settings.py   # User preferences
+│   ├── audit_logger.py    # Security audit logging
+│   └── decorators.py      # Shared decorators
+├── static/
+│   ├── css/               # Stylesheets (3 files)
+│   └── js/                # Frontend JavaScript (12 modules)
+├── templates/             # Jinja2 templates (4 files)
+├── config.py              # Central configuration
 ├── start.py               # Entry point
 ├── Dockerfile             # Container definition
 └── docker-compose.yml     # Compose file

@@ -5,7 +5,6 @@ from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 
-
 def get_user_profiles_file(user_id):
     """Get the profiles file path for a specific user."""
     from .models import User
@@ -14,7 +13,6 @@ def get_user_profiles_file(user_id):
         return None
     user_dir = user.get_data_dir()
     return user_dir / 'profiles.json'
-
 
 def load_profiles(user_id):
     """Load all connection profiles for a specific user."""
@@ -29,7 +27,6 @@ def load_profiles(user_id):
     except Exception as e:
         log_error(f"Error loading profiles", user_id=user_id, error=str(e))
         return []
-
 
 def save_profiles(user_id, profiles):
     """Save profiles list to JSON file for a specific user."""
@@ -46,7 +43,6 @@ def save_profiles(user_id, profiles):
     except Exception as e:
         log_error(f"Error saving profiles", user_id=user_id, error=str(e))
         return False
-
 
 def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
     """Add a new connection profile for a specific user."""
@@ -81,7 +77,6 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
     except Exception as e:
         return None, str(e)
 
-
 def get_profile(user_id, profile_id):
     """Get a specific profile by ID for a specific user."""
     profiles = load_profiles(user_id)
@@ -89,7 +84,6 @@ def get_profile(user_id, profile_id):
         if profile['id'] == profile_id:
             return profile
     return None
-
 
 def delete_profile(user_id, profile_id):
     """Delete a profile by ID for a specific user."""

@@ -17,7 +17,6 @@ import re
 import ipaddress
 import config
 
-
 def _is_valid_host(host_str):
     """Validate host is a valid hostname or IP address."""
     try:
@@ -30,7 +29,6 @@ def _is_valid_host(host_str):
         r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
     )
     return bool(hostname_pattern.match(host_str))
-
 
 def _validate_ssh_params(host, port, username):
     """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error)."""
@@ -55,7 +53,6 @@ def _validate_ssh_params(host, port, username):
 
     return host, port, username, None
 
-
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection - authenticate and restore sessions."""
@@ -65,7 +62,6 @@ def handle_connect():
     if not user_id:
         log_warning(f"Unauthenticated connection attempt", sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
-        # SECURITY: Disconnect unauthenticated clients immediately
         disconnect()
         return
 
@@ -74,7 +70,6 @@ def handle_connect():
     if not user:
         log_warning(f"User not found during connect", user_id=user_id, sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
-        # SECURITY: Disconnect if user not found
         disconnect()
         return
 
@@ -94,7 +89,6 @@ def handle_connect():
         'username': user.username
     })
 
-
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
@@ -110,12 +104,10 @@ def handle_disconnect():
         other_sessions = SocketSession.query.filter_by(user_id=user.id).count()
 
         if other_sessions == 0:
-            # Clean up Quick Connect pool connections when user's last socket closes
             closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user.id))
             if closed > 0:
                 log_info(f"Cleaned up {closed} Quick Connect connection(s) for {user.username}")
             log_debug(f"Last socket for {user.username} disconnected, SSH sessions preserved")
-
 
 def restore_user_sessions(user_id):
     """Restore active SSH sessions when user reconnects."""
@@ -141,7 +133,6 @@ def restore_user_sessions(user_id):
             db.session.commit()
             log_debug(f"SSH session {session_id} no longer active, marked disconnected")
 
-
 @socketio.on('ssh_connect')
 @socket_login_required
 def handle_ssh_connect(data, current_user=None):
@@ -154,7 +145,6 @@ def handle_ssh_connect(data, current_user=None):
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
 
-        # Validate connection parameters
         host, port, username, error = _validate_ssh_params(
             data.get('host'), data.get('port', 22), data.get('username')
         )
@@ -162,14 +152,12 @@ def handle_ssh_connect(data, current_user=None):
             emit_error(error)
             return
 
-        # Validate authentication method
         if not password and not key_id:
             emit_error('Password or SSH key required')
             return
 
         key_content = None
         if key_id:
-            # Read and decrypt key content (keys are encrypted at rest)
             key_content, key_error = key_manager.read_key_content(current_user.id, key_id)
             if key_error:
                 emit_error(f'SSH key error: {key_error}')
@@ -186,7 +174,6 @@ def handle_ssh_connect(data, current_user=None):
             user_id=current_user.id
         )
 
-        # SECURITY: Clear credentials from memory after use
         if password:
             password = None
         if key_content:
@@ -195,15 +182,20 @@ def handle_ssh_connect(data, current_user=None):
         if error:
             emit_error(error)
         else:
-            ssh_session = SSHSession(
-                session_id=session_id,
-                user_id=current_user.id,
-                host=host,
-                port=port,
-                username=username
-            )
-            db.session.add(ssh_session)
-            db.session.commit()
+            try:
+                ssh_session = SSHSession(
+                    session_id=session_id,
+                    user_id=current_user.id,
+                    host=host,
+                    port=port,
+                    username=username
+                )
+                db.session.add(ssh_session)
+                db.session.commit()
+            except Exception as db_err:
+                db.session.rollback()
+                log_error(f"Failed to record SSH session in database",
+                          error=str(db_err), session_id=session_id)
 
             emit('ssh_connected', {
                 'session_id': session_id,
@@ -218,10 +210,8 @@ def handle_ssh_connect(data, current_user=None):
         log_error(f"SSH connection failed", error=str(e), user=current_user.username)
         emit('ssh_error', {'error': 'Connection failed'})
     finally:
-        # SECURITY: Ensure credentials are cleared even on exception
         password = None
         key_content = None
-
 
 @socketio.on('ssh_input')
 @socket_login_required
@@ -238,7 +228,6 @@ def handle_ssh_input(data, current_user=None):
             emit('ssh_error', {'error': 'Unauthorized access to session', 'session_id': session_id})
             return
 
-        # Type validation: input_data must be a string
         if not isinstance(input_data, str):
             return
 
@@ -249,7 +238,6 @@ def handle_ssh_input(data, current_user=None):
     except Exception as e:
         log_error(f"SSH input error", error=str(e))
         emit('ssh_error', {'error': 'Input error'})
-
 
 @socketio.on('keep_alive')
 @socket_login_required
@@ -263,7 +251,6 @@ def handle_keep_alive(current_user=None):
                     session['last_activity'] = time.time()
     except Exception as e:
         log_debug(f"Keep-alive error: {e}")
-
 
 @socketio.on('ssh_resize')
 @socket_login_required
@@ -280,7 +267,6 @@ def handle_ssh_resize(data, current_user=None):
         if not verify_session_ownership(session_id, current_user.id):
             return
 
-        # Bounds check: Clamp rows and cols to safe ranges
         rows = max(1, min(int(rows), 500))
         cols = max(1, min(int(cols), 1000))
 
@@ -290,7 +276,6 @@ def handle_ssh_resize(data, current_user=None):
 
     except Exception as e:
         log_debug(f"Resize exception: {e}", session_id=session_id)
-
 
 @socketio.on('ssh_disconnect')
 @socket_login_required
@@ -309,8 +294,13 @@ def handle_ssh_disconnect(data, current_user=None):
         host = ssh_session.host if ssh_session else 'unknown'
         port = ssh_session.port if ssh_session else 0
         if ssh_session:
-            ssh_session.connected = False
-            db.session.commit()
+            try:
+                ssh_session.connected = False
+                db.session.commit()
+            except Exception as db_err:
+                db.session.rollback()
+                log_error(f"Failed to update SSH session in database",
+                          error=str(db_err), session_id=session_id)
 
         success = ssh_manager.close_session(session_id)
         if success:
@@ -324,7 +314,6 @@ def handle_ssh_disconnect(data, current_user=None):
     except Exception as e:
         emit('ssh_error', {'error': 'Disconnect failed'})
 
-
 @socketio.on('list_profiles')
 @socket_login_required
 def handle_list_profiles(current_user=None):
@@ -335,7 +324,6 @@ def handle_list_profiles(current_user=None):
     except Exception as e:
         log_error("Failed to load profiles", error=str(e))
         emit('error', {'error': 'Failed to load profiles'})
-
 
 @socketio.on('save_profile')
 @socket_login_required
@@ -369,7 +357,6 @@ def handle_save_profile(data, current_user=None):
         log_error("Failed to save profile", error=str(e))
         emit('error', {'error': 'Failed to save profile'})
 
-
 @socketio.on('delete_profile')
 @socket_login_required
 def handle_delete_profile(data, current_user=None):
@@ -391,7 +378,6 @@ def handle_delete_profile(data, current_user=None):
         log_error("Failed to delete profile", error=str(e))
         emit('error', {'error': 'Failed to delete profile'})
 
-
 @socketio.on('list_keys')
 @socket_login_required
 def handle_list_keys(current_user=None):
@@ -402,7 +388,6 @@ def handle_list_keys(current_user=None):
     except Exception as e:
         log_error("Failed to load keys", error=str(e))
         emit('error', {'error': 'Failed to load keys'})
-
 
 @socketio.on('upload_key')
 @socket_login_required
@@ -428,7 +413,6 @@ def handle_upload_key(data, current_user=None):
     except Exception as e:
         emit('error', {'error': 'Failed to upload key'})
 
-
 @socketio.on('delete_key')
 @socket_login_required
 def handle_delete_key(data, current_user=None):
@@ -450,7 +434,6 @@ def handle_delete_key(data, current_user=None):
     except Exception as e:
         emit('error', {'error': 'Failed to delete key'})
 
-
 @socketio.on('upload_file')
 @socket_login_required
 def handle_upload_file(data, current_user=None):
@@ -458,14 +441,13 @@ def handle_upload_file(data, current_user=None):
     try:
         session_id = data.get('session_id')
         filename = data.get('filename')
-        file_data = data.get('file_data')  # Base64 encoded
+        file_data = data.get('file_data')
         remote_path = data.get('remote_path')
 
         if not all([session_id, filename, file_data, remote_path]):
             emit('error', {'error': 'Missing required fields for file upload'})
             return
 
-        # SECURITY: Validate upload size (Base64 overhead ~33%, so check encoded size * 0.75)
         max_size = config.MAX_UPLOAD_SIZE
         estimated_size = len(file_data) * 0.75 if file_data else 0
         if estimated_size > max_size:
@@ -473,7 +455,6 @@ def handle_upload_file(data, current_user=None):
             emit('error', {'error': f'File too large. Maximum size: {max_mb}MB'})
             return
 
-        # Verify ownership - check SSH session first, then connection pool
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -496,12 +477,11 @@ def handle_upload_file(data, current_user=None):
         if error:
             emit('error', {'error': f'Upload failed: {error}'})
         else:
-            log_file_upload(current_user.username, host='via-sftp', filename=filename,
+            log_file_upload(current_user.username, target_host='via-sftp', filename=filename,
                           size=len(file_bytes), success=True, ip_address=request.remote_addr)
 
     except Exception as e:
         emit('error', {'error': 'Upload failed'})
-
 
 @socketio.on('download_file')
 @socket_login_required
@@ -515,7 +495,6 @@ def handle_download_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields for file download'})
             return
 
-        # Verify ownership - check SSH session first, then connection pool
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -539,12 +518,11 @@ def handle_download_file(data, current_user=None):
                 'file_data': file_data,
                 'size': result['size']
             })
-            log_file_download(current_user.username, host='via-sftp', filename=result['filename'],
+            log_file_download(current_user.username, target_host='via-sftp', filename=result['filename'],
                             size=result['size'], success=True, ip_address=request.remote_addr)
 
     except Exception as e:
         emit('error', {'error': 'Download failed'})
-
 
 @socketio.on('list_directory')
 @socket_login_required
@@ -560,12 +538,10 @@ def handle_list_directory(data, current_user=None):
             emit('error', {'error': 'Session ID required'})
             return
 
-        # Verify ownership - check SSH session first, then connection pool
         authorized = False
         if verify_session_ownership(session_id, current_user.id):
             authorized = True
         else:
-            # Check if it's a Quick Connect connection from the pool
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if conn_info and conn_info['user_id'] == str(current_user.id):
                 authorized = True
@@ -596,7 +572,6 @@ def handle_list_directory(data, current_user=None):
         log_error(f"list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {'error': 'Failed to list directory'})
 
-
 @socketio.on('get_sessions')
 @socket_login_required
 def handle_get_sessions(current_user=None):
@@ -619,7 +594,6 @@ def handle_get_sessions(current_user=None):
     except Exception as e:
         log_error("Failed to get sessions", error=str(e))
         emit('error', {'error': 'Failed to get sessions'})
-
 
 @socketio.on('set_theme')
 @socket_login_required
@@ -644,7 +618,6 @@ def handle_set_theme(data, current_user=None):
         log_error("Failed to save theme", error=str(e))
         emit('error', {'error': 'Failed to save theme'})
 
-
 @socketio.on('get_notepad')
 @socket_login_required
 def handle_get_notepad(current_user=None):
@@ -656,14 +629,13 @@ def handle_get_notepad(current_user=None):
         log_error("Failed to load notepad", error=str(e))
         emit('error', {'error': 'Failed to load notepad'})
 
-
 @socketio.on('save_notepad')
 @socket_login_required
 def handle_save_notepad(data, current_user=None):
     """Persist the notepad text for the current user."""
     try:
         text = data.get('text', '')
-        if len(text) > 100000:  # 100KB
+        if len(text) > 100000:
             emit('error', {'error': 'Notepad content too large (max 100KB)'})
             return
         success = save_user_settings(current_user.id, {'notepad': text})
@@ -672,9 +644,6 @@ def handle_save_notepad(data, current_user=None):
     except Exception as e:
         log_error("Failed to save notepad", error=str(e))
         emit('error', {'error': 'Failed to save notepad'})
-
-
-# ==================== COMMAND LIBRARY EVENTS ====================
 
 @socketio.on('list_commands')
 @socket_login_required
@@ -690,7 +659,6 @@ def handle_list_commands(data, current_user=None):
     except Exception as e:
         log_error("Failed to load commands", error=str(e))
         emit('error', {'error': 'Failed to load commands'})
-
 
 @socketio.on('add_command')
 @socket_login_required
@@ -720,7 +688,6 @@ def handle_add_command(data, current_user=None):
     except Exception as e:
         log_error("Failed to add command", error=str(e))
         emit('error', {'error': 'Failed to add command'})
-
 
 @socketio.on('update_command')
 @socket_login_required
@@ -755,7 +722,6 @@ def handle_update_command(data, current_user=None):
         log_error("Failed to update command", error=str(e))
         emit('error', {'error': 'Failed to update command'})
 
-
 @socketio.on('delete_command')
 @socket_login_required
 def handle_delete_command(data, current_user=None):
@@ -779,15 +745,11 @@ def handle_delete_command(data, current_user=None):
         log_error("Failed to delete command", error=str(e))
         emit('error', {'error': 'Failed to delete command'})
 
-
 @socketio.on('detect_os')
 @socket_login_required
 def handle_detect_os(data, current_user=None):
     """OS detection disabled to avoid terminal noise."""
     emit('error', {'error': 'OS detection is disabled'})
-
-
-# Helper functions
 
 def verify_session_ownership(session_id, user_id):
     """
@@ -801,23 +763,16 @@ def verify_session_ownership(session_id, user_id):
 
     user_id_str = str(user_id)
 
-    # Fast path: check in-memory session (brief lock hold, no I/O)
     with ssh_manager.sessions_lock:
         session = ssh_manager.sessions.get(session_id)
         if session and session.get('user_id') is not None:
             return str(session.get('user_id')) == user_id_str
 
-    # Slow path: check database (outside lock to avoid blocking SSH output reader)
     ssh_session = SSHSession.query.filter_by(session_id=session_id).first()
     if ssh_session is not None:
         return str(ssh_session.user_id) == user_id_str
 
     return False
-
-
-# ============================================
-# BINARY FILE TRANSFER EVENTS
-# ============================================
 
 @socketio.on('upload_file_binary')
 @socket_login_required
@@ -826,22 +781,19 @@ def handle_upload_file_binary(data, current_user=None):
     try:
         session_id = data.get('session_id')
         filename = data.get('filename')
-        file_data = data.get('file_data')  # Binary ArrayBuffer
+        file_data = data.get('file_data')
         remote_path = data.get('remote_path')
 
         if not all([session_id, filename, file_data, remote_path]):
             emit('error', {'error': 'Missing required fields for binary upload'})
             return
 
-        # Verify session ownership
         if not verify_session_ownership(session_id, current_user.id):
-            # Check if it's a temporary connection
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
                 emit('error', {'error': 'Unauthorized access to session/connection'})
                 return
 
-        # Upload using binary transfer
         success, error = binary_transfer.handle_binary_upload(
             session_id=session_id,
             filename=filename,
@@ -853,12 +805,11 @@ def handle_upload_file_binary(data, current_user=None):
         if error:
             emit('error', {'error': f'Upload failed: {error}'})
         else:
-            log_file_upload(current_user.username, host='via-sftp', filename=filename,
+            log_file_upload(current_user.username, target_host='via-sftp', filename=filename,
                           size=len(file_data), success=True, ip_address=request.remote_addr)
 
     except Exception as e:
         emit('error', {'error': 'Upload failed'})
-
 
 @socketio.on('download_file_binary')
 @socket_login_required
@@ -867,21 +818,18 @@ def handle_download_file_binary(data, current_user=None):
     try:
         session_id = data.get('session_id')
         remote_path = data.get('remote_path')
-        for_preview = data.get('for_preview', False)  # Flag to distinguish preview from download
+        for_preview = data.get('for_preview', False)
 
         if not all([session_id, remote_path]):
             emit('error', {'error': 'Missing required fields for binary download'})
             return
 
-        # Verify session ownership
         if not verify_session_ownership(session_id, current_user.id):
-            # Check if it's a temporary connection
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
                 emit('error', {'error': 'Unauthorized access to session/connection'})
                 return
 
-        # Download using binary transfer
         binary_data, error = binary_transfer.handle_binary_download(
             session_id=session_id,
             remote_path=remote_path,
@@ -896,7 +844,6 @@ def handle_download_file_binary(data, current_user=None):
             filename = os.path.basename(remote_path)
 
             if for_preview:
-                # For preview, use base64 encoding for reliable transfer
                 encoded_data = base64.b64encode(binary_data).decode('ascii')
                 emit('file_download_ready_binary', {
                     'session_id': session_id,
@@ -907,7 +854,6 @@ def handle_download_file_binary(data, current_user=None):
                     'encoding': 'base64'
                 })
             else:
-                # For actual downloads, send binary data directly
                 emit('file_download_ready_binary', {
                     'session_id': session_id,
                     'filename': filename,
@@ -915,12 +861,11 @@ def handle_download_file_binary(data, current_user=None):
                     'size': len(binary_data),
                     'for_preview': False
                 })
-            log_file_download(current_user.username, host='via-sftp', filename=filename,
+            log_file_download(current_user.username, target_host='via-sftp', filename=filename,
                             size=len(binary_data), success=True, ip_address=request.remote_addr)
 
     except Exception as e:
         emit('error', {'error': 'Download failed'})
-
 
 @socketio.on('download_folder_binary')
 @socket_login_required
@@ -938,15 +883,12 @@ def handle_download_folder_binary(data, current_user=None):
             emit('error', {'error': 'Missing required fields for folder download'})
             return
 
-        # Verify session ownership
         if not verify_session_ownership(session_id, current_user.id):
-            # Check if it's a temporary connection
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
                 emit('error', {'error': 'Unauthorized access to session/connection'})
                 return
 
-        # Acquire per-session SFTP lock (SFTPClient is not thread-safe)
         _sftp_lock = sftp_handler._get_sftp_lock(session_id)
         _sftp_lock.acquire()
         try:
@@ -961,14 +903,12 @@ def handle_download_folder_binary(data, current_user=None):
             emit('error', {'error': error})
             return
 
-        # Sanitize remote path
         safe_path = sftp_handler.sanitize_path(remote_path)
         if safe_path is None:
             _sftp_lock.release()
             emit('error', {'error': 'Invalid remote path'})
             return
 
-        # Verify it's a directory
         try:
             file_stat = sftp.stat(safe_path)
             import stat
@@ -983,52 +923,38 @@ def handle_download_folder_binary(data, current_user=None):
 
         folder_name = os.path.basename(safe_path.rstrip('/'))
 
-        # SECURITY: Validate path doesn't contain shell-dangerous characters
-        # Even with shlex.quote, we add defense-in-depth by rejecting suspicious paths
         def is_safe_for_shell(path):
             """Validate path is safe for shell command use (defense in depth)."""
             if not path:
                 return False
-            # Reject paths with newlines, null bytes, or backticks
             dangerous_chars = ['\n', '\r', '\x00', '`', '$', '|', ';', '&']
             return not any(c in path for c in dangerous_chars)
 
-        # Try to create ZIP on remote server first (much faster for large folders)
-        # If that fails, fall back to SFTP-based approach
         remote_zip_path = f"/tmp/{folder_name}_{os.urandom(8).hex()}.zip"
 
         try:
-            # Attempt to create ZIP on remote server using shell command
             ssh_client = sftp._client if hasattr(sftp, '_client') else None
             if ssh_client and is_safe_for_shell(safe_path):
-                # Use zip command on remote server (faster)
                 import shlex
                 parent_dir = os.path.dirname(safe_path)
                 base_name = os.path.basename(safe_path)
 
-                # SECURITY: Additional validation before exec_command
                 if not (is_safe_for_shell(parent_dir) and is_safe_for_shell(base_name)):
                     raise ValueError("Path contains unsafe characters")
 
-                # Escape shell arguments for security
                 zip_command = f"cd {shlex.quote(parent_dir)} && zip -r -q {shlex.quote(remote_zip_path)} {shlex.quote(base_name)}"
 
                 stdin, stdout, stderr = ssh_client.exec_command(zip_command)
-                # SECURITY: Set timeout to prevent indefinite hanging
-                stdout.channel.settimeout(300)  # 5 minutes max for ZIP creation
+                stdout.channel.settimeout(300)
                 exit_code = stdout.channel.recv_exit_status()
 
                 if exit_code == 0:
-                    # Remote ZIP creation successful - download it
                     log_debug(f"Remote ZIP created: {remote_zip_path}")
 
-                    # SECURITY: Use context manager for guaranteed cleanup
                     zip_path = None
                     try:
-                        # Download the remote ZIP file
                         with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
                             zip_path = tmp_zip.name
-                            # SECURITY: Set restrictive permissions on temp file
                             os.chmod(zip_path, 0o600)
                             with sftp.file(remote_zip_path, 'rb') as remote_file:
                                 while True:
@@ -1037,11 +963,9 @@ def handle_download_folder_binary(data, current_user=None):
                                         break
                                     tmp_zip.write(chunk)
 
-                        # Read local ZIP and send to client
                         with open(zip_path, 'rb') as f:
                             zip_data = f.read()
 
-                        # Send to client
                         emit('file_download_ready_binary', {
                             'session_id': session_id,
                             'filename': f"{folder_name}.zip",
@@ -1052,20 +976,17 @@ def handle_download_folder_binary(data, current_user=None):
 
                         log_info(f"Folder download (remote): {folder_name}.zip", user=current_user.username)
                     finally:
-                        # SECURITY: Guaranteed cleanup of local temp file
                         if zip_path and os.path.exists(zip_path):
                             try:
                                 os.unlink(zip_path)
                             except Exception as cleanup_err:
                                 log_warning(f"Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
 
-                        # Clean up remote ZIP
                         try:
                             sftp.remove(remote_zip_path)
                         except Exception as remote_cleanup_err:
                             log_warning(f"Failed to cleanup remote ZIP", path=remote_zip_path, error=str(remote_cleanup_err))
 
-                        # Only close non-cached (pool) clients
                         if source_type == 'pool':
                             sftp.close()
 
@@ -1077,32 +998,31 @@ def handle_download_folder_binary(data, current_user=None):
         except Exception as e:
             log_debug(f"Remote ZIP creation failed, falling back to SFTP method", error=str(e))
 
-        # Fallback: Create ZIP locally using SFTP
-        # SECURITY: Initialize zip_path before try block for guaranteed cleanup
         zip_path = None
         try:
-            # Create temporary ZIP file
             with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
                 zip_path = tmp_zip.name
-            # SECURITY: Set restrictive permissions on temp file
             os.chmod(zip_path, 0o600)
 
-            # Create ZIP archive with minimal compression for speed
-            # ZIP_STORED = no compression (faster), ZIP_DEFLATED = compression (slower)
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_STORED) as zipf:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
                 file_count = 0
                 error_count = 0
 
                 cumulative_size = 0
                 max_zip_size = config.MAX_ZIP_DOWNLOAD_SIZE
 
-                def add_folder_to_zip(sftp_client, remote_folder, zip_prefix=''):
+                def add_folder_to_zip(sftp_client, remote_folder, zip_prefix='', depth=0):
                     """Recursively add folder contents to ZIP."""
                     nonlocal file_count, error_count, cumulative_size
+
+                    if depth > 50:
+                        log_warning(f"Maximum recursion depth exceeded in folder download: {remote_folder}")
+                        error_count += 1
+                        return
+
                     try:
                         items = sftp_client.listdir_attr(remote_folder)
 
-                        # If folder is empty, create directory entry in ZIP
                         if not items and zip_prefix:
                             zipf.writestr(zip_prefix + '/', '')
 
@@ -1111,13 +1031,19 @@ def handle_download_folder_binary(data, current_user=None):
                             zip_item_path = f"{zip_prefix}/{item.filename}" if zip_prefix else item.filename
 
                             try:
-                                if stat.S_ISDIR(item.st_mode):
-                                    # Create directory entry in ZIP
+                                try:
+                                    item_lstat = sftp_client.lstat(item_path)
+                                except Exception:
+                                    item_lstat = item
+
+                                if stat.S_ISLNK(item_lstat.st_mode):
+                                    log_debug(f"Skipping symlink in ZIP download: {item_path}")
+                                    continue
+
+                                if stat.S_ISDIR(item_lstat.st_mode):
                                     zipf.writestr(zip_item_path + '/', '')
-                                    # Recursively add subdirectory contents
-                                    add_folder_to_zip(sftp_client, item_path, zip_item_path)
+                                    add_folder_to_zip(sftp_client, item_path, zip_item_path, depth + 1)
                                 else:
-                                    # Add file to ZIP - read in one go for speed
                                     with sftp_client.file(item_path, 'rb') as remote_file:
                                         file_data = remote_file.read()
                                         cumulative_size += len(file_data)
@@ -1131,7 +1057,6 @@ def handle_download_folder_binary(data, current_user=None):
                             except Exception as item_error:
                                 error_count += 1
                                 log_debug(f"Error adding {item_path}", error=str(item_error))
-                                # Continue with next item instead of stopping
 
                     except ValueError:
                         raise
@@ -1139,16 +1064,13 @@ def handle_download_folder_binary(data, current_user=None):
                         log_error(f"Error reading directory {remote_folder}", error=str(e))
                         raise
 
-                # Add folder contents to ZIP
                 log_debug(f"Starting folder download: {folder_name} from {safe_path}")
                 add_folder_to_zip(sftp, safe_path, folder_name)
                 log_debug(f"Added {file_count} files to ZIP ({error_count} errors)")
 
-            # Read ZIP file as binary
             with open(zip_path, 'rb') as f:
                 zip_data = f.read()
 
-            # Send ZIP file to client
             emit('file_download_ready_binary', {
                 'session_id': session_id,
                 'filename': f"{folder_name}.zip",
@@ -1160,14 +1082,12 @@ def handle_download_folder_binary(data, current_user=None):
             log_info(f"Folder download: {folder_name}.zip", user=current_user.username)
 
         finally:
-            # SECURITY: Guaranteed cleanup of local temp file
             if zip_path and os.path.exists(zip_path):
                 try:
                     os.unlink(zip_path)
                 except Exception as cleanup_err:
                     log_warning(f"Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
 
-            # Only close non-cached (pool) clients
             if source_type == 'pool':
                 sftp.close()
 
@@ -1177,11 +1097,6 @@ def handle_download_folder_binary(data, current_user=None):
         log_error("Folder download failed", error=str(e))
         emit('error', {'error': 'Folder download failed'})
 
-
-# ============================================
-# QUICK CONNECTION (TEMPORARY CONNECTIONS)
-# ============================================
-
 @socketio.on('quick_connect')
 @socket_login_required
 def handle_quick_connect(data, current_user=None):
@@ -1190,7 +1105,6 @@ def handle_quick_connect(data, current_user=None):
         password = data.get('password')
         key_id = data.get('key_id')
 
-        # Validate connection parameters
         host, port, username, error = _validate_ssh_params(
             data.get('host'), data.get('port', 22), data.get('username')
         )
@@ -1198,12 +1112,10 @@ def handle_quick_connect(data, current_user=None):
             emit('quick_connect_error', {'error': error})
             return
 
-        # Need either password or key
         if not password and not key_id:
             emit('quick_connect_error', {'error': 'Password or SSH key required'})
             return
 
-        # Get key content if using key authentication (keys are encrypted at rest)
         key_content = None
         if key_id:
             key_content, key_error = key_manager.read_key_content(current_user.id, key_id)
@@ -1211,7 +1123,6 @@ def handle_quick_connect(data, current_user=None):
                 emit('quick_connect_error', {'error': f'SSH key error: {key_error}'})
                 return
 
-        # Create temporary connection
         connection_id, error = connection_pool.temp_connection_pool.create_connection(
             host=host,
             port=port,
@@ -1221,7 +1132,6 @@ def handle_quick_connect(data, current_user=None):
             user_id=str(current_user.id)
         )
 
-        # SECURITY: Clear password from memory after use
         if password:
             password = None
         if key_content:
@@ -1242,10 +1152,8 @@ def handle_quick_connect(data, current_user=None):
         log_error("Quick connect failed", error=str(e))
         emit('quick_connect_error', {'error': 'Connection failed'})
     finally:
-        # SECURITY: Ensure credentials are cleared even on exception
         password = None
         key_content = None
-
 
 @socketio.on('quick_disconnect')
 @socket_login_required
@@ -1258,13 +1166,11 @@ def handle_quick_disconnect(data, current_user=None):
             emit('error', {'error': 'Connection ID required'})
             return
 
-        # Verify ownership
         conn_info = connection_pool.temp_connection_pool.get_connection_info(connection_id)
         if not conn_info or conn_info['user_id'] != str(current_user.id):
             emit('error', {'error': 'Unauthorized access to connection'})
             return
 
-        # Close connection
         success = connection_pool.temp_connection_pool.close_connection(connection_id)
 
         if success:
@@ -1275,11 +1181,6 @@ def handle_quick_disconnect(data, current_user=None):
     except Exception as e:
         log_error("Quick disconnect failed", error=str(e))
         emit('error', {'error': 'Disconnect failed'})
-
-
-# ============================================
-# FILE OPERATIONS
-# ============================================
 
 @socketio.on('create_directory')
 @socket_login_required
@@ -1293,14 +1194,12 @@ def handle_create_directory(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
                 emit('error', {'error': 'Unauthorized access'})
                 return
 
-        # Create directory
         success, error = sftp_handler.create_directory(session_id, remote_path)
 
         if error:
@@ -1311,7 +1210,6 @@ def handle_create_directory(data, current_user=None):
     except Exception as e:
         log_error("Create directory failed", error=str(e))
         emit('error', {'error': 'Failed to create directory'})
-
 
 @socketio.on('rename_file')
 @socket_login_required
@@ -1326,7 +1224,6 @@ def handle_rename_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -1345,7 +1242,6 @@ def handle_rename_file(data, current_user=None):
         log_error("Rename failed", error=str(e))
         emit('error', {'error': 'Failed to rename'})
 
-
 @socketio.on('delete_item')
 @socket_login_required
 def handle_delete_item(data, current_user=None):
@@ -1358,7 +1254,6 @@ def handle_delete_item(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -1377,7 +1272,6 @@ def handle_delete_item(data, current_user=None):
         log_error("Delete failed", error=str(e))
         emit('error', {'error': 'Failed to delete'})
 
-
 @socketio.on('get_home_directory')
 @socket_login_required
 def handle_get_home_directory(data, current_user=None):
@@ -1391,7 +1285,6 @@ def handle_get_home_directory(data, current_user=None):
             emit('error', {'error': 'Session ID required'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -1416,7 +1309,6 @@ def handle_get_home_directory(data, current_user=None):
                  elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {'error': 'Failed to get home directory'})
 
-
 @socketio.on('check_exists')
 @socket_login_required
 def handle_check_exists(data, current_user=None):
@@ -1429,7 +1321,6 @@ def handle_check_exists(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -1447,7 +1338,6 @@ def handle_check_exists(data, current_user=None):
         log_error("Check exists failed", error=str(e))
         emit('error', {'error': 'Failed to check file'})
 
-
 @socketio.on('get_file_stat')
 @socket_login_required
 def handle_get_file_stat(data, current_user=None):
@@ -1460,7 +1350,6 @@ def handle_get_file_stat(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -1478,7 +1367,6 @@ def handle_get_file_stat(data, current_user=None):
         log_error("Get file stat failed", error=str(e))
         emit('error', {'error': 'Failed to get file info'})
 
-
 @socketio.on('preview_file')
 @socket_login_required
 def handle_preview_file(data, current_user=None):
@@ -1489,15 +1377,14 @@ def handle_preview_file(data, current_user=None):
     try:
         session_id = data.get('session_id')
         path = data.get('path')
-        max_bytes = data.get('max_bytes', 512000)  # 500KB default
+        max_bytes = data.get('max_bytes', 512000)
         offset = data.get('offset', 0)
-        tail_lines = data.get('tail_lines')  # For log file tail mode
+        tail_lines = data.get('tail_lines')
 
         if not all([session_id, path]):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        # Verify ownership
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -1524,11 +1411,6 @@ def handle_preview_file(data, current_user=None):
         log_error("Preview failed", error=str(e))
         emit('preview_error', {'error': 'Preview failed', 'path': data.get('path', '')})
 
-
-# ============================================
-# SERVER-TO-SERVER TRANSFER
-# ============================================
-
 @socketio.on('transfer_server_to_server')
 @socket_login_required
 def handle_transfer_server_to_server(data, current_user=None):
@@ -1553,7 +1435,6 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return
 
-        # SECURITY: Sanitize paths to prevent path traversal
         source_path = sftp_handler.sanitize_path(source_path)
         dest_path = sftp_handler.sanitize_path(dest_path)
         if source_path is None or dest_path is None:
@@ -1563,7 +1444,6 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return
 
-        # Verify ownership of source (session or connection)
         source_authorized = False
         if verify_session_ownership(source_session_id, current_user.id):
             source_authorized = True
@@ -1579,7 +1459,6 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return
 
-        # Verify ownership of destination (session or connection)
         dest_authorized = False
         if verify_session_ownership(dest_session_id, current_user.id):
             dest_authorized = True
@@ -1595,10 +1474,8 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return
 
-        # Get user room for emitting progress
         user_room = f'user_{current_user.id}'
 
-        # Run transfer in background thread to not block
         def run_transfer():
             success, error = sftp_handler.transfer_server_to_server(
                 source_session_id=source_session_id,
@@ -1617,7 +1494,6 @@ def handle_transfer_server_to_server(data, current_user=None):
                     'error': error
                 }, room=user_room)
 
-        # Start transfer thread
         transfer_thread = threading.Thread(target=run_transfer, daemon=True)
         transfer_thread.start()
 
@@ -1629,4 +1505,3 @@ def handle_transfer_server_to_server(data, current_user=None):
             'transfer_id': data.get('transfer_id'),
             'error': 'Failed to start transfer'
         })
-

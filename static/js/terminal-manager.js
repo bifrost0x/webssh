@@ -1,14 +1,13 @@
-// Terminal Manager - Manages xterm.js terminal instances
 const TerminalManager = {
     terminals: {},
     fitAddons: {},
-    searchAddons: {},  // SearchAddon instances per terminal
-    terminalReady: {},  // Track which terminals are fully initialized
-    pendingOutput: {},  // Buffer output until terminal is ready
+    searchAddons: {},
+    terminalReady: {},
+    pendingOutput: {},
     sessionTerminals: {},
     transcripts: {},
     transcriptSizes: {},
-    maxTranscriptSize: 200000, // Keep ~200k chars per session to limit memory
+    maxTranscriptSize: 200000,
 
     getCssVar(name, fallback = '') {
         return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
@@ -57,7 +56,6 @@ const TerminalManager = {
 
     createTerminal(sessionId, terminalKey = null) {
         const key = terminalKey || sessionId;
-        // Create new xterm.js Terminal instance
         const monoFont = this.getMonoFont();
         const theme = this.buildTheme();
         const terminal = new Terminal({
@@ -72,18 +70,15 @@ const TerminalManager = {
             allowProposedApi: true
         });
 
-        // Create fit addon for responsive sizing
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
 
-        // Create search addon if available
         let searchAddon = null;
         if (typeof SearchAddon !== 'undefined') {
             searchAddon = new SearchAddon.SearchAddon();
             terminal.loadAddon(searchAddon);
         }
 
-        // Store terminal and addons
         this.terminals[key] = terminal;
         this.fitAddons[key] = fitAddon;
         this.searchAddons[key] = searchAddon;
@@ -112,7 +107,6 @@ const TerminalManager = {
             return false;
         }
 
-        // Initialize pending output buffer
         this.pendingOutput[key] = [];
         this.terminalReady[key] = false;
         if (!this.transcripts[sessionId]) {
@@ -120,25 +114,17 @@ const TerminalManager = {
             this.transcriptSizes[sessionId] = 0;
         }
 
-        // Open terminal in container
         terminal.open(container);
 
-        // CRITICAL: Wait for terminal to fully render before marking as ready
-        // This prevents xterm.js from rendering placeholder "W" characters
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                // Fit the terminal first
                 this.fitTerminal(sessionId);
 
-                // Small additional delay to ensure rendering is complete
                 setTimeout(() => {
-                    // Clear any placeholder render artifacts before first output
                     terminal.clear();
 
-                    // Mark terminal as ready
                     this.terminalReady[key] = true;
 
-                    // Flush any pending output
                     if (this.pendingOutput[key] && this.pendingOutput[key].length > 0) {
                         console.log(`Flushing ${this.pendingOutput[key].length} pending outputs for ${sessionId}`);
                         this.pendingOutput[key].forEach(data => {
@@ -233,15 +219,11 @@ const TerminalManager = {
 
     stripAnsiSequences(text) {
         return text
-            // OSC sequences
             .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '')
-            // CSI sequences
             .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
-            // ESC sequences
             .replace(/\x1b[()][0-2]?/g, '')
             .replace(/\x1b[>=]/g, '')
             .replace(/\x1b[0-9A-Za-z]/g, '')
-            // Bells
             .replace(/\x07/g, '');
     },
 
@@ -372,7 +354,6 @@ const TerminalManager = {
     },
 
     applyThemeToAll() {
-        // Delay briefly to let CSS variables recalculate after data-theme change
         requestAnimationFrame(() => {
             Object.keys(this.sessionTerminals).forEach(sessionId => {
                 this.applyThemeToTerminal(sessionId);
@@ -380,7 +361,6 @@ const TerminalManager = {
         });
     },
 
-    // Search functionality
     findNext(sessionId, searchTerm, options = {}) {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         if (terminalKeys.length === 0) return false;
@@ -444,7 +424,6 @@ const TerminalManager = {
     handleOrientationChange() {
         const newFontSize = this.getResponsiveFontSize();
         this.updateFontSize(newFontSize);
-        // Small delay to let the browser settle after orientation change
         setTimeout(() => {
             this.fitAllTerminals();
         }, 100);
@@ -453,7 +432,6 @@ const TerminalManager = {
 
 window.TerminalManager = TerminalManager;
 
-// Handle window resize
 let resizeTimeout;
 window.addEventListener('resize', () => {
     clearTimeout(resizeTimeout);
@@ -462,12 +440,10 @@ window.addEventListener('resize', () => {
     }, 250);
 });
 
-// Handle orientation change on mobile
 window.addEventListener('orientationchange', () => {
     TerminalManager.handleOrientationChange();
 });
 
-// Virtual Keyboard Detection using Visual Viewport API
 if (window.visualViewport) {
     const initialHeight = window.visualViewport.height;
     let keyboardVisible = false;
@@ -476,14 +452,14 @@ if (window.visualViewport) {
         const currentHeight = window.visualViewport.height;
         const heightRatio = currentHeight / initialHeight;
 
-        // Keyboard is likely visible if viewport shrinks to less than 75% of original
         const newKeyboardVisible = heightRatio < 0.75;
 
         if (newKeyboardVisible !== keyboardVisible) {
             keyboardVisible = newKeyboardVisible;
+            const notepadFocused = document.activeElement?.id === 'sessionNotepad';
             document.body.classList.toggle('keyboard-open', keyboardVisible);
+            document.body.classList.toggle('notepad-focused', keyboardVisible && notepadFocused);
 
-            // Refit terminals when keyboard state changes
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
                 TerminalManager.fitAllTerminals();

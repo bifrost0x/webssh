@@ -8,7 +8,6 @@ from pathlib import Path
 from datetime import datetime
 import config
 
-
 def load_system_commands():
     """Load global system commands from JSON."""
     commands_file = config.SYSTEM_COMMANDS_FILE
@@ -16,13 +15,11 @@ def load_system_commands():
         with open(commands_file, 'r') as f:
             return json.load(f)
 
-    # Backwards-compatible fallback to legacy path in data/
     legacy_file = config.DATA_DIR / 'commands' / 'system_commands.json'
     if legacy_file.exists():
         with open(legacy_file, 'r') as f:
             return json.load(f)
     return []
-
 
 def load_user_commands(user_id):
     """Load user-specific commands."""
@@ -37,7 +34,6 @@ def load_user_commands(user_id):
             return json.load(f)
     return []
 
-
 def save_user_commands(user_id, commands):
     """Save user-specific commands."""
     from .models import User
@@ -49,7 +45,6 @@ def save_user_commands(user_id, commands):
     with open(user_commands_file, 'w') as f:
         json.dump(commands, f, indent=2)
     return True
-
 
 def get_all_commands(user_id, os_filter=None):
     """Get both system and user commands, optionally filtered by OS."""
@@ -74,7 +69,6 @@ def get_all_commands(user_id, os_filter=None):
 
     return all_commands
 
-
 def add_user_command(user_id, name, command, parameters, description, os_list, category):
     """Add a new user command."""
     user_cmds = load_user_commands(user_id)
@@ -96,7 +90,6 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
     save_user_commands(user_id, user_cmds)
     return new_cmd
 
-
 def update_user_command(user_id, command_id, name, command, parameters, description, os_list, category):
     """Update an existing user command."""
     user_cmds = load_user_commands(user_id)
@@ -113,7 +106,6 @@ def update_user_command(user_id, command_id, name, command, parameters, descript
 
     save_user_commands(user_id, user_cmds)
     return True
-
 
 def delete_user_command(user_id, command_id):
     """Delete a user command."""

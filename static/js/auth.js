@@ -1,4 +1,3 @@
-// Auth UX helpers: password toggle and inline validation
 (function() {
     'use strict';
 

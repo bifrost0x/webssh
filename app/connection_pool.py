@@ -20,7 +20,6 @@ import config
 from .ssh_manager import PersistentHostKeyPolicy
 from .audit_logger import log_info, log_warning, log_error, log_debug
 
-
 class TemporaryConnectionPool:
     """Manages short-lived SSH connections for file transfers."""
 
@@ -32,12 +31,11 @@ class TemporaryConnectionPool:
             cleanup_interval (int): Seconds before inactive connection is closed
             max_connections_per_user (int): Maximum concurrent connections per user
         """
-        self.connections = {}  # {connection_id: {client, sftp, created_at, user_id, host}}
+        self.connections = {}
         self.cleanup_interval = cleanup_interval
         self.max_connections_per_user = max_connections_per_user
         self.lock = threading.Lock()
 
-        # Start cleanup thread
         self.cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self.cleanup_thread.start()
 
@@ -58,7 +56,6 @@ class TemporaryConnectionPool:
             tuple: (connection_id: str or None, error: str or None)
         """
         with self.lock:
-            # Check connection limit for this user
             user_connections = [
                 c for c in self.connections.values()
                 if c['user_id'] == user_id
@@ -68,15 +65,11 @@ class TemporaryConnectionPool:
                 return None, f"Maximum {self.max_connections_per_user} connections per user exceeded"
 
         try:
-            # Create SSH client with secure host key verification
             client = paramiko.SSHClient()
-            # SECURITY FIX: Use PersistentHostKeyPolicy instead of AutoAddPolicy
-            # to prevent MITM attacks by verifying and storing host keys
             if config.KNOWN_HOSTS_FILE.exists():
                 client.load_host_keys(str(config.KNOWN_HOSTS_FILE))
             client.set_missing_host_key_policy(PersistentHostKeyPolicy(config.KNOWN_HOSTS_FILE))
 
-            # Connect with timeout - support both password and key auth
             connect_kwargs = {
                 'hostname': host,
                 'port': port,
@@ -87,7 +80,6 @@ class TemporaryConnectionPool:
             }
 
             if key_content:
-                # Use decrypted key content (preferred - keys encrypted at rest)
                 import io
                 key_file = io.StringIO(key_content)
                 try:
@@ -105,33 +97,26 @@ class TemporaryConnectionPool:
                             pkey = paramiko.DSSKey.from_private_key(key_file)
                 connect_kwargs['pkey'] = pkey
                 if password:
-                    # Password might be the key passphrase (handled during key loading)
                     pass
             elif key_path:
-                # Legacy: Use SSH key file path
                 connect_kwargs['key_filename'] = key_path
                 if password:
                     connect_kwargs['passphrase'] = password
             elif password:
-                # Use password authentication
                 connect_kwargs['password'] = password
             else:
                 return None, "Either password or SSH key is required"
 
             client.connect(**connect_kwargs)
 
-            # Enable SSH-level keepalive
             transport = client.get_transport()
             if transport:
                 transport.set_keepalive(30)
 
-            # Open SFTP channel
             sftp = client.open_sftp()
 
-            # Generate connection ID
             conn_id = uuid.uuid4().hex
 
-            # Store connection
             with self.lock:
                 self.connections[conn_id] = {
                     'client': client,
@@ -167,14 +152,12 @@ class TemporaryConnectionPool:
         Returns:
             tuple: (sftp_client or None, error: str or None)
         """
-        # Get client reference with brief lock hold (no network I/O)
         with self.lock:
             if connection_id not in self.connections:
                 return None, "Connection not found or expired"
 
             conn = self.connections[connection_id]
 
-            # Check if connection is still alive (transport check is local, not network)
             try:
                 transport = conn['client'].get_transport()
                 if transport is None or not transport.is_active():
@@ -185,14 +168,12 @@ class TemporaryConnectionPool:
                 return None, "Connection has been closed"
 
             conn['last_used'] = time.time()
-            client = conn['client']
 
-        # Open SFTP channel outside lock (network operation)
-        try:
-            sftp = client.open_sftp()
-            return sftp, None
-        except Exception as e:
-            return None, f"Failed to open SFTP channel: {str(e)}"
+            try:
+                sftp = conn['client'].open_sftp()
+                return sftp, None
+            except Exception as e:
+                return None, f"Failed to open SFTP channel: {str(e)}"
 
     def close_connection(self, connection_id):
         """
@@ -222,7 +203,6 @@ class TemporaryConnectionPool:
 
         conn = self.connections[connection_id]
 
-        # Clear any cached SFTP client for this pool connection
         try:
             from .sftp_handler import close_sftp_cache
             close_sftp_cache(connection_id)
@@ -230,7 +210,6 @@ class TemporaryConnectionPool:
             pass
 
         try:
-            # Close SFTP and SSH
             if conn['sftp']:
                 conn['sftp'].close()
             if conn['client']:
@@ -238,7 +217,6 @@ class TemporaryConnectionPool:
         except Exception as e:
             log_warning(f"Error closing connection", connection_id=connection_id, error=str(e))
 
-        # Remove from pool
         del self.connections[connection_id]
         log_debug(f"Temporary connection closed: {connection_id}")
 
@@ -260,7 +238,6 @@ class TemporaryConnectionPool:
                 if age > self.cleanup_interval:
                     expired.append(conn_id)
 
-            # Close expired connections
             for conn_id in expired:
                 self._close_connection(conn_id)
 
@@ -272,7 +249,7 @@ class TemporaryConnectionPool:
     def _cleanup_loop(self):
         """Background thread that periodically cleans up expired connections."""
         while True:
-            time.sleep(60)  # Run cleanup every minute
+            time.sleep(60)
             try:
                 self.cleanup_expired()
             except Exception as e:
@@ -322,7 +299,6 @@ class TemporaryConnectionPool:
                 if conn['user_id'] == user_id:
                     user_connections.append(conn_id)
 
-            # Close all user connections
             for conn_id in user_connections:
                 self._close_connection(conn_id)
 
@@ -334,6 +310,4 @@ class TemporaryConnectionPool:
             for conn_id in list(self.connections.keys()):
                 self._close_connection(conn_id)
 
-
-# Global connection pool instance
 temp_connection_pool = TemporaryConnectionPool()

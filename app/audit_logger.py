@@ -9,12 +9,10 @@ LOGS_DIR = config.DATA_DIR / 'logs'
 try:
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 except PermissionError:
-    # Fallback to /tmp if /app/data is not writable (e.g., volume permission issues)
     import tempfile
     LOGS_DIR = Path(tempfile.gettempdir()) / 'webssh_logs'
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     print(f"⚠️  WARNING: Cannot write to {config.DATA_DIR / 'logs'}, using {LOGS_DIR}")
-
 
 class StructuredFormatter(logging.Formatter):
     """JSON structured logging formatter for production."""
@@ -27,26 +25,23 @@ class StructuredFormatter(logging.Formatter):
             'message': record.getMessage(),
         }
 
-        # Add extra fields if present
         if hasattr(record, 'extra_data'):
             log_data.update(record.extra_data)
 
-        # Add exception info if present
         if record.exc_info:
             log_data['exception'] = self.formatException(record.exc_info)
 
         return json.dumps(log_data)
 
-
 class ConsoleFormatter(logging.Formatter):
     """Human-readable formatter for console output."""
 
     COLORS = {
-        'DEBUG': '\033[36m',     # Cyan
-        'INFO': '\033[32m',      # Green
-        'WARNING': '\033[33m',   # Yellow
-        'ERROR': '\033[31m',     # Red
-        'CRITICAL': '\033[35m',  # Magenta
+        'DEBUG': '\033[36m',
+        'INFO': '\033[32m',
+        'WARNING': '\033[33m',
+        'ERROR': '\033[31m',
+        'CRITICAL': '\033[35m',
     }
     RESET = '\033[0m'
     ICONS = {
@@ -62,29 +57,23 @@ class ConsoleFormatter(logging.Formatter):
         icon = self.ICONS.get(record.levelname, '')
         reset = self.RESET if color else ''
 
-        # Format timestamp
         timestamp = datetime.now().strftime('%H:%M:%S')
 
-        # Build message
         msg = f"{color}{icon} [{timestamp}] {record.getMessage()}{reset}"
 
-        # Add exception if present
         if record.exc_info:
             msg += f"\n{self.formatException(record.exc_info)}"
 
         return msg
-
 
 def setup_logger(name, log_file=None, level=logging.INFO):
     """Setup a logger with console and optional file output."""
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Avoid duplicate handlers
     if logger.handlers:
         return logger
 
-    # Console handler - always enabled
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
 
@@ -95,7 +84,6 @@ def setup_logger(name, log_file=None, level=logging.INFO):
 
     logger.addHandler(console_handler)
 
-    # File handler - optional
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(level)
@@ -104,29 +92,17 @@ def setup_logger(name, log_file=None, level=logging.INFO):
 
     return logger
 
-
-# =============================================================================
-# Application Logger (general application logs)
-# =============================================================================
 app_logger = setup_logger(
     'webssh',
     log_file=LOGS_DIR / 'app.log',
     level=logging.DEBUG if config.DEBUG else logging.INFO
 )
 
-# =============================================================================
-# Security Audit Logger (security-sensitive events)
-# =============================================================================
 audit_logger = setup_logger(
     'security_audit',
     log_file=LOGS_DIR / 'security_audit.log',
     level=logging.INFO
 )
-
-# =============================================================================
-# Convenience functions for application logging
-# =============================================================================
-
 
 def log_info(message, **kwargs):
     """Log info message with optional structured data."""
@@ -139,7 +115,6 @@ def log_info(message, **kwargs):
     else:
         app_logger.info(message)
 
-
 def log_warning(message, **kwargs):
     """Log warning message with optional structured data."""
     if kwargs:
@@ -150,7 +125,6 @@ def log_warning(message, **kwargs):
         app_logger.handle(record)
     else:
         app_logger.warning(message)
-
 
 def log_error(message, exc_info=False, **kwargs):
     """Log error message with optional exception and structured data."""
@@ -166,7 +140,6 @@ def log_error(message, exc_info=False, **kwargs):
     else:
         app_logger.error(message, exc_info=exc_info)
 
-
 def log_debug(message, **kwargs):
     """Log debug message with optional structured data."""
     if kwargs:
@@ -178,27 +151,22 @@ def log_debug(message, **kwargs):
     else:
         app_logger.debug(message)
 
-
 def log_login_attempt(username, success, ip_address, user_agent=None):
     status = "SUCCESS" if success else "FAILED"
     audit_logger.info(
         f"LOGIN_{status} | user={username} | ip={ip_address} | user_agent={user_agent}"
     )
 
-
 def log_logout(username, ip_address):
     audit_logger.info(f"LOGOUT | user={username} | ip={ip_address}")
-
 
 def log_registration(username, success, ip_address):
     status = "SUCCESS" if success else "FAILED"
     audit_logger.info(f"REGISTRATION_{status} | user={username} | ip={ip_address}")
 
-
 def log_password_change(username, success, ip_address):
     status = "SUCCESS" if success else "FAILED"
     audit_logger.info(f"PASSWORD_CHANGE_{status} | user={username} | ip={ip_address}")
-
 
 def log_ssh_connection(username, target_host, target_port, success, ip_address, error=None):
     status = "SUCCESS" if success else "FAILED"
@@ -208,14 +176,12 @@ def log_ssh_connection(username, target_host, target_port, success, ip_address, 
         f"ip={ip_address}{error_msg}"
     )
 
-
 def log_ssh_disconnect(username, target_host, target_port, ip_address, reason=None):
     reason_msg = f" | reason={reason}" if reason else ""
     audit_logger.info(
         f"SSH_DISCONNECT | user={username} | target={target_host}:{target_port} | "
         f"ip={ip_address}{reason_msg}"
     )
-
 
 def log_file_upload(username, target_host, filename, size, success, ip_address, error=None):
     status = "SUCCESS" if success else "FAILED"
@@ -225,7 +191,6 @@ def log_file_upload(username, target_host, filename, size, success, ip_address, 
         f"file={filename} | size={size} | ip={ip_address}{error_msg}"
     )
 
-
 def log_file_download(username, target_host, filename, size, success, ip_address, error=None):
     status = "SUCCESS" if success else "FAILED"
     error_msg = f" | error={error}" if error else ""
@@ -234,18 +199,14 @@ def log_file_download(username, target_host, filename, size, success, ip_address
         f"file={filename} | size={size} | ip={ip_address}{error_msg}"
     )
 
-
 def log_key_upload(username, key_name, success, ip_address):
     status = "SUCCESS" if success else "FAILED"
     audit_logger.info(
         f"KEY_UPLOAD_{status} | user={username} | key={key_name} | ip={ip_address}"
     )
 
-
 def log_key_delete(username, key_name, ip_address):
     audit_logger.info(f"KEY_DELETE | user={username} | key={key_name} | ip={ip_address}")
-
-
 
 def log_rate_limit_exceeded(endpoint, ip_address, user=None):
     user_info = f" | user={user}" if user else ""

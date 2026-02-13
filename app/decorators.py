@@ -4,7 +4,6 @@ from flask import request
 from .auth import get_user_from_socket
 from .audit_logger import log_warning
 
-
 def socket_login_required(f):
     """
     Decorator to require authentication for socket events.

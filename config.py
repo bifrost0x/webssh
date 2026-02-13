@@ -12,26 +12,22 @@ KEYS_FILE = KEYS_DIR / 'keys.json'
 SYSTEM_COMMANDS_FILE = BASE_DIR / 'app' / 'resources' / 'commands' / 'system_commands.json'
 KNOWN_HOSTS_FILE = DATA_DIR / 'known_hosts'
 
-SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', '1800'))  # Default: 30 minutes
+SESSION_TIMEOUT = int(os.environ.get('SESSION_TIMEOUT', '1800'))
 MAX_SESSIONS = 10
 SSH_CONNECT_TIMEOUT = 10
 
 CHUNK_SIZE = 65536
 MAX_UPLOAD_SIZE = 1024 * 1024 * 100
 
-# SECURITY FIX: Default to False (was True) - require explicit opt-in for debug mode
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-# SECURITY: SECRET_KEY handling
 _secret_key = os.environ.get('SECRET_KEY')
 _KNOWN_PLACEHOLDERS = {'<YOUR-SECRET-KEY>', 'changeme', 'secret', 'your-secret-key'}
 if not _secret_key or _secret_key.strip().lower() in _KNOWN_PLACEHOLDERS:
     if DEBUG:
-        # Allow auto-generated key in development only
         _secret_key = secrets.token_hex(32)
         print("⚠️  DEBUG MODE: Using auto-generated SECRET_KEY (not for production!)")
     else:
-        # FAIL in production if SECRET_KEY not set or is a placeholder
         raise RuntimeError(
             "SECURITY ERROR: SECRET_KEY environment variable is required in production. "
             "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
@@ -41,17 +37,15 @@ SECRET_KEY = _secret_key
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
-# Allow override via env var for HTTP-only access (homelab without TLS)
 _session_secure = os.environ.get('SESSION_COOKIE_SECURE', '').lower()
 if _session_secure == 'false':
     SESSION_COOKIE_SECURE = False
 elif _session_secure == 'true':
     SESSION_COOKIE_SECURE = True
 else:
-    SESSION_COOKIE_SECURE = not DEBUG  # Default: secure in production
+    SESSION_COOKIE_SECURE = not DEBUG
 PERMANENT_SESSION_LIFETIME = timedelta(minutes=30)
 
-# Remember-me cookie security (Flask-Login)
 REMEMBER_COOKIE_HTTPONLY = True
 REMEMBER_COOKIE_SAMESITE = 'Lax'
 REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
@@ -64,29 +58,24 @@ SOCKETIO_ASYNC_MODE = 'eventlet'
 SOCKETIO_PING_TIMEOUT = 60
 SOCKETIO_PING_INTERVAL = 25
 
-# SECURITY: CORS configuration
-# ALLOW_CORS_WILDCARD=true explicitly permits wildcard (*) in production (e.g., homelab use)
 _allow_cors_wildcard = os.environ.get('ALLOW_CORS_WILDCARD', 'false').lower() == 'true'
 _cors_origins = os.environ.get('CORS_ORIGINS', '')
 if _cors_origins == '*':
     if DEBUG or _allow_cors_wildcard:
-        # Allow wildcard in debug mode or when explicitly permitted
         if _allow_cors_wildcard and not DEBUG:
             print("⚠️  CORS wildcard (*) enabled via ALLOW_CORS_WILDCARD - use only in trusted networks!")
         elif DEBUG:
             print("⚠️  DEBUG MODE: CORS set to wildcard (*) - not for production!")
         CORS_ORIGINS = '*'
     else:
-        # FAIL in production if CORS is wildcard without explicit opt-in
         raise RuntimeError(
             "SECURITY ERROR: CORS_ORIGINS cannot be wildcard (*) in production. "
             "Set it to your specific domain(s), e.g., CORS_ORIGINS=https://ssh.example.com "
             "Or set ALLOW_CORS_WILDCARD=true if you understand the risks (e.g., homelab use)."
         )
-elif _cors_origins:
+elif _cors_origins and _cors_origins.strip().strip('<>') not in ('YOUR-DOMAIN', 'YOUR-ORIGIN'):
     CORS_ORIGINS = [origin.strip() for origin in _cors_origins.split(',')]
 else:
-    # Safe default - only localhost (for local development)
     CORS_ORIGINS = ['http://localhost:5000', 'http://127.0.0.1:5000']
     if not DEBUG:
         print("ℹ️  CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
@@ -96,9 +85,7 @@ RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
 
-# Registration control
 REGISTRATION_ENABLED = os.environ.get('REGISTRATION_ENABLED', 'True') == 'True'
 
-# Download size limits
-MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))  # Default: same as upload (100MB)
-MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))  # Default: 500MB
+MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))
+MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))

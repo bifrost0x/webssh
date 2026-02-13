@@ -1,4 +1,3 @@
-// Session Manager - Manages multiple SSH sessions
 const SessionManager = {
     sessions: {},
     activeSessionId: null,
@@ -7,7 +6,6 @@ const SessionManager = {
     paneAssignments: [],
     activePaneIndex: 0,
 
-    // Initialize event listeners for session restore
     init() {
         if (window.socket) {
             window.socket.on('ssh_session_restored', (data) => {
@@ -28,13 +26,11 @@ const SessionManager = {
 
         console.log(`[RESTORE] Restoring SSH session: ${sessionId}`, data);
 
-        // Don't restore if session already exists
         if (this.sessions[sessionId]) {
             console.log(`[RESTORE] Session ${sessionId} already exists, skipping restore`);
             return;
         }
 
-        // Create session data structure
         const sessionData = {
             session_id: sessionId,
             host: data.host,
@@ -42,7 +38,6 @@ const SessionManager = {
             username: data.username
         };
 
-        // Create the session UI (terminal, tab, etc.)
         const restoredId = this.createSession(sessionData);
         console.log(`[RESTORE] Session UI created for ${sessionId}`);
 
@@ -52,7 +47,6 @@ const SessionManager = {
 
         console.log(`[RESTORE] Session ${sessionId} fully restored - waiting for output`);
 
-        // CRITICAL FIX: Send a newline to trigger the shell prompt and verify connection
         setTimeout(() => {
             console.log(`[RESTORE] Sending keepalive newline to session ${sessionId}`);
             window.socket.emit('ssh_input', {
@@ -61,13 +55,11 @@ const SessionManager = {
             });
         }, 500);
 
-        // OS detection removed to avoid terminal noise.
     },
 
     createSession(sessionData) {
         const { session_id, host, port, username } = sessionData;
 
-        // Create terminal container
         const terminalId = `terminal-${session_id}`;
         const terminalContainer = document.createElement('div');
         terminalContainer.id = terminalId;
@@ -85,14 +77,12 @@ const SessionManager = {
             }
         });
 
-        // Hide "no sessions" message
         document.getElementById('noSessions').classList.add('hidden');
         const sessionBar = document.getElementById('sessionBar');
         if (sessionBar) {
             sessionBar.classList.remove('hidden');
         }
 
-        // Store session data
         const storedName = this.getStoredDisplayName(session_id);
         this.sessions[session_id] = {
             id: session_id,
@@ -101,11 +91,10 @@ const SessionManager = {
             username,
             connected: true,
             terminalId,
-            os: 'all',  // Default to 'all', will be detected later
+            os: 'all',
             displayName: storedName || null
         };
 
-        // Create session tab
         this.createSessionTab(session_id, host, username);
         this.updateSessionStatus(session_id, 'connected');
 
@@ -122,12 +111,10 @@ const SessionManager = {
         const statusDot = document.createElement('span');
         statusDot.className = 'status-dot connected';
 
-        // Security Fix: Use textContent to prevent XSS
         const tabLabel = document.createElement('span');
         tabLabel.className = 'tab-label';
         tabLabel.textContent = this.getDisplayLabel(sessionId, username, host);
 
-        // Edit icon for renaming
         const tabEdit = document.createElement('span');
         tabEdit.className = 'tab-edit';
         tabEdit.innerHTML = '✎';
@@ -145,24 +132,20 @@ const SessionManager = {
         tab.appendChild(tabEdit);
         tab.appendChild(tabClose);
 
-        // Click tab to switch session
         tab.addEventListener('click', () => {
             this.switchSession(sessionId);
         });
 
-        // Double-click on label to rename
         tabLabel.addEventListener('dblclick', (e) => {
             e.stopPropagation();
             this.startRenameSession(sessionId, tabLabel);
         });
 
-        // Edit icon click to rename
         tabEdit.addEventListener('click', (e) => {
             e.stopPropagation();
             this.startRenameSession(sessionId, tabLabel);
         });
 
-        // Close button
         tabClose.addEventListener('click', (e) => {
             e.stopPropagation();
             this.requestCloseSession(sessionId);
@@ -201,21 +184,17 @@ const SessionManager = {
             return;
         }
 
-        // Send disconnect to backend
         if (window.socket) {
             window.socket.emit('ssh_disconnect', { session_id: sessionId });
         }
 
-        // Remove terminal
         const terminalContainer = document.getElementById(this.sessions[sessionId].terminalId);
         if (terminalContainer) {
             terminalContainer.remove();
         }
 
-        // Destroy terminal instance
         TerminalManager.destroyTerminal(sessionId);
 
-        // Remove tab
         const tab = document.getElementById(`tab-${sessionId}`);
         if (tab) {
             tab.remove();
@@ -227,10 +206,8 @@ const SessionManager = {
             this.renderPane(paneIndex);
         }
 
-        // Remove from sessions
         delete this.sessions[sessionId];
 
-        // Switch to another session or show "no sessions"
         const remainingSessions = Object.keys(this.sessions);
         if (remainingSessions.length > 0) {
             const assignedIndex = this.paneAssignments.findIndex(id => id);
@@ -354,7 +331,6 @@ const SessionManager = {
         const session = this.sessions[sessionId];
         if (!session) return;
 
-        // Create inline input
         const currentName = session.displayName || `${session.username}@${session.host}`;
         const input = document.createElement('input');
         input.type = 'text';
@@ -362,7 +338,6 @@ const SessionManager = {
         input.value = currentName;
         input.placeholder = `${session.username}@${session.host}`;
 
-        // Replace label with input
         const originalText = labelElement.textContent;
         labelElement.textContent = '';
         labelElement.appendChild(input);
@@ -376,10 +351,8 @@ const SessionManager = {
             if (save && newName && newName !== `${session.username}@${session.host}`) {
                 session.displayName = newName;
                 labelElement.textContent = newName;
-                // Save to localStorage for persistence
                 this.saveSessionDisplayName(sessionId, newName);
             } else if (save && !newName) {
-                // Reset to default if empty
                 session.displayName = null;
                 labelElement.textContent = `${session.username}@${session.host}`;
                 this.saveSessionDisplayName(sessionId, null);
@@ -403,7 +376,6 @@ const SessionManager = {
             finishRename(true);
         });
 
-        // Prevent tab click from switching session while renaming
         input.addEventListener('click', (e) => {
             e.stopPropagation();
         });
@@ -449,7 +421,6 @@ const SessionManager = {
 
         titleEl.textContent = this.getDisplayLabel(sessionId, session.username, session.host);
 
-        // Show connection info instead of notes
         const connInfo = `${session.username}@${session.host}:${session.port}`;
         notesEl.textContent = connInfo;
         notesEl.classList.remove('empty');
@@ -773,7 +744,6 @@ const SessionManager = {
         return Object.keys(this.sessions).length > 0;
     },
 
-    // Show pane assignment modal for selecting sessions when changing layouts
     showPaneAssignmentModal(targetLayout) {
         const modal = document.getElementById('paneAssignmentModal');
         if (!modal) {
@@ -785,16 +755,13 @@ const SessionManager = {
             return;
         }
 
-        // Store current assignments as defaults
         const currentAssignments = this.paneAssignments.slice();
         const tempAssignments = new Array(targetLayout).fill(null);
 
-        // Preserve existing assignments that fit in new layout
         for (let i = 0; i < Math.min(targetLayout, currentAssignments.length); i++) {
             tempAssignments[i] = currentAssignments[i];
         }
 
-        // Build the UI
         list.innerHTML = '';
         const allSessions = Object.values(this.sessions);
 
@@ -819,7 +786,6 @@ const SessionManager = {
             const optionsContainer = document.createElement('div');
             optionsContainer.className = 'pane-assignment-options';
 
-            // Empty option
             const emptyOption = this.createPaneOption(
                 paneIndex,
                 null,
@@ -829,7 +795,6 @@ const SessionManager = {
             );
             optionsContainer.appendChild(emptyOption);
 
-            // Session options
             allSessions.forEach(session => {
                 const label = this.getDisplayLabel(session.id, session.username, session.host);
                 const subtitle = session.connected ?
@@ -845,7 +810,6 @@ const SessionManager = {
                 optionsContainer.appendChild(option);
             });
 
-            // New connection option
             const newOption = this.createPaneOption(
                 paneIndex,
                 '__new__',
@@ -859,7 +823,6 @@ const SessionManager = {
             list.appendChild(paneItem);
         }
 
-        // Set up event handlers
         const closeBtn = document.getElementById('closePaneAssignmentModal');
         const cancelBtn = document.getElementById('cancelPaneAssignment');
         const applyBtn = document.getElementById('applyPaneAssignment');
@@ -873,7 +836,6 @@ const SessionManager = {
         };
 
         const applyHandler = () => {
-            // Collect selections
             const newAssignments = [];
             for (let i = 0; i < targetLayout; i++) {
                 const selected = list.querySelector(`input[name="pane-${i}"]:checked`);
@@ -882,7 +844,7 @@ const SessionManager = {
                     if (value === '__empty__') {
                         newAssignments[i] = null;
                     } else if (value === '__new__') {
-                        newAssignments[i] = null; // Will trigger new connection
+                        newAssignments[i] = null;
                     } else {
                         newAssignments[i] = value;
                     }
@@ -891,14 +853,11 @@ const SessionManager = {
                 }
             }
 
-            // Apply the new layout
             this.applyPaneAssignments(targetLayout, newAssignments);
 
-            // Handle new connection requests
             for (let i = 0; i < targetLayout; i++) {
                 const selected = list.querySelector(`input[name="pane-${i}"]:checked`);
                 if (selected && selected.value === '__new__') {
-                    // Queue new connection for this pane
                     if (window.openConnectionModalForPane) {
                         setTimeout(() => window.openConnectionModalForPane(i), 100);
                     }
@@ -912,7 +871,6 @@ const SessionManager = {
         cancelBtn.onclick = closeHandler;
         applyBtn.onclick = applyHandler;
 
-        // Open modal
         if (window.ModalManager) {
             window.ModalManager.open(modal);
         } else {
@@ -947,7 +905,6 @@ const SessionManager = {
         option.appendChild(radio);
         option.appendChild(label);
 
-        // Toggle selected class on click
         option.addEventListener('click', () => {
             const allOptions = option.parentElement.querySelectorAll('.pane-option');
             allOptions.forEach(opt => opt.classList.remove('selected'));
@@ -958,7 +915,6 @@ const SessionManager = {
     },
 
     applyPaneAssignments(layout, assignments) {
-        // First, set the layout
         const grid = this.ensureTerminalGrid();
         if (!grid) {
             return;
@@ -967,7 +923,6 @@ const SessionManager = {
         this.layout = layout;
         this.paneAssignments = new Array(layout).fill(null);
 
-        // Move all terminals back to container
         const container = document.getElementById('terminalsContainer');
         if (container) {
             Object.values(this.sessions).forEach(session => {
@@ -979,7 +934,6 @@ const SessionManager = {
             });
         }
 
-        // Rebuild grid
         grid.className = `terminal-grid split-${layout}`;
         grid.innerHTML = '';
 
@@ -993,7 +947,6 @@ const SessionManager = {
             grid.appendChild(pane);
         }
 
-        // Apply assignments
         for (let i = 0; i < layout; i++) {
             if (assignments[i]) {
                 this.paneAssignments[i] = assignments[i];
@@ -1001,7 +954,6 @@ const SessionManager = {
             this.renderPane(i);
         }
 
-        // Set active pane
         if (this.activePaneIndex >= layout) {
             this.activePaneIndex = 0;
         }

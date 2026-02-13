@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
 </head>
 <body data-theme="glass">
-    <!-- Language Selector -->
+
     <div class="language-selector">
         <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
             <span id="currentLangFlag">🇬🇧</span>
@@ -17,7 +17,6 @@
         <div class="lang-dropdown" id="langDropdown"></div>
     </div>
 
-    <!-- Background Glow Effects -->
     <div class="glow-orb glow-orb-1"></div>
     <div class="glow-orb glow-orb-2"></div>
     <div class="glow-orb glow-orb-3"></div>
@@ -81,7 +80,6 @@
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
     <script>
-        // Language Dropdown
         function toggleLangDropdown() {
             document.getElementById('langDropdown').classList.toggle('show');
         }
@@ -104,7 +102,6 @@
                 dropdown.appendChild(option);
             });
 
-            // Set current language display
             const current = languages.find(l => l.code === currentLang);
             if (current) {
                 updateCurrentLang(current);
@@ -116,14 +113,12 @@
             document.getElementById('currentLangName').textContent = lang.name;
         }
 
-        // Close dropdown when clicking outside
         window.addEventListener('click', (e) => {
             if (!e.target.closest('.language-selector')) {
                 document.getElementById('langDropdown').classList.remove('show');
             }
         });
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             initLanguageSelector();
         });

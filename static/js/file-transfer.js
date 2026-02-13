@@ -1,4 +1,3 @@
-// File Transfer Manager - Handles SFTP uploads and downloads
 const FileTransferManager = {
     updateSessionSelects() {
         const uploadSelect = document.getElementById('uploadSessionSelect');
@@ -6,11 +5,9 @@ const FileTransferManager = {
 
         if (!uploadSelect || !downloadSelect) return;
 
-        // Clear existing options except the first one
         uploadSelect.innerHTML = '<option value="">-- Select Active Session --</option>';
         downloadSelect.innerHTML = '<option value="">-- Select Active Session --</option>';
 
-        // Get active sessions
         const sessions = SessionManager.getAllSessions();
 
         sessions.forEach(session => {
@@ -37,7 +34,6 @@ const FileTransferManager = {
             const arrayBuffer = e.target.result;
             const base64Data = this.arrayBufferToBase64(arrayBuffer);
 
-            // Send to server
             if (window.socket) {
                 window.socket.emit('upload_file', {
                     session_id: sessionId,
@@ -69,7 +65,6 @@ const FileTransferManager = {
     },
 
     handleDownloadReady(data) {
-        // Convert base64 to blob
         const byteCharacters = atob(data.file_data);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -78,7 +73,6 @@ const FileTransferManager = {
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray]);
 
-        // Trigger download
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -138,12 +132,10 @@ const FileTransferManager = {
         if (data.type === 'upload') {
             this.hideUploadProgress();
 
-            // Don't show notification if part of batch upload (File Manager)
             if (!window._currentUploadBatchId) {
                 window.showNotification(`Uploaded: ${data.filename}`, 'success');
             }
 
-            // Reset form
             document.getElementById('uploadForm').reset();
         } else if (data.type === 'download') {
             this.hideDownloadProgress();

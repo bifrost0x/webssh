@@ -62,7 +62,7 @@ Instead, report vulnerabilities via:
 | Feature | Implementation |
 |---------|----------------|
 | Security Headers | CSP, X-Frame-Options (DENY), X-Content-Type-Options, HSTS |
-| CORS | Configurable, defaults to localhost only |
+| CORS | Configurable, safe localhost-only default if unset |
 | WebSocket | Authenticated, room-based isolation per user |
 | Reverse Proxy | ProxyFix support via `TRUSTED_PROXIES` |
 
@@ -86,7 +86,7 @@ Instead, report vulnerabilities via:
 
 2. **Use TLS** - Deploy behind a reverse proxy with HTTPS
 
-3. **Set specific CORS origins**
+3. **Set specific CORS origins** (defaults to localhost if unset)
    ```bash
    export CORS_ORIGINS=https://your-domain.com
    ```

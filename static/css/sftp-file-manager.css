@@ -1,8 +1,4 @@
-/* ============================================
-   SFTP Dual-Pane File Manager - Midnight Commander Style
-   ============================================ */
 
-/* Modal Fullscreen Override */
 #sftpFileManager .modal-content {
     width: 95%;
     max-width: 1400px;
@@ -32,7 +28,6 @@
     gap: 12px;
 }
 
-/* ==================== QUICK CONNECT MODAL ==================== */
 #fmQuickConnectModal .fm-qc-modal {
     max-width: 450px;
 }
@@ -119,7 +114,6 @@
     display: none;
 }
 
-/* ==================== TOOLBAR ==================== */
 .fm-toolbar {
     display: flex;
     gap: 8px;
@@ -160,7 +154,6 @@
     display: inline;
 }
 
-/* Hide button text on smaller screens */
 @media (max-width: 1100px) {
     .fm-toolbar .btn .btn-text {
         display: none;
@@ -170,7 +163,6 @@
     }
 }
 
-/* ==================== DUAL PANE CONTAINER ==================== */
 .fm-panes {
     flex: 1;
     display: grid;
@@ -180,7 +172,6 @@
     overflow: hidden;
 }
 
-/* ==================== SINGLE PANE ==================== */
 .fm-pane {
     position: relative;
     display: flex;
@@ -224,6 +215,7 @@
     transform: translate(-50%, -50%);
     background: var(--success-color);
     color: white;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
     padding: 12px 24px;
     border-radius: 8px;
     font-size: 16px;
@@ -233,13 +225,11 @@
     box-shadow: var(--shadow-lg);
 }
 
-/* Pane type indicators for drop targets */
 .fm-pane.drop-target.ssh::after {
     content: '🖥️ Drop here (SSH Server)';
     background: var(--success-color, #48bb78);
 }
 
-/* ==================== PANE HEADER ==================== */
 .fm-pane-header {
     display: flex;
     align-items: center;
@@ -249,7 +239,6 @@
     border-bottom: 1px solid var(--border-color);
 }
 
-/* ==================== PANE NAVIGATION BAR ==================== */
 .fm-pane-nav {
     display: flex;
     align-items: center;
@@ -295,7 +284,6 @@
     min-width: 0;
 }
 
-/* ==================== PANE SOURCE SELECTOR ==================== */
 .fm-source-select {
     flex: 1;
     padding: 8px 12px;
@@ -331,7 +319,6 @@
     font-style: normal;
 }
 
-/* Host Badge */
 .fm-host-badge {
     display: inline-flex;
     align-items: center;
@@ -406,7 +393,6 @@
     color: var(--accent-primary);
 }
 
-/* ==================== FILE LIST ==================== */
 .fm-file-list {
     flex: 1;
     overflow-y: auto;
@@ -414,7 +400,6 @@
     padding: 8px;
 }
 
-/* ==================== FILE ITEM ==================== */
 .fm-file-item {
     display: grid;
     grid-template-columns: 24px 1fr auto;
@@ -446,7 +431,6 @@
     opacity: 0.5;
 }
 
-/* File Icon */
 .fm-file-icon {
     font-size: 20px;
     width: 24px;
@@ -469,7 +453,6 @@
     font-size: 18px;
 }
 
-/* File Info */
 .fm-file-info {
     display: flex;
     flex-direction: column;
@@ -505,7 +488,6 @@
     color: var(--text-muted);
 }
 
-/* File Size */
 .fm-file-size {
     font-size: 12px;
     color: var(--text-secondary);
@@ -514,7 +496,6 @@
     min-width: 70px;
 }
 
-/* ==================== PANE FOOTER (STATUS) ==================== */
 .fm-pane-footer {
     display: flex;
     justify-content: space-between;
@@ -537,7 +518,6 @@
     gap: 4px;
 }
 
-/* ==================== DROP ZONE (LOCAL) ==================== */
 .fm-drop-zone {
     flex: 1;
     display: flex;
@@ -589,7 +569,6 @@
     background: var(--bg-hover);
 }
 
-/* ==================== TRANSFER QUEUE ==================== */
 .fm-queue {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -649,7 +628,6 @@
     padding: 8px;
 }
 
-/* ==================== TRANSFER ITEM ==================== */
 .fm-transfer-item {
     display: flex;
     align-items: center;
@@ -752,7 +730,6 @@
     color: var(--error-color);
 }
 
-/* ==================== CONTEXT MENU ==================== */
 .fm-context-menu {
     position: fixed;
     background: var(--bg-modal);
@@ -817,7 +794,6 @@
     margin: 6px 0;
 }
 
-/* ==================== CONFLICT DIALOG ==================== */
 .fm-conflict-dialog {
     position: fixed;
     inset: 0;
@@ -922,7 +898,6 @@
     gap: 10px;
 }
 
-/* ==================== QUICK CONNECT MODAL ==================== */
 .fm-quick-connect-form {
     display: flex;
     flex-direction: column;
@@ -1022,7 +997,6 @@
     border-top: 1px solid var(--border-color);
 }
 
-/* ==================== LOADING STATE ==================== */
 .fm-loading {
     display: flex;
     align-items: center;
@@ -1042,7 +1016,6 @@
     animation: spin 0.8s linear infinite;
 }
 
-/* ==================== ERROR STATE ==================== */
 .fm-error {
     display: flex;
     flex-direction: column;
@@ -1076,7 +1049,6 @@
     font-size: 16px;
 }
 
-/* ==================== EMPTY STATE ==================== */
 .fm-empty {
     display: flex;
     flex-direction: column;
@@ -1098,7 +1070,6 @@
     font-size: 14px;
 }
 
-/* Prompt variant */
 .fm-prompt {
     gap: 16px;
 }
@@ -1120,7 +1091,6 @@
     margin-top: 4px;
 }
 
-/* ==================== DRAG GHOST ==================== */
 .fm-drag-ghost {
     position: fixed;
     pointer-events: none;
@@ -1145,7 +1115,7 @@
 
 .fm-drag-ghost-count {
     background: var(--accent-primary);
-    color: white;
+    color: var(--accent-on-text, #ffffff);
     font-size: 11px;
     font-weight: 700;
     padding: 2px 6px;
@@ -1153,7 +1123,6 @@
     margin-left: 4px;
 }
 
-/* ==================== RENAME INPUT ==================== */
 .fm-rename-input {
     width: 100%;
     padding: 4px 8px;
@@ -1166,7 +1135,6 @@
     outline: none;
 }
 
-/* ==================== RESPONSIVE ==================== */
 @media (max-width: 900px) {
     .fm-panes {
         grid-template-columns: 1fr;
@@ -1193,7 +1161,6 @@
     }
 }
 
-/* Mobile: Single pane with tabs */
 @media (max-width: 767px) {
     #sftpFileManager .modal-content {
         width: 100%;
@@ -1234,25 +1201,21 @@
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Touch-friendly toolbar buttons */
     .fm-toolbar .btn {
         min-height: 44px;
         min-width: 44px;
         padding: 10px 12px;
     }
 
-    /* Touch-friendly file items */
     .fm-file-item {
         min-height: 48px;
         padding: 10px 12px;
     }
 
-    /* Hide context menu on mobile, use action sheet */
     .fm-context-menu {
         display: none !important;
     }
 
-    /* Mobile action sheet */
     .fm-action-sheet {
         display: flex;
         position: fixed;
@@ -1302,13 +1265,11 @@
         border-top: 1px solid var(--border-color);
     }
 
-    /* Navigation buttons larger for touch */
     .fm-nav-btn {
         min-width: 40px;
         min-height: 40px;
     }
 
-    /* Transfer queue adjustments */
     .fm-queue {
         max-height: 120px;
     }
@@ -1338,9 +1299,6 @@
     }
 }
 
-/* ==================== MOBILE-ONLY ELEMENTS (hidden by default) ==================== */
-/* These are shown via media queries on mobile */
-
 .fm-pane-tabs {
     display: none;
 }
@@ -1352,9 +1310,6 @@
 .fm-action-sheet {
     display: none;
 }
-
-/* ==================== JS-BASED MOBILE MODE (bypasses cache issues) ==================== */
-/* This class is added by JavaScript when isMobile() returns true */
 
 .fm-mobile-mode .fm-panes {
     display: block !important;
@@ -1389,7 +1344,7 @@
     background: var(--accent-primary);
     border: none;
     border-radius: 10px;
-    color: white;
+    color: var(--accent-on-text, #ffffff);
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
@@ -1401,14 +1356,15 @@
     display: none !important;
 }
 
-/* ==================== MOBILE OVERRIDE ==================== */
 @media (max-width: 767px) {
-    /* Toolbar: single row, all buttons side-by-side */
+
     .fm-toolbar {
+        flex-direction: row;
         flex-wrap: nowrap;
         padding: 6px 8px;
         gap: 4px;
         justify-content: center;
+        overflow-x: auto;
     }
 
     .fm-toolbar-left,
@@ -1429,7 +1385,6 @@
         min-height: 40px;
     }
 
-    /* Force single pane layout */
     .fm-panes {
         display: block !important;
         flex: 1;
@@ -1456,17 +1411,14 @@
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Hide pane tabs on mobile - single pane only (local upload to server) */
     .fm-pane-tabs {
         display: none !important;
     }
 
-    /* Hide transfer button on mobile - no server-to-server */
     .fm-toolbar-center #fmTransfer {
         display: none !important;
     }
 
-    /* Hide source selector label on mobile - just show dropdown */
     .fm-pane-header {
         padding: 8px;
     }
@@ -1477,7 +1429,6 @@
         font-size: 14px;
     }
 
-    /* Compact navigation bar */
     .fm-pane-nav {
         padding: 8px;
         gap: 4px;
@@ -1494,7 +1445,6 @@
         min-height: 40px;
     }
 
-    /* Show mobile upload - prominent button at top */
     .fm-mobile-upload {
         display: flex !important;
         align-items: center;
@@ -1506,7 +1456,7 @@
         background: var(--accent-primary);
         border: none;
         border-radius: 10px;
-        color: white;
+        color: var(--accent-on-text, #ffffff);
         font-size: 15px;
         font-weight: 600;
         cursor: pointer;
@@ -1524,12 +1474,10 @@
         font-size: 22px;
     }
 
-    /* Hide transfer action in action sheet - mobile is local-to-server only */
     .fm-action-sheet-item[data-action="transfer"] {
         display: none !important;
     }
 
-    /* Action sheet */
     .fm-action-sheet {
         display: flex !important;
         transform: translateY(100%);
@@ -1539,7 +1487,6 @@
         transform: translateY(0);
     }
 
-    /* Hide transfer queue collapse - always show minimal */
     .fm-queue {
         max-height: 100px;
     }
@@ -1549,7 +1496,6 @@
     }
 }
 
-/* ==================== SCROLLBAR ==================== */
 .fm-file-list::-webkit-scrollbar,
 .fm-queue-list::-webkit-scrollbar {
     width: 8px;

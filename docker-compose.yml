@@ -5,8 +5,9 @@
 #
 # BEFORE RUNNING:
 # 1. Replace <YOUR-SECRET-KEY> with output of: openssl rand -hex 32
-# 2. Set CORS_ORIGINS to your domain or * for homelab
-# 3. Set ALLOW_CORS_WILDCARD=true if using * for CORS
+# 2. Set CORS_ORIGINS to your domain (e.g. https://ssh.example.com)
+#    For homelab without TLS: http://your-server-ip:5000
+#    For wildcard (insecure): CORS_ORIGINS=* and ALLOW_CORS_WILDCARD=true
 ##############################################
 
 services:
@@ -20,10 +21,10 @@ services:
       # === REQUIRED: Generate with: openssl rand -hex 32 ===
       - SECRET_KEY=<YOUR-SECRET-KEY>
 
-      # === REQUIRED: Your domain or * for homelab ===
+      # === CORS: Wildcard default for homelab use ===
+      # For production: replace * with your domain (e.g. https://ssh.example.com)
+      # and remove ALLOW_CORS_WILDCARD
       - CORS_ORIGINS=*
-
-      # === Set to true when using CORS_ORIGINS=* ===
       - ALLOW_CORS_WILDCARD=true
 
       # === Set to 1 if behind reverse proxy (Traefik, nginx, etc.) ===

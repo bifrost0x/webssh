@@ -10,7 +10,6 @@ from .audit_logger import log_info, log_warning, log_error, log_debug
 sessions = {}
 sessions_lock = Lock()
 
-
 class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
     """Secure host key policy with logging and audit trail."""
     def __init__(self, known_hosts_path):
@@ -19,7 +18,6 @@ class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
     def missing_host_key(self, client, hostname, key):
         import binascii
 
-        # Log the new host key for security audit
         key_type = key.get_name()
         key_fingerprint = binascii.hexlify(key.get_fingerprint()).decode('utf-8')
         key_fingerprint_formatted = ':'.join([key_fingerprint[i:i+2] for i in range(0, len(key_fingerprint), 2)])
@@ -27,12 +25,10 @@ class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
         log_warning(f"SECURITY: New SSH host key detected",
                     host=hostname, key_type=key_type, fingerprint=key_fingerprint_formatted)
 
-        # Store the host key
         host_keys = client.get_host_keys()
         host_keys.add(hostname, key.get_name(), key)
         self.known_hosts_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Set restrictive permissions on known_hosts file
         host_keys.save(str(self.known_hosts_path))
         import os
         os.chmod(str(self.known_hosts_path), 0o600)
@@ -74,11 +70,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         }
 
         if key_content:
-            # Load key from decrypted content (preferred - keys encrypted at rest)
             import io
             key_file = io.StringIO(key_content)
             try:
-                # Try to load as RSA first, then other key types
                 pkey = paramiko.RSAKey.from_private_key(key_file)
             except paramiko.ssh_exception.SSHException:
                 key_file.seek(0)
@@ -93,7 +87,6 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                         pkey = paramiko.DSSKey.from_private_key(key_file)
             auth_kwargs['pkey'] = pkey
         elif key_path:
-            # Legacy: Load from file path (for backwards compatibility)
             auth_kwargs['key_filename'] = key_path
         elif password:
             auth_kwargs['password'] = password
@@ -102,22 +95,19 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         client.connect(**auth_kwargs)
 
-        # Enable SSH-level keepalive to prevent remote server from closing idle connections
         transport = client.get_transport()
         if transport:
-            transport.set_keepalive(30)  # Send keepalive every 30 seconds
+            transport.set_keepalive(30)
 
         channel = client.invoke_shell(
             term='xterm-256color',
             width=80,
             height=24
         )
-        # Don't set timeout to 0 - it causes issues with select()
         channel.settimeout(0.1)
 
         session_id = str(uuid.uuid4())
 
-        # Brief pause for shell initialization (reduced from 1.0s)
         time.sleep(0.1)
 
         with sessions_lock:
@@ -168,7 +158,6 @@ def read_ssh_output(session_id, socketio_instance, app):
     """
     from datetime import datetime, timezone
 
-    # Cache room/user_id once at startup to avoid DB query per chunk
     cached_room = None
     last_db_update = 0
 
@@ -176,9 +165,8 @@ def read_ssh_output(session_id, socketio_instance, app):
         with app.app_context():
             from .models import SSHSession, db
 
-            # Wait for DB record (created by socket_events after create_ssh_connection returns)
             db_session = None
-            for _attempt in range(30):  # Wait up to 3 seconds
+            for _attempt in range(30):
                 db_session = SSHSession.query.filter_by(session_id=session_id).first()
                 if db_session:
                     break
@@ -201,9 +189,6 @@ def read_ssh_output(session_id, socketio_instance, app):
                     channel = session['channel']
 
                 try:
-                    # channel.recv() uses paramiko's internal buffer + green Event.
-                    # With channel.settimeout(0.1), this yields for up to 100ms
-                    # if no data, allowing other greenthreads (SFTP ops) to run.
                     data = channel.recv(32768)
                     if data:
                         decoded_data = data.decode('utf-8', errors='replace')
@@ -217,7 +202,6 @@ def read_ssh_output(session_id, socketio_instance, app):
                             if session_id in sessions:
                                 sessions[session_id]['last_activity'] = now
 
-                        # Debounce DB updates to reduce SQLite contention
                         if now - last_db_update >= 10.0:
                             last_db_update = now
                             try:
@@ -228,12 +212,10 @@ def read_ssh_output(session_id, socketio_instance, app):
                             except Exception:
                                 db.session.rollback()
                     else:
-                        break  # Connection closed
+                        break
                 except socket.timeout:
-                    # No data within channel timeout (0.1s) -- normal, loop back
                     pass
                 except EOFError:
-                    # Channel closed by remote
                     break
                 except Exception as e:
                     log_error(f"Error reading from channel", error=str(e), exc_info=True)
@@ -300,7 +282,6 @@ def resize_terminal(session_id, rows, cols):
 def close_session(session_id):
     """Close SSH session and clean up resources."""
     try:
-        # Close cached SFTP client first
         from .sftp_handler import close_sftp_cache
         close_sftp_cache(session_id)
 
@@ -356,18 +337,14 @@ def cleanup_idle_sessions():
             for session_id, session in sessions.items():
                 idle_time = current_time - session['last_activity']
 
-                # Close session if timeout exceeded
                 if idle_time > config.SESSION_TIMEOUT:
                     to_close.append(session_id)
-                # Warn 2 minutes before timeout if not already warned
                 elif idle_time > (config.SESSION_TIMEOUT - 120) and not session.get('_warned'):
                     to_warn.append((session_id, session.get('user_id')))
                     session['_warned'] = True
-                # Clear warning flag if session becomes active again
                 elif idle_time <= (config.SESSION_TIMEOUT - 120) and session.get('_warned'):
                     session['_warned'] = False
 
-        # Send warnings
         for session_id, user_id in to_warn:
             if user_id:
                 room = f'user_{user_id}'
@@ -376,7 +353,6 @@ def cleanup_idle_sessions():
                 }, room=room)
                 log_debug(f"Sent timeout warning for session: {session_id}")
 
-        # Close timed-out sessions
         for session_id in to_close:
             close_session(session_id)
             log_info(f"Closed idle session: {session_id}")
