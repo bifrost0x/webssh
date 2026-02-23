@@ -2,7 +2,7 @@ import json
 import uuid
 import re
 import ipaddress
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -44,7 +44,7 @@ def load_profiles(user_id):
             data = json.load(f)
             return data.get('profiles', [])
     except Exception as e:
-        log_error(f"Error loading profiles", user_id=user_id, error=str(e))
+        log_error("Error loading profiles", user_id=user_id, error=str(e))
         return []
 
 def save_profiles(user_id, profiles):
@@ -60,7 +60,7 @@ def save_profiles(user_id, profiles):
             json.dump({'profiles': profiles}, f, indent=2)
         return True
     except Exception as e:
-        log_error(f"Error saving profiles", user_id=user_id, error=str(e))
+        log_error("Error saving profiles", user_id=user_id, error=str(e))
         return False
 
 def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
@@ -98,7 +98,7 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
             'username': username,
             'auth_type': auth_type,
             'key_id': key_id,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
 
         profiles = load_profiles(user_id)
@@ -126,5 +126,5 @@ def delete_profile(user_id, profile_id):
         profiles = [p for p in profiles if p['id'] != profile_id]
         return save_profiles(user_id, profiles)
     except Exception as e:
-        log_error(f"Error deleting profile", user_id=user_id, error=str(e))
+        log_error("Error deleting profile", user_id=user_id, error=str(e))
         return False

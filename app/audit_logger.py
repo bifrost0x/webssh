@@ -1,8 +1,9 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import json
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import config
 
 LOGS_DIR = config.DATA_DIR / 'logs'
@@ -19,7 +20,7 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record):
         log_data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),
@@ -85,7 +86,9 @@ def setup_logger(name, log_file=None, level=logging.INFO):
     logger.addHandler(console_handler)
 
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=10 * 1024 * 1024, backupCount=5
+        )
         file_handler.setLevel(level)
         file_handler.setFormatter(StructuredFormatter())
         logger.addHandler(file_handler)

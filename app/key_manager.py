@@ -1,7 +1,7 @@
 import json
 import uuid
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -37,7 +37,7 @@ def load_keys(user_id):
             data = json.load(f)
             return data.get('keys', [])
     except Exception as e:
-        log_error(f"Error loading keys", user_id=user_id, error=str(e))
+        log_error("Error loading keys", user_id=user_id, error=str(e))
         return []
 
 def save_keys(user_id, keys):
@@ -53,7 +53,7 @@ def save_keys(user_id, keys):
             json.dump({'keys': keys}, f, indent=2)
         return True
     except Exception as e:
-        log_error(f"Error saving keys", user_id=user_id, error=str(e))
+        log_error("Error saving keys", user_id=user_id, error=str(e))
         return False
 
 def save_key(user_id, name, key_content):
@@ -78,13 +78,13 @@ def save_key(user_id, name, key_content):
             'filename': filename,
             'key_type': key_type,
             'encrypted': True,
-            'uploaded_at': datetime.utcnow().isoformat()
+            'uploaded_at': datetime.now(timezone.utc).isoformat()
         }
         keys = load_keys(user_id)
         keys.append(key_meta)
 
         if save_keys(user_id, keys):
-            log_info(f"SSH key saved (encrypted)", user_id=user_id, key_name=name)
+            log_info("SSH key saved (encrypted)", user_id=user_id, key_name=name)
             return key_meta, None
         else:
             key_path.unlink(missing_ok=True)
@@ -137,7 +137,7 @@ def read_key_content(user_id, key_id):
     except FileNotFoundError:
         return None, "Key file not found"
     except Exception as e:
-        log_error(f"Error reading key content", user_id=user_id, key_id=key_id, error=str(e))
+        log_error("Error reading key content", user_id=user_id, key_id=key_id, error=str(e))
         return None, f"Failed to read key: {str(e)}"
 
 def delete_key(user_id, key_id):
@@ -161,14 +161,36 @@ def delete_key(user_id, key_id):
         keys = [k for k in keys if k['id'] != key_id]
         return save_keys(user_id, keys)
     except Exception as e:
-        log_error(f"Error deleting key", user_id=user_id, error=str(e))
+        log_error("Error deleting key", user_id=user_id, error=str(e))
         return False
 
 def detect_key_type(key_content):
-    """Detect SSH key type from content."""
+    """Detect SSH key type from content.
+
+    For OpenSSH-format keys (BEGIN OPENSSH PRIVATE KEY), the actual key type
+    (RSA, Ed25519, ECDSA, etc.) is encoded inside the binary blob, not in the
+    PEM header. We attempt to parse with Paramiko to detect the real type.
+    """
     content = key_content.strip()
 
-    if 'BEGIN RSA PRIVATE KEY' in content or 'BEGIN OPENSSH PRIVATE KEY' in content:
+    if 'BEGIN OPENSSH PRIVATE KEY' in content:
+        import io
+        import paramiko
+        key_file = io.StringIO(content)
+        for key_class, key_name in [
+            (paramiko.RSAKey, 'RSA'),
+            (paramiko.Ed25519Key, 'Ed25519'),
+            (paramiko.ECDSAKey, 'ECDSA'),
+            (paramiko.DSSKey, 'DSA'),
+        ]:
+            key_file.seek(0)
+            try:
+                key_class.from_private_key(key_file)
+                return key_name
+            except (paramiko.ssh_exception.SSHException, Exception):
+                continue
+        return 'OpenSSH'
+    elif 'BEGIN RSA PRIVATE KEY' in content:
         return 'RSA'
     elif 'BEGIN DSA PRIVATE KEY' in content:
         return 'DSA'

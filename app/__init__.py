@@ -6,6 +6,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import os
 from .models import db
+from flask_migrate import Migrate
 from .auth import login_manager, init_auth, authenticate_user, register_user, check_rate_limit
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
@@ -14,6 +15,7 @@ from . import sftp_handler
 
 socketio = SocketIO()
 csrf = CSRFProtect()
+migrate = Migrate()
 
 def get_client_ip():
     """
@@ -60,6 +62,7 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{config.DATA_DIR / "app.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
+    migrate.init_app(app, db)
     init_auth(app)
     csrf.init_app(app)
 
@@ -120,25 +123,39 @@ def create_app():
         from .ssh_manager import cleanup_idle_sessions
 
         def db_cleanup_task():
+            import time
+            consecutive_errors = 0
             while True:
-                import time
                 time.sleep(1800)
                 try:
                     with app.app_context():
                         deleted = cleanup_inactive_socket_sessions(timeout_minutes=30)
                         if deleted > 0:
                             log_info(f"Cleaned up {deleted} inactive sessions")
+                    consecutive_errors = 0
                 except Exception as e:
-                    log_error(f"Session cleanup error", error=str(e))
+                    consecutive_errors += 1
+                    log_error("Session cleanup error", error=str(e))
+                    if consecutive_errors >= 5:
+                        backoff = min(300, 60 * consecutive_errors)
+                        log_warning(f"Session cleanup backing off {backoff}s after {consecutive_errors} consecutive errors")
+                        time.sleep(backoff)
 
         def ssh_cleanup_task():
+            import time
+            consecutive_errors = 0
             while True:
-                import time
                 time.sleep(60)
                 try:
                     cleanup_idle_sessions()
+                    consecutive_errors = 0
                 except Exception as e:
-                    log_error(f"SSH cleanup error", error=str(e))
+                    consecutive_errors += 1
+                    log_error("SSH cleanup error", error=str(e))
+                    if consecutive_errors >= 5:
+                        backoff = min(300, 60 * consecutive_errors)
+                        log_warning(f"SSH cleanup backing off {backoff}s after {consecutive_errors} consecutive errors")
+                        time.sleep(backoff)
 
         cleanup_thread = threading.Thread(target=db_cleanup_task, daemon=True)
         cleanup_thread.start()
@@ -316,7 +333,7 @@ def create_app():
             return jsonify({'success': True, 'filename': file.filename}), 200
 
         except Exception as e:
-            log_error(f"Upload failed", error=str(e))
+            log_error("Upload failed", error=str(e))
             return jsonify({'error': 'Upload failed'}), 500
 
     return app

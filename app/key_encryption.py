@@ -119,7 +119,7 @@ def is_encrypted(data: bytes) -> bool:
             return True
 
         return False
-    except:
+    except Exception:
         return False
 
 def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
@@ -142,14 +142,14 @@ def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
     try:
         path = Path(key_path)
         if not path.exists():
-            log_warning(f"Key file not found for migration", path=key_path)
+            log_warning("Key file not found for migration", path=key_path)
             return False
 
         with open(path, 'rb') as f:
             content = f.read()
 
         if is_encrypted(content):
-            log_info(f"Key already encrypted", path=key_path)
+            log_info("Key already encrypted", path=key_path)
             return True
 
         encrypted = encrypt_key_content(user_id, content.decode('utf-8'))
@@ -165,11 +165,11 @@ def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
 
         Path(backup_path).unlink(missing_ok=True)
 
-        log_info(f"Key encrypted successfully", path=key_path, user_id=user_id)
+        log_info("Key encrypted successfully", path=key_path, user_id=user_id)
         return True
 
     except Exception as e:
-        log_error(f"Failed to encrypt key", path=key_path, error=str(e))
+        log_error("Failed to encrypt key", path=key_path, error=str(e))
         return False
 
 def read_key_content(user_id: str, key_path: str) -> str:
@@ -202,7 +202,7 @@ def read_key_content(user_id: str, key_path: str) -> str:
     if is_encrypted(content):
         return decrypt_key_content(user_id, content)
     else:
-        log_warning(f"Found unencrypted legacy key, migrating", path=key_path)
+        log_warning("Found unencrypted legacy key, migrating", path=key_path)
         plaintext = content.decode('utf-8')
 
         migrate_key_to_encrypted(user_id, key_path)
@@ -238,5 +238,5 @@ def write_key_content(user_id: str, key_path: str, key_content: str) -> bool:
         return True
 
     except Exception as e:
-        log_error(f"Failed to write encrypted key", path=key_path, error=str(e))
+        log_error("Failed to write encrypted key", path=key_path, error=str(e))
         return False

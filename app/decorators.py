@@ -26,7 +26,7 @@ def socket_login_required(f):
         socket_sid = request.sid
         user = get_user_from_socket(socket_sid)
         if not user:
-            log_warning(f"Unauthorized socket event attempt", event=f.__name__, sid=socket_sid)
+            log_warning("Unauthorized socket event attempt", event=f.__name__, sid=socket_sid)
             disconnect()
             return
         kwargs['current_user'] = user

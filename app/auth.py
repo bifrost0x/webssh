@@ -21,6 +21,8 @@ class RateLimiter:
     The application is designed for single-worker deployment due to
     WebSocket session state management requirements.
     """
+    MAX_KEYS = 10000
+
     def __init__(self):
         self.events = {}
 
@@ -43,6 +45,13 @@ class RateLimiter:
         if len(self.events) > 50:
             stale = [k for k, q in self.events.items() if not q]
             for k in stale:
+                del self.events[k]
+
+        if len(self.events) > self.MAX_KEYS:
+            cutoff = now - 3600
+            expired = [k for k, q in self.events.items()
+                       if not q or q[-1] < cutoff]
+            for k in expired:
                 del self.events[k]
 
         return True

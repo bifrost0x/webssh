@@ -51,7 +51,7 @@ def _validate_ssh_params(host, port, username):
         return None, None, None, 'Invalid host format'
 
     if config.BLOCK_INTERNAL_SSH and _is_internal_address(host):
-        log_warning(f"SECURITY: SSH to internal address blocked", host=host)
+        log_warning("SECURITY: SSH to internal address blocked", host=host)
         return None, None, None, 'Connections to internal addresses are not allowed'
 
     try:
@@ -76,7 +76,7 @@ def handle_connect():
 
     user_id = flask_session.get('_user_id')
     if not user_id:
-        log_warning(f"Unauthenticated connection attempt", sid=request.sid)
+        log_warning("Unauthenticated connection attempt", sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
         disconnect()
         return
@@ -84,7 +84,7 @@ def handle_connect():
     from .models import User
     user = User.query.get(int(user_id))
     if not user:
-        log_warning(f"User not found during connect", user_id=user_id, sid=request.sid)
+        log_warning("User not found during connect", user_id=user_id, sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
         disconnect()
         return
@@ -210,7 +210,7 @@ def handle_ssh_connect(data, current_user=None):
                 db.session.commit()
             except Exception as db_err:
                 db.session.rollback()
-                log_error(f"Failed to record SSH session in database",
+                log_error("Failed to record SSH session in database",
                           error=str(db_err), session_id=session_id)
 
             emit('ssh_connected', {
@@ -223,7 +223,7 @@ def handle_ssh_connect(data, current_user=None):
             log_ssh_connection(current_user.username, host, port, True, request.remote_addr)
 
     except Exception as e:
-        log_error(f"SSH connection failed", error=str(e), user=current_user.username)
+        log_error("SSH connection failed", error=str(e), user=current_user.username)
         emit('ssh_error', {'error': 'Connection failed'})
     finally:
         password = None
@@ -252,7 +252,7 @@ def handle_ssh_input(data, current_user=None):
             emit('ssh_error', {'error': error, 'session_id': session_id})
 
     except Exception as e:
-        log_error(f"SSH input error", error=str(e))
+        log_error("SSH input error", error=str(e))
         emit('ssh_error', {'error': 'Input error'})
 
 @socketio.on('keep_alive')
@@ -315,7 +315,7 @@ def handle_ssh_disconnect(data, current_user=None):
                 db.session.commit()
             except Exception as db_err:
                 db.session.rollback()
-                log_error(f"Failed to update SSH session in database",
+                log_error("Failed to update SSH session in database",
                           error=str(db_err), session_id=session_id)
 
         success = ssh_manager.close_session(session_id)
@@ -471,11 +471,9 @@ def handle_upload_file(data, current_user=None):
             emit('error', {'error': f'File too large. Maximum size: {max_mb}MB'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access to session'})
+            return
 
         file_bytes = base64.b64decode(file_data)
 
@@ -511,11 +509,9 @@ def handle_download_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields for file download'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access to session'})
+            return
 
         result, error = sftp_handler.download_file_chunked(
             session_id=session_id,
@@ -554,17 +550,9 @@ def handle_list_directory(data, current_user=None):
             emit('error', {'error': 'Session ID required'})
             return
 
-        authorized = False
-        if verify_session_ownership(session_id, current_user.id):
-            authorized = True
-        else:
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if conn_info and conn_info['user_id'] == str(current_user.id):
-                authorized = True
-
         _t1 = _time.time()
-        if not authorized:
-            log_warning(f"list_directory unauthorized", session_id=session_id, user=current_user.username)
+        if not verify_access(session_id, current_user.id):
+            log_warning("list_directory unauthorized", session_id=session_id, user=current_user.username)
             emit('error', {'error': 'Unauthorized access to session'})
             return
 
@@ -572,11 +560,11 @@ def handle_list_directory(data, current_user=None):
         _t2 = _time.time()
 
         if error:
-            log_warning(f"list_directory failed", path=remote_path, error=error,
+            log_warning("list_directory failed", path=remote_path, error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('error', {'error': f'Failed to list directory: {error}'})
         else:
-            log_info(f"list_directory OK", path=remote_path, files=len(files),
+            log_info("list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('directory_listing', {
                 'session_id': session_id,
@@ -585,7 +573,7 @@ def handle_list_directory(data, current_user=None):
             })
 
     except Exception as e:
-        log_error(f"list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
+        log_error("list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {'error': 'Failed to list directory'})
 
 @socketio.on('get_sessions')
@@ -790,6 +778,26 @@ def verify_session_ownership(session_id, user_id):
 
     return False
 
+def verify_access(session_id, user_id):
+    """
+    Verify user has access to a session or temporary connection.
+
+    Checks session ownership first, then falls back to the temporary
+    connection pool. This consolidates the repeated auth pattern used
+    across socket event handlers.
+
+    Args:
+        session_id: SSH session ID or temporary connection ID
+        user_id: User ID to check access for
+
+    Returns:
+        bool: True if user has access
+    """
+    if verify_session_ownership(session_id, user_id):
+        return True
+    conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
+    return conn_info is not None and conn_info['user_id'] == str(user_id)
+
 @socketio.on('upload_file_binary')
 @socket_login_required
 def handle_upload_file_binary(data, current_user=None):
@@ -804,11 +812,9 @@ def handle_upload_file_binary(data, current_user=None):
             emit('error', {'error': 'Missing required fields for binary upload'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session/connection'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access to session/connection'})
+            return
 
         success, error = binary_transfer.handle_binary_upload(
             session_id=session_id,
@@ -840,11 +846,9 @@ def handle_download_file_binary(data, current_user=None):
             emit('error', {'error': 'Missing required fields for binary download'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session/connection'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access to session/connection'})
+            return
 
         binary_data, error = binary_transfer.handle_binary_download(
             session_id=session_id,
@@ -899,214 +903,207 @@ def handle_download_folder_binary(data, current_user=None):
             emit('error', {'error': 'Missing required fields for folder download'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session/connection'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access to session/connection'})
+            return
 
         _sftp_lock = sftp_handler._get_sftp_lock(session_id)
         _sftp_lock.acquire()
+        sftp = None
+        source_type = None
         try:
             sftp, error, source_type = sftp_handler.get_any_sftp_client(session_id)
-        except Exception as e:
-            _sftp_lock.release()
-            log_error("SFTP client error", error=str(e))
-            emit('error', {'error': 'SFTP operation failed'})
-            return
-        if error:
-            _sftp_lock.release()
-            emit('error', {'error': error})
-            return
-
-        safe_path = sftp_handler.sanitize_path(remote_path)
-        if safe_path is None:
-            _sftp_lock.release()
-            emit('error', {'error': 'Invalid remote path'})
-            return
-
-        try:
-            file_stat = sftp.stat(safe_path)
-            import stat
-            if not stat.S_ISDIR(file_stat.st_mode):
-                _sftp_lock.release()
-                emit('error', {'error': 'Path is not a directory'})
+            if error:
+                emit('error', {'error': error})
                 return
-        except FileNotFoundError:
-            _sftp_lock.release()
-            emit('error', {'error': 'Remote directory not found'})
-            return
 
-        folder_name = os.path.basename(safe_path.rstrip('/'))
+            safe_path = sftp_handler.sanitize_path(remote_path)
+            if safe_path is None:
+                emit('error', {'error': 'Invalid remote path'})
+                return
 
-        def is_safe_for_shell(path):
-            """Validate path is safe for shell command use (defense in depth)."""
-            if not path:
-                return False
-            dangerous_chars = ['\n', '\r', '\x00', '`', '$', '|', ';', '&']
-            return not any(c in path for c in dangerous_chars)
+            import stat
+            try:
+                file_stat = sftp.stat(safe_path)
+                if not stat.S_ISDIR(file_stat.st_mode):
+                    emit('error', {'error': 'Path is not a directory'})
+                    return
+            except FileNotFoundError:
+                emit('error', {'error': 'Remote directory not found'})
+                return
 
-        remote_zip_path = f"/tmp/{folder_name}_{os.urandom(8).hex()}.zip"
+            folder_name = os.path.basename(safe_path.rstrip('/'))
 
-        try:
-            ssh_client = sftp._client if hasattr(sftp, '_client') else None
-            if ssh_client and is_safe_for_shell(safe_path):
-                import shlex
-                parent_dir = os.path.dirname(safe_path)
-                base_name = os.path.basename(safe_path)
+            def is_safe_for_shell(path):
+                """Validate path is safe for shell command use (defense in depth)."""
+                if not path:
+                    return False
+                dangerous_chars = ['\n', '\r', '\x00', '`', '$', '|', ';', '&']
+                return not any(c in path for c in dangerous_chars)
 
-                if not (is_safe_for_shell(parent_dir) and is_safe_for_shell(base_name)):
-                    raise ValueError("Path contains unsafe characters")
+            remote_zip_path = f"/tmp/{folder_name}_{os.urandom(8).hex()}.zip"
 
-                zip_command = f"cd {shlex.quote(parent_dir)} && zip -r -q {shlex.quote(remote_zip_path)} {shlex.quote(base_name)}"
+            try:
+                ssh_client = sftp._client if hasattr(sftp, '_client') else None
+                if ssh_client and is_safe_for_shell(safe_path):
+                    import shlex
+                    parent_dir = os.path.dirname(safe_path)
+                    base_name = os.path.basename(safe_path)
 
-                stdin, stdout, stderr = ssh_client.exec_command(zip_command)
-                stdout.channel.settimeout(300)
-                exit_code = stdout.channel.recv_exit_status()
+                    if not (is_safe_for_shell(parent_dir) and is_safe_for_shell(base_name)):
+                        raise ValueError("Path contains unsafe characters")
 
-                if exit_code == 0:
-                    log_debug(f"Remote ZIP created: {remote_zip_path}")
+                    zip_command = f"cd {shlex.quote(parent_dir)} && zip -r -q {shlex.quote(remote_zip_path)} {shlex.quote(base_name)}"
 
-                    zip_path = None
-                    try:
-                        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
-                            zip_path = tmp_zip.name
-                            os.chmod(zip_path, 0o600)
-                            with sftp.file(remote_zip_path, 'rb') as remote_file:
-                                while True:
-                                    chunk = remote_file.read(65536)
-                                    if not chunk:
-                                        break
-                                    tmp_zip.write(chunk)
+                    stdin, stdout, stderr = ssh_client.exec_command(zip_command)
+                    stdout.channel.settimeout(300)
+                    exit_code = stdout.channel.recv_exit_status()
 
-                        with open(zip_path, 'rb') as f:
-                            zip_data = f.read()
+                    if exit_code == 0:
+                        log_debug(f"Remote ZIP created: {remote_zip_path}")
 
-                        emit('file_download_ready_binary', {
-                            'session_id': session_id,
-                            'filename': f"{folder_name}.zip",
-                            'file_data': zip_data,
-                            'size': len(zip_data),
-                            'for_preview': False
-                        })
+                        zip_path = None
+                        try:
+                            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
+                                zip_path = tmp_zip.name
+                                os.chmod(zip_path, 0o600)
+                                with sftp.file(remote_zip_path, 'rb') as remote_file:
+                                    while True:
+                                        chunk = remote_file.read(65536)
+                                        if not chunk:
+                                            break
+                                        tmp_zip.write(chunk)
 
-                        log_info(f"Folder download (remote): {folder_name}.zip", user=current_user.username)
-                    finally:
-                        if zip_path and os.path.exists(zip_path):
+                            with open(zip_path, 'rb') as f:
+                                zip_data = f.read()
+
+                            emit('file_download_ready_binary', {
+                                'session_id': session_id,
+                                'filename': f"{folder_name}.zip",
+                                'file_data': zip_data,
+                                'size': len(zip_data),
+                                'for_preview': False
+                            })
+
+                            log_info(f"Folder download (remote): {folder_name}.zip", user=current_user.username)
+                        finally:
+                            if zip_path and os.path.exists(zip_path):
+                                try:
+                                    os.unlink(zip_path)
+                                except Exception as cleanup_err:
+                                    log_warning("Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
+
                             try:
-                                os.unlink(zip_path)
-                            except Exception as cleanup_err:
-                                log_warning(f"Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
+                                sftp.remove(remote_zip_path)
+                            except Exception as remote_cleanup_err:
+                                log_warning("Failed to cleanup remote ZIP", path=remote_zip_path, error=str(remote_cleanup_err))
+
+                        return
+                    else:
+                        log_debug("Remote zip command failed, falling back to SFTP method")
+
+            except Exception as e:
+                log_debug("Remote ZIP creation failed, falling back to SFTP method", error=str(e))
+
+            zip_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
+                    zip_path = tmp_zip.name
+                os.chmod(zip_path, 0o600)
+
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+                    file_count = 0
+                    error_count = 0
+
+                    cumulative_size = 0
+                    max_zip_size = config.MAX_ZIP_DOWNLOAD_SIZE
+
+                    def add_folder_to_zip(sftp_client, remote_folder, zip_prefix='', depth=0):
+                        """Recursively add folder contents to ZIP."""
+                        nonlocal file_count, error_count, cumulative_size
+
+                        if depth > 50:
+                            log_warning(f"Maximum recursion depth exceeded in folder download: {remote_folder}")
+                            error_count += 1
+                            return
 
                         try:
-                            sftp.remove(remote_zip_path)
-                        except Exception as remote_cleanup_err:
-                            log_warning(f"Failed to cleanup remote ZIP", path=remote_zip_path, error=str(remote_cleanup_err))
+                            items = sftp_client.listdir_attr(remote_folder)
 
-                        if source_type == 'pool':
-                            sftp.close()
+                            if not items and zip_prefix:
+                                zipf.writestr(zip_prefix + '/', '')
 
-                    _sftp_lock.release()
-                    return
-                else:
-                    log_debug(f"Remote zip command failed, falling back to SFTP method")
+                            for item in items:
+                                item_path = f"{remote_folder}/{item.filename}"
+                                zip_item_path = f"{zip_prefix}/{item.filename}" if zip_prefix else item.filename
+
+                                try:
+                                    try:
+                                        item_lstat = sftp_client.lstat(item_path)
+                                    except Exception:
+                                        item_lstat = item
+
+                                    if stat.S_ISLNK(item_lstat.st_mode):
+                                        log_debug(f"Skipping symlink in ZIP download: {item_path}")
+                                        continue
+
+                                    if stat.S_ISDIR(item_lstat.st_mode):
+                                        zipf.writestr(zip_item_path + '/', '')
+                                        add_folder_to_zip(sftp_client, item_path, zip_item_path, depth + 1)
+                                    else:
+                                        with sftp_client.file(item_path, 'rb') as remote_file:
+                                            file_data = remote_file.read()
+                                            cumulative_size += len(file_data)
+                                            if cumulative_size > max_zip_size:
+                                                max_mb = max_zip_size // (1024 * 1024)
+                                                raise ValueError(f"Folder exceeds maximum download size ({max_mb}MB)")
+                                            zipf.writestr(zip_item_path, file_data)
+                                        file_count += 1
+                                except ValueError:
+                                    raise
+                                except Exception as item_error:
+                                    error_count += 1
+                                    log_debug(f"Error adding {item_path}", error=str(item_error))
+
+                        except ValueError:
+                            raise
+                        except Exception as e:
+                            log_error(f"Error reading directory {remote_folder}", error=str(e))
+                            raise
+
+                    log_debug(f"Starting folder download: {folder_name} from {safe_path}")
+                    add_folder_to_zip(sftp, safe_path, folder_name)
+                    log_debug(f"Added {file_count} files to ZIP ({error_count} errors)")
+
+                with open(zip_path, 'rb') as f:
+                    zip_data = f.read()
+
+                emit('file_download_ready_binary', {
+                    'session_id': session_id,
+                    'filename': f"{folder_name}.zip",
+                    'file_data': zip_data,
+                    'size': len(zip_data),
+                    'for_preview': False
+                })
+
+                log_info(f"Folder download: {folder_name}.zip", user=current_user.username)
+
+            finally:
+                if zip_path and os.path.exists(zip_path):
+                    try:
+                        os.unlink(zip_path)
+                    except Exception as cleanup_err:
+                        log_warning("Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
 
         except Exception as e:
-            log_debug(f"Remote ZIP creation failed, falling back to SFTP method", error=str(e))
-
-        zip_path = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
-                zip_path = tmp_zip.name
-            os.chmod(zip_path, 0o600)
-
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
-                file_count = 0
-                error_count = 0
-
-                cumulative_size = 0
-                max_zip_size = config.MAX_ZIP_DOWNLOAD_SIZE
-
-                def add_folder_to_zip(sftp_client, remote_folder, zip_prefix='', depth=0):
-                    """Recursively add folder contents to ZIP."""
-                    nonlocal file_count, error_count, cumulative_size
-
-                    if depth > 50:
-                        log_warning(f"Maximum recursion depth exceeded in folder download: {remote_folder}")
-                        error_count += 1
-                        return
-
-                    try:
-                        items = sftp_client.listdir_attr(remote_folder)
-
-                        if not items and zip_prefix:
-                            zipf.writestr(zip_prefix + '/', '')
-
-                        for item in items:
-                            item_path = f"{remote_folder}/{item.filename}"
-                            zip_item_path = f"{zip_prefix}/{item.filename}" if zip_prefix else item.filename
-
-                            try:
-                                try:
-                                    item_lstat = sftp_client.lstat(item_path)
-                                except Exception:
-                                    item_lstat = item
-
-                                if stat.S_ISLNK(item_lstat.st_mode):
-                                    log_debug(f"Skipping symlink in ZIP download: {item_path}")
-                                    continue
-
-                                if stat.S_ISDIR(item_lstat.st_mode):
-                                    zipf.writestr(zip_item_path + '/', '')
-                                    add_folder_to_zip(sftp_client, item_path, zip_item_path, depth + 1)
-                                else:
-                                    with sftp_client.file(item_path, 'rb') as remote_file:
-                                        file_data = remote_file.read()
-                                        cumulative_size += len(file_data)
-                                        if cumulative_size > max_zip_size:
-                                            max_mb = max_zip_size // (1024 * 1024)
-                                            raise ValueError(f"Folder exceeds maximum download size ({max_mb}MB)")
-                                        zipf.writestr(zip_item_path, file_data)
-                                    file_count += 1
-                            except ValueError:
-                                raise
-                            except Exception as item_error:
-                                error_count += 1
-                                log_debug(f"Error adding {item_path}", error=str(item_error))
-
-                    except ValueError:
-                        raise
-                    except Exception as e:
-                        log_error(f"Error reading directory {remote_folder}", error=str(e))
-                        raise
-
-                log_debug(f"Starting folder download: {folder_name} from {safe_path}")
-                add_folder_to_zip(sftp, safe_path, folder_name)
-                log_debug(f"Added {file_count} files to ZIP ({error_count} errors)")
-
-            with open(zip_path, 'rb') as f:
-                zip_data = f.read()
-
-            emit('file_download_ready_binary', {
-                'session_id': session_id,
-                'filename': f"{folder_name}.zip",
-                'file_data': zip_data,
-                'size': len(zip_data),
-                'for_preview': False
-            })
-
-            log_info(f"Folder download: {folder_name}.zip", user=current_user.username)
-
+            log_error("SFTP client error", error=str(e))
+            emit('error', {'error': 'SFTP operation failed'})
         finally:
-            if zip_path and os.path.exists(zip_path):
+            if source_type == 'pool' and sftp:
                 try:
-                    os.unlink(zip_path)
-                except Exception as cleanup_err:
-                    log_warning(f"Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
-
-            if source_type == 'pool':
-                sftp.close()
-
+                    sftp.close()
+                except Exception:
+                    pass
             _sftp_lock.release()
 
     except Exception as e:
@@ -1210,11 +1207,9 @@ def handle_create_directory(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         success, error = sftp_handler.create_directory(session_id, remote_path)
 
@@ -1240,11 +1235,9 @@ def handle_rename_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         success, error = sftp_handler.rename_item(session_id, old_path, new_path)
 
@@ -1270,11 +1263,9 @@ def handle_delete_item(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         success, error = sftp_handler.delete_directory_recursive(session_id, path)
 
@@ -1301,27 +1292,25 @@ def handle_get_home_directory(data, current_user=None):
             emit('error', {'error': 'Session ID required'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         _t1 = _time.time()
         home_path, error = sftp_handler.get_home_directory(session_id)
         _t2 = _time.time()
 
         if error:
-            log_warning(f"get_home_directory failed", error=error,
+            log_warning("get_home_directory failed", error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('error', {'error': f'Failed to get home directory: {error}'})
         else:
-            log_info(f"get_home_directory OK", path=home_path,
+            log_info("get_home_directory OK", path=home_path,
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('home_directory', {'session_id': session_id, 'path': home_path})
 
     except Exception as e:
-        log_error(f"get_home_directory exception", error=str(e),
+        log_error("get_home_directory exception", error=str(e),
                  elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {'error': 'Failed to get home directory'})
 
@@ -1337,11 +1326,9 @@ def handle_check_exists(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         result, error = sftp_handler.check_exists(session_id, path)
 
@@ -1366,11 +1353,9 @@ def handle_get_file_stat(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         result, error = sftp_handler.get_file_stat(session_id, path)
 
@@ -1401,11 +1386,9 @@ def handle_preview_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
+        if not verify_access(session_id, current_user.id):
+            emit('error', {'error': 'Unauthorized access'})
+            return
 
         result, error = sftp_handler.read_file_preview(
             session_id=session_id,
@@ -1460,30 +1443,14 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return
 
-        source_authorized = False
-        if verify_session_ownership(source_session_id, current_user.id):
-            source_authorized = True
-        else:
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(source_session_id)
-            if conn_info and conn_info['user_id'] == str(current_user.id):
-                source_authorized = True
-
-        if not source_authorized:
+        if not verify_access(source_session_id, current_user.id):
             emit('s2s_transfer_error', {
                 'transfer_id': transfer_id,
                 'error': 'Unauthorized access to source server'
             })
             return
 
-        dest_authorized = False
-        if verify_session_ownership(dest_session_id, current_user.id):
-            dest_authorized = True
-        else:
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(dest_session_id)
-            if conn_info and conn_info['user_id'] == str(current_user.id):
-                dest_authorized = True
-
-        if not dest_authorized:
+        if not verify_access(dest_session_id, current_user.id):
             emit('s2s_transfer_error', {
                 'transfer_id': transfer_id,
                 'error': 'Unauthorized access to destination server'

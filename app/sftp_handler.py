@@ -138,13 +138,13 @@ def sanitize_path(remote_path):
         return '.'
 
     if '\x00' in remote_path:
-        log_warning(f"SECURITY: Null byte in path BLOCKED", path=repr(remote_path))
+        log_warning("SECURITY: Null byte in path BLOCKED", path=repr(remote_path))
         return None
 
     normalized = os.path.normpath(remote_path)
 
     if '..' in normalized:
-        log_warning(f"SECURITY: Path traversal attempt blocked", path=remote_path)
+        log_warning("SECURITY: Path traversal attempt blocked", path=remote_path)
         return None
 
     return normalized

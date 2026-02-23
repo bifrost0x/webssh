@@ -18,6 +18,7 @@ import paramiko
 from datetime import datetime, timedelta
 import config
 from .ssh_manager import PersistentHostKeyPolicy
+from .ssh_utils import parse_private_key
 from .audit_logger import log_info, log_warning, log_error, log_debug
 
 class TemporaryConnectionPool:
@@ -80,24 +81,8 @@ class TemporaryConnectionPool:
             }
 
             if key_content:
-                import io
-                key_file = io.StringIO(key_content)
-                try:
-                    pkey = paramiko.RSAKey.from_private_key(key_file)
-                except paramiko.ssh_exception.SSHException:
-                    key_file.seek(0)
-                    try:
-                        pkey = paramiko.Ed25519Key.from_private_key(key_file)
-                    except paramiko.ssh_exception.SSHException:
-                        key_file.seek(0)
-                        try:
-                            pkey = paramiko.ECDSAKey.from_private_key(key_file)
-                        except paramiko.ssh_exception.SSHException:
-                            key_file.seek(0)
-                            pkey = paramiko.DSSKey.from_private_key(key_file)
+                pkey = parse_private_key(key_content)
                 connect_kwargs['pkey'] = pkey
-                if password:
-                    pass
             elif key_path:
                 connect_kwargs['key_filename'] = key_path
                 if password:
@@ -134,6 +119,14 @@ class TemporaryConnectionPool:
 
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
+        except paramiko.BadHostKeyException:
+            log_warning("SECURITY: Host key mismatch detected (possible MITM attack)",
+                        host=host, port=port)
+            return None, (
+                f"HOST KEY CHANGED for {host}:{port}! This could indicate a "
+                "man-in-the-middle attack. If the server was legitimately "
+                "reinstalled, remove the old key from known_hosts."
+            )
         except paramiko.SSHException as e:
             return None, f"SSH error: {str(e)}"
         except TimeoutError:
@@ -215,7 +208,7 @@ class TemporaryConnectionPool:
             if conn['client']:
                 conn['client'].close()
         except Exception as e:
-            log_warning(f"Error closing connection", connection_id=connection_id, error=str(e))
+            log_warning("Error closing connection", connection_id=connection_id, error=str(e))
 
         del self.connections[connection_id]
         log_debug(f"Temporary connection closed: {connection_id}")
@@ -253,7 +246,7 @@ class TemporaryConnectionPool:
             try:
                 self.cleanup_expired()
             except Exception as e:
-                log_error(f"Error in cleanup loop", error=str(e))
+                log_error("Error in cleanup loop", error=str(e))
 
     def get_connection_info(self, connection_id):
         """

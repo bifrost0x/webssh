@@ -6,6 +6,7 @@ from threading import Lock, Thread
 import config
 from pathlib import Path
 from .audit_logger import log_info, log_warning, log_error, log_debug
+from .ssh_utils import parse_private_key
 
 sessions = {}
 sessions_lock = Lock()
@@ -22,7 +23,7 @@ class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
         key_fingerprint = binascii.hexlify(key.get_fingerprint()).decode('utf-8')
         key_fingerprint_formatted = ':'.join([key_fingerprint[i:i+2] for i in range(0, len(key_fingerprint), 2)])
 
-        log_warning(f"SECURITY: New SSH host key detected",
+        log_warning("SECURITY: New SSH host key detected",
                     host=hostname, key_type=key_type, fingerprint=key_fingerprint_formatted)
 
         host_keys = client.get_host_keys()
@@ -33,7 +34,7 @@ class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
         import os
         os.chmod(str(self.known_hosts_path), 0o600)
 
-        log_info(f"Host key stored", path=str(self.known_hosts_path))
+        log_info("Host key stored", path=str(self.known_hosts_path))
 
 def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None, socketio_instance=None, app=None, user_id=None):
     """
@@ -70,21 +71,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         }
 
         if key_content:
-            import io
-            key_file = io.StringIO(key_content)
-            try:
-                pkey = paramiko.RSAKey.from_private_key(key_file)
-            except paramiko.ssh_exception.SSHException:
-                key_file.seek(0)
-                try:
-                    pkey = paramiko.Ed25519Key.from_private_key(key_file)
-                except paramiko.ssh_exception.SSHException:
-                    key_file.seek(0)
-                    try:
-                        pkey = paramiko.ECDSAKey.from_private_key(key_file)
-                    except paramiko.ssh_exception.SSHException:
-                        key_file.seek(0)
-                        pkey = paramiko.DSSKey.from_private_key(key_file)
+            pkey = parse_private_key(key_content)
             auth_kwargs['pkey'] = pkey
         elif key_path:
             auth_kwargs['key_filename'] = key_path
@@ -134,6 +121,14 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
+    except paramiko.BadHostKeyException as e:
+        log_warning("SECURITY: Host key mismatch detected (possible MITM attack)",
+                    host=host, port=port)
+        return None, (
+            f"HOST KEY CHANGED for {host}:{port}! This could indicate a "
+            "man-in-the-middle attack. If the server was legitimately "
+            "reinstalled, remove the old key from known_hosts."
+        )
     except paramiko.SSHException as e:
         return None, f"SSH error: {str(e)}"
     except socket.timeout:
@@ -176,7 +171,7 @@ def read_ssh_output(session_id, socketio_instance, app):
                 cached_room = f'user_{db_session.user_id}'
 
             if not cached_room:
-                log_error(f"No DB session found for output reader", session_id=session_id)
+                log_error("No DB session found for output reader", session_id=session_id)
                 return
 
             while True:
@@ -218,14 +213,14 @@ def read_ssh_output(session_id, socketio_instance, app):
                 except EOFError:
                     break
                 except Exception as e:
-                    log_error(f"Error reading from channel", error=str(e), exc_info=True)
+                    log_error("Error reading from channel", error=str(e), exc_info=True)
                     break
 
                 if channel.closed or channel.exit_status_ready():
                     break
 
     except Exception as e:
-        log_error(f"Error in output reader thread", error=str(e), exc_info=True)
+        log_error("Error in output reader thread", error=str(e), exc_info=True)
     finally:
         with app.app_context():
             from .models import SSHSession, db
@@ -296,19 +291,19 @@ def close_session(session_id):
                 try:
                     session['channel'].close()
                 except Exception as e:
-                    log_debug(f"Error closing channel", session_id=session_id, error=str(e))
+                    log_debug("Error closing channel", session_id=session_id, error=str(e))
 
             if session['client']:
                 try:
                     session['client'].close()
                 except Exception as e:
-                    log_debug(f"Error closing SSH client", session_id=session_id, error=str(e))
+                    log_debug("Error closing SSH client", session_id=session_id, error=str(e))
 
             del sessions[session_id]
 
         return True
     except Exception as e:
-        log_error(f"Error closing session", session_id=session_id, error=str(e))
+        log_error("Error closing session", session_id=session_id, error=str(e))
         return False
 
 def get_session(session_id):
@@ -358,7 +353,7 @@ def cleanup_idle_sessions():
             log_info(f"Closed idle session: {session_id}")
 
     except Exception as e:
-        log_error(f"Error cleaning up idle sessions", error=str(e))
+        log_error("Error cleaning up idle sessions", error=str(e))
 
 import atexit
 

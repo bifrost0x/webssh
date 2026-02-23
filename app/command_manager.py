@@ -5,7 +5,7 @@ Handles system and user-specific command storage and retrieval.
 import json
 import uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import config
 
 def load_system_commands():
@@ -83,7 +83,7 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
         'category': category or 'custom',
         'isSystem': False,
         'userId': user_id,
-        'createdAt': datetime.utcnow().isoformat()
+        'createdAt': datetime.now(timezone.utc).isoformat()
     }
 
     user_cmds.append(new_cmd)
