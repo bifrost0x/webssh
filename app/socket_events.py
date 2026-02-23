@@ -30,6 +30,18 @@ def _is_valid_host(host_str):
     )
     return bool(hostname_pattern.match(host_str))
 
+def _is_internal_address(host_str):
+    """Check if host is a loopback or link-local address (SSRF protection).
+
+    When BLOCK_INTERNAL_SSH is enabled, prevents SSH connections to
+    loopback and link-local addresses to mitigate SSRF attacks.
+    """
+    try:
+        addr = ipaddress.ip_address(host_str)
+        return addr.is_loopback or addr.is_link_local
+    except ValueError:
+        return host_str.lower() in ('localhost', 'localhost.localdomain')
+
 def _validate_ssh_params(host, port, username):
     """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error)."""
     host = (host or '').strip()
@@ -37,6 +49,10 @@ def _validate_ssh_params(host, port, username):
         return None, None, None, 'Host is required'
     if not _is_valid_host(host):
         return None, None, None, 'Invalid host format'
+
+    if config.BLOCK_INTERNAL_SSH and _is_internal_address(host):
+        log_warning(f"SECURITY: SSH to internal address blocked", host=host)
+        return None, None, None, 'Connections to internal addresses are not allowed'
 
     try:
         port = int(port)
