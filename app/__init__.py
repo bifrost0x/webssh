@@ -175,8 +175,7 @@ def create_app():
             user, error = authenticate_user(username, password)
             if user:
                 session.clear()
-                remember_me = request.form.get('remember') == 'on'
-                login_user(user, remember=remember_me)
+                login_user(user, remember=True)
                 log_login_attempt(username, True, client_ip, request.user_agent.string)
                 return redirect(url_for('index'))
             else:
@@ -232,18 +231,6 @@ def create_app():
     @login_required
     def change_password():
         if request.method == 'POST':
-            client_ip = get_client_ip()
-            if config.RATELIMIT_ENABLED and check_rate_limit(
-                client_ip,
-                'change_password',
-                config.RATELIMIT_LOGIN_LIMIT
-            ):
-                log_rate_limit_exceeded('change_password', client_ip, user=current_user.username)
-                flash('Too many attempts. Please try again later.', 'error')
-                settings = get_user_settings(current_user.id)
-                theme = settings.get('theme', 'glass')
-                return render_template('change_password.html', theme=theme)
-
             current_password = request.form.get('current_password', '')
             new_password = request.form.get('new_password', '')
             confirm_password = request.form.get('confirm_password', '')
@@ -255,11 +242,6 @@ def create_app():
             elif len(new_password) < config.MIN_PASSWORD_LENGTH:
                 flash(
                     f'New password must be at least {config.MIN_PASSWORD_LENGTH} characters',
-                    'error'
-                )
-            elif len(new_password) > config.MAX_PASSWORD_LENGTH:
-                flash(
-                    f'New password must not exceed {config.MAX_PASSWORD_LENGTH} characters',
                     'error'
                 )
             elif current_user.check_password(new_password):

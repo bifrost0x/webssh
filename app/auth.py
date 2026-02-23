@@ -105,9 +105,6 @@ def register_user(username, password):
     if not password or len(password) < 8:
         return None, "Password must be at least 8 characters"
 
-    if len(password) > 72:
-        return None, "Password must not exceed 72 characters"
-
     user = User(username=username)
     user.set_password(password)
     db.session.add(user)

@@ -52,7 +52,6 @@ REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
 REMEMBER_COOKIE_DURATION = timedelta(days=7)
 
 MIN_PASSWORD_LENGTH = 8
-MAX_PASSWORD_LENGTH = 72  # bcrypt silently truncates beyond 72 bytes
 MAX_USERNAME_LENGTH = 32
 
 SOCKETIO_ASYNC_MODE = 'eventlet'
@@ -87,12 +86,6 @@ RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
 
 REGISTRATION_ENABLED = os.environ.get('REGISTRATION_ENABLED', 'True') == 'True'
-
-# SSRF protection: block SSH connections to loopback/link-local addresses.
-# Set to 'true' in multi-tenant deployments to prevent users from probing
-# internal services via SSH. Defaults to 'false' for homelab use where
-# connecting to internal IPs is the primary use case.
-BLOCK_INTERNAL_SSH = os.environ.get('BLOCK_INTERNAL_SSH', 'false').lower() == 'true'
 
 MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))
 MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))
