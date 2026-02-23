@@ -1,9 +1,28 @@
 import json
 import uuid
+import re
+import ipaddress
 from datetime import datetime
 from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
+
+
+def _is_valid_host(host_str):
+    """Validate host is a valid hostname or IP address."""
+    if not host_str or not isinstance(host_str, str):
+        return False
+    host_str = host_str.strip()
+    try:
+        ipaddress.ip_address(host_str)
+        return True
+    except ValueError:
+        pass
+    hostname_pattern = re.compile(
+        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+        r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+    )
+    return bool(hostname_pattern.match(host_str))
 
 def get_user_profiles_file(user_id):
     """Get the profiles file path for a specific user."""
@@ -50,6 +69,21 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
         if not all([name, host, username, auth_type]):
             return None, "Missing required fields"
 
+        host = str(host).strip()
+        if not _is_valid_host(host):
+            return None, "Invalid host format"
+
+        try:
+            port = int(port) if port else 22
+            if not (1 <= port <= 65535):
+                return None, "Port must be between 1 and 65535"
+        except (ValueError, TypeError):
+            return None, "Invalid port number"
+
+        username = str(username).strip()
+        if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+            return None, "Invalid username format"
+
         if auth_type not in ['password', 'key']:
             return None, "Invalid auth_type"
 
@@ -58,9 +92,9 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
 
         profile = {
             'id': str(uuid.uuid4()),
-            'name': name,
+            'name': name[:128],
             'host': host,
-            'port': int(port) if port else 22,
+            'port': port,
             'username': username,
             'auth_type': auth_type,
             'key_id': key_id,
