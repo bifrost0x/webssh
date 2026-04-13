@@ -65,7 +65,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 
 ### Customization
 - **10 Themes** - Dark, light, and colorful options
-- **4 Languages** - English, German, French, Spanish
+- **5 Languages** - English, Chinese, German, French, Spanish
 - **Connection Profiles** - Save server configurations
 - **Command Library** - Store frequently used commands
 
