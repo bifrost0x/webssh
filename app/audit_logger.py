@@ -106,14 +106,15 @@ audit_logger = setup_logger(
 
 def log_info(message, **kwargs):
     """Log info message with optional structured data."""
+    safe_message = _sanitize_log_value(message)
     if kwargs:
         record = logging.LogRecord(
-            'webssh', logging.INFO, '', 0, message, (), None
+            'webssh', logging.INFO, '', 0, safe_message, (), None
         )
         record.extra_data = kwargs
         app_logger.handle(record)
     else:
-        app_logger.info(message)
+        app_logger.info(safe_message)
 
 def log_warning(message, **kwargs):
     """Log warning message with optional structured data."""
