@@ -34,6 +34,15 @@ def create_app():
     app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     app.config.from_object(config)
 
+    url_prefix = getattr(config, 'APPLICATION_ROOT', '')
+    if url_prefix:
+        app.config['SESSION_COOKIE_PATH'] = url_prefix
+        app.config['REMEMBER_COOKIE_PATH'] = url_prefix
+
+    @app.context_processor
+    def inject_url_prefix():
+        return {'url_prefix': url_prefix}
+
     trusted_proxies = int(os.environ.get('TRUSTED_PROXIES', '0'))
     if trusted_proxies > 0:
         app.wsgi_app = ProxyFix(

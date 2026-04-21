@@ -88,6 +88,10 @@ RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
 
 REGISTRATION_ENABLED = os.environ.get('REGISTRATION_ENABLED', 'True') == 'True'
 
+_env_app_root = os.environ.get('APPLICATION_ROOT', '').rstrip('/')
+if _env_app_root:
+    APPLICATION_ROOT = _env_app_root
+
 # SSRF protection: block SSH connections to loopback/link-local addresses.
 # Set to 'true' in multi-tenant deployments to prevent users from probing
 # internal services via SSH. Defaults to 'false' for homelab use where

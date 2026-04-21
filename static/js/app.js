@@ -1,7 +1,9 @@
 (function() {
     'use strict';
 
-    window.socket = io();
+    const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || '';
+    window.APP_ROOT = APP_ROOT;
+    window.socket = io({ path: APP_ROOT + '/socket.io' });
 
     window.escapeHtml = function(text) {
         if (!text) return '';
@@ -1658,7 +1660,7 @@
         const changePasswordBtn = document.getElementById('changePasswordBtn');
         if (changePasswordBtn) {
             changePasswordBtn.addEventListener('click', () => {
-                window.location.href = '/change-password';
+                window.location.href = APP_ROOT + '/change-password';
             });
         }
 
@@ -1667,7 +1669,7 @@
             if (confirm(message)) {
                 const form = document.createElement('form');
                 form.method = 'POST';
-                form.action = '/logout';
+                form.action = APP_ROOT + '/logout';
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 if (csrfToken) {
                     const input = document.createElement('input');

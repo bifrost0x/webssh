@@ -76,6 +76,12 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/commandlibrary.png" alt="Command Library" width="700">
 </p>
 
+### Deployment
+- **Docker & Docker Compose** - Single-command deployment with healthcheck
+- **Reverse Proxy Ready** - Traefik, nginx, and Caddy examples included
+- **Subfolder Deployment** - Host under a URL subpath like `/webssh` (see [Subfolder Deployment](#subfolder-deployment))
+- **Homelab Friendly** - Wildcard CORS mode for internal networks
+
 ## Quick Start
 
 ### Docker (Recommended)
@@ -155,6 +161,7 @@ docker build -t webssh:local .
 | `CORS_ORIGINS` | No | `localhost:5000` | Allowed origins for CORS (comma-separated) |
 | `ALLOW_CORS_WILDCARD` | No | `false` | Set `true` to allow `*` as CORS origin (homelab use) |
 | `TRUSTED_PROXIES` | No | `0` | Set `1` when behind a reverse proxy |
+| `APPLICATION_ROOT` | No | - | URL subpath when deploying under a prefix (e.g. `/webssh`). See [Subfolder Deployment](#subfolder-deployment) |
 | `DEBUG` | No | `False` | Enable debug mode (development only) |
 | `HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | No | `5000` | Listen port |
@@ -192,6 +199,57 @@ location / {
 ```caddyfile
 ssh.example.com {
     reverse_proxy webssh:5000
+}
+```
+
+### Subfolder Deployment
+
+To serve the app under a URL subpath like `https://server.local/webssh`, set:
+
+```bash
+APPLICATION_ROOT=/webssh
+TRUSTED_PROXIES=1
+```
+
+Then configure your reverse proxy to strip the prefix and forward it via `X-Forwarded-Prefix`.
+
+#### Nginx (subfolder)
+
+```nginx
+location /webssh/ {
+    proxy_pass http://webssh:5000/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /webssh;
+}
+```
+
+#### Traefik (subfolder)
+
+```yaml
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.webssh.rule=Host(`server.local`) && PathPrefix(`/webssh`)"
+  - "traefik.http.middlewares.webssh-strip.stripprefix.prefixes=/webssh"
+  - "traefik.http.middlewares.webssh-prefix.headers.customrequestheaders.X-Forwarded-Prefix=/webssh"
+  - "traefik.http.routers.webssh.middlewares=webssh-strip,webssh-prefix"
+  - "traefik.http.services.webssh.loadbalancer.server.port=5000"
+```
+
+#### Caddy (subfolder)
+
+```caddyfile
+server.local {
+    handle_path /webssh/* {
+        reverse_proxy webssh:5000 {
+            header_up X-Forwarded-Prefix /webssh
+        }
+    }
 }
 ```
 

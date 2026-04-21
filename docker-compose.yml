@@ -30,6 +30,14 @@ services:
       # === Set to 1 if behind reverse proxy (Traefik, nginx, etc.) ===
       - TRUSTED_PROXIES=0
 
+      # === Subfolder deployment (optional) ===
+      # Set when serving the app under a URL subpath, e.g. https://server.local/webssh
+      # Requires: TRUSTED_PROXIES=1 above AND a reverse proxy that strips the
+      # prefix and forwards it via the X-Forwarded-Prefix header.
+      # Leave commented to run at the root — behavior is unchanged when unset.
+      # See README "Subfolder Deployment" section for nginx/Traefik/Caddy examples.
+      # - APPLICATION_ROOT=/webssh
+
       # === Set to false if accessing via HTTP without TLS ===
       - SESSION_COOKIE_SECURE=false
 

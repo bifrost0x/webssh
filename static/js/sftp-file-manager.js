@@ -1558,7 +1558,7 @@ class SFTPFileManager {
             headers['X-CSRFToken'] = csrfToken;
         }
 
-        fetch('/api/upload', {
+        fetch((window.APP_ROOT || '') + '/api/upload', {
             method: 'POST',
             body: formData,
             headers: headers,
