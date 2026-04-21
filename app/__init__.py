@@ -52,7 +52,7 @@ def create_app():
             x_host=trusted_proxies,
             x_prefix=trusted_proxies
         )
-        log_info(f"ProxyFix enabled with {trusted_proxies} trusted proxy level(s)")
+        log_info("ProxyFix enabled")
 
     if not config.DEBUG:
         if not os.environ.get('SECRET_KEY'):
