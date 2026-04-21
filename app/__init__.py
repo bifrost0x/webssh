@@ -319,7 +319,8 @@ def create_app():
             )
 
             if error:
-                return jsonify({'error': f'Upload failed: {error}'}), 500
+                log_error("Upload failed in SFTP handler", error=str(error), user=current_user.username, path=remote_path)
+                return jsonify({'error': 'Upload failed'}), 500
 
             log_info(f"File uploaded via HTTP: {file.filename}", user=current_user.username, path=remote_path)
             return jsonify({'success': True, 'filename': file.filename}), 200
