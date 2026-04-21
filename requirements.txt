@@ -3,7 +3,7 @@ Werkzeug==3.1.6
 Flask-SocketIO==5.6.1
 python-socketio==5.16.1
 paramiko==3.4.0
-cryptography==46.0.6
+cryptography==46.0.7
 python-dotenv==1.0.0
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
