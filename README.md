@@ -155,17 +155,44 @@ docker build -t webssh:local .
 
 ### Environment Variables
 
+#### Core
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `SECRET_KEY` | **Yes** | - | Session encryption key. Generate with `openssl rand -hex 32` |
-| `CORS_ORIGINS` | No | `localhost:5000` | Allowed origins for CORS (comma-separated) |
-| `ALLOW_CORS_WILDCARD` | No | `false` | Set `true` to allow `*` as CORS origin (homelab use) |
-| `TRUSTED_PROXIES` | No | `0` | Set `1` when behind a reverse proxy |
-| `APPLICATION_ROOT` | No | - | URL subpath when deploying under a prefix (e.g. `/webssh`). See [Subfolder Deployment](#subfolder-deployment) |
 | `DEBUG` | No | `False` | Enable debug mode (development only) |
+| `DATA_DIR` | No | `/app/data` | Persistent data directory |
+
+#### Server
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | No | `5000` | Listen port |
-| `DATA_DIR` | No | `/app/data` | Persistent data directory |
+| `APPLICATION_ROOT` | No | - | URL subpath when deploying under a prefix (e.g. `/webssh`). See [Subfolder Deployment](#subfolder-deployment) |
+| `TRUSTED_PROXIES` | No | `0` | Set `1` when behind a reverse proxy |
+
+#### CORS & Security Headers
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `CORS_ORIGINS` | No | `localhost:5000` | Allowed origins for CORS (comma-separated) |
+| `ALLOW_CORS_WILDCARD` | No | `false` | Set `true` to allow `*` as CORS origin (homelab use only) |
+| `SESSION_COOKIE_SECURE` | No | Auto | Set `true`/`false` to explicitly control secure cookies (auto-enabled in production) |
+
+#### Features
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `REGISTRATION_ENABLED` | No | `True` | Allow new user registration (`true` or `false`) |
+| `SESSION_TIMEOUT` | No | `1800` | Session timeout in seconds (30 minutes) |
+| `BLOCK_INTERNAL_SSH` | No | `false` | Block SSH connections to internal/loopback addresses (`true` or `false`) |
+| `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
+| `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
+
+#### Rate Limiting
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `RATELIMIT_ENABLED` | No | `True` | Enable rate limiting (`true` or `false`) |
+| `RATELIMIT_LOGIN_LIMIT` | No | `5 per minute` | Login rate limit (format: `N per {second\|minute\|hour}`) |
+| `RATELIMIT_DEFAULT` | No | `200 per hour` | Default rate limit for endpoints (format: `N per {second\|minute\|hour}`) |
+| `RATELIMIT_STORAGE_URL` | No | `memory://` | Rate limit storage backend (in-memory only, for single-worker deployments) |
 
 ### Reverse Proxy Setup
 
