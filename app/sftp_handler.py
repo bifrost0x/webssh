@@ -1,5 +1,6 @@
 import os
 import stat
+import posixpath
 from pathlib import Path
 from threading import Lock
 from contextlib import contextmanager
@@ -141,7 +142,10 @@ def sanitize_path(remote_path):
         log_warning(f"SECURITY: Null byte in path BLOCKED", path=repr(remote_path))
         return None
 
-    normalized = os.path.normpath(remote_path)
+    # SFTP/remote paths are always POSIX-style, regardless of the OS this
+    # process runs on. Use posixpath so normalization stays correct even when
+    # the server itself is hosted on Windows (os.path would emit backslashes).
+    normalized = posixpath.normpath(remote_path)
 
     if '..' in normalized:
         log_warning(f"SECURITY: Path traversal attempt blocked", path=remote_path)

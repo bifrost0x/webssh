@@ -1,0 +1,6 @@
+# Test dependencies.
+# Pulls in the runtime requirements plus the test toolchain.
+# Install with:  pip install -r requirements-test.txt
+-r requirements.txt
+
+pytest==8.3.4

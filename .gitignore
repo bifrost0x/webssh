@@ -11,6 +11,11 @@ __pycache__/
 *.so
 .Python
 
+# Test tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Environment variables
 .env
 .env.*
