@@ -14,6 +14,7 @@ __pycache__/
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -43,6 +44,12 @@ dist/
 *.egg-info/
 data/
 
+# Node / frontend tooling (only used to vendor assets into static/vendor/).
+# The vendored files under static/vendor/ ARE committed and served at runtime;
+# package.json and package-lock.json are committed for reproducible updates.
+node_modules/
+
 # AI assistant files
 CLAUDE.md
 .claude/
+plans/

@@ -46,6 +46,10 @@ CLAUDE.md
 *.log
 logs/
 
+# Node / frontend tooling (vendored assets live in static/vendor/ and are
+# already committed; node_modules is only needed to regenerate them).
+node_modules/
+
 # Distribution / packaging
 build/
 dist/

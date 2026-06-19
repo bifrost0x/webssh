@@ -1,0 +1,7 @@
+# Normalize line endings automatically for text files (LF in the repo).
+* text=auto
+
+# Shell scripts run inside Linux containers. Force LF so a Windows checkout
+# (core.autocrlf=true) never rewrites the shebang to "#!/bin/bash\r", which
+# makes the container fail with "no such file or directory".
+*.sh text eol=lf

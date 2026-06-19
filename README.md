@@ -194,6 +194,22 @@ docker build -t webssh:local .
 | `RATELIMIT_DEFAULT` | No | `200 per hour` | Default rate limit for endpoints (format: `N per {second\|minute\|hour}`) |
 | `RATELIMIT_STORAGE_URL` | No | `memory://` | Rate limit storage backend (in-memory only, for single-worker deployments) |
 
+### Configuration via .env file
+
+Instead of exporting every variable, you can place them in a `.env` file in the
+project root. It is loaded automatically on startup. Copy the provided template
+to get started:
+
+```bash
+cp .env.example .env
+# edit .env and set at least SECRET_KEY
+python start.py
+```
+
+Real environment variables (set via the shell, Docker, or systemd) always take
+precedence over values in `.env`, so the file works safely alongside existing
+deployments. `.env` is git-ignored — never commit your real secrets.
+
 ### Reverse Proxy Setup
 
 #### Traefik
@@ -359,6 +375,24 @@ black .
 flake8 .
 ```
 
+### Frontend Assets
+
+Browser libraries (xterm.js, socket.io-client, highlight.js, Material Icons) are
+**vendored** into `static/vendor/` and served locally — no CDN requests, so the
+app works fully offline/air-gapped. Versions are pinned in `package.json`; the
+committed files under `static/vendor/` are what runs in production.
+
+Node is only needed to *update* these assets, never at runtime:
+
+```bash
+npm install            # fetch pinned versions into node_modules/
+npm run vendor         # copy them into static/vendor/
+# commit the changed static/vendor/ files
+```
+
+To bump a library, change its version in `package.json`, then re-run the two
+commands above. Dependabot keeps `package.json` up to date.
+
 ### Project Structure
 
 ```
@@ -381,7 +415,8 @@ webssh/
 │   └── decorators.py      # Shared decorators
 ├── static/
 │   ├── css/               # Stylesheets (3 files)
-│   └── js/                # Frontend JavaScript (12 modules)
+│   ├── js/                # Frontend JavaScript (12 modules)
+│   └── vendor/            # Vendored browser libs (see Frontend Assets)
 ├── templates/             # Jinja2 templates (4 files)
 ├── config.py              # Central configuration
 ├── start.py               # Entry point

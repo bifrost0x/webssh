@@ -3,7 +3,14 @@ import secrets
 from pathlib import Path
 from datetime import timedelta
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).parent
+
+# Load variables from a .env file in the project root, if present.
+# override=False ensures real environment variables (Docker, systemd, shell)
+# always take precedence over .env, so existing deployments are unaffected.
+load_dotenv(BASE_DIR / '.env')
 
 DATA_DIR = Path(os.environ.get('DATA_DIR', BASE_DIR / 'data'))
 KEYS_DIR = DATA_DIR / 'keys'
