@@ -100,6 +100,13 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/commandlibrary.png" alt="Command Library" width="700">
 </p>
 
+### Administration
+- **Admin Panel** - Dedicated `/admin` page for administrators (role-gated)
+- **User Management** - Create, lock/unlock, promote/demote and delete users
+- **Audit Log Viewer** - Browse security events with level filter, search and pagination
+- **Registration Toggle** - Enable or disable self-registration at runtime (hides the public sign-up link)
+- **Zero-Touch Bootstrap** - First registered user becomes admin; on upgrade, existing users are granted admin automatically (configurable via `ADMIN_USERS`)
+
 ### Deployment
 - **Docker & Docker Compose** - Single-command deployment with healthcheck
 - **Reverse Proxy Ready** - Traefik, nginx, and Caddy examples included
@@ -200,11 +207,13 @@ docker build -t webssh:local .
 #### Features
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `REGISTRATION_ENABLED` | No | `True` | Allow new user registration (`true` or `false`) |
+| `REGISTRATION_ENABLED` | No | `True` | Initial self-registration state (can be toggled later in the Admin Panel) |
+| `ADMIN_USERS` | No | - | Comma-separated usernames granted admin on startup (e.g. `alice,bob`) |
 | `SESSION_TIMEOUT` | No | `1800` | Session timeout in seconds (30 minutes) |
 | `BLOCK_INTERNAL_SSH` | No | `false` | Block SSH connections to internal/loopback addresses (`true` or `false`) |
 | `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
+| `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |
 
 #### Rate Limiting
 | Variable | Required | Default | Description |

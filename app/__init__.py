@@ -10,6 +10,7 @@ from .auth import login_manager, init_auth, authenticate_user, register_user, ch
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
 from .user_settings import get_user_settings
+from .app_settings import is_registration_enabled, set_registration_enabled
 from . import sftp_handler
 
 socketio = SocketIO()
@@ -41,7 +42,7 @@ def create_app():
 
     @app.context_processor
     def inject_url_prefix():
-        return {'url_prefix': url_prefix}
+        return {'url_prefix': url_prefix, 'registration_enabled': is_registration_enabled()}
 
     trusted_proxies = int(os.environ.get('TRUSTED_PROXIES', '0'))
     if trusted_proxies > 0:
@@ -74,6 +75,10 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        from .models import ensure_user_columns
+        ensure_user_columns()
+        from .auth import sync_admin_users
+        sync_admin_users()
     cors_origins = config.CORS_ORIGINS
     if isinstance(cors_origins, str):
         cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
@@ -196,7 +201,7 @@ def create_app():
 
     @app.route('/register', methods=['GET', 'POST'])
     def register():
-        if not config.REGISTRATION_ENABLED:
+        if not is_registration_enabled():
             flash('Registration is currently disabled.', 'error')
             return redirect(url_for('login'))
         if current_user.is_authenticated:
@@ -283,6 +288,128 @@ def create_app():
         settings = get_user_settings(current_user.id)
         theme = settings.get('theme', 'glass')
         return render_template('change_password.html', theme=theme)
+
+    from .decorators import admin_required
+    from .models import User
+    from .audit_logger import read_audit_logs
+
+    def _user_to_dict(u):
+        return {
+            'id': u.id,
+            'username': u.username,
+            'is_admin': bool(u.is_admin),
+            'is_locked': bool(u.is_locked),
+            'created_at': u.created_at.isoformat() if u.created_at else None,
+            'last_login': u.last_login.isoformat() if u.last_login else None,
+        }
+
+    @app.route('/admin')
+    @login_required
+    @admin_required
+    def admin_page():
+        settings = get_user_settings(current_user.id)
+        theme = settings.get('theme', 'glass')
+        return render_template('admin.html', username=current_user.username, theme=theme)
+
+    @app.route('/admin/api/users', methods=['GET'])
+    @login_required
+    @admin_required
+    def admin_list_users():
+        users = User.query.order_by(User.id.asc()).all()
+        return jsonify({'users': [_user_to_dict(u) for u in users]})
+
+    @app.route('/admin/api/users', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_create_user():
+        data = request.get_json(silent=True) or {}
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        make_admin = bool(data.get('is_admin'))
+        user, error = register_user(username, password)
+        if error:
+            return jsonify({'error': error}), 400
+        if make_admin:
+            user.is_admin = True
+            db.session.commit()
+        log_info("Admin created user", admin=current_user.username,
+                 user=user.username, is_admin=make_admin)
+        return jsonify({'user': _user_to_dict(user)}), 201
+
+    @app.route('/admin/api/users/<int:user_id>/<action>', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_user_action(user_id, action):
+        target = User.query.get(user_id)
+        if not target:
+            return jsonify({'error': 'User not found'}), 404
+        is_self = (target.id == current_user.id)
+
+        def _is_last_admin():
+            return target.is_admin and User.query.filter_by(is_admin=True).count() <= 1
+
+        if action == 'lock':
+            if is_self:
+                return jsonify({'error': 'You cannot lock your own account'}), 400
+            target.is_locked = True
+        elif action == 'unlock':
+            target.is_locked = False
+        elif action == 'promote':
+            target.is_admin = True
+        elif action == 'demote':
+            if is_self:
+                return jsonify({'error': 'You cannot remove your own admin rights'}), 400
+            if _is_last_admin():
+                return jsonify({'error': 'Cannot demote the last administrator'}), 400
+            target.is_admin = False
+        elif action == 'delete':
+            if is_self:
+                return jsonify({'error': 'You cannot delete your own account'}), 400
+            if _is_last_admin():
+                return jsonify({'error': 'Cannot delete the last administrator'}), 400
+            username = target.username
+            db.session.delete(target)
+            db.session.commit()
+            log_warning("Admin deleted user", admin=current_user.username, user=username)
+            return jsonify({'ok': True})
+        else:
+            return jsonify({'error': 'Unknown action'}), 400
+
+        db.session.commit()
+        log_info("Admin user action", admin=current_user.username,
+                 user=target.username, action=action)
+        return jsonify({'user': _user_to_dict(target)})
+
+    @app.route('/admin/api/audit', methods=['GET'])
+    @login_required
+    @admin_required
+    def admin_audit():
+        try:
+            offset = int(request.args.get('offset', 0))
+            limit = int(request.args.get('limit', 100))
+        except (ValueError, TypeError):
+            offset, limit = 0, 100
+        level = request.args.get('level') or None
+        q = request.args.get('q') or None
+        result = read_audit_logs(offset=offset, limit=limit, level=level, q=q)
+        return jsonify(result)
+
+    @app.route('/admin/api/settings', methods=['GET'])
+    @login_required
+    @admin_required
+    def admin_get_settings():
+        return jsonify({'registration_enabled': is_registration_enabled()})
+
+    @app.route('/admin/api/settings', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_set_settings():
+        data = request.get_json(silent=True) or {}
+        if 'registration_enabled' in data:
+            val = set_registration_enabled(bool(data['registration_enabled']))
+            log_info("Admin changed registration setting",
+                     admin=current_user.username, registration_enabled=val)
+        return jsonify({'registration_enabled': is_registration_enabled()})
 
     @app.route('/api/upload', methods=['POST'])
     @login_required

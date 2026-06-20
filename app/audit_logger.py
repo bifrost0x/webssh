@@ -246,3 +246,49 @@ def log_rate_limit_exceeded(endpoint, ip_address, user=None):
         f"RATE_LIMIT_EXCEEDED | endpoint={_sanitize_log_value(endpoint)} | "
         f"ip={_sanitize_log_value(ip_address)}{user_info}"
     )
+
+def read_audit_logs(offset=0, limit=100, level=None, q=None, max_scan=20000):
+    """Read parsed audit log entries, newest first, for the admin viewer.
+
+    Reads security_audit.log and scans at most the last `max_scan` lines so it
+    stays bounded on large files. Each line is one JSON object written by the
+    StructuredFormatter. Malformed lines are skipped.
+
+    Returns: {'items': [...], 'total': int, 'offset': int, 'limit': int}
+    """
+    from collections import deque
+    log_file = LOGS_DIR / 'security_audit.log'
+    try:
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as fh:
+            raw_lines = deque(fh, maxlen=max_scan)
+    except FileNotFoundError:
+        return {'items': [], 'total': 0, 'offset': 0, 'limit': limit}
+    except Exception:
+        return {'items': [], 'total': 0, 'offset': 0, 'limit': limit}
+
+    level_norm = level.upper() if level else None
+    q_norm = q.lower() if q else None
+
+    entries = []
+    for line in reversed(raw_lines):  # newest first
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if level_norm and str(entry.get('level', '')).upper() != level_norm:
+            continue
+        if q_norm and q_norm not in line.lower():
+            continue
+        entries.append(entry)
+
+    total = len(entries)
+    try:
+        offset = max(0, int(offset))
+        limit = max(1, min(int(limit), 500))
+    except (ValueError, TypeError):
+        offset, limit = 0, 100
+    page = entries[offset:offset + limit]
+    return {'items': page, 'total': total, 'offset': offset, 'limit': limit}

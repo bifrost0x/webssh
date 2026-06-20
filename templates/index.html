@@ -30,27 +30,45 @@
             </div>
             <div class="header-buttons">
                 <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">New Connection</span> ✨</button>
-                <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.library">Commands</span> 📚</button>
-                <button id="manageKeysBtn" class="btn btn-secondary"><span data-i18n="keys.manageKeys">Manage Keys</span> 🔑</button>
-                <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
 
-                <div class="theme-selector">
-                    <button class="btn btn-secondary theme-btn-header" id="themeBtnHeader" onclick="toggleThemeDropdownHeader(event)" aria-label="Select theme" aria-haspopup="true">
-                        <span id="currentThemeLabel">Theme</span> 🎨
-                    </button>
-                    <div class="theme-dropdown-header" id="themeDropdownHeader"></div>
+                <div class="header-group" role="group" aria-label="Tools">
+                    <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
+                    <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.library">Commands</span> 📚</button>
+                    <button id="manageKeysBtn" class="btn btn-secondary"><span data-i18n="keys.manageKeys">Manage Keys</span> 🔑</button>
                 </div>
 
-                <button id="changePasswordBtn" class="btn btn-secondary"><span data-i18n="auth.changePassword">Change Password</span> 🔐</button>
+                <span class="header-divider" aria-hidden="true"></span>
 
-                <div class="language-selector">
-                    <button class="btn btn-secondary lang-btn-header" id="langBtnHeader" onclick="toggleLangDropdownHeader(event)" aria-label="Select language" aria-haspopup="true">
-                        <span id="currentLangFlagHeader">🇬🇧</span>
+                <div class="account-selector">
+                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" aria-haspopup="true">
+                        <span class="account-avatar" aria-hidden="true">👤</span>
+                        <span class="account-name">{{ current_user.username }}</span>
+                        <span class="account-caret" aria-hidden="true">▾</span>
                     </button>
-                    <div class="lang-dropdown-header" id="langDropdownHeader"></div>
-                </div>
+                    <div class="account-dropdown-header" id="accountDropdownHeader">
+                        <button type="button" class="account-item account-expander" onclick="toggleThemeDropdownHeader(event)" aria-haspopup="true">
+                            <span class="account-item-icon" aria-hidden="true">🎨</span>
+                            <span class="account-expander-label" data-i18n="account.theme">Theme</span>
+                            <span class="account-current" id="currentThemeLabel"></span>
+                            <span class="account-caret" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="theme-dropdown-header account-submenu" id="themeDropdownHeader"></div>
 
-                <button id="logoutBtn" class="btn btn-secondary"><span data-i18n="auth.logout">Logout</span> 🚪</button>
+                        <button type="button" class="account-item account-expander" onclick="toggleLangDropdownHeader(event)" aria-haspopup="true">
+                            <span class="account-item-icon" aria-hidden="true">🌐</span>
+                            <span class="account-expander-label" data-i18n="account.language">Language</span>
+                            <span class="account-current account-current-flag" id="currentLangFlagHeader">🇬🇧</span>
+                            <span class="account-caret" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="lang-dropdown-header account-submenu" id="langDropdownHeader"></div>
+
+                        <div class="account-divider" role="separator"></div>
+
+                        {% if current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                        <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
+                        <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -633,6 +651,7 @@
             if (event) {
                 event.stopPropagation();
             }
+            document.getElementById('langDropdownHeader')?.classList.remove('show');
             const dropdown = document.getElementById('themeDropdownHeader');
             dropdown.classList.toggle('show');
         }
@@ -702,6 +721,7 @@
             if (event) {
                 event.stopPropagation();
             }
+            document.getElementById('themeDropdownHeader')?.classList.remove('show');
             const dropdown = document.getElementById('langDropdownHeader');
             dropdown.classList.toggle('show');
         }
@@ -734,6 +754,23 @@
             document.getElementById('currentLangFlagHeader').textContent = lang.flag;
         }
 
+        function toggleAccountDropdownHeader(event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            document.getElementById('themeDropdownHeader')?.classList.remove('show');
+            document.getElementById('langDropdownHeader')?.classList.remove('show');
+            document.getElementById('accountDropdownHeader')?.classList.toggle('show');
+        }
+
+        document.getElementById('accountDropdownHeader')?.addEventListener('click', (e) => {
+            // Only close the menu on a real action (Admin/Change Password/Logout);
+            // the Theme/Language expanders toggle their sub-section in place.
+            if (e.target.closest('.account-action')) {
+                document.getElementById('accountDropdownHeader').classList.remove('show');
+            }
+        });
+
         window.addEventListener('click', (e) => {
             if (!e.target.closest('.language-selector')) {
                 const dropdown = document.getElementById('langDropdownHeader');
@@ -743,6 +780,12 @@
             }
             if (!e.target.closest('.theme-selector')) {
                 const dropdown = document.getElementById('themeDropdownHeader');
+                if (dropdown) {
+                    dropdown.classList.remove('show');
+                }
+            }
+            if (!e.target.closest('.account-selector')) {
+                const dropdown = document.getElementById('accountDropdownHeader');
                 if (dropdown) {
                     dropdown.classList.remove('show');
                 }

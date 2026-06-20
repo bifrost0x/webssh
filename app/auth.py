@@ -110,6 +110,9 @@ def register_user(username, password):
 
     user = User(username=username)
     user.set_password(password)
+    # The very first user ever registered becomes admin (bootstrap on a fresh DB).
+    if User.query.count() == 0:
+        user.is_admin = True
     db.session.add(user)
     db.session.commit()
     user.get_data_dir()
@@ -124,10 +127,31 @@ def authenticate_user(username, password):
     """
     user = User.query.filter_by(username=username).first()
     if user and user.check_password(password):
+        if getattr(user, 'is_locked', False):
+            return None, "This account is locked. Please contact an administrator."
         user.last_login = datetime.now(timezone.utc)
         db.session.commit()
         return user, None
     return None, "Invalid username or password"
+
+
+def sync_admin_users():
+    """Grant admin to every username listed in config.ADMIN_USERS (idempotent).
+
+    Runs on startup so an operator can promote existing accounts on a production
+    database without manual SQL. Must run inside an app context.
+    """
+    import config
+    from .audit_logger import log_info
+    changed = False
+    for name in getattr(config, 'ADMIN_USERS', []):
+        u = User.query.filter_by(username=name).first()
+        if u and not u.is_admin:
+            u.is_admin = True
+            changed = True
+            log_info("Admin granted via ADMIN_USERS", user=name)
+    if changed:
+        db.session.commit()
 
 def register_socket_session(user_id, socket_sid, user_agent=None):
     """

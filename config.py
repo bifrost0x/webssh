@@ -27,6 +27,11 @@ CHUNK_SIZE = 65536
 MAX_UPLOAD_SIZE = 1024 * 1024 * 100
 MAX_EDITOR_FILE_SIZE = int(os.environ.get('MAX_EDITOR_FILE_SIZE', str(5 * 1024 * 1024)))
 
+# Admin panel: comma-separated usernames granted admin on startup; the first
+# ever-registered user also becomes admin automatically (handled in auth).
+ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
+ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
+
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 _secret_key = os.environ.get('SECRET_KEY')

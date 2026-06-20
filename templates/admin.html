@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="app-root" content="{{ url_prefix }}">
+    <meta name="current-user" content="{{ username }}">
+    <title>Admin · Web SSH Terminal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body data-theme="{{ theme|default('glass') }}">
+    <header class="header">
+        <div class="header-content">
+            <div class="header-title-row">
+                <h1 class="app-title"><span data-i18n="admin.title">Admin Panel</span> ⚙️</h1>
+            </div>
+            <div class="header-buttons">
+                <a class="btn btn-secondary" href="{{ url_for('index') }}">← <span data-i18n="admin.backToApp">Back to Terminal</span></a>
+            </div>
+        </div>
+    </header>
+
+    <main class="admin-main">
+        <div class="admin-tabs">
+            <button class="admin-tab active" data-tab="users" data-i18n="admin.users">Users</button>
+            <button class="admin-tab" data-tab="audit" data-i18n="admin.auditLogs">Audit Logs</button>
+            <button class="admin-tab" data-tab="settings" data-i18n="admin.settings">Settings</button>
+        </div>
+
+        <section class="admin-panel" id="tab-users">
+            <div class="admin-toolbar">
+                <button class="btn btn-primary" id="adminAddUserBtn"><span data-i18n="admin.addUser">Add User</span></button>
+                <button class="btn btn-secondary" id="adminRefreshUsers" data-i18n="admin.refresh">Refresh</button>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table" id="adminUsersTable">
+                    <thead>
+                        <tr>
+                            <th data-i18n="admin.colId">ID</th>
+                            <th data-i18n="admin.colUser">User</th>
+                            <th data-i18n="admin.colRole">Role</th>
+                            <th data-i18n="admin.colStatus">Status</th>
+                            <th data-i18n="admin.colCreated">Created</th>
+                            <th data-i18n="admin.colLastLogin">Last login</th>
+                            <th data-i18n="admin.colActions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminUsersBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="admin-panel hidden" id="tab-audit">
+            <div class="admin-toolbar">
+                <input type="search" id="auditSearch" class="form-control" placeholder="Search…" data-i18n-placeholder="admin.search">
+                <select id="auditLevel" class="form-control">
+                    <option value="" data-i18n="admin.allLevels">All levels</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+                <button class="btn btn-secondary" id="auditRefresh" data-i18n="admin.refresh">Refresh</button>
+            </div>
+            <div class="admin-table-wrap">
+                <table class="admin-table" id="adminAuditTable">
+                    <thead>
+                        <tr>
+                            <th data-i18n="audit.timestamp">Timestamp</th>
+                            <th data-i18n="audit.level">Level</th>
+                            <th data-i18n="audit.logger">Source</th>
+                            <th data-i18n="audit.message">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminAuditBody"></tbody>
+                </table>
+            </div>
+            <div class="admin-pagination">
+                <button class="btn btn-secondary" id="auditPrev" data-i18n="admin.prev">Prev</button>
+                <span id="auditPageInfo" class="admin-page-info"></span>
+                <button class="btn btn-secondary" id="auditNext" data-i18n="admin.next">Next</button>
+            </div>
+        </section>
+
+        <section class="admin-panel hidden" id="tab-settings">
+            <div class="admin-setting-row">
+                <label class="admin-checkbox">
+                    <input type="checkbox" id="settingRegistration">
+                    <strong data-i18n="admin.allowRegistration">Allow self-registration</strong>
+                </label>
+                <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
+            </div>
+        </section>
+    </main>
+
+    <div class="modal" id="addUserModal" role="dialog" aria-modal="true">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2 data-i18n="admin.addUser">Add User</h2>
+                <span class="close" id="closeAddUser" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label data-i18n="admin.username">Username</label>
+                    <input type="text" id="newUsername" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="admin.password">Password</label>
+                    <input type="password" id="newPassword" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label class="admin-checkbox"><input type="checkbox" id="newIsAdmin"> <span data-i18n="admin.makeAdmin">Make admin</span></label>
+                </div>
+                <button class="btn btn-primary" id="submitNewUser" data-i18n="admin.create">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notificationContainer" class="notification-container"></div>
+
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>

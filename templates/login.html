@@ -74,8 +74,10 @@
             </form>
 
             <div class="auth-footer">
+                {% if registration_enabled %}
                 <span data-i18n="auth.noAccount">Don't have an account?</span>
                 <a href="{{ url_for('register') }}" data-i18n="auth.registerHere">Register here</a>
+                {% endif %}
                 <div style="margin-top: 10px;">
                     <a href="{{ url_for('change_password') }}" data-i18n="auth.changePassword">Change Password</a>
                 </div>

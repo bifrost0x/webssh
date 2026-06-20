@@ -2255,18 +2255,40 @@ button:focus-visible,
     }
 
     .theme-selector,
-    .language-selector {
+    .language-selector,
+    .account-selector {
         width: 100%;
     }
 
+    .header-group {
+        flex-direction: column;
+        width: 100%;
+        gap: 8px;
+    }
+
+    .header-divider {
+        display: none;
+    }
+
     .theme-dropdown-header,
-    .lang-dropdown-header {
+    .lang-dropdown-header,
+    .account-dropdown-header {
         position: fixed;
         left: 16px;
         right: 16px;
         width: auto;
         max-height: 50vh;
         overflow-y: auto;
+    }
+
+    /* Keep the Theme/Language sub-menus inline inside the (fixed) account menu */
+    .account-dropdown-header .theme-dropdown-header,
+    .account-dropdown-header .lang-dropdown-header {
+        position: static;
+        left: auto;
+        right: auto;
+        max-height: none;
+        overflow-y: visible;
     }
 
     .session-tabs {
@@ -2748,9 +2770,165 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .theme-selector,
-.language-selector {
+.language-selector,
+.account-selector {
     position: relative;
-    z-index: 10000; 
+    z-index: 10000;
+}
+
+/* Header tools grouping + account menu (pure GUI structure, no behavior change) */
+.header-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.header-divider {
+    width: 1px;
+    align-self: stretch;
+    min-height: 24px;
+    background: var(--border-color);
+    margin: 0 2px;
+}
+
+.account-btn-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 220px;
+}
+
+.account-avatar {
+    font-size: 15px;
+    line-height: 1;
+}
+
+.account-name {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-dropdown-header {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--bg-modal);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+    max-height: 80vh;
+    min-width: 220px;
+    z-index: 10001;
+    padding: 6px;
+}
+
+.account-dropdown-header.show {
+    display: block;
+    animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.account-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 14px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.account-item:hover {
+    background: var(--bg-hover);
+}
+
+.account-item-icon {
+    font-size: 15px;
+    line-height: 1;
+    width: 18px;
+    text-align: center;
+}
+
+.account-expander-label {
+    white-space: nowrap;
+}
+
+.account-caret {
+    margin-left: 4px;
+    font-size: 10px;
+    opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.account-selector:has(.account-dropdown-header.show) > .account-btn-header .account-caret {
+    transform: rotate(180deg);
+}
+
+.account-expander .account-current {
+    margin-left: auto;
+}
+
+.account-current {
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.account-current-flag {
+    font-size: 16px;
+    overflow: visible;
+}
+
+.account-expander:has(+ .account-submenu.show) .account-caret {
+    transform: rotate(180deg);
+}
+
+.account-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 6px 4px;
+}
+
+/* Theme/Language sub-menus rendered inline (accordion) inside the account menu */
+.account-dropdown-header .theme-dropdown-header,
+.account-dropdown-header .lang-dropdown-header {
+    position: static;
+    min-width: 0;
+    width: 100%;
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    z-index: auto;
+}
+
+.account-dropdown-header .theme-option,
+.account-dropdown-header .lang-option {
+    padding-left: 42px;
+    font-size: 13px;
+    border-radius: 6px;
 }
 
 .lang-dropdown-header {
