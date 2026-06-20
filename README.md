@@ -26,7 +26,7 @@
 
 ## Overview
 
-Web SSH Terminal is a self-hosted web application that provides secure SSH access to your servers directly from your browser. Perfect for homelabs, server management, and teams that need browser-based terminal access.
+Web SSH Terminal is a self-hosted web application that provides secure SSH access to your servers directly from your browser. Perfect for homelabs, server management, and teams that need browser-based terminal access. It is multi-user from the ground up, with individual accounts and per-user profiles, keys, and settings.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-demo.gif" alt="Demo" width="800">
@@ -40,6 +40,11 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Session Persistence** - Sessions survive page refreshes
 - **Copy/Paste** - Full clipboard support
 - **Keyboard Shortcuts** - Vim-style navigation supported
+- **Terminal Search** - Regex or plain-text in-terminal search (Ctrl+F) with match counter
+- **Save Transcript** - Download the session output as a text file
+- **Recent Connections** - Quick reconnect from your connection history
+- **Session Notes** - Per-session notes, auto-saved as you type
+- **Command Palette** - Fuzzy command launcher (Ctrl+K)
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/multi.png" alt="Multi-Session" width="700">
@@ -51,23 +56,37 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Server-to-Server** - Direct transfer between SSH hosts
 - **Batch Operations** - Multi-select for bulk actions
 - **Context Menu** - Right-click for quick actions
+- **File Preview** - Inline preview for images and code (syntax-highlighted), with log tail mode
+- **Folder Download as ZIP** - Download entire directories as a ZIP archive
+- **Quick Connect** - Browse files over SFTP without opening a terminal session
+- **Local Filesystem Source** - Use your browser's local files as a transfer source
+- **Transfer Queue** - Progress tracking with conflict resolution (skip / overwrite / apply to all)
+- **Efficient Binary Transfer** - Raw binary streaming (~33% smaller than base64)
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/filemanager.png" alt="File Manager" width="700">
 </p>
 
 ### Security
-- **Encrypted Key Storage** - SSH keys encrypted at rest (AES-256)
+- **Encrypted Key Storage** - SSH keys encrypted at rest (Fernet / AES-128-CBC + HMAC)
+- **Per-User Key Encryption** - Encryption key derived per user (`SECRET_KEY` + user id)
 - **Secure Authentication** - bcrypt password hashing
 - **CSRF Protection** - Token-based request validation
 - **Rate Limiting** - Brute-force protection
 - **Security Headers** - HSTS, CSP, X-Frame-Options
+- **SSRF Protection** - Optionally block SSH to internal/loopback addresses (`BLOCK_INTERNAL_SSH`)
+- **Host Key Auditing** - Persistent `known_hosts` policy with change detection
+- **Audit Logging** - Structured JSON logs for auth, SSH, and file events
+- **Session Ownership Checks** - Guards against cross-user session hijacking
 
 ### Customization
 - **10 Themes** - Dark, light, and colorful options
 - **5 Languages** - English, German, French, Spanish, Chinese
 - **Connection Profiles** - Save server configurations
 - **Command Library** - Store frequently used commands
+- **OS-Aware Command Library** - Filter commands by detected OS (Linux / macOS / BSD / Windows)
+- **SSH Key Management** - Import keys (RSA, Ed25519, ECDSA, DSS), encrypted at rest
+- **Notepad** - Persistent scratchpad for notes, commands, and snippets
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/themes.png" alt="Themes" width="700">
