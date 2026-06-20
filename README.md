@@ -69,7 +69,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 </p>
 
 <p align="center">
-  <video src="https://github.com/bifrost0x/webssh/raw/main/assets/file-editing.mp4" controls width="800"></video>
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/file-editing.gif" alt="Inline File Editor" width="800">
 </p>
 
 ### Security
