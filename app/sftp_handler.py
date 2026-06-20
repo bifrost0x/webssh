@@ -507,6 +507,133 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
     except Exception as e:
         return None, str(e)
 
+def read_file_for_edit(session_id, path, max_bytes=None):
+    """
+    Read a full text file for editing.
+
+    Unlike read_file_preview, this never truncates: files larger than the
+    editor limit or detected as binary are rejected, so that a later save
+    cannot silently shorten or corrupt the original file.
+
+    Returns:
+        tuple: (content_dict, error)
+               content_dict contains: content, size, encoding, newline
+    """
+    try:
+        safe_path = sanitize_path(path)
+        if safe_path is None:
+            return None, "Invalid path"
+
+        if max_bytes is None:
+            max_bytes = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
+
+        with sftp_session(session_id) as (sftp, source_type):
+            file_stat = sftp.stat(safe_path)
+            file_size = file_stat.st_size
+
+            if file_size > max_bytes:
+                max_mb = max_bytes // (1024 * 1024)
+                return None, (f"File too large to edit ({file_size // (1024 * 1024)}MB). "
+                              f"Maximum: {max_mb}MB")
+
+            with sftp.file(safe_path, 'rb') as remote_file:
+                raw = remote_file.read(file_size)
+
+        # Binary detection mirrors read_file_preview.
+        is_binary = b'\x00' in raw[:1024]
+
+        encoding = 'utf-8'
+        content_str = None
+        if not is_binary:
+            try:
+                content_str = raw.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    content_str = raw.decode('latin-1')
+                    encoding = 'latin-1'
+                except Exception:
+                    is_binary = True
+
+        if is_binary or content_str is None:
+            return None, "Binary file cannot be edited"
+
+        # Remember the original newline style, then normalize to LF for the
+        # browser textarea; the original style is restored on save.
+        newline = 'crlf' if b'\r\n' in raw else 'lf'
+        content_str = content_str.replace('\r\n', '\n')
+
+        return {
+            'content': content_str,
+            'size': file_size,
+            'encoding': encoding,
+            'newline': newline
+        }, None
+
+    except SFTPOperationError as e:
+        return None, str(e)
+    except FileNotFoundError:
+        return None, "File not found"
+    except PermissionError:
+        return None, "Permission denied"
+    except Exception as e:
+        return None, str(e)
+
+def write_file_text(session_id, path, content_str, encoding='utf-8', newline='lf'):
+    """
+    Write edited text content back to a remote file.
+
+    Writes atomically: content is written to a temp file in the same directory
+    first, then renamed over the target, so an interrupted transfer cannot leave
+    a half-written or empty file. Falls back to a direct overwrite if the server
+    does not support the posix-rename extension.
+    """
+    try:
+        safe_path = sanitize_path(path)
+        if safe_path is None:
+            return False, "Invalid path"
+
+        # The browser textarea always uses LF; restore the original style.
+        text = content_str.replace('\r\n', '\n')
+        if newline == 'crlf':
+            text = text.replace('\n', '\r\n')
+
+        if encoding not in ('utf-8', 'latin-1'):
+            encoding = 'utf-8'
+        try:
+            data = text.encode(encoding)
+        except UnicodeEncodeError:
+            data = text.encode('utf-8')
+
+        tmp_path = safe_path + '.webssh-tmp-' + os.urandom(4).hex()
+
+        with sftp_session(session_id) as (sftp, source_type):
+            try:
+                with sftp.file(tmp_path, 'wb') as remote_file:
+                    remote_file.write(data)
+                try:
+                    sftp.posix_rename(tmp_path, safe_path)
+                except (IOError, OSError, AttributeError):
+                    # Server lacks posix-rename; fall back to direct overwrite.
+                    with sftp.file(safe_path, 'wb') as remote_file:
+                        remote_file.write(data)
+                    try:
+                        sftp.remove(tmp_path)
+                    except Exception:
+                        pass
+            except Exception:
+                # Best-effort cleanup of the temp file on failure.
+                try:
+                    sftp.remove(tmp_path)
+                except Exception:
+                    pass
+                raise
+
+        return True, None
+    except SFTPOperationError as e:
+        return False, str(e)
+    except Exception as e:
+        return False, str(e)
+
 def get_sftp_client_from_pool(connection_id):
     """Get SFTP client from temporary connection pool."""
     from . import connection_pool

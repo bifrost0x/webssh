@@ -25,6 +25,7 @@ SSH_CONNECT_TIMEOUT = 10
 
 CHUNK_SIZE = 65536
 MAX_UPLOAD_SIZE = 1024 * 1024 * 100
+MAX_EDITOR_FILE_SIZE = int(os.environ.get('MAX_EDITOR_FILE_SIZE', str(5 * 1024 * 1024)))
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 

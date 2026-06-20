@@ -281,6 +281,13 @@
         modal: null,
         currentSessionId: null,
         currentPath: null,
+        currentFilename: null,
+        editMode: false,
+        dirty: false,
+        editEncoding: 'utf-8',
+        editNewline: 'lf',
+        maxEditFileSize: 5 * 1024 * 1024,
+        _beforeUnloadHandler: null,
 
         textExtensions: ['.txt', '.md', '.json', '.yaml', '.yml', '.xml', '.csv', '.ini', '.conf', '.cfg', '.env', '.gitignore', '.dockerignore', '.editorconfig'],
         codeExtensions: ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.swift', '.kt', '.scala', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.sql', '.html', '.htm', '.css', '.scss', '.sass', '.less', '.vue', '.svelte'],
@@ -294,6 +301,12 @@
                 return;
             }
             console.log('[FilePreview] Initialized successfully');
+
+            const sizeMeta = document.querySelector('meta[name="max-editor-file-size"]');
+            const parsedSize = sizeMeta ? parseInt(sizeMeta.content, 10) : NaN;
+            if (!isNaN(parsedSize) && parsedSize > 0) {
+                this.maxEditFileSize = parsedSize;
+            }
 
             document.getElementById('closeFilePreviewModal')?.addEventListener('click', () => this.close());
 
@@ -313,14 +326,30 @@
             document.getElementById('previewDownloadBtn')?.addEventListener('click', () => this.downloadFile());
             document.getElementById('previewRefreshBtn')?.addEventListener('click', () => this.refresh());
             document.getElementById('previewBinaryDownload')?.addEventListener('click', () => this.downloadFile());
+            document.getElementById('previewEditBtn')?.addEventListener('click', () => this.enterEditMode());
+            document.getElementById('editorSaveBtn')?.addEventListener('click', () => this.saveEdit());
+            document.getElementById('editorCancelBtn')?.addEventListener('click', () => this.cancelEdit());
+            document.getElementById('editorContent')?.addEventListener('input', () => this.markDirty());
 
             socket.off('preview_data');
             socket.off('preview_error');
+            socket.off('edit_data');
+            socket.off('edit_error');
+            socket.off('file_saved');
             socket.on('preview_data', (data) => {
                 this.handlePreviewData(data);
             });
             socket.on('preview_error', (data) => {
                 this.handlePreviewError(data);
+            });
+            socket.on('edit_data', (data) => {
+                this.handleEditData(data);
+            });
+            socket.on('edit_error', (data) => {
+                this.handleEditError(data);
+            });
+            socket.on('file_saved', (data) => {
+                this.handleFileSaved(data);
             });
         },
 
@@ -365,6 +394,16 @@
             console.log('[FilePreview] open called:', { sessionId, path, filename });
             this.currentSessionId = sessionId;
             this.currentPath = path;
+            this.currentFilename = filename;
+
+            // Start every open in a clean (non-edit) state.
+            this.editMode = false;
+            this.dirty = false;
+            this.detachBeforeUnload();
+            document.getElementById('fileEditor')?.classList.add('hidden');
+            this.modal?.classList.remove('editing');
+            this.hideEditButton();
+            this.showPreviewActions();
 
             const fileType = this.getFileType(filename);
             console.log('[FilePreview] File type:', fileType);
@@ -462,11 +501,21 @@
             document.getElementById('previewSize').textContent = this.formatFileSize(data.size);
 
             if (data.is_binary) {
+                this.hideEditButton();
                 this.showBinary();
                 return;
             }
 
             this.showContent(data.content, data.filename, data.truncated, data.read_size, data.size);
+
+            // Entering edit mode re-reads the full file (up to the editor limit)
+            // via open_file_for_edit, so a truncated preview is safe to edit.
+            // Gate only on the real file size, not on the 512KB preview cap.
+            if (data.size <= this.maxEditFileSize) {
+                this.showEditButton();
+            } else {
+                this.hideEditButton();
+            }
         },
 
         handlePreviewError(data) {
@@ -481,6 +530,7 @@
             document.getElementById('previewImage')?.classList.add('hidden');
             document.getElementById('previewContent')?.classList.add('hidden');
             document.getElementById('previewTruncated')?.classList.add('hidden');
+            document.getElementById('fileEditor')?.classList.add('hidden');
         },
 
         hideLoading() {
@@ -523,7 +573,12 @@
 
             contentDiv?.classList.remove('hidden');
 
-            codeEl.textContent = content;
+            // Keep the raw content for an accurate copy; for display, drop a
+            // single trailing newline so the file's terminator isn't rendered
+            // (and numbered) as a spurious empty last line.
+            this._previewFullContent = content;
+            const display = content.replace(/\n$/, '');
+            codeEl.textContent = display;
 
             const language = this.getLanguage(filename);
             if (typeof hljs !== 'undefined') {
@@ -531,8 +586,8 @@
                 hljs.highlightElement(codeEl);
             }
 
-            const lines = content.split('\n');
-            lineNumbersEl.innerHTML = lines.map((_, i) => i + 1).join('<br>');
+            const lineCount = display === '' ? 1 : display.split('\n').length;
+            lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
 
             if (truncated) {
                 document.getElementById('previewTruncated')?.classList.remove('hidden');
@@ -545,7 +600,8 @@
             const codeEl = document.getElementById('previewCode');
             if (!codeEl) return;
 
-            navigator.clipboard.writeText(codeEl.textContent).then(() => {
+            const text = this._previewFullContent != null ? this._previewFullContent : codeEl.textContent;
+            navigator.clipboard.writeText(text).then(() => {
                 showNotification('Copied to clipboard', 'success');
             }).catch(() => {
                 showNotification('Failed to copy', 'error');
@@ -561,6 +617,145 @@
             });
         },
 
+        // ---- Inline editor ----
+        showEditButton() {
+            document.getElementById('previewEditBtn')?.classList.remove('hidden');
+        },
+
+        hideEditButton() {
+            document.getElementById('previewEditBtn')?.classList.add('hidden');
+        },
+
+        showPreviewActions() {
+            ['previewCopyBtn', 'previewDownloadBtn', 'previewRefreshBtn'].forEach(id => {
+                document.getElementById(id)?.classList.remove('hidden');
+            });
+        },
+
+        hidePreviewActions() {
+            ['previewCopyBtn', 'previewDownloadBtn', 'previewRefreshBtn', 'previewEditBtn'].forEach(id => {
+                document.getElementById(id)?.classList.add('hidden');
+            });
+        },
+
+        attachBeforeUnload() {
+            if (this._beforeUnloadHandler) return;
+            this._beforeUnloadHandler = (e) => {
+                if (this.dirty) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            };
+            window.addEventListener('beforeunload', this._beforeUnloadHandler);
+        },
+
+        detachBeforeUnload() {
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
+            }
+        },
+
+        markDirty() {
+            if (!this.editMode) return;
+            this.dirty = true;
+            const status = document.getElementById('editorStatus');
+            if (status) {
+                status.textContent = window.i18n ? i18n.t('editor.unsavedChanges') : 'Unsaved changes';
+            }
+        },
+
+        enterEditMode() {
+            if (!this.currentSessionId || !this.currentPath) return;
+            const status = document.getElementById('editorStatus');
+            if (status) status.textContent = '';
+            socket.emit('open_file_for_edit', {
+                session_id: this.currentSessionId,
+                path: this.currentPath
+            });
+        },
+
+        handleEditData(data) {
+            // Ignore responses for a file the user has since navigated away from.
+            if (!data || data.path !== this.currentPath) return;
+
+            const textarea = document.getElementById('editorContent');
+            if (!textarea) return;
+
+            this.editEncoding = data.encoding || 'utf-8';
+            this.editNewline = data.newline || 'lf';
+            textarea.value = data.content || '';
+
+            document.getElementById('previewContent')?.classList.add('hidden');
+            document.getElementById('previewTruncated')?.classList.add('hidden');
+            document.getElementById('previewError')?.classList.add('hidden');
+            document.getElementById('fileEditor')?.classList.remove('hidden');
+            this.modal?.classList.add('editing');
+            this.hidePreviewActions();
+
+            this.editMode = true;
+            this.dirty = false;
+            const status = document.getElementById('editorStatus');
+            if (status) status.textContent = '';
+            this.attachBeforeUnload();
+            textarea.focus();
+        },
+
+        handleEditError(data) {
+            const msg = (data && data.error) ? data.error
+                : (window.i18n ? i18n.t('editor.saveFailed') : 'Failed to open file');
+            showNotification(msg, 'error');
+        },
+
+        saveEdit() {
+            if (!this.editMode || !this.currentSessionId || !this.currentPath) return;
+            const textarea = document.getElementById('editorContent');
+            if (!textarea) return;
+
+            const status = document.getElementById('editorStatus');
+            if (status) status.textContent = window.i18n ? i18n.t('editor.saving') : 'Saving...';
+
+            socket.emit('save_file', {
+                session_id: this.currentSessionId,
+                path: this.currentPath,
+                content: textarea.value,
+                encoding: this.editEncoding,
+                newline: this.editNewline
+            });
+        },
+
+        handleFileSaved(data) {
+            if (!data || data.path !== this.currentPath) return;
+            this.dirty = false;
+            this.detachBeforeUnload();
+            showNotification(window.i18n ? i18n.t('editor.saved') : 'File saved', 'success');
+            // Leave edit mode and reload the preview to reflect the saved file.
+            this.exitEditMode();
+            this.refresh();
+        },
+
+        cancelEdit() {
+            if (this.dirty) {
+                const msg = window.i18n ? i18n.t('editor.unsavedConfirm') : 'Discard unsaved changes?';
+                if (!window.confirm(msg)) return;
+            }
+            this.exitEditMode();
+            // The preview content is still rendered underneath; just reveal it.
+            document.getElementById('previewContent')?.classList.remove('hidden');
+        },
+
+        exitEditMode() {
+            this.editMode = false;
+            this.dirty = false;
+            this.detachBeforeUnload();
+            document.getElementById('fileEditor')?.classList.add('hidden');
+            this.modal?.classList.remove('editing');
+            const status = document.getElementById('editorStatus');
+            if (status) status.textContent = '';
+            this.showPreviewActions();
+            this.showEditButton();
+        },
+
         refresh() {
             if (!this.currentSessionId || !this.currentPath) return;
 
@@ -569,9 +764,20 @@
         },
 
         close() {
+            if (this.editMode && this.dirty) {
+                const msg = window.i18n ? i18n.t('editor.unsavedConfirm') : 'Discard unsaved changes?';
+                if (!window.confirm(msg)) return;
+            }
+            this.detachBeforeUnload();
+            this.editMode = false;
+            this.dirty = false;
+            document.getElementById('fileEditor')?.classList.add('hidden');
+            this.modal?.classList.remove('editing');
+
             window.ModalManager.close(this.modal);
             this.currentSessionId = null;
             this.currentPath = null;
+            this.currentFilename = null;
 
             const imgEl = document.getElementById('previewImageElement');
             if (imgEl && imgEl.src.startsWith('blob:')) {

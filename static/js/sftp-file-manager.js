@@ -629,17 +629,17 @@ class SFTPFileManager {
                 }
             }
 
-            if (e.key === 'Tab' && !e.target.matches('input, select')) {
+            if (e.key === 'Tab' && !e.target.matches('input, textarea, select')) {
                 e.preventDefault();
                 this.setActivePane(this.activePane === 'left' ? 'right' : 'left');
             }
 
-            if (e.ctrlKey && e.key === 'a' && !e.target.matches('input')) {
+            if (e.ctrlKey && e.key === 'a' && !e.target.matches('input, textarea')) {
                 e.preventDefault();
                 this.selectAll();
             }
 
-            if (e.key === 'Delete' && !e.target.matches('input')) {
+            if (e.key === 'Delete' && !e.target.matches('input, textarea')) {
                 e.preventDefault();
                 this.deleteSelected();
             }
@@ -659,7 +659,7 @@ class SFTPFileManager {
                 this.renameSelected();
             }
 
-            if (e.key === 'Enter' && !e.target.matches('input')) {
+            if (e.key === 'Enter' && !e.target.matches('input, textarea')) {
                 e.preventDefault();
                 const state = this.panes[this.activePane];
                 if (state.selected.size === 1) {

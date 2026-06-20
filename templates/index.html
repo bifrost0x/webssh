@@ -8,6 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
+    <meta name="max-editor-file-size" content="{{ max_editor_file_size|default(5242880) }}">
     <title>Web SSH Terminal</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/xterm/xterm.css') }}" />
@@ -551,6 +552,9 @@
                     <button class="btn btn-icon" id="previewDownloadBtn" title="Download file">
                         <span class="material-icons">download</span>
                     </button>
+                    <button class="btn btn-icon hidden" id="previewEditBtn" title="Edit file" data-i18n-title="editor.edit">
+                        <span class="material-icons">edit</span>
+                    </button>
                     <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh">
                         <span class="material-icons">refresh</span>
                     </button>
@@ -581,6 +585,14 @@
                 <div class="preview-truncated hidden" id="previewTruncated">
                     <span class="material-icons">info</span>
                     <span>File truncated - showing first <span id="previewTruncatedSize"></span> of <span id="previewTotalSize"></span></span>
+                </div>
+                <div class="file-editor hidden" id="fileEditor">
+                    <div class="editor-toolbar">
+                        <button class="btn btn-primary" id="editorSaveBtn" data-i18n="editor.save">Save</button>
+                        <button class="btn btn-secondary" id="editorCancelBtn" data-i18n="editor.cancel">Cancel</button>
+                        <span class="editor-status" id="editorStatus"></span>
+                    </div>
+                    <textarea class="editor-content" id="editorContent" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
                 </div>
             </div>
         </div>

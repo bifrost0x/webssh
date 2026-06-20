@@ -62,9 +62,14 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Local Filesystem Source** - Use your browser's local files as a transfer source
 - **Transfer Queue** - Progress tracking with conflict resolution (skip / overwrite / apply to all)
 - **Efficient Binary Transfer** - Raw binary streaming (~33% smaller than base64)
+- **Inline Editor** - Edit text files directly in the browser and save back over SFTP
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/filemanager.png" alt="File Manager" width="700">
+</p>
+
+<p align="center">
+  <video src="https://github.com/bifrost0x/webssh/raw/main/assets/file-editing.mp4" controls width="800"></video>
 </p>
 
 ### Security

@@ -3000,7 +3000,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
     z-index: 15000; 
 }
 
-.modal-xlarge .modal-content {
+.modal-content.modal-xlarge {
     width: 90%;
     max-width: 1200px;
     height: 85vh;
@@ -3136,7 +3136,11 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .preview-content {
     display: flex;
     flex: 1;
-    overflow: auto;
+    /* Single vertical scroll container so the line-number gutter and the code
+       always scroll together; horizontal scrolling is handled by the <pre>. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    align-items: flex-start;
     background: var(--bg-tertiary);
     border-radius: 8px;
     margin: 16px;
@@ -3146,6 +3150,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .preview-line-numbers {
+    flex: 0 0 auto;
     padding: 16px 12px;
     background: rgba(0, 0, 0, 0.2);
     color: var(--text-muted);
@@ -3157,9 +3162,13 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .preview-content pre {
     flex: 1;
+    min-width: 0;
     margin: 0;
     padding: 16px;
-    overflow: auto;
+    /* Own horizontal scroll for long lines; vertical scroll is delegated to
+       the parent so the gutter stays in sync. */
+    overflow-x: auto;
+    overflow-y: hidden;
     background: transparent !important;
 }
 
@@ -3188,6 +3197,61 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .preview-truncated .material-icons {
     font-size: 18px;
+}
+
+/* Inline file editor (additive to the preview modal) */
+/* While editing, expand the preview modal to near-fullscreen for editing room. */
+#filePreviewModal.editing .modal-content {
+    width: 96vw;
+    max-width: 96vw;
+    height: 94vh;
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-editor {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 16px;
+    gap: 10px;
+}
+
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.editor-status {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-muted, var(--text-secondary));
+}
+
+.editor-content {
+    flex: 1;
+    width: 100%;
+    box-sizing: border-box;
+    resize: none;
+    padding: 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    tab-size: 4;
+    white-space: pre;
+    overflow: auto;
+}
+
+.editor-content:focus {
+    outline: none;
+    border-color: var(--accent-primary, var(--border-color));
 }
 
 @keyframes spin {

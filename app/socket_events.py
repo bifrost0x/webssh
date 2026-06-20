@@ -1427,6 +1427,87 @@ def handle_preview_file(data, current_user=None):
         log_error("Preview failed", error=str(e))
         emit('preview_error', {'error': 'Preview failed', 'path': data.get('path', '')})
 
+@socketio.on('open_file_for_edit')
+@socket_login_required
+def handle_open_file_for_edit(data, current_user=None):
+    """Load a full text file for inline editing (no truncation, text only)."""
+    try:
+        session_id = data.get('session_id')
+        path = data.get('path')
+
+        if not all([session_id, path]):
+            emit('edit_error', {'error': 'Missing required fields', 'path': path or ''})
+            return
+
+        if not verify_session_ownership(session_id, current_user.id):
+            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
+            if not conn_info or conn_info['user_id'] != str(current_user.id):
+                emit('edit_error', {'error': 'Unauthorized access', 'path': path})
+                return
+
+        result, error = sftp_handler.read_file_for_edit(session_id=session_id, path=path)
+
+        if error:
+            emit('edit_error', {'error': f'Failed to open file: {error}', 'path': path})
+        else:
+            import os
+            result['filename'] = os.path.basename(path)
+            result['path'] = path
+            emit('edit_data', result)
+
+    except Exception as e:
+        log_error("Open for edit failed", error=str(e))
+        emit('edit_error', {'error': 'Failed to open file for editing', 'path': data.get('path', '')})
+
+@socketio.on('save_file')
+@socket_login_required
+def handle_save_file(data, current_user=None):
+    """Save edited text content back to a remote file via SFTP."""
+    try:
+        session_id = data.get('session_id')
+        path = data.get('path')
+        content = data.get('content')
+        encoding = data.get('encoding', 'utf-8')
+        newline = data.get('newline', 'lf')
+
+        if session_id is None or path is None or content is None:
+            emit('error', {'error': 'Missing required fields for save'})
+            return
+
+        content_bytes = content.encode('utf-8', errors='ignore')
+        max_size = config.MAX_EDITOR_FILE_SIZE
+        if len(content_bytes) > max_size:
+            max_mb = max_size // (1024 * 1024)
+            emit('error', {'error': f'File too large to save. Maximum size: {max_mb}MB'})
+            return
+
+        if not verify_session_ownership(session_id, current_user.id):
+            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
+            if not conn_info or conn_info['user_id'] != str(current_user.id):
+                emit('error', {'error': 'Unauthorized access to session'})
+                return
+
+        success, error = sftp_handler.write_file_text(
+            session_id=session_id,
+            path=path,
+            content_str=content,
+            encoding=encoding,
+            newline=newline
+        )
+
+        if error:
+            emit('error', {'error': f'Save failed: {error}'})
+        else:
+            import os
+            log_file_upload(current_user.username, target_host='via-sftp-edit',
+                            filename=os.path.basename(path), size=len(content_bytes),
+                            success=True, ip_address=request.remote_addr)
+            emit('file_saved', {'path': path})
+
+    except Exception as e:
+        log_error("Save failed", error=str(e))
+        emit('error', {'error': 'Save failed'})
+
 @socketio.on('transfer_server_to_server')
 @socket_login_required
 def handle_transfer_server_to_server(data, current_user=None):
