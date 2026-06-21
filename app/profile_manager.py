@@ -63,8 +63,12 @@ def save_profiles(user_id, profiles):
         log_error(f"Error saving profiles", user_id=user_id, error=str(e))
         return False
 
-def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
-    """Add a new connection profile for a specific user."""
+def add_profile(user_id, name, host, port, username, auth_type, key_id=None, jump_host_id=None):
+    """Add a new connection profile for a specific user.
+
+    jump_host_id (optional): reference to a saved jump host (bastion). Only the id
+    is stored; the jump host details live in jump_hosts.json.
+    """
     try:
         if not all([name, host, username, auth_type]):
             return None, "Missing required fields"
@@ -100,6 +104,10 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None):
             'key_id': key_id,
             'created_at': datetime.utcnow().isoformat()
         }
+
+        # Optional reference to a saved jump host (bastion).
+        if jump_host_id:
+            profile['jump_host_id'] = str(jump_host_id)[:64]
 
         profiles = load_profiles(user_id)
         profiles.append(profile)

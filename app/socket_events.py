@@ -1,7 +1,7 @@
 from flask_socketio import emit, join_room, disconnect
 from flask import request, current_app
 from flask_login import current_user
-from . import socketio, ssh_manager, profile_manager, key_manager, sftp_handler
+from . import socketio, ssh_manager, profile_manager, key_manager, sftp_handler, jump_host_manager
 from .decorators import socket_login_required
 from .auth import register_socket_session, get_user_from_socket
 from .models import db, SSHSession, SocketSession
@@ -42,15 +42,21 @@ def _is_internal_address(host_str):
     except ValueError:
         return host_str.lower() in ('localhost', 'localhost.localdomain')
 
-def _validate_ssh_params(host, port, username):
-    """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error)."""
+def _validate_ssh_params(host, port, username, allow_internal=False):
+    """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error).
+
+    allow_internal: skip the internal-address block. Used for the *target* of a
+    ProxyJump connection — it is reached from the bastion, not from this server,
+    so internal targets behind a bastion are legitimate. The bastion itself is
+    always validated without this flag (it is reached directly by the server).
+    """
     host = (host or '').strip()
     if not host:
         return None, None, None, 'Host is required'
     if not _is_valid_host(host):
         return None, None, None, 'Invalid host format'
 
-    if config.BLOCK_INTERNAL_SSH and _is_internal_address(host):
+    if config.BLOCK_INTERNAL_SSH and not allow_internal and _is_internal_address(host):
         log_warning(f"SECURITY: SSH to internal address blocked", host=host)
         return None, None, None, 'Connections to internal addresses are not allowed'
 
@@ -141,7 +147,8 @@ def restore_user_sessions(user_id):
                 'session_id': session_id,
                 'host': db_session.host,
                 'port': db_session.port,
-                'username': db_session.username
+                'username': db_session.username,
+                'via_jump': session.get('via_jump')
             }, room=room)
             log_info(f"Restored SSH session {session_id}", user_id=user_id, room=room)
         else:
@@ -161,8 +168,12 @@ def handle_ssh_connect(data, current_user=None):
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
 
+        proxy_jump = data.get('proxy_jump')
+
+        # The target may be internal when reached via a bastion (legitimate).
         host, port, username, error = _validate_ssh_params(
-            data.get('host'), data.get('port', 22), data.get('username')
+            data.get('host'), data.get('port', 22), data.get('username'),
+            allow_internal=bool(proxy_jump)
         )
         if error:
             emit_error(error)
@@ -179,6 +190,31 @@ def handle_ssh_connect(data, current_user=None):
                 emit_error(f'SSH key error: {key_error}')
                 return
 
+        # Resolve optional ProxyJump / bastion parameters. The bastion is reached
+        # directly by the server, so it is validated WITHOUT allow_internal.
+        bastion_host = bastion_port = bastion_username = None
+        bastion_password = None
+        bastion_key_content = None
+        if proxy_jump:
+            bastion_host, bastion_port, bastion_username, bastion_error = _validate_ssh_params(
+                proxy_jump.get('host'), proxy_jump.get('port', 22), proxy_jump.get('username')
+            )
+            if bastion_error:
+                emit_error(f'Jump host: {bastion_error}')
+                return
+            bastion_password = proxy_jump.get('password')
+            bastion_key_id = proxy_jump.get('key_id')
+            if not bastion_password and not bastion_key_id:
+                emit_error('Jump host password or SSH key required')
+                return
+            if bastion_key_id:
+                bastion_key_content, bastion_key_error = key_manager.read_key_content(
+                    current_user.id, bastion_key_id
+                )
+                if bastion_key_error:
+                    emit_error(f'Jump host SSH key error: {bastion_key_error}')
+                    return
+
         session_id, error = ssh_manager.create_ssh_connection(
             host=host,
             port=int(port),
@@ -187,7 +223,12 @@ def handle_ssh_connect(data, current_user=None):
             key_content=key_content,
             socketio_instance=socketio,
             app=current_app._get_current_object(),
-            user_id=current_user.id
+            user_id=current_user.id,
+            proxy_jump_host=bastion_host,
+            proxy_jump_port=bastion_port,
+            proxy_jump_username=bastion_username,
+            proxy_jump_password=bastion_password,
+            proxy_jump_key_content=bastion_key_content
         )
 
         if password:
@@ -218,7 +259,8 @@ def handle_ssh_connect(data, current_user=None):
                 'host': host,
                 'port': port,
                 'username': username,
-                'client_request_id': client_request_id
+                'client_request_id': client_request_id,
+                'via_jump': bastion_host
             })
             log_ssh_connection(current_user.username, host, port, True, request.remote_addr)
 
@@ -228,6 +270,8 @@ def handle_ssh_connect(data, current_user=None):
     finally:
         password = None
         key_content = None
+        bastion_password = None
+        bastion_key_content = None
 
 @socketio.on('ssh_input')
 @socket_login_required
@@ -352,6 +396,7 @@ def handle_save_profile(data, current_user=None):
         username = data.get('username')
         auth_type = data.get('auth_type')
         key_id = data.get('key_id')
+        jump_host_id = data.get('jump_host_id')
 
         profile, error = profile_manager.add_profile(
             user_id=current_user.id,
@@ -360,7 +405,8 @@ def handle_save_profile(data, current_user=None):
             port=port,
             username=username,
             auth_type=auth_type,
-            key_id=key_id
+            key_id=key_id,
+            jump_host_id=jump_host_id
         )
 
         if error:
@@ -393,6 +439,57 @@ def handle_delete_profile(data, current_user=None):
     except Exception as e:
         log_error("Failed to delete profile", error=str(e))
         emit('error', {'error': 'Failed to delete profile'})
+
+@socketio.on('list_jump_hosts')
+@socket_login_required
+def handle_list_jump_hosts(current_user=None):
+    """Return list of saved jump hosts for this user."""
+    try:
+        emit('jump_hosts_list', {'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id)})
+    except Exception as e:
+        log_error("Failed to load jump hosts", error=str(e))
+        emit('error', {'error': 'Failed to load jump hosts'})
+
+@socketio.on('save_jump_host')
+@socket_login_required
+def handle_save_jump_host(data, current_user=None):
+    """Save a new jump host (bastion) for this user. Never stores a password."""
+    try:
+        jump_host, error = jump_host_manager.add_jump_host(
+            user_id=current_user.id,
+            name=data.get('name'),
+            host=data.get('host'),
+            port=data.get('port', 22),
+            username=data.get('username'),
+            auth_type=data.get('auth_type'),
+            key_id=data.get('key_id')
+        )
+        if error:
+            emit('error', {'error': error})
+        else:
+            emit('jump_host_saved', {'jump_host': jump_host})
+            handle_list_jump_hosts(current_user=current_user)
+    except Exception as e:
+        log_error("Failed to save jump host", error=str(e))
+        emit('error', {'error': 'Failed to save jump host'})
+
+@socketio.on('delete_jump_host')
+@socket_login_required
+def handle_delete_jump_host(data, current_user=None):
+    """Delete a jump host for this user."""
+    try:
+        jump_host_id = data.get('jump_host_id')
+        if not jump_host_id:
+            emit('error', {'error': 'Jump host ID required'})
+            return
+        if jump_host_manager.delete_jump_host(current_user.id, jump_host_id):
+            emit('jump_host_deleted', {'jump_host_id': jump_host_id})
+            handle_list_jump_hosts(current_user=current_user)
+        else:
+            emit('error', {'error': 'Failed to delete jump host'})
+    except Exception as e:
+        log_error("Failed to delete jump host", error=str(e))
+        emit('error', {'error': 'Failed to delete jump host'})
 
 @socketio.on('list_keys')
 @socket_login_required

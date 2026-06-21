@@ -65,6 +65,7 @@
                         <div class="account-divider" role="separator"></div>
 
                         {% if current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                        <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
                         <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>
@@ -252,6 +253,23 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="jumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
+                        <select id="jumpHostSelect" class="form-control">
+                            <option value="" data-i18n="connection.noJumpHost">None (direct connection)</option>
+                        </select>
+                        <div class="field-hint" data-i18n="connection.jumpHostHint">Manage jump hosts in the account menu.</div>
+                    </div>
+
+                    <div class="form-group hidden" id="jumpHostPasswordGroup">
+                        <label for="jumpHostPasswordInput" data-i18n="connection.jumpHostPassword">Jump Host Password</label>
+                        <div class="input-wrapper with-toggle">
+                            <input type="password" id="jumpHostPasswordInput" class="form-control" placeholder="Password">
+                            <button type="button" class="password-toggle" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility">👁️</button>
+                        </div>
+                        <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
+                    </div>
+
+                    <div class="form-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="saveProfileCheck">
                             <span data-i18n="connection.saveAsProfile">Save as profile</span>
@@ -303,6 +321,59 @@
                 <div class="keys-list-section">
                     <h3 data-i18n="keys.storedKeys">Stored Keys</h3>
                     <div id="keysList" class="keys-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="jumpHostManagementModal" role="dialog" aria-modal="true" aria-labelledby="jumpHostManagementTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="jumpHostManagementTitle" data-i18n="jumphosts.manage">Manage Jump Hosts</h2>
+                <span class="close" id="closeJumpHostModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="key-upload-section">
+                    <h3 data-i18n="jumphosts.addNew">Add Jump Host</h3>
+                    <form id="jumpHostForm">
+                        <div class="form-group">
+                            <label for="jhNameInput" data-i18n="jumphosts.name">Name</label>
+                            <input type="text" id="jhNameInput" class="form-control" placeholder="Office Bastion" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-2">
+                                <label for="jhHostInput" data-i18n="connection.host">Host</label>
+                                <input type="text" id="jhHostInput" class="form-control" placeholder="bastion.example.com" required>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="jhPortInput" data-i18n="connection.port">Port</label>
+                                <input type="number" id="jhPortInput" class="form-control" value="22">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="jhUsernameInput" data-i18n="auth.username">Username</label>
+                            <input type="text" id="jhUsernameInput" class="form-control" placeholder="bastion_user" required>
+                        </div>
+                        <div class="form-group">
+                            <label data-i18n="connection.authMethod">Authentication Method</label>
+                            <div class="auth-type-selector">
+                                <label class="radio-label"><input type="radio" name="jhAuthType" value="password" checked> <span data-i18n="auth.password">Password</span></label>
+                                <label class="radio-label"><input type="radio" name="jhAuthType" value="key"> <span data-i18n="connection.sshKey">SSH Key</span></label>
+                            </div>
+                        </div>
+                        <div class="form-group hidden" id="jhKeyGroup">
+                            <label for="jhKeySelect" data-i18n="connection.sshKey">SSH Key</label>
+                            <select id="jhKeySelect" class="form-control">
+                                <option value="" data-i18n="connection.selectSSHKey">-- Select SSH Key --</option>
+                            </select>
+                        </div>
+                        <p class="field-hint" data-i18n="jumphosts.noPasswordHint">Passwords are never stored — you enter them when connecting.</p>
+                        <button type="submit" class="btn btn-primary"><span data-i18n="jumphosts.add">Add Jump Host</span></button>
+                    </form>
+                </div>
+                <div class="keys-list-section">
+                    <h3 data-i18n="jumphosts.saved">Saved Jump Hosts</h3>
+                    <div id="jumpHostsList" class="keys-list"></div>
                 </div>
             </div>
         </div>
@@ -648,6 +719,7 @@
     <script src="{{ url_for('static', filename='js/session-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}"></script>

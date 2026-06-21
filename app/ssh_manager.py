@@ -35,7 +35,22 @@ class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
 
         log_info(f"Host key stored", path=str(self.known_hosts_path))
 
-def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None, socketio_instance=None, app=None, user_id=None):
+def _load_private_key(key_content):
+    """Parse a decrypted PEM private key into a paramiko PKey (RSA/Ed25519/ECDSA/DSS)."""
+    import io
+    key_file = io.StringIO(key_content)
+    for key_cls in (paramiko.RSAKey, paramiko.Ed25519Key, paramiko.ECDSAKey, paramiko.DSSKey):
+        try:
+            return key_cls.from_private_key(key_file)
+        except paramiko.ssh_exception.SSHException:
+            key_file.seek(0)
+    raise paramiko.ssh_exception.SSHException("Unsupported or invalid private key format")
+
+
+def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
+                          socketio_instance=None, app=None, user_id=None,
+                          proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
+                          proxy_jump_password=None, proxy_jump_key_content=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -49,11 +64,51 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         socketio_instance: SocketIO instance for output streaming
         app: Flask app instance
         user_id: User ID for session tracking
+        proxy_jump_*: Optional jump host (bastion) connection parameters
     """
+    bastion_client = None
+    connection_stored = False
     try:
         with sessions_lock:
             if len(sessions) >= config.MAX_SESSIONS:
                 return None, "Maximum number of sessions reached"
+
+        # Optional ProxyJump: connect to the bastion first, then tunnel to the target.
+        sock = None
+        if proxy_jump_host:
+            try:
+                bastion_client = paramiko.SSHClient()
+                if config.KNOWN_HOSTS_FILE.exists():
+                    bastion_client.load_host_keys(str(config.KNOWN_HOSTS_FILE))
+                bastion_client.set_missing_host_key_policy(PersistentHostKeyPolicy(config.KNOWN_HOSTS_FILE))
+
+                bastion_auth = {
+                    'hostname': proxy_jump_host,
+                    'port': proxy_jump_port or 22,
+                    'username': proxy_jump_username,
+                    'timeout': config.SSH_CONNECT_TIMEOUT,
+                    'look_for_keys': False,
+                    'allow_agent': False,
+                }
+                if proxy_jump_key_content:
+                    bastion_auth['pkey'] = _load_private_key(proxy_jump_key_content)
+                elif proxy_jump_password:
+                    bastion_auth['password'] = proxy_jump_password
+                else:
+                    return None, "Jump host authentication method not provided"
+
+                bastion_client.connect(**bastion_auth)
+                bastion_transport = bastion_client.get_transport()
+                if bastion_transport:
+                    bastion_transport.set_keepalive(30)
+                sock = bastion_transport.open_channel(
+                    'direct-tcpip', (host, port), ('127.0.0.1', 0)
+                )
+                log_info("Jump host connection established", bastion=proxy_jump_host)
+            except paramiko.AuthenticationException:
+                return None, "Jump host authentication failed - invalid credentials"
+            except Exception as e:
+                return None, f"Jump host connection failed: {str(e)}"
 
         client = paramiko.SSHClient()
         if config.KNOWN_HOSTS_FILE.exists():
@@ -68,24 +123,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             'look_for_keys': False,
             'allow_agent': False
         }
+        if sock:
+            auth_kwargs['sock'] = sock
 
         if key_content:
-            import io
-            key_file = io.StringIO(key_content)
-            try:
-                pkey = paramiko.RSAKey.from_private_key(key_file)
-            except paramiko.ssh_exception.SSHException:
-                key_file.seek(0)
-                try:
-                    pkey = paramiko.Ed25519Key.from_private_key(key_file)
-                except paramiko.ssh_exception.SSHException:
-                    key_file.seek(0)
-                    try:
-                        pkey = paramiko.ECDSAKey.from_private_key(key_file)
-                    except paramiko.ssh_exception.SSHException:
-                        key_file.seek(0)
-                        pkey = paramiko.DSSKey.from_private_key(key_file)
-            auth_kwargs['pkey'] = pkey
+            auth_kwargs['pkey'] = _load_private_key(key_content)
         elif key_path:
             auth_kwargs['key_filename'] = key_path
         elif password:
@@ -119,8 +161,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'username': username,
                 'user_id': user_id,
                 'connected': True,
-                'last_activity': time.time()
+                'last_activity': time.time(),
+                'bastion_client': bastion_client,
+                'proxy_jump_host': proxy_jump_host
             }
+            connection_stored = True
 
         if socketio_instance and app:
             thread = Thread(
@@ -142,6 +187,13 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         return None, f"Network error: {str(e)}"
     except Exception as e:
         return None, f"Unexpected error: {str(e)}"
+    finally:
+        # Avoid leaking the bastion connection if the target connect failed.
+        if bastion_client is not None and not connection_stored:
+            try:
+                bastion_client.close()
+            except Exception:
+                pass
 
 def read_ssh_output(session_id, socketio_instance, app):
     """Background greenthread to continuously read SSH output and emit to client.
@@ -304,6 +356,12 @@ def close_session(session_id):
                 except Exception as e:
                     log_debug(f"Error closing SSH client", session_id=session_id, error=str(e))
 
+            if session.get('bastion_client'):
+                try:
+                    session['bastion_client'].close()
+                except Exception as e:
+                    log_debug(f"Error closing jump host client", session_id=session_id, error=str(e))
+
             del sessions[session_id]
 
         return True
@@ -321,7 +379,8 @@ def get_session(session_id):
                 'host': session['host'],
                 'port': session['port'],
                 'username': session['username'],
-                'connected': session['connected']
+                'connected': session['connected'],
+                'via_jump': session.get('proxy_jump_host')
             }
     return None
 

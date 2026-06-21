@@ -35,7 +35,8 @@ const SessionManager = {
             session_id: sessionId,
             host: data.host,
             port: data.port,
-            username: data.username
+            username: data.username,
+            via_jump: data.via_jump
         };
 
         const restoredId = this.createSession(sessionData);
@@ -92,7 +93,8 @@ const SessionManager = {
             connected: true,
             terminalId,
             os: 'all',
-            displayName: storedName || null
+            displayName: storedName || null,
+            viaJump: sessionData.via_jump || null
         };
 
         this.createSessionTab(session_id, host, username);
@@ -129,6 +131,14 @@ const SessionManager = {
 
         tab.appendChild(statusDot);
         tab.appendChild(tabLabel);
+        const sess = this.sessions[sessionId];
+        if (sess && sess.viaJump) {
+            const jumpBadge = document.createElement('span');
+            jumpBadge.className = 'tab-jump-badge';
+            jumpBadge.textContent = '🛰️';
+            jumpBadge.title = 'via ' + sess.viaJump;
+            tab.appendChild(jumpBadge);
+        }
         tab.appendChild(tabEdit);
         tab.appendChild(tabClose);
 
@@ -421,7 +431,11 @@ const SessionManager = {
 
         titleEl.textContent = this.getDisplayLabel(sessionId, session.username, session.host);
 
-        const connInfo = `${session.username}@${session.host}:${session.port}`;
+        let connInfo = `${session.username}@${session.host}:${session.port}`;
+        if (session.viaJump) {
+            const via = window.i18n ? i18n.t('connection.via') : 'via';
+            connInfo += `  ·  ${via} ${session.viaJump}`;
+        }
         notesEl.textContent = connInfo;
         notesEl.classList.remove('empty');
     },

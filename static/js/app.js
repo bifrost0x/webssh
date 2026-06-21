@@ -875,7 +875,10 @@
         window.ModalManager.close(document.getElementById('connectionModal'));
         processPaneQueue();
 
-        showNotification(`Connected to ${data.username}@${data.host}`, 'success');
+        const connMsg = data.via_jump
+            ? `Connected to ${data.username}@${data.host} via ${data.via_jump}`
+            : `Connected to ${data.username}@${data.host}`;
+        showNotification(connMsg, 'success');
 
         ConnectionHistory.addConnection(data.host, data.port, data.username);
 
@@ -954,6 +957,20 @@
         showNotification('SSH key deleted successfully', 'success');
     });
 
+    socket.on('jump_hosts_list', (data) => {
+        if (window.JumpHostManager) window.JumpHostManager.setJumpHosts(data.jump_hosts);
+    });
+
+    socket.on('jump_host_saved', (data) => {
+        showNotification(window.i18n ? i18n.t('jumphosts.savedOk') : 'Jump host saved', 'success');
+        document.getElementById('jumpHostForm')?.reset();
+        document.getElementById('jhKeyGroup')?.classList.add('hidden');
+    });
+
+    socket.on('jump_host_deleted', (data) => {
+        showNotification(window.i18n ? i18n.t('jumphosts.deleted') : 'Jump host deleted', 'success');
+    });
+
     socket.on('file_progress', (data) => {
         FileTransferManager.updateProgress(data);
     });
@@ -990,6 +1007,14 @@
         pendingPaneIndex = paneIndex;
         if (paneIndex !== null && paneIndex !== undefined) {
             SessionManager.setActivePane(paneIndex);
+        }
+
+        // Reset the jump host selection so a previous jump never carries into a
+        // new connection by accident.
+        const jumpHostSelect = document.getElementById('jumpHostSelect');
+        if (jumpHostSelect) {
+            jumpHostSelect.value = '';
+            document.getElementById('jumpHostPasswordGroup')?.classList.add('hidden');
         }
 
         ConnectionHistory.renderHistoryDropdown();
@@ -1705,6 +1730,9 @@
 
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();
+        if (window.JumpHostManager) {
+            window.JumpHostManager.load();
+        }
 
         document.getElementById('newConnectionBtn').addEventListener('click', () => {
             openConnectionModalForPane(getDefaultPaneIndex());
@@ -1755,15 +1783,46 @@
                 return;
             }
 
+            // Optional jump host (bastion) — chosen from the saved list
+            const jumpHostId = document.getElementById('jumpHostSelect').value;
+            let proxyJump = null;
+            if (jumpHostId) {
+                const jh = window.JumpHostManager ? window.JumpHostManager.getById(jumpHostId) : null;
+                if (!jh) {
+                    showNotification('Selected jump host not found', 'error');
+                    return;
+                }
+                proxyJump = {
+                    host: jh.host,
+                    port: jh.port,
+                    username: jh.username,
+                    auth_type: jh.auth_type
+                };
+                if (jh.auth_type === 'password') {
+                    const jhPass = document.getElementById('jumpHostPasswordInput').value;
+                    if (!jhPass) {
+                        showNotification('Jump host password is required', 'error');
+                        return;
+                    }
+                    proxyJump.password = jhPass;
+                } else {
+                    proxyJump.key_id = jh.key_id;
+                }
+            }
+
             if (saveProfile && profileName) {
-                ProfileManager.saveProfile({
+                const profilePayload = {
                     name: profileName,
                     host: host,
                     port: parseInt(port),
                     username: username,
                     auth_type: authType,
                     key_id: authType === 'key' ? keyId : null
-                });
+                };
+                if (jumpHostId) {
+                    profilePayload.jump_host_id = jumpHostId;
+                }
+                ProfileManager.saveProfile(profilePayload);
             }
 
             currentConnectRequestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -1785,6 +1844,10 @@
                 connectionData.key_id = keyId;
             }
 
+            if (proxyJump) {
+                connectionData.proxy_jump = proxyJump;
+            }
+
             const connectBtn = document.getElementById('connectBtn');
             const originalText = connectBtn.textContent;
             connectSeconds = 0;
@@ -1798,6 +1861,7 @@
             setConnectLoading(true);
 
             document.getElementById('passwordInput').value = '';
+            document.getElementById('jumpHostPasswordInput').value = '';
         });
 
         document.getElementById('profileSelect').addEventListener('change', (e) => {
@@ -1827,6 +1891,12 @@
             radio.addEventListener('change', (e) => {
                 ProfileManager.handleAuthTypeChange(e.target.value);
             });
+        });
+
+        document.getElementById('jumpHostSelect').addEventListener('change', () => {
+            if (window.JumpHostManager) {
+                window.JumpHostManager.updatePasswordVisibility();
+            }
         });
 
         document.getElementById('saveProfileCheck').addEventListener('change', (e) => {
@@ -1861,6 +1931,46 @@
             }
 
             ProfileManager.uploadKey(name, keyContent);
+        });
+
+        document.getElementById('manageJumpHostsBtn')?.addEventListener('click', () => {
+            window.ModalManager.open(document.getElementById('jumpHostManagementModal'));
+            ProfileManager.loadKeys();
+            if (window.JumpHostManager) {
+                window.JumpHostManager.load();
+                window.JumpHostManager.renderList();
+            }
+        });
+
+        document.getElementById('closeJumpHostModal')?.addEventListener('click', () => {
+            window.ModalManager.close(document.getElementById('jumpHostManagementModal'));
+        });
+
+        document.querySelectorAll('input[name="jhAuthType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                document.getElementById('jhKeyGroup').classList.toggle('hidden', e.target.value !== 'key');
+            });
+        });
+
+        document.getElementById('jumpHostForm')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('jhNameInput').value.trim();
+            const host = document.getElementById('jhHostInput').value.trim();
+            const port = document.getElementById('jhPortInput').value;
+            const username = document.getElementById('jhUsernameInput').value.trim();
+            const authType = document.querySelector('input[name="jhAuthType"]:checked').value;
+            const keyId = document.getElementById('jhKeySelect').value;
+            if (!name || !host || !username) {
+                showNotification('Name, host and username are required', 'error');
+                return;
+            }
+            if (authType === 'key' && !keyId) {
+                showNotification('SSH key is required', 'error');
+                return;
+            }
+            if (window.JumpHostManager) {
+                window.JumpHostManager.save(name, host, port, username, authType, keyId);
+            }
         });
 
         const changePasswordBtn = document.getElementById('changePasswordBtn');

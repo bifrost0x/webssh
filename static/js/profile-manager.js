@@ -40,16 +40,21 @@ const ProfileManager = {
     },
 
     renderKeySelect() {
-        const select = document.getElementById('keySelect');
-        if (!select) return;
+        const selects = [
+            document.getElementById('keySelect'),
+            document.getElementById('jhKeySelect')
+        ].filter(Boolean);
 
-        select.innerHTML = '<option value="">-- Select SSH Key --</option>';
-
-        this.keys.forEach(key => {
-            const option = document.createElement('option');
-            option.value = key.id;
-            option.textContent = `${key.name} (${key.key_type})`;
-            select.appendChild(option);
+        selects.forEach(select => {
+            const current = select.value;
+            select.innerHTML = '<option value="">-- Select SSH Key --</option>';
+            this.keys.forEach(key => {
+                const option = document.createElement('option');
+                option.value = key.id;
+                option.textContent = `${key.name} (${key.key_type})`;
+                select.appendChild(option);
+            });
+            if (current) select.value = current;
         });
     },
 
@@ -119,6 +124,16 @@ const ProfileManager = {
 
         if (profile.auth_type === 'key' && profile.key_id) {
             document.getElementById('keySelect').value = profile.key_id;
+        }
+
+        // Jump host (bastion) reference — the password is entered at connect time.
+        const jumpHostSelect = document.getElementById('jumpHostSelect');
+        if (jumpHostSelect) {
+            jumpHostSelect.value = profile.jump_host_id || '';
+            document.getElementById('jumpHostPasswordInput').value = '';
+            if (window.JumpHostManager) {
+                window.JumpHostManager.updatePasswordVisibility();
+            }
         }
     },
 

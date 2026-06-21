@@ -810,6 +810,13 @@ body[data-theme="obsidian"] {
     cursor: default;
 }
 
+.tab-jump-badge {
+    font-size: 11px;
+    margin-left: 2px;
+    opacity: 0.85;
+    cursor: help;
+}
+
 .tab-label:hover {
     cursor: text;
 }
