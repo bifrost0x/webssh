@@ -431,12 +431,15 @@ const SessionManager = {
 
         titleEl.textContent = this.getDisplayLabel(sessionId, session.username, session.host);
 
-        let connInfo = `${session.username}@${session.host}:${session.port}`;
+        notesEl.textContent = `${session.username}@${session.host}:${session.port}`;
         if (session.viaJump) {
             const via = window.i18n ? i18n.t('connection.via') : 'via';
-            connInfo += `  ·  ${via} ${session.viaJump}`;
+            notesEl.appendChild(document.createTextNode('  ·  '));
+            const viaSpan = document.createElement('span');
+            viaSpan.className = 'session-via';
+            viaSpan.textContent = `${via} ${session.viaJump}`;
+            notesEl.appendChild(viaSpan);
         }
-        notesEl.textContent = connInfo;
         notesEl.classList.remove('empty');
     },
 

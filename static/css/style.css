@@ -1145,6 +1145,11 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     color: var(--text-muted);
 }
 
+.session-via {
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
 .drop-overlay {
     position: absolute;
     inset: 0;

@@ -89,7 +89,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **10 Themes** - Dark, light, and colorful options
 - **5 Languages** - English, German, French, Spanish, Chinese
 - **Connection Profiles** - Save server configurations
-- **Jump Hosts / ProxyJump** - Reach targets through a bastion; save jump hosts once and pick them per connection
+- **Jump Hosts / ProxyJump** - Reach targets through a bastion; save jump hosts once, pick them per connection, with a clear "via &lt;bastion&gt;" indicator on the session
 - **Command Library** - Store frequently used commands
 - **OS-Aware Command Library** - Filter commands by detected OS (Linux / macOS / BSD / Windows)
 - **SSH Key Management** - Import keys (RSA, Ed25519, ECDSA, DSS), encrypted at rest
