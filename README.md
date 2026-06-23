@@ -40,6 +40,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/connection-panel.png" alt="Connection Panel" width="800">
 </p>
+
 - **Broadcast Input** - Send a command to all open SSH sessions simultaneously (cluster-SSH style)
 - **Multi-Session Support** - Up to 10 concurrent SSH sessions with tabs
 - **Split Panes** - 2x2 grid layout for monitoring multiple servers
