@@ -33,6 +33,10 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-demo.gif" alt="Demo" width="800">
 </p>
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/connection-panel.png" alt="Connection Panel" width="800">
+</p>
+
 ## Features
 
 ### Terminal
@@ -101,6 +105,13 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 </p>
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/commandlibrary.png" alt="Command Library" width="700">
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/keys.png" alt="SSH Key Management" width="700">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/mobile.png" alt="Mobile View" width="350">
 </p>
 
 ### Administration
