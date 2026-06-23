@@ -33,13 +33,13 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-demo.gif" alt="Demo" width="800">
 </p>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/connection-panel.png" alt="Connection Panel" width="800">
-</p>
-
 ## Features
 
 ### Terminal
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/connection-panel.png" alt="Connection Panel" width="800">
+</p>
 - **Broadcast Input** - Send a command to all open SSH sessions simultaneously (cluster-SSH style)
 - **Multi-Session Support** - Up to 10 concurrent SSH sessions with tabs
 - **Split Panes** - 2x2 grid layout for monitoring multiple servers
@@ -53,7 +53,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Command Palette** - Fuzzy command launcher (Ctrl+K)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/multi.png" alt="Multi-Session" width="700">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/multi.png" alt="Split Panes" width="700">
 </p>
 
 ### File Manager (SFTP)
@@ -99,17 +99,14 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **OS-Aware Command Library** - Filter commands by detected OS (Linux / macOS / BSD / Windows)
 - **SSH Key Management** - Import keys (RSA, Ed25519, ECDSA, DSS), encrypted at rest
 - **Notepad** - Persistent scratchpad for notes, commands, and snippets
+- **Mobile-Friendly** - Responsive layout for phones and tablets
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/themes.png" alt="Themes" width="700">
-</p>
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/commandlibrary.png" alt="Command Library" width="700">
 </p>
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/keys.png" alt="SSH Key Management" width="700">
 </p>
-
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/mobile.png" alt="Mobile View" width="350">
 </p>
@@ -362,6 +359,10 @@ Web SSH Terminal includes 10 themes:
 | Solar Drift | Blue/Gold | Arctic Ice | Cyan |
 | Rose Gold | Rose | Cyberpunk Neon | Magenta |
 | Emerald Matrix | Matrix Green | Obsidian | Pure Black |
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/themes.png" alt="Themes" width="700">
+</p>
 
 ## Security
 
