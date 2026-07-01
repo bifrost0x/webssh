@@ -160,3 +160,61 @@ class TestAuthentication:
             user, error = authenticate_user('nonexistent', 'password123')
             assert user is None
             assert 'Invalid' in error
+
+    def test_authenticate_none_password_does_not_crash(self, app):
+        # A missing password field must not raise (previously crashed on
+        # None.encode); it should just fail authentication.
+        with app.app_context():
+            from app.auth import register_user, authenticate_user
+            register_user('testuser', 'password123')
+            user, error = authenticate_user('testuser', None)
+            assert user is None
+            assert 'Invalid' in error
+            user, error = authenticate_user('nonexistent', None)
+            assert user is None
+            assert 'Invalid' in error
+
+
+class TestSSRFGuard:
+    """_is_internal_address underpins BLOCK_INTERNAL_SSH; it must catch internal
+    targets given as literal IPs *and* as hostnames that resolve to them."""
+
+    def test_literal_loopback_blocked(self):
+        from app.socket_events import _is_internal_address
+        assert _is_internal_address('127.0.0.1')
+        assert _is_internal_address('::1')
+
+    def test_literal_private_and_metadata_blocked(self):
+        from app.socket_events import _is_internal_address
+        assert _is_internal_address('10.0.0.5')
+        assert _is_internal_address('192.168.1.1')
+        assert _is_internal_address('172.16.0.1')
+        assert _is_internal_address('169.254.169.254')  # cloud metadata
+
+    def test_localhost_name_blocked(self):
+        from app.socket_events import _is_internal_address
+        assert _is_internal_address('localhost')
+
+    def test_hostname_resolving_to_loopback_blocked(self, monkeypatch):
+        import app.socket_events as se
+        monkeypatch.setattr(
+            se.socket, 'getaddrinfo',
+            lambda *a, **k: [(2, 1, 6, '', ('127.0.0.1', 0))]
+        )
+        assert se._is_internal_address('evil.example.com')
+
+    def test_public_address_allowed(self, monkeypatch):
+        import app.socket_events as se
+        assert not se._is_internal_address('8.8.8.8')
+        monkeypatch.setattr(
+            se.socket, 'getaddrinfo',
+            lambda *a, **k: [(2, 1, 6, '', ('93.184.216.34', 0))]
+        )
+        assert not se._is_internal_address('example.com')
+
+    def test_unresolvable_host_not_flagged(self, monkeypatch):
+        import app.socket_events as se
+        def _boom(*a, **k):
+            raise se.socket.gaierror('nope')
+        monkeypatch.setattr(se.socket, 'getaddrinfo', _boom)
+        assert not se._is_internal_address('does-not-exist.invalid')
