@@ -378,11 +378,14 @@ Web SSH Terminal includes 10 themes:
 ### Security Features
 
 - **Password Hashing**: bcrypt with automatic salt
+- **Constant-time Login**: failed logins run a dummy hash so response timing does not reveal whether an account exists (user-enumeration resistant)
 - **Key Encryption**: Fernet (AES-128-CBC + HMAC) for SSH keys at rest
 - **Rate Limiting**: 5 login attempts per minute per IP
 - **CSRF Tokens**: All forms protected
 - **Secure Cookies**: HttpOnly, SameSite=Lax, Secure (in production)
 - **Security Headers**: HSTS, CSP, X-Content-Type-Options, X-Frame-Options
+- **SSRF Protection**: with `BLOCK_INTERNAL_SSH=true`, hostnames are resolved and connections to loopback, link-local (incl. cloud-metadata `169.254.169.254`), private, and reserved addresses are blocked — a hostname that resolves to an internal address cannot bypass the guard
+- **Upload Limits**: bounded sizes for file uploads, editor saves, notepad, and SSH key uploads to prevent resource exhaustion
 
 ### Reporting Security Issues
 
