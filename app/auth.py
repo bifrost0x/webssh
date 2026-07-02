@@ -1,3 +1,4 @@
+import bcrypt
 from flask import request
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
@@ -5,6 +6,11 @@ from collections import deque
 from .models import db, User, SocketSession
 
 login_manager = LoginManager()
+
+# Precomputed bcrypt hash of a random value. Used to run a real verification
+# even when the supplied username does not exist, so login response timing does
+# not reveal whether an account exists (user enumeration mitigation).
+_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b'account-enumeration-mitigation', bcrypt.gensalt())
 
 class RateLimiter:
     """
@@ -125,8 +131,14 @@ def authenticate_user(username, password):
     Returns:
         tuple: (User object, error message) - one will be None
     """
+    password = password or ''
     user = User.query.filter_by(username=username).first()
-    if user and user.check_password(password):
+    if user is None:
+        # Verify against a dummy hash so a missing account takes the same time
+        # as a wrong password, preventing username enumeration by timing.
+        bcrypt.checkpw(password.encode('utf-8'), _DUMMY_PASSWORD_HASH)
+        return None, "Invalid username or password"
+    if user.check_password(password):
         if getattr(user, 'is_locked', False):
             return None, "This account is locked. Please contact an administrator."
         user.last_login = datetime.now(timezone.utc)

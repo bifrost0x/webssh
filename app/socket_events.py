@@ -14,6 +14,7 @@ from . import binary_transfer, connection_pool
 import base64
 import os
 import re
+import socket
 import ipaddress
 import config
 
@@ -30,17 +31,55 @@ def _is_valid_host(host_str):
     )
     return bool(hostname_pattern.match(host_str))
 
-def _is_internal_address(host_str):
-    """Check if host is a loopback or link-local address (SSRF protection).
+def _ip_is_internal(addr):
+    """True if an IP address is non-public and therefore off-limits when
+    BLOCK_INTERNAL_SSH is enabled.
 
-    When BLOCK_INTERNAL_SSH is enabled, prevents SSH connections to
-    loopback and link-local addresses to mitigate SSRF attacks.
+    Covers loopback (127.0.0.0/8, ::1), link-local (169.254.0.0/16 incl. the
+    cloud metadata address 169.254.169.254, fe80::/10), RFC1918 / ULA private
+    ranges, and other reserved/multicast/unspecified space.
     """
+    return (addr.is_loopback or addr.is_link_local or addr.is_private
+            or addr.is_reserved or addr.is_multicast or addr.is_unspecified)
+
+def _is_internal_address(host_str):
+    """Check whether a host points at an internal address (SSRF protection).
+
+    When BLOCK_INTERNAL_SSH is enabled, prevents SSH connections to internal
+    addresses. Hostnames are resolved and EVERY address they map to is checked,
+    so a name that resolves to 127.0.0.1 / a private IP / the metadata address
+    cannot be used to bypass the guard (a literal-IP-only check could).
+
+    Note: DNS is resolved here and again by paramiko at connect time, so a host
+    under attacker DNS control could still rebind in between (TOCTOU). Closing
+    that fully would require pinning the connection to the validated IP.
+    """
+    host_str = (host_str or '').strip()
+    if not host_str:
+        return False
+
+    # Literal IP address: check it directly.
     try:
-        addr = ipaddress.ip_address(host_str)
-        return addr.is_loopback or addr.is_link_local
+        return _ip_is_internal(ipaddress.ip_address(host_str))
     except ValueError:
-        return host_str.lower() in ('localhost', 'localhost.localdomain')
+        pass
+
+    if host_str.lower() in ('localhost', 'localhost.localdomain', 'ip6-localhost'):
+        return True
+
+    # Hostname: resolve and reject if ANY resolved address is internal.
+    try:
+        infos = socket.getaddrinfo(host_str, None)
+    except socket.gaierror:
+        # Unresolvable name cannot reach an internal service; let the connect fail.
+        return False
+    for info in infos:
+        try:
+            if _ip_is_internal(ipaddress.ip_address(info[4][0])):
+                return True
+        except ValueError:
+            continue
+    return False
 
 def _validate_ssh_params(host, port, username, allow_internal=False):
     """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error).
@@ -512,6 +551,15 @@ def handle_upload_key(data, current_user=None):
 
         if not all([name, key_content]):
             emit('error', {'error': 'Name and key content required'})
+            return
+
+        # SSH private keys are a few KB at most; reject oversized input outright
+        # so a client cannot force large writes to disk.
+        if len(name) > 128:
+            emit('error', {'error': 'Key name too long (max 128 characters)'})
+            return
+        if len(key_content) > 64 * 1024:
+            emit('error', {'error': 'Key content too large (max 64KB)'})
             return
 
         key_meta, error = key_manager.save_key(current_user.id, name, key_content)
