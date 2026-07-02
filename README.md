@@ -16,11 +16,33 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker">
+  <!-- Statische Badges -->
+  <a href="https://hub.docker.com/r/ghcr.io/bifrost0x/webssh"><img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
   <a href="https://bifrost0x.github.io/webssh/"><img src="https://img.shields.io/badge/code%20graph-live-blueviolet" alt="Code Graph"></a>
+  <br>
+  <!-- GitHub Actions Workflows -->
+  <a href="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml">
+    <img src="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml/badge.svg" alt="Tests">
+  </a>
+  <a href="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql">
+    <img src="https://github.com/bifrost0x/webssh/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL">
+  </a>
+  <a href="https://github.com/bifrost0x/webssh/actions/workflows/dependabot/dependabot-updates">
+    <img src="https://github.com/bifrost0x/webssh/actions/workflows/dependabot/dependabot-updates/badge.svg" alt="Dependabot Updates">
+  </a>
+  <a href="https://github.com/bifrost0x/webssh/actions/workflows/dependabot/update-graph">
+    <img src="https://github.com/bifrost0x/webssh/actions/workflows/dependabot/update-graph/badge.svg" alt="Dependency Graph">
+  </a>
+  <br>
+  <a href="https://github.com/bifrost0x/webssh/actions/workflows/dependency-graph/auto-submission">
+    <img src="https://github.com/bifrost0x/webssh/actions/workflows/dependency-graph/auto-submission/badge.svg" alt="Automatic Dependency Submission">
+  </a>
+  <a href="https://github.com/bifrost0x/webssh/actions/workflows/docker-publish.yml">
+    <img src="https://github.com/bifrost0x/webssh/actions/workflows/docker-publish.yml/badge.svg" alt="Build and Publish Docker Image">
+  </a>
 </p>
 
 ---
