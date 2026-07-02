@@ -3,7 +3,7 @@ from flask import request, current_app
 from flask_login import current_user
 from . import socketio, ssh_manager, profile_manager, key_manager, sftp_handler, jump_host_manager
 from .decorators import socket_login_required
-from .auth import register_socket_session, get_user_from_socket
+from .auth import register_socket_session, get_user_from_socket, check_socket_rate_limit
 from .models import db, SSHSession, SocketSession
 from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
@@ -206,6 +206,11 @@ def handle_ssh_connect(data, current_user=None):
 
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
+
+        if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
+            log_warning("SSH connect rate limit hit", user=current_user.username)
+            emit_error('Too many connection attempts. Please wait a moment.')
+            return
 
         proxy_jump = data.get('proxy_jump')
 
@@ -1205,6 +1210,13 @@ def handle_download_folder_binary(data, current_user=None):
                                     zipf.writestr(zip_item_path + '/', '')
                                     add_folder_to_zip(sftp_client, item_path, zip_item_path, depth + 1)
                                 else:
+                                    # Enforce the size limit using the file's stat
+                                    # size BEFORE reading it, so a single huge file
+                                    # cannot be pulled entirely into memory first.
+                                    file_size = item_lstat.st_size or 0
+                                    if cumulative_size + file_size > max_zip_size:
+                                        max_mb = max_zip_size // (1024 * 1024)
+                                        raise ValueError(f"Folder exceeds maximum download size ({max_mb}MB)")
                                     with sftp_client.file(item_path, 'rb') as remote_file:
                                         file_data = remote_file.read()
                                         cumulative_size += len(file_data)
@@ -1263,6 +1275,11 @@ def handle_download_folder_binary(data, current_user=None):
 def handle_quick_connect(data, current_user=None):
     """Create temporary SSH connection for file transfers without active session."""
     try:
+        if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
+            log_warning("Quick connect rate limit hit", user=current_user.username)
+            emit('quick_connect_error', {'error': 'Too many connection attempts. Please wait a moment.'})
+            return
+
         password = data.get('password')
         key_id = data.get('key_id')
 

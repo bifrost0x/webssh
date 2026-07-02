@@ -423,9 +423,11 @@ def create_app():
             if not all([file, session_id, remote_path]):
                 return jsonify({'error': 'Missing required fields'}), 400
 
-            file_data = file.read()
-            if len(file_data) > config.MAX_UPLOAD_SIZE:
-                max_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
+            max_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
+
+            # Reject oversized uploads from the Content-Length header BEFORE
+            # buffering anything, so a large request cannot exhaust memory.
+            if request.content_length and request.content_length > config.MAX_UPLOAD_SIZE:
                 return jsonify({'error': f'File too large. Maximum: {max_mb}MB'}), 413
 
             from .socket_events import verify_session_ownership
@@ -435,8 +437,20 @@ def create_app():
                 if not conn_info or conn_info['user_id'] != str(current_user.id):
                     return jsonify({'error': 'Unauthorized'}), 403
 
-            chunk_size = 65536
-            chunks = [file_data[i:i+chunk_size] for i in range(0, len(file_data), chunk_size)]
+            # Read incrementally with a hard cap instead of file.read() into one
+            # buffer plus a second full copy. This also guards against a missing
+            # or dishonest Content-Length (e.g. chunked transfer-encoding).
+            chunk_size = config.CHUNK_SIZE
+            chunks = []
+            total = 0
+            while True:
+                chunk = file.read(chunk_size)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > config.MAX_UPLOAD_SIZE:
+                    return jsonify({'error': f'File too large. Maximum: {max_mb}MB'}), 413
+                chunks.append(chunk)
 
             success, error = sftp_handler.upload_file_chunked(
                 session_id=session_id,

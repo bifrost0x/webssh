@@ -82,6 +82,17 @@ def check_rate_limit(ip_address, endpoint, limit_str):
     key = f'{endpoint}:{ip_address}'
     return not _rate_limiter.allow(key, limit, window)
 
+def check_socket_rate_limit(user_id, endpoint, limit_str):
+    """Return True if a per-user socket action should be blocked.
+
+    Keyed by user_id (not IP), so it throttles the authenticated user behind
+    an event regardless of source address. Every call counts toward the limit,
+    so both successful and failed attempts are rate-limited.
+    """
+    limit, window = parse_rate_limit(limit_str)
+    key = f'{endpoint}:{user_id}'
+    return not _rate_limiter.allow(key, limit, window)
+
 @login_manager.user_loader
 def load_user(user_id):
     """Load user by ID for Flask-Login."""

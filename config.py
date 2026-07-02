@@ -98,6 +98,11 @@ RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
+# Per-user limit on SSH connection attempts via WebSocket (ssh_connect /
+# quick_connect). Prevents an authenticated user from abusing the server as an
+# unthrottled SSH brute-force / port-scan proxy against third-party hosts.
+# Generous default so normal use and reconnects never hit it.
+RATELIMIT_SSH_CONNECT = os.environ.get('SSH_CONNECT_RATELIMIT', '10 per minute')
 
 REGISTRATION_ENABLED = os.environ.get('REGISTRATION_ENABLED', 'True') == 'True'
 

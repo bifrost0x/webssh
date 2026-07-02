@@ -56,6 +56,24 @@ class TestRateLimiter:
         assert parse_rate_limit(None) == (5, 60)
         assert parse_rate_limit('') == (5, 60)
 
+    def test_socket_rate_limit_blocks_after_limit(self):
+        from app.auth import check_socket_rate_limit
+        # Unique user id so the shared module-level limiter has no prior state.
+        user_id = 918273
+        # Within the limit -> not blocked (returns False).
+        assert check_socket_rate_limit(user_id, 'ssh_connect', '2 per minute') is False
+        assert check_socket_rate_limit(user_id, 'ssh_connect', '2 per minute') is False
+        # Over the limit -> blocked (returns True).
+        assert check_socket_rate_limit(user_id, 'ssh_connect', '2 per minute') is True
+
+    def test_socket_rate_limit_per_user_isolation(self):
+        from app.auth import check_socket_rate_limit
+        user_a, user_b = 918274, 918275
+        assert check_socket_rate_limit(user_a, 'ssh_connect', '1 per minute') is False
+        assert check_socket_rate_limit(user_a, 'ssh_connect', '1 per minute') is True
+        # A different user has an independent bucket.
+        assert check_socket_rate_limit(user_b, 'ssh_connect', '1 per minute') is False
+
 
 class TestUserRegistration:
     """Tests for user registration."""
