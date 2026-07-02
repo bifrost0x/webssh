@@ -194,6 +194,7 @@ const CommandLibrary = {
         container.innerHTML = '';
         this.renderCursor = 0;
         container.scrollTop = 0;
+        this.attachCommandListeners(container);
         this.renderNextChunk();
 
         container.onscroll = () => {
@@ -251,31 +252,28 @@ const CommandLibrary = {
 
             container.appendChild(row);
         });
-
-        this.attachCommandListeners(container);
     },
 
     attachCommandListeners(container) {
-        container.querySelectorAll('.cmd-execute').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.executeCommand(btn.dataset.cmdId);
-            });
-        });
-        container.querySelectorAll('.cmd-copy').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.copyCommand(btn.dataset.cmdId);
-            });
-        });
-        container.querySelectorAll('.cmd-edit').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.editCommand(btn.dataset.cmdId);
-            });
-        });
-        container.querySelectorAll('.cmd-delete').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.deleteCommand(btn.dataset.cmdId);
-            });
-        });
+        // Single delegated listener bound once per render. Attaching per-chunk
+        // over the whole container (as before) stacked duplicate listeners on
+        // already-rendered rows during infinite scroll, firing actions 2x/3x.
+        container.onclick = (event) => {
+            const btn = event.target.closest('button[data-cmd-id]');
+            if (!btn || !container.contains(btn)) {
+                return;
+            }
+            const cmdId = btn.dataset.cmdId;
+            if (btn.classList.contains('cmd-execute')) {
+                this.executeCommand(cmdId);
+            } else if (btn.classList.contains('cmd-copy')) {
+                this.copyCommand(cmdId);
+            } else if (btn.classList.contains('cmd-edit')) {
+                this.editCommand(cmdId);
+            } else if (btn.classList.contains('cmd-delete')) {
+                this.deleteCommand(cmdId);
+            }
+        };
     },
 
     executeCommand(commandId) {

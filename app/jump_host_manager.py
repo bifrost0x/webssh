@@ -10,6 +10,7 @@ import uuid
 import ipaddress
 from datetime import datetime
 from .audit_logger import log_error, log_info
+from .storage_utils import storage_lock, atomic_write_json
 
 
 def _is_valid_host(host):
@@ -55,8 +56,7 @@ def save_jump_hosts(user_id, jump_hosts):
         if not f:
             return False
         f.parent.mkdir(parents=True, exist_ok=True)
-        with open(f, 'w') as fh:
-            json.dump({'jump_hosts': jump_hosts}, fh, indent=2)
+        atomic_write_json(f, {'jump_hosts': jump_hosts})
         return True
     except Exception as e:
         log_error("Error saving jump hosts", user_id=user_id, error=str(e))
@@ -99,23 +99,25 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
             'key_id': key_id if auth_type == 'key' else None,
             'created_at': datetime.utcnow().isoformat()
         }
-        jump_hosts = load_jump_hosts(user_id)
-        jump_hosts.append(jump_host)
-        if save_jump_hosts(user_id, jump_hosts):
-            log_info("Jump host saved", user_id=user_id, name=name)
-            return jump_host, None
-        return None, "Failed to save jump host"
+        with storage_lock(f'jump_hosts:{user_id}'):
+            jump_hosts = load_jump_hosts(user_id)
+            jump_hosts.append(jump_host)
+            if save_jump_hosts(user_id, jump_hosts):
+                log_info("Jump host saved", user_id=user_id, name=name)
+                return jump_host, None
+            return None, "Failed to save jump host"
     except Exception as e:
         return None, str(e)
 
 
 def delete_jump_host(user_id, jump_host_id):
     try:
-        jump_hosts = load_jump_hosts(user_id)
-        new_list = [j for j in jump_hosts if j.get('id') != jump_host_id]
-        if len(new_list) == len(jump_hosts):
-            return False
-        return save_jump_hosts(user_id, new_list)
+        with storage_lock(f'jump_hosts:{user_id}'):
+            jump_hosts = load_jump_hosts(user_id)
+            new_list = [j for j in jump_hosts if j.get('id') != jump_host_id]
+            if len(new_list) == len(jump_hosts):
+                return False
+            return save_jump_hosts(user_id, new_list)
     except Exception as e:
         log_error("Error deleting jump host", user_id=user_id, error=str(e))
         return False

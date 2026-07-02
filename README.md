@@ -117,7 +117,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **User Management** - Create, lock/unlock, promote/demote and delete users
 - **Audit Log Viewer** - Browse security events with level filter, search and pagination
 - **Registration Toggle** - Enable or disable self-registration at runtime (hides the public sign-up link)
-- **Zero-Touch Bootstrap** - First registered user becomes admin; on upgrade, existing users are granted admin automatically (configurable via `ADMIN_USERS`)
+- **Zero-Touch Bootstrap** - First registered user becomes admin; when upgrading an older install, the oldest existing account is granted admin automatically (additional admins configurable via `ADMIN_USERS`)
 
 ### Deployment
 - **Docker & Docker Compose** - Single-command deployment with healthcheck
@@ -232,6 +232,7 @@ docker build -t webssh:local .
 |----------|----------|---------|-------------|
 | `RATELIMIT_ENABLED` | No | `True` | Enable rate limiting (`true` or `false`) |
 | `RATELIMIT_LOGIN_LIMIT` | No | `5 per minute` | Login rate limit (format: `N per {second\|minute\|hour}`) |
+| `SSH_CONNECT_RATELIMIT` | No | `10 per minute` | Per-user limit on SSH connection attempts (`ssh_connect` / `quick_connect`; format: `N per {second\|minute\|hour}`) |
 | `RATELIMIT_DEFAULT` | No | `200 per hour` | Default rate limit for endpoints (format: `N per {second\|minute\|hour}`) |
 | `RATELIMIT_STORAGE_URL` | No | `memory://` | Rate limit storage backend (in-memory only, for single-worker deployments) |
 
@@ -380,7 +381,7 @@ Web SSH Terminal includes 10 themes:
 - **Password Hashing**: bcrypt with automatic salt
 - **Constant-time Login**: failed logins run a dummy hash so response timing does not reveal whether an account exists (user-enumeration resistant)
 - **Key Encryption**: Fernet (AES-128-CBC + HMAC) for SSH keys at rest
-- **Rate Limiting**: 5 login attempts per minute per IP
+- **Rate Limiting**: 5 login attempts per minute per IP, plus a per-user cap on SSH connection attempts (`ssh_connect` / `quick_connect`) to prevent abuse as a brute-force/scan proxy
 - **CSRF Tokens**: All forms protected
 - **Secure Cookies**: HttpOnly, SameSite=Lax, Secure (in production)
 - **Security Headers**: HSTS, CSP, X-Content-Type-Options, X-Frame-Options
@@ -451,7 +452,7 @@ commands above. Dependabot keeps `package.json` up to date.
 
 ```
 webssh/
-├── app/                    # Flask application (15 modules)
+├── app/                    # Flask application (18 modules)
 │   ├── __init__.py        # App factory, routes, security headers
 │   ├── auth.py            # Authentication + rate limiting
 │   ├── models.py          # SQLAlchemy models
@@ -462,16 +463,19 @@ webssh/
 │   ├── key_manager.py     # SSH key storage
 │   ├── key_encryption.py  # SSH key encryption at rest
 │   ├── profile_manager.py # Connection profiles
+│   ├── jump_host_manager.py # Jump host (bastion) storage
 │   ├── command_manager.py # Command library
 │   ├── binary_transfer.py # Binary file transfer protocol
 │   ├── user_settings.py   # User preferences
+│   ├── app_settings.py    # Runtime app settings (e.g. registration toggle)
+│   ├── storage_utils.py   # Atomic JSON writes + per-user locks
 │   ├── audit_logger.py    # Security audit logging
 │   └── decorators.py      # Shared decorators
 ├── static/
-│   ├── css/               # Stylesheets (3 files)
-│   ├── js/                # Frontend JavaScript (12 modules)
+│   ├── css/               # Stylesheets (4 files)
+│   ├── js/                # Frontend JavaScript (15 modules)
 │   └── vendor/            # Vendored browser libs (see Frontend Assets)
-├── templates/             # Jinja2 templates (4 files)
+├── templates/             # Jinja2 templates (5 files)
 ├── config.py              # Central configuration
 ├── start.py               # Entry point
 ├── Dockerfile             # Container definition

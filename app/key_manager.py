@@ -6,6 +6,7 @@ from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from . import key_encryption
+from .storage_utils import storage_lock, atomic_write_json
 
 def get_user_keys_dir(user_id):
     """Get the keys directory for a specific user."""
@@ -49,8 +50,7 @@ def save_keys(user_id, keys):
 
         keys_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(keys_file, 'w') as f:
-            json.dump({'keys': keys}, f, indent=2)
+        atomic_write_json(keys_file, {'keys': keys})
         return True
     except Exception as e:
         log_error(f"Error saving keys", user_id=user_id, error=str(e))
@@ -80,15 +80,16 @@ def save_key(user_id, name, key_content):
             'encrypted': True,
             'uploaded_at': datetime.utcnow().isoformat()
         }
-        keys = load_keys(user_id)
-        keys.append(key_meta)
+        with storage_lock(f'keys:{user_id}'):
+            keys = load_keys(user_id)
+            keys.append(key_meta)
 
-        if save_keys(user_id, keys):
-            log_info(f"SSH key saved (encrypted)", user_id=user_id, key_name=name)
-            return key_meta, None
-        else:
-            key_path.unlink(missing_ok=True)
-            return None, "Failed to save key metadata"
+            if save_keys(user_id, keys):
+                log_info(f"SSH key saved (encrypted)", user_id=user_id, key_name=name)
+                return key_meta, None
+            else:
+                key_path.unlink(missing_ok=True)
+                return None, "Failed to save key metadata"
     except Exception as e:
         return None, str(e)
 
@@ -143,23 +144,24 @@ def read_key_content(user_id, key_id):
 def delete_key(user_id, key_id):
     """Delete an SSH key and its metadata for a specific user."""
     try:
-        keys = load_keys(user_id)
-        key_to_delete = None
-        for key in keys:
-            if key['id'] == key_id:
-                key_to_delete = key
-                break
+        with storage_lock(f'keys:{user_id}'):
+            keys = load_keys(user_id)
+            key_to_delete = None
+            for key in keys:
+                if key['id'] == key_id:
+                    key_to_delete = key
+                    break
 
-        if not key_to_delete:
-            return False
+            if not key_to_delete:
+                return False
 
-        keys_dir = get_user_keys_dir(user_id)
-        if keys_dir:
-            key_path = keys_dir / key_to_delete['filename']
-            key_path.unlink(missing_ok=True)
+            keys_dir = get_user_keys_dir(user_id)
+            if keys_dir:
+                key_path = keys_dir / key_to_delete['filename']
+                key_path.unlink(missing_ok=True)
 
-        keys = [k for k in keys if k['id'] != key_id]
-        return save_keys(user_id, keys)
+            keys = [k for k in keys if k['id'] != key_id]
+            return save_keys(user_id, keys)
     except Exception as e:
         log_error(f"Error deleting key", user_id=user_id, error=str(e))
         return False

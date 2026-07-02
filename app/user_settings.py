@@ -1,4 +1,5 @@
 import json
+from .storage_utils import storage_lock, atomic_write_json
 
 DEFAULT_SETTINGS = {
     'theme': 'glass',
@@ -34,12 +35,12 @@ def save_user_settings(user_id, settings):
 
     settings_file = user.get_data_dir() / 'settings.json'
     settings_file.parent.mkdir(parents=True, exist_ok=True)
-    merged = get_user_settings(user_id)
-    merged.update(settings or {})
 
     try:
-        with open(settings_file, 'w') as f:
-            json.dump(merged, f, indent=2)
+        with storage_lock(f'settings:{user_id}'):
+            merged = get_user_settings(user_id)
+            merged.update(settings or {})
+            atomic_write_json(settings_file, merged)
         return True
     except Exception:
         return False

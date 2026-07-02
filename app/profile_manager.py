@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
+from .storage_utils import storage_lock, atomic_write_json
 
 
 def _is_valid_host(host_str):
@@ -56,8 +57,7 @@ def save_profiles(user_id, profiles):
 
         profiles_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(profiles_file, 'w') as f:
-            json.dump({'profiles': profiles}, f, indent=2)
+        atomic_write_json(profiles_file, {'profiles': profiles})
         return True
     except Exception as e:
         log_error(f"Error saving profiles", user_id=user_id, error=str(e))
@@ -109,13 +109,14 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None, jum
         if jump_host_id:
             profile['jump_host_id'] = str(jump_host_id)[:64]
 
-        profiles = load_profiles(user_id)
-        profiles.append(profile)
+        with storage_lock(f'profiles:{user_id}'):
+            profiles = load_profiles(user_id)
+            profiles.append(profile)
 
-        if save_profiles(user_id, profiles):
-            return profile, None
-        else:
-            return None, "Failed to save profile"
+            if save_profiles(user_id, profiles):
+                return profile, None
+            else:
+                return None, "Failed to save profile"
     except Exception as e:
         return None, str(e)
 
@@ -130,9 +131,10 @@ def get_profile(user_id, profile_id):
 def delete_profile(user_id, profile_id):
     """Delete a profile by ID for a specific user."""
     try:
-        profiles = load_profiles(user_id)
-        profiles = [p for p in profiles if p['id'] != profile_id]
-        return save_profiles(user_id, profiles)
+        with storage_lock(f'profiles:{user_id}'):
+            profiles = load_profiles(user_id)
+            profiles = [p for p in profiles if p['id'] != profile_id]
+            return save_profiles(user_id, profiles)
     except Exception as e:
         log_error(f"Error deleting profile", user_id=user_id, error=str(e))
         return False

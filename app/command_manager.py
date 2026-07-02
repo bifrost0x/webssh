@@ -7,6 +7,8 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 import config
+from .audit_logger import log_error
+from .storage_utils import storage_lock, atomic_write_json
 
 def load_system_commands():
     """Load global system commands from JSON."""
@@ -30,8 +32,16 @@ def load_user_commands(user_id):
 
     user_commands_file = user.get_data_dir() / 'commands.json'
     if user_commands_file.exists():
-        with open(user_commands_file, 'r') as f:
-            return json.load(f)
+        try:
+            with open(user_commands_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except (ValueError, OSError) as e:
+            # Corrupt/unreadable file: fail soft instead of crashing the whole
+            # command feature. Do NOT overwrite it here, so the data can be
+            # recovered manually.
+            log_error("Error loading user commands", user_id=user_id, error=str(e))
+            return []
     return []
 
 def save_user_commands(user_id, commands):
@@ -42,8 +52,8 @@ def save_user_commands(user_id, commands):
         return False
 
     user_commands_file = user.get_data_dir() / 'commands.json'
-    with open(user_commands_file, 'w') as f:
-        json.dump(commands, f, indent=2)
+    user_commands_file.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(user_commands_file, commands)
     return True
 
 def get_all_commands(user_id, os_filter=None):
@@ -71,8 +81,6 @@ def get_all_commands(user_id, os_filter=None):
 
 def add_user_command(user_id, name, command, parameters, description, os_list, category):
     """Add a new user command."""
-    user_cmds = load_user_commands(user_id)
-
     new_cmd = {
         'id': str(uuid.uuid4()),
         'name': name,
@@ -86,30 +94,34 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
         'createdAt': datetime.utcnow().isoformat()
     }
 
-    user_cmds.append(new_cmd)
-    save_user_commands(user_id, user_cmds)
+    with storage_lock(f'commands:{user_id}'):
+        user_cmds = load_user_commands(user_id)
+        user_cmds.append(new_cmd)
+        save_user_commands(user_id, user_cmds)
     return new_cmd
 
 def update_user_command(user_id, command_id, name, command, parameters, description, os_list, category):
     """Update an existing user command."""
-    user_cmds = load_user_commands(user_id)
+    with storage_lock(f'commands:{user_id}'):
+        user_cmds = load_user_commands(user_id)
 
-    for cmd in user_cmds:
-        if cmd['id'] == command_id:
-            cmd['name'] = name
-            cmd['command'] = command
-            cmd['parameters'] = parameters or ''
-            cmd['description'] = description
-            cmd['os'] = os_list
-            cmd['category'] = category or 'custom'
-            break
+        for cmd in user_cmds:
+            if cmd['id'] == command_id:
+                cmd['name'] = name
+                cmd['command'] = command
+                cmd['parameters'] = parameters or ''
+                cmd['description'] = description
+                cmd['os'] = os_list
+                cmd['category'] = category or 'custom'
+                break
 
-    save_user_commands(user_id, user_cmds)
+        save_user_commands(user_id, user_cmds)
     return True
 
 def delete_user_command(user_id, command_id):
     """Delete a user command."""
-    user_cmds = load_user_commands(user_id)
-    user_cmds = [cmd for cmd in user_cmds if cmd['id'] != command_id]
-    save_user_commands(user_id, user_cmds)
+    with storage_lock(f'commands:{user_id}'):
+        user_cmds = load_user_commands(user_id)
+        user_cmds = [cmd for cmd in user_cmds if cmd['id'] != command_id]
+        save_user_commands(user_id, user_cmds)
     return True

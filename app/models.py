@@ -62,14 +62,18 @@ def ensure_user_columns():
     for stmt in additions:
         db.session.execute(text(stmt))
     # First-time migration of an existing install: there was no role separation
-    # before, so every pre-existing user is granted admin automatically (zero
-    # operator interaction). Runs once — on later starts the column already
-    # exists, so this block is skipped.
+    # before. Grant admin ONLY to the oldest account (lowest id) instead of every
+    # user, so upgrading a multi-user install does not silently make everyone an
+    # admin. Runs once — on later starts the column already exists, so this block
+    # is skipped. (New installs seed their first admin via auth bootstrap.)
     if added_is_admin:
-        result = db.session.execute(text("UPDATE users SET is_admin = 1"))
+        result = db.session.execute(text(
+            "UPDATE users SET is_admin = 1 "
+            "WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1)"
+        ))
         try:
             from .audit_logger import log_info
-            log_info("Schema migration: granted admin to all pre-existing users",
+            log_info("Schema migration: granted admin to the oldest pre-existing user",
                      count=getattr(result, 'rowcount', None))
         except Exception:
             pass
