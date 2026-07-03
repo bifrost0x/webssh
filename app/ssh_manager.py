@@ -180,13 +180,18 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
     except paramiko.SSHException as e:
-        return None, f"SSH error: {str(e)}"
+        # Detail to the server log only; the client gets a generic message so
+        # low-level errors cannot be used to probe remote hosts/ports.
+        log_warning("SSH connection failed", host=f"{host}:{port}", error=str(e))
+        return None, "SSH connection failed"
     except socket.timeout:
         return None, "Connection timeout - host unreachable"
     except socket.error as e:
-        return None, f"Network error: {str(e)}"
+        log_warning("SSH network error", host=f"{host}:{port}", error=str(e))
+        return None, "Network error - could not reach host"
     except Exception as e:
-        return None, f"Unexpected error: {str(e)}"
+        log_error("SSH connection unexpected error", host=f"{host}:{port}", error=str(e))
+        return None, "Connection failed"
     finally:
         # Avoid leaking the bastion connection if the target connect failed.
         if bastion_client is not None and not connection_stored:

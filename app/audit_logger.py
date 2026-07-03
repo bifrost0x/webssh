@@ -118,20 +118,22 @@ def log_info(message, **kwargs):
 
 def log_warning(message, **kwargs):
     """Log warning message with optional structured data."""
+    safe_message = _sanitize_log_value(message)
     if kwargs:
         record = logging.LogRecord(
-            'webssh', logging.WARNING, '', 0, message, (), None
+            'webssh', logging.WARNING, '', 0, safe_message, (), None
         )
         record.extra_data = kwargs
         app_logger.handle(record)
     else:
-        app_logger.warning(message)
+        app_logger.warning(safe_message)
 
 def log_error(message, exc_info=False, **kwargs):
     """Log error message with optional exception and structured data."""
+    safe_message = _sanitize_log_value(message)
     if kwargs:
         record = logging.LogRecord(
-            'webssh', logging.ERROR, '', 0, message, (), None
+            'webssh', logging.ERROR, '', 0, safe_message, (), None
         )
         record.extra_data = kwargs
         if exc_info:
@@ -139,18 +141,19 @@ def log_error(message, exc_info=False, **kwargs):
             record.exc_info = sys.exc_info()
         app_logger.handle(record)
     else:
-        app_logger.error(message, exc_info=exc_info)
+        app_logger.error(safe_message, exc_info=exc_info)
 
 def log_debug(message, **kwargs):
     """Log debug message with optional structured data."""
+    safe_message = _sanitize_log_value(message)
     if kwargs:
         record = logging.LogRecord(
-            'webssh', logging.DEBUG, '', 0, message, (), None
+            'webssh', logging.DEBUG, '', 0, safe_message, (), None
         )
         record.extra_data = kwargs
         app_logger.handle(record)
     else:
-        app_logger.debug(message)
+        app_logger.debug(safe_message)
 
 def _sanitize_log_value(value):
     """Sanitize a value for safe inclusion in log entries.

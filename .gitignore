@@ -37,7 +37,19 @@ Thumbs.db
 
 # Database
 *.db
+*.sqlite
 *.sqlite3
+
+# Secrets & keys (defense-in-depth; primary copies live under data/, already
+# ignored — these catch stray copies that land outside DATA_DIR)
+secret_key
+known_hosts
+*.pem
+*.key
+*.bak
+*.backup
+*.orig
+*.tmp
 
 # Flask
 instance/

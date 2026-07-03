@@ -345,7 +345,7 @@ def handle_ssh_input(data, current_user=None):
 
 @socketio.on('keep_alive')
 @socket_login_required
-def handle_keep_alive(current_user=None):
+def handle_keep_alive(data=None, current_user=None):
     """Keep sessions alive by updating last_activity timestamp."""
     try:
         import time
@@ -360,6 +360,7 @@ def handle_keep_alive(current_user=None):
 @socket_login_required
 def handle_ssh_resize(data, current_user=None):
     """Handle terminal resize."""
+    session_id = None
     try:
         session_id = data.get('session_id')
         rows = data.get('rows')

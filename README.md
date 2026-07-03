@@ -426,6 +426,7 @@ Web SSH Terminal uses WebSocket (Socket.IO) for real-time communication. HTTP ro
 | `/logout` | POST | End session |
 | `/change-password` | GET/POST | Password change |
 | `/api/upload` | POST | File upload (multipart) |
+| `/admin`, `/admin/api/*` | GET/POST | Admin panel: user management, audit log, settings (admin-only) |
 | `/socket.io/` | WS | Terminal, SFTP, profiles, keys, commands |
 
 ## Development

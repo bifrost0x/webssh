@@ -23,7 +23,7 @@ def _derive_key(secret: str, user_id: str) -> bytes:
     """
     Derive a Fernet-compatible encryption key from secret and user_id.
 
-    Uses PBKDF2 with SHA256 and 100,000 iterations.
+    Uses PBKDF2 with SHA256 and 600,000 iterations.
 
     Args:
         secret: The application secret key

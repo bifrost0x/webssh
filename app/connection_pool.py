@@ -135,11 +135,15 @@ class TemporaryConnectionPool:
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
         except paramiko.SSHException as e:
-            return None, f"SSH error: {str(e)}"
+            # Keep the raw error in the server log only; a generic client message
+            # avoids leaking remote details that could aid host/port scanning.
+            log_warning("Pool SSH connection failed", host=f"{host}:{port}", error=str(e))
+            return None, "SSH connection failed"
         except TimeoutError:
             return None, "Connection timeout: Could not reach server"
         except Exception as e:
-            return None, f"Connection error: {str(e)}"
+            log_error("Pool connection error", host=f"{host}:{port}", error=str(e))
+            return None, "Connection failed"
 
     def get_sftp_client(self, connection_id):
         """

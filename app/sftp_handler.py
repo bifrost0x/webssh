@@ -184,25 +184,10 @@ def create_directory(session_id, remote_path):
     try:
         safe_path = sanitize_path(remote_path)
         if safe_path is None:
-            return False, "Invalid path: path traversal or absolute path detected"
+            return False, "Invalid path: path traversal detected"
 
         with sftp_session(session_id) as (sftp, source_type):
             sftp.mkdir(safe_path)
-        return True, None
-    except SFTPOperationError as e:
-        return False, str(e)
-    except Exception as e:
-        return False, str(e)
-
-def delete_file(session_id, remote_path):
-    """Delete a file on remote server."""
-    try:
-        safe_path = sanitize_path(remote_path)
-        if safe_path is None:
-            return False, "Invalid path: path traversal or absolute path detected"
-
-        with sftp_session(session_id) as (sftp, source_type):
-            sftp.remove(safe_path)
         return True, None
     except SFTPOperationError as e:
         return False, str(e)
@@ -263,7 +248,7 @@ def download_file_chunked(session_id, remote_path, socketio_instance=None):
             if file_size > config.MAX_DOWNLOAD_SIZE:
                 max_mb = config.MAX_DOWNLOAD_SIZE // (1024 * 1024)
                 return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
-            filename = os.path.basename(remote_path)
+            filename = posixpath.basename(safe_path)
 
             chunks = []
             transferred = 0

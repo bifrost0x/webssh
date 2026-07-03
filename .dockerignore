@@ -38,9 +38,13 @@ Thumbs.db
 # User data directory - contains sensitive data
 data/
 
-# AI assistant files
+# AI assistant files & internal docs (must never end up in the public image)
 CLAUDE.md
 .claude/
+plans/
+
+# Knowledge graph (dev artifact; the public Pages graph is rebuilt in CI)
+graphify-out/
 
 # Logs
 *.log
