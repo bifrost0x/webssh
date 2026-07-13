@@ -3,4 +3,4 @@
 # Install with:  pip install -r requirements-test.txt
 -r requirements.txt
 
-pytest==9.0.3
+pytest==9.1.1
