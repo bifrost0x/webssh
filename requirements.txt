@@ -9,6 +9,6 @@ Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
 bcrypt==4.1.2
 gunicorn==23.0.0
-eventlet==0.40.3
+eventlet==0.41.0
 Flask-WTF==1.2.1
 dnspython==2.7.0
