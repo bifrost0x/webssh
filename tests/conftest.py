@@ -97,7 +97,7 @@ def ecdsa_openssh_private_key_pem():
 
 @pytest.fixture
 def dsa_private_key_pem():
-    key = dsa.generate_private_key(key_size=1024)
+    key = dsa.generate_private_key(key_size=2048)
     return _serialize_private_key(
         key,
         serialization.PrivateFormat.TraditionalOpenSSL,
