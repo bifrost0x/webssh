@@ -44,6 +44,13 @@ services:
       # === Set to false if accessing via HTTP without TLS ===
       - SESSION_COOKIE_SECURE=false
 
+      # === Persistent remote sessions via tmux ===
+      # tmux must be installed on the remote SSH host. If it is unavailable,
+      # WebSSH automatically falls back to a regular shell.
+      - TMUX_ENABLED=true
+      - TMUX_DEFAULT=true
+      - TMUX_SESSION_PREFIX=webssh
+
       # === Optional: Usually no changes needed ===
       - DEBUG=False
       - HOST=0.0.0.0

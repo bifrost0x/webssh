@@ -67,6 +67,10 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Multi-Session Support** - Up to 10 concurrent SSH sessions with tabs
 - **Split Panes** - 1, 2, or 4-pane layouts for monitoring multiple servers
 - **Session Persistence** - Sessions survive page refreshes
+- **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
+- **Manual Reconnect** - Reconnect from a session tab; SSH-key sessions can reconnect directly, while password sessions reopen the pre-filled connection form
+- **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
+- **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar
 - **Copy/Paste** - Full clipboard support
 - **Keyboard Shortcuts** - Ctrl+K command palette, Ctrl+F search, Ctrl+1–9 tab switching
 - **Terminal Search** - Regex or plain-text in-terminal search (Ctrl+F)
@@ -182,6 +186,18 @@ Open http://localhost:5000 and create your first account.
 
 > **Tip:** Edit `docker-compose.yml` directly to change settings. No `.env` file needed!
 
+### Persistent tmux Sessions
+
+The provided `docker-compose.yml` enables persistent tmux sessions and selects
+them by default for new connections. tmux must be installed on the remote SSH
+host, not inside the WebSSH container. WebSSH checks the target before starting
+a persistent session; if tmux is unavailable, it logs a warning and falls back
+to a regular shell without failing the SSH connection.
+
+Closing the browser, an idle timeout, or restarting WebSSH leaves the remote
+tmux session running so it can be reattached later. Explicitly disconnecting a
+session from the WebSSH interface terminates its remote tmux session.
+
 ## Installation
 
 ### From Source
@@ -245,6 +261,9 @@ docker build -t webssh:local .
 | `ADMIN_USERS` | No | - | Comma-separated usernames granted admin on startup (e.g. `alice,bob`) |
 | `SESSION_TIMEOUT` | No | `1800` | Idle SSH session timeout in seconds (30 minutes) |
 | `BLOCK_INTERNAL_SSH` | No | `false` | Block SSH connections to internal/loopback addresses (`true` or `false`) |
+| `TMUX_ENABLED` | No | `false` | Show and allow persistent tmux sessions. The provided Compose file sets this to `true` |
+| `TMUX_DEFAULT` | No | `false` | Select persistent tmux for new connections by default. The provided Compose file sets this to `true` |
+| `TMUX_SESSION_PREFIX` | No | `webssh` | Prefix used for tmux session names created on remote hosts |
 | `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
 | `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |
