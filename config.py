@@ -97,10 +97,11 @@ else:
 RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 # Backend for rate-limit counters.
 #   memory://  (default) — per-process, no external dependency.
-#   redis://host:port/db — shared across workers, requires redis>=5.0.0.
+#   redis://host:port/db — survives app restarts while Redis keeps running.
 #   rediss://…           — same but over TLS.
-# If Redis is unreachable, the app automatically falls back to memory:// with
-# a warning logged at startup.
+# Redis-backed rate limiting does not change the mandatory single-worker
+# deployment model. If Redis is unreachable, the app uses a recoverable
+# in-memory fallback and retries Redis periodically.
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')

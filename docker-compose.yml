@@ -59,9 +59,9 @@ services:
 
       # === Redis-backed rate limiting (optional) ===
       # Uncomment the two lines below AND the redis service section at the
-      # bottom of this file to share rate limits across multiple workers.
-      # Requires redis in the container (add redis to requirements.txt and
-      # rebuild the image if using a custom build).
+      # bottom of this file to preserve counters across app restarts while
+      # Redis keeps running. The app must still use exactly one worker because
+      # live SSH state remains in-process.
       # - RATELIMIT_STORAGE_URL=redis://redis:6379/0
     # depends_on:
     #   - redis
@@ -74,18 +74,14 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── Redis (optional — uncomment to enable shared rate limiting) ──────────
+  # ── Redis (optional — uncomment for external rate-limit counters) ──────
   # redis:
   #   image: redis:7-alpine
   #   container_name: webssh-redis
   #   restart: unless-stopped
   #   # Only expose to the internal Docker network; no host port needed.
   #   command: ["redis-server", "--save", "", "--appendonly", "no"]
-  #   volumes:
-  #     - redis_data:/data
 
 volumes:
   webssh_data:
     driver: local
-  # redis_data:
-  #   driver: local
