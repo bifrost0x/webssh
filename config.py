@@ -95,6 +95,12 @@ else:
         print("ℹ️  CORS_ORIGINS not set, using localhost only. Set CORS_ORIGINS for other origins.")
 
 RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
+# Backend for rate-limit counters.
+#   memory://  (default) — per-process, no external dependency.
+#   redis://host:port/db — shared across workers, requires redis>=5.0.0.
+#   rediss://…           — same but over TLS.
+# If Redis is unreachable, the app automatically falls back to memory:// with
+# a warning logged at startup.
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')

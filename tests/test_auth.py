@@ -8,21 +8,21 @@ class TestRateLimiter:
     """Tests for the in-memory rate limiter."""
 
     def test_allow_within_limit(self):
-        from app.auth import RateLimiter
-        limiter = RateLimiter()
+        from app.rate_limiter import InMemoryRateLimiter
+        limiter = InMemoryRateLimiter()
         for _ in range(5):
             assert limiter.allow('test_key', 5, 60) is True
 
     def test_block_over_limit(self):
-        from app.auth import RateLimiter
-        limiter = RateLimiter()
+        from app.rate_limiter import InMemoryRateLimiter
+        limiter = InMemoryRateLimiter()
         for _ in range(5):
             limiter.allow('test_key', 5, 60)
         assert limiter.allow('test_key', 5, 60) is False
 
     def test_different_keys_independent(self):
-        from app.auth import RateLimiter
-        limiter = RateLimiter()
+        from app.rate_limiter import InMemoryRateLimiter
+        limiter = InMemoryRateLimiter()
         for _ in range(5):
             limiter.allow('key_a', 5, 60)
         assert limiter.allow('key_a', 5, 60) is False
@@ -30,8 +30,8 @@ class TestRateLimiter:
 
     def test_cleanup_stale_keys(self):
         from collections import deque
-        from app.auth import RateLimiter
-        limiter = RateLimiter()
+        from app.rate_limiter import InMemoryRateLimiter
+        limiter = InMemoryRateLimiter()
         # Create >50 keys so the cleanup branch (len > 50) is reached.
         for i in range(55):
             limiter.allow(f'key_{i}', 5, 60)

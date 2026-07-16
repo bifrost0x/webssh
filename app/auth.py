@@ -3,8 +3,8 @@ import config
 from flask import request
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
-from collections import deque
 from .models import db, User, SocketSession
+from .rate_limiter import create_rate_limiter
 
 login_manager = LoginManager()
 
@@ -13,48 +13,17 @@ login_manager = LoginManager()
 # not reveal whether an account exists (user enumeration mitigation).
 _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b'account-enumeration-mitigation', bcrypt.gensalt())
 
-class RateLimiter:
-    """
-    Simple in-memory rate limiter.
+# Rate limiter instance — initialized in init_auth().
+# Falls back to in-memory automatically if Redis is unavailable.
+_rate_limiter = None
 
-    SECURITY NOTE: This rate limiter is per-process only. In multi-worker
-    deployments (e.g., Gunicorn with multiple workers), rate limits can be
-    bypassed by distributing requests across workers.
 
-    For production deployments, either:
-    1. Use a single worker (recommended for this app due to WebSocket state)
-    2. Use Redis-based rate limiting (flask-limiter with Redis backend)
-
-    The application is designed for single-worker deployment due to
-    WebSocket session state management requirements.
-    """
-    def __init__(self):
-        self.events = {}
-
-    def allow(self, key, limit, window_seconds):
-        now = datetime.now(timezone.utc).timestamp()
-        window_start = now - window_seconds
-        queue = self.events.get(key)
-        if queue is None:
-            queue = deque()
-            self.events[key] = queue
-
-        while queue and queue[0] < window_start:
-            queue.popleft()
-
-        if len(queue) >= limit:
-            return False
-
-        queue.append(now)
-
-        if len(self.events) > 50:
-            stale = [k for k, q in self.events.items() if not q]
-            for k in stale:
-                del self.events[k]
-
-        return True
-
-_rate_limiter = RateLimiter()
+def _get_rate_limiter():
+    """Return the module-level rate limiter, lazily creating a default if init_auth() hasn't run yet."""
+    global _rate_limiter
+    if _rate_limiter is None:
+        _rate_limiter = create_rate_limiter('memory://')
+    return _rate_limiter
 
 
 def password_exceeds_bcrypt_limit(password):
@@ -86,7 +55,7 @@ def check_rate_limit(ip_address, endpoint, limit_str):
     """Return True if request should be blocked."""
     limit, window = parse_rate_limit(limit_str)
     key = f'{endpoint}:{ip_address}'
-    return not _rate_limiter.allow(key, limit, window)
+    return not _get_rate_limiter().allow(key, limit, window)
 
 def check_socket_rate_limit(user_id, endpoint, limit_str):
     """Return True if a per-user socket action should be blocked.
@@ -97,7 +66,7 @@ def check_socket_rate_limit(user_id, endpoint, limit_str):
     """
     limit, window = parse_rate_limit(limit_str)
     key = f'{endpoint}:{user_id}'
-    return not _rate_limiter.allow(key, limit, window)
+    return not _get_rate_limiter().allow(key, limit, window)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -108,10 +77,17 @@ def load_user(user_id):
     return user
 
 def init_auth(app):
-    """Initialize authentication system."""
+    """Initialize authentication system and rate limiter."""
+    global _rate_limiter
     login_manager.init_app(app)
     login_manager.login_view = 'login'
     login_manager.login_message = 'Please log in to access this page.'
+
+    # Create the rate limiter based on the configured storage URL.
+    # Falls back to in-memory automatically if Redis is unavailable.
+    _rate_limiter = create_rate_limiter(
+        getattr(config, 'RATELIMIT_STORAGE_URL', 'memory://')
+    )
 
 def register_user(username, password):
     """
