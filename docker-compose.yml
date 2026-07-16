@@ -60,8 +60,8 @@ services:
       # === Redis-backed rate limiting (optional) ===
       # Uncomment the two lines below AND the redis service section at the
       # bottom of this file to share rate limits across multiple workers.
-      # Requires redis in the container (already in requirements.txt as an
-      # optional dependency — the official image installs it).
+      # Requires redis in the container (add redis to requirements.txt and
+      # rebuild the image if using a custom build).
       # - RATELIMIT_STORAGE_URL=redis://redis:6379/0
     # depends_on:
     #   - redis
