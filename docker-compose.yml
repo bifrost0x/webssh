@@ -56,6 +56,15 @@ services:
       - HOST=0.0.0.0
       - PORT=5000
       - DATA_DIR=/app/data
+
+      # === Redis-backed rate limiting (optional) ===
+      # Uncomment the two lines below AND the redis service section at the
+      # bottom of this file to preserve counters across app restarts while
+      # Redis keeps running. The app must still use exactly one worker because
+      # live SSH state remains in-process.
+      # - RATELIMIT_STORAGE_URL=redis://redis:6379/0
+    # depends_on:
+    #   - redis
     volumes:
       - webssh_data:/app/data
     healthcheck:
@@ -64,6 +73,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ── Redis (optional — uncomment for external rate-limit counters) ──────
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: webssh-redis
+  #   restart: unless-stopped
+  #   # Only expose to the internal Docker network; no host port needed.
+  #   command: ["redis-server", "--save", "", "--appendonly", "no"]
 
 volumes:
   webssh_data:
