@@ -1031,10 +1031,10 @@ const SessionManager = {
 
         // If persistent session with key_id, auto-select the key
         if (session.keyId) {
-            const keyRadio = document.querySelector('input[name="authType"][value="key"]');
-            if (keyRadio) {
-                keyRadio.checked = true;
-                keyRadio.dispatchEvent(new Event('change'));
+            const authTypeSelect = document.getElementById('authTypeSelect');
+            if (authTypeSelect) {
+                authTypeSelect.value = 'key';
+                authTypeSelect.dispatchEvent(new Event('change'));
             }
             setTimeout(() => {
                 const keySelect = document.getElementById('keySelect');

@@ -13,6 +13,7 @@ class FakeTransport:
         self.keepalive = None
         self.opened_channel = None
         self.forward_channel = FakeForwardChannel()
+        self.session_channels = []
 
     def set_keepalive(self, seconds):
         self.keepalive = seconds
@@ -20,6 +21,11 @@ class FakeTransport:
     def open_channel(self, kind, destination, source):
         self.opened_channel = (kind, destination, source)
         return self.forward_channel
+
+    def open_session(self):
+        channel = FakeChannel()
+        self.session_channels.append(channel)
+        return channel
 
     def is_active(self):
         return True
@@ -29,9 +35,23 @@ class FakeChannel:
     def __init__(self):
         self.closed = False
         self.timeout = None
+        self.command = None
+        self.pty = None
 
     def settimeout(self, timeout):
         self.timeout = timeout
+
+    def exec_command(self, command):
+        self.command = command
+
+    def recv(self, _size):
+        return b'/usr/bin/tmux\n'
+
+    def recv_exit_status(self):
+        return 0
+
+    def get_pty(self, term, width, height):
+        self.pty = (term, width, height)
 
     def close(self):
         self.closed = True
@@ -159,6 +179,43 @@ def test_direct_supported_key_passes_pkey_not_password(
     assert isinstance(clients[0].connect_kwargs['pkey'], expected_class)
     assert 'password' not in clients[0].connect_kwargs
     assert 'key_filename' not in clients[0].connect_kwargs
+
+
+def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(
+        auth_type='tailscale',
+        use_tmux=True,
+        reconnect_tmux_name='existing_session',
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    strategy = clients[0].connect_kwargs['auth_strategy']
+    assert isinstance(strategy, ssh_manager.TailscaleSSHAuthStrategy)
+    probe_channel, tmux_channel = clients[0].transport.session_channels
+    assert probe_channel.command == 'command -v tmux'
+    assert tmux_channel.pty == ('xterm-256color', 80, 24)
+    assert tmux_channel.command == (
+        'env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u '
+        'new-session -A -s existing_session'
+    )
+
+
+def test_password_tmux_preserves_remote_locale(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(
+        password='secret',
+        use_tmux=True,
+        reconnect_tmux_name='existing_session',
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    _, tmux_channel = clients[0].transport.session_channels
+    assert tmux_channel.command == 'tmux new-session -A -s existing_session'
 
 
 def test_proxy_jump_password_opens_direct_tcpip_channel(monkeypatch):

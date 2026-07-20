@@ -1,4 +1,5 @@
 import paramiko
+from paramiko.auth_strategy import AuthStrategy, NoneAuth
 import time
 import uuid
 import socket
@@ -10,6 +11,18 @@ from .ssh_key_loader import load_private_key as _load_private_key
 
 sessions = {}
 sessions_lock = Lock()
+
+
+class TailscaleSSHAuthStrategy(AuthStrategy):
+    """Authenticate through Tailscale SSH without user-managed credentials."""
+
+    def __init__(self, username):
+        super().__init__(ssh_config=None)
+        self.username = username
+
+    def get_sources(self):
+        yield NoneAuth(self.username)
+
 
 class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
     """Secure host key policy with logging and audit trail."""
@@ -40,7 +53,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           socketio_instance=None, app=None, user_id=None,
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
                           proxy_jump_password=None, proxy_jump_key_content=None,
-                          use_tmux=False, reconnect_tmux_name=None):
+                          use_tmux=False, reconnect_tmux_name=None,
+                          auth_type='password'):
     """
     Create a new SSH connection and return session ID.
 
@@ -55,6 +69,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         app: Flask app instance
         user_id: User ID for session tracking
         proxy_jump_*: Optional jump host (bastion) connection parameters
+        auth_type: Target authentication method (password, key, or tailscale)
     """
     bastion_client = None
     connection_stored = False
@@ -116,7 +131,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         if sock:
             auth_kwargs['sock'] = sock
 
-        if key_content:
+        if auth_type == 'tailscale':
+            auth_kwargs['auth_strategy'] = TailscaleSSHAuthStrategy(username)
+        elif key_content:
             auth_kwargs['pkey'] = _load_private_key(key_content)
         elif key_path:
             auth_kwargs['key_filename'] = key_path
@@ -133,6 +150,15 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         tmux_session_name = None
         if use_tmux:
+            # Tailscale SSH does not populate locale variables. Force UTF-8 on
+            # the tmux client so existing servers do not replace multibyte
+            # characters with underscores.
+            tmux_command = (
+                'env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u'
+                if auth_type == 'tailscale'
+                else 'tmux'
+            )
+
             # Each new connection gets a unique tmux session name.
             # For reconnections, use reconnect_tmux_name to attach to existing.
             # Sanitize host and username for tmux session name: replace dots,
@@ -141,11 +167,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             safe_user = username.replace('.', '_').replace('-', '_')
             if reconnect_tmux_name:
                 tmux_session_name = reconnect_tmux_name
-                tmux_cmd = f'tmux new-session -A -s {tmux_session_name}'
+                tmux_cmd = f'{tmux_command} new-session -A -s {tmux_session_name}'
             else:
                 unique_suffix = uuid.uuid4().hex[:8]
                 tmux_session_name = f"{config.TMUX_SESSION_PREFIX}_{safe_user}_{safe_host}_{port}_{unique_suffix}"
-                tmux_cmd = f'tmux new-session -s {tmux_session_name}'
+                tmux_cmd = f'{tmux_command} new-session -s {tmux_session_name}'
 
             log_info(f"Using tmux persistent session", tmux_session=tmux_session_name, host=f"{host}:{port}")
 

@@ -186,6 +186,13 @@ Open http://localhost:5000 and create your first account.
 
 > **Tip:** Edit `docker-compose.yml` directly to change settings. No `.env` file needed!
 
+### Tailscale SSH
+
+Choose **Tailscale SSH** as the authentication method when the WebSSH runtime
+can reach the target over the same tailnet and the target has Tailscale SSH
+enabled (`tailscale set --ssh`). No password or user-managed SSH key is sent;
+the target's Tailscale SSH policy and tailnet ACLs authorize the connection.
+
 ### Persistent tmux Sessions
 
 The provided `docker-compose.yml` enables persistent tmux sessions and selects

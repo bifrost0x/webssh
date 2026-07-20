@@ -249,6 +249,7 @@ def handle_ssh_connect(data, current_user=None):
     try:
         password = data.get('password')
         key_id = data.get('key_id')
+        auth_type = data.get('auth_type') or ('key' if key_id else 'password')
         client_request_id = data.get('client_request_id')
 
         def emit_error(message):
@@ -270,7 +271,15 @@ def handle_ssh_connect(data, current_user=None):
             emit_error(error)
             return
 
-        if not password and not key_id:
+        if auth_type not in {'password', 'key', 'tailscale'}:
+            emit_error('Invalid authentication method')
+            return
+
+        if auth_type == 'password' and not password:
+            emit_error('Password required')
+            return
+
+        if auth_type == 'key' and not key_id:
             emit_error('Password or SSH key required')
             return
 
@@ -340,7 +349,8 @@ def handle_ssh_connect(data, current_user=None):
             proxy_jump_password=bastion_password,
             proxy_jump_key_content=bastion_key_content,
             use_tmux=use_tmux,
-            reconnect_tmux_name=reconnect_tmux_name
+            reconnect_tmux_name=reconnect_tmux_name,
+            auth_type=auth_type
         )
 
         if password:
