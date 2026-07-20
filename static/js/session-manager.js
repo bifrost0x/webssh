@@ -58,15 +58,6 @@ const SessionManager = {
         }
 
         console.log(`[RESTORE] Session ${sessionId} fully restored - waiting for output`);
-
-        setTimeout(() => {
-            console.log(`[RESTORE] Sending keepalive newline to session ${sessionId}`);
-            window.socket.emit('ssh_input', {
-                session_id: sessionId,
-                data: '\n'
-            });
-        }, 500);
-
     },
 
     showPersistentSessionTab(data) {
