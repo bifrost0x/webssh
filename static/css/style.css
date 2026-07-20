@@ -4138,7 +4138,15 @@ body.keyboard-open.notepad-focused .notepad-panel {
     grid-template-columns: 1fr 0px !important;
 }
 
-.notepad-panel.collapsed .notepad-toggle-btn {
+.workspace:has(.notepad-panel.collapsed) .resize-handle {
+    right: 0;
+}
+
+.workspace:has(.notepad-panel.collapsed) .resize-handle-line {
+    display: none;
+}
+
+.workspace:has(.notepad-panel.collapsed) .notepad-toggle-btn {
     left: -24px;
 }
 
