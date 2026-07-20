@@ -204,12 +204,15 @@ const SessionManager = {
         const renameLabel = window.i18n ? i18n.t('session.rename') : 'Rename session';
         tabEdit.setAttribute('aria-label', renameLabel);
         tabEdit.setAttribute('title', renameLabel);
+        tabEdit.dataset.i18nAriaLabel = 'session.rename';
+        tabEdit.dataset.i18nTitle = 'session.rename';
 
         const tabClose = document.createElement('span');
         tabClose.className = 'tab-close';
         tabClose.dataset.sessionId = sessionId;
         tabClose.innerHTML = '&times;';
         tabClose.setAttribute('aria-label', window.i18n ? i18n.t('session.close') : 'Close session');
+        tabClose.dataset.i18nAriaLabel = 'session.close';
 
         tab.appendChild(statusDot);
         tab.appendChild(tabLabel);
@@ -233,6 +236,8 @@ const SessionManager = {
         tabReconnect.innerHTML = '⟳';
         tabReconnect.setAttribute('aria-label', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
         tabReconnect.setAttribute('title', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
+        tabReconnect.dataset.i18nAriaLabel = 'session.reconnect';
+        tabReconnect.dataset.i18nTitle = 'session.reconnect';
 
         tab.appendChild(tabEdit);
         tab.appendChild(tabReconnect);
@@ -939,12 +944,16 @@ const SessionManager = {
             card.className = 'session-overlay-card';
 
             const heading = document.createElement('h3');
+            heading.dataset.i18n = isPersistent ? 'session.persistent' : 'session.disconnected';
             heading.textContent = isPersistent
                 ? (window.i18n ? i18n.t('session.persistent') : 'Persistent session')
                 : (window.i18n ? i18n.t('session.disconnected') : 'Session disconnected');
             card.appendChild(heading);
 
             const desc = document.createElement('p');
+            desc.dataset.i18n = isPersistent
+                ? 'session.persistentDescription'
+                : 'session.disconnectedDescription';
             desc.textContent = isPersistent
                 ? (window.i18n ? i18n.t('session.persistentDescription') : 'tmux session running on remote host. Reconnect to resume.')
                 : (window.i18n ? i18n.t('session.disconnectedDescription') : 'Reconnect to resume your work.');
@@ -961,6 +970,7 @@ const SessionManager = {
             const button = document.createElement('button');
             button.className = 'btn btn-primary';
             button.dataset.sessionId = sessionId;
+            button.dataset.i18n = isPersistent ? 'session.reconnect' : 'session.retry';
             button.textContent = isPersistent
                 ? (window.i18n ? i18n.t('session.reconnect') : 'Reconnect')
                 : (window.i18n ? i18n.t('session.retry') : 'Retry');
