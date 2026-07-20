@@ -192,14 +192,18 @@ const SessionManager = {
         const tabEdit = document.createElement('span');
         tabEdit.className = 'tab-edit';
         tabEdit.innerHTML = '✎';
-        tabEdit.setAttribute('aria-label', 'Rename session');
-        tabEdit.setAttribute('title', 'Rename session');
+        const renameLabel = window.i18n ? i18n.t('session.rename') : 'Rename session';
+        tabEdit.setAttribute('aria-label', renameLabel);
+        tabEdit.setAttribute('title', renameLabel);
+        tabEdit.dataset.i18nAriaLabel = 'session.rename';
+        tabEdit.dataset.i18nTitle = 'session.rename';
 
         const tabClose = document.createElement('span');
         tabClose.className = 'tab-close';
         tabClose.dataset.sessionId = sessionId;
         tabClose.innerHTML = '&times;';
-        tabClose.setAttribute('aria-label', 'Close session');
+        tabClose.setAttribute('aria-label', window.i18n ? i18n.t('session.close') : 'Close session');
+        tabClose.dataset.i18nAriaLabel = 'session.close';
 
         tab.appendChild(statusDot);
         tab.appendChild(tabLabel);
@@ -221,8 +225,10 @@ const SessionManager = {
         const tabReconnect = document.createElement('span');
         tabReconnect.className = 'tab-reconnect';
         tabReconnect.innerHTML = '⟳';
-        tabReconnect.setAttribute('aria-label', 'Reconnect session');
-        tabReconnect.setAttribute('title', 'Reconnect');
+        tabReconnect.setAttribute('aria-label', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
+        tabReconnect.setAttribute('title', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
+        tabReconnect.dataset.i18nAriaLabel = 'session.reconnect';
+        tabReconnect.dataset.i18nTitle = 'session.reconnect';
 
         tab.appendChild(tabEdit);
         tab.appendChild(tabReconnect);
@@ -339,7 +345,10 @@ const SessionManager = {
         }
 
         const label = this.getDisplayLabel(sessionId, session.username, session.host);
-        if (confirm(`Close session "${label}"?`)) {
+        const message = window.i18n
+            ? i18n.t('session.closeConfirm').replace('{label}', label)
+            : `Close session "${label}"?`;
+        if (confirm(message)) {
             this.closeSession(sessionId);
         }
     },
@@ -360,7 +369,10 @@ const SessionManager = {
 
         // Active session — disconnect first, then reconnect
         if (session.connected) {
-            if (!confirm(`Reconnect session "${label}"?`)) {
+            const message = window.i18n
+                ? i18n.t('session.reconnectConfirm').replace('{label}', label)
+                : `Reconnect session "${label}"?`;
+            if (!confirm(message)) {
                 return;
             }
 
@@ -398,7 +410,10 @@ const SessionManager = {
                             display_name: displayName
                         };
                         window.socket.emit('ssh_connect', connectionData);
-                        window.showNotification(`Reconnecting to ${label}...`, 'info');
+                        const message = window.i18n
+                            ? i18n.t('session.reconnecting').replace('{label}', label)
+                            : `Reconnecting to ${label}...`;
+                        window.showNotification(message, 'info');
                     }
                 }, 500);
             } else {
@@ -920,11 +935,19 @@ const SessionManager = {
             card.className = 'session-overlay-card';
 
             const heading = document.createElement('h3');
-            heading.textContent = isPersistent ? 'Persistent session' : 'Session disconnected';
+            heading.dataset.i18n = isPersistent ? 'session.persistent' : 'session.disconnected';
+            heading.textContent = isPersistent
+                ? (window.i18n ? i18n.t('session.persistent') : 'Persistent session')
+                : (window.i18n ? i18n.t('session.disconnected') : 'Session disconnected');
             card.appendChild(heading);
 
             const desc = document.createElement('p');
-            desc.textContent = isPersistent ? 'tmux session running on remote host. Reconnect to resume.' : 'Reconnect to resume your work.';
+            desc.dataset.i18n = isPersistent
+                ? 'session.persistentDescription'
+                : 'session.disconnectedDescription';
+            desc.textContent = isPersistent
+                ? (window.i18n ? i18n.t('session.persistentDescription') : 'tmux session running on remote host. Reconnect to resume.')
+                : (window.i18n ? i18n.t('session.disconnectedDescription') : 'Reconnect to resume your work.');
             card.appendChild(desc);
 
             const tmuxName = session.tmuxSessionName || '';
@@ -938,7 +961,10 @@ const SessionManager = {
             const button = document.createElement('button');
             button.className = 'btn btn-primary';
             button.dataset.sessionId = sessionId;
-            button.textContent = isPersistent ? 'Reconnect' : 'Retry';
+            button.dataset.i18n = isPersistent ? 'session.reconnect' : 'session.retry';
+            button.textContent = isPersistent
+                ? (window.i18n ? i18n.t('session.reconnect') : 'Reconnect')
+                : (window.i18n ? i18n.t('session.retry') : 'Retry');
             button.addEventListener('click', () => {
                 this.prefillConnectionForm(sessionId);
             });
@@ -1082,7 +1108,11 @@ const SessionManager = {
                 display_name: displayName
             };
             window.socket.emit('ssh_connect', connectionData);
-            window.showNotification(`Reconnecting to ${username}@${host}...`, 'info');
+            const label = `${username}@${host}`;
+            const message = window.i18n
+                ? i18n.t('session.reconnecting').replace('{label}', label)
+                : `Reconnecting to ${label}...`;
+            window.showNotification(message, 'info');
         }
     },
 
