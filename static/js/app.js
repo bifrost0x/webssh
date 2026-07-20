@@ -1410,6 +1410,10 @@
         };
 
         const startResize = (e) => {
+            if (e.target.closest('.notepad-toggle-btn')) {
+                return;
+            }
+
             isResizing = true;
             startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
             startNotepadWidth = notepadPanel.offsetWidth;
@@ -1495,14 +1499,21 @@
 
         const notepadToggle = document.getElementById('notepadToggle');
         if (notepadToggle && notepadPanel) {
-            if (localStorage.getItem('notepadCollapsed') === 'true') {
+            const initiallyCollapsed = localStorage.getItem('notepadCollapsed') === 'true';
+            if (initiallyCollapsed) {
                 notepadPanel.classList.add('collapsed');
                 notepadToggle.textContent = '▶';
             }
-            notepadToggle.addEventListener('click', () => {
+            notepadToggle.setAttribute('aria-expanded', String(!initiallyCollapsed));
+            notepadToggle.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+            });
+            notepadToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
                 notepadPanel.classList.toggle('collapsed');
                 const isCollapsed = notepadPanel.classList.contains('collapsed');
                 notepadToggle.textContent = isCollapsed ? '▶' : '◀';
+                notepadToggle.setAttribute('aria-expanded', String(!isCollapsed));
                 localStorage.setItem('notepadCollapsed', isCollapsed);
                 setTimeout(() => {
                     if (window.TerminalManager) {
@@ -1512,7 +1523,11 @@
             });
         }
 
-        handle.addEventListener('dblclick', () => {
+        handle.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.notepad-toggle-btn')) {
+                return;
+            }
+
             workspace.style.removeProperty('--notepad-width');
             localStorage.removeItem('workspace-notepad-width');
             showNotification('Layout reset to default', 'info');
