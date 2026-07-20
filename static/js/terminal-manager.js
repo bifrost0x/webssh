@@ -13,6 +13,32 @@ const TerminalManager = {
         return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
     },
 
+    isMacPlatform() {
+        const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
+        return /mac|iphone|ipad|ipod/i.test(platform);
+    },
+
+    shouldProcessClipboardKeyEvent(event, terminal, isMac) {
+        if (event.type !== 'keydown' || event.altKey || event.shiftKey) {
+            return true;
+        }
+
+        const key = (event.key || '').toLowerCase();
+        if (key !== 'c' && key !== 'v') {
+            return true;
+        }
+
+        if (isMac) {
+            return !(event.metaKey && !event.ctrlKey);
+        }
+
+        if (!event.ctrlKey || event.metaKey) {
+            return true;
+        }
+
+        return key === 'c' ? !terminal.hasSelection() : false;
+    },
+
     buildTheme() {
         return {
             background: this.getCssVar('--term-background', '#1c2128'),
@@ -70,6 +96,11 @@ const TerminalManager = {
             tabStopWidth: 4,
             allowProposedApi: true
         });
+
+        const isMac = this.isMacPlatform();
+        terminal.attachCustomKeyEventHandler(event => (
+            this.shouldProcessClipboardKeyEvent(event, terminal, isMac)
+        ));
 
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);

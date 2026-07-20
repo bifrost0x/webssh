@@ -1649,6 +1649,8 @@
             { keys: 'Ctrl+?', label: 'Show Shortcuts' },
             { keys: 'Ctrl+Shift+N', label: 'New Connection' },
             { keys: 'Ctrl+F', label: 'Search in Terminal' },
+            { keys: 'Ctrl/Cmd+C', label: 'Copy terminal selection' },
+            { keys: 'Ctrl/Cmd+V', label: 'Paste into terminal' },
             { keys: 'Ctrl+1-9', label: 'Switch to tab 1-9' },
             { keys: 'Ctrl+Tab', label: 'Next tab' },
             { keys: 'Ctrl+Shift+Tab', label: 'Previous tab' },
