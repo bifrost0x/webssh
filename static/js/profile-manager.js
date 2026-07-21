@@ -115,10 +115,7 @@ const ProfileManager = {
         document.getElementById('portInput').value = profile.port;
         document.getElementById('usernameInput').value = profile.username;
 
-        const authTypeRadios = document.querySelectorAll('input[name="authType"]');
-        authTypeRadios.forEach(radio => {
-            radio.checked = (radio.value === profile.auth_type);
-        });
+        document.getElementById('authTypeSelect').value = profile.auth_type;
 
         this.handleAuthTypeChange(profile.auth_type);
 
@@ -146,11 +143,16 @@ const ProfileManager = {
             keyGroup.classList.add('hidden');
             document.getElementById('passwordInput').required = true;
             document.getElementById('keySelect').required = false;
-        } else {
+        } else if (authType === 'key') {
             passwordGroup.classList.add('hidden');
             keyGroup.classList.remove('hidden');
             document.getElementById('passwordInput').required = false;
             document.getElementById('keySelect').required = true;
+        } else {
+            passwordGroup.classList.add('hidden');
+            keyGroup.classList.add('hidden');
+            document.getElementById('passwordInput').required = false;
+            document.getElementById('keySelect').required = false;
         }
     },
 

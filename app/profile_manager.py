@@ -88,7 +88,7 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None, jum
         if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
             return None, "Invalid username format"
 
-        if auth_type not in ['password', 'key']:
+        if auth_type not in ['password', 'key', 'tailscale']:
             return None, "Invalid auth_type"
 
         if auth_type == 'key' and not key_id:

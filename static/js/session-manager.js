@@ -39,6 +39,7 @@ const SessionManager = {
             host: data.host,
             port: data.port,
             username: data.username,
+            auth_type: data.auth_type,
             via_jump: data.via_jump,
             display_name: data.display_name
         };
@@ -61,7 +62,10 @@ const SessionManager = {
     },
 
     showPersistentSessionTab(data) {
-        const { session_id, host, port, username, key_id, tmux_session_name, display_name } = data;
+        const {
+            session_id, host, port, username, key_id, auth_type,
+            tmux_session_name, display_name
+        } = data;
 
         if (this.sessions[session_id]) {
             return;
@@ -92,7 +96,8 @@ const SessionManager = {
             useTmux: true,
             tmuxSessionName: tmux_session_name,
             isPersistentCandidate: true,
-            keyId: key_id
+            keyId: key_id,
+            authType: auth_type || 'password'
         };
 
         // Save display name to localStorage by host:port:user key
@@ -166,7 +171,8 @@ const SessionManager = {
             viaJump: sessionData.via_jump || null,
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
-            keyId: sessionData.key_id || null
+            keyId: sessionData.key_id || null,
+            authType: sessionData.auth_type || 'password'
         };
 
         this.createSessionTab(session_id, host, username);
@@ -361,9 +367,15 @@ const SessionManager = {
 
         const label = this.getDisplayLabel(sessionId, session.username, session.host);
 
-        // Persistent candidate (disconnected tmux session) — reconnect directly
+        // Persistent key and Tailscale sessions can reconnect directly. A
+        // password-backed candidate must reopen the form for its password.
         if (session.isPersistentCandidate) {
-            this.directReconnect(sessionId);
+            const authType = session.authType || (session.keyId ? 'key' : 'password');
+            if (session.keyId || authType === 'tailscale') {
+                this.directReconnect(sessionId);
+            } else {
+                this.prefillConnectionForm(sessionId);
+            }
             return;
         }
 
@@ -383,6 +395,7 @@ const SessionManager = {
             const useTmux = session.useTmux;
             const tmuxSessionName = session.tmuxSessionName;
             const keyId = session.keyId;
+            const authType = session.authType || (keyId ? 'key' : 'password');
 
             // Store display name for reconnect
             this.pendingDisplayName = displayName;
@@ -394,9 +407,9 @@ const SessionManager = {
             // Disconnect the current session (sends ssh_disconnect to server)
             this.closeSession(sessionId);
 
-            // If we have a key_id, reconnect directly. Otherwise, open the
-            // pre-filled connection modal.
-            if (keyId) {
+            // Key and Tailscale sessions can reconnect without prompting for a
+            // password. Password sessions reopen the pre-filled modal.
+            if (keyId || authType === 'tailscale') {
                 setTimeout(() => {
                     if (window.socket) {
                         const connectionData = {
@@ -404,11 +417,14 @@ const SessionManager = {
                             port: parseInt(port),
                             username: username,
                             client_request_id: `reconnect_${Date.now().toString(36)}`,
-                            key_id: keyId,
+                            auth_type: authType,
                             use_tmux: useTmux,
                             reconnect_tmux_name: useTmux ? tmuxSessionName : null,
                             display_name: displayName
                         };
+                        if (authType === 'key') {
+                            connectionData.key_id = keyId;
+                        }
                         window.socket.emit('ssh_connect', connectionData);
                         const message = window.i18n
                             ? i18n.t('session.reconnecting').replace('{label}', label)
@@ -425,6 +441,12 @@ const SessionManager = {
                     if (hostInput) hostInput.value = host;
                     if (portInput) portInput.value = port;
                     if (userInput) userInput.value = username;
+
+                    const authTypeSelect = document.getElementById('authTypeSelect');
+                    if (authTypeSelect) {
+                        authTypeSelect.value = authType;
+                        authTypeSelect.dispatchEvent(new Event('change'));
+                    }
 
                     if (useTmux) {
                         const tmuxCheck = document.getElementById('useTmuxCheck');
@@ -997,9 +1019,12 @@ const SessionManager = {
             return;
         }
 
-        // For persistent tmux sessions with a key_id, reconnect directly
-        // without opening the connection modal.
-        if (session.isPersistentCandidate && session.keyId && session.useTmux) {
+        const authType = session.authType || (session.keyId ? 'key' : 'password');
+
+        // Key and Tailscale persistent sessions can reconnect directly without
+        // opening the connection modal.
+        if (session.isPersistentCandidate && session.useTmux
+                && (session.keyId || authType === 'tailscale')) {
             this.directReconnect(sessionId);
             return;
         }
@@ -1029,13 +1054,14 @@ const SessionManager = {
             userInput.value = session.username;
         }
 
+        const authTypeSelect = document.getElementById('authTypeSelect');
+        if (authTypeSelect) {
+            authTypeSelect.value = authType;
+            authTypeSelect.dispatchEvent(new Event('change'));
+        }
+
         // If persistent session with key_id, auto-select the key
         if (session.keyId) {
-            const keyRadio = document.querySelector('input[name="authType"][value="key"]');
-            if (keyRadio) {
-                keyRadio.checked = true;
-                keyRadio.dispatchEvent(new Event('change'));
-            }
             setTimeout(() => {
                 const keySelect = document.getElementById('keySelect');
                 if (keySelect) {
@@ -1079,6 +1105,7 @@ const SessionManager = {
         const port = session.port;
         const username = session.username;
         const keyId = session.keyId;
+        const authType = session.authType || (keyId ? 'key' : 'password');
         const tmuxSessionName = session.tmuxSessionName;
         const displayName = session.displayName;
 
@@ -1102,11 +1129,14 @@ const SessionManager = {
                 port: parseInt(port),
                 username: username,
                 client_request_id: `reconnect_${Date.now().toString(36)}`,
-                key_id: keyId,
+                auth_type: authType,
                 use_tmux: true,
                 reconnect_tmux_name: tmuxSessionName,
                 display_name: displayName
             };
+            if (authType === 'key') {
+                connectionData.key_id = keyId;
+            }
             window.socket.emit('ssh_connect', connectionData);
             const label = `${username}@${host}`;
             const message = window.i18n

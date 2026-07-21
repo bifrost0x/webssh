@@ -1147,7 +1147,7 @@
         const passwordInput = document.getElementById('passwordInput');
         const keySelect = document.getElementById('keySelect');
         const profileNameInput = document.getElementById('profileNameInput');
-        const authRadios = document.querySelectorAll('input[name="authType"]');
+        const authTypeSelect = document.getElementById('authTypeSelect');
 
         if (!hostInput || !portInput || !userInput) {
             return;
@@ -1204,16 +1204,16 @@
             });
         }
 
-        authRadios.forEach(radio => {
-            radio.addEventListener('change', () => {
-                if (radio.value === 'password' && passwordInput) {
+        if (authTypeSelect) {
+            authTypeSelect.addEventListener('change', () => {
+                if (authTypeSelect.value === 'password' && passwordInput) {
                     setFieldState(passwordInput, passHint, passwordInput.value ? '✓ Ready' : 'Password required', Boolean(passwordInput.value));
                 }
-                if (radio.value === 'key' && keySelect) {
+                if (authTypeSelect.value === 'key' && keySelect) {
                     setFieldState(keySelect, keyHint, keySelect.value ? '✓ Key selected' : 'Select a key', Boolean(keySelect.value));
                 }
             });
-        });
+        }
     }
 
     function setupPasswordToggles() {
@@ -1829,7 +1829,7 @@
             const host = document.getElementById('hostInput').value;
             const port = document.getElementById('portInput').value;
             const username = document.getElementById('usernameInput').value;
-            const authType = document.querySelector('input[name="authType"]:checked').value;
+            const authType = document.getElementById('authTypeSelect').value;
             const password = document.getElementById('passwordInput').value;
             const keyId = document.getElementById('keySelect').value;
             const saveProfile = document.getElementById('saveProfileCheck').checked;
@@ -1904,12 +1904,13 @@
                 host: host,
                 port: parseInt(port),
                 username: username,
-                client_request_id: currentConnectRequestId
+                client_request_id: currentConnectRequestId,
+                auth_type: authType
             };
 
             if (authType === 'password') {
                 connectionData.password = password;
-            } else {
+            } else if (authType === 'key') {
                 connectionData.key_id = keyId;
             }
 
@@ -1981,10 +1982,8 @@
             }
         });
 
-        document.querySelectorAll('input[name="authType"]').forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                ProfileManager.handleAuthTypeChange(e.target.value);
-            });
+        document.getElementById('authTypeSelect').addEventListener('change', (e) => {
+            ProfileManager.handleAuthTypeChange(e.target.value);
         });
 
         document.getElementById('jumpHostSelect').addEventListener('change', () => {

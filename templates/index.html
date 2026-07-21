@@ -219,15 +219,14 @@
                     </div>
 
                     <div class="form-group">
-                        <label data-i18n="connection.authMethod">Authentication Method</label>
-                        <div class="auth-type-selector">
-                            <label class="radio-label">
-                                <input type="radio" name="authType" value="password" checked> <span data-i18n="auth.password">Password</span>
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="authType" value="key"> <span data-i18n="connection.sshKey">SSH Key</span>
-                            </label>
-                        </div>
+                        <label for="authTypeSelect" data-i18n="connection.authMethod">Authentication Method</label>
+                        <select id="authTypeSelect" class="form-control">
+                            <option value="password" data-i18n="auth.password">Password</option>
+                            <option value="key" data-i18n="connection.sshKey">SSH Key</option>
+                            {% if tailscale_ssh_allowed %}
+                            <option value="tailscale" data-i18n="connection.tailscaleSSH">Tailscale SSH</option>
+                            {% endif %}
+                        </select>
                     </div>
 
                     <div class="form-group" id="passwordGroup">

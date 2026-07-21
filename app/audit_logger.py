@@ -202,6 +202,19 @@ def log_ssh_connection(username, target_host, target_port, success, ip_address, 
         f"ip={_sanitize_log_value(ip_address)}{error_msg}"
     )
 
+
+def log_tailscale_ssh_usage(username, target_host, target_port, remote_username,
+                            ip_address, allowed, error=None):
+    """Audit use of the WebSSH node's shared Tailscale identity."""
+    status = "AUTHORIZED" if allowed else "DENIED"
+    error_msg = f" | error={_sanitize_log_value(error)}" if error else ""
+    audit_logger.info(
+        f"TAILSCALE_SSH_{status} | user={_sanitize_log_value(username)} | "
+        f"target={_sanitize_log_value(target_host)}:{target_port} | "
+        f"remote_user={_sanitize_log_value(remote_username)} | "
+        f"ip={_sanitize_log_value(ip_address)} | identity=shared-node{error_msg}"
+    )
+
 def log_ssh_disconnect(username, target_host, target_port, ip_address, reason=None):
     reason_msg = f" | reason={_sanitize_log_value(reason)}" if reason else ""
     audit_logger.info(

@@ -32,6 +32,21 @@ MAX_EDITOR_FILE_SIZE = int(os.environ.get('MAX_EDITOR_FILE_SIZE', str(5 * 1024 *
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
 ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
 
+
+def _csv_env(name):
+    """Parse a comma-separated environment variable into an immutable set."""
+    return frozenset(value.strip() for value in os.environ.get(name, '').split(',') if value.strip())
+
+
+# Tailscale SSH uses the WebSSH node's shared tailnet identity. Keep it disabled
+# unless the operator explicitly enables it and grants access to trusted users.
+TAILSCALE_SSH_ENABLED = os.environ.get('TAILSCALE_SSH_ENABLED', 'false').lower() == 'true'
+TAILSCALE_SSH_ALLOWED_WEBSSH_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_WEBSSH_USERS')
+TAILSCALE_SSH_ALLOWED_TARGETS = frozenset(
+    target.lower() for target in _csv_env('TAILSCALE_SSH_ALLOWED_TARGETS')
+)
+TAILSCALE_SSH_ALLOWED_REMOTE_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_REMOTE_USERS')
+
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 _secret_key = os.environ.get('SECRET_KEY')

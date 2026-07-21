@@ -13,6 +13,7 @@ from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_e
 from .user_settings import get_user_settings
 from .app_settings import is_registration_enabled, set_registration_enabled
 from . import sftp_handler
+from .tailscale_ssh import user_can_use_tailscale_ssh
 
 socketio = SocketIO()
 csrf = CSRFProtect()
@@ -47,7 +48,8 @@ def create_app():
             'url_prefix': url_prefix,
             'registration_enabled': is_registration_enabled(),
             'tmux_enabled': config.TMUX_ENABLED,
-            'tmux_default': config.TMUX_DEFAULT
+            'tmux_default': config.TMUX_DEFAULT,
+            'tailscale_ssh_allowed': user_can_use_tailscale_ssh(current_user)
         }
 
     trusted_proxies = int(os.environ.get('TRUSTED_PROXIES', '0'))
