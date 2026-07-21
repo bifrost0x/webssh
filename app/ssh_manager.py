@@ -250,10 +250,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             thread.start()
 
         if startup_commands and not reconnect_tmux_name:
-            terminal_input = to_terminal_input(startup_commands)
-            if not terminal_input.endswith('\r'):
-                terminal_input += '\r'
-            delivered, _delivery_error = send_ssh_input(session_id, terminal_input)
+            terminal_input = to_terminal_input(startup_commands).rstrip('\r') + '\r'
+            delivered, _delivery_error = send_ssh_input(
+                session_id, terminal_input, require_complete=True
+            )
             if not delivered:
                 close_session(session_id)
                 return None, "Connection failed"
@@ -397,7 +397,7 @@ def read_ssh_output(session_id, socketio_instance, app):
 
         close_session(session_id)
 
-def send_ssh_input(session_id, data):
+def send_ssh_input(session_id, data, require_complete=False):
     """Send user input to SSH channel."""
     try:
         import re as _re
@@ -419,7 +419,15 @@ def send_ssh_input(session_id, data):
 
             channel = session['channel']
 
-        channel.send(data)
+        if require_complete:
+            remaining = data
+            while remaining:
+                sent = channel.send(remaining)
+                if not isinstance(sent, int) or sent <= 0:
+                    return False, "Failed to send SSH input"
+                remaining = remaining[sent:]
+        else:
+            channel.send(data)
 
         with sessions_lock:
             if session_id in sessions:

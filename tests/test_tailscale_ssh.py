@@ -350,3 +350,118 @@ def test_tmux_reconnect_does_not_pass_startup_commands_to_ssh_manager(app, monke
         })
 
     assert calls[0]['startup_commands'] == ''
+
+
+def test_socket_rejects_invalid_startup_commands_without_dns_lookup(app, monkeypatch):
+    import config
+    from flask import request
+    from app.auth import register_socket_session, register_user
+    from app.models import db
+    import app.socket_events as socket_events
+
+    with app.app_context():
+        user, error = register_user('startupnodns', 'socket-password-123')
+        assert error is None
+        register_socket_session(user.id, 'startup-no-dns-socket')
+        db.session.commit()
+
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **kwargs: emitted.append((event, payload)),
+    )
+    monkeypatch.setattr(config, 'BLOCK_INTERNAL_SSH', True)
+    monkeypatch.setattr(
+        socket_events.socket,
+        'getaddrinfo',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('DNS must not be queried')
+        ),
+    )
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = 'startup-no-dns-socket'
+        socket_events.handle_ssh_connect({
+            'host': 'tiny-server',
+            'port': 22,
+            'username': 'root',
+            'password': 'secret',
+            'startup_commands': ['echo unsafe'],
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {'error': 'Startup commands must be text', 'client_request_id': None},
+    )]
+
+
+def test_socket_save_profile_stores_normalized_startup_commands(app, monkeypatch):
+    from flask import request
+    from app.auth import register_socket_session, register_user
+    from app.models import db
+    import app.socket_events as socket_events
+
+    with app.app_context():
+        user, error = register_user('startupprofile', 'socket-password-123')
+        assert error is None
+        register_socket_session(user.id, 'startup-profile-socket')
+        db.session.commit()
+
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = 'startup-profile-socket'
+        socket_events.handle_save_profile({
+            'name': 'Production',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'startup_commands': 'echo connected\r\nwhoami',
+        })
+
+    saved_profile = next(payload['profile'] for event, payload in emitted if event == 'profile_saved')
+    assert saved_profile['startup_commands'] == 'echo connected\nwhoami'
+
+
+def test_socket_save_profile_rejects_invalid_startup_commands(app, monkeypatch):
+    from flask import request
+    from app import profile_manager
+    from app.auth import register_socket_session, register_user
+    from app.models import db
+    import app.socket_events as socket_events
+
+    with app.app_context():
+        user, error = register_user('startupprofilebad', 'socket-password-123')
+        assert error is None
+        user_id = user.id
+        register_socket_session(user_id, 'startup-profile-invalid-socket')
+        db.session.commit()
+
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = 'startup-profile-invalid-socket'
+        socket_events.handle_save_profile({
+            'name': 'Production',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'startup_commands': ['echo unsafe'],
+        })
+
+    assert emitted == [('error', {'error': 'Startup commands must be text'})]
+    with app.app_context():
+        assert profile_manager.load_profiles(user_id) == []

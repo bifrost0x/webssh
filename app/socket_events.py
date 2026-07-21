@@ -264,6 +264,13 @@ def handle_ssh_connect(data, current_user=None):
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
 
+        startup_commands, startup_commands_error = normalize_startup_commands(
+            data.get('startup_commands', '')
+        )
+        if startup_commands_error:
+            emit_error(startup_commands_error)
+            return
+
         if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
             log_warning("SSH connect rate limit hit", user=current_user.username)
             emit_error('Too many connection attempts. Please wait a moment.')
@@ -282,13 +289,6 @@ def handle_ssh_connect(data, current_user=None):
 
         if auth_type not in {'password', 'key', 'tailscale'}:
             emit_error('Invalid authentication method')
-            return
-
-        startup_commands, startup_commands_error = normalize_startup_commands(
-            data.get('startup_commands', '')
-        )
-        if startup_commands_error:
-            emit_error(startup_commands_error)
             return
 
         if auth_type == 'tailscale':
@@ -574,6 +574,7 @@ def handle_save_profile(data, current_user=None):
         auth_type = data.get('auth_type')
         key_id = data.get('key_id')
         jump_host_id = data.get('jump_host_id')
+        startup_commands = data.get('startup_commands')
 
         if auth_type == 'tailscale':
             access_error = validate_tailscale_ssh_access(current_user, host, username)
@@ -589,7 +590,8 @@ def handle_save_profile(data, current_user=None):
             username=username,
             auth_type=auth_type,
             key_id=key_id,
-            jump_host_id=jump_host_id
+            jump_host_id=jump_host_id,
+            startup_commands=startup_commands,
         )
 
         if error:

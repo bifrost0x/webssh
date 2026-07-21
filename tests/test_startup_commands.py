@@ -3,10 +3,22 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _clean_ssh_sessions():
+    from app import ssh_manager
+
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions.clear()
+    yield
+    for session_id in list(ssh_manager.sessions):
+        ssh_manager.close_session(session_id)
+
+
 class _StartupCommandChannel:
-    def __init__(self, fail_on_send=False):
+    def __init__(self, fail_on_send=False, max_send_size=None):
         self.closed = False
         self.fail_on_send = fail_on_send
+        self.max_send_size = max_send_size
         self.sent = []
 
     def settimeout(self, _timeout):
@@ -15,7 +27,9 @@ class _StartupCommandChannel:
     def send(self, data):
         if self.fail_on_send:
             raise OSError('channel write failed')
-        self.sent.append(data)
+        sent_size = min(len(data), self.max_send_size or len(data))
+        self.sent.append(data[:sent_size])
+        return sent_size
 
     def close(self):
         self.closed = True
@@ -105,6 +119,7 @@ def test_to_terminal_input_converts_normalized_linefeeds_to_carriage_returns():
     [
         ('echo first\necho second', 'echo first\recho second\r'),
         ('echo first\n', 'echo first\r'),
+        ('echo first\n\n', 'echo first\r'),
     ],
 )
 def test_create_ssh_connection_delivers_startup_commands_once(
@@ -127,6 +142,29 @@ def test_create_ssh_connection_delivers_startup_commands_once(
     assert error is None
     assert session_id in ssh_manager.sessions
     assert channel.sent == [expected_input]
+
+    ssh_manager.close_session(session_id)
+
+
+def test_create_ssh_connection_delivers_all_startup_commands_after_partial_send(monkeypatch):
+    from app import ssh_manager
+
+    channel = _StartupCommandChannel(max_send_size=4)
+    client = _StartupCommandClient(channel)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        startup_commands='echo first\necho second',
+    )
+
+    assert error is None
+    assert ''.join(channel.sent) == 'echo first\recho second\r'
+    assert len(channel.sent) > 1
 
     ssh_manager.close_session(session_id)
 
