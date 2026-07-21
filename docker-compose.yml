@@ -54,7 +54,15 @@ services:
       # === Tailscale SSH (optional, shared node identity) ===
       # Disabled by default. See docs/tailscale-ssh.md for the required
       # authorization controls and a persistent Tailscale sidecar example.
+      # Before enabling: create the first admin from a trusted network, disable
+      # self-registration, and configure narrow target/remote-user allowlists.
       - TAILSCALE_SSH_ENABLED=false
+      # After the controlled first-admin bootstrap, uncomment this as a
+      # configuration fallback in addition to disabling registration in Admin.
+      # - REGISTRATION_ENABLED=False
+      # - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
+      # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
+      # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
 
       # === Optional: Usually no changes needed ===
       - DEBUG=False

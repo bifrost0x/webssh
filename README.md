@@ -195,6 +195,11 @@ tag, narrow ACL/SSH rules, and the optional WebSSH target and remote-username
 allowlists. The backend enforces these controls; hiding the UI option is not the
 security boundary.
 
+Before enabling the feature, create the first administrator from a trusted
+network and disable self-registration in the Admin Panel. Do not enable the
+shared Tailscale identity on a fresh, publicly reachable installation: the
+first registered WebSSH account becomes an administrator.
+
 See [Tailscale SSH deployment and security](docs/tailscale-ssh.md) for all
 configuration variables, ACL guidance, audit behavior, and a Docker sidecar
 example with persistent Tailscale state.
