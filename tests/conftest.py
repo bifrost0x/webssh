@@ -112,3 +112,23 @@ def encrypted_rsa_private_key_pem():
         serialization.PrivateFormat.TraditionalOpenSSL,
         serialization.BestAvailableEncryption(b'test-passphrase'),
     )
+
+
+@pytest.fixture
+def encrypted_ed25519_private_key_pem():
+    key = ed25519.Ed25519PrivateKey.generate()
+    return _serialize_private_key(
+        key,
+        serialization.PrivateFormat.OpenSSH,
+        serialization.BestAvailableEncryption(b'test-passphrase'),
+    )
+
+
+@pytest.fixture
+def encrypted_ecdsa_private_key_pem():
+    key = ec.generate_private_key(ec.SECP256R1())
+    return _serialize_private_key(
+        key,
+        serialization.PrivateFormat.OpenSSH,
+        serialization.BestAvailableEncryption(b'test-passphrase'),
+    )

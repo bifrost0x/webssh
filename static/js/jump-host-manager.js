@@ -50,11 +50,20 @@ window.JumpHostManager = {
     updatePasswordVisibility() {
         const select = document.getElementById('jumpHostSelect');
         const group = document.getElementById('jumpHostPasswordGroup');
-        if (!select || !group) {
+        const keyGroup = document.getElementById('jumpHostKeyPassphraseGroup');
+        const keyInput = document.getElementById('jumpHostKeyPassphraseInput');
+        if (!select || !group || !keyGroup || !keyInput) {
             return;
         }
         const jh = this.getById(select.value);
         group.classList.toggle('hidden', !(jh && jh.auth_type === 'password'));
+        const keyNeedsPassphrase = Boolean(
+            jh && jh.auth_type === 'key' && window.ProfileManager
+            && window.ProfileManager.keyRequiresPassphrase(jh.key_id)
+        );
+        keyGroup.classList.toggle('hidden', !keyNeedsPassphrase);
+        keyInput.required = keyNeedsPassphrase;
+        if (!keyNeedsPassphrase) keyInput.value = '';
     },
 
     // Render the management modal list.

@@ -149,7 +149,7 @@ def test_unparseable_key_blocks_readiness_without_leaking_content(tmp_path):
     assert readiness_exit_code(results) == 2
 
 
-def test_passphrase_encrypted_key_blocks_readiness(
+def test_passphrase_encrypted_supported_key_passes_readiness(
         tmp_path, encrypted_rsa_private_key_pem):
     from scripts.check_paramiko5_readiness import (
         audit_data_dir,
@@ -168,8 +168,8 @@ def test_passphrase_encrypted_key_blocks_readiness(
     results = audit_data_dir(tmp_path)
 
     assert results[0]['actual_type'] == 'PASSPHRASE_ENCRYPTED'
-    assert results[0]['compatible'] is False
-    assert readiness_exit_code(results) == 2
+    assert results[0]['compatible'] is True
+    assert readiness_exit_code(results) == 0
 
 
 def test_scan_does_not_change_key_bytes_or_metadata(

@@ -85,6 +85,7 @@ def test_save_key_validates_encrypts_and_records_supported_key(
 
         assert error is None
         assert key_meta['key_type'] == expected_type
+        assert key_meta['passphrase_required'] is False
         key_path = Path(key_manager.get_key_path(user_id, key_meta['id']))
         raw = key_path.read_bytes()
         assert key_encryption.is_encrypted(raw) is True
@@ -104,10 +105,7 @@ def test_save_key_validates_encrypts_and_records_supported_key(
             'dsa_private_key_pem',
             'DSA private keys are not supported; use Ed25519, ECDSA, or RSA',
         ),
-        (
-            'encrypted_rsa_private_key_pem',
-            'Passphrase-encrypted private keys are not supported',
-        ),
+        ('encrypted_rsa_private_key_pem', 'SSH key passphrase required'),
     ],
 )
 def test_save_key_rejects_unsupported_key_without_writing(
@@ -131,6 +129,85 @@ def test_save_key_rejects_unsupported_key_without_writing(
         assert error == expected_error
         assert set(keys_dir.iterdir()) == before
         assert key_manager.load_keys(user_id) == []
+
+
+@pytest.mark.parametrize(
+    ('fixture_name', 'expected_type'),
+    [
+        ('encrypted_rsa_private_key_pem', 'RSA'),
+        ('encrypted_ed25519_private_key_pem', 'Ed25519'),
+        ('encrypted_ecdsa_private_key_pem', 'ECDSA'),
+    ],
+)
+def test_save_encrypted_key_records_requirement_without_storing_passphrase(
+        app, request, fixture_name, expected_type):
+    from app import key_encryption, key_manager
+
+    user_id = create_user(app, username=f'encrypted-{expected_type.lower()}')
+    key_content = request.getfixturevalue(fixture_name)
+    passphrase = 'test-passphrase'
+
+    with app.app_context():
+        key_meta, error = key_manager.save_key(
+            user_id,
+            f'{expected_type} encrypted key',
+            key_content,
+            key_passphrase=passphrase,
+        )
+
+        assert error is None
+        assert key_meta['key_type'] == expected_type
+        assert key_meta['passphrase_required'] is True
+        assert passphrase not in repr(key_meta)
+
+        key_path = Path(key_manager.get_key_path(user_id, key_meta['id']))
+        raw = key_path.read_bytes()
+        assert key_encryption.is_encrypted(raw) is True
+        assert passphrase.encode() not in raw
+
+        keys_file = key_manager.get_user_keys_file(user_id)
+        assert passphrase not in keys_file.read_text(encoding='utf-8')
+
+
+def test_save_encrypted_key_rejects_wrong_passphrase_without_writing(
+        app, encrypted_rsa_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, username='wrong-passphrase')
+
+    with app.app_context():
+        keys_dir = key_manager.get_user_keys_dir(user_id)
+        before = set(keys_dir.iterdir())
+        secret = 'wrong-passphrase-value'
+
+        key_meta, error = key_manager.save_key(
+            user_id,
+            'encrypted key',
+            encrypted_rsa_private_key_pem,
+            key_passphrase=secret,
+        )
+
+        assert key_meta is None
+        assert error == 'Invalid SSH key passphrase'
+        assert secret not in error
+        assert set(keys_dir.iterdir()) == before
+
+
+def test_load_keys_defaults_legacy_metadata_to_no_passphrase(app):
+    from app import key_manager
+
+    user_id = create_user(app, username='legacy-key-metadata')
+
+    with app.app_context():
+        key_manager.save_keys(user_id, [{
+            'id': 'legacy-key',
+            'name': 'Legacy key',
+            'filename': 'legacy.pem',
+            'key_type': 'RSA',
+            'encrypted': True,
+        }])
+
+        assert key_manager.load_keys(user_id)[0]['passphrase_required'] is False
 
 
 def test_save_key_rejects_malformed_pem_without_writing(app):

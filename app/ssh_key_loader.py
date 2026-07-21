@@ -9,6 +9,10 @@ class UnsupportedPrivateKeyError(paramiko.SSHException):
     """Raised when key material is invalid or unsupported."""
 
 
+class InvalidPrivateKeyPassphraseError(paramiko.SSHException):
+    """Raised when encrypted key material cannot be decrypted."""
+
+
 _SUPPORTED_KEY_CLASSES = (
     ('RSA', paramiko.RSAKey),
     ('Ed25519', paramiko.Ed25519Key),
@@ -16,7 +20,7 @@ _SUPPORTED_KEY_CLASSES = (
 )
 
 
-def _parse_private_key(key_content):
+def _parse_private_key(key_content, password=None):
     if not isinstance(key_content, str) or not key_content.strip():
         raise UnsupportedPrivateKeyError(
             'Unsupported or invalid private key format'
@@ -27,10 +31,14 @@ def _parse_private_key(key_content):
             'DSA private keys are not supported; use Ed25519, ECDSA, or RSA'
         )
 
+    password = password or None
     password_required = False
     for key_type, key_class in _SUPPORTED_KEY_CLASSES:
         try:
-            key = key_class.from_private_key(io.StringIO(key_content))
+            key = key_class.from_private_key(
+                io.StringIO(key_content),
+                password=password,
+            )
             return key, key_type
         except paramiko.PasswordRequiredException:
             password_required = True
@@ -39,7 +47,12 @@ def _parse_private_key(key_content):
 
     if password_required:
         raise paramiko.PasswordRequiredException(
-            'Passphrase-encrypted private keys are not supported'
+            'SSH key passphrase required'
+        )
+
+    if password is not None:
+        raise InvalidPrivateKeyPassphraseError(
+            'Invalid private key or passphrase'
         )
 
     raise UnsupportedPrivateKeyError(
@@ -47,13 +60,13 @@ def _parse_private_key(key_content):
     )
 
 
-def load_private_key(key_content):
+def load_private_key(key_content, password=None):
     """Return a supported Paramiko private key."""
-    key, _key_type = _parse_private_key(key_content)
+    key, _key_type = _parse_private_key(key_content, password=password)
     return key
 
 
-def identify_private_key(key_content):
+def identify_private_key(key_content, password=None):
     """Return the normalized supported key type."""
-    _key, key_type = _parse_private_key(key_content)
+    _key, key_type = _parse_private_key(key_content, password=password)
     return key_type

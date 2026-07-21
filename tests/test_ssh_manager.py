@@ -181,6 +181,42 @@ def test_direct_supported_key_passes_pkey_not_password(
     assert 'key_filename' not in clients[0].connect_kwargs
 
 
+def test_direct_encrypted_key_uses_transient_passphrase(
+        monkeypatch, encrypted_ed25519_private_key_pem):
+    clients = install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(
+        key_content=encrypted_ed25519_private_key_pem,
+        key_passphrase='test-passphrase',
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    assert isinstance(clients[0].connect_kwargs['pkey'], paramiko.Ed25519Key)
+    assert 'key_passphrase' not in ssh_manager.sessions[session_id]
+
+
+@pytest.mark.parametrize(
+    ('passphrase', 'expected_error'),
+    [
+        (None, 'SSH key passphrase required'),
+        ('wrong-passphrase-secret', 'Invalid SSH key passphrase'),
+    ],
+)
+def test_direct_encrypted_key_returns_safe_passphrase_errors(
+        monkeypatch, encrypted_rsa_private_key_pem, passphrase, expected_error):
+    install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(
+        key_content=encrypted_rsa_private_key_pem,
+        key_passphrase=passphrase,
+    )
+
+    assert session_id is None
+    assert error == expected_error
+    assert 'wrong-passphrase-secret' not in error
+
+
 def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
     clients = install_ssh_clients(monkeypatch)
 
@@ -274,6 +310,25 @@ def test_proxy_jump_key_uses_supported_pkey(
     assert session_id in ssh_manager.sessions
     assert isinstance(clients[0].connect_kwargs['pkey'], paramiko.RSAKey)
     assert 'password' not in clients[0].connect_kwargs
+
+
+def test_proxy_jump_encrypted_key_uses_its_own_passphrase(
+        monkeypatch, encrypted_ecdsa_private_key_pem):
+    clients = install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(
+        password='target-password',
+        proxy_jump_host='bastion.example',
+        proxy_jump_port=22,
+        proxy_jump_username='jump-user',
+        proxy_jump_key_content=encrypted_ecdsa_private_key_pem,
+        proxy_jump_key_passphrase='test-passphrase',
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    assert isinstance(clients[0].connect_kwargs['pkey'], paramiko.ECDSAKey)
+    assert 'proxy_jump_key_passphrase' not in ssh_manager.sessions[session_id]
 
 
 def test_target_failure_closes_bastion(monkeypatch):

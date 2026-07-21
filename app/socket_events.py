@@ -20,6 +20,24 @@ import socket
 import ipaddress
 import config
 
+KEY_PASSPHRASE_REQUIRED = 'KEY_PASSPHRASE_REQUIRED'
+KEY_PASSPHRASE_INVALID = 'KEY_PASSPHRASE_INVALID'
+
+
+def _key_passphrase_error_code(message):
+    """Map safe user-facing key errors to stable protocol codes."""
+    normalized = (message or '').lower()
+    if 'passphrase required' in normalized:
+        return KEY_PASSPHRASE_REQUIRED
+    if 'invalid' in normalized and 'passphrase' in normalized:
+        return KEY_PASSPHRASE_INVALID
+    return None
+
+
+def _key_requires_passphrase(user_id, key_id):
+    key = key_manager.get_key(user_id, key_id)
+    return bool(key and key.get('passphrase_required', False))
+
 
 class DownloadSizeLimitExceeded(Exception):
     """Raised before a download writes more than its configured byte cap."""
@@ -214,6 +232,12 @@ def restore_user_sessions(user_id):
                 'host': db_session.host,
                 'port': db_session.port,
                 'username': db_session.username,
+                'key_id': db_session.key_id,
+                'passphrase_required': bool(
+                    db_session.key_id and _key_requires_passphrase(
+                        user_id, db_session.key_id
+                    )
+                ),
                 'auth_type': session.get('auth_type', db_session.auth_type),
                 'via_jump': session.get('via_jump'),
                 'use_tmux': session.get('use_tmux', False),
@@ -239,6 +263,11 @@ def restore_user_sessions(user_id):
                 'port': db_session.port,
                 'username': db_session.username,
                 'key_id': db_session.key_id,
+                'passphrase_required': bool(
+                    db_session.key_id and _key_requires_passphrase(
+                        user_id, db_session.key_id
+                    )
+                ),
                 'auth_type': db_session.auth_type,
                 'tmux_session_name': db_session.tmux_session_name,
                 'display_name': db_session.display_name
@@ -252,16 +281,25 @@ def handle_ssh_connect(data, current_user=None):
     """Handle SSH connection request with input validation."""
     password = None
     key_content = None
+    key_passphrase = None
     bastion_password = None
     bastion_key_content = None
+    bastion_key_passphrase = None
     try:
         password = data.get('password')
         key_id = data.get('key_id')
+        key_passphrase = data.get('key_passphrase')
         auth_type = data.get('auth_type') or ('key' if key_id else 'password')
         client_request_id = data.get('client_request_id')
 
-        def emit_error(message):
-            emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
+        def emit_error(message, code=None):
+            payload = {
+                'error': message,
+                'client_request_id': client_request_id,
+            }
+            if code:
+                payload['code'] = code
+            emit('ssh_error', payload)
 
         if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
             log_warning("SSH connect rate limit hit", user=current_user.username)
@@ -302,6 +340,13 @@ def handle_ssh_connect(data, current_user=None):
             return
 
         if key_id:
+            if (_key_requires_passphrase(current_user.id, key_id)
+                    and not key_passphrase):
+                emit_error(
+                    'SSH key passphrase required',
+                    KEY_PASSPHRASE_REQUIRED,
+                )
+                return
             key_content, key_error = key_manager.read_key_content(current_user.id, key_id)
             if key_error:
                 emit_error(f'SSH key error: {key_error}')
@@ -319,10 +364,18 @@ def handle_ssh_connect(data, current_user=None):
                 return
             bastion_password = proxy_jump.get('password')
             bastion_key_id = proxy_jump.get('key_id')
+            bastion_key_passphrase = proxy_jump.get('key_passphrase')
             if not bastion_password and not bastion_key_id:
                 emit_error('Jump host password or SSH key required')
                 return
             if bastion_key_id:
+                if (_key_requires_passphrase(current_user.id, bastion_key_id)
+                        and not bastion_key_passphrase):
+                    emit_error(
+                        'Jump host SSH key passphrase required',
+                        KEY_PASSPHRASE_REQUIRED,
+                    )
+                    return
                 bastion_key_content, bastion_key_error = key_manager.read_key_content(
                     current_user.id, bastion_key_id
                 )
@@ -355,6 +408,7 @@ def handle_ssh_connect(data, current_user=None):
             username=username,
             password=password,
             key_content=key_content,
+            key_passphrase=key_passphrase,
             socketio_instance=socketio,
             app=current_app._get_current_object(),
             user_id=current_user.id,
@@ -363,6 +417,7 @@ def handle_ssh_connect(data, current_user=None):
             proxy_jump_username=bastion_username,
             proxy_jump_password=bastion_password,
             proxy_jump_key_content=bastion_key_content,
+            proxy_jump_key_passphrase=bastion_key_passphrase,
             use_tmux=use_tmux,
             reconnect_tmux_name=reconnect_tmux_name,
             auth_type=auth_type
@@ -374,7 +429,7 @@ def handle_ssh_connect(data, current_user=None):
             key_content = None
 
         if error:
-            emit_error(error)
+            emit_error(error, _key_passphrase_error_code(error))
         else:
             display_name = data.get('display_name') if use_tmux else None
             if display_name:
@@ -422,6 +477,11 @@ def handle_ssh_connect(data, current_user=None):
                 'via_jump': bastion_host,
                 'use_tmux': use_tmux,
                 'key_id': key_id if use_tmux else None,
+                'passphrase_required': bool(
+                    key_id and _key_requires_passphrase(
+                        current_user.id, key_id
+                    )
+                ),
                 'auth_type': auth_type,
                 'tmux_session_name': ssh_manager.get_session(session_id).get('tmux_session_name') if use_tmux else None,
                 'display_name': display_name
@@ -434,8 +494,10 @@ def handle_ssh_connect(data, current_user=None):
     finally:
         password = None
         key_content = None
+        key_passphrase = None
         bastion_password = None
         bastion_key_content = None
+        bastion_key_passphrase = None
 
 @socketio.on('ssh_input')
 @socket_login_required
@@ -680,9 +742,11 @@ def handle_list_keys(current_user=None):
 @socket_login_required
 def handle_upload_key(data, current_user=None):
     """Store a new SSH private key for this user."""
+    key_passphrase = None
     try:
         name = data.get('name')
         key_content = data.get('key_content')
+        key_passphrase = data.get('key_passphrase')
 
         if not all([name, key_content]):
             emit('error', {'error': 'Name and key content required'})
@@ -697,10 +761,19 @@ def handle_upload_key(data, current_user=None):
             emit('error', {'error': 'Key content too large (max 64KB)'})
             return
 
-        key_meta, error = key_manager.save_key(current_user.id, name, key_content)
+        key_meta, error = key_manager.save_key(
+            current_user.id,
+            name,
+            key_content,
+            key_passphrase=key_passphrase,
+        )
         if error:
             log_key_upload(current_user.username, name, False, request.remote_addr)
-            emit('error', {'error': error})
+            payload = {'error': error}
+            code = _key_passphrase_error_code(error)
+            if code:
+                payload['code'] = code
+            emit('error', payload)
         else:
             log_key_upload(current_user.username, name, True, request.remote_addr)
             emit('key_uploaded', {'key': key_meta})
@@ -708,6 +781,8 @@ def handle_upload_key(data, current_user=None):
 
     except Exception as e:
         emit('error', {'error': 'Failed to upload key'})
+    finally:
+        key_passphrase = None
 
 @socketio.on('delete_key')
 @socket_login_required
@@ -1449,6 +1524,9 @@ def handle_download_folder_binary(data, current_user=None):
 @socket_login_required
 def handle_quick_connect(data, current_user=None):
     """Create temporary SSH connection for file transfers without active session."""
+    password = None
+    key_content = None
+    key_passphrase = None
     try:
         if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
             log_warning("Quick connect rate limit hit", user=current_user.username)
@@ -1457,6 +1535,7 @@ def handle_quick_connect(data, current_user=None):
 
         password = data.get('password')
         key_id = data.get('key_id')
+        key_passphrase = data.get('key_passphrase')
 
         host, port, username, error = _validate_ssh_params(
             data.get('host'), data.get('port', 22), data.get('username')
@@ -1471,6 +1550,13 @@ def handle_quick_connect(data, current_user=None):
 
         key_content = None
         if key_id:
+            if (_key_requires_passphrase(current_user.id, key_id)
+                    and not key_passphrase):
+                emit('quick_connect_error', {
+                    'error': 'SSH key passphrase required',
+                    'code': KEY_PASSPHRASE_REQUIRED,
+                })
+                return
             key_content, key_error = key_manager.read_key_content(current_user.id, key_id)
             if key_error:
                 emit('quick_connect_error', {'error': f'SSH key error: {key_error}'})
@@ -1482,6 +1568,7 @@ def handle_quick_connect(data, current_user=None):
             username=username,
             password=password,
             key_content=key_content,
+            key_passphrase=key_passphrase,
             user_id=str(current_user.id)
         )
 
@@ -1491,7 +1578,11 @@ def handle_quick_connect(data, current_user=None):
             key_content = None
 
         if error:
-            emit('quick_connect_error', {'error': error})
+            payload = {'error': error}
+            code = _key_passphrase_error_code(error)
+            if code:
+                payload['code'] = code
+            emit('quick_connect_error', payload)
         else:
             emit('quick_connect_success', {
                 'connection_id': connection_id,
@@ -1507,6 +1598,7 @@ def handle_quick_connect(data, current_user=None):
     finally:
         password = None
         key_content = None
+        key_passphrase = None
 
 @socketio.on('quick_disconnect')
 @socket_login_required

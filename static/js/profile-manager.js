@@ -23,6 +23,30 @@ const ProfileManager = {
         this.keys = keys;
         this.renderKeySelect();
         this.renderKeysList();
+        this.updateKeyPassphraseVisibility();
+        if (window.JumpHostManager) {
+            window.JumpHostManager.updatePasswordVisibility();
+        }
+    },
+
+    getKeyById(keyId) {
+        return this.keys.find(key => key.id === keyId) || null;
+    },
+
+    keyRequiresPassphrase(keyId) {
+        const key = this.getKeyById(keyId);
+        return Boolean(key && key.passphrase_required);
+    },
+
+    updateKeyPassphraseVisibility() {
+        const select = document.getElementById('keySelect');
+        const group = document.getElementById('keyPassphraseGroup');
+        const input = document.getElementById('keyPassphraseInput');
+        if (!select || !group || !input) return;
+        const required = this.keyRequiresPassphrase(select.value);
+        group.classList.toggle('hidden', !required);
+        input.required = required;
+        if (!required) input.value = '';
     },
 
     renderProfileSelect() {
@@ -121,6 +145,7 @@ const ProfileManager = {
 
         if (profile.auth_type === 'key' && profile.key_id) {
             document.getElementById('keySelect').value = profile.key_id;
+            this.updateKeyPassphraseVisibility();
         }
 
         // Jump host (bastion) reference — the password is entered at connect time.
@@ -143,16 +168,21 @@ const ProfileManager = {
             keyGroup.classList.add('hidden');
             document.getElementById('passwordInput').required = true;
             document.getElementById('keySelect').required = false;
+            document.getElementById('keyPassphraseGroup')?.classList.add('hidden');
+            document.getElementById('keyPassphraseInput').required = false;
         } else if (authType === 'key') {
             passwordGroup.classList.add('hidden');
             keyGroup.classList.remove('hidden');
             document.getElementById('passwordInput').required = false;
             document.getElementById('keySelect').required = true;
+            this.updateKeyPassphraseVisibility();
         } else {
             passwordGroup.classList.add('hidden');
             keyGroup.classList.add('hidden');
             document.getElementById('passwordInput').required = false;
             document.getElementById('keySelect').required = false;
+            document.getElementById('keyPassphraseGroup')?.classList.add('hidden');
+            document.getElementById('keyPassphraseInput').required = false;
         }
     },
 
@@ -170,11 +200,12 @@ const ProfileManager = {
         }
     },
 
-    uploadKey(name, keyContent) {
+    uploadKey(name, keyContent, keyPassphrase) {
         if (window.socket) {
             window.socket.emit('upload_key', {
                 name: name,
-                key_content: keyContent
+                key_content: keyContent,
+                key_passphrase: keyPassphrase || undefined
             });
         }
     },

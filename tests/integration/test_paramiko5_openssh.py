@@ -29,6 +29,7 @@ CHANGED_HOST = os.environ.get(
 CHANGED_PORT = int(os.environ.get('PARAMIKO5_CHANGED_PORT', '22'))
 USERNAME = 'testuser'
 PASSWORD = 'Paramiko5-Test-Only!'
+KEY_PASSPHRASE = 'Paramiko5-Key-Passphrase!'
 RUNTIME_DIR = (
     Path(__file__).resolve().parent / 'paramiko5' / 'runtime'
 )
@@ -121,6 +122,22 @@ def test_direct_key_terminal_roundtrip(key_name):
         assert ssh_manager.close_session(session_id) is True
 
 
+@pytest.mark.parametrize('key_name', ['rsa', 'ed25519', 'ecdsa'])
+def test_direct_encrypted_key_terminal_roundtrip(key_name):
+    key_content = (
+        RUNTIME_DIR / f'{key_name}_encrypted.pem'
+    ).read_text(encoding='utf-8')
+    session_id = connect_terminal(
+        key_content=key_content,
+        key_passphrase=KEY_PASSPHRASE,
+    )
+    try:
+        marker = f'PARAMIKO5_{key_name.upper()}_ENCRYPTED_TERMINAL_OK'
+        assert marker.encode() in read_terminal_marker(session_id, marker)
+    finally:
+        assert ssh_manager.close_session(session_id) is True
+
+
 @pytest.mark.parametrize(
     'auth',
     ['password', 'rsa', 'ed25519', 'ecdsa'],
@@ -158,6 +175,38 @@ def test_quick_connect_sftp_roundtrip(auth):
             assert pool.connections == {}
 
 
+@pytest.mark.parametrize('key_name', ['rsa', 'ed25519', 'ecdsa'])
+def test_encrypted_key_quick_connect_sftp_roundtrip(key_name):
+    pool = make_pool()
+    key_content = (
+        RUNTIME_DIR / f'{key_name}_encrypted.pem'
+    ).read_text(encoding='utf-8')
+    connection_id, error = pool.create_connection(
+        host=TARGET_HOST,
+        port=TARGET_PORT,
+        username=USERNAME,
+        user_id='1',
+        key_content=key_content,
+        key_passphrase=KEY_PASSPHRASE,
+    )
+    assert error is None
+    assert connection_id
+
+    remote_path = f'/tmp/paramiko5-encrypted-{key_name}-{uuid.uuid4().hex}.bin'
+    payload = os.urandom(4096)
+    sftp = pool.connections[connection_id]['sftp']
+    try:
+        with sftp.file(remote_path, 'wb') as remote_file:
+            remote_file.write(payload)
+        with sftp.file(remote_path, 'rb') as remote_file:
+            assert remote_file.read() == payload
+    finally:
+        try:
+            sftp.remove(remote_path)
+        finally:
+            assert pool.close_connection(connection_id) is True
+
+
 @pytest.mark.parametrize('auth', ['password', 'rsa'])
 def test_proxy_jump_terminal_and_sftp_roundtrip(auth):
     if auth == 'password':
@@ -189,6 +238,26 @@ def test_proxy_jump_terminal_and_sftp_roundtrip(auth):
             sftp.remove(remote_path)
         finally:
             sftp.close()
+    finally:
+        assert ssh_manager.close_session(session_id) is True
+
+
+def test_encrypted_key_proxy_jump_terminal_roundtrip():
+    key_content = (RUNTIME_DIR / 'rsa_encrypted.pem').read_text(
+        encoding='utf-8'
+    )
+    session_id = connect_terminal(
+        key_content=key_content,
+        key_passphrase=KEY_PASSPHRASE,
+        proxy_jump_host=BASTION_HOST,
+        proxy_jump_port=BASTION_PORT,
+        proxy_jump_username=USERNAME,
+        proxy_jump_key_content=key_content,
+        proxy_jump_key_passphrase=KEY_PASSPHRASE,
+    )
+    try:
+        marker = 'PARAMIKO5_JUMP_ENCRYPTED_KEY_OK'
+        assert marker.encode() in read_terminal_marker(session_id, marker)
     finally:
         assert ssh_manager.close_session(session_id) is True
 

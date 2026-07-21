@@ -456,8 +456,9 @@ Web SSH Terminal includes 10 themes:
 
 Web SSH Terminal uses Paramiko 5 and supports imported RSA, Ed25519, and
 ECDSA private keys. Modern RSA keys remain supported when the server negotiates
-RSA/SHA-2 signatures. Passphrase-encrypted imported private keys are not
-currently supported.
+RSA/SHA-2 signatures. Passphrase-encrypted OpenSSH keys are supported for the
+same key types. The passphrase is requested for each import or new connection,
+used transiently, and never stored in profiles, key metadata, or the database.
 
 Paramiko 5 no longer supports DSA/DSS, RSA signatures using SHA-1
 (`ssh-rsa` as a signature algorithm), SHA-1 key exchange, GSSAPI, or
@@ -477,7 +478,7 @@ python scripts/check_paramiko5_readiness.py \
 ```
 
 Exit code `0` means every discovered key is compatible. Exit code `2`
-means rollout is blocked by an unsupported, encrypted, unreadable, or unsafe
+means rollout is blocked by an unsupported, unreadable, or unsafe
 key entry. Never point the check at the active writable data volume; it is
 designed for a read-only snapshot and never migrates plaintext legacy keys.
 Its report omits key content, configured key names, filenames, paths, and the
@@ -494,11 +495,12 @@ hosted deployment, treat the Web SSH Terminal host as trusted infrastructure.
 While a connection is being established or is active, the server handles:
 
 - **SSH credentials during connection setup.** Target and jump-host passwords,
-  or the decrypted private key selected for authentication, are passed to
-  Paramiko. Passwords are not written to profiles, the database, or audit logs,
-  and credentials are not kept in the in-memory SSH session object. Local
-  references are dropped after the connection attempt; Python does not provide
-  a guarantee that secret bytes are securely zeroed from process memory.
+  key passphrases, or the decrypted private key selected for authentication are
+  passed to Paramiko. Passwords and passphrases are not written to profiles,
+  key metadata, the database, or audit logs, and credentials are not kept in
+  the in-memory SSH session object. Local references are dropped after the
+  connection attempt; Python does not provide a guarantee that secret bytes are
+  securely zeroed from process memory.
 - **Terminal data.** Keystrokes, remote output, broadcast input, and transcript
   data are relayed through the server.
 - **SFTP data.** Uploads, downloads, previews, editor saves, and ZIP folder

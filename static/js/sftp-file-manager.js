@@ -316,6 +316,17 @@ class SFTPFileManager {
                             </select>
                         </div>
 
+                        <div class="form-group hidden" id="fmQcKeyPassphraseGroup">
+                            <label for="fmQcKeyPassphrase" data-i18n="keys.passphrase">Key Passphrase</label>
+                            <div class="input-wrapper with-toggle">
+                                <input type="password" id="fmQcKeyPassphrase" class="form-control" placeholder="Enter key passphrase" autocomplete="off">
+                                <button type="button" class="password-toggle" id="fmQcKeyPassphraseToggle" aria-label="Toggle password visibility">
+                                    <span class="material-icons">visibility</span>
+                                </button>
+                            </div>
+                            <div class="field-hint" data-i18n="keys.passphraseTransientHint">Used only for this connection and never stored.</div>
+                        </div>
+
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" id="fmQcCancel" data-i18n="common.cancel">Cancel</button>
                             <button type="submit" class="btn btn-primary" id="fmQcConnectBtn">
@@ -353,10 +364,22 @@ class SFTPFileManager {
             }
         });
 
+        document.getElementById('fmQcKeyPassphraseToggle').addEventListener('click', () => {
+            const input = document.getElementById('fmQcKeyPassphrase');
+            const icon = document.querySelector('#fmQcKeyPassphraseToggle .material-icons');
+            input.type = input.type === 'password' ? 'text' : 'password';
+            icon.textContent = input.type === 'password' ? 'visibility' : 'visibility_off';
+        });
+
+        document.getElementById('fmQcKeySelect').addEventListener('change', () => {
+            this.updateQuickConnectPassphraseVisibility();
+        });
+
         qcModal.querySelectorAll('input[name="fmQcAuth"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 document.getElementById('fmQcPasswordGroup').classList.toggle('hidden', e.target.value !== 'password');
                 document.getElementById('fmQcKeyGroup').classList.toggle('hidden', e.target.value !== 'key');
+                this.updateQuickConnectPassphraseVisibility();
             });
         });
 
@@ -581,7 +604,12 @@ class SFTPFileManager {
         });
 
         this.socket.on('quick_connect_error', (data) => {
-            this.showNotification(`${this.t('fm.qc.connectionFailed', 'Connection failed')}: ${data.error}`, 'error');
+            const message = data.code === 'KEY_PASSPHRASE_REQUIRED'
+                ? this.t('keys.passphraseRequired', data.error)
+                : data.code === 'KEY_PASSPHRASE_INVALID'
+                    ? this.t('keys.passphraseInvalid', data.error)
+                    : data.error;
+            this.showNotification(`${this.t('fm.qc.connectionFailed', 'Connection failed')}: ${message}`, 'error');
             const btn = document.getElementById('fmQcConnectBtn');
             if (btn) {
                 btn.disabled = false;
@@ -918,14 +946,27 @@ class SFTPFileManager {
                 this.qcKeys.forEach(key => {
                     const option = document.createElement('option');
                     option.value = key.id;
-                    option.textContent = `${key.name} (${key.type || 'unknown'})`;
+                    option.textContent = `${key.name} (${key.key_type || 'unknown'})`;
                     select.appendChild(option);
                 });
+                this.updateQuickConnectPassphraseVisibility();
             });
         }
 
         this.qcModal.classList.add('show');
         document.getElementById('fmQcHost').focus();
+    }
+
+    updateQuickConnectPassphraseVisibility() {
+        const group = document.getElementById('fmQcKeyPassphraseGroup');
+        const input = document.getElementById('fmQcKeyPassphrase');
+        const keyId = document.getElementById('fmQcKeySelect')?.value;
+        const key = (this.qcKeys || []).find(item => item.id === keyId);
+        const authType = document.querySelector('input[name="fmQcAuth"]:checked')?.value;
+        const required = Boolean(authType === 'key' && key && key.passphrase_required);
+        group.classList.toggle('hidden', !required);
+        input.required = required;
+        if (!required) input.value = '';
     }
 
     onProfileSelect(profileId) {
@@ -952,6 +993,7 @@ class SFTPFileManager {
         if (profile.key_id) {
             document.getElementById('fmQcKeySelect').value = profile.key_id;
         }
+        this.updateQuickConnectPassphraseVisibility();
 
         if (authType === 'password') {
             document.getElementById('fmQcPassword').focus();
@@ -965,6 +1007,8 @@ class SFTPFileManager {
         document.getElementById('fmQcProfile').value = '';
         document.getElementById('fmQcPasswordGroup').classList.remove('hidden');
         document.getElementById('fmQcKeyGroup').classList.add('hidden');
+        document.getElementById('fmQcKeyPassphraseGroup').classList.add('hidden');
+        document.getElementById('fmQcKeyPassphrase').value = '';
     }
 
     submitQuickConnect() {
@@ -974,6 +1018,8 @@ class SFTPFileManager {
         const authType = document.querySelector('input[name="fmQcAuth"]:checked').value;
         const password = document.getElementById('fmQcPassword').value;
         const keyId = document.getElementById('fmQcKeySelect').value;
+        const keyPassphraseInput = document.getElementById('fmQcKeyPassphrase');
+        const keyPassphrase = keyPassphraseInput.value;
 
         if (!host || !username) {
             this.showNotification(this.t('fm.qc.hostRequired', 'Host and username are required'), 'warning');
@@ -990,14 +1036,23 @@ class SFTPFileManager {
             return;
         }
 
+        const key = (this.qcKeys || []).find(item => item.id === keyId);
+        if (authType === 'key' && key?.passphrase_required && !keyPassphrase) {
+            this.showNotification(this.t('keys.passphraseRequired', 'SSH key passphrase is required'), 'warning');
+            return;
+        }
+
         const data = { host, port, username };
         if (authType === 'password') {
             data.password = password;
         } else {
             data.key_id = keyId;
+            if (keyPassphrase) data.key_passphrase = keyPassphrase;
         }
 
         this.socket.emit('quick_connect', data);
+        document.getElementById('fmQcPassword').value = '';
+        keyPassphraseInput.value = '';
         this.showNotification(this.t('fm.connecting', 'Connecting...'), 'info');
     }
 

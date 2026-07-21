@@ -7,7 +7,11 @@ from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from . import key_encryption
-from .ssh_key_loader import identify_private_key, UnsupportedPrivateKeyError
+from .ssh_key_loader import (
+    InvalidPrivateKeyPassphraseError,
+    UnsupportedPrivateKeyError,
+    identify_private_key,
+)
 from .storage_utils import storage_lock, atomic_write_json
 
 def get_user_keys_dir(user_id):
@@ -38,7 +42,15 @@ def load_keys(user_id):
 
         with open(keys_file, 'r') as f:
             data = json.load(f)
-            return data.get('keys', [])
+            return [
+                {
+                    **key,
+                    'passphrase_required': bool(
+                        key.get('passphrase_required', False)
+                    ),
+                }
+                for key in data.get('keys', [])
+            ]
     except Exception as e:
         log_error(f"Error loading keys", user_id=user_id, error=str(e))
         return []
@@ -58,7 +70,7 @@ def save_keys(user_id, keys):
         log_error(f"Error saving keys", user_id=user_id, error=str(e))
         return False
 
-def save_key(user_id, name, key_content):
+def save_key(user_id, name, key_content, key_passphrase=None):
     """Store a new SSH private key for a specific user (encrypted at rest)."""
     try:
         keys_dir = get_user_keys_dir(user_id)
@@ -67,10 +79,20 @@ def save_key(user_id, name, key_content):
         key_id = str(uuid.uuid4())
         filename = f"{key_id}.pem"
         key_path = keys_dir / filename
+        passphrase_required = False
         try:
             key_type = identify_private_key(key_content)
         except paramiko.PasswordRequiredException:
-            return None, "Passphrase-encrypted private keys are not supported"
+            passphrase_required = True
+            if not key_passphrase:
+                return None, "SSH key passphrase required"
+            try:
+                key_type = identify_private_key(
+                    key_content,
+                    password=key_passphrase,
+                )
+            except (InvalidPrivateKeyPassphraseError, paramiko.SSHException):
+                return None, "Invalid SSH key passphrase"
         except UnsupportedPrivateKeyError as exc:
             return None, str(exc)
         except paramiko.SSHException:
@@ -85,6 +107,7 @@ def save_key(user_id, name, key_content):
             'filename': filename,
             'key_type': key_type,
             'encrypted': True,
+            'passphrase_required': passphrase_required,
             'uploaded_at': datetime.utcnow().isoformat()
         }
         with storage_lock(f'keys:{user_id}'):

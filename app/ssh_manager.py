@@ -7,7 +7,10 @@ from threading import Lock, Thread
 import config
 from pathlib import Path
 from .audit_logger import log_info, log_warning, log_error, log_debug
-from .ssh_key_loader import load_private_key as _load_private_key
+from .ssh_key_loader import (
+    InvalidPrivateKeyPassphraseError,
+    load_private_key as _load_private_key,
+)
 
 sessions = {}
 sessions_lock = Lock()
@@ -50,9 +53,11 @@ class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
         log_info(f"Host key stored", path=str(self.known_hosts_path))
 
 def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
+                          key_passphrase=None,
                           socketio_instance=None, app=None, user_id=None,
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
                           proxy_jump_password=None, proxy_jump_key_content=None,
+                          proxy_jump_key_passphrase=None,
                           use_tmux=False, reconnect_tmux_name=None,
                           auth_type='password'):
     """
@@ -96,7 +101,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     'allow_agent': False,
                 }
                 if proxy_jump_key_content:
-                    bastion_auth['pkey'] = _load_private_key(proxy_jump_key_content)
+                    bastion_auth['pkey'] = _load_private_key(
+                        proxy_jump_key_content,
+                        password=proxy_jump_key_passphrase,
+                    )
                 elif proxy_jump_password:
                     bastion_auth['password'] = proxy_jump_password
                 else:
@@ -110,6 +118,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     'direct-tcpip', (host, port), ('127.0.0.1', 0)
                 )
                 log_info("Jump host connection established", bastion=proxy_jump_host)
+            except paramiko.PasswordRequiredException:
+                return None, "Jump host SSH key passphrase required"
+            except InvalidPrivateKeyPassphraseError:
+                return None, "Invalid jump host SSH key passphrase"
             except paramiko.AuthenticationException:
                 return None, "Jump host authentication failed - invalid credentials"
             except Exception as e:
@@ -135,7 +147,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             auth_kwargs['look_for_keys'] = False
             auth_kwargs['allow_agent'] = False
             if key_content:
-                auth_kwargs['pkey'] = _load_private_key(key_content)
+                auth_kwargs['pkey'] = _load_private_key(
+                    key_content,
+                    password=key_passphrase,
+                )
             elif key_path:
                 auth_kwargs['key_filename'] = key_path
             elif password:
@@ -250,6 +265,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         return session_id, None
 
+    except paramiko.PasswordRequiredException:
+        return None, "SSH key passphrase required"
+    except InvalidPrivateKeyPassphraseError:
+        return None, "Invalid SSH key passphrase"
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
     except paramiko.SSHException as e:
@@ -266,6 +285,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         log_error("SSH connection unexpected error", host=f"{host}:{port}", error=str(e))
         return None, "Connection failed"
     finally:
+        key_passphrase = None
+        proxy_jump_key_passphrase = None
         # Avoid leaking the bastion connection if the target connect failed.
         if bastion_client is not None and not connection_stored:
             try:

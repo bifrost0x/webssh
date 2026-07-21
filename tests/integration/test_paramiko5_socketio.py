@@ -20,6 +20,7 @@ BASTION_HOST = os.environ.get('PARAMIKO5_BASTION_HOST', 'bastion')
 BASTION_PORT = int(os.environ.get('PARAMIKO5_BASTION_PORT', '22'))
 USERNAME = 'testuser'
 PASSWORD = 'Paramiko5-Test-Only!'
+KEY_PASSPHRASE = 'Paramiko5-Key-Passphrase!'
 RUNTIME_DIR = (
     Path(__file__).resolve().parent / 'paramiko5' / 'runtime'
 )
@@ -147,6 +148,9 @@ def save_integration_key(app, user_id, key_name):
             user_id,
             f'integration {key_name}',
             key_content,
+            key_passphrase=(
+                KEY_PASSPHRASE if key_name.endswith('_encrypted') else None
+            ),
         )
     assert error is None
     return key_meta['id']
@@ -235,7 +239,47 @@ def test_socket_stored_key_terminal_roundtrip(
             socket_client.disconnect()
 
 
-@pytest.mark.parametrize('auth', ['password', 'rsa', 'ed25519', 'ecdsa'])
+@pytest.mark.parametrize('key_name', ['rsa', 'ed25519', 'ecdsa'])
+def test_socket_encrypted_stored_key_terminal_roundtrip(
+        app, monkeypatch, key_name):
+    import config
+
+    monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
+    socket_client, user_id = create_authenticated_socket(
+        app,
+        f'socket_encrypted_{key_name}_user',
+    )
+    try:
+        key_id = save_integration_key(
+            app, user_id, f'{key_name}_encrypted'
+        )
+
+        session_id = emit_ssh_connect(
+            socket_client,
+            key_id=key_id,
+            key_passphrase=KEY_PASSPHRASE,
+        )
+        marker = f'PARAMIKO5_SOCKET_{key_name.upper()}_ENCRYPTED_OK'
+        socket_client.emit('ssh_input', {
+            'session_id': session_id,
+            'data': terminal_marker_command(marker),
+        })
+        assert marker in wait_for_output(socket_client, marker)
+        socket_client.emit('ssh_disconnect', {'session_id': session_id})
+        wait_for_event(socket_client, 'ssh_disconnected')
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()
+
+
+@pytest.mark.parametrize(
+    'auth',
+    [
+        'password',
+        'rsa', 'ed25519', 'ecdsa',
+        'rsa_encrypted', 'ed25519_encrypted', 'ecdsa_encrypted',
+    ],
+)
 def test_socket_quick_connect_sftp_crud_and_disconnects(
         app, monkeypatch, auth):
     import config
@@ -250,6 +294,8 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
         auth_payload = {
             'key_id': save_integration_key(app, user_id, auth),
         }
+        if auth.endswith('_encrypted'):
+            auth_payload['key_passphrase'] = KEY_PASSPHRASE
     try:
         socket_client.emit('quick_connect', {
             'host': TARGET_HOST,
@@ -321,7 +367,7 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
             socket_client.disconnect()
 
 
-@pytest.mark.parametrize('auth', ['password', 'rsa'])
+@pytest.mark.parametrize('auth', ['password', 'rsa', 'rsa_encrypted'])
 def test_socket_proxy_jump_terminal_and_sftp_roundtrip(
         app, monkeypatch, auth):
     import config
@@ -335,9 +381,12 @@ def test_socket_proxy_jump_terminal_and_sftp_roundtrip(
         target_auth = {'password': PASSWORD}
         jump_auth = {'password': PASSWORD}
     else:
-        key_id = save_integration_key(app, user_id, 'rsa')
+        key_id = save_integration_key(app, user_id, auth)
         target_auth = {'key_id': key_id}
         jump_auth = {'key_id': key_id}
+        if auth.endswith('_encrypted'):
+            target_auth['key_passphrase'] = KEY_PASSPHRASE
+            jump_auth['key_passphrase'] = KEY_PASSPHRASE
     try:
         session_id = emit_ssh_connect(
             socket_client,

@@ -10,13 +10,14 @@ from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 
 BASE_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = (BASE_DIR / 'runtime').resolve()
+KEY_PASSPHRASE = b'Paramiko5-Key-Passphrase!'
 
 
-def _write_private_key(path, key, private_format):
+def _write_private_key(path, key, private_format, encryption=None):
     content = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=private_format,
-        encryption_algorithm=serialization.NoEncryption(),
+        encryption_algorithm=encryption or serialization.NoEncryption(),
     )
     path.write_bytes(content)
     if os.name == 'posix':
@@ -48,6 +49,12 @@ def main():
     authorized = []
     for name, (key, private_format) in keys.items():
         _write_private_key(RUNTIME_DIR / f'{name}.pem', key, private_format)
+        _write_private_key(
+            RUNTIME_DIR / f'{name}_encrypted.pem',
+            key,
+            private_format,
+            serialization.BestAvailableEncryption(KEY_PASSPHRASE),
+        )
         public_key = key.public_key().public_bytes(
             encoding=serialization.Encoding.OpenSSH,
             format=serialization.PublicFormat.OpenSSH,

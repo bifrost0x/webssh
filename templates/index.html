@@ -246,6 +246,15 @@
                         <div class="field-hint" id="keyHint"></div>
                     </div>
 
+                    <div class="form-group hidden" id="keyPassphraseGroup">
+                        <label for="keyPassphraseInput" data-i18n="keys.passphrase">Key Passphrase</label>
+                        <div class="input-wrapper with-toggle">
+                            <input type="password" id="keyPassphraseInput" class="form-control" data-i18n="keys.passphrasePlaceholder" placeholder="Enter key passphrase" autocomplete="off">
+                            <button type="button" class="password-toggle" data-target="keyPassphraseInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                        </div>
+                        <div class="field-hint" data-i18n="keys.passphraseTransientHint">Used only for this connection and never stored.</div>
+                    </div>
+
                     <div class="form-group">
                         <label for="jumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                         <select id="jumpHostSelect" class="form-control">
@@ -261,6 +270,15 @@
                             <button type="button" class="password-toggle" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
                         </div>
                         <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
+                    </div>
+
+                    <div class="form-group hidden" id="jumpHostKeyPassphraseGroup">
+                        <label for="jumpHostKeyPassphraseInput" data-i18n="connection.jumpHostKeyPassphrase">Jump Host Key Passphrase</label>
+                        <div class="input-wrapper with-toggle">
+                            <input type="password" id="jumpHostKeyPassphraseInput" class="form-control" data-i18n="keys.passphrasePlaceholder" placeholder="Enter key passphrase" autocomplete="off">
+                            <button type="button" class="password-toggle" data-target="jumpHostKeyPassphraseInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                        </div>
+                        <div class="field-hint" data-i18n="keys.passphraseTransientHint">Used only for this connection and never stored.</div>
                     </div>
 
                     <div class="form-group">
@@ -317,6 +335,14 @@
                             <label for="keyContentInput" data-i18n="keys.privateKey">Private Key</label>
                             <textarea id="keyContentInput" class="form-control" rows="10" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
 ..." required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="keyUploadPassphraseInput" data-i18n="keys.passphraseOptional">Key Passphrase (if encrypted)</label>
+                            <div class="input-wrapper with-toggle">
+                                <input type="password" id="keyUploadPassphraseInput" class="form-control" data-i18n="keys.passphrasePlaceholder" placeholder="Enter key passphrase" autocomplete="off">
+                                <button type="button" class="password-toggle" data-target="keyUploadPassphraseInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                            </div>
+                            <div class="field-hint" data-i18n="keys.passphraseImportHint">Used only to validate the key and never stored.</div>
                         </div>
                         <button type="submit" class="btn btn-primary"><span data-i18n="keys.uploadKey">Upload Key</span> ⬆️</button>
                     </form>

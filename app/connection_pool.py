@@ -18,7 +18,10 @@ import paramiko
 from datetime import datetime, timedelta
 import config
 from .ssh_manager import PersistentHostKeyPolicy
-from .ssh_key_loader import load_private_key as _load_private_key
+from .ssh_key_loader import (
+    InvalidPrivateKeyPassphraseError,
+    load_private_key as _load_private_key,
+)
 from .audit_logger import log_info, log_warning, log_error, log_debug
 
 class TemporaryConnectionPool:
@@ -40,7 +43,8 @@ class TemporaryConnectionPool:
         self.cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self.cleanup_thread.start()
 
-    def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None):
+    def create_connection(self, host, port, username, password=None, key_path=None,
+                          key_content=None, key_passphrase=None, user_id=None):
         """
         Create a temporary SSH+SFTP connection.
 
@@ -81,7 +85,10 @@ class TemporaryConnectionPool:
             }
 
             if key_content:
-                connect_kwargs['pkey'] = _load_private_key(key_content)
+                connect_kwargs['pkey'] = _load_private_key(
+                    key_content,
+                    password=key_passphrase,
+                )
             elif key_path:
                 connect_kwargs['key_filename'] = key_path
                 if password:
@@ -116,6 +123,10 @@ class TemporaryConnectionPool:
             log_info(f"Temporary connection created: {conn_id}", user=username, host=f"{host}:{port}")
             return conn_id, None
 
+        except paramiko.PasswordRequiredException:
+            return None, "SSH key passphrase required"
+        except InvalidPrivateKeyPassphraseError:
+            return None, "Invalid SSH key passphrase"
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
         except paramiko.SSHException as e:
@@ -128,6 +139,8 @@ class TemporaryConnectionPool:
         except Exception as e:
             log_error("Pool connection error", host=f"{host}:{port}", error=str(e))
             return None, "Connection failed"
+        finally:
+            key_passphrase = None
 
     def get_sftp_client(self, connection_id):
         """

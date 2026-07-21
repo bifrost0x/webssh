@@ -107,3 +107,51 @@ def test_encrypted_key_requires_passphrase_without_leaking_it(
         load_private_key(encrypted_rsa_private_key_pem)
 
     assert 'test-passphrase' not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ('fixture_name', 'expected_class', 'expected_type'),
+    [
+        ('encrypted_rsa_private_key_pem', paramiko.RSAKey, 'RSA'),
+        ('encrypted_ed25519_private_key_pem', paramiko.Ed25519Key, 'Ed25519'),
+        ('encrypted_ecdsa_private_key_pem', paramiko.ECDSAKey, 'ECDSA'),
+    ],
+)
+def test_loads_and_identifies_encrypted_supported_keys(
+        request, fixture_name, expected_class, expected_type):
+    from app.ssh_key_loader import identify_private_key, load_private_key
+
+    key_content = request.getfixturevalue(fixture_name)
+
+    assert isinstance(
+        load_private_key(key_content, password='test-passphrase'),
+        expected_class,
+    )
+    assert identify_private_key(
+        key_content,
+        password='test-passphrase',
+    ) == expected_type
+
+
+@pytest.mark.parametrize(
+    'fixture_name',
+    [
+        'encrypted_rsa_private_key_pem',
+        'encrypted_ed25519_private_key_pem',
+        'encrypted_ecdsa_private_key_pem',
+    ],
+)
+def test_encrypted_key_rejects_wrong_passphrase_without_leaking_it(
+        request, fixture_name):
+    from app.ssh_key_loader import (
+        InvalidPrivateKeyPassphraseError,
+        load_private_key,
+    )
+
+    key_content = request.getfixturevalue(fixture_name)
+    secret = 'definitely-wrong-passphrase'
+
+    with pytest.raises(InvalidPrivateKeyPassphraseError) as exc_info:
+        load_private_key(key_content, password=secret)
+
+    assert secret not in str(exc_info.value)

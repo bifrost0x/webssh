@@ -149,6 +149,46 @@ def test_pool_supported_key_uses_pkey(
     assert 'key_filename' not in clients[0].connect_kwargs
 
 
+def test_pool_encrypted_key_uses_transient_passphrase(
+        monkeypatch, encrypted_ecdsa_private_key_pem):
+    pool = make_pool()
+    clients = install_ssh_client(monkeypatch)
+
+    connection_id, error = create_connection(
+        pool,
+        key_content=encrypted_ecdsa_private_key_pem,
+        key_passphrase='test-passphrase',
+    )
+
+    assert error is None
+    assert connection_id in pool.connections
+    assert isinstance(clients[0].connect_kwargs['pkey'], paramiko.ECDSAKey)
+    assert 'key_passphrase' not in pool.connections[connection_id]
+
+
+@pytest.mark.parametrize(
+    ('passphrase', 'expected_error'),
+    [
+        (None, 'SSH key passphrase required'),
+        ('wrong-pool-passphrase', 'Invalid SSH key passphrase'),
+    ],
+)
+def test_pool_encrypted_key_returns_safe_passphrase_errors(
+        monkeypatch, encrypted_rsa_private_key_pem, passphrase, expected_error):
+    pool = make_pool()
+    install_ssh_client(monkeypatch)
+
+    connection_id, error = create_connection(
+        pool,
+        key_content=encrypted_rsa_private_key_pem,
+        key_passphrase=passphrase,
+    )
+
+    assert connection_id is None
+    assert error == expected_error
+    assert 'wrong-pool-passphrase' not in error
+
+
 def test_pool_invalid_key_returns_generic_error(monkeypatch):
     pool = make_pool()
     install_ssh_client(monkeypatch)

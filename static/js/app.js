@@ -938,7 +938,12 @@
 
     socket.on('ssh_error', (data) => {
         console.error('SSH error:', data);
-        showNotification(`SSH Error: ${data.error}`, 'error');
+        const message = data.code === 'KEY_PASSPHRASE_REQUIRED'
+            ? (window.i18n ? i18n.t('keys.passphraseRequired') : data.error)
+            : data.code === 'KEY_PASSPHRASE_INVALID'
+                ? (window.i18n ? i18n.t('keys.passphraseInvalid') : data.error)
+                : data.error;
+        showNotification(`SSH Error: ${message}`, 'error');
 
         if (connectTimer) {
             clearInterval(connectTimer);
@@ -1030,7 +1035,12 @@
 
     socket.on('error', (data) => {
         if (window.sftpFileManager && window.sftpFileManager.isOpen) return;
-        showNotification(`Error: ${data.error}`, 'error');
+        const message = data.code === 'KEY_PASSPHRASE_REQUIRED'
+            ? (window.i18n ? i18n.t('keys.passphraseRequired') : data.error)
+            : data.code === 'KEY_PASSPHRASE_INVALID'
+                ? (window.i18n ? i18n.t('keys.passphraseInvalid') : data.error)
+                : data.error;
+        showNotification(`Error: ${message}`, 'error');
     });
 
     socket.on('notepad_data', (data) => {
@@ -1060,6 +1070,9 @@
         if (jumpHostSelect) {
             jumpHostSelect.value = '';
             document.getElementById('jumpHostPasswordGroup')?.classList.add('hidden');
+            document.getElementById('jumpHostKeyPassphraseGroup')?.classList.add('hidden');
+            document.getElementById('jumpHostPasswordInput').value = '';
+            document.getElementById('jumpHostKeyPassphraseInput').value = '';
         }
 
         ConnectionHistory.renderHistoryDropdown();
@@ -1832,6 +1845,7 @@
             const authType = document.getElementById('authTypeSelect').value;
             const password = document.getElementById('passwordInput').value;
             const keyId = document.getElementById('keySelect').value;
+            const keyPassphrase = document.getElementById('keyPassphraseInput').value;
             const saveProfile = document.getElementById('saveProfileCheck').checked;
             const profileName = document.getElementById('profileNameInput').value;
             const targetPane = pendingPaneIndex;
@@ -1849,6 +1863,13 @@
 
             if (authType === 'key' && !keyId) {
                 showNotification('SSH key is required', 'error');
+                return;
+            }
+
+            if (authType === 'key'
+                    && ProfileManager.keyRequiresPassphrase(keyId)
+                    && !keyPassphrase) {
+                showNotification(window.i18n ? i18n.t('keys.passphraseRequired') : 'SSH key passphrase is required', 'error');
                 return;
             }
 
@@ -1876,6 +1897,14 @@
                     proxyJump.password = jhPass;
                 } else {
                     proxyJump.key_id = jh.key_id;
+                    if (ProfileManager.keyRequiresPassphrase(jh.key_id)) {
+                        const jhKeyPassphrase = document.getElementById('jumpHostKeyPassphraseInput').value;
+                        if (!jhKeyPassphrase) {
+                            showNotification(window.i18n ? i18n.t('keys.passphraseRequired') : 'SSH key passphrase is required', 'error');
+                            return;
+                        }
+                        proxyJump.key_passphrase = jhKeyPassphrase;
+                    }
                 }
             }
 
@@ -1912,6 +1941,7 @@
                 connectionData.password = password;
             } else if (authType === 'key') {
                 connectionData.key_id = keyId;
+                if (keyPassphrase) connectionData.key_passphrase = keyPassphrase;
             }
 
             if (proxyJump) {
@@ -1956,7 +1986,9 @@
             setConnectLoading(true);
 
             document.getElementById('passwordInput').value = '';
+            document.getElementById('keyPassphraseInput').value = '';
             document.getElementById('jumpHostPasswordInput').value = '';
+            document.getElementById('jumpHostKeyPassphraseInput').value = '';
         });
 
         document.getElementById('profileSelect').addEventListener('change', (e) => {
@@ -1984,6 +2016,10 @@
 
         document.getElementById('authTypeSelect').addEventListener('change', (e) => {
             ProfileManager.handleAuthTypeChange(e.target.value);
+        });
+
+        document.getElementById('keySelect').addEventListener('change', () => {
+            ProfileManager.updateKeyPassphraseVisibility();
         });
 
         document.getElementById('jumpHostSelect').addEventListener('change', () => {
@@ -2017,13 +2053,16 @@
 
             const name = document.getElementById('keyNameInput').value;
             const keyContent = document.getElementById('keyContentInput').value;
+            const keyPassphraseInput = document.getElementById('keyUploadPassphraseInput');
+            const keyPassphrase = keyPassphraseInput.value;
 
             if (!name || !keyContent) {
                 showNotification('Key name and content are required', 'error');
                 return;
             }
 
-            ProfileManager.uploadKey(name, keyContent);
+            ProfileManager.uploadKey(name, keyContent, keyPassphrase);
+            keyPassphraseInput.value = '';
         });
 
         document.getElementById('manageJumpHostsBtn')?.addEventListener('click', () => {

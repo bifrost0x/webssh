@@ -94,7 +94,7 @@ def classify_key(content):
             key_class.from_private_key(io.StringIO(content))
             return key_type, key_type != 'DSA'
         except paramiko.PasswordRequiredException:
-            return 'PASSPHRASE_ENCRYPTED', False
+            return 'PASSPHRASE_ENCRYPTED', True
         except paramiko.SSHException:
             continue
 
@@ -195,6 +195,10 @@ def audit_data_dir(data_dir):
                 actual_type, compatible = classify_key(
                     read_without_migration(user_id, key_path)
                 )
+                if actual_type == 'PASSPHRASE_ENCRYPTED':
+                    compatible = result['metadata_type'] in {
+                        'RSA', 'Ed25519', 'ECDSA'
+                    }
                 result.update(
                     actual_type=actual_type,
                     compatible=compatible,

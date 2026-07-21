@@ -64,7 +64,7 @@ const SessionManager = {
     showPersistentSessionTab(data) {
         const {
             session_id, host, port, username, key_id, auth_type,
-            tmux_session_name, display_name
+            tmux_session_name, display_name, passphrase_required
         } = data;
 
         if (this.sessions[session_id]) {
@@ -97,6 +97,7 @@ const SessionManager = {
             tmuxSessionName: tmux_session_name,
             isPersistentCandidate: true,
             keyId: key_id,
+            keyPassphraseRequired: Boolean(passphrase_required),
             authType: auth_type || 'password'
         };
 
@@ -172,6 +173,7 @@ const SessionManager = {
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
             keyId: sessionData.key_id || null,
+            keyPassphraseRequired: Boolean(sessionData.passphrase_required),
             authType: sessionData.auth_type || 'password'
         };
 
@@ -371,7 +373,8 @@ const SessionManager = {
         // password-backed candidate must reopen the form for its password.
         if (session.isPersistentCandidate) {
             const authType = session.authType || (session.keyId ? 'key' : 'password');
-            if (session.keyId || authType === 'tailscale') {
+            if ((session.keyId && !session.keyPassphraseRequired)
+                    || authType === 'tailscale') {
                 this.directReconnect(sessionId);
             } else {
                 this.prefillConnectionForm(sessionId);
@@ -409,7 +412,8 @@ const SessionManager = {
 
             // Key and Tailscale sessions can reconnect without prompting for a
             // password. Password sessions reopen the pre-filled modal.
-            if (keyId || authType === 'tailscale') {
+            if ((keyId && !session.keyPassphraseRequired)
+                    || authType === 'tailscale') {
                 setTimeout(() => {
                     if (window.socket) {
                         const connectionData = {
@@ -446,6 +450,16 @@ const SessionManager = {
                     if (authTypeSelect) {
                         authTypeSelect.value = authType;
                         authTypeSelect.dispatchEvent(new Event('change'));
+                    }
+
+                    if (keyId) {
+                        const keySelect = document.getElementById('keySelect');
+                        if (keySelect) {
+                            keySelect.value = keyId;
+                            if (window.ProfileManager) {
+                                window.ProfileManager.updateKeyPassphraseVisibility();
+                            }
+                        }
                     }
 
                     if (useTmux) {
@@ -1024,7 +1038,8 @@ const SessionManager = {
         // Key and Tailscale persistent sessions can reconnect directly without
         // opening the connection modal.
         if (session.isPersistentCandidate && session.useTmux
-                && (session.keyId || authType === 'tailscale')) {
+                && ((session.keyId && !session.keyPassphraseRequired)
+                    || authType === 'tailscale')) {
             this.directReconnect(sessionId);
             return;
         }
@@ -1068,6 +1083,9 @@ const SessionManager = {
                     for (let opt of keySelect.options) {
                         if (opt.value === session.keyId) {
                             opt.selected = true;
+                            if (window.ProfileManager) {
+                                window.ProfileManager.updateKeyPassphraseVisibility();
+                            }
                             break;
                         }
                     }
@@ -1098,6 +1116,10 @@ const SessionManager = {
     directReconnect(sessionId) {
         const session = this.sessions[sessionId];
         if (!session || !session.isPersistentCandidate) {
+            return;
+        }
+        if (session.keyPassphraseRequired) {
+            this.prefillConnectionForm(sessionId);
             return;
         }
 
