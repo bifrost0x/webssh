@@ -9,6 +9,9 @@ def normalize_startup_commands(value):
     if not isinstance(value, str):
         return '', 'Startup commands must be text'
 
+    if len(value) > MAX_STARTUP_COMMANDS_LENGTH:
+        return '', 'Startup commands must not exceed 4096 characters'
+
     if '\x00' in value:
         return '', 'Startup commands must not contain NUL bytes'
 

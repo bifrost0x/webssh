@@ -255,7 +255,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 session_id, terminal_input, require_complete=True
             )
             if not delivered:
-                close_session(session_id)
+                close_session(session_id, kill_tmux=use_tmux)
                 return None, "Connection failed"
 
         return session_id, None

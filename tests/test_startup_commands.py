@@ -20,8 +20,11 @@ def _clean_ssh_sessions():
 class _StartupCommandChannel:
     def __init__(self, fail_on_send=False, max_send_size=None):
         self.closed = False
+        self.close_calls = 0
+        self.command = None
         self.fail_on_send = fail_on_send
         self.max_send_size = max_send_size
+        self.pty = None
         self.sent = []
 
     def settimeout(self, _timeout):
@@ -35,20 +38,51 @@ class _StartupCommandChannel:
         self.sent.append(data[:sent_size])
         return sent_size
 
+    def exec_command(self, command):
+        self.command = command
+
+    def get_pty(self, term, width, height):
+        self.pty = (term, width, height)
+
+    def recv(self, _size):
+        return b'/usr/bin/tmux\n'
+
+    def recv_exit_status(self):
+        return 0
+
     def close(self):
         self.closed = True
+        self.close_calls += 1
 
 
 class _StartupCommandTransport:
+    def __init__(self, session_channel_factory=None):
+        self.session_channel_factory = session_channel_factory
+        self.session_channels = []
+
     def set_keepalive(self, _seconds):
         pass
 
+    def open_session(self):
+        index = len(self.session_channels)
+        channel = (
+            self.session_channel_factory(index)
+            if self.session_channel_factory
+            else _StartupCommandChannel()
+        )
+        self.session_channels.append(channel)
+        return channel
+
+    def is_active(self):
+        return True
+
 
 class _StartupCommandClient:
-    def __init__(self, channel):
+    def __init__(self, channel, transport=None):
         self.channel = channel
-        self.transport = _StartupCommandTransport()
+        self.transport = transport or _StartupCommandTransport()
         self.closed = False
+        self.close_calls = 0
 
     def set_missing_host_key_policy(self, _policy):
         pass
@@ -64,6 +98,14 @@ class _StartupCommandClient:
 
     def close(self):
         self.closed = True
+        self.close_calls += 1
+
+
+class _FixedUuid:
+    hex = 'deadbeef0123456789abcdef'
+
+    def __str__(self):
+        return 'fixed-session-id'
 
 
 def test_normalize_startup_commands_accepts_blank_input():
@@ -110,6 +152,24 @@ def test_normalize_startup_commands_rejects_too_long_text():
 
     assert commands == ''
     assert error == 'Startup commands must not exceed 4096 characters'
+
+
+def test_normalize_startup_commands_rejects_raw_crlf_payload_over_limit():
+    from app.startup_commands import normalize_startup_commands
+
+    commands, error = normalize_startup_commands('\r\n' * 2049)
+
+    assert commands == ''
+    assert error == 'Startup commands must not exceed 4096 characters'
+
+
+def test_normalize_startup_commands_accepts_raw_crlf_payload_at_limit():
+    from app.startup_commands import normalize_startup_commands
+
+    commands, error = normalize_startup_commands('\r\n' * 2048)
+
+    assert commands == '\n' * 2048
+    assert error is None
 
 
 def test_to_terminal_input_converts_normalized_linefeeds_to_carriage_returns():
@@ -217,6 +277,41 @@ def test_create_ssh_connection_closes_session_when_startup_delivery_fails(monkey
     assert ssh_manager.sessions == {}
     assert channel.closed
     assert client.closed
+
+
+def test_create_ssh_connection_kills_new_tmux_when_startup_delivery_fails(monkeypatch):
+    from app import ssh_manager
+
+    transport = _StartupCommandTransport(
+        lambda index: _StartupCommandChannel(fail_on_send=index == 1)
+    )
+    client = _StartupCommandClient(_StartupCommandChannel(), transport=transport)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+    monkeypatch.setattr(ssh_manager.uuid, 'uuid4', lambda: _FixedUuid())
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        use_tmux=True,
+        startup_commands='echo first',
+    )
+
+    assert session_id is None
+    assert error == 'Connection failed'
+    assert ssh_manager.sessions == {}
+    probe_channel, tmux_channel, kill_channel = transport.session_channels
+    tmux_session_name = (
+        f'{ssh_manager.config.TMUX_SESSION_PREFIX}_alice_target_example_22_deadbeef'
+    )
+    assert tmux_channel.command == f'tmux new-session -s {tmux_session_name}'
+    assert kill_channel.command == f'tmux kill-session -t {tmux_session_name}'
+    assert probe_channel.close_calls == 1
+    assert tmux_channel.close_calls == 1
+    assert kill_channel.close_calls == 1
+    assert client.close_calls == 1
 
 
 def test_connection_form_exposes_optional_multiline_startup_commands():
