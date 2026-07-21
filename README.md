@@ -69,6 +69,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Session Persistence** - Sessions survive page refreshes
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
 - **Manual Reconnect** - Reconnect from a session tab; SSH-key sessions can reconnect directly, while password sessions reopen the pre-filled connection form
+- **Commands After Connecting** - Optionally send multiple lines to the remote shell as soon as a new SSH connection is ready
 - **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
 - **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar
 - **Copy/Paste** - Full clipboard support
@@ -215,6 +216,24 @@ to a regular shell without failing the SSH connection.
 Closing the browser, an idle timeout, or restarting WebSSH leaves the remote
 tmux session running so it can be reattached later. Explicitly disconnecting a
 session from the WebSSH interface terminates its remote tmux session.
+
+### Commands After Connecting
+
+The connection dialog accepts up to 4096 characters of optional, multi-line
+commands. After a new SSH connection succeeds, WebSSH sends the lines to the
+remote interactive shell in the order entered and submits the final line as
+well. They run on the remote SSH host, never inside the WebSSH container.
+
+Saving a connection profile stores these commands, and selecting that profile
+loads them back into the dialog. Leaving the field empty keeps the existing
+connection behavior; profiles created before this option was added continue to
+work unchanged. Reattaching to an existing persistent tmux session does not run
+the commands again.
+
+Command output and errors appear normally in the terminal. WebSSH does not
+interpret a command's exit status or stop later lines because an earlier command
+failed; any different control flow still follows the behavior of the remote
+shell and the commands themselves.
 
 ## Installation
 
