@@ -116,6 +116,13 @@
         }
     };
 
+    window.clearStartupCommandsInput = () => {
+        const startupCommandsInput = document.getElementById('startupCommandsInput');
+        if (startupCommandsInput) {
+            startupCommandsInput.value = '';
+        }
+    };
+
     const ConnectionHistory = {
         maxItems: 10,
         storageKey: 'recentConnections',
@@ -179,6 +186,7 @@
                     <span class="recent-conn-time">${escapeHtml(this.formatTime(conn.timestamp))}</span>
                 `;
                 option.addEventListener('click', () => {
+                    window.clearStartupCommandsInput();
                     document.getElementById('hostInput').value = conn.host;
                     document.getElementById('portInput').value = conn.port;
                     document.getElementById('usernameInput').value = conn.username;
@@ -1049,6 +1057,7 @@
     let connectSeconds = 0;
 
     function openConnectionModalForPane(paneIndex) {
+        window.clearStartupCommandsInput();
         pendingPaneIndex = paneIndex;
         if (paneIndex !== null && paneIndex !== undefined) {
             SessionManager.setActivePane(paneIndex);
