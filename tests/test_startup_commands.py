@@ -1,5 +1,8 @@
 """Tests for post-connect command normalization and terminal input."""
 
+import re
+from pathlib import Path
+
 import pytest
 
 
@@ -214,3 +217,38 @@ def test_create_ssh_connection_closes_session_when_startup_delivery_fails(monkey
     assert ssh_manager.sessions == {}
     assert channel.closed
     assert client.closed
+
+
+def test_connection_form_exposes_optional_multiline_startup_commands():
+    template = Path('templates/index.html').read_text(encoding='utf-8')
+
+    textarea = re.search(
+        r'<textarea\b[^>]*\bid="startupCommandsInput"[^>]*>',
+        template,
+        re.DOTALL,
+    )
+
+    assert textarea is not None
+    assert 'maxlength="4096"' in textarea.group(0)
+    assert 'aria-describedby="startupCommandsHint"' in textarea.group(0)
+    assert 'required' not in textarea.group(0)
+    assert 'data-i18n="connection.startupCommands"' in template
+    assert 'data-i18n="connection.startupCommandsHint"' in template
+
+
+def test_connection_and_saved_profile_payloads_include_startup_commands():
+    source = Path('static/js/app.js').read_text(encoding='utf-8')
+
+    assert "document.getElementById('startupCommandsInput').value" in source
+    assert re.search(r'profilePayload\.startup_commands\s*=\s*startupCommands', source)
+    assert re.search(r'connectionData\.startup_commands\s*=\s*startupCommands', source)
+
+
+def test_profile_selection_restores_startup_commands_and_supports_legacy_profiles():
+    source = Path('static/js/profile-manager.js').read_text(encoding='utf-8')
+
+    assert re.search(
+        r"getElementById\('startupCommandsInput'\)\.value\s*=\s*"
+        r"profile\.startup_commands\s*\|\|\s*''",
+        source,
+    )

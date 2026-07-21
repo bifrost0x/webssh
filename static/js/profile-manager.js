@@ -114,6 +114,7 @@ const ProfileManager = {
         document.getElementById('hostInput').value = profile.host;
         document.getElementById('portInput').value = profile.port;
         document.getElementById('usernameInput').value = profile.username;
+        document.getElementById('startupCommandsInput').value = profile.startup_commands || '';
 
         document.getElementById('authTypeSelect').value = profile.auth_type;
 

@@ -18,3 +18,25 @@ def test_all_locales_have_matching_translation_keys():
         'connection.tailscaleSSH' in keys
         for keys in keys_by_locale.values()
     )
+    assert all(
+        {'connection.startupCommands', 'connection.startupCommandsHint'} <= keys
+        for keys in keys_by_locale.values()
+    )
+
+
+def test_english_startup_commands_copy_explains_execution_boundaries():
+    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    en_start = source.index('    en: {')
+    en_end = source.index('\n    vi: {', en_start)
+    english_block = source[en_start:en_end]
+    match = re.search(
+        r"'connection\.startupCommandsHint': '([^']+)'",
+        english_block,
+    )
+
+    assert match is not None
+    hint = match.group(1).lower()
+    assert 'remote host' in hint
+    assert 'not in webssh' in hint
+    assert 'tmux' in hint
+    assert 'not run again' in hint

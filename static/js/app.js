@@ -1834,6 +1834,7 @@
             const keyId = document.getElementById('keySelect').value;
             const saveProfile = document.getElementById('saveProfileCheck').checked;
             const profileName = document.getElementById('profileNameInput').value;
+            const startupCommands = document.getElementById('startupCommandsInput').value;
             const targetPane = pendingPaneIndex;
             pendingPaneIndex = null;
 
@@ -1888,6 +1889,7 @@
                     auth_type: authType,
                     key_id: authType === 'key' ? keyId : null
                 };
+                profilePayload.startup_commands = startupCommands;
                 if (jumpHostId) {
                     profilePayload.jump_host_id = jumpHostId;
                 }
@@ -1907,6 +1909,7 @@
                 client_request_id: currentConnectRequestId,
                 auth_type: authType
             };
+            connectionData.startup_commands = startupCommands;
 
             if (authType === 'password') {
                 connectionData.password = password;

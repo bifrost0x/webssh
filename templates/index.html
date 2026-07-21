@@ -264,6 +264,13 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="startupCommandsInput" data-i18n="connection.startupCommands">Commands after connecting (optional)</label>
+                        <textarea id="startupCommandsInput" class="form-control" rows="4" maxlength="4096" aria-describedby="startupCommandsHint"
+                                  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+                        <div class="field-hint" id="startupCommandsHint" data-i18n="connection.startupCommandsHint">Runs on the remote host after a successful connection, not in WebSSH. Not run again when reconnecting to an existing tmux session.</div>
+                    </div>
+
+                    <div class="form-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="saveProfileCheck">
                             <span data-i18n="connection.saveAsProfile">Save as profile</span>
