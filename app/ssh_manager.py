@@ -420,7 +420,7 @@ def send_ssh_input(session_id, data, require_complete=False):
             channel = session['channel']
 
         if require_complete:
-            remaining = data
+            remaining = data.encode('utf-8') if isinstance(data, str) else data
             while remaining:
                 sent = channel.send(remaining)
                 if not isinstance(sent, int) or sent <= 0:

@@ -27,6 +27,7 @@ class _StartupCommandChannel:
     def send(self, data):
         if self.fail_on_send:
             raise OSError('channel write failed')
+        data = data.encode('utf-8') if isinstance(data, str) else data
         sent_size = min(len(data), self.max_send_size or len(data))
         self.sent.append(data[:sent_size])
         return sent_size
@@ -141,7 +142,7 @@ def test_create_ssh_connection_delivers_startup_commands_once(
 
     assert error is None
     assert session_id in ssh_manager.sessions
-    assert channel.sent == [expected_input]
+    assert channel.sent == [expected_input.encode('utf-8')]
 
     ssh_manager.close_session(session_id)
 
@@ -163,7 +164,30 @@ def test_create_ssh_connection_delivers_all_startup_commands_after_partial_send(
     )
 
     assert error is None
-    assert ''.join(channel.sent) == 'echo first\recho second\r'
+    assert b''.join(channel.sent) == b'echo first\recho second\r'
+    assert len(channel.sent) > 1
+
+    ssh_manager.close_session(session_id)
+
+
+def test_create_ssh_connection_delivers_unicode_startup_commands_after_partial_send(monkeypatch):
+    from app import ssh_manager
+
+    channel = _StartupCommandChannel(max_send_size=6)
+    client = _StartupCommandClient(channel)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        startup_commands='echo €\necho done',
+    )
+
+    assert error is None
+    assert b''.join(channel.sent) == 'echo €\recho done\r'.encode('utf-8')
     assert len(channel.sent) > 1
 
     ssh_manager.close_session(session_id)
