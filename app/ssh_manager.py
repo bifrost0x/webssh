@@ -8,6 +8,7 @@ import config
 from pathlib import Path
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .ssh_key_loader import load_private_key as _load_private_key
+from .startup_commands import to_terminal_input
 
 sessions = {}
 sessions_lock = Lock()
@@ -54,7 +55,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
                           proxy_jump_password=None, proxy_jump_key_content=None,
                           use_tmux=False, reconnect_tmux_name=None,
-                          auth_type='password'):
+                          auth_type='password', startup_commands=''):
     """
     Create a new SSH connection and return session ID.
 
@@ -247,6 +248,15 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 daemon=True
             )
             thread.start()
+
+        if startup_commands and not reconnect_tmux_name:
+            terminal_input = to_terminal_input(startup_commands)
+            if not terminal_input.endswith('\r'):
+                terminal_input += '\r'
+            delivered, _delivery_error = send_ssh_input(session_id, terminal_input)
+            if not delivered:
+                close_session(session_id)
+                return None, "Connection failed"
 
         return session_id, None
 

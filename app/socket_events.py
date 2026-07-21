@@ -12,6 +12,7 @@ from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_key_upload, log_key_delete,
                               log_tailscale_ssh_usage)
 from .tailscale_ssh import validate_tailscale_ssh_access
+from .startup_commands import normalize_startup_commands
 from . import binary_transfer, connection_pool
 import base64
 import os
@@ -283,6 +284,13 @@ def handle_ssh_connect(data, current_user=None):
             emit_error('Invalid authentication method')
             return
 
+        startup_commands, startup_commands_error = normalize_startup_commands(
+            data.get('startup_commands', '')
+        )
+        if startup_commands_error:
+            emit_error(startup_commands_error)
+            return
+
         if auth_type == 'tailscale':
             access_error = validate_tailscale_ssh_access(current_user, host, username)
             log_tailscale_ssh_usage(
@@ -365,7 +373,8 @@ def handle_ssh_connect(data, current_user=None):
             proxy_jump_key_content=bastion_key_content,
             use_tmux=use_tmux,
             reconnect_tmux_name=reconnect_tmux_name,
-            auth_type=auth_type
+            auth_type=auth_type,
+            startup_commands='' if reconnect_tmux_name else startup_commands,
         )
 
         if password:

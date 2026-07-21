@@ -257,3 +257,96 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
         restored = SSHSession.query.filter_by(session_id='new-tailscale-session').one()
         assert restored.auth_type == 'tailscale'
         assert SSHSession.query.filter_by(session_id='old-tailscale-session').first() is None
+
+
+def test_socket_rejects_invalid_startup_commands_before_connect(app, monkeypatch):
+    from flask import request
+    from app import ssh_manager
+    from app.auth import register_socket_session, register_user
+    from app.models import db
+    import app.socket_events as socket_events
+
+    with app.app_context():
+        user, error = register_user('startupinvalid', 'socket-password-123')
+        assert error is None
+        register_socket_session(user.id, 'startup-invalid-socket')
+        db.session.commit()
+
+    def fail_create_ssh_connection(**_kwargs):
+        raise AssertionError('SSH manager must not be called')
+
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', fail_create_ssh_connection)
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = 'startup-invalid-socket'
+        socket_events.handle_ssh_connect({
+            'host': 'tiny-server',
+            'port': 22,
+            'username': 'root',
+            'password': 'secret',
+            'startup_commands': ['echo unsafe'],
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {'error': 'Startup commands must be text', 'client_request_id': None},
+    )]
+
+
+def test_tmux_reconnect_does_not_pass_startup_commands_to_ssh_manager(app, monkeypatch):
+    import config
+    from flask import request
+    from app import ssh_manager
+    from app.auth import register_socket_session, register_user
+    from app.models import db, SSHSession
+    import app.socket_events as socket_events
+
+    with app.app_context():
+        user, error = register_user('startupreconnect', 'socket-password-123')
+        assert error is None
+        db.session.add(SSHSession(
+            session_id='existing-startup-session',
+            user_id=user.id,
+            host='tiny-server',
+            port=22,
+            username='root',
+            connected=False,
+            is_persistent=True,
+            tmux_session_name='webssh_tiny_root',
+        ))
+        register_socket_session(user.id, 'startup-reconnect-socket')
+        db.session.commit()
+
+    calls = []
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **kwargs: (calls.append(kwargs) or ('new-startup-session', None)),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'get_session',
+        lambda _session_id: {'tmux_session_name': 'webssh_tiny_root'},
+    )
+    monkeypatch.setattr(config, 'TMUX_ENABLED', True)
+    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = 'startup-reconnect-socket'
+        socket_events.handle_ssh_connect({
+            'host': 'tiny-server',
+            'port': 22,
+            'username': 'root',
+            'password': 'secret',
+            'use_tmux': True,
+            'reconnect_tmux_name': 'webssh_tiny_root',
+            'startup_commands': 'echo should-not-run',
+        })
+
+    assert calls[0]['startup_commands'] == ''

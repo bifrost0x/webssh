@@ -3,6 +3,51 @@
 import pytest
 
 
+class _StartupCommandChannel:
+    def __init__(self, fail_on_send=False):
+        self.closed = False
+        self.fail_on_send = fail_on_send
+        self.sent = []
+
+    def settimeout(self, _timeout):
+        pass
+
+    def send(self, data):
+        if self.fail_on_send:
+            raise OSError('channel write failed')
+        self.sent.append(data)
+
+    def close(self):
+        self.closed = True
+
+
+class _StartupCommandTransport:
+    def set_keepalive(self, _seconds):
+        pass
+
+
+class _StartupCommandClient:
+    def __init__(self, channel):
+        self.channel = channel
+        self.transport = _StartupCommandTransport()
+        self.closed = False
+
+    def set_missing_host_key_policy(self, _policy):
+        pass
+
+    def connect(self, **_kwargs):
+        pass
+
+    def get_transport(self):
+        return self.transport
+
+    def invoke_shell(self, **_kwargs):
+        return self.channel
+
+    def close(self):
+        self.closed = True
+
+
 def test_normalize_startup_commands_accepts_blank_input():
     from app.startup_commands import normalize_startup_commands
 
@@ -53,3 +98,57 @@ def test_to_terminal_input_converts_normalized_linefeeds_to_carriage_returns():
     from app.startup_commands import to_terminal_input
 
     assert to_terminal_input('echo first\necho second') == 'echo first\recho second'
+
+
+@pytest.mark.parametrize(
+    ('startup_commands', 'expected_input'),
+    [
+        ('echo first\necho second', 'echo first\recho second\r'),
+        ('echo first\n', 'echo first\r'),
+    ],
+)
+def test_create_ssh_connection_delivers_startup_commands_once(
+        monkeypatch, startup_commands, expected_input):
+    from app import ssh_manager
+
+    channel = _StartupCommandChannel()
+    client = _StartupCommandClient(channel)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        startup_commands=startup_commands,
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    assert channel.sent == [expected_input]
+
+    ssh_manager.close_session(session_id)
+
+
+def test_create_ssh_connection_closes_session_when_startup_delivery_fails(monkeypatch):
+    from app import ssh_manager
+
+    channel = _StartupCommandChannel(fail_on_send=True)
+    client = _StartupCommandClient(channel)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        startup_commands='echo first',
+    )
+
+    assert session_id is None
+    assert error == 'Connection failed'
+    assert ssh_manager.sessions == {}
+    assert channel.closed
+    assert client.closed
