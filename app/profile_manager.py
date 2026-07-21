@@ -7,6 +7,7 @@ from pathlib import Path
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .storage_utils import storage_lock, atomic_write_json
+from .startup_commands import normalize_startup_commands
 
 
 def _is_valid_host(host_str):
@@ -63,7 +64,8 @@ def save_profiles(user_id, profiles):
         log_error(f"Error saving profiles", user_id=user_id, error=str(e))
         return False
 
-def add_profile(user_id, name, host, port, username, auth_type, key_id=None, jump_host_id=None):
+def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
+                jump_host_id=None, startup_commands=None):
     """Add a new connection profile for a specific user.
 
     jump_host_id (optional): reference to a saved jump host (bastion). Only the id
@@ -94,6 +96,12 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None, jum
         if auth_type == 'key' and not key_id:
             return None, "key_id required for key authentication"
 
+        normalized_startup_commands = None
+        if startup_commands is not None:
+            normalized_startup_commands, error = normalize_startup_commands(startup_commands)
+            if error:
+                return None, error
+
         profile = {
             'id': str(uuid.uuid4()),
             'name': name[:128],
@@ -108,6 +116,9 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None, jum
         # Optional reference to a saved jump host (bastion).
         if jump_host_id:
             profile['jump_host_id'] = str(jump_host_id)[:64]
+
+        if normalized_startup_commands:
+            profile['startup_commands'] = normalized_startup_commands
 
         with storage_lock(f'profiles:{user_id}'):
             profiles = load_profiles(user_id)
