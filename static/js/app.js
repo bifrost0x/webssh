@@ -116,10 +116,21 @@
         }
     };
 
-    window.clearStartupCommandsInput = () => {
+    window.clearConnectionProfileState = () => {
         const startupCommandsInput = document.getElementById('startupCommandsInput');
         if (startupCommandsInput) {
             startupCommandsInput.value = '';
+        }
+
+        const profileSelect = document.getElementById('profileSelect');
+        if (profileSelect) {
+            profileSelect.value = '';
+        }
+
+        const deleteProfileBtn = document.getElementById('deleteProfileBtn');
+        if (deleteProfileBtn) {
+            deleteProfileBtn.style.display = 'none';
+            delete deleteProfileBtn.dataset.profileId;
         }
     };
 
@@ -186,7 +197,7 @@
                     <span class="recent-conn-time">${escapeHtml(this.formatTime(conn.timestamp))}</span>
                 `;
                 option.addEventListener('click', () => {
-                    window.clearStartupCommandsInput();
+                    window.clearConnectionProfileState();
                     document.getElementById('hostInput').value = conn.host;
                     document.getElementById('portInput').value = conn.port;
                     document.getElementById('usernameInput').value = conn.username;
@@ -1057,7 +1068,7 @@
     let connectSeconds = 0;
 
     function openConnectionModalForPane(paneIndex) {
-        window.clearStartupCommandsInput();
+        window.clearConnectionProfileState();
         pendingPaneIndex = paneIndex;
         if (paneIndex !== null && paneIndex !== undefined) {
             SessionManager.setActivePane(paneIndex);

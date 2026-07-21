@@ -435,7 +435,7 @@ const SessionManager = {
             } else {
                 // No key_id — open pre-filled connection modal
                 setTimeout(() => {
-                    window.clearStartupCommandsInput();
+                    window.clearConnectionProfileState();
                     const hostInput = document.getElementById('hostInput');
                     const portInput = document.getElementById('portInput');
                     const userInput = document.getElementById('usernameInput');
@@ -1042,7 +1042,7 @@ const SessionManager = {
             this.removeSessionUI(sessionId);
         }
 
-        window.clearStartupCommandsInput();
+        window.clearConnectionProfileState();
         const hostInput = document.getElementById('hostInput');
         const portInput = document.getElementById('portInput');
         const userInput = document.getElementById('usernameInput');
