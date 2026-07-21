@@ -51,6 +51,11 @@ services:
       - TMUX_DEFAULT=true
       - TMUX_SESSION_PREFIX=webssh
 
+      # === Tailscale SSH (optional, shared node identity) ===
+      # Disabled by default. See docs/tailscale-ssh.md for the required
+      # authorization controls and a persistent Tailscale sidecar example.
+      - TAILSCALE_SSH_ENABLED=false
+
       # === Optional: Usually no changes needed ===
       - DEBUG=False
       - HOST=0.0.0.0

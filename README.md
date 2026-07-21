@@ -188,10 +188,16 @@ Open http://localhost:5000 and create your first account.
 
 ### Tailscale SSH
 
-Choose **Tailscale SSH** as the authentication method when the WebSSH runtime
-can reach the target over the same tailnet and the target has Tailscale SSH
-enabled (`tailscale set --ssh`). No password or user-managed SSH key is sent;
-the target's Tailscale SSH policy and tailnet ACLs authorize the connection.
+Tailscale SSH is disabled by default because every authorized WebSSH account
+uses the WebSSH node's **same Tailscale identity**. Enable it only for trusted
+administrators or explicitly allowed homelab users. Use a dedicated Tailscale
+tag, narrow ACL/SSH rules, and the optional WebSSH target and remote-username
+allowlists. The backend enforces these controls; hiding the UI option is not the
+security boundary.
+
+See [Tailscale SSH deployment and security](docs/tailscale-ssh.md) for all
+configuration variables, ACL guidance, audit behavior, and a Docker sidecar
+example with persistent Tailscale state.
 
 ### Persistent tmux Sessions
 
@@ -271,6 +277,10 @@ docker build -t webssh:local .
 | `TMUX_ENABLED` | No | `false` | Show and allow persistent tmux sessions. The provided Compose file sets this to `true` |
 | `TMUX_DEFAULT` | No | `false` | Select persistent tmux for new connections by default. The provided Compose file sets this to `true` |
 | `TMUX_SESSION_PREFIX` | No | `webssh` | Prefix used for tmux session names created on remote hosts |
+| `TAILSCALE_SSH_ENABLED` | No | `false` | Enable shared-identity Tailscale SSH for administrators and explicitly allowed users |
+| `TAILSCALE_SSH_ALLOWED_WEBSSH_USERS` | No | - | Comma-separated non-admin WebSSH usernames allowed to use Tailscale SSH |
+| `TAILSCALE_SSH_ALLOWED_TARGETS` | No | - | Optional comma-separated exact host/IP allowlist for Tailscale SSH targets |
+| `TAILSCALE_SSH_ALLOWED_REMOTE_USERS` | No | - | Optional comma-separated exact remote OS username allowlist for Tailscale SSH |
 | `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
 | `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |

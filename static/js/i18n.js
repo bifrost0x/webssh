@@ -365,6 +365,7 @@ const translations = {
         'connection.port': 'Cổng *',
         'connection.authMethod': 'Phương thức xác thực',
         'connection.sshKey': 'Khóa SSH *',
+        'connection.tailscaleSSH': 'SSH qua Tailscale',
         'connection.selectSSHKey': '-- Chọn khóa SSH --',
         'connection.saveAsProfile': 'Lưu thành cấu hình',
         'connection.jumpHost': 'Máy chủ trung chuyển',

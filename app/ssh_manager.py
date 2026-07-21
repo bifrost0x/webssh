@@ -124,23 +124,24 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             'hostname': host,
             'port': port,
             'username': username,
-            'timeout': config.SSH_CONNECT_TIMEOUT,
-            'look_for_keys': False,
-            'allow_agent': False
+            'timeout': config.SSH_CONNECT_TIMEOUT
         }
         if sock:
             auth_kwargs['sock'] = sock
 
         if auth_type == 'tailscale':
             auth_kwargs['auth_strategy'] = TailscaleSSHAuthStrategy(username)
-        elif key_content:
-            auth_kwargs['pkey'] = _load_private_key(key_content)
-        elif key_path:
-            auth_kwargs['key_filename'] = key_path
-        elif password:
-            auth_kwargs['password'] = password
         else:
-            return None, "No authentication method provided"
+            auth_kwargs['look_for_keys'] = False
+            auth_kwargs['allow_agent'] = False
+            if key_content:
+                auth_kwargs['pkey'] = _load_private_key(key_content)
+            elif key_path:
+                auth_kwargs['key_filename'] = key_path
+            elif password:
+                auth_kwargs['password'] = password
+            else:
+                return None, "No authentication method provided"
 
         client.connect(**auth_kwargs)
 
@@ -230,6 +231,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'last_activity': time.time(),
                 'bastion_client': bastion_client,
                 'proxy_jump_host': proxy_jump_host,
+                'auth_type': auth_type,
                 'use_tmux': use_tmux,
                 'tmux_session_name': tmux_session_name,
                 'output_buffer': [],

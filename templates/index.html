@@ -223,7 +223,9 @@
                         <select id="authTypeSelect" class="form-control">
                             <option value="password" data-i18n="auth.password">Password</option>
                             <option value="key" data-i18n="connection.sshKey">SSH Key</option>
+                            {% if tailscale_ssh_allowed %}
                             <option value="tailscale" data-i18n="connection.tailscaleSSH">Tailscale SSH</option>
+                            {% endif %}
                         </select>
                     </div>
 

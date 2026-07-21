@@ -9,7 +9,9 @@ from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_ssh_connection, log_ssh_disconnect,
                               log_file_upload, log_file_download,
-                              log_key_upload, log_key_delete)
+                              log_key_upload, log_key_delete,
+                              log_tailscale_ssh_usage)
+from .tailscale_ssh import validate_tailscale_ssh_access
 from . import binary_transfer, connection_pool
 import base64
 import os
@@ -212,6 +214,7 @@ def restore_user_sessions(user_id):
                 'host': db_session.host,
                 'port': db_session.port,
                 'username': db_session.username,
+                'auth_type': session.get('auth_type', db_session.auth_type),
                 'via_jump': session.get('via_jump'),
                 'use_tmux': session.get('use_tmux', False),
                 'tmux_session_name': session.get('tmux_session_name'),
@@ -236,6 +239,7 @@ def restore_user_sessions(user_id):
                 'port': db_session.port,
                 'username': db_session.username,
                 'key_id': db_session.key_id,
+                'auth_type': db_session.auth_type,
                 'tmux_session_name': db_session.tmux_session_name,
                 'display_name': db_session.display_name
             }, room=room)
@@ -246,6 +250,10 @@ def restore_user_sessions(user_id):
 @socket_login_required
 def handle_ssh_connect(data, current_user=None):
     """Handle SSH connection request with input validation."""
+    password = None
+    key_content = None
+    bastion_password = None
+    bastion_key_content = None
     try:
         password = data.get('password')
         key_id = data.get('key_id')
@@ -275,6 +283,16 @@ def handle_ssh_connect(data, current_user=None):
             emit_error('Invalid authentication method')
             return
 
+        if auth_type == 'tailscale':
+            access_error = validate_tailscale_ssh_access(current_user, host, username)
+            log_tailscale_ssh_usage(
+                current_user.username, host, port, username, request.remote_addr,
+                allowed=access_error is None, error=access_error
+            )
+            if access_error:
+                emit_error(access_error)
+                return
+
         if auth_type == 'password' and not password:
             emit_error('Password required')
             return
@@ -283,7 +301,6 @@ def handle_ssh_connect(data, current_user=None):
             emit_error('Password or SSH key required')
             return
 
-        key_content = None
         if key_id:
             key_content, key_error = key_manager.read_key_content(current_user.id, key_id)
             if key_error:
@@ -293,8 +310,6 @@ def handle_ssh_connect(data, current_user=None):
         # Resolve optional ProxyJump / bastion parameters. The bastion is reached
         # directly by the server, so it is validated WITHOUT allow_internal.
         bastion_host = bastion_port = bastion_username = None
-        bastion_password = None
-        bastion_key_content = None
         if proxy_jump:
             bastion_host, bastion_port, bastion_username, bastion_error = _validate_ssh_params(
                 proxy_jump.get('host'), proxy_jump.get('port', 22), proxy_jump.get('username')
@@ -387,6 +402,7 @@ def handle_ssh_connect(data, current_user=None):
                     username=username,
                     is_persistent=use_tmux,
                     key_id=key_id if use_tmux else None,
+                    auth_type=auth_type,
                     tmux_session_name=ssh_manager.get_session(session_id).get('tmux_session_name') if use_tmux else None,
                     display_name=display_name if use_tmux else None
                 )
@@ -406,6 +422,7 @@ def handle_ssh_connect(data, current_user=None):
                 'via_jump': bastion_host,
                 'use_tmux': use_tmux,
                 'key_id': key_id if use_tmux else None,
+                'auth_type': auth_type,
                 'tmux_session_name': ssh_manager.get_session(session_id).get('tmux_session_name') if use_tmux else None,
                 'display_name': display_name
             })
@@ -548,6 +565,12 @@ def handle_save_profile(data, current_user=None):
         auth_type = data.get('auth_type')
         key_id = data.get('key_id')
         jump_host_id = data.get('jump_host_id')
+
+        if auth_type == 'tailscale':
+            access_error = validate_tailscale_ssh_access(current_user, host, username)
+            if access_error:
+                emit('error', {'error': access_error})
+                return
 
         profile, error = profile_manager.add_profile(
             user_id=current_user.id,

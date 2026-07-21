@@ -194,6 +194,14 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
     assert session_id in ssh_manager.sessions
     strategy = clients[0].connect_kwargs['auth_strategy']
     assert isinstance(strategy, ssh_manager.TailscaleSSHAuthStrategy)
+    assert clients[0].connect_kwargs == {
+        'hostname': 'target.example',
+        'port': 22,
+        'username': 'alice',
+        'timeout': ssh_manager.config.SSH_CONNECT_TIMEOUT,
+        'auth_strategy': strategy,
+    }
+    assert ssh_manager.sessions[session_id]['auth_type'] == 'tailscale'
     probe_channel, tmux_channel = clients[0].transport.session_channels
     assert probe_channel.command == 'command -v tmux'
     assert tmux_channel.pty == ('xterm-256color', 80, 24)
