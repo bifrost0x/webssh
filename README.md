@@ -249,22 +249,27 @@ profiles or sets that must be changed first.
 
 After a new SSH connection succeeds, WebSSH resolves the latest referenced
 commands on the server, validates the combined text (maximum 4096 characters),
-and sends the steps to the remote interactive shell in their saved order. The
-commands run on the remote SSH host, never inside the WebSSH container.
-Reattaching to an existing persistent tmux session does not run them again.
+and sends the steps to the remote interactive shell in their saved order.
+Resolved command-set steps are joined with `&&`, so the next block starts only
+when the preceding block succeeds. Line breaks
+inside a free-text step remain unchanged; the exit status of that block's final
+command controls whether the next block starts. The commands run on the remote
+SSH host, never inside the WebSSH container. Reattaching to an existing
+persistent tmux session does not run them again.
 
 Existing profiles that still contain the former free-text startup commands keep
 working after an update. They show a legacy notice in the connection dialog and
 can be converted into a named set. Conversion creates the set first, then links
 the profile; the old text remains stored as a fallback but is ignored while the
-new set reference is valid.
+new set reference is valid. The profile's legacy startup commands retain their
+original multiline behavior until they are converted.
 
-Command output and errors appear normally in the terminal. WebSSH does not
-interpret a command's exit status or stop later lines because an earlier command
-failed; any different control flow still follows the behavior of the remote
-shell and the commands themselves. Treat command sets like any other remote
-administration automation: review their contents and grant WebSSH accounts only
-the SSH privileges they actually need.
+Command output and errors appear normally in the terminal. The remote shell
+evaluates the `&&` chain; WebSSH does not interpret exit statuses itself. Within
+a multiline free-text block, control flow continues to follow the authored text
+and the remote shell. Treat command sets like any other remote administration
+automation: review their contents and grant WebSSH accounts only the SSH
+privileges they actually need.
 
 No additional environment variable, Compose setting, frontend build step, or
 external service is required. Command sets are stored per user in the existing
