@@ -1,6 +1,7 @@
 const ProfileManager = {
     profiles: [],
     keys: [],
+    selectedLegacyStartupCommands: '',
 
     loadProfiles() {
         if (window.socket) {
@@ -114,7 +115,23 @@ const ProfileManager = {
         document.getElementById('hostInput').value = profile.host;
         document.getElementById('portInput').value = profile.port;
         document.getElementById('usernameInput').value = profile.username;
-        document.getElementById('startupCommandsInput').value = profile.startup_commands || '';
+        if (window.CommandSetManager) {
+            CommandSetManager.selectForConnection(profile.command_set_id);
+        }
+        const legacyNotice = document.getElementById('legacyCommandsNotice');
+        const convertButton = document.getElementById('convertLegacyCommandsBtn');
+        const hasLegacyCommands = !profile.command_set_id
+            && typeof profile.startup_commands === 'string'
+            && profile.startup_commands.trim();
+        this.selectedLegacyStartupCommands = hasLegacyCommands
+            ? profile.startup_commands
+            : '';
+        legacyNotice?.classList.toggle('hidden', !hasLegacyCommands);
+        if (convertButton) {
+            convertButton.onclick = hasLegacyCommands
+                ? () => CommandSetManager.openLegacyConversion(profile)
+                : null;
+        }
 
         document.getElementById('authTypeSelect').value = profile.auth_type;
 
@@ -133,6 +150,15 @@ const ProfileManager = {
                 window.JumpHostManager.updatePasswordVisibility();
             }
         }
+    },
+
+    getLegacyStartupCommands() {
+        return this.selectedLegacyStartupCommands;
+    },
+
+    clearLegacyCommands() {
+        this.selectedLegacyStartupCommands = '';
+        document.getElementById('legacyCommandsNotice')?.classList.add('hidden');
     },
 
     handleAuthTypeChange(authType) {

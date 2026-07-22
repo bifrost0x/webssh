@@ -6,6 +6,7 @@ const CommandLibrary = {
     detectingOsForSession: null,
     renderCursor: 0,
     chunkSize: 40,
+    pendingSaveCallback: null,
 
     init() {
         this.loadCommands();
@@ -109,6 +110,7 @@ const CommandLibrary = {
         this.commands = commands;
         this.filteredCommands = commands;
         this.renderCommandsList();
+        window.CommandSetManager?.onCommandsChanged();
         const osDisplay = document.getElementById('currentOsDisplay');
         if (osDisplay) {
             osDisplay.textContent = this.currentOs.charAt(0).toUpperCase() + this.currentOs.slice(1);
@@ -303,13 +305,14 @@ const CommandLibrary = {
         window.showNotification(`Command inserted: ${cmd.name}`, 'success');
     },
 
-    showAddCommandForm() {
+    showAddCommandForm(options = {}) {
         this.editingCommandId = null;
+        this.pendingSaveCallback = typeof options.onSaved === 'function' ? options.onSaved : null;
         document.getElementById('commandFormTitle').textContent = 'Add New Command';
-        document.getElementById('commandFormName').value = '';
-        document.getElementById('commandFormCommand').value = '';
+        document.getElementById('commandFormName').value = options.name || '';
+        document.getElementById('commandFormCommand').value = options.command || '';
         document.getElementById('commandFormParams').value = '';
-        document.getElementById('commandFormDescription').value = '';
+        document.getElementById('commandFormDescription').value = options.description || '';
         document.getElementById('commandFormCategory').value = 'custom';
 
         document.querySelectorAll('input[name="commandOs"]').forEach(cb => cb.checked = false);
@@ -402,11 +405,20 @@ const CommandLibrary = {
         if (this.editingCommandId) {
             data.command_id = this.editingCommandId;
             window.socket.emit('update_command', data);
+            this.closeCommandForm();
         } else {
-            window.socket.emit('add_command', data);
+            window.socket.emit('add_command', data, acknowledgement => {
+                if (!acknowledgement?.success) {
+                    window.showNotification(
+                        acknowledgement?.error || 'Failed to add command', 'error'
+                    );
+                    return;
+                }
+                const callback = this.pendingSaveCallback;
+                this.closeCommandForm();
+                callback?.(acknowledgement.command);
+            });
         }
-
-        this.closeCommandForm();
     },
 
     deleteCommand(commandId) {
@@ -425,6 +437,7 @@ const CommandLibrary = {
             document.getElementById('commandFormModal').classList.remove('show');
         }
         this.editingCommandId = null;
+        this.pendingSaveCallback = null;
     },
 
     escapeHtml(text) {

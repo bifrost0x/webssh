@@ -314,36 +314,30 @@ def test_create_ssh_connection_kills_new_tmux_when_startup_delivery_fails(monkey
     assert client.close_calls == 1
 
 
-def test_connection_form_exposes_optional_multiline_startup_commands():
+def test_connection_form_replaces_raw_startup_commands_with_named_set_selector():
     template = Path('templates/index.html').read_text(encoding='utf-8')
 
-    textarea = re.search(
-        r'<textarea\b[^>]*\bid="startupCommandsInput"[^>]*>',
-        template,
-        re.DOTALL,
-    )
-
-    assert textarea is not None
-    assert 'maxlength="4096"' in textarea.group(0)
-    assert 'aria-describedby="startupCommandsHint"' in textarea.group(0)
-    assert 'required' not in textarea.group(0)
-    assert 'data-i18n="connection.startupCommands"' in template
-    assert 'data-i18n="connection.startupCommandsHint"' in template
+    assert 'id="startupCommandsInput"' not in template
+    assert 'id="commandSetSelect"' in template
+    assert 'id="createCommandSetBtn"' in template
+    assert 'id="commandSetPreview"' in template
 
 
-def test_connection_and_saved_profile_payloads_include_startup_commands():
+def test_connection_and_saved_profile_payloads_include_command_set_reference():
     source = Path('static/js/app.js').read_text(encoding='utf-8')
 
-    assert "document.getElementById('startupCommandsInput').value" in source
-    assert re.search(r'profilePayload\.startup_commands\s*=\s*startupCommands', source)
-    assert re.search(r'connectionData\.startup_commands\s*=\s*startupCommands', source)
+    assert "CommandSetManager.getSelectedId()" in source
+    assert re.search(r'profilePayload\.command_set_id\s*=\s*commandSetId', source)
+    assert re.search(r'connectionData\.command_set_id\s*=\s*commandSetId', source)
+    assert re.search(
+        r'connectionData\.startup_commands\s*=\s*legacyStartupCommands', source
+    )
 
 
-def test_profile_selection_restores_startup_commands_and_supports_legacy_profiles():
+def test_profile_selection_restores_command_set_and_supports_legacy_conversion():
     source = Path('static/js/profile-manager.js').read_text(encoding='utf-8')
 
-    assert re.search(
-        r"getElementById\('startupCommandsInput'\)\.value\s*=\s*"
-        r"profile\.startup_commands\s*\|\|\s*''",
-        source,
-    )
+    assert 'CommandSetManager.selectForConnection(profile.command_set_id)' in source
+    assert 'profile.startup_commands' in source
+    assert 'CommandSetManager.openLegacyConversion(profile)' in source
+    assert 'getLegacyStartupCommands()' in source

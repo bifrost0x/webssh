@@ -1006,13 +1006,18 @@ def handle_add_command(data, current_user=None):
         new_cmd = command_manager.add_user_command(
             current_user.id, name, command, parameters, description, os_list, category
         )
+        if not new_cmd:
+            emit('error', {'error': 'Failed to add command'})
+            return {'success': False, 'error': 'Failed to add command'}
 
         emit('command_added', {'command': new_cmd})
         handle_list_commands({}, current_user=current_user)
+        return {'success': True, 'command': new_cmd}
 
     except Exception as e:
         log_error("Failed to add command", error=str(e))
         emit('error', {'error': 'Failed to add command'})
+        return {'success': False, 'error': 'Failed to add command'}
 
 @socketio.on('update_command')
 @socket_login_required

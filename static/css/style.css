@@ -4038,6 +4038,236 @@ body.keyboard-open.notepad-focused .notepad-panel {
     color: var(--accent-primary);
 }
 
+/* Reusable post-connect command sets */
+.command-set-selector-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.command-set-selector-row .form-control {
+    flex: 1;
+}
+
+.command-set-selector-row .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.command-set-preview,
+.legacy-command-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 9px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.command-set-preview strong {
+    color: var(--text-primary);
+}
+
+.command-set-preview.empty {
+    border-style: dashed;
+}
+
+.legacy-command-notice {
+    border-color: var(--warning-color, #d29922);
+    color: var(--warning-color, #d29922);
+}
+
+.command-set-modal-content .command-set-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.command-set-management-toolbar,
+.command-set-steps-heading,
+.command-set-editor-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.command-set-management-toolbar p {
+    color: var(--text-secondary);
+}
+
+.command-set-management-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.command-set-management-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+
+.command-set-management-item > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.command-set-management-item span {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.command-set-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.command-set-builder {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr);
+    gap: 16px;
+    min-height: 430px;
+}
+
+.command-set-library-pane,
+.command-set-steps-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+}
+
+.command-set-library-pane h4,
+.command-set-steps-pane h4 {
+    margin: 0 0 12px;
+}
+
+.command-set-os-filters {
+    display: flex;
+    gap: 5px;
+    margin: 10px 0;
+    overflow-x: auto;
+    padding-bottom: 3px;
+}
+
+.command-set-library-results,
+.command-set-steps {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.command-set-library-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    padding: 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.command-set-library-item:hover,
+.command-set-library-item:focus-visible {
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+}
+
+.command-set-library-item code,
+.command-set-step > code {
+    color: var(--accent-secondary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.command-set-step {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+}
+
+.command-set-step[draggable="true"] {
+    cursor: grab;
+}
+
+.command-set-step-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.command-set-step-header > div {
+    display: flex;
+    gap: 4px;
+}
+
+.command-set-default-params {
+    display: flex !important;
+    align-items: center;
+    gap: 7px;
+    margin: 0 !important;
+    color: var(--text-secondary) !important;
+    font-weight: 400 !important;
+}
+
+.command-set-editor-actions {
+    margin-top: 16px;
+    justify-content: flex-end;
+}
+
+@media (max-width: 850px) {
+    .command-set-builder {
+        grid-template-columns: 1fr;
+    }
+
+    .command-set-library-pane,
+    .command-set-steps-pane {
+        min-height: 360px;
+    }
+
+    .command-set-management-item,
+    .command-set-management-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 520px) {
+    .command-set-selector-row {
+        flex-direction: column;
+    }
+}
+
 .checkbox-group {
     display: flex;
     flex-wrap: wrap;

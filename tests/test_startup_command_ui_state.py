@@ -1,4 +1,4 @@
-"""Source contracts that prevent startup commands leaking between targets."""
+"""Source contracts that prevent command-set state leaking between targets."""
 
 import re
 from pathlib import Path
@@ -18,8 +18,8 @@ def test_app_exposes_a_complete_connection_profile_reset_helper():
     )
 
     assert helper is not None
-    assert "document.getElementById('startupCommandsInput')" in helper.group('body')
-    assert re.search(r'startupCommandsInput\.value\s*=\s*[\'\"]{2}', helper.group('body'))
+    assert "CommandSetManager?.selectForConnection('')" in helper.group('body')
+    assert 'ProfileManager.clearLegacyCommands()' in helper.group('body')
     assert "document.getElementById('profileSelect')" in helper.group('body')
     assert re.search(r'profileSelect\.value\s*=\s*[\'\"]{2}', helper.group('body'))
     assert "document.getElementById('deleteProfileBtn')" in helper.group('body')
@@ -27,7 +27,7 @@ def test_app_exposes_a_complete_connection_profile_reset_helper():
     assert 'delete deleteProfileBtn.dataset.profileId' in helper.group('body')
 
 
-def test_new_connection_and_history_target_selection_clear_startup_commands():
+def test_new_connection_and_history_target_selection_clear_command_set_state():
     source = _source('static/js/app.js')
 
     modal = source[source.index('function openConnectionModalForPane'):source.index(
@@ -43,7 +43,7 @@ def test_new_connection_and_history_target_selection_clear_startup_commands():
     )
 
 
-def test_all_session_manager_form_prefills_clear_startup_commands_first():
+def test_all_session_manager_form_prefills_clear_command_set_state_first():
     source = _source('static/js/session-manager.js')
     password_reconnect = source[source.index('// No key_id'):source.index(
         '        }\n', source.index('// No key_id')

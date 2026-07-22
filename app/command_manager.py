@@ -10,6 +10,13 @@ import config
 from .audit_logger import log_error
 from .storage_utils import storage_lock, atomic_write_json
 
+
+def get_user_commands_file(user_id):
+    from .models import User
+
+    user = User.query.get(user_id)
+    return user.get_data_dir() / 'commands.json' if user else None
+
 def load_system_commands():
     """Load global system commands from JSON."""
     commands_file = config.SYSTEM_COMMANDS_FILE
@@ -25,12 +32,9 @@ def load_system_commands():
 
 def load_user_commands(user_id):
     """Load user-specific commands."""
-    from .models import User
-    user = User.query.get(user_id)
-    if not user:
+    user_commands_file = get_user_commands_file(user_id)
+    if not user_commands_file:
         return []
-
-    user_commands_file = user.get_data_dir() / 'commands.json'
     if user_commands_file.exists():
         try:
             with open(user_commands_file, 'r', encoding='utf-8') as f:
@@ -44,14 +48,29 @@ def load_user_commands(user_id):
             return []
     return []
 
+
+def _load_user_commands_for_write(user_id):
+    """Load commands without converting corrupt storage into an empty list."""
+    user_commands_file = get_user_commands_file(user_id)
+    if not user_commands_file:
+        return None, 'User not found'
+    if not user_commands_file.exists():
+        return [], None
+    try:
+        with open(user_commands_file, 'r', encoding='utf-8') as handle:
+            data = json.load(handle)
+        if not isinstance(data, list):
+            raise ValueError('invalid command storage shape')
+        return data, None
+    except (OSError, ValueError, TypeError) as exc:
+        log_error('Error loading user commands for write', user_id=user_id, error=str(exc))
+        return None, 'Command storage is unreadable'
+
 def save_user_commands(user_id, commands):
     """Save user-specific commands."""
-    from .models import User
-    user = User.query.get(user_id)
-    if not user:
+    user_commands_file = get_user_commands_file(user_id)
+    if not user_commands_file:
         return False
-
-    user_commands_file = user.get_data_dir() / 'commands.json'
     user_commands_file.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(user_commands_file, commands)
     return True
@@ -95,15 +114,18 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
     }
 
     with storage_lock(f'commands:{user_id}'):
-        user_cmds = load_user_commands(user_id)
+        user_cmds, error = _load_user_commands_for_write(user_id)
+        if error:
+            return None
         user_cmds.append(new_cmd)
-        save_user_commands(user_id, user_cmds)
-    return new_cmd
+        return new_cmd if save_user_commands(user_id, user_cmds) else None
 
 def update_user_command(user_id, command_id, name, command, parameters, description, os_list, category):
     """Update an existing user command."""
     with storage_lock(f'commands:{user_id}'):
-        user_cmds = load_user_commands(user_id)
+        user_cmds, error = _load_user_commands_for_write(user_id)
+        if error:
+            return False
 
         for cmd in user_cmds:
             if cmd['id'] == command_id:
@@ -131,7 +153,9 @@ def delete_user_command(user_id, command_id):
             return False, f'Command is used by {len(usages)} {noun}', usages
 
         with storage_lock(f'commands:{user_id}'):
-            user_cmds = load_user_commands(user_id)
+            user_cmds, error = _load_user_commands_for_write(user_id)
+            if error:
+                return False, error, []
             remaining = [cmd for cmd in user_cmds if cmd.get('id') != command_id]
             if len(remaining) == len(user_cmds):
                 return False, 'Command not found', []

@@ -347,3 +347,22 @@ def test_unresolvable_saved_set_stops_before_connection_validation(
         'ssh_error',
         {'error': expected_error, 'client_request_id': None},
     )]
+
+
+def test_add_library_command_does_not_overwrite_corrupt_storage(app):
+    from app import command_manager
+    from app.models import User
+
+    user_id, _sid = create_socket_user(app, 'corrupt_command_library')
+    with app.app_context():
+        user = User.query.get(user_id)
+        path = user.get_data_dir() / 'commands.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{broken', encoding='utf-8')
+
+        command = command_manager.add_user_command(
+            user_id, 'Safe', 'uptime', '', 'Check uptime', ['all'], 'custom'
+        )
+
+        assert command is None
+        assert path.read_text(encoding='utf-8') == '{broken'

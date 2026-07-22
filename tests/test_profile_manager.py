@@ -144,3 +144,21 @@ def test_assign_command_set_to_profile_retains_legacy_commands(app):
         assert error is None
         assert updated['command_set_id'] == command_set['id']
         assert updated['startup_commands'] == 'echo legacy'
+
+
+def test_add_profile_does_not_overwrite_corrupt_profile_storage(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile_corrupt_storage')
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{broken', encoding='utf-8')
+
+        profile, error = profile_manager.add_profile(
+            user_id, 'Production', 'example.com', 22, 'deploy', 'password'
+        )
+
+        assert profile is None
+        assert error == 'Profile storage is unreadable'
+        assert path.read_text(encoding='utf-8') == '{broken'

@@ -49,6 +49,24 @@ def load_profiles(user_id):
         log_error(f"Error loading profiles", user_id=user_id, error=str(e))
         return []
 
+
+def _load_profiles_for_write(user_id):
+    """Load profiles without masking corruption before a mutation."""
+    profiles_file = get_user_profiles_file(user_id)
+    if not profiles_file:
+        return None, 'User not found'
+    if not profiles_file.exists():
+        return [], None
+    try:
+        with open(profiles_file, 'r', encoding='utf-8') as handle:
+            data = json.load(handle)
+        if not isinstance(data, dict) or not isinstance(data.get('profiles'), list):
+            raise ValueError('invalid profile storage shape')
+        return data['profiles'], None
+    except (OSError, ValueError, TypeError) as exc:
+        log_error('Error loading profiles for write', user_id=user_id, error=str(exc))
+        return None, 'Profile storage is unreadable'
+
 def save_profiles(user_id, profiles):
     """Save profiles list to JSON file for a specific user."""
     try:
@@ -132,7 +150,9 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
                 profile['command_set_id'] = command_set_id
 
             with storage_lock(f'profiles:{user_id}'):
-                profiles = load_profiles(user_id)
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return None, error
                 profiles.append(profile)
 
                 if save_profiles(user_id, profiles):
@@ -154,7 +174,9 @@ def delete_profile(user_id, profile_id):
     try:
         with storage_lock(f'command-config:{user_id}'):
             with storage_lock(f'profiles:{user_id}'):
-                profiles = load_profiles(user_id)
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return False
                 profiles = [p for p in profiles if p['id'] != profile_id]
                 return save_profiles(user_id, profiles)
     except Exception as e:
@@ -173,7 +195,9 @@ def assign_command_set(user_id, profile_id, command_set_id):
                 return None, error
 
             with storage_lock(f'profiles:{user_id}'):
-                profiles = load_profiles(user_id)
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return None, error
                 for profile in profiles:
                     if profile.get('id') == profile_id:
                         profile['command_set_id'] = command_set['id']

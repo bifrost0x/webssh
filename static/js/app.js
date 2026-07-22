@@ -117,10 +117,8 @@
     };
 
     window.clearConnectionProfileState = () => {
-        const startupCommandsInput = document.getElementById('startupCommandsInput');
-        if (startupCommandsInput) {
-            startupCommandsInput.value = '';
-        }
+        window.CommandSetManager?.selectForConnection('');
+        ProfileManager.clearLegacyCommands();
 
         const profileSelect = document.getElementById('profileSelect');
         if (profileSelect) {
@@ -1809,6 +1807,7 @@
         SessionManager.init();
 
         CommandLibrary.init();
+        window.CommandSetManager?.init();
 
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();
@@ -1854,7 +1853,10 @@
             const keyId = document.getElementById('keySelect').value;
             const saveProfile = document.getElementById('saveProfileCheck').checked;
             const profileName = document.getElementById('profileNameInput').value;
-            const startupCommands = document.getElementById('startupCommandsInput').value;
+            const commandSetId = CommandSetManager.getSelectedId();
+            const legacyStartupCommands = commandSetId
+                ? ''
+                : ProfileManager.getLegacyStartupCommands();
             const targetPane = pendingPaneIndex;
             pendingPaneIndex = null;
 
@@ -1909,7 +1911,9 @@
                     auth_type: authType,
                     key_id: authType === 'key' ? keyId : null
                 };
-                profilePayload.startup_commands = startupCommands;
+                if (commandSetId) {
+                    profilePayload.command_set_id = commandSetId;
+                }
                 if (jumpHostId) {
                     profilePayload.jump_host_id = jumpHostId;
                 }
@@ -1929,7 +1933,12 @@
                 client_request_id: currentConnectRequestId,
                 auth_type: authType
             };
-            connectionData.startup_commands = startupCommands;
+            if (commandSetId) {
+                connectionData.command_set_id = commandSetId;
+            }
+            if (legacyStartupCommands) {
+                connectionData.startup_commands = legacyStartupCommands;
+            }
 
             if (authType === 'password') {
                 connectionData.password = password;
@@ -1991,6 +2000,8 @@
                 deleteBtn.style.display = 'block';
                 deleteBtn.dataset.profileId = profileId;
             } else {
+                ProfileManager.clearLegacyCommands();
+                CommandSetManager.selectForConnection('');
                 deleteBtn.style.display = 'none';
                 delete deleteBtn.dataset.profileId;
             }
@@ -2000,8 +2011,7 @@
             const profileId = e.target.dataset.profileId;
             if (profileId) {
                 ProfileManager.deleteProfile(profileId);
-                document.getElementById('profileSelect').value = '';
-                e.target.style.display = 'none';
+                window.clearConnectionProfileState();
             }
         });
 

@@ -26,6 +26,13 @@ window.CommandSetManager = {
                 }
             });
         }
+        window.addEventListener('languageChanged', () => {
+            this.renderSelect();
+            this.renderPreview();
+            this.renderManagementList();
+            this.renderLibraryResults();
+            this.renderSteps();
+        });
         this.bindEvents();
         this.load();
     },
@@ -47,7 +54,8 @@ window.CommandSetManager = {
             this.openBuilder();
         });
         document.getElementById('cancelCommandSetBtn')?.addEventListener('click', () => {
-            this.showManagementList();
+            if (this.returnToConnection) this.close();
+            else this.showManagementList();
         });
         document.getElementById('commandSetForm')?.addEventListener('submit', event => {
             event.preventDefault();
@@ -108,7 +116,6 @@ window.CommandSetManager = {
 
     setCommandSets(commandSets) {
         this.commandSets = Array.isArray(commandSets) ? commandSets : [];
-        if (this.selectedId && !this.getById(this.selectedId)) this.selectedId = '';
         this.renderSelect();
         this.renderPreview();
         this.renderManagementList();
@@ -118,14 +125,17 @@ window.CommandSetManager = {
         return this.commandSets.find(commandSet => commandSet.id === id) || null;
     },
 
+    getCommandLibrary() {
+        return typeof CommandLibrary !== 'undefined' ? CommandLibrary : null;
+    },
+
     getSelectedId() {
         return this.selectedId || null;
     },
 
     selectForConnection(id) {
-        this.selectedId = this.getById(id) ? id : '';
-        const select = document.getElementById('commandSetSelect');
-        if (select) select.value = this.selectedId;
+        this.selectedId = typeof id === 'string' ? id : '';
+        this.renderSelect();
         this.renderPreview();
     },
 
@@ -143,18 +153,25 @@ window.CommandSetManager = {
             option.textContent = commandSet.name;
             select.appendChild(option);
         });
+        if (this.selectedId && !this.getById(this.selectedId)) {
+            const missing = document.createElement('option');
+            missing.value = this.selectedId;
+            missing.textContent = this.t('commandSets.missingSet', 'Missing command set');
+            select.appendChild(missing);
+        }
         select.value = this.selectedId;
     },
 
     commandById(id) {
-        return (window.CommandLibrary?.commands || []).find(command => command.id === id) || null;
+        return (this.getCommandLibrary()?.commands || [])
+            .find(command => command.id === id) || null;
     },
 
     stepSummary(step) {
         if (step.type === 'inline') return step.command || this.t('commandSets.emptyInline', 'Empty free-text step');
         const command = this.commandById(step.command_id);
         if (!command) return this.t('commandSets.missingCommand', 'Missing library command');
-        const parameters = Object.hasOwn(step, 'parameters_override')
+        const parameters = Object.prototype.hasOwnProperty.call(step, 'parameters_override')
             ? (step.parameters_override || '')
             : (command.parameters || '');
         return command.command + (parameters ? ` ${parameters}` : '');
@@ -165,6 +182,14 @@ window.CommandSetManager = {
         if (!preview) return;
         const commandSet = this.getById(this.selectedId);
         preview.replaceChildren();
+        if (!commandSet && this.selectedId) {
+            preview.textContent = this.t(
+                'commandSets.missingSetHint',
+                'This command set is unavailable. The connection will be blocked until you select another one.',
+            );
+            preview.classList.remove('empty');
+            return;
+        }
         if (!commandSet) {
             preview.textContent = this.t('commandSets.noSelectionHint', 'No commands will run after connecting.');
             preview.classList.add('empty');
@@ -236,6 +261,13 @@ window.CommandSetManager = {
         if (!modal) return;
         if (window.ModalManager) window.ModalManager.close(modal);
         else modal.classList.remove('show');
+        if (this.returnToConnection) {
+            const connectionModal = document.getElementById('connectionModal');
+            if (connectionModal?.classList.contains('show') && window.ModalManager) {
+                window.ModalManager.activeModal = connectionModal;
+                document.getElementById('createCommandSetBtn')?.focus();
+            }
+        }
     },
 
     renderManagementList() {
@@ -280,7 +312,7 @@ window.CommandSetManager = {
         const container = document.getElementById('commandSetLibraryResults');
         if (!container || !window.CommandSetUtils) return;
         const commands = window.CommandSetUtils.filterCommands(
-            window.CommandLibrary?.commands || [], this.searchQuery, this.currentOs,
+            this.getCommandLibrary()?.commands || [], this.searchQuery, this.currentOs,
         );
         container.replaceChildren();
         commands.forEach(command => {
@@ -361,7 +393,9 @@ window.CommandSetManager = {
                 defaultLabel.className = 'command-set-default-params';
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.checked = !Object.hasOwn(step, 'parameters_override');
+                checkbox.checked = !Object.prototype.hasOwnProperty.call(
+                    step, 'parameters_override'
+                );
                 checkbox.dataset.stepField = 'use-default-parameters';
                 checkbox.dataset.stepIndex = index;
                 defaultLabel.append(checkbox, document.createTextNode(
@@ -422,8 +456,9 @@ window.CommandSetManager = {
     promoteInlineStep(index) {
         const step = this.draftSteps[index];
         if (!step || step.type !== 'inline' || !step.command.trim()) return;
-        if (!window.CommandLibrary?.showAddCommandForm) return;
-        window.CommandLibrary.showAddCommandForm({
+        const library = this.getCommandLibrary();
+        if (!library?.showAddCommandForm) return;
+        library.showAddCommandForm({
             command: step.command,
             onSaved: command => {
                 this.draftSteps[index] = { type: 'library', command_id: command.id };
@@ -454,11 +489,19 @@ window.CommandSetManager = {
         };
         if (this.editingId) payload.id = this.editingId;
         const event = this.convertingProfileId ? 'convert_legacy_command_set' : 'save_command_set';
+        const isLegacyConversion = Boolean(this.convertingProfileId);
         if (this.convertingProfileId) payload.profile_id = this.convertingProfileId;
         this.emitWithAck(event, payload, acknowledgement => {
             const saved = acknowledgement.command_set;
+            if (saved) {
+                const remaining = this.commandSets.filter(item => item.id !== saved.id);
+                this.setCommandSets([...remaining, saved]);
+                if (this.returnToConnection) this.selectForConnection(saved.id);
+            }
+            if (isLegacyConversion && typeof ProfileManager !== 'undefined') {
+                ProfileManager.clearLegacyCommands();
+            }
             this.load();
-            if (this.returnToConnection && saved) this.selectForConnection(saved.id);
             this.close();
             window.showNotification?.(this.t('commandSets.saved', 'Command set saved'), 'success');
         });
@@ -471,7 +514,10 @@ window.CommandSetManager = {
     delete(id) {
         const commandSet = this.getById(id);
         if (!commandSet || !window.confirm(this.t('commandSets.confirmDelete', `Delete "${commandSet.name}"?`))) return;
-        this.emitWithAck('delete_command_set', { command_set_id: id }, () => this.load());
+        this.emitWithAck('delete_command_set', { command_set_id: id }, () => {
+            if (this.selectedId === id) this.selectForConnection('');
+            this.load();
+        });
     },
 
     onCommandsChanged() {

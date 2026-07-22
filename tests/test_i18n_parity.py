@@ -19,18 +19,24 @@ def test_all_locales_have_matching_translation_keys():
         for keys in keys_by_locale.values()
     )
     assert all(
-        {'connection.startupCommands', 'connection.startupCommandsHint'} <= keys
+        {
+            'connection.commandSet',
+            'connection.commandSetHint',
+            'commandSets.manage',
+            'commandSets.create',
+            'commandSets.saveToLibrary',
+        } <= keys
         for keys in keys_by_locale.values()
     )
 
 
-def test_english_startup_commands_copy_explains_execution_boundaries():
+def test_english_command_set_copy_explains_execution_boundaries():
     source = Path('static/js/i18n.js').read_text(encoding='utf-8')
     en_start = source.index('    en: {')
     en_end = source.index('\n    vi: {', en_start)
     english_block = source[en_start:en_end]
     match = re.search(
-        r"'connection\.startupCommandsHint': '([^']+)'",
+        r"'connection\.commandSetHint': '([^']+)'",
         english_block,
     )
 
