@@ -33,6 +33,25 @@ def _prefix_commands_with_sudo(value):
     return '\n'.join(lines)
 
 
+def _prepare_step_for_chaining(value):
+    """Keep a step shell-safe when an ``&&`` separator follows it."""
+    lines = value.split('\n')
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return ':'
+
+    trimmed = '\n'.join(lines)
+    if not lines[-1].lstrip().startswith('#'):
+        return trimmed
+
+    has_command = any(
+        line.strip() and not line.lstrip().startswith('#') for line in lines
+    )
+    body = trimmed if has_command else f':\n{trimmed}'
+    return f'{{\n{body}\n}}'
+
+
 def _command_sets_file(user_id):
     from .models import User
 
@@ -285,7 +304,9 @@ def resolve_command_set(user_id, command_set_id):
         resolved_parts = [
             _prefix_commands_with_sudo(part) for part in resolved_parts
         ]
-    resolved = ' && '.join(part.rstrip('\n') for part in resolved_parts)
+    resolved = ' && '.join(
+        _prepare_step_for_chaining(part) for part in resolved_parts
+    )
     resolved, error = normalize_startup_commands(resolved)
     if error:
         return None, error
