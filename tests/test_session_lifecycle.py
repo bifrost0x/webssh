@@ -46,6 +46,12 @@ class FakeTransport:
         self.open_timeout = timeout
         return self.kill_channel
 
+    def _send_user_message(self, _message):
+        pass
+
+    def get_exception(self):
+        return None
+
 
 class FakeSSHClient:
     def __init__(self, connect_started=None, connect_release=None,
@@ -209,6 +215,38 @@ def test_close_session_does_not_hold_registry_lock_during_io(monkeypatch):
     assert result == [True]
 
 
+def test_close_session_removes_registry_entry_before_sftp_cleanup(monkeypatch):
+    cleanup_started = threading.Event()
+    cleanup_release = threading.Event()
+    client = FakeSSHClient()
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['session-1'] = _session(client)
+
+    def blocking_sftp_cleanup(_session_id):
+        cleanup_started.set()
+        assert cleanup_release.wait(2)
+
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', blocking_sftp_cleanup)
+    result = []
+    close_thread = threading.Thread(
+        target=lambda: result.append(ssh_manager.close_session('session-1')),
+        daemon=True,
+    )
+    close_thread.start()
+    assert cleanup_started.wait(2)
+
+    try:
+        with ssh_manager.sessions_lock:
+            assert 'session-1' not in ssh_manager.sessions
+    finally:
+        cleanup_release.set()
+        close_thread.join(2)
+
+    assert not close_thread.is_alive()
+    assert result == [True]
+
+
 def test_close_session_quotes_tmux_target_and_sets_timeout_first(monkeypatch):
     kill_channel = FakeChannel()
     transport = FakeTransport(kill_channel)
@@ -256,3 +294,52 @@ def test_close_session_closes_everything_when_tmux_exec_fails(monkeypatch):
     assert client.closed is True
     assert bastion_client.closed is True
     assert 'session-1' not in ssh_manager.sessions
+
+
+def test_close_session_bounds_paramiko_tmux_exec_handshake(monkeypatch):
+    transport = FakeTransport()
+    kill_channel = ssh_manager.paramiko.Channel(1)
+    kill_channel.active = True
+    kill_channel.remote_chanid = 1
+    kill_channel.transport = transport
+    transport.kill_channel = kill_channel
+
+    client = FakeSSHClient(transport=transport)
+    interactive_channel = FakeChannel()
+    bastion_client = FakeSSHClient()
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['session-1'] = _session(
+            client,
+            channel=interactive_channel,
+            use_tmux=True,
+            tmux_session_name='tmux-session',
+            bastion_client=bastion_client,
+        )
+
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+    monkeypatch.setattr(
+        ssh_manager, 'TMUX_KILL_TIMEOUT', 0.05, raising=False)
+
+    finished = threading.Event()
+    result = []
+
+    def close():
+        result.append(ssh_manager.close_session('session-1', kill_tmux=True))
+        finished.set()
+
+    close_thread = threading.Thread(target=close, daemon=True)
+    close_thread.start()
+    completed_within_deadline = finished.wait(0.5)
+
+    if not completed_within_deadline:
+        kill_channel.close()
+    close_thread.join(2)
+
+    assert completed_within_deadline, 'tmux exec handshake exceeded its deadline'
+    assert not close_thread.is_alive()
+    assert result == [True]
+    assert transport.open_timeout == 0.05
+    assert interactive_channel.closed is True
+    assert client.closed is True
+    assert bastion_client.closed is True

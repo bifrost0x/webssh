@@ -4,7 +4,7 @@ import shlex
 import time
 import uuid
 import socket
-from threading import Lock, Thread
+from threading import Lock, Thread, Timer
 import config
 from pathlib import Path
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -13,6 +13,7 @@ from .ssh_key_loader import load_private_key as _load_private_key
 sessions = {}
 sessions_lock = Lock()
 _pending_connections = 0
+TMUX_KILL_TIMEOUT = 2.0
 
 
 class TailscaleSSHAuthStrategy(AuthStrategy):
@@ -467,9 +468,6 @@ def close_session(session_id, kill_tmux=False):
                candidate. Pass True only from explicit user disconnect.
     """
     try:
-        from .sftp_handler import close_sftp_cache
-        close_sftp_cache(session_id)
-
         with sessions_lock:
             session = sessions.pop(session_id, None)
             if session is None:
@@ -479,19 +477,31 @@ def close_session(session_id, kill_tmux=False):
         # All network I/O happens after removing the session from the shared
         # registry, so a slow or half-open SSH transport cannot block unrelated
         # session operations behind sessions_lock.
+        try:
+            from .sftp_handler import close_sftp_cache
+            close_sftp_cache(session_id)
+        except Exception as e:
+            log_debug(f"Error closing SFTP cache", session_id=session_id, error=str(e))
+
         if kill_tmux and session.get('use_tmux') and session.get('tmux_session_name') and session['client']:
             kill_channel = None
             try:
                 transport = session['client'].get_transport()
                 if transport and transport.is_active():
-                    kill_channel = transport.open_session(timeout=2.0)
-                    kill_channel.settimeout(2.0)
+                    kill_channel = transport.open_session(timeout=TMUX_KILL_TIMEOUT)
+                    kill_channel.settimeout(TMUX_KILL_TIMEOUT)
                     command = 'tmux kill-session -t ' + shlex.quote(session['tmux_session_name'])
-                    kill_channel.exec_command(command)
+                    timeout_guard = Timer(TMUX_KILL_TIMEOUT, kill_channel.close)
+                    timeout_guard.daemon = True
+                    timeout_guard.start()
                     try:
-                        kill_channel.recv(1)
-                    except Exception:
-                        pass
+                        kill_channel.exec_command(command)
+                        try:
+                            kill_channel.recv(1)
+                        except Exception:
+                            pass
+                    finally:
+                        timeout_guard.cancel()
             except Exception as e:
                 log_debug(f"Error killing tmux session", session_id=session_id, error=str(e))
             finally:
