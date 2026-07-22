@@ -65,7 +65,7 @@ def save_profiles(user_id, profiles):
         return False
 
 def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
-                jump_host_id=None, startup_commands=None):
+                jump_host_id=None, startup_commands=None, command_set_id=None):
     """Add a new connection profile for a specific user.
 
     jump_host_id (optional): reference to a saved jump host (bastion). Only the id
@@ -102,31 +102,41 @@ def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
             if error:
                 return None, error
 
-        profile = {
-            'id': str(uuid.uuid4()),
-            'name': name[:128],
-            'host': host,
-            'port': port,
-            'username': username,
-            'auth_type': auth_type,
-            'key_id': key_id,
-            'created_at': datetime.utcnow().isoformat()
-        }
+        with storage_lock(f'command-config:{user_id}'):
+            if command_set_id is not None:
+                from .command_set_manager import get_command_set
 
-        # Optional reference to a saved jump host (bastion).
-        if jump_host_id:
-            profile['jump_host_id'] = str(jump_host_id)[:64]
+                command_set, error = get_command_set(user_id, command_set_id)
+                if error:
+                    return None, error
+                command_set_id = command_set['id']
 
-        if normalized_startup_commands:
-            profile['startup_commands'] = normalized_startup_commands
+            profile = {
+                'id': str(uuid.uuid4()),
+                'name': name[:128],
+                'host': host,
+                'port': port,
+                'username': username,
+                'auth_type': auth_type,
+                'key_id': key_id,
+                'created_at': datetime.utcnow().isoformat()
+            }
 
-        with storage_lock(f'profiles:{user_id}'):
-            profiles = load_profiles(user_id)
-            profiles.append(profile)
+            # Optional reference to a saved jump host (bastion).
+            if jump_host_id:
+                profile['jump_host_id'] = str(jump_host_id)[:64]
 
-            if save_profiles(user_id, profiles):
-                return profile, None
-            else:
+            if normalized_startup_commands:
+                profile['startup_commands'] = normalized_startup_commands
+            if command_set_id:
+                profile['command_set_id'] = command_set_id
+
+            with storage_lock(f'profiles:{user_id}'):
+                profiles = load_profiles(user_id)
+                profiles.append(profile)
+
+                if save_profiles(user_id, profiles):
+                    return profile, None
                 return None, "Failed to save profile"
     except Exception as e:
         return None, str(e)
@@ -142,10 +152,35 @@ def get_profile(user_id, profile_id):
 def delete_profile(user_id, profile_id):
     """Delete a profile by ID for a specific user."""
     try:
-        with storage_lock(f'profiles:{user_id}'):
-            profiles = load_profiles(user_id)
-            profiles = [p for p in profiles if p['id'] != profile_id]
-            return save_profiles(user_id, profiles)
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles = load_profiles(user_id)
+                profiles = [p for p in profiles if p['id'] != profile_id]
+                return save_profiles(user_id, profiles)
     except Exception as e:
         log_error(f"Error deleting profile", user_id=user_id, error=str(e))
         return False
+
+
+def assign_command_set(user_id, profile_id, command_set_id):
+    """Assign an existing command set without removing legacy fallback data."""
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            from .command_set_manager import get_command_set
+
+            command_set, error = get_command_set(user_id, command_set_id)
+            if error:
+                return None, error
+
+            with storage_lock(f'profiles:{user_id}'):
+                profiles = load_profiles(user_id)
+                for profile in profiles:
+                    if profile.get('id') == profile_id:
+                        profile['command_set_id'] = command_set['id']
+                        if not save_profiles(user_id, profiles):
+                            return None, 'Failed to save profile'
+                        return profile, None
+                return None, 'Profile not found'
+    except Exception as e:
+        log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
+        return None, str(e)

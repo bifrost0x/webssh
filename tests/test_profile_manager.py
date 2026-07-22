@@ -66,3 +66,81 @@ def test_load_profiles_preserves_legacy_profiles_without_startup_commands(app):
     with app.app_context():
         assert profile_manager.save_profiles(user_id, [legacy_profile]) is True
         assert profile_manager.load_profiles(user_id) == [legacy_profile]
+
+
+def test_add_profile_saves_command_set_reference_and_keeps_legacy_fallback(app):
+    from app import command_set_manager, profile_manager
+
+    user_id = create_user(app, 'profile-command-set')
+    with app.app_context():
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Bootstrap',
+            'steps': [{'type': 'inline', 'command': 'uptime'}],
+        })
+        assert error is None
+
+        profile, error = profile_manager.add_profile(
+            user_id,
+            'Production',
+            'example.com',
+            22,
+            'deploy',
+            'password',
+            command_set_id=command_set['id'],
+            startup_commands='echo legacy',
+        )
+
+        assert error is None
+        assert profile['command_set_id'] == command_set['id']
+        assert profile['startup_commands'] == 'echo legacy'
+        assert 'steps' not in profile
+
+
+def test_add_profile_rejects_unknown_command_set_without_writing(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-missing-command-set')
+    with app.app_context():
+        profile, error = profile_manager.add_profile(
+            user_id,
+            'Production',
+            'example.com',
+            22,
+            'deploy',
+            'password',
+            command_set_id='missing-set',
+        )
+
+        assert profile is None
+        assert error == 'Command set not found'
+        assert profile_manager.load_profiles(user_id) == []
+
+
+def test_assign_command_set_to_profile_retains_legacy_commands(app):
+    from app import command_set_manager, profile_manager
+
+    user_id = create_user(app, 'profile-convert-command-set')
+    with app.app_context():
+        legacy, error = profile_manager.add_profile(
+            user_id,
+            'Legacy Production',
+            'example.com',
+            22,
+            'deploy',
+            'password',
+            startup_commands='echo legacy',
+        )
+        assert error is None
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Converted',
+            'steps': [{'type': 'inline', 'command': 'echo legacy'}],
+        })
+        assert error is None
+
+        updated, error = profile_manager.assign_command_set(
+            user_id, legacy['id'], command_set['id']
+        )
+
+        assert error is None
+        assert updated['command_set_id'] == command_set['id']
+        assert updated['startup_commands'] == 'echo legacy'

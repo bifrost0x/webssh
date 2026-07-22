@@ -575,6 +575,7 @@ def handle_save_profile(data, current_user=None):
         key_id = data.get('key_id')
         jump_host_id = data.get('jump_host_id')
         startup_commands = data.get('startup_commands')
+        command_set_id = data.get('command_set_id')
 
         if auth_type == 'tailscale':
             access_error = validate_tailscale_ssh_access(current_user, host, username)
@@ -592,6 +593,7 @@ def handle_save_profile(data, current_user=None):
             key_id=key_id,
             jump_host_id=jump_host_id,
             startup_commands=startup_commands,
+            command_set_id=command_set_id,
         )
 
         if error:
@@ -1043,16 +1045,147 @@ def handle_delete_command(data, current_user=None):
             emit('error', {'error': 'Command ID required'})
             return
 
-        success = command_manager.delete_user_command(current_user.id, command_id)
+        success, error, usages = command_manager.delete_user_command(current_user.id, command_id)
         if success:
             emit('command_deleted', {'command_id': command_id})
             handle_list_commands({}, current_user=current_user)
+            return {'success': True, 'command_id': command_id}
         else:
-            emit('error', {'error': 'Failed to delete command'})
+            payload = {
+                'success': False,
+                'error': error or 'Failed to delete command',
+                'code': 'in_use' if usages else 'delete_failed',
+            }
+            if usages:
+                payload['usages'] = usages
+            emit('error', payload)
+            return payload
 
     except Exception as e:
         log_error("Failed to delete command", error=str(e))
         emit('error', {'error': 'Failed to delete command'})
+
+
+def _command_set_error(error, usages=None):
+    if usages:
+        code = 'in_use'
+    elif error in ('Command set not found', 'Profile not found'):
+        code = 'not_found'
+    elif error and 'unreadable' in error:
+        code = 'storage_error'
+    else:
+        code = 'validation_error'
+    payload = {'success': False, 'error': error, 'code': code}
+    if usages:
+        payload['usages'] = usages
+    emit('error', payload)
+    return payload
+
+
+@socketio.on('list_command_sets')
+@socket_login_required
+def handle_list_command_sets(data=None, current_user=None):
+    """Return all named command sets owned by the current user."""
+    from . import command_set_manager
+
+    command_sets, error = command_set_manager.load_command_sets(current_user.id)
+    if error:
+        return _command_set_error(error)
+    payload = {'success': True, 'command_sets': command_sets}
+    emit('command_sets_list', payload)
+    return payload
+
+
+@socketio.on('save_command_set')
+@socket_login_required
+def handle_save_command_set(data, current_user=None):
+    """Create or update a named command set."""
+    from . import command_set_manager
+
+    command_set, error = command_set_manager.upsert_command_set(current_user.id, data)
+    if error:
+        return _command_set_error(error)
+    payload = {'success': True, 'command_set': command_set}
+    emit('command_set_saved', payload)
+    handle_list_command_sets(current_user=current_user)
+    return payload
+
+
+@socketio.on('duplicate_command_set')
+@socket_login_required
+def handle_duplicate_command_set(data, current_user=None):
+    """Duplicate one of the current user's command sets."""
+    from . import command_set_manager
+
+    data = data if isinstance(data, dict) else {}
+    command_set, error = command_set_manager.duplicate_command_set(
+        current_user.id, data.get('command_set_id')
+    )
+    if error:
+        return _command_set_error(error)
+    payload = {'success': True, 'command_set': command_set}
+    emit('command_set_saved', payload)
+    handle_list_command_sets(current_user=current_user)
+    return payload
+
+
+@socketio.on('delete_command_set')
+@socket_login_required
+def handle_delete_command_set(data, current_user=None):
+    """Delete an unused command set."""
+    from . import command_set_manager
+
+    data = data if isinstance(data, dict) else {}
+    command_set_id = data.get('command_set_id')
+    success, error, usages = command_set_manager.delete_command_set(
+        current_user.id, command_set_id
+    )
+    if not success:
+        return _command_set_error(error, usages)
+    payload = {'success': True, 'command_set_id': command_set_id}
+    emit('command_set_deleted', payload)
+    handle_list_command_sets(current_user=current_user)
+    return payload
+
+
+@socketio.on('convert_legacy_command_set')
+@socket_login_required
+def handle_convert_legacy_command_set(data, current_user=None):
+    """Convert one profile's legacy startup text into a named command set."""
+    from . import command_set_manager
+
+    data = data if isinstance(data, dict) else {}
+    profile = profile_manager.get_profile(current_user.id, data.get('profile_id'))
+    if not profile:
+        return _command_set_error('Profile not found')
+    if profile.get('command_set_id'):
+        return _command_set_error('Profile already uses a command set')
+    legacy_commands = profile.get('startup_commands')
+    if not isinstance(legacy_commands, str) or not legacy_commands.strip():
+        return _command_set_error('Profile has no legacy startup commands')
+
+    command_set, error = command_set_manager.upsert_command_set(current_user.id, {
+        'name': data.get('name'),
+        'description': data.get('description', ''),
+        'steps': [{'type': 'inline', 'command': legacy_commands}],
+    })
+    if error:
+        return _command_set_error(error)
+
+    updated_profile, error = profile_manager.assign_command_set(
+        current_user.id, profile['id'], command_set['id']
+    )
+    if error:
+        return _command_set_error(error)
+    payload = {
+        'success': True,
+        'command_set': command_set,
+        'profile': updated_profile,
+    }
+    emit('command_set_converted', payload)
+    handle_list_command_sets(current_user=current_user)
+    handle_list_profiles(current_user=current_user)
+    return payload
 
 @socketio.on('detect_os')
 @socket_login_required

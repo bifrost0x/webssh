@@ -120,8 +120,21 @@ def update_user_command(user_id, command_id, name, command, parameters, descript
 
 def delete_user_command(user_id, command_id):
     """Delete a user command."""
-    with storage_lock(f'commands:{user_id}'):
-        user_cmds = load_user_commands(user_id)
-        user_cmds = [cmd for cmd in user_cmds if cmd['id'] != command_id]
-        save_user_commands(user_id, user_cmds)
-    return True
+    from .command_set_manager import get_command_usage
+
+    with storage_lock(f'command-config:{user_id}'):
+        usages, error = get_command_usage(user_id, command_id)
+        if error:
+            return False, error, []
+        if usages:
+            noun = 'command set' if len(usages) == 1 else 'command sets'
+            return False, f'Command is used by {len(usages)} {noun}', usages
+
+        with storage_lock(f'commands:{user_id}'):
+            user_cmds = load_user_commands(user_id)
+            remaining = [cmd for cmd in user_cmds if cmd.get('id') != command_id]
+            if len(remaining) == len(user_cmds):
+                return False, 'Command not found', []
+            if not save_user_commands(user_id, remaining):
+                return False, 'Failed to delete command', []
+    return True, None, []
