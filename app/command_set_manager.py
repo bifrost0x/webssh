@@ -139,10 +139,10 @@ def _normalize_steps(steps, commands):
 
         return None, None, f'Command set step {position} has an invalid type'
 
-    resolved, error = normalize_startup_commands('\n'.join(resolved_parts))
+    _validated, error = normalize_startup_commands('\n'.join(resolved_parts))
     if error:
         return None, None, error
-    return normalized_steps, resolved, None
+    return normalized_steps, resolved_parts, None
 
 
 def _validate_payload(user_id, payload, existing_sets):
@@ -171,7 +171,7 @@ def _validate_payload(user_id, payload, existing_sets):
     commands, error = _command_index(user_id)
     if error:
         return None, error
-    steps, _resolved, error = _normalize_steps(payload.get('steps'), commands)
+    steps, _resolved_parts, error = _normalize_steps(payload.get('steps'), commands)
     if error:
         return None, error
     return {
@@ -274,17 +274,22 @@ def resolve_command_set(user_id, command_set_id):
     commands, error = _command_index(user_id)
     if error:
         return None, error
-    _steps, resolved, error = _normalize_steps(command_set.get('steps'), commands)
+    _steps, resolved_parts, error = _normalize_steps(
+        command_set.get('steps'), commands
+    )
     if error:
         if 'step ' in error:
             return None, f"Command set '{command_set['name']}' {error.removeprefix('Command set ').lower()}"
         return None, error
     if command_set.get('use_sudo') is True:
-        resolved = _prefix_commands_with_sudo(resolved)
-        resolved, error = normalize_startup_commands(resolved)
-        if error:
-            return None, error
-    return resolved, error
+        resolved_parts = [
+            _prefix_commands_with_sudo(part) for part in resolved_parts
+        ]
+    resolved = ' && '.join(part.rstrip('\n') for part in resolved_parts)
+    resolved, error = normalize_startup_commands(resolved)
+    if error:
+        return None, error
+    return resolved, None
 
 
 def get_command_usage(user_id, command_id):

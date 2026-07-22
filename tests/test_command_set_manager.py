@@ -201,7 +201,36 @@ def test_resolve_preserves_order_and_parameter_semantics(app, monkeypatch):
         resolved, error = command_set_manager.resolve_command_set(user_id, created['id'])
 
     assert error is None
-    assert resolved == 'echo default\necho\necho custom\necho €\npwd\npwd'
+    assert resolved == (
+        'echo default && echo && echo custom && '
+        'echo €\npwd && pwd'
+    )
+
+
+def test_resolve_chains_steps_without_rewriting_internal_inline_lines(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Mixed blocks',
+            'steps': [
+                {'type': 'inline', 'command': 'cd /srv\necho ready\n'},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == 'cd /srv\necho ready && pwd'
 
 
 def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monkeypatch):
@@ -238,7 +267,7 @@ def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monke
 
     assert resolve_error is None
     assert resolved == (
-        'sudo echo default\n'
+        'sudo echo default && '
         '  sudo systemctl restart nginx\n'
         '\n'
         '# note\n'
@@ -263,6 +292,31 @@ def test_resolve_revalidates_length_after_sudo_prefix(app, monkeypatch):
             'name': 'Too long after prefix',
             'use_sudo': True,
             'steps': [{'type': 'inline', 'command': 'x' * 4092}],
+        })
+        assert error is None
+        resolved, resolve_error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert resolved is None
+    assert resolve_error == 'Startup commands must not exceed 4096 characters'
+
+
+def test_resolve_revalidates_length_after_step_separators(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Too long after separators',
+            'steps': [
+                {'type': 'inline', 'command': 'x' * 2047},
+                {'type': 'inline', 'command': 'y' * 2047},
+            ],
         })
         assert error is None
         resolved, resolve_error = command_set_manager.resolve_command_set(
