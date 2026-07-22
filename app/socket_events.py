@@ -1193,6 +1193,7 @@ def handle_convert_legacy_command_set(data, current_user=None):
     command_set, error = command_set_manager.upsert_command_set(current_user.id, {
         'name': data.get('name'),
         'description': data.get('description', ''),
+        'use_sudo': False,
         'steps': [{'type': 'inline', 'command': legacy_commands}],
     })
     if error:

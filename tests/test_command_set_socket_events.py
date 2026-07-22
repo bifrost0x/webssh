@@ -151,7 +151,7 @@ def test_referenced_command_set_and_library_command_cannot_be_deleted(app, monke
 
 
 def test_convert_legacy_profile_creates_set_then_assigns_it(app, monkeypatch):
-    from app import profile_manager
+    from app import command_set_manager, profile_manager
     import app.socket_events as socket_events
 
     user_id, sid = create_socket_user(app, 'command_set_convert')
@@ -162,14 +162,29 @@ def test_convert_legacy_profile_creates_set_then_assigns_it(app, monkeypatch):
         )
         assert error is None
 
+    captured_payload = {}
+    real_upsert = command_set_manager.upsert_command_set
+
+    def capture_upsert(user_id, payload):
+        captured_payload.update(payload)
+        return real_upsert(user_id, payload)
+
+    monkeypatch.setattr(command_set_manager, 'upsert_command_set', capture_upsert)
+
     converted, _emitted = call_socket_handler(
         app,
         monkeypatch,
         socket_events.handle_convert_legacy_command_set,
         sid,
-        {'profile_id': profile['id'], 'name': 'Legacy bootstrap'},
+        {
+            'profile_id': profile['id'],
+            'name': 'Legacy bootstrap',
+            'use_sudo': True,
+        },
     )
     assert converted['success'] is True
+    assert captured_payload['use_sudo'] is False
+    assert converted['command_set']['use_sudo'] is False
     assert converted['command_set']['steps'] == [
         {'type': 'inline', 'command': 'echo one\necho two'}
     ]
@@ -215,6 +230,7 @@ def test_ssh_connect_resolves_command_set_and_ignores_legacy_text(app, monkeypat
     with app.app_context():
         command_set, error = command_set_manager.upsert_command_set(user_id, {
             'name': 'Bootstrap',
+            'use_sudo': True,
             'steps': [
                 {'type': 'inline', 'command': 'echo first'},
                 {'type': 'inline', 'command': 'echo second'},
@@ -241,7 +257,61 @@ def test_ssh_connect_resolves_command_set_and_ignores_legacy_text(app, monkeypat
             'startup_commands': 'echo must-not-run',
         })
 
-    assert calls[0]['startup_commands'] == 'echo first\necho second'
+    assert calls[0]['startup_commands'] == 'sudo echo first\nsudo echo second'
+
+
+def test_sudo_expansion_limit_stops_before_connection_validation(app, monkeypatch):
+    from flask import request
+    from app import command_set_manager, ssh_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'command_set_sudo_limit')
+    with app.app_context():
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Too long after sudo',
+            'use_sudo': True,
+            'steps': [{'type': 'inline', 'command': 'x' * 4092}],
+        })
+        assert error is None
+
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('connection validation or DNS must not run')
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError('SSH manager must not run')
+        ),
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'must-not-resolve.invalid',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'command_set_id': command_set['id'],
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {
+            'error': 'Startup commands must not exceed 4096 characters',
+            'client_request_id': None,
+        },
+    )]
 
 
 def test_invalid_command_set_stops_before_validation_dns_and_ssh(app, monkeypatch):
