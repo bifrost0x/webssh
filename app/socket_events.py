@@ -376,6 +376,13 @@ def handle_ssh_connect(data, current_user=None):
         if error:
             emit_error(error)
         else:
+            created_session = ssh_manager.get_session(session_id)
+            if not created_session:
+                log_error("SSH session disappeared after creation", session_id=session_id)
+                emit_error("Connection failed")
+                return
+            created_tmux_name = created_session.get('tmux_session_name') if use_tmux else None
+
             display_name = data.get('display_name') if use_tmux else None
             if display_name:
                 display_name = display_name.strip()[:128] or None
@@ -403,7 +410,7 @@ def handle_ssh_connect(data, current_user=None):
                     is_persistent=use_tmux,
                     key_id=key_id if use_tmux else None,
                     auth_type=auth_type,
-                    tmux_session_name=ssh_manager.get_session(session_id).get('tmux_session_name') if use_tmux else None,
+                    tmux_session_name=created_tmux_name,
                     display_name=display_name if use_tmux else None
                 )
                 db.session.add(ssh_session)
@@ -423,7 +430,7 @@ def handle_ssh_connect(data, current_user=None):
                 'use_tmux': use_tmux,
                 'key_id': key_id if use_tmux else None,
                 'auth_type': auth_type,
-                'tmux_session_name': ssh_manager.get_session(session_id).get('tmux_session_name') if use_tmux else None,
+                'tmux_session_name': created_tmux_name,
                 'display_name': display_name
             })
             log_ssh_connection(current_user.username, host, port, True, request.remote_addr)
