@@ -59,11 +59,13 @@ class _StartupCommandTransport:
     def __init__(self, session_channel_factory=None):
         self.session_channel_factory = session_channel_factory
         self.session_channels = []
+        self.open_timeouts = []
 
     def set_keepalive(self, _seconds):
         pass
 
-    def open_session(self):
+    def open_session(self, timeout=None):
+        self.open_timeouts.append(timeout)
         index = len(self.session_channels)
         channel = (
             self.session_channel_factory(index)
