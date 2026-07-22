@@ -33,7 +33,7 @@ def _prefix_commands_with_sudo(value):
     return '\n'.join(lines)
 
 
-def _shell_comment_positions(value):
+def _shell_token_positions(value):
     in_single_quote = False
     in_double_quote = False
     escaped = False
@@ -41,7 +41,8 @@ def _shell_comment_positions(value):
     comment_on_line = False
     line_number = 0
     column_number = 0
-    positions = {}
+    comment_positions = {}
+    semicolon_positions = set()
 
     for character in value:
         if comment_on_line:
@@ -70,11 +71,14 @@ def _shell_comment_positions(value):
             at_word_start = False
         elif character == '\n' or character.isspace():
             at_word_start = True
-        elif character in ';&|()<>':
+        elif character == ';':
+            semicolon_positions.add((line_number, column_number))
+            at_word_start = True
+        elif character in '&|()<>':
             at_word_start = True
         elif character == '#' and at_word_start:
             comment_on_line = True
-            positions[line_number] = column_number
+            comment_positions[line_number] = column_number
         else:
             at_word_start = False
 
@@ -84,7 +88,7 @@ def _shell_comment_positions(value):
         else:
             column_number += 1
 
-    return positions
+    return comment_positions, semicolon_positions
 
 
 def _prepare_step_for_chaining(value):
@@ -105,7 +109,7 @@ def _prepare_step_for_chaining(value):
 def _append_step_separator(value):
     """Append a boundary without letting trailing comments consume it."""
     lines = value.split('\n')
-    comment_positions = _shell_comment_positions(value)
+    comment_positions, semicolon_positions = _shell_token_positions(value)
     last_line = len(lines) - 1
     if last_line not in comment_positions:
         return f'{value} && '
@@ -133,7 +137,8 @@ def _append_step_separator(value):
     if command_line is None:
         lines.insert(0, ': &&')
     else:
-        if command_text.endswith(';'):
+        semicolon_at = (command_line, len(command_text) - 1)
+        if command_text.endswith(';') and semicolon_at in semicolon_positions:
             command_text = command_text[:-1].rstrip()
         lines[command_line] = f'{command_text} &&'
         if comment_text is not None:

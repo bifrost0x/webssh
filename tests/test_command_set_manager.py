@@ -378,6 +378,42 @@ def test_resolve_does_not_treat_literal_hash_as_shell_comment(
 
 
 @pytest.mark.parametrize(
+    ('command', 'expected'),
+    [
+        (r'printf \; # note', r'printf \; && # note' + '\npwd'),
+        (r'printf \\; # note', r'printf \\ && # note' + '\npwd'),
+        (r'printf \\\; # note', r'printf \\\; && # note' + '\npwd'),
+    ],
+)
+def test_resolve_removes_only_unescaped_semicolon_before_comment(
+    app, monkeypatch, command, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Semicolon parity {command}',
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
     ('use_sudo', 'expected'),
     [
         (False, 'echo first && : &&\n# note\npwd'),
