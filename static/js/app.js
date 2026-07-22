@@ -1806,6 +1806,7 @@
 
         SessionManager.init();
 
+        CommandWorkspace.init();
         CommandLibrary.init();
         window.CommandSetManager?.init();
 

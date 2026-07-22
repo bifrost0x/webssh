@@ -44,12 +44,6 @@ window.CommandSetManager = {
         document.getElementById('createCommandSetBtn')?.addEventListener('click', () => {
             this.openBuilder(null, true);
         });
-        document.getElementById('manageCommandSetsBtn')?.addEventListener('click', () => {
-            this.openManagement();
-        });
-        document.getElementById('closeCommandSetModal')?.addEventListener('click', () => {
-            this.close();
-        });
         document.getElementById('newCommandSetBtn')?.addEventListener('click', () => {
             this.openBuilder();
         });
@@ -250,24 +244,21 @@ window.CommandSetManager = {
     },
 
     openModal() {
-        const modal = document.getElementById('commandSetManagementModal');
-        if (!modal) return;
-        if (window.ModalManager) window.ModalManager.open(modal);
-        else modal.classList.add('show');
+        window.CommandWorkspace.open('sets');
     },
 
     close() {
-        const modal = document.getElementById('commandSetManagementModal');
-        if (!modal) return;
-        if (window.ModalManager) window.ModalManager.close(modal);
-        else modal.classList.remove('show');
-        if (this.returnToConnection) {
+        const returnToConnection = this.returnToConnection;
+        window.CommandWorkspace.close();
+        if (returnToConnection) {
             const connectionModal = document.getElementById('connectionModal');
             if (connectionModal?.classList.contains('show') && window.ModalManager) {
                 window.ModalManager.activeModal = connectionModal;
                 document.getElementById('createCommandSetBtn')?.focus();
             }
         }
+        this.returnToConnection = false;
+        this.showManagementList();
     },
 
     renderManagementList() {

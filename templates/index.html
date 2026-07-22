@@ -33,7 +33,7 @@
 
                 <div class="header-group" role="group" aria-label="Tools">
                     <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
-                    <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.library">Commands</span> 📚</button>
+                    <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
                     <button id="manageKeysBtn" class="btn btn-secondary"><span data-i18n="keys.manageKeys">Manage Keys</span> 🔑</button>
                 </div>
 
@@ -75,7 +75,6 @@
 
                         {% if current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
                         <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
-                        <button id="manageCommandSetsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">playlist_play</span> <span data-i18n="commandSets.manage">Command Sets</span></button>
                         <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>
@@ -347,13 +346,50 @@
         </div>
     </div>
 
-    <div class="modal" id="commandSetManagementModal" role="dialog" aria-modal="true" aria-labelledby="commandSetModalTitle">
-        <div class="modal-content modal-xlarge command-set-modal-content">
+    <div class="modal" id="commandWorkspaceModal" role="dialog" aria-modal="true" aria-labelledby="commandWorkspaceTitle">
+        <div class="modal-content modal-xlarge command-workspace-content command-set-modal-content">
             <div class="modal-header">
-                <h2 id="commandSetModalTitle" data-i18n="commandSets.manage">Manage Command Sets</h2>
-                <span class="close" id="closeCommandSetModal" aria-label="Close">&times;</span>
+                <h2 id="commandWorkspaceTitle" data-i18n="commands.workspace">Commands</h2>
+                <span class="close" id="closeCommandWorkspaceModal" aria-label="Close">&times;</span>
             </div>
-            <div class="modal-body command-set-modal-body">
+            <div class="command-workspace-tabs" role="tablist" aria-label="Command management">
+                <button type="button" id="commandLibraryTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandLibraryPanel" data-command-workspace-section="library" data-i18n="commands.library">Command Library</button>
+                <button type="button" id="commandSetsTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
+            </div>
+            <div class="modal-body command-workspace-body">
+                <section id="commandLibraryPanel" class="command-workspace-panel" role="tabpanel" aria-labelledby="commandLibraryTab">
+                    <div class="command-toolbar">
+                        <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
+                        <button class="btn btn-primary" id="addCommandBtn"><span data-i18n="commands.addCommand">Add Command</span> ➕</button>
+                    </div>
+                    <div class="os-filter-toolbar">
+                        <span data-i18n="commands.filterByOs">Filter by OS:</span>
+                        <div class="os-filter-buttons">
+                            <button class="os-filter-btn active" data-os="all"><span data-i18n="commands.osAll">All</span></button>
+                            <button class="os-filter-btn" data-os="linux">Linux</button>
+                            <button class="os-filter-btn" data-os="macos">macOS</button>
+                            <button class="os-filter-btn" data-os="bsd">BSD</button>
+                            <button class="os-filter-btn" data-os="windows">Windows</button>
+                        </div>
+                        <div class="os-detected"><span data-i18n="commands.detected">Detected</span>: <strong id="currentOsDisplay">-</strong></div>
+                    </div>
+                    <div class="commands-table-wrapper">
+                        <div class="commands-table-header">
+                            <div class="command-cell command-name" data-i18n="commands.name">Name</div>
+                            <div class="command-cell command-text" data-i18n="commands.command">Command</div>
+                            <div class="command-cell command-params" data-i18n="commands.parameters">Parameters</div>
+                            <div class="command-cell command-desc" data-i18n="commands.description">Description</div>
+                            <div class="command-cell command-actions" data-i18n="commands.actions">Actions</div>
+                        </div>
+                        <div class="commands-table-body" id="commandsList"></div>
+                    </div>
+                    <div class="command-help">
+                        <p>💡 <strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Click ▶️ to insert command into terminal.</span></p>
+                        <p>🔒 <span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
+                    </div>
+                </section>
+
+                <section id="commandSetsPanel" class="command-workspace-panel hidden command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
                 <section id="commandSetManagementView">
                     <div class="command-set-management-toolbar">
                         <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any connection profile.</p>
@@ -401,6 +437,7 @@
                             <button type="submit" id="saveCommandSetBtn" class="btn btn-primary" data-i18n="common.save">Save</button>
                         </div>
                     </form>
+                </section>
                 </section>
             </div>
         </div>
@@ -520,72 +557,6 @@
     </div>
 
     <div class="notification-container" id="notificationContainer"></div>
-
-    <div class="modal panel-right" id="commandLibraryModal" role="dialog" aria-modal="true" aria-labelledby="commandLibraryTitle">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2 id="commandLibraryTitle" data-i18n="commands.library">Command Library</h2>
-                <span class="close" id="closeCommandLibraryModal" aria-label="Close">&times;</span>
-            </div>
-            <div class="modal-body">
-
-                <div class="command-toolbar">
-                    <input
-                        type="text"
-                        id="commandSearchInput"
-                        class="form-control search-input"
-                        data-i18n="commands.searchPlaceholder"
-                        placeholder="Search commands, parameters, or descriptions..."
-                    >
-                    <button class="btn btn-primary" id="addCommandBtn">
-                        <span data-i18n="commands.addCommand">Add Command</span> ➕
-                    </button>
-                </div>
-
-                <div class="os-filter-toolbar">
-                    <span data-i18n="commands.filterByOs">Filter by OS:</span>
-                    <div class="os-filter-buttons">
-                        <button class="os-filter-btn active" data-os="all">
-                            <span data-i18n="commands.osAll">All</span>
-                        </button>
-                        <button class="os-filter-btn" data-os="linux">
-                            Linux
-                        </button>
-                        <button class="os-filter-btn" data-os="macos">
-                            macOS
-                        </button>
-                        <button class="os-filter-btn" data-os="bsd">
-                            BSD
-                        </button>
-                        <button class="os-filter-btn" data-os="windows">
-                            Windows
-                        </button>
-                    </div>
-                    <div class="os-detected">
-                        <span data-i18n="commands.detected">Detected</span>: <strong id="currentOsDisplay">-</strong>
-                    </div>
-                </div>
-
-                <div class="commands-table-wrapper">
-                    <div class="commands-table-header">
-                        <div class="command-cell command-name" data-i18n="commands.name">Name</div>
-                        <div class="command-cell command-text" data-i18n="commands.command">Command</div>
-                        <div class="command-cell command-params" data-i18n="commands.parameters">Parameters</div>
-                        <div class="command-cell command-desc" data-i18n="commands.description">Description</div>
-                        <div class="command-cell command-actions" data-i18n="commands.actions">Actions</div>
-                    </div>
-                    <div class="commands-table-body" id="commandsList">
-
-                    </div>
-                </div>
-
-                <div class="command-help">
-                    <p>💡 <strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Click ▶️ to insert command into terminal.</span></p>
-                    <p>🔒 <span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <div class="modal" id="commandFormModal" role="dialog" aria-modal="true" aria-labelledby="commandFormTitle">
         <div class="modal-content">
@@ -795,6 +766,7 @@
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=2"></script>

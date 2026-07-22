@@ -43,11 +43,6 @@ const CommandLibrary = {
             commandLibraryBtn.addEventListener('click', () => this.openLibrary());
         }
 
-        const closeCommandLibraryModal = document.getElementById('closeCommandLibraryModal');
-        if (closeCommandLibraryModal) {
-            closeCommandLibraryModal.addEventListener('click', () => this.closeLibrary());
-        }
-
         const commandSearchInput = document.getElementById('commandSearchInput');
         if (commandSearchInput) {
             commandSearchInput.addEventListener('input', (e) => this.searchCommands(e.target.value));
@@ -77,20 +72,16 @@ const CommandLibrary = {
         }
 
         window.addEventListener('click', (e) => {
-            const commandLibraryModal = document.getElementById('commandLibraryModal');
             const commandFormModal = document.getElementById('commandFormModal');
 
-            if (e.target === commandLibraryModal) {
-                this.closeLibrary();
-            }
             if (e.target === commandFormModal) {
                 this.closeCommandForm();
             }
         });
 
-        document.querySelectorAll('.os-filter-btn').forEach(btn => {
+        document.querySelectorAll('#commandLibraryPanel .os-filter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.os-filter-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#commandLibraryPanel .os-filter-btn').forEach(b => b.classList.remove('active'));
                 e.currentTarget.classList.add('active');
                 this.currentOs = e.currentTarget.dataset.os;
                 this.loadCommands();
@@ -125,11 +116,7 @@ const CommandLibrary = {
             this.loadCommands();
         }
 
-        if (window.ModalManager) {
-            window.ModalManager.open(document.getElementById('commandLibraryModal'));
-        } else {
-            document.getElementById('commandLibraryModal').classList.add('show');
-        }
+        window.CommandWorkspace.open('library');
 
         setTimeout(() => {
             document.getElementById('commandSearchInput').focus();
@@ -137,11 +124,7 @@ const CommandLibrary = {
     },
 
     closeLibrary() {
-        if (window.ModalManager) {
-            window.ModalManager.close(document.getElementById('commandLibraryModal'));
-        } else {
-            document.getElementById('commandLibraryModal').classList.remove('show');
-        }
+        window.CommandWorkspace.close();
         document.getElementById('commandSearchInput').value = '';
         this.filteredCommands = this.commands;
         this.renderCommandsList();
@@ -168,14 +151,11 @@ const CommandLibrary = {
                 }
 
                 if (window.i18n) {
-                    const currentLang = window.i18n.getLanguage();
-                    const translations = window.i18n.translations[currentLang];
-
-                    if (translations) {
-                        const categoryKey = 'commands.category' + cmd.category.charAt(0).toUpperCase() + cmd.category.slice(1);
-                        if (translations[categoryKey] && translations[categoryKey].toLowerCase().includes(lowerQuery)) {
-                            return true;
-                        }
+                    const categoryKey = 'commands.category' + cmd.category.charAt(0).toUpperCase() + cmd.category.slice(1);
+                    const translatedCategory = window.i18n.t(categoryKey);
+                    if (translatedCategory !== categoryKey
+                        && translatedCategory.toLowerCase().includes(lowerQuery)) {
+                        return true;
                     }
                 }
 
@@ -446,3 +426,5 @@ const CommandLibrary = {
         return div.innerHTML;
     }
 };
+
+window.CommandLibrary = CommandLibrary;

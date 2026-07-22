@@ -4082,6 +4082,59 @@ body.keyboard-open.notepad-focused .notepad-panel {
     color: var(--warning-color, #d29922);
 }
 
+.command-workspace-content {
+    overflow: hidden;
+}
+
+.command-workspace-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.command-workspace-tab {
+    padding: 12px 16px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.command-workspace-tab:hover,
+.command-workspace-tab:focus-visible {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.command-workspace-tab.active {
+    border-bottom-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.command-workspace-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.command-workspace-panel {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+#commandLibraryPanel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+}
+
 .command-set-modal-content .command-set-modal-body {
     flex: 1;
     min-height: 0;
@@ -4258,6 +4311,16 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 @media (max-width: 850px) {
+    .command-workspace-tabs {
+        padding: 0 16px;
+        overflow-x: auto;
+    }
+
+    .command-workspace-body,
+    #commandLibraryPanel {
+        overflow: auto;
+    }
+
     .command-set-modal-content .command-set-modal-body {
         overflow: auto;
     }

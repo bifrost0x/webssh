@@ -21,12 +21,23 @@ def test_connection_form_uses_command_set_selector_and_preview():
         assert f'id="{element_id}"' in template
 
 
-def test_account_menu_and_shared_builder_expose_complete_management_flow():
+def test_commands_workspace_unifies_library_and_command_sets():
     template = read('templates/index.html')
 
-    assert 'id="manageCommandSetsBtn"' in template
+    assert 'id="manageCommandSetsBtn"' not in template
+    assert 'id="commandSetManagementModal"' not in template
+    assert re.search(
+        r'id="commandLibraryBtn"[^>]*>\s*'
+        r'<span data-i18n="commands\.workspace">',
+        template,
+    )
     for element_id in (
-        'commandSetManagementModal',
+        'commandWorkspaceModal',
+        'closeCommandWorkspaceModal',
+        'commandLibraryTab',
+        'commandSetsTab',
+        'commandLibraryPanel',
+        'commandSetsPanel',
         'commandSetManagementList',
         'newCommandSetBtn',
         'commandSetForm',
@@ -39,18 +50,37 @@ def test_account_menu_and_shared_builder_expose_complete_management_flow():
         'saveCommandSetBtn',
     ):
         assert f'id="{element_id}"' in template
+    assert 'role="tablist"' in template
+    assert template.count('role="tab"') == 2
+    assert template.count('role="tabpanel"') == 2
     assert 'data-os="linux"' in template
     assert 'data-os="windows"' in template
+
+
+def test_commands_workspace_controller_owns_all_entry_points():
+    workspace = read('static/js/command-workspace.js')
+    library = read('static/js/command-library.js')
+    sets = read('static/js/command-set-manager.js')
+    app = read('static/js/app.js')
+    template = read('templates/index.html')
+
+    assert "open(section = 'library')" in workspace
+    assert 'select(section)' in workspace
+    assert "CommandWorkspace.open('library')" in library
+    assert "CommandWorkspace.open('sets')" in sets
+    assert 'CommandWorkspace.init()' in app
+    assert "filename='js/command-workspace.js'" in template
 
 
 def test_command_set_scripts_load_in_dependency_order_before_app():
     template = read('templates/index.html')
 
     utils = template.index("filename='js/command-set-utils.js'")
+    workspace = template.index("filename='js/command-workspace.js'")
     library = template.index("filename='js/command-library.js'")
     manager = template.index("filename='js/command-set-manager.js'")
     app = template.index("filename='js/app.js'")
-    assert utils < library < manager < app
+    assert utils < workspace < library < manager < app
 
 
 def test_connection_and_profile_payloads_send_only_selected_set_id():
@@ -94,6 +124,32 @@ def test_command_library_can_return_a_new_command_to_inline_promotion():
     assert 'pendingSaveCallback' in source
     assert re.search(r'showAddCommandForm\([^)]*options', source)
     assert "window.socket.emit('add_command', data," in source
+
+
+def test_command_library_os_filter_does_not_capture_command_set_filters():
+    source = read('static/js/command-library.js')
+
+    assert "document.querySelectorAll('#commandLibraryPanel .os-filter-btn')" in source
+
+
+def test_command_library_search_uses_the_public_i18n_api():
+    source = read('static/js/command-library.js')
+
+    assert 'window.i18n.translations' not in source
+    assert 'window.i18n.t(categoryKey)' in source
+
+
+def test_closing_command_set_editor_resets_the_next_management_visit():
+    source = read('static/js/command-set-manager.js')
+
+    close_method = re.search(
+        r'\n    close\(\) \{(?P<body>.*?)\n    \},',
+        source,
+        re.DOTALL,
+    )
+    assert close_method
+    assert 'this.showManagementList()' in close_method.group('body')
+    assert 'this.returnToConnection = false' in close_method.group('body')
 
 
 def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():

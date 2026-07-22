@@ -311,6 +311,7 @@ const translations = {
         'session.persistentDescription': 'tmux session running on remote host. Reconnect to resume.',
         'session.disconnectedDescription': 'Reconnect to resume your work.',
 
+        'commands.workspace': 'Commands',
         'commands.library': 'Command Library',
         'commands.addCommand': 'Add Command',
         'commands.editCommand': 'Edit Command',
@@ -659,6 +660,7 @@ const translations = {
         'session.persistentDescription': 'Phiên tmux đang chạy trên máy chủ từ xa. Kết nối lại để tiếp tục.',
         'session.disconnectedDescription': 'Kết nối lại để tiếp tục công việc.',
 
+        'commands.workspace': 'Lệnh',
         'commands.library': 'Thư viện lệnh',
         'commands.addCommand': 'Thêm lệnh',
         'commands.editCommand': 'Chỉnh sửa lệnh',
@@ -987,6 +989,7 @@ const translations = {
         'panes.emptyPane': 'Leeres Pane',
         'panes.selectSession': 'Wählen Sie eine Sitzung oder öffnen Sie eine Verbindung',
 
+        'commands.workspace': 'Befehle',
         'commands.library': 'Befehlsbibliothek',
         'commands.addCommand': 'Befehl hinzufügen',
         'commands.editCommand': 'Befehl bearbeiten',
@@ -1302,6 +1305,7 @@ const translations = {
         'common.optional': 'Optionnel',
         'common.error': 'Erreur',
 
+        'commands.workspace': 'Commandes',
         'commands.library': 'Bibliothèque de commandes',
         'commands.addCommand': 'Ajouter une commande',
         'commands.editCommand': 'Modifier la commande',
@@ -1617,6 +1621,7 @@ const translations = {
         'common.optional': 'Opcional',
         'common.error': 'Error',
 
+        'commands.workspace': 'Comandos',
         'commands.library': 'Biblioteca de comandos',
         'commands.addCommand': 'Agregar comando',
         'commands.editCommand': 'Editar comando',
@@ -1945,6 +1950,7 @@ const translations = {
         'panes.emptyPane': '空分栏',
         'panes.selectSession': '选择一个会话或新建连接',
 
+        'commands.workspace': '命令',
         'commands.library': '命令库',
         'commands.addCommand': '添加命令',
         'commands.editCommand': '编辑命令',
