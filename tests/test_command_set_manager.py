@@ -1,5 +1,7 @@
 """Tests for named post-connect command sets."""
 import json
+import shutil
+import subprocess
 
 import pytest
 
@@ -201,7 +203,340 @@ def test_resolve_preserves_order_and_parameter_semantics(app, monkeypatch):
         resolved, error = command_set_manager.resolve_command_set(user_id, created['id'])
 
     assert error is None
-    assert resolved == 'echo default\necho\necho custom\necho €\npwd\npwd'
+    assert resolved == (
+        'echo default && echo && echo custom && '
+        'echo €\npwd && pwd'
+    )
+
+
+def test_resolve_chains_steps_without_rewriting_internal_inline_lines(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Mixed blocks',
+            'steps': [
+                {'type': 'inline', 'command': 'cd /srv\necho ready\n'},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == 'cd /srv\necho ready && pwd'
+
+
+@pytest.mark.parametrize(
+    ('use_sudo', 'expected'),
+    [
+        (False, 'echo ready && pwd'),
+        (True, 'sudo echo ready && sudo pwd'),
+    ],
+)
+def test_resolve_trims_trailing_whitespace_at_step_boundaries(
+    app, monkeypatch, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Trailing whitespace {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': 'echo ready\n   '},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
+    ('use_sudo', 'expected'),
+    [
+        (False, 'echo ready &&\n# note\npwd'),
+        (True, 'sudo echo ready &&\n# note\nsudo pwd'),
+    ],
+)
+def test_resolve_preserves_trailing_comment_without_hiding_next_step(
+    app, monkeypatch, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Trailing comment {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': 'echo ready\n# note'},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
+    ('command', 'use_sudo', 'expected'),
+    [
+        ('echo ready # note', False, 'echo ready && # note\npwd'),
+        ('echo ready; # note', False, 'echo ready && # note\npwd'),
+        ('echo ready # note', True, 'sudo echo ready && # note\nsudo pwd'),
+        ('echo ready; # note', True, 'sudo echo ready && # note\nsudo pwd'),
+    ],
+)
+def test_resolve_preserves_inline_comment_without_hiding_next_step(
+    app, monkeypatch, command, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Inline comment {command} {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
+    'command',
+    ["echo '#'", r'echo \#', 'echo value#suffix'],
+)
+def test_resolve_does_not_treat_literal_hash_as_shell_comment(
+    app, monkeypatch, command
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Literal hash {command}',
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == f'{command} && pwd'
+
+
+@pytest.mark.parametrize(
+    ('command', 'expected'),
+    [
+        (r'printf \; # note', r'printf \; && # note' + '\npwd'),
+        (r'printf \\; # note', r'printf \\ && # note' + '\npwd'),
+        (r'printf \\\; # note', r'printf \\\; && # note' + '\npwd'),
+    ],
+)
+def test_resolve_removes_only_unescaped_semicolon_before_comment(
+    app, monkeypatch, command, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Semicolon parity {command}',
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
+    ('command', 'use_sudo', 'expected'),
+    [
+        ('echo ready;', False, 'echo ready && pwd'),
+        ('echo ready;', True, 'sudo echo ready && sudo pwd'),
+        ('sleep 0 &', False, 'sleep 0 & : && pwd'),
+        ('sleep 0 &', True, 'sudo sleep 0 & : && sudo pwd'),
+        (r'printf \&', False, r'printf \& && pwd'),
+        (r'printf \&', True, r'sudo printf \& && sudo pwd'),
+        ('sleep 0 & # note', False, 'sleep 0 & : && # note\npwd'),
+        ('sleep 0 & # note', True, 'sudo sleep 0 & : && # note\nsudo pwd'),
+        (r'printf \& # note', False, 'printf \\& && # note\npwd'),
+        (r'printf \& # note', True, 'sudo printf \\& && # note\nsudo pwd'),
+    ],
+)
+def test_resolve_handles_terminal_list_operators(
+    app, monkeypatch, command, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Terminal operator {command} {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
+    ('use_sudo', 'expected'),
+    [
+        (False, 'echo first && : &&\n# note\npwd'),
+        (True, 'sudo echo first && : &&\n# note\nsudo pwd'),
+    ],
+)
+def test_resolve_treats_comment_only_step_as_successful_noop(
+    app, monkeypatch, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Comment only {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': 'echo first'},
+                {'type': 'inline', 'command': '# note'},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+def test_trailing_comment_boundary_preserves_errexit_semantics(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Preserve errexit',
+            'steps': [
+                {
+                    'type': 'inline',
+                    'command': 'set -e\nfalse\necho SHOULD_NOT_RUN\n# note',
+                },
+                {'type': 'inline', 'command': 'echo NEXT_SHOULD_NOT_RUN'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == (
+        'set -e\nfalse\necho SHOULD_NOT_RUN &&\n'
+        '# note\necho NEXT_SHOULD_NOT_RUN'
+    )
+
+    shell = shutil.which('sh')
+    if shell is None:
+        pytest.skip('POSIX shell is not available')
+    completed = subprocess.run(
+        [shell, '-c', resolved],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert 'SHOULD_NOT_RUN' not in completed.stdout
+    assert 'NEXT_SHOULD_NOT_RUN' not in completed.stdout
 
 
 def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monkeypatch):
@@ -238,7 +573,7 @@ def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monke
 
     assert resolve_error is None
     assert resolved == (
-        'sudo echo default\n'
+        'sudo echo default && '
         '  sudo systemctl restart nginx\n'
         '\n'
         '# note\n'
@@ -263,6 +598,31 @@ def test_resolve_revalidates_length_after_sudo_prefix(app, monkeypatch):
             'name': 'Too long after prefix',
             'use_sudo': True,
             'steps': [{'type': 'inline', 'command': 'x' * 4092}],
+        })
+        assert error is None
+        resolved, resolve_error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert resolved is None
+    assert resolve_error == 'Startup commands must not exceed 4096 characters'
+
+
+def test_resolve_revalidates_length_after_step_separators(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Too long after separators',
+            'steps': [
+                {'type': 'inline', 'command': 'x' * 2047},
+                {'type': 'inline', 'command': 'y' * 2047},
+            ],
         })
         assert error is None
         resolved, resolve_error = command_set_manager.resolve_command_set(

@@ -189,5 +189,8 @@ def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
         'Existing command sets from an earlier version',
         'sets produced by legacy conversion',
         'does not store or answer a sudo password',
+        'joined with `&&`',
+        'inside a free-text step remain unchanged',
+        'legacy startup commands',
     ):
         assert phrase in readme

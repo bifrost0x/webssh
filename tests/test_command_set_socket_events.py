@@ -257,7 +257,7 @@ def test_ssh_connect_resolves_command_set_and_ignores_legacy_text(app, monkeypat
             'startup_commands': 'echo must-not-run',
         })
 
-    assert calls[0]['startup_commands'] == 'sudo echo first\nsudo echo second'
+    assert calls[0]['startup_commands'] == 'sudo echo first && sudo echo second'
 
 
 def test_sudo_expansion_limit_stops_before_connection_validation(app, monkeypatch):

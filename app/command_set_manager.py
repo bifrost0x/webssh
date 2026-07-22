@@ -33,6 +33,141 @@ def _prefix_commands_with_sudo(value):
     return '\n'.join(lines)
 
 
+def _shell_token_positions(value):
+    in_single_quote = False
+    in_double_quote = False
+    escaped = False
+    at_word_start = True
+    comment_on_line = False
+    line_number = 0
+    column_number = 0
+    comment_positions = {}
+    semicolon_positions = set()
+    ampersand_positions = set()
+
+    for character in value:
+        if comment_on_line:
+            if character == '\n':
+                comment_on_line = False
+                at_word_start = True
+        elif escaped:
+            escaped = False
+            if character != '\n':
+                at_word_start = False
+        elif in_single_quote:
+            if character == "'":
+                in_single_quote = False
+        elif in_double_quote:
+            if character == '"':
+                in_double_quote = False
+            elif character == '\\':
+                escaped = True
+        elif character == '\\':
+            escaped = True
+        elif character == "'":
+            in_single_quote = True
+            at_word_start = False
+        elif character == '"':
+            in_double_quote = True
+            at_word_start = False
+        elif character == '\n' or character.isspace():
+            at_word_start = True
+        elif character == ';':
+            semicolon_positions.add((line_number, column_number))
+            at_word_start = True
+        elif character == '&':
+            ampersand_positions.add((line_number, column_number))
+            at_word_start = True
+        elif character in '|()<>':
+            at_word_start = True
+        elif character == '#' and at_word_start:
+            comment_on_line = True
+            comment_positions[line_number] = column_number
+        else:
+            at_word_start = False
+
+        if character == '\n':
+            line_number += 1
+            column_number = 0
+        else:
+            column_number += 1
+
+    return comment_positions, semicolon_positions, ampersand_positions
+
+
+def _append_operator(command_text, line_number, semicolons, ampersands):
+    terminal_position = (line_number, len(command_text) - 1)
+    if terminal_position in semicolons:
+        return f'{command_text[:-1].rstrip()} &&'
+    if terminal_position in ampersands:
+        return f'{command_text} : &&'
+    return f'{command_text} &&'
+
+
+def _prepare_step_for_chaining(value):
+    """Trim boundary padding and make a comment-only step a shell no-op."""
+    lines = value.split('\n')
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return ':'
+
+    trimmed = '\n'.join(lines)
+    has_command = any(
+        line.strip() and not line.lstrip().startswith('#') for line in lines
+    )
+    return trimmed if has_command else f':\n{trimmed}'
+
+
+def _append_step_separator(value):
+    """Append a boundary without letting trailing comments consume it."""
+    lines = value.split('\n')
+    comment_positions, semicolon_positions, ampersand_positions = (
+        _shell_token_positions(value)
+    )
+    last_line = len(lines) - 1
+    if last_line not in comment_positions:
+        lines[last_line] = _append_operator(
+            lines[last_line], last_line,
+            semicolon_positions, ampersand_positions,
+        )
+        joined = '\n'.join(lines)
+        return f'{joined} '
+
+    command_line = None
+    command_text = None
+    comment_text = None
+    for line_number in range(last_line, -1, -1):
+        comment_at = comment_positions.get(line_number)
+        before_comment = (
+            lines[line_number][:comment_at]
+            if comment_at is not None
+            else lines[line_number]
+        )
+        if before_comment.strip():
+            command_line = line_number
+            command_text = before_comment.rstrip()
+            comment_text = (
+                lines[line_number][comment_at:]
+                if comment_at is not None
+                else None
+            )
+            break
+
+    if command_line is None:
+        lines.insert(0, ': &&')
+    else:
+        lines[command_line] = _append_operator(
+            command_text, command_line,
+            semicolon_positions, ampersand_positions,
+        )
+        if comment_text is not None:
+            lines[command_line] += f' {comment_text}'
+
+    joined = '\n'.join(lines)
+    return f'{joined}\n'
+
+
 def _command_sets_file(user_id):
     from .models import User
 
@@ -139,10 +274,10 @@ def _normalize_steps(steps, commands):
 
         return None, None, f'Command set step {position} has an invalid type'
 
-    resolved, error = normalize_startup_commands('\n'.join(resolved_parts))
+    _validated, error = normalize_startup_commands('\n'.join(resolved_parts))
     if error:
         return None, None, error
-    return normalized_steps, resolved, None
+    return normalized_steps, resolved_parts, None
 
 
 def _validate_payload(user_id, payload, existing_sets):
@@ -171,7 +306,7 @@ def _validate_payload(user_id, payload, existing_sets):
     commands, error = _command_index(user_id)
     if error:
         return None, error
-    steps, _resolved, error = _normalize_steps(payload.get('steps'), commands)
+    steps, _resolved_parts, error = _normalize_steps(payload.get('steps'), commands)
     if error:
         return None, error
     return {
@@ -274,17 +409,27 @@ def resolve_command_set(user_id, command_set_id):
     commands, error = _command_index(user_id)
     if error:
         return None, error
-    _steps, resolved, error = _normalize_steps(command_set.get('steps'), commands)
+    _steps, resolved_parts, error = _normalize_steps(
+        command_set.get('steps'), commands
+    )
     if error:
         if 'step ' in error:
             return None, f"Command set '{command_set['name']}' {error.removeprefix('Command set ').lower()}"
         return None, error
     if command_set.get('use_sudo') is True:
-        resolved = _prefix_commands_with_sudo(resolved)
-        resolved, error = normalize_startup_commands(resolved)
-        if error:
-            return None, error
-    return resolved, error
+        resolved_parts = [
+            _prefix_commands_with_sudo(part) for part in resolved_parts
+        ]
+    resolved_parts = [
+        _prepare_step_for_chaining(part) for part in resolved_parts
+    ]
+    resolved = ''.join(
+        _append_step_separator(part) for part in resolved_parts[:-1]
+    ) + resolved_parts[-1]
+    resolved, error = normalize_startup_commands(resolved)
+    if error:
+        return None, error
+    return resolved, None
 
 
 def get_command_usage(user_id, command_id):
