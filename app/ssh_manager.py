@@ -1,9 +1,10 @@
 import paramiko
 from paramiko.auth_strategy import AuthStrategy, NoneAuth
+import shlex
 import time
 import uuid
 import socket
-from threading import Lock, Thread
+from threading import Lock, Thread, Timer
 import config
 from pathlib import Path
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -12,6 +13,8 @@ from .startup_commands import to_terminal_input
 
 sessions = {}
 sessions_lock = Lock()
+_pending_connections = 0
+TMUX_KILL_TIMEOUT = 2.0
 
 
 class TailscaleSSHAuthStrategy(AuthStrategy):
@@ -72,12 +75,17 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         proxy_jump_*: Optional jump host (bastion) connection parameters
         auth_type: Target authentication method (password, key, or tailscale)
     """
+    global _pending_connections
+
     bastion_client = None
     connection_stored = False
+    slot_reserved = False
     try:
         with sessions_lock:
-            if len(sessions) >= config.MAX_SESSIONS:
+            if len(sessions) + _pending_connections >= config.MAX_SESSIONS:
                 return None, "Maximum number of sessions reached"
+            _pending_connections += 1
+            slot_reserved = True
 
         # Optional ProxyJump: connect to the bastion first, then tunnel to the target.
         sock = None
@@ -220,26 +228,39 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         time.sleep(0.1)
 
+        capacity_reached = False
         with sessions_lock:
-            sessions[session_id] = {
-                'client': client,
-                'channel': channel,
-                'host': host,
-                'port': port,
-                'username': username,
-                'user_id': user_id,
-                'connected': True,
-                'last_activity': time.time(),
-                'bastion_client': bastion_client,
-                'proxy_jump_host': proxy_jump_host,
-                'auth_type': auth_type,
-                'use_tmux': use_tmux,
-                'tmux_session_name': tmux_session_name,
-                'output_buffer': [],
-                'output_buffer_size': 0,
-                'output_buffer_max': 512000  # 512KB max buffer
-            }
-            connection_stored = True
+            _pending_connections -= 1
+            slot_reserved = False
+            if len(sessions) >= config.MAX_SESSIONS:
+                capacity_reached = True
+            else:
+                sessions[session_id] = {
+                    'client': client,
+                    'channel': channel,
+                    'host': host,
+                    'port': port,
+                    'username': username,
+                    'user_id': user_id,
+                    'connected': True,
+                    'last_activity': time.time(),
+                    'bastion_client': bastion_client,
+                    'proxy_jump_host': proxy_jump_host,
+                    'auth_type': auth_type,
+                    'use_tmux': use_tmux,
+                    'tmux_session_name': tmux_session_name,
+                    'output_buffer': [],
+                    'output_buffer_size': 0,
+                    'output_buffer_max': 512000  # 512KB max buffer
+                }
+                connection_stored = True
+
+        if capacity_reached:
+            try:
+                client.close()
+            except Exception:
+                pass
+            return None, "Maximum number of sessions reached"
 
         if socketio_instance and app:
             thread = Thread(
@@ -276,6 +297,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         log_error("SSH connection unexpected error", host=f"{host}:{port}", error=str(e))
         return None, "Connection failed"
     finally:
+        if slot_reserved:
+            with sessions_lock:
+                _pending_connections -= 1
+
         # Avoid leaking the bastion connection if the target connect failed.
         if bastion_client is not None and not connection_stored:
             try:
@@ -461,53 +486,66 @@ def close_session(session_id, kill_tmux=False):
                candidate. Pass True only from explicit user disconnect.
     """
     try:
-        from .sftp_handler import close_sftp_cache
-        close_sftp_cache(session_id)
-
         with sessions_lock:
-            if session_id not in sessions:
+            session = sessions.pop(session_id, None)
+            if session is None:
                 return False
-
-            session = sessions[session_id]
             session['connected'] = False
 
-            # Kill tmux session on remote host only on explicit disconnect.
-            # Idle timeout and server restart leave tmux running so the
-            # session survives and appears as a reconnect candidate.
-            if kill_tmux and session.get('use_tmux') and session.get('tmux_session_name') and session['client']:
-                try:
-                    transport = session['client'].get_transport()
-                    if transport and transport.is_active():
-                        kill_channel = transport.open_session()
-                        kill_channel.exec_command(f'tmux kill-session -t {session["tmux_session_name"]}')
-                        kill_channel.settimeout(2.0)
+        # All network I/O happens after removing the session from the shared
+        # registry, so a slow or half-open SSH transport cannot block unrelated
+        # session operations behind sessions_lock.
+        try:
+            from .sftp_handler import close_sftp_cache
+            close_sftp_cache(session_id)
+        except Exception as e:
+            log_debug(f"Error closing SFTP cache", session_id=session_id, error=str(e))
+
+        if kill_tmux and session.get('use_tmux') and session.get('tmux_session_name') and session['client']:
+            kill_channel = None
+            try:
+                transport = session['client'].get_transport()
+                if transport and transport.is_active():
+                    kill_channel = transport.open_session(timeout=TMUX_KILL_TIMEOUT)
+                    kill_channel.settimeout(TMUX_KILL_TIMEOUT)
+                    command = 'tmux kill-session -t ' + shlex.quote(session['tmux_session_name'])
+                    timeout_guard = Timer(TMUX_KILL_TIMEOUT, kill_channel.close)
+                    timeout_guard.daemon = True
+                    timeout_guard.start()
+                    try:
+                        kill_channel.exec_command(command)
                         try:
                             kill_channel.recv(1)
                         except Exception:
                             pass
+                    finally:
+                        timeout_guard.cancel()
+            except Exception as e:
+                log_debug(f"Error killing tmux session", session_id=session_id, error=str(e))
+            finally:
+                if kill_channel is not None:
+                    try:
                         kill_channel.close()
-                except Exception as e:
-                    log_debug(f"Error killing tmux session", session_id=session_id, error=str(e))
+                    except Exception:
+                        pass
 
-            if session['channel']:
-                try:
-                    session['channel'].close()
-                except Exception as e:
-                    log_debug(f"Error closing channel", session_id=session_id, error=str(e))
+        if session['channel']:
+            try:
+                session['channel'].close()
+            except Exception as e:
+                log_debug(f"Error closing channel", session_id=session_id, error=str(e))
 
-            if session['client']:
-                try:
-                    session['client'].close()
-                except Exception as e:
-                    log_debug(f"Error closing SSH client", session_id=session_id, error=str(e))
+        if session['client']:
+            try:
+                session['client'].close()
+            except Exception as e:
+                log_debug(f"Error closing SSH client", session_id=session_id, error=str(e))
 
-            if session.get('bastion_client'):
-                try:
-                    session['bastion_client'].close()
-                except Exception as e:
-                    log_debug(f"Error closing jump host client", session_id=session_id, error=str(e))
-
-            del sessions[session_id]
+        if session.get('bastion_client'):
+            try:
+                session['bastion_client'].close()
+            except Exception as e:
+                log_debug(f"Error closing jump host client", session_id=session_id, error=str(e))
 
         return True
     except Exception as e:
