@@ -221,10 +221,10 @@ session from the WebSSH interface terminates its remote tmux session.
 ### Commands After Connecting
 
 The connection dialog lets you select one optional, named **command set**. Use
-**Create new** directly beside the selector, or open **Command Sets** from the
-account menu to manage all sets. The builder can search the complete command
-library by name, command text, parameters, description, or category and filter
-the results by operating system.
+**Create new** directly beside the selector, or open **Commands** and switch to
+the **Command Sets** tab to manage all sets. The builder can search the complete
+command library by name, command text, parameters, description, or category and
+filter the results by operating system.
 
 A command set is an ordered list of steps. A step can reference a command from
 the command library or contain free text. Library steps use the command's
@@ -232,6 +232,15 @@ current parameters by default; disable **Use library parameters** to provide an
 override or intentionally leave the override empty. Free-text steps can stay in
 the set or be moved into the command library with **Save as library command**.
 Steps can be reordered by drag and drop or by the accessible up/down buttons.
+
+New command sets enable **Run commands with sudo** by default. When enabled,
+WebSSH prefixes each non-empty resolved command line unless it already starts
+with `sudo`; blank and comment-only lines remain unchanged. Existing command sets from an earlier version and sets produced by legacy conversion keep sudo disabled, so upgrading or converting does not change what runs.
+
+WebSSH does not store or answer a sudo password. If the remote account requires
+one, its normal prompt appears in the terminal. The added prefixes count toward
+the existing maximum 4096 characters for the resolved command text. No
+additional environment variable, Compose setting, or service is required.
 
 Profiles store only the selected command-set ID. Editing a set or one of its
 referenced library commands therefore updates every profile that uses it. A set

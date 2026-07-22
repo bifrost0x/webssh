@@ -185,5 +185,9 @@ def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
         'working after an update',
         'cannot be deleted while a profile references it',
         'No additional environment variable, Compose setting',
+        'Run commands with sudo',
+        'Existing command sets from an earlier version',
+        'sets produced by legacy conversion',
+        'does not store or answer a sudo password',
     ):
         assert phrase in readme

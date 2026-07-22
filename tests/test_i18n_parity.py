@@ -25,6 +25,9 @@ def test_all_locales_have_matching_translation_keys():
             'commandSets.manage',
             'commandSets.create',
             'commandSets.saveToLibrary',
+            'commandSets.useSudo',
+            'commandSets.useSudoHint',
+            'commandSets.sudoBadge',
         } <= keys
         for keys in keys_by_locale.values()
     )
