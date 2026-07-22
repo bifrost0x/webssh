@@ -43,6 +43,7 @@ def _shell_token_positions(value):
     column_number = 0
     comment_positions = {}
     semicolon_positions = set()
+    ampersand_positions = set()
 
     for character in value:
         if comment_on_line:
@@ -74,7 +75,10 @@ def _shell_token_positions(value):
         elif character == ';':
             semicolon_positions.add((line_number, column_number))
             at_word_start = True
-        elif character in '&|()<>':
+        elif character == '&':
+            ampersand_positions.add((line_number, column_number))
+            at_word_start = True
+        elif character in '|()<>':
             at_word_start = True
         elif character == '#' and at_word_start:
             comment_on_line = True
@@ -88,7 +92,16 @@ def _shell_token_positions(value):
         else:
             column_number += 1
 
-    return comment_positions, semicolon_positions
+    return comment_positions, semicolon_positions, ampersand_positions
+
+
+def _append_operator(command_text, line_number, semicolons, ampersands):
+    terminal_position = (line_number, len(command_text) - 1)
+    if terminal_position in semicolons:
+        return f'{command_text[:-1].rstrip()} &&'
+    if terminal_position in ampersands:
+        return f'{command_text} : &&'
+    return f'{command_text} &&'
 
 
 def _prepare_step_for_chaining(value):
@@ -109,10 +122,17 @@ def _prepare_step_for_chaining(value):
 def _append_step_separator(value):
     """Append a boundary without letting trailing comments consume it."""
     lines = value.split('\n')
-    comment_positions, semicolon_positions = _shell_token_positions(value)
+    comment_positions, semicolon_positions, ampersand_positions = (
+        _shell_token_positions(value)
+    )
     last_line = len(lines) - 1
     if last_line not in comment_positions:
-        return f'{value} && '
+        lines[last_line] = _append_operator(
+            lines[last_line], last_line,
+            semicolon_positions, ampersand_positions,
+        )
+        joined = '\n'.join(lines)
+        return f'{joined} '
 
     command_line = None
     command_text = None
@@ -137,10 +157,10 @@ def _append_step_separator(value):
     if command_line is None:
         lines.insert(0, ': &&')
     else:
-        semicolon_at = (command_line, len(command_text) - 1)
-        if command_text.endswith(';') and semicolon_at in semicolon_positions:
-            command_text = command_text[:-1].rstrip()
-        lines[command_line] = f'{command_text} &&'
+        lines[command_line] = _append_operator(
+            command_text, command_line,
+            semicolon_positions, ampersand_positions,
+        )
         if comment_text is not None:
             lines[command_line] += f' {comment_text}'
 

@@ -414,6 +414,50 @@ def test_resolve_removes_only_unescaped_semicolon_before_comment(
 
 
 @pytest.mark.parametrize(
+    ('command', 'use_sudo', 'expected'),
+    [
+        ('echo ready;', False, 'echo ready && pwd'),
+        ('echo ready;', True, 'sudo echo ready && sudo pwd'),
+        ('sleep 0 &', False, 'sleep 0 & : && pwd'),
+        ('sleep 0 &', True, 'sudo sleep 0 & : && sudo pwd'),
+        (r'printf \&', False, r'printf \& && pwd'),
+        (r'printf \&', True, r'sudo printf \& && sudo pwd'),
+        ('sleep 0 & # note', False, 'sleep 0 & : && # note\npwd'),
+        ('sleep 0 & # note', True, 'sudo sleep 0 & : && # note\nsudo pwd'),
+        (r'printf \& # note', False, 'printf \\& && # note\npwd'),
+        (r'printf \& # note', True, 'sudo printf \\& && # note\nsudo pwd'),
+    ],
+)
+def test_resolve_handles_terminal_list_operators(
+    app, monkeypatch, command, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Terminal operator {command} {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
     ('use_sudo', 'expected'),
     [
         (False, 'echo first && : &&\n# note\npwd'),
