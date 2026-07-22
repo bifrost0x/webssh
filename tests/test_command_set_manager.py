@@ -1,5 +1,7 @@
 """Tests for named post-connect command sets."""
 import json
+import shutil
+import subprocess
 
 import pytest
 
@@ -272,8 +274,8 @@ def test_resolve_trims_trailing_whitespace_at_step_boundaries(
 @pytest.mark.parametrize(
     ('use_sudo', 'expected'),
     [
-        (False, '{\necho ready\n# note\n} && pwd'),
-        (True, '{\nsudo echo ready\n# note\n} && sudo pwd'),
+        (False, 'echo ready &&\n# note\npwd'),
+        (True, 'sudo echo ready &&\n# note\nsudo pwd'),
     ],
 )
 def test_resolve_preserves_trailing_comment_without_hiding_next_step(
@@ -308,10 +310,10 @@ def test_resolve_preserves_trailing_comment_without_hiding_next_step(
 @pytest.mark.parametrize(
     ('command', 'use_sudo', 'expected'),
     [
-        ('echo ready # note', False, '{\necho ready # note\n} && pwd'),
-        ('echo ready; # note', False, '{\necho ready; # note\n} && pwd'),
-        ('echo ready # note', True, '{\nsudo echo ready # note\n} && sudo pwd'),
-        ('echo ready; # note', True, '{\nsudo echo ready; # note\n} && sudo pwd'),
+        ('echo ready # note', False, 'echo ready && # note\npwd'),
+        ('echo ready; # note', False, 'echo ready && # note\npwd'),
+        ('echo ready # note', True, 'sudo echo ready && # note\nsudo pwd'),
+        ('echo ready; # note', True, 'sudo echo ready && # note\nsudo pwd'),
     ],
 )
 def test_resolve_preserves_inline_comment_without_hiding_next_step(
@@ -378,8 +380,8 @@ def test_resolve_does_not_treat_literal_hash_as_shell_comment(
 @pytest.mark.parametrize(
     ('use_sudo', 'expected'),
     [
-        (False, 'echo first && {\n:\n# note\n} && pwd'),
-        (True, 'sudo echo first && {\n:\n# note\n} && sudo pwd'),
+        (False, 'echo first && : &&\n# note\npwd'),
+        (True, 'sudo echo first && : &&\n# note\nsudo pwd'),
     ],
 )
 def test_resolve_treats_comment_only_step_as_successful_noop(
@@ -410,6 +412,51 @@ def test_resolve_treats_comment_only_step_as_successful_noop(
 
     assert error is None
     assert resolved == expected
+
+
+def test_trailing_comment_boundary_preserves_errexit_semantics(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Preserve errexit',
+            'steps': [
+                {
+                    'type': 'inline',
+                    'command': 'set -e\nfalse\necho SHOULD_NOT_RUN\n# note',
+                },
+                {'type': 'inline', 'command': 'echo NEXT_SHOULD_NOT_RUN'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == (
+        'set -e\nfalse\necho SHOULD_NOT_RUN &&\n'
+        '# note\necho NEXT_SHOULD_NOT_RUN'
+    )
+
+    shell = shutil.which('sh')
+    if shell is None:
+        pytest.skip('POSIX shell is not available')
+    completed = subprocess.run(
+        [shell, '-c', resolved],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert 'SHOULD_NOT_RUN' not in completed.stdout
+    assert 'NEXT_SHOULD_NOT_RUN' not in completed.stdout
 
 
 def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monkeypatch):

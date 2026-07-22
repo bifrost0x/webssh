@@ -33,39 +33,34 @@ def _prefix_commands_with_sudo(value):
     return '\n'.join(lines)
 
 
-def _ends_with_unquoted_shell_comment(value):
+def _shell_comment_positions(value):
     in_single_quote = False
     in_double_quote = False
     escaped = False
     at_word_start = True
     comment_on_line = False
+    line_number = 0
+    column_number = 0
+    positions = {}
 
     for character in value:
         if comment_on_line:
             if character == '\n':
                 comment_on_line = False
                 at_word_start = True
-            continue
-
-        if escaped:
+        elif escaped:
             escaped = False
             if character != '\n':
                 at_word_start = False
-            continue
-
-        if in_single_quote:
+        elif in_single_quote:
             if character == "'":
                 in_single_quote = False
-            continue
-
-        if in_double_quote:
+        elif in_double_quote:
             if character == '"':
                 in_double_quote = False
             elif character == '\\':
                 escaped = True
-            continue
-
-        if character == '\\':
+        elif character == '\\':
             escaped = True
         elif character == "'":
             in_single_quote = True
@@ -79,14 +74,21 @@ def _ends_with_unquoted_shell_comment(value):
             at_word_start = True
         elif character == '#' and at_word_start:
             comment_on_line = True
+            positions[line_number] = column_number
         else:
             at_word_start = False
 
-    return comment_on_line
+        if character == '\n':
+            line_number += 1
+            column_number = 0
+        else:
+            column_number += 1
+
+    return positions
 
 
 def _prepare_step_for_chaining(value):
-    """Keep a step shell-safe when an ``&&`` separator follows it."""
+    """Trim boundary padding and make a comment-only step a shell no-op."""
     lines = value.split('\n')
     while lines and not lines[-1].strip():
         lines.pop()
@@ -94,14 +96,51 @@ def _prepare_step_for_chaining(value):
         return ':'
 
     trimmed = '\n'.join(lines)
-    if not _ends_with_unquoted_shell_comment(trimmed):
-        return trimmed
-
     has_command = any(
         line.strip() and not line.lstrip().startswith('#') for line in lines
     )
-    body = trimmed if has_command else f':\n{trimmed}'
-    return f'{{\n{body}\n}}'
+    return trimmed if has_command else f':\n{trimmed}'
+
+
+def _append_step_separator(value):
+    """Append a boundary without letting trailing comments consume it."""
+    lines = value.split('\n')
+    comment_positions = _shell_comment_positions(value)
+    last_line = len(lines) - 1
+    if last_line not in comment_positions:
+        return f'{value} && '
+
+    command_line = None
+    command_text = None
+    comment_text = None
+    for line_number in range(last_line, -1, -1):
+        comment_at = comment_positions.get(line_number)
+        before_comment = (
+            lines[line_number][:comment_at]
+            if comment_at is not None
+            else lines[line_number]
+        )
+        if before_comment.strip():
+            command_line = line_number
+            command_text = before_comment.rstrip()
+            comment_text = (
+                lines[line_number][comment_at:]
+                if comment_at is not None
+                else None
+            )
+            break
+
+    if command_line is None:
+        lines.insert(0, ': &&')
+    else:
+        if command_text.endswith(';'):
+            command_text = command_text[:-1].rstrip()
+        lines[command_line] = f'{command_text} &&'
+        if comment_text is not None:
+            lines[command_line] += f' {comment_text}'
+
+    joined = '\n'.join(lines)
+    return f'{joined}\n'
 
 
 def _command_sets_file(user_id):
@@ -356,9 +395,12 @@ def resolve_command_set(user_id, command_set_id):
         resolved_parts = [
             _prefix_commands_with_sudo(part) for part in resolved_parts
         ]
-    resolved = ' && '.join(
+    resolved_parts = [
         _prepare_step_for_chaining(part) for part in resolved_parts
-    )
+    ]
+    resolved = ''.join(
+        _append_step_separator(part) for part in resolved_parts[:-1]
+    ) + resolved_parts[-1]
     resolved, error = normalize_startup_commands(resolved)
     if error:
         return None, error
