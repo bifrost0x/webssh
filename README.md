@@ -52,7 +52,7 @@
 Web SSH Terminal is a self-hosted web application that provides secure SSH access to your servers directly from your browser. Perfect for homelabs, server management, and teams that need browser-based terminal access. It is multi-user from the ground up, with individual accounts and per-user profiles, keys, and settings.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/webssh-demo.gif" alt="Demo" width="800">
+  <img src="assets/webssh-demo.gif" alt="WebSSH tour showing saved profiles, live terminals, split panes, broadcast input, commands, and SFTP tools" width="1100">
 </p>
 
 ## Features
@@ -103,7 +103,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/file-editing.gif" alt="Inline File Editor" width="800">
+  <img src="assets/file-editing.gif" alt="SFTP file editing tour from dual-pane browsing through preview, inline editing, and remote save confirmation" width="1100">
 </p>
 
 ### Security
@@ -243,7 +243,7 @@ the set or be moved into the command library with **Save as library command**.
 Steps can be reordered by drag and drop or by the accessible up/down buttons.
 
 <p align="center">
-  <img src="assets/command-sets.gif" alt="Creating a reusable command set and selecting it for a new SSH connection" width="900">
+  <img src="assets/command-sets.gif" alt="Command workflow showing full-text search, user commands, sudo-enabled command sets, multiline steps, ordering, and profile assignment" width="1100">
 </p>
 
 New command sets enable **Run commands with sudo** by default. When enabled,
