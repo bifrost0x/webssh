@@ -306,6 +306,76 @@ def test_resolve_preserves_trailing_comment_without_hiding_next_step(
 
 
 @pytest.mark.parametrize(
+    ('command', 'use_sudo', 'expected'),
+    [
+        ('echo ready # note', False, '{\necho ready # note\n} && pwd'),
+        ('echo ready; # note', False, '{\necho ready; # note\n} && pwd'),
+        ('echo ready # note', True, '{\nsudo echo ready # note\n} && sudo pwd'),
+        ('echo ready; # note', True, '{\nsudo echo ready; # note\n} && sudo pwd'),
+    ],
+)
+def test_resolve_preserves_inline_comment_without_hiding_next_step(
+    app, monkeypatch, command, use_sudo, expected
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Inline comment {command} {use_sudo}',
+            'use_sudo': use_sudo,
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == expected
+
+
+@pytest.mark.parametrize(
+    'command',
+    ["echo '#'", r'echo \#', 'echo value#suffix'],
+)
+def test_resolve_does_not_treat_literal_hash_as_shell_comment(
+    app, monkeypatch, command
+):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager,
+        'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Literal hash {command}',
+            'steps': [
+                {'type': 'inline', 'command': command},
+                {'type': 'library', 'command_id': 'cmd-pwd'},
+            ],
+        })
+        assert error is None
+        resolved, error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert error is None
+    assert resolved == f'{command} && pwd'
+
+
+@pytest.mark.parametrize(
     ('use_sudo', 'expected'),
     [
         (False, 'echo first && {\n:\n# note\n} && pwd'),

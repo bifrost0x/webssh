@@ -33,6 +33,58 @@ def _prefix_commands_with_sudo(value):
     return '\n'.join(lines)
 
 
+def _ends_with_unquoted_shell_comment(value):
+    in_single_quote = False
+    in_double_quote = False
+    escaped = False
+    at_word_start = True
+    comment_on_line = False
+
+    for character in value:
+        if comment_on_line:
+            if character == '\n':
+                comment_on_line = False
+                at_word_start = True
+            continue
+
+        if escaped:
+            escaped = False
+            if character != '\n':
+                at_word_start = False
+            continue
+
+        if in_single_quote:
+            if character == "'":
+                in_single_quote = False
+            continue
+
+        if in_double_quote:
+            if character == '"':
+                in_double_quote = False
+            elif character == '\\':
+                escaped = True
+            continue
+
+        if character == '\\':
+            escaped = True
+        elif character == "'":
+            in_single_quote = True
+            at_word_start = False
+        elif character == '"':
+            in_double_quote = True
+            at_word_start = False
+        elif character == '\n' or character.isspace():
+            at_word_start = True
+        elif character in ';&|()<>':
+            at_word_start = True
+        elif character == '#' and at_word_start:
+            comment_on_line = True
+        else:
+            at_word_start = False
+
+    return comment_on_line
+
+
 def _prepare_step_for_chaining(value):
     """Keep a step shell-safe when an ``&&`` separator follows it."""
     lines = value.split('\n')
@@ -42,7 +94,7 @@ def _prepare_step_for_chaining(value):
         return ':'
 
     trimmed = '\n'.join(lines)
-    if not lines[-1].lstrip().startswith('#'):
+    if not _ends_with_unquoted_shell_comment(trimmed):
         return trimmed
 
     has_command = any(
