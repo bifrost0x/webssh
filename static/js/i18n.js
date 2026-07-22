@@ -61,7 +61,7 @@ const translations = {
         'commandSets.createNew': 'Create new',
         'commandSets.edit': 'Edit command set',
         'commandSets.duplicate': 'Duplicate',
-        'commandSets.steps': 'steps',
+        'commandSets.steps': 'Steps',
         'commandSets.addFreeText': 'Add free text',
         'commandSets.freeText': 'Free text',
         'commandSets.saveToLibrary': 'Save as library command',

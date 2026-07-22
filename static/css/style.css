@@ -4085,7 +4085,18 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .command-set-modal-content .command-set-modal-body {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
+}
+
+#commandSetEditorView,
+#commandSetForm {
+    height: 100%;
+    min-height: 0;
+}
+
+#commandSetForm {
+    display: flex;
+    flex-direction: column;
 }
 
 .command-set-management-toolbar,
@@ -4138,9 +4149,10 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .command-set-builder {
     display: grid;
+    flex: 1;
     grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr);
     gap: 16px;
-    min-height: 430px;
+    min-height: 0;
 }
 
 .command-set-library-pane,
@@ -4246,7 +4258,17 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 @media (max-width: 850px) {
+    .command-set-modal-content .command-set-modal-body {
+        overflow: auto;
+    }
+
+    #commandSetEditorView,
+    #commandSetForm {
+        height: auto;
+    }
+
     .command-set-builder {
+        flex: none;
         grid-template-columns: 1fr;
     }
 
