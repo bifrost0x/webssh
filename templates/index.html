@@ -411,6 +411,13 @@
                                 <input id="commandSetDescriptionInput" class="form-control" type="text">
                             </div>
                         </div>
+                        <div class="command-set-sudo-option">
+                            <label for="commandSetUseSudoInput">
+                                <input id="commandSetUseSudoInput" type="checkbox">
+                                <span data-i18n="commandSets.useSudo">Run commands with sudo</span>
+                            </label>
+                            <p data-i18n="commandSets.useSudoHint">Adds sudo to every non-empty command line. Lines already starting with sudo remain unchanged.</p>
+                        </div>
                         <div class="command-set-builder">
                             <section class="command-set-library-pane" aria-labelledby="commandSetLibraryHeading">
                                 <h4 id="commandSetLibraryHeading" data-i18n="commands.library">Command Library</h4>

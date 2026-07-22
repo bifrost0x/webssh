@@ -4152,6 +4152,23 @@ body.keyboard-open.notepad-focused .notepad-panel {
     flex-direction: column;
 }
 
+.command-set-sudo-option {
+    margin-bottom: 14px;
+}
+
+.command-set-sudo-option label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.command-set-sudo-option p {
+    margin: 5px 0 0 26px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
 .command-set-management-toolbar,
 .command-set-steps-heading,
 .command-set-editor-actions {
@@ -4192,6 +4209,15 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .command-set-management-item span {
     color: var(--text-secondary);
     font-size: 12px;
+}
+
+.command-set-management-item .command-set-sudo-badge {
+    align-self: flex-start;
+    padding: 2px 7px;
+    border: 1px solid var(--accent-primary);
+    border-radius: 999px;
+    color: var(--accent-primary);
+    font-weight: 600;
 }
 
 .command-set-actions {

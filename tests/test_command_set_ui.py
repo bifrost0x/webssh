@@ -43,6 +43,7 @@ def test_commands_workspace_unifies_library_and_command_sets():
         'commandSetForm',
         'commandSetNameInput',
         'commandSetDescriptionInput',
+        'commandSetUseSudoInput',
         'commandSetSearchInput',
         'commandSetLibraryResults',
         'commandSetSteps',
@@ -150,6 +151,25 @@ def test_closing_command_set_editor_resets_the_next_management_visit():
     assert close_method
     assert 'this.showManagementList()' in close_method.group('body')
     assert 'this.returnToConnection = false' in close_method.group('body')
+
+
+def test_command_set_editor_controls_sudo_defaults_and_payload():
+    source = read('static/js/command-set-manager.js')
+
+    assert 'sudoInput.checked = source ? source.use_sudo === true : true' in source
+    legacy_conversion = re.search(
+        r'openLegacyConversion\(profile\) \{(?P<body>.*?)\n    \},',
+        source,
+        re.DOTALL,
+    )
+    assert legacy_conversion
+    assert 'sudoInput.checked = false' in legacy_conversion.group('body')
+    assert re.search(
+        r'use_sudo:\s*document\.getElementById\('
+        r"'commandSetUseSudoInput'\)\?\.checked\s*===\s*true",
+        source,
+    )
+    assert 'command-set-sudo-badge' in source
 
 
 def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():

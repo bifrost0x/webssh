@@ -216,6 +216,8 @@ window.CommandSetManager = {
             : [];
         document.getElementById('commandSetNameInput').value = source?.name || '';
         document.getElementById('commandSetDescriptionInput').value = source?.description || '';
+        const sudoInput = document.getElementById('commandSetUseSudoInput');
+        if (sudoInput) sudoInput.checked = source ? source.use_sudo === true : true;
         document.getElementById('commandSetEditorTitle').textContent = source
             ? this.t('commandSets.edit', 'Edit command set')
             : this.t('commandSets.create', 'Create command set');
@@ -229,6 +231,8 @@ window.CommandSetManager = {
 
     openLegacyConversion(profile) {
         this.openBuilder(null, true);
+        const sudoInput = document.getElementById('commandSetUseSudoInput');
+        if (sudoInput) sudoInput.checked = false;
         this.convertingProfileId = profile.id;
         document.getElementById('commandSetNameInput').value = `${profile.name} commands`;
         this.draftSteps = [{ type: 'inline', command: profile.startup_commands || '' }];
@@ -282,6 +286,12 @@ window.CommandSetManager = {
             description.textContent = commandSet.description
                 || `${commandSet.steps.length} ${this.t('commandSets.steps', 'steps')}`;
             info.append(name, description);
+            if (commandSet.use_sudo === true) {
+                const sudoBadge = document.createElement('span');
+                sudoBadge.className = 'command-set-sudo-badge';
+                sudoBadge.textContent = this.t('commandSets.sudoBadge', 'sudo');
+                info.appendChild(sudoBadge);
+            }
             const actions = document.createElement('div');
             actions.className = 'command-set-actions';
             [['edit', 'common.edit', 'Edit'], ['duplicate', 'commandSets.duplicate', 'Duplicate'],
@@ -476,6 +486,7 @@ window.CommandSetManager = {
         const payload = {
             name: document.getElementById('commandSetNameInput')?.value.trim(),
             description: document.getElementById('commandSetDescriptionInput')?.value.trim() || '',
+            use_sudo: document.getElementById('commandSetUseSudoInput')?.checked === true,
             steps: this.draftSteps.map(step => ({ ...step })),
         };
         if (this.editingId) payload.id = this.editingId;
