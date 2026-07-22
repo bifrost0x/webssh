@@ -1,6 +1,8 @@
 """Tests for named post-connect command sets."""
 import json
 
+import pytest
+
 
 def create_user(app, username='command-set-user'):
     from app.models import User, db
@@ -92,6 +94,51 @@ def test_upsert_creates_updates_and_loads_command_set(app, monkeypatch):
         assert command_set_manager.load_command_sets(user_id)[0] == [updated]
 
 
+def test_upsert_defaults_missing_sudo_to_false_and_accepts_boolean(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        legacy_compatible, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Existing behavior',
+            'steps': [{'type': 'inline', 'command': 'whoami'}],
+        })
+        sudo_set, sudo_error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Privileged',
+            'use_sudo': True,
+            'steps': [{'type': 'inline', 'command': 'apt update'}],
+        })
+
+    assert error is None
+    assert legacy_compatible['use_sudo'] is False
+    assert sudo_error is None
+    assert sudo_set['use_sudo'] is True
+
+
+@pytest.mark.parametrize('invalid', [None, 1, 0, 'true', [], {}])
+def test_upsert_rejects_non_boolean_sudo(app, monkeypatch, invalid):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        saved, error = command_set_manager.upsert_command_set(user_id, {
+            'name': f'Invalid {type(invalid).__name__}',
+            'use_sudo': invalid,
+            'steps': [{'type': 'inline', 'command': 'whoami'}],
+        })
+
+    assert saved is None
+    assert error == 'Command set sudo option must be a boolean'
+
+
 def test_upsert_rejects_case_insensitive_duplicate_names(app, monkeypatch):
     from app import command_manager, command_set_manager
 
@@ -157,6 +204,64 @@ def test_resolve_preserves_order_and_parameter_semantics(app, monkeypatch):
     assert resolved == 'echo default\necho\necho custom\necho €\npwd\npwd'
 
 
+def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Privileged bootstrap',
+            'use_sudo': True,
+            'steps': [
+                {'type': 'library', 'command_id': 'cmd-echo'},
+                {
+                    'type': 'inline',
+                    'command': '  systemctl restart nginx\n\n# note\nsudo reboot\tsafe',
+                },
+            ],
+        })
+        assert error is None
+        resolved, resolve_error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert resolve_error is None
+    assert resolved == (
+        'sudo echo default\n'
+        '  sudo systemctl restart nginx\n'
+        '\n'
+        '# note\n'
+        'sudo reboot\tsafe'
+    )
+
+
+def test_resolve_revalidates_length_after_sudo_prefix(app, monkeypatch):
+    from app import command_manager, command_set_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    user_id = create_user(app)
+    with app.app_context():
+        created, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Too long after prefix',
+            'use_sudo': True,
+            'steps': [{'type': 'inline', 'command': 'x' * 4092}],
+        })
+        assert error is None
+        resolved, resolve_error = command_set_manager.resolve_command_set(
+            user_id, created['id']
+        )
+
+    assert resolved is None
+    assert resolve_error == 'Startup commands must not exceed 4096 characters'
+
+
 def test_resolve_rejects_reference_removed_after_save(app, monkeypatch):
     from app import command_manager, command_set_manager
 
@@ -206,6 +311,7 @@ def test_duplicate_uses_new_id_and_unique_copy_name_but_keeps_references(app, mo
     with app.app_context():
         original, error = command_set_manager.upsert_command_set(user_id, {
             'name': 'Bootstrap',
+            'use_sudo': True,
             'steps': [{'type': 'library', 'command_id': 'cmd-pwd'}],
         })
         assert error is None
@@ -215,6 +321,7 @@ def test_duplicate_uses_new_id_and_unique_copy_name_but_keeps_references(app, mo
     assert duplicate['id'] != original['id']
     assert duplicate['name'] == 'Bootstrap Copy'
     assert duplicate['steps'] == original['steps']
+    assert duplicate['use_sudo'] is True
 
 
 def test_get_command_usage_and_delete_guard_report_names(app, monkeypatch):

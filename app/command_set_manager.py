@@ -12,6 +12,23 @@ from .storage_utils import atomic_write_json, storage_lock
 COMMAND_SET_NAME_MAX = 128
 
 
+def _prefix_commands_with_sudo(value):
+    lines = []
+    for line in value.split('\n'):
+        stripped = line.lstrip()
+        leading = line[:len(line) - len(stripped)]
+        already_sudo = (
+            stripped == 'sudo'
+            or stripped.startswith('sudo ')
+            or stripped.startswith('sudo\t')
+        )
+        if not stripped or stripped.startswith('#') or already_sudo:
+            lines.append(line)
+        else:
+            lines.append(f'{leading}sudo {stripped}')
+    return '\n'.join(lines)
+
+
 def _command_sets_file(user_id):
     from .models import User
 
@@ -136,6 +153,9 @@ def _validate_payload(user_id, payload, existing_sets):
     description = payload.get('description', '')
     if not isinstance(description, str):
         return None, 'Command set description must be text'
+    use_sudo = payload.get('use_sudo', False)
+    if not isinstance(use_sudo, bool):
+        return None, 'Command set sudo option must be a boolean'
 
     command_set_id = payload.get('id')
     if command_set_id is not None and not isinstance(command_set_id, str):
@@ -154,6 +174,7 @@ def _validate_payload(user_id, payload, existing_sets):
         'id': command_set_id,
         'name': name,
         'description': description.strip(),
+        'use_sudo': use_sudo,
         'steps': steps,
     }, None
 
@@ -232,6 +253,7 @@ def duplicate_command_set(user_id, command_set_id):
                 'id': str(uuid.uuid4()),
                 'name': candidate,
                 'description': source.get('description', ''),
+                'use_sudo': source.get('use_sudo') is True,
                 'steps': copy.deepcopy(source.get('steps', [])),
                 'created_at': now,
                 'updated_at': now,
@@ -249,8 +271,15 @@ def resolve_command_set(user_id, command_set_id):
     if error:
         return None, error
     _steps, resolved, error = _normalize_steps(command_set.get('steps'), commands)
-    if error and 'step ' in error:
-        return None, f"Command set '{command_set['name']}' {error.removeprefix('Command set ').lower()}"
+    if error:
+        if 'step ' in error:
+            return None, f"Command set '{command_set['name']}' {error.removeprefix('Command set ').lower()}"
+        return None, error
+    if command_set.get('use_sudo') is True:
+        resolved = _prefix_commands_with_sudo(resolved)
+        resolved, error = normalize_startup_commands(resolved)
+        if error:
+            return None, error
     return resolved, error
 
 
