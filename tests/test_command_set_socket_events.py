@@ -1,4 +1,5 @@
 """Socket and cross-storage tests for named command sets."""
+import pytest
 def create_socket_user(app, username):
     from app.auth import register_socket_session, register_user
     from app.models import db
@@ -203,3 +204,146 @@ def test_convert_rejects_profile_without_legacy_commands(app, monkeypatch):
         'error': 'Profile has no legacy startup commands',
         'code': 'validation_error',
     }
+
+
+def test_ssh_connect_resolves_command_set_and_ignores_legacy_text(app, monkeypatch):
+    from flask import request
+    from app import command_set_manager, ssh_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'command_set_connect')
+    with app.app_context():
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Bootstrap',
+            'steps': [
+                {'type': 'inline', 'command': 'echo first'},
+                {'type': 'inline', 'command': 'echo second'},
+            ],
+        })
+        assert error is None
+
+    calls = []
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **kwargs: (calls.append(kwargs) or ('command-set-session', None)),
+    )
+    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'command_set_id': command_set['id'],
+            'startup_commands': 'echo must-not-run',
+        })
+
+    assert calls[0]['startup_commands'] == 'echo first\necho second'
+
+
+def test_invalid_command_set_stops_before_validation_dns_and_ssh(app, monkeypatch):
+    from flask import request
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'command_set_no_dns')
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('connection validation or DNS must not run')
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError('SSH manager must not run')
+        ),
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'must-not-resolve.invalid',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'command_set_id': 'missing-set',
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {'error': 'Command set not found', 'client_request_id': None},
+    )]
+
+
+@pytest.mark.parametrize(
+    ('mode', 'expected_error'),
+    [
+        ('missing_reference', "Command set 'Bootstrap' step 1 references a missing command"),
+        ('oversized_resolution', 'Startup commands must not exceed 4096 characters'),
+    ],
+)
+def test_unresolvable_saved_set_stops_before_connection_validation(
+        app, monkeypatch, mode, expected_error):
+    from flask import request
+    from app import command_manager, command_set_manager
+    import app.socket_events as socket_events
+
+    username = f'set_{mode}'
+    user_id, sid = create_socket_user(app, username)
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Mutable', 'echo ready', '', 'Mutable command', ['all'], 'custom'
+        )
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Bootstrap',
+            'steps': [{'type': 'library', 'command_id': command['id']}],
+        })
+        assert error is None
+        if mode == 'missing_reference':
+            assert command_manager.save_user_commands(user_id, []) is True
+        else:
+            assert command_manager.update_user_command(
+                user_id, command['id'], 'Mutable', 'x' * 4097, '',
+                'Mutable command', ['all'], 'custom'
+            ) is True
+
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('connection validation or DNS must not run')
+        ),
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'must-not-resolve.invalid',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'command_set_id': command_set['id'],
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {'error': expected_error, 'client_request_id': None},
+    )]

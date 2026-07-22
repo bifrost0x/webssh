@@ -13,6 +13,7 @@ from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_tailscale_ssh_usage)
 from .tailscale_ssh import validate_tailscale_ssh_access
 from .startup_commands import normalize_startup_commands
+from .storage_utils import storage_lock
 from . import binary_transfer, connection_pool
 import base64
 import os
@@ -264,9 +265,22 @@ def handle_ssh_connect(data, current_user=None):
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
 
-        startup_commands, startup_commands_error = normalize_startup_commands(
-            data.get('startup_commands', '')
-        )
+        command_set_id = data.get('command_set_id')
+        if command_set_id is not None:
+            from . import command_set_manager
+
+            with storage_lock(f'command-config:{current_user.id}'):
+                startup_commands, startup_commands_error = command_set_manager.resolve_command_set(
+                    current_user.id, command_set_id
+                )
+            if not startup_commands_error:
+                startup_commands, startup_commands_error = normalize_startup_commands(
+                    startup_commands
+                )
+        else:
+            startup_commands, startup_commands_error = normalize_startup_commands(
+                data.get('startup_commands', '')
+            )
         if startup_commands_error:
             emit_error(startup_commands_error)
             return
