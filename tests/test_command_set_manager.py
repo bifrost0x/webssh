@@ -220,7 +220,14 @@ def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monke
                 {'type': 'library', 'command_id': 'cmd-echo'},
                 {
                     'type': 'inline',
-                    'command': '  systemctl restart nginx\n\n# note\nsudo reboot\tsafe',
+                    'command': (
+                        '  systemctl restart nginx\n\n# note\n'
+                        'sudo reboot\tsafe\n'
+                        'sudo; echo semicolon\n'
+                        'sudo&&echo and\n'
+                        'sudo||echo or\n'
+                        'sudo>output'
+                    ),
                 },
             ],
         })
@@ -235,7 +242,11 @@ def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monke
         '  sudo systemctl restart nginx\n'
         '\n'
         '# note\n'
-        'sudo reboot\tsafe'
+        'sudo reboot\tsafe\n'
+        'sudo; echo semicolon\n'
+        'sudo&&echo and\n'
+        'sudo||echo or\n'
+        'sudo>output'
     )
 
 

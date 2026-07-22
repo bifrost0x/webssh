@@ -10,6 +10,7 @@ from .storage_utils import atomic_write_json, storage_lock
 
 
 COMMAND_SET_NAME_MAX = 128
+SUDO_TOKEN_BOUNDARIES = ' \t;&|()<>'
 
 
 def _prefix_commands_with_sudo(value):
@@ -19,8 +20,11 @@ def _prefix_commands_with_sudo(value):
         leading = line[:len(line) - len(stripped)]
         already_sudo = (
             stripped == 'sudo'
-            or stripped.startswith('sudo ')
-            or stripped.startswith('sudo\t')
+            or (
+                stripped.startswith('sudo')
+                and len(stripped) > len('sudo')
+                and stripped[len('sudo')] in SUDO_TOKEN_BOUNDARIES
+            )
         )
         if not stripped or stripped.startswith('#') or already_sudo:
             lines.append(line)

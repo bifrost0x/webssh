@@ -239,8 +239,7 @@ with `sudo`; blank and comment-only lines remain unchanged. Existing command set
 
 WebSSH does not store or answer a sudo password. If the remote account requires
 one, its normal prompt appears in the terminal. The added prefixes count toward
-the existing maximum 4096 characters for the resolved command text. No
-additional environment variable, Compose setting, or service is required.
+the existing maximum 4096 characters for the resolved command text.
 
 Profiles store only the selected command-set ID. Editing a set or one of its
 referenced library commands therefore updates every profile that uses it. A set
