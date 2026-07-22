@@ -66,13 +66,13 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Broadcast Input** - Send a command to all open SSH sessions simultaneously (cluster-SSH style)
 - **Multi-Session Support** - Up to 10 concurrent SSH sessions with tabs
 - **Split Panes** - 1, 2, or 4-pane layouts for monitoring multiple servers
-- **Session Persistence** - Sessions survive page refreshes
+- **Session Restoration** - Restore live sessions after a page refresh without injecting terminal input
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
-- **Manual Reconnect** - Reconnect from a session tab; SSH-key sessions can reconnect directly, while password sessions reopen the pre-filled connection form
+- **Manual Reconnect** - Reconnect from a session tab; SSH-key and Tailscale sessions can reconnect directly, while password sessions reopen the pre-filled connection form
 - **Post-Connect Command Sets** - Build named, ordered command sequences and assign one to a connection or saved profile
 - **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
 - **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar
-- **Copy/Paste** - Full clipboard support
+- **Copy/Paste** - `Ctrl+C` copies selected terminal text but still sends an interrupt when nothing is selected; `Ctrl+V` pastes (`Cmd+C` / `Cmd+V` on macOS)
 - **Keyboard Shortcuts** - Ctrl+K command palette, Ctrl+F search, Ctrl+1–9 tab switching
 - **Terminal Search** - Regex or plain-text in-terminal search (Ctrl+F)
 - **Save Transcript** - Download the session output as a text file
@@ -117,6 +117,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Host Key Auditing** - Persistent `known_hosts` policy with change detection
 - **Audit Logging** - Structured JSON logs for auth, SSH, and file events
 - **Session Ownership Checks** - Guards against cross-user session hijacking
+- **Tailscale SSH** - Optional credential-free SSH through the WebSSH node's shared Tailscale identity, restricted by WebSSH users, targets, remote users, and tailnet policy
 
 ### Customization
 - **10 Themes** - Dark, light, and colorful options
@@ -131,7 +132,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Mobile-Friendly** - Responsive layout for phones and tablets
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/commandlibrary.png" alt="Command Library" width="700">
+  <img src="assets/commandlibrary.png" alt="Unified Command Library and Command Sets workspace" width="900">
 </p>
 <p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/keys.png" alt="SSH Key Management" width="700">
@@ -206,6 +207,14 @@ See [Tailscale SSH deployment and security](docs/tailscale-ssh.md) for all
 configuration variables, ACL guidance, audit behavior, and a Docker sidecar
 example with persistent Tailscale state.
 
+Only authorized WebSSH users see **Tailscale SSH** as an authentication method.
+They can select it together with a saved profile and an optional post-connect
+command set in the normal connection dialog.
+
+<p align="center">
+  <img src="assets/connection-options.png" alt="Connection dialog with Tailscale SSH and a selected command set" width="800">
+</p>
+
 ### Persistent tmux Sessions
 
 The provided `docker-compose.yml` enables persistent tmux sessions and selects
@@ -233,6 +242,10 @@ override or intentionally leave the override empty. Free-text steps can stay in
 the set or be moved into the command library with **Save as library command**.
 Steps can be reordered by drag and drop or by the accessible up/down buttons.
 
+<p align="center">
+  <img src="assets/command-sets.gif" alt="Creating a reusable command set and selecting it for a new SSH connection" width="900">
+</p>
+
 New command sets enable **Run commands with sudo** by default. When enabled,
 WebSSH prefixes each non-empty resolved command line unless it already starts
 with `sudo`; blank and comment-only lines remain unchanged. Existing command sets from an earlier version and sets produced by legacy conversion keep sudo disabled, so upgrading or converting does not change what runs.
@@ -250,12 +263,12 @@ profiles or sets that must be changed first.
 After a new SSH connection succeeds, WebSSH resolves the latest referenced
 commands on the server, validates the combined text (maximum 4096 characters),
 and sends the steps to the remote interactive shell in their saved order.
-Resolved command-set steps are joined with `&&`, so the next block starts only
-when the preceding block succeeds. Line breaks
-inside a free-text step remain unchanged; the exit status of that block's final
-command controls whether the next block starts. The commands run on the remote
-SSH host, never inside the WebSSH container. Reattaching to an existing
-persistent tmux session does not run them again.
+Resolved command-set steps are joined with `&&` only between steps, so the next
+block starts only when the preceding block succeeds. WebSSH does not rewrite a
+step: line breaks inside a free-text step remain unchanged, including its
+authored shell control flow, and the final command's exit status determines
+whether the next step starts. The commands run on the remote SSH host, never
+inside the WebSSH container. Reattaching to an existing persistent tmux session does not run them again.
 
 Existing profiles that still contain the former free-text startup commands keep
 working after an update. They show a legacy notice in the connection dialog and
@@ -265,11 +278,9 @@ new set reference is valid. The profile's legacy startup commands retain their
 original multiline behavior until they are converted.
 
 Command output and errors appear normally in the terminal. The remote shell
-evaluates the `&&` chain; WebSSH does not interpret exit statuses itself. Within
-a multiline free-text block, control flow continues to follow the authored text
-and the remote shell. Treat command sets like any other remote administration
-automation: review their contents and grant WebSSH accounts only the SSH
-privileges they actually need.
+evaluates the `&&` chain; WebSSH does not interpret exit statuses itself. Treat
+command sets like any other remote administration automation: review their
+contents and grant WebSSH accounts only the SSH privileges they actually need.
 
 No additional environment variable, Compose setting, frontend build step, or
 external service is required. Command sets are stored per user in the existing
@@ -714,7 +725,7 @@ commands above. Dependabot keeps `package.json` up to date.
 
 ### Project Structure
 
-> Vollständiger Abhängigkeitsgraphdes Tools
+> Vollständiger Abhängigkeitsgraph des Tools
 <a href="https://bifrost0x.github.io/webssh/">
   <img src="https://img.shields.io/badge/Interaktive%20Code--Map-%E2%86%97%20live-blueviolet?style=for-the-badge" alt="Interaktive Code-Map">
 </a>
@@ -722,7 +733,7 @@ commands above. Dependabot keeps `package.json` up to date.
 
 ```
 webssh/
-├── app/                    # Flask application (20 modules)
+├── app/                    # Flask application (24 modules)
 │   ├── __init__.py        # App factory, routes, security headers
 │   ├── auth.py            # Authentication + rate limiting
 │   ├── models.py          # SQLAlchemy models
@@ -745,7 +756,7 @@ webssh/
 │   └── decorators.py      # Shared decorators
 ├── static/
 │   ├── css/               # Stylesheets (4 files)
-│   ├── js/                # Frontend JavaScript (15 modules)
+│   ├── js/                # Frontend JavaScript (18 modules)
 │   └── vendor/            # Vendored browser libs (see Frontend Assets)
 ├── templates/             # Jinja2 templates (5 files)
 ├── config.py              # Central configuration
