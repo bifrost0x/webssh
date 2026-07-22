@@ -94,3 +94,20 @@ def test_command_library_can_return_a_new_command_to_inline_promotion():
     assert 'pendingSaveCallback' in source
     assert re.search(r'showAddCommandForm\([^)]*options', source)
     assert "window.socket.emit('add_command', data," in source
+
+
+def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
+    readme = read('README.md')
+
+    for phrase in (
+        'Create new',
+        'Command Sets',
+        'Save as library command',
+        'maximum 4096 characters',
+        'persistent tmux session does not run them again',
+        'former free-text startup commands keep',
+        'working after an update',
+        'cannot be deleted while a profile references it',
+        'No additional environment variable, Compose setting',
+    ):
+        assert phrase in readme

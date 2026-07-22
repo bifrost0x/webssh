@@ -69,7 +69,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Session Persistence** - Sessions survive page refreshes
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
 - **Manual Reconnect** - Reconnect from a session tab; SSH-key sessions can reconnect directly, while password sessions reopen the pre-filled connection form
-- **Commands After Connecting** - Optionally send multiple lines to the remote shell as soon as a new SSH connection is ready
+- **Post-Connect Command Sets** - Build named, ordered command sequences and assign one to a connection or saved profile
 - **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
 - **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar
 - **Copy/Paste** - Full clipboard support
@@ -120,11 +120,12 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 
 ### Customization
 - **10 Themes** - Dark, light, and colorful options
-- **5 Languages** - English, German, French, Spanish, Chinese
+- **6 Languages** - English, Vietnamese, German, French, Spanish, Chinese
 - **Connection Profiles** - Save server configurations
 - **Jump Hosts / ProxyJump** - Reach targets through a bastion; save jump hosts once, pick them per connection, with a clear "via &lt;bastion&gt;" indicator on the session
 - **Command Library** - Store frequently used commands
 - **OS-Aware Command Library** - Filter commands by detected OS (Linux / macOS / BSD / Windows)
+- **Reusable Command Sets** - Combine library commands and free-text steps, reorder them, and reuse the result across profiles
 - **SSH Key Management** - Import RSA, Ed25519, and ECDSA keys, encrypted at rest
 - **Notepad** - Persistent scratchpad for notes, commands, and snippets
 - **Mobile-Friendly** - Responsive layout for phones and tablets
@@ -219,21 +220,47 @@ session from the WebSSH interface terminates its remote tmux session.
 
 ### Commands After Connecting
 
-The connection dialog accepts up to 4096 characters of optional, multi-line
-commands. After a new SSH connection succeeds, WebSSH sends the lines to the
-remote interactive shell in the order entered and submits the final line as
-well. They run on the remote SSH host, never inside the WebSSH container.
+The connection dialog lets you select one optional, named **command set**. Use
+**Create new** directly beside the selector, or open **Command Sets** from the
+account menu to manage all sets. The builder can search the complete command
+library by name, command text, parameters, description, or category and filter
+the results by operating system.
 
-Saving a connection profile stores these commands, and selecting that profile
-loads them back into the dialog. Leaving the field empty keeps the existing
-connection behavior; profiles created before this option was added continue to
-work unchanged. Reattaching to an existing persistent tmux session does not run
-the commands again.
+A command set is an ordered list of steps. A step can reference a command from
+the command library or contain free text. Library steps use the command's
+current parameters by default; disable **Use library parameters** to provide an
+override or intentionally leave the override empty. Free-text steps can stay in
+the set or be moved into the command library with **Save as library command**.
+Steps can be reordered by drag and drop or by the accessible up/down buttons.
+
+Profiles store only the selected command-set ID. Editing a set or one of its
+referenced library commands therefore updates every profile that uses it. A set
+cannot be deleted while a profile references it, and a user-created library
+command cannot be deleted while a set references it. The UI reports the
+profiles or sets that must be changed first.
+
+After a new SSH connection succeeds, WebSSH resolves the latest referenced
+commands on the server, validates the combined text (maximum 4096 characters),
+and sends the steps to the remote interactive shell in their saved order. The
+commands run on the remote SSH host, never inside the WebSSH container.
+Reattaching to an existing persistent tmux session does not run them again.
+
+Existing profiles that still contain the former free-text startup commands keep
+working after an update. They show a legacy notice in the connection dialog and
+can be converted into a named set. Conversion creates the set first, then links
+the profile; the old text remains stored as a fallback but is ignored while the
+new set reference is valid.
 
 Command output and errors appear normally in the terminal. WebSSH does not
 interpret a command's exit status or stop later lines because an earlier command
 failed; any different control flow still follows the behavior of the remote
-shell and the commands themselves.
+shell and the commands themselves. Treat command sets like any other remote
+administration automation: review their contents and grant WebSSH accounts only
+the SSH privileges they actually need.
+
+No additional environment variable, Compose setting, frontend build step, or
+external service is required. Command sets are stored per user in the existing
+`DATA_DIR` volume alongside profiles and the command library.
 
 ## Installation
 
