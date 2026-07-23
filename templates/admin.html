@@ -95,11 +95,11 @@
         </section>
     </main>
 
-    <div class="modal" id="addUserModal" role="dialog" aria-modal="true">
-        <div class="modal-content modal-small">
+    <div class="modal modal-small" id="addUserModal" role="dialog" aria-modal="true" aria-labelledby="addUserModalTitle" aria-hidden="true">
+        <div class="modal-content">
             <div class="modal-header">
-                <h2 data-i18n="admin.addUser">Add User</h2>
-                <span class="close" id="closeAddUser" aria-label="Close">&times;</span>
+                <h2 id="addUserModalTitle" data-i18n="admin.addUser">Add User</h2>
+                <span class="close" id="closeAddUser" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="form-group">

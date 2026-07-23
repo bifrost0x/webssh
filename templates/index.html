@@ -169,11 +169,11 @@
         </div>
     </main>
 
-    <div class="modal panel-left" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle">
+    <div class="modal modal-wide" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">New SSH Connection</h2>
-                <span class="close" id="closeConnectionModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <form id="connectionForm">
@@ -226,7 +226,7 @@
                     <div class="form-group" id="passwordGroup">
                         <label for="passwordInput" data-i18n="auth.password">Password *</label>
                         <div class="input-wrapper with-toggle">
-                            <input type="password" id="passwordInput" class="form-control" data-i18n="auth.password" placeholder="Password">
+                            <input type="password" id="passwordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
                             <button type="button" class="password-toggle" data-target="passwordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
                         </div>
                         <div class="field-hint" id="passwordHint"></div>
@@ -251,7 +251,7 @@
                     <div class="form-group hidden" id="jumpHostPasswordGroup">
                         <label for="jumpHostPasswordInput" data-i18n="connection.jumpHostPassword">Jump Host Password</label>
                         <div class="input-wrapper with-toggle">
-                            <input type="password" id="jumpHostPasswordInput" class="form-control" placeholder="Password">
+                            <input type="password" id="jumpHostPasswordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
                             <button type="button" class="password-toggle" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
                         </div>
                         <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
@@ -260,10 +260,10 @@
                     <div class="form-group post-connect-config">
                         <div class="post-connect-label">
                             <span data-i18n="connection.runAfterConnect">Run after connecting (optional)</span>
-                            <button type="button" class="info-tooltip-trigger" aria-label="About post-connect modes" aria-describedby="postConnectModeTooltip">?</button>
+                            <button type="button" class="info-tooltip-trigger" aria-label="About post-connect modes" data-i18n-aria-label="accessibility.aboutPostConnectModes" aria-describedby="postConnectModeTooltip">?</button>
                             <span id="postConnectModeTooltip" class="info-tooltip" role="tooltip" data-i18n="connection.runAfterConnectTooltip">Choose one source. The exact command is shown before connecting.</span>
                         </div>
-                        <div class="post-connect-mode-selector" role="group" aria-label="Post-connect command source">
+                        <div class="post-connect-mode-selector" role="group" aria-label="Post-connect command source" data-i18n-aria-label="accessibility.postConnectSource">
                             <button type="button" id="connectionCommandModeNone" class="post-connect-mode active" data-command-mode="none" aria-pressed="true" data-i18n="commandModes.none">None</button>
                             <button type="button" id="connectionCommandModeSet" class="post-connect-mode" data-command-mode="command_set" aria-pressed="false" data-i18n="commandModes.commandSet">Command Set</button>
                             <button type="button" id="connectionCommandModeCommand" class="post-connect-mode" data-command-mode="command" aria-pressed="false" data-i18n="commandModes.command">Command</button>
@@ -289,7 +289,7 @@
                             </div>
                             <label for="connectionCommandParameters" class="post-connect-parameters-label">
                                 <span data-i18n="commands.parameters">Parameters</span>
-                                <button type="button" class="info-tooltip-trigger" aria-label="About parameter overrides" aria-describedby="commandParametersTooltip">?</button>
+                                <button type="button" class="info-tooltip-trigger" aria-label="About parameter overrides" data-i18n-aria-label="accessibility.aboutParameterOverrides" aria-describedby="commandParametersTooltip">?</button>
                                 <span id="commandParametersTooltip" class="info-tooltip" role="tooltip" data-i18n="commandModes.parametersTooltip">Leave unchanged to use the saved default. Editing parameters does not modify the saved Command.</span>
                             </label>
                             <input type="text" id="connectionCommandParameters" class="form-control" maxlength="4096">
@@ -315,9 +315,9 @@
                     <div class="form-group">
                         <label class="checkbox-label">
                             <input type="checkbox" id="useTmuxCheck" {% if tmux_default %}checked{% endif %}>
-                            <span>Persistent session (tmux)</span>
+                            <span data-i18n="session.persistentTmux">Persistent session (tmux)</span>
                         </label>
-                        <div class="field-hint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
+                        <div class="field-hint" data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
                     </div>
                     {% endif %}
 
@@ -333,11 +333,11 @@
         </div>
     </div>
 
-    <div class="modal panel-left" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle">
-        <div class="modal-content modal-large">
+    <div class="modal modal-large" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle" aria-hidden="true">
+        <div class="modal-content">
             <div class="modal-header">
                 <h2 id="profileManagementTitle" data-i18n="profiles.manage">Profiles</h2>
-                <span class="close" id="closeProfileManagementModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <section id="profileManagementView">
@@ -430,11 +430,11 @@
         </div>
     </div>
 
-    <div class="modal panel-right" id="keyManagementModal" role="dialog" aria-modal="true" aria-labelledby="keyManagementTitle">
+    <div class="modal modal-wide" id="keyManagementModal" role="dialog" aria-modal="true" aria-labelledby="keyManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="keyManagementTitle" data-i18n="keys.manageSSHKeys">Manage SSH Keys</h2>
-                <span class="close" id="closeKeyModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
 
@@ -443,7 +443,7 @@
                     <form id="keyUploadForm">
                         <div class="form-group">
                             <label for="keyNameInput" data-i18n="keys.keyName">Key Name</label>
-                            <input type="text" id="keyNameInput" class="form-control" data-i18n="keys.keyNamePlaceholder" placeholder="Production Server Key" required>
+                            <input type="text" id="keyNameInput" class="form-control" data-i18n-placeholder="keys.keyNamePlaceholder" placeholder="Production Server Key" required>
                         </div>
                         <div class="form-group">
                             <label for="keyContentInput" data-i18n="keys.privateKey">Private Key</label>
@@ -462,20 +462,20 @@
         </div>
     </div>
 
-    <div class="modal" id="commandWorkspaceModal" role="dialog" aria-modal="true" aria-labelledby="commandWorkspaceTitle">
-        <div class="modal-content modal-xlarge command-workspace-content command-set-modal-content">
+    <div class="modal modal-xlarge" id="commandWorkspaceModal" role="dialog" aria-modal="true" aria-labelledby="commandWorkspaceTitle" aria-hidden="true">
+        <div class="modal-content command-workspace-content command-set-modal-content">
             <div class="modal-header">
                 <h2 id="commandWorkspaceTitle" data-i18n="commands.workspace">Commands</h2>
-                <span class="close" id="closeCommandWorkspaceModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
-            <div class="command-workspace-tabs" role="tablist" aria-label="Command management">
+            <div class="command-workspace-tabs" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
                 <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
                 <button type="button" id="commandLibraryTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandLibraryPanel" data-command-workspace-section="library" data-i18n="commands.library">Command Library</button>
             </div>
             <div class="modal-body command-workspace-body">
                 <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
                     <div class="command-toolbar">
-                        <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
+                        <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
                         <button class="btn btn-primary" id="addCommandBtn"><span data-i18n="commands.addCommand">Add Command</span> ➕</button>
                     </div>
                     <div class="os-filter-toolbar">
@@ -538,7 +538,7 @@
                             <section class="command-set-library-pane" aria-labelledby="commandSetLibraryHeading">
                                 <h4 id="commandSetLibraryHeading" data-i18n="commands.library">Command Library</h4>
                                 <input id="commandSetSearchInput" class="form-control" type="search" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
-                                <div class="command-set-os-filters" aria-label="Operating system filter">
+                                <div class="command-set-os-filters" aria-label="Operating system filter" data-i18n-aria-label="accessibility.operatingSystemFilter">
                                     <button type="button" class="os-filter-btn command-set-os-filter active" data-os="all" data-i18n="commands.osAll">All</button>
                                     <button type="button" class="os-filter-btn command-set-os-filter" data-os="linux">Linux</button>
                                     <button type="button" class="os-filter-btn command-set-os-filter" data-os="macos">macOS</button>
@@ -566,11 +566,11 @@
         </div>
     </div>
 
-    <div class="modal panel-left" id="jumpHostManagementModal" role="dialog" aria-modal="true" aria-labelledby="jumpHostManagementTitle">
+    <div class="modal modal-wide" id="jumpHostManagementModal" role="dialog" aria-modal="true" aria-labelledby="jumpHostManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="jumpHostManagementTitle" data-i18n="jumphosts.manage">Manage Jump Hosts</h2>
-                <span class="close" id="closeJumpHostModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="key-upload-section">
@@ -619,11 +619,11 @@
         </div>
     </div>
 
-    <div class="modal" id="fileTransferModal" role="dialog" aria-modal="true" aria-labelledby="fileTransferTitle">
+    <div class="modal" id="fileTransferModal" role="dialog" aria-modal="true" aria-labelledby="fileTransferTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="fileTransferTitle" data-i18n="files.fileTransfer">File Transfer</h2>
-                <span class="close" id="closeFileTransferModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeFileTransferModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="transfer-section">
@@ -681,17 +681,17 @@
 
     <div class="notification-container" id="notificationContainer"></div>
 
-    <div class="modal" id="commandFormModal" role="dialog" aria-modal="true" aria-labelledby="commandFormTitle">
+    <div class="modal" id="commandFormModal" role="dialog" aria-modal="true" aria-labelledby="commandFormTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandFormTitle" data-i18n="commands.addCommand">Add New Command</h2>
-                <span class="close" id="closeCommandFormModal" aria-label="Close">&times;</span>
+                <span class="close" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <form id="commandForm">
                     <div class="form-group">
                         <label for="commandFormName"><span data-i18n="commands.name">Name</span> *</label>
-                        <input type="text" id="commandFormName" class="form-control" data-i18n="commands.namePlaceholder" placeholder="e.g., Update System" required>
+                        <input type="text" id="commandFormName" class="form-control" data-i18n-placeholder="commands.namePlaceholder" placeholder="e.g., Update System" required>
                     </div>
 
                     <div class="form-group">
@@ -701,12 +701,12 @@
 
                     <div class="form-group">
                         <label for="commandFormParams"><span data-i18n="commands.parameters">Parameters</span> (<span data-i18n="common.optional">Optional</span>)</label>
-                        <input type="text" id="commandFormParams" class="form-control" data-i18n="commands.parametersPlaceholder" placeholder="e.g., -y">
+                        <input type="text" id="commandFormParams" class="form-control" data-i18n-placeholder="commands.parametersPlaceholder" placeholder="e.g., -y">
                     </div>
 
                     <div class="form-group">
                         <label for="commandFormDescription"><span data-i18n="commands.description">Description</span> *</label>
-                        <textarea id="commandFormDescription" class="form-control" rows="3" data-i18n="commands.descriptionPlaceholder" placeholder="e.g., Update package repository lists" required></textarea>
+                        <textarea id="commandFormDescription" class="form-control" rows="3" data-i18n-placeholder="commands.descriptionPlaceholder" placeholder="e.g., Update package repository lists" required></textarea>
                     </div>
 
                     <div class="form-group">
@@ -746,24 +746,24 @@
         </div>
     </div>
 
-    <div class="modal" id="commandPaletteModal" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
-        <div class="modal-content modal-small">
+    <div class="modal modal-small" id="commandPaletteModal" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle" aria-hidden="true">
+        <div class="modal-content">
             <div class="modal-header">
-                <h2 id="commandPaletteTitle">Command Palette</h2>
-                <span class="close" id="closeCommandPaletteModal" aria-label="Close command palette">&times;</span>
+                <h2 id="commandPaletteTitle" data-i18n="palette.title">Command Palette</h2>
+                <span class="close" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
-                <input type="text" id="commandPaletteInput" class="form-control" placeholder="Type a command..." autocomplete="off">
+                <input type="text" id="commandPaletteInput" class="form-control" data-i18n-placeholder="palette.placeholder" placeholder="Type a command..." autocomplete="off">
                 <div class="palette-list" id="commandPaletteList"></div>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="shortcutsModal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
-        <div class="modal-content modal-small">
+    <div class="modal modal-small" id="shortcutsModal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" aria-hidden="true">
+        <div class="modal-content">
             <div class="modal-header">
-                <h2 id="shortcutsTitle">Keyboard Shortcuts</h2>
-                <span class="close" id="closeShortcutsModal" aria-label="Close shortcuts">&times;</span>
+                <h2 id="shortcutsTitle" data-i18n="shortcuts.title">Keyboard Shortcuts</h2>
+                <span class="close" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="shortcuts-list" id="shortcutsList"></div>
@@ -771,36 +771,36 @@
         </div>
     </div>
 
-    <div class="modal" id="dropUploadModal" role="dialog" aria-modal="true" aria-labelledby="dropUploadTitle">
+    <div class="modal" id="dropUploadModal" role="dialog" aria-modal="true" aria-labelledby="dropUploadTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="dropUploadTitle">Upload File</h2>
-                <span class="close" id="closeDropUploadModal" aria-label="Close upload dialog">&times;</span>
+                <h2 id="dropUploadTitle" data-i18n="dropUpload.title">Upload File</h2>
+                <span class="close" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <form id="dropUploadForm">
                     <div class="form-group">
-                        <label for="dropUploadFileName">File</label>
+                        <label for="dropUploadFileName" data-i18n="files.localFile">File</label>
                         <input type="text" id="dropUploadFileName" class="form-control" readonly>
                     </div>
                     <div class="form-group">
-                        <label for="dropUploadPath">Remote Path</label>
+                        <label for="dropUploadPath" data-i18n="files.remotePath">Remote Path</label>
                         <input type="text" id="dropUploadPath" class="form-control" placeholder="./file.txt" required>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" id="cancelDropUploadBtn">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Upload</button>
+                        <button type="button" class="btn btn-secondary" id="cancelDropUploadBtn" data-i18n="common.cancel">Cancel</button>
+                        <button type="submit" class="btn btn-primary" data-i18n="files.upload">Upload</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="paneAssignmentModal" role="dialog" aria-modal="true" aria-labelledby="paneAssignmentTitle">
+    <div class="modal" id="paneAssignmentModal" role="dialog" aria-modal="true" aria-labelledby="paneAssignmentTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="paneAssignmentTitle" data-i18n="panes.assignTitle">Assign Sessions to Panes</h2>
-                <span class="close" id="closePaneAssignmentModal" aria-label="Close">&times;</span>
+                <span class="close" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="pane-assignment-info">
@@ -817,34 +817,34 @@
         </div>
     </div>
 
-    <div class="modal" id="filePreviewModal" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle">
-        <div class="modal-content modal-xlarge">
+    <div class="modal modal-xlarge" id="filePreviewModal" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle" aria-hidden="true">
+        <div class="modal-content">
             <div class="modal-header">
                 <div class="preview-header-info">
-                    <h2 id="filePreviewTitle">File Preview</h2>
+                    <h2 id="filePreviewTitle" data-i18n="preview.title">File Preview</h2>
                     <span class="preview-filename" id="previewFilename"></span>
                     <span class="preview-size" id="previewSize"></span>
                 </div>
                 <div class="preview-header-actions">
-                    <button class="btn btn-icon" id="previewCopyBtn" title="Copy to clipboard">
+                    <button class="btn btn-icon" id="previewCopyBtn" title="Copy to clipboard" data-i18n-title="preview.copy">
                         <span class="material-icons">content_copy</span>
                     </button>
-                    <button class="btn btn-icon" id="previewDownloadBtn" title="Download file">
+                    <button class="btn btn-icon" id="previewDownloadBtn" title="Download file" data-i18n-title="preview.download">
                         <span class="material-icons">download</span>
                     </button>
                     <button class="btn btn-icon hidden" id="previewEditBtn" title="Edit file" data-i18n-title="editor.edit">
                         <span class="material-icons">edit</span>
                     </button>
-                    <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh">
+                    <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh" data-i18n-title="preview.refresh">
                         <span class="material-icons">refresh</span>
                     </button>
-                    <span class="close" id="closeFilePreviewModal" aria-label="Close">&times;</span>
+                    <span class="close" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
                 </div>
             </div>
             <div class="modal-body preview-modal-body">
                 <div class="preview-loading hidden" id="previewLoading">
                     <div class="spinner"></div>
-                    <span>Loading preview...</span>
+                    <span data-i18n="preview.loading">Loading preview...</span>
                 </div>
                 <div class="preview-error hidden" id="previewError">
                     <span class="material-icons">error_outline</span>
@@ -852,8 +852,8 @@
                 </div>
                 <div class="preview-binary hidden" id="previewBinary">
                     <span class="material-icons">insert_drive_file</span>
-                    <p>Binary file - cannot display preview</p>
-                    <button class="btn btn-primary" id="previewBinaryDownload">Download File</button>
+                    <p data-i18n="preview.binaryUnavailable">Binary file - cannot display preview</p>
+                    <button class="btn btn-primary" id="previewBinaryDownload" data-i18n="preview.downloadFile">Download File</button>
                 </div>
                 <div class="preview-image hidden" id="previewImage">
                     <img id="previewImageElement" alt="Image preview" />

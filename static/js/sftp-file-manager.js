@@ -56,12 +56,16 @@ class SFTPFileManager {
     createModal() {
         const modal = document.createElement('div');
         modal.id = 'sftpFileManager';
-        modal.className = 'modal';
+        modal.className = 'modal modal-xlarge';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'fmModalTitle');
+        modal.setAttribute('aria-hidden', 'true');
         modal.innerHTML = `
             <div class="modal-content fm-modal-fullwidth">
                 <div class="modal-header">
-                    <h2><span class="material-icons">folder_open</span> <span data-i18n="fm.title">File Manager</span></h2>
-                    <span class="close" id="fmClose">&times;</span>
+                    <h2 id="fmModalTitle"><span class="material-icons">folder_open</span> <span data-i18n="fm.title">File Manager</span></h2>
+                    <span class="close" id="fmClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
                 </div>
                 <div class="modal-body">
                     <!-- Toolbar -->
@@ -248,12 +252,16 @@ class SFTPFileManager {
     createQuickConnectModal() {
         const qcModal = document.createElement('div');
         qcModal.id = 'fmQuickConnectModal';
-        qcModal.className = 'modal';
+        qcModal.className = 'modal modal-small';
+        qcModal.setAttribute('role', 'dialog');
+        qcModal.setAttribute('aria-modal', 'true');
+        qcModal.setAttribute('aria-labelledby', 'fmQcModalTitle');
+        qcModal.setAttribute('aria-hidden', 'true');
         qcModal.innerHTML = `
             <div class="modal-content fm-qc-modal">
                 <div class="modal-header">
-                    <h2 data-i18n="fm.qc.title">Connect to Server</h2>
-                    <span class="close" id="fmQcClose">&times;</span>
+                    <h2 id="fmQcModalTitle" data-i18n="fm.qc.title">Connect to Server</h2>
+                    <span class="close" id="fmQcClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
                 </div>
                 <div class="modal-body">
                     <form id="fmQcForm">
@@ -672,7 +680,12 @@ class SFTPFileManager {
 
     open() {
         this.isOpen = true;
-        this.modal.classList.add('show');
+        if (window.ModalManager) {
+            window.ModalManager.open(this.modal);
+        } else {
+            this.modal.classList.add('show');
+            this.modal.setAttribute('aria-hidden', 'false');
+        }
         this.applyTranslations();
         this.updateSessionLists();
 
@@ -709,7 +722,12 @@ class SFTPFileManager {
 
     close() {
         this.isOpen = false;
-        this.modal.classList.remove('show');
+        if (window.ModalManager) {
+            window.ModalManager.close(this.modal);
+        } else {
+            this.modal.classList.remove('show');
+            this.modal.setAttribute('aria-hidden', 'true');
+        }
         this.closeContextMenu();
 
         if (window.dragDropManager) {
@@ -924,7 +942,12 @@ class SFTPFileManager {
             });
         }
 
-        this.qcModal.classList.add('show');
+        if (window.ModalManager) {
+            window.ModalManager.open(this.qcModal);
+        } else {
+            this.qcModal.classList.add('show');
+            this.qcModal.setAttribute('aria-hidden', 'false');
+        }
         document.getElementById('fmQcHost').focus();
     }
 
@@ -959,7 +982,15 @@ class SFTPFileManager {
     }
 
     closeQuickConnect() {
-        this.qcModal.classList.remove('show');
+        if (window.ModalManager) {
+            window.ModalManager.close(this.qcModal);
+            if (this.modal.classList.contains('show')) {
+                window.ModalManager.activeModal = this.modal;
+            }
+        } else {
+            this.qcModal.classList.remove('show');
+            this.qcModal.setAttribute('aria-hidden', 'true');
+        }
         this.pendingQuickConnectPane = null;
         document.getElementById('fmQcForm').reset();
         document.getElementById('fmQcProfile').value = '';
@@ -2457,6 +2488,11 @@ class SFTPFileManager {
             const translation = window.i18n.t(key);
             if (translation) el.label = translation;
         });
+        this.modal.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+            const key = el.getAttribute('data-i18n-aria-label');
+            const translation = window.i18n.t(key);
+            if (translation) el.setAttribute('aria-label', translation);
+        });
 
         if (this.qcModal) {
             this.qcModal.querySelectorAll('[data-i18n]').forEach(el => {
@@ -2469,6 +2505,11 @@ class SFTPFileManager {
                 const key = el.getAttribute('data-i18n-title');
                 const translation = window.i18n.t(key);
                 if (translation) el.title = translation;
+            });
+            this.qcModal.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+                const key = el.getAttribute('data-i18n-aria-label');
+                const translation = window.i18n.t(key);
+                if (translation) el.setAttribute('aria-label', translation);
             });
         }
     }

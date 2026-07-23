@@ -123,3 +123,9 @@ window.JumpHostManager = {
         }
     }
 };
+
+window.addEventListener('languageChanged', () => {
+    window.JumpHostManager.renderSelect();
+    window.JumpHostManager.renderList();
+    window.ProfileManager?.renderEditorSelects();
+});

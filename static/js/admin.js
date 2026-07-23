@@ -142,8 +142,18 @@
 
         // Add-user modal
         const modal = document.getElementById('addUserModal');
-        const open = () => modal.classList.add('show');
-        const close = () => modal.classList.remove('show');
+        const open = () => {
+            if (!modal) { return; }
+            modal.classList.add('show');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('newUsername')?.focus();
+        };
+        const close = () => {
+            if (!modal) { return; }
+            modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
+            document.getElementById('adminAddUserBtn')?.focus();
+        };
         document.getElementById('adminAddUserBtn')?.addEventListener('click', open);
         document.getElementById('closeAddUser')?.addEventListener('click', close);
         modal?.addEventListener('click', (e) => { if (e.target === modal) { close(); } });

@@ -193,7 +193,14 @@ const ProfileManager = {
         if (!select) return;
 
         const current = select.value;
-        select.innerHTML = '<option value="">-- Select Profile --</option>';
+        select.replaceChildren();
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = this.t(
+            'connection.selectProfile',
+            '-- Select Profile --',
+        );
+        select.appendChild(placeholder);
 
         this.profiles.forEach(profile => {
             const option = document.createElement('option');
@@ -214,7 +221,14 @@ const ProfileManager = {
 
         selects.forEach(select => {
             const current = select.value;
-            select.innerHTML = '<option value="">-- Select SSH Key --</option>';
+            select.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = this.t(
+                'connection.selectSSHKey',
+                '-- Select SSH Key --',
+            );
+            select.appendChild(placeholder);
             this.keys.forEach(key => {
                 const option = document.createElement('option');
                 option.value = key.id;

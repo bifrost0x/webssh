@@ -35,43 +35,15 @@
         }, timeout);
     };
 
-    window.PanelManager = {
-        slots: { left: null, right: null },
-
-        open(panelEl) {
-            if (!panelEl) return;
-            const slot = panelEl.classList.contains('panel-left') ? 'left'
-                       : panelEl.classList.contains('panel-right') ? 'right' : null;
-            if (slot && this.slots[slot] && this.slots[slot] !== panelEl) {
-                this.close(this.slots[slot]);
-            }
-            if (slot) this.slots[slot] = panelEl;
-            panelEl.classList.add('show');
-            panelEl.removeAttribute('aria-hidden');
-        },
-
-        close(panelEl) {
-            if (!panelEl) return;
-            panelEl.classList.remove('show');
-            panelEl.setAttribute('aria-hidden', 'true');
-            const slot = Object.keys(this.slots).find(k => this.slots[k] === panelEl);
-            if (slot) this.slots[slot] = null;
-        },
-
-        closeAll() {
-            Object.values(this.slots).forEach(p => { if (p) this.close(p); });
-        }
-    };
-
     window.ModalManager = {
         activeModal: null,
+        previouslyFocused: new WeakMap(),
         focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
 
         open(modal) {
             if (!modal) return;
-            if (modal.classList.contains('panel-left') || modal.classList.contains('panel-right')) {
-                window.PanelManager.open(modal);
-                return;
+            if (document.activeElement && document.activeElement !== document.body) {
+                this.previouslyFocused.set(modal, document.activeElement);
             }
             modal.classList.add('show');
             modal.setAttribute('aria-hidden', 'false');
@@ -85,15 +57,16 @@
 
         close(modal) {
             if (!modal) return;
-            if (modal.classList.contains('panel-left') || modal.classList.contains('panel-right')) {
-                window.PanelManager.close(modal);
-                return;
-            }
             modal.classList.remove('show');
             modal.setAttribute('aria-hidden', 'true');
             if (this.activeModal === modal) {
                 this.activeModal = null;
             }
+            const previouslyFocused = this.previouslyFocused.get(modal);
+            if (previouslyFocused?.isConnected) {
+                previouslyFocused.focus();
+            }
+            this.previouslyFocused.delete(modal);
         },
 
         trapFocus(event) {
@@ -1752,34 +1725,40 @@
         const modal = document.getElementById('shortcutsModal');
         const list = document.getElementById('shortcutsList');
         const shortcuts = [
-            { keys: 'F1', label: 'Open Command Library' },
-            { keys: 'Ctrl+K', label: 'Open Command Palette' },
-            { keys: 'Ctrl+?', label: 'Show Shortcuts' },
-            { keys: 'Ctrl+Shift+N', label: 'New Connection' },
-            { keys: 'Ctrl+F', label: 'Search in Terminal' },
-            { keys: 'Ctrl/Cmd+C', label: 'Copy terminal selection' },
-            { keys: 'Ctrl/Cmd+V', label: 'Paste into terminal' },
-            { keys: 'Ctrl+1-9', label: 'Switch to tab 1-9' },
-            { keys: 'Ctrl+Tab', label: 'Next tab' },
-            { keys: 'Ctrl+Shift+Tab', label: 'Previous tab' },
-            { keys: 'F2', label: 'Rename file (in File Manager)' },
-            { keys: 'F5', label: 'Transfer file (in File Manager)' },
-            { keys: 'F7', label: 'New folder (in File Manager)' },
-            { keys: 'Delete', label: 'Delete selected (in File Manager)' },
-            { keys: 'Tab', label: 'Switch pane (in File Manager)' },
-            { keys: 'Ctrl+A', label: 'Select all (in File Manager)' },
-            { keys: 'Esc', label: 'Close modals' }
+            { keys: 'F1', labelKey: 'shortcuts.openCommandLibrary' },
+            { keys: 'Ctrl+K', labelKey: 'shortcuts.openCommandPalette' },
+            { keys: 'Ctrl+?', labelKey: 'shortcuts.showShortcuts' },
+            { keys: 'Ctrl+Shift+N', labelKey: 'shortcuts.newConnection' },
+            { keys: 'Ctrl+F', labelKey: 'shortcuts.searchTerminal' },
+            { keys: 'Ctrl/Cmd+C', labelKey: 'shortcuts.copyTerminal' },
+            { keys: 'Ctrl/Cmd+V', labelKey: 'shortcuts.pasteTerminal' },
+            { keys: 'Ctrl+1-9', labelKey: 'shortcuts.switchTab' },
+            { keys: 'Ctrl+Tab', labelKey: 'shortcuts.nextTab' },
+            { keys: 'Ctrl+Shift+Tab', labelKey: 'shortcuts.previousTab' },
+            { keys: 'F2', labelKey: 'shortcuts.renameFile' },
+            { keys: 'F5', labelKey: 'shortcuts.transferFile' },
+            { keys: 'F7', labelKey: 'shortcuts.newFolder' },
+            { keys: 'Delete', labelKey: 'shortcuts.deleteSelected' },
+            { keys: 'Tab', labelKey: 'shortcuts.switchPane' },
+            { keys: 'Ctrl+A', labelKey: 'shortcuts.selectAll' },
+            { keys: 'Esc', labelKey: 'shortcuts.closeModals' }
         ];
         if (!list) {
             return;
         }
-        list.innerHTML = '';
-        shortcuts.forEach(shortcut => {
-            const row = document.createElement('div');
-            row.className = 'shortcut-row';
-            row.innerHTML = `<strong>${shortcut.keys}</strong><span>${shortcut.label}</span>`;
-            list.appendChild(row);
-        });
+
+        const renderShortcuts = () => {
+            list.innerHTML = '';
+            shortcuts.forEach(shortcut => {
+                const row = document.createElement('div');
+                row.className = 'shortcut-row';
+                const label = window.i18n ? i18n.t(shortcut.labelKey) : shortcut.labelKey;
+                row.innerHTML = `<strong>${shortcut.keys}</strong><span>${label}</span>`;
+                list.appendChild(row);
+            });
+        };
+        renderShortcuts();
+        window.addEventListener('languageChanged', renderShortcuts);
 
         const closeBtn = document.getElementById('closeShortcutsModal');
         if (closeBtn) {
@@ -1800,15 +1779,15 @@
         }
 
         const actions = [
-            { label: 'New Connection', hint: 'Ctrl+Shift+N', action: () => document.getElementById('newConnectionBtn').click() },
-            { label: 'Command Library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
-            { label: 'File Transfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
-            { label: 'Manage Keys', hint: '', action: () => document.getElementById('manageKeysBtn').click() },
-            { label: 'Change Password', hint: '', action: () => document.getElementById('changePasswordBtn').click() },
-            { label: 'Save Transcript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
-            { label: 'Copy Selection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
-            { label: 'Paste Clipboard', hint: '', action: () => document.getElementById('pasteClipboardBtn').click() },
-            { label: 'Shortcuts Help', hint: 'Ctrl+?', action: () => openShortcuts() }
+            { labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => document.getElementById('newConnectionBtn').click() },
+            { labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
+            { labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
+            { labelKey: 'keys.manageKeys', hint: '', action: () => document.getElementById('manageKeysBtn').click() },
+            { labelKey: 'auth.changePassword', hint: '', action: () => document.getElementById('changePasswordBtn').click() },
+            { labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
+            { labelKey: 'terminal.copySelection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
+            { labelKey: 'terminal.pasteClipboard', hint: '', action: () => document.getElementById('pasteClipboardBtn').click() },
+            { labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() }
         ];
 
         let filtered = actions;
@@ -1819,14 +1798,15 @@
             if (filtered.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'palette-item';
-                empty.textContent = 'No matches';
+                empty.textContent = window.i18n ? i18n.t('palette.noMatches') : 'No matches';
                 list.appendChild(empty);
                 return;
             }
             filtered.forEach((item, index) => {
                 const el = document.createElement('div');
                 el.className = 'palette-item' + (index === activeIndex ? ' active' : '');
-                el.innerHTML = `${item.label}<span>${item.hint}</span>`;
+                const label = window.i18n ? i18n.t(item.labelKey) : item.labelKey;
+                el.innerHTML = `${label}<span>${item.hint}</span>`;
                 el.addEventListener('click', () => {
                     item.action();
                     closePalette();
@@ -1850,10 +1830,15 @@
 
         input.addEventListener('input', () => {
             const query = input.value.trim().toLowerCase();
-            filtered = actions.filter(item => item.label.toLowerCase().includes(query));
+            filtered = actions.filter(item => {
+                const label = window.i18n ? i18n.t(item.labelKey) : item.labelKey;
+                return label.toLowerCase().includes(query);
+            });
             activeIndex = 0;
             render();
         });
+
+        window.addEventListener('languageChanged', render);
 
         input.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowDown') {

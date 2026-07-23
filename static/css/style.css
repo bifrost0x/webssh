@@ -2014,6 +2014,7 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     z-index: 9000; 
     align-items: center;
     justify-content: center;
+    padding: clamp(12px, 3vw, 32px);
     animation: modalFadeIn 0.3s ease;
 }
 
@@ -2035,75 +2036,36 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     backdrop-filter: blur(20px);
     border: 1px solid var(--border-color);
     border-radius: 12px;
-    width: 90%;
-    max-width: 650px;
-    max-height: 90vh;
-    overflow-y: auto;
+    width: min(100%, 720px);
+    max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     box-shadow: var(--shadow-lg);
     animation: modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Panel system ── */
-/* Left panels (Connection, Jump Hosts) */
-.panel-left {
-    justify-content: flex-start;
-    animation: none;
-}
-.panel-left .modal-content {
-    width: 400px;
-    max-width: min(90vw, 420px);
-    height: 100%;
-    max-height: 100%;
-    border-radius: 0 12px 12px 0;
-    overflow-y: auto;
-    box-shadow: 4px 0 32px rgba(0,0,0,0.6);
-    transform: translateX(-110%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: none;
-}
-.panel-left.show .modal-content {
-    transform: translateX(0);
+/* ── Centered dialog size variants ── */
+.modal-wide .modal-content {
+    width: min(100%, 900px);
 }
 
-/* Right panels (Commands, Keys, File Editor) */
-.panel-right {
-    justify-content: flex-end;
-    animation: none;
-}
-.panel-right .modal-content {
-    width: 580px;
-    max-width: min(90vw, 620px);
-    height: 100%;
-    max-height: 100%;
-    border-radius: 12px 0 0 12px;
-    overflow-y: auto;
-    box-shadow: -4px 0 32px rgba(0,0,0,0.6);
-    transform: translateX(110%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: none;
-}
-.panel-right.show .modal-content {
-    transform: translateX(0);
+.modal-large .modal-content {
+    width: min(100%, 1100px);
+    height: min(90vh, 900px);
+    height: min(90dvh, 900px);
 }
 
-/* Mobile: panels go full-width */
-@media (max-width: 767px) {
-    .panel-left .modal-content,
-    .panel-right .modal-content {
-        width: 100%;
-        max-width: 100%;
-        border-radius: 0;
-    }
-    .panel-left .modal-content {
-        transform: translateX(-100%);
-    }
-    .panel-right .modal-content {
-        transform: translateX(100%);
-    }
+.modal-xlarge .modal-content {
+    width: min(100%, 1400px);
+    height: min(90vh, 900px);
+    height: min(90dvh, 900px);
 }
 
-.modal-small {
-    max-width: 420px;
+.modal-small .modal-content,
+.modal-content.modal-small {
+    width: min(100%, 440px);
 }
 
 .palette-list,
@@ -2200,6 +2162,8 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 
 .modal-body {
     padding: 24px;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .form-group {
@@ -2877,11 +2841,11 @@ button:focus-visible,
     }
 
     .modal-content {
-        width: 95%;
+        width: 100%;
         max-width: none;
-        margin: 16px;
-        max-height: calc(100vh - 32px);
-        max-height: calc(100dvh - 32px);
+        margin: 0;
+        max-height: calc(100vh - 24px);
+        max-height: calc(100dvh - 24px);
         border-radius: 12px;
     }
 
@@ -2934,13 +2898,9 @@ button:focus-visible,
     .modal-content {
         width: 100%;
         margin: 0;
-        border-radius: 12px 12px 0 0;
+        border-radius: 12px;
         max-height: calc(100vh - 16px);
         max-height: calc(100dvh - 16px);
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
     }
 
     .modal-header {
@@ -3629,34 +3589,12 @@ body.keyboard-open.notepad-focused .notepad-panel {
     color: var(--text-secondary);
 }
 
-.modal-large .modal-content {
-    width: 95%;
-    max-width: 1400px;
-    height: 90vh;
-    max-height: 900px;
-}
-
-.modal-large .modal-body {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    overflow: hidden;
-}
-
 #filePreviewModal {
     z-index: 15000; 
 }
 
-.modal-content.modal-xlarge {
-    width: 90%;
-    max-width: 1200px;
-    height: 85vh;
-    max-height: 850px;
-    display: flex;
-    flex-direction: column;
-}
-
-.modal-xlarge .modal-header {
+.modal-xlarge .modal-header,
+.modal-content.modal-xlarge .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -4664,8 +4602,9 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 @media (max-width: 900px) {
     .modal-large .modal-content {
-        width: 98%;
-        height: 95vh;
+        width: 100%;
+        height: calc(100vh - 24px);
+        height: calc(100dvh - 24px);
     }
 
     .commands-table-header,
