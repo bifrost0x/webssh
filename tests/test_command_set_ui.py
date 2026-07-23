@@ -193,7 +193,7 @@ def test_command_set_editor_controls_sudo_defaults_and_payload():
     assert 'command-set-sudo-badge' in source
 
 
-def test_account_menu_owns_profile_key_and_jump_host_management():
+def test_profiles_are_prominent_while_keys_and_jump_hosts_stay_in_account_menu():
     template = read('templates/index.html')
 
     header_group = re.search(
@@ -209,8 +209,13 @@ def test_account_menu_owns_profile_key_and_jump_host_management():
     )
     assert header_group
     assert account_menu
-    assert 'manageKeysBtn' not in header_group.group('body')
-    for element_id in ('manageProfilesBtn', 'manageKeysBtn', 'manageJumpHostsBtn'):
+    header_tools = header_group.group('body')
+    assert 'manageProfilesBtn' in header_tools
+    assert header_tools.index('commandLibraryBtn') < header_tools.index(
+        'manageProfilesBtn'
+    )
+    assert 'manageProfilesBtn' not in account_menu.group('body')
+    for element_id in ('manageKeysBtn', 'manageJumpHostsBtn'):
         assert f'id="{element_id}"' in account_menu.group('body')
 
 
