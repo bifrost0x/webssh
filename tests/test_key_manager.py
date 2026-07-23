@@ -97,6 +97,59 @@ def test_save_key_validates_encrypts_and_records_supported_key(
         assert loaded_content == key_content
 
 
+def test_load_key_summaries_marks_missing_key_file_unusable(
+        app, rsa_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, username='key-summary-user')
+
+    with app.app_context():
+        key_meta, error = key_manager.save_key(
+            user_id,
+            'summary key',
+            rsa_private_key_pem,
+        )
+        assert error is None
+        assert key_manager.load_key_summaries(user_id)[0]['usable'] is True
+
+        Path(key_manager.get_key_path(user_id, key_meta['id'])).unlink()
+
+        summaries = key_manager.load_key_summaries(user_id)
+        assert summaries[0]['id'] == key_meta['id']
+        assert summaries[0]['usable'] is False
+        assert 'usable' not in key_manager.load_keys(user_id)[0]
+
+
+def test_load_key_summaries_derives_user_key_once(
+        app, rsa_private_key_pem, monkeypatch):
+    from app import key_encryption, key_manager
+
+    user_id = create_user(app, username='key-summary-derivation-user')
+
+    with app.app_context():
+        for name in ('first key', 'second key'):
+            _, error = key_manager.save_key(user_id, name, rsa_private_key_pem)
+            assert error is None
+
+        original = key_encryption.get_user_fernet
+        calls = []
+
+        def counting_get_user_fernet(value):
+            calls.append(value)
+            return original(value)
+
+        monkeypatch.setattr(
+            key_encryption,
+            'get_user_fernet',
+            counting_get_user_fernet,
+        )
+
+        summaries = key_manager.load_key_summaries(user_id)
+
+        assert [summary['usable'] for summary in summaries] == [True, True]
+        assert calls == [str(user_id)]
+
+
 @pytest.mark.parametrize(
     ('fixture_name', 'expected_error'),
     [

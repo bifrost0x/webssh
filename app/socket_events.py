@@ -11,7 +11,10 @@ from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_file_upload, log_file_download,
                               log_key_upload, log_key_delete,
                               log_tailscale_ssh_usage)
-from .tailscale_ssh import validate_tailscale_ssh_access
+from .tailscale_ssh import (
+    profile_is_authorized_for_launch,
+    validate_tailscale_ssh_access,
+)
 from .startup_commands import normalize_startup_commands
 from .storage_utils import storage_lock
 from . import binary_transfer, connection_pool
@@ -577,7 +580,14 @@ def handle_ssh_disconnect(data, current_user=None):
 def handle_list_profiles(current_user=None):
     """Return list of saved connection profiles for this user."""
     try:
-        profiles = profile_manager.load_profiles(current_user.id)
+        profiles = []
+        for stored_profile in profile_manager.load_profiles(current_user.id):
+            profile = dict(stored_profile)
+            if profile.get('auth_type') == 'tailscale':
+                profile['tailscale_authorized'] = (
+                    profile_is_authorized_for_launch(current_user, profile)
+                )
+            profiles.append(profile)
         emit('profiles_list', {'profiles': profiles})
     except Exception as e:
         log_error("Failed to load profiles", error=str(e))
@@ -704,7 +714,7 @@ def handle_delete_jump_host(data, current_user=None):
 def handle_list_keys(current_user=None):
     """Return list of stored SSH keys for this user."""
     try:
-        keys = key_manager.load_keys(current_user.id)
+        keys = key_manager.load_key_summaries(current_user.id)
         emit('keys_list', {'keys': keys})
     except Exception as e:
         log_error("Failed to load keys", error=str(e))

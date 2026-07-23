@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
@@ -142,13 +142,6 @@
                             <div class="drop-subtitle">Release to choose destination path</div>
                         </div>
                     </div>
-                    <div class="no-sessions" id="noSessions">
-                        <div class="no-sessions-content">
-                            <h2 data-i18n="connection.noActiveSessions">No Active Sessions</h2>
-                            <p data-i18n="connection.clickToStart">Click "New Connection" to start an SSH session</p>
-                        </div>
-                    </div>
-
                     <div class="terminal-search-bar hidden" id="terminalSearchBar">
                         <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." autocomplete="off" />
                         <span class="search-count" id="terminalSearchCount"></span>
@@ -773,19 +766,20 @@
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=3"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {

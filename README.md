@@ -69,6 +69,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Session Restoration** - Restore live sessions after a page refresh without injecting terminal input
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
 - **Manual Reconnect** - Reconnect from a session tab; SSH-key and Tailscale sessions can reconnect directly, while password sessions reopen the pre-filled connection form
+- **Profile Launcher** - Empty terminal panes show saved profiles; key and Tailscale profiles connect immediately when no password is needed, while password-dependent profiles open pre-filled at the required field
 - **Post-Connect Command Sets** - Build named, ordered command sequences and assign one to a connection or saved profile
 - **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
 - **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar

@@ -16,6 +16,9 @@ window.JumpHostManager = {
         this.jumpHosts = Array.isArray(list) ? list : [];
         this.renderSelect();
         this.renderList();
+        if (typeof SessionManager !== 'undefined') {
+            SessionManager.refreshEmptyPanes();
+        }
     },
 
     getById(id) {

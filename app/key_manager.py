@@ -148,6 +148,48 @@ def read_key_content(user_id, key_id):
         log_error(f"Error reading key content", user_id=user_id, key_id=key_id, error=str(e))
         return None, f"Failed to read key: {str(e)}"
 
+
+def load_key_summaries(user_id):
+    """Return key metadata with a transient usability status for clients."""
+    keys = load_keys(user_id)
+    keys_dir = get_user_keys_dir(user_id)
+    if not keys_dir:
+        return [{**key, 'usable': False} for key in keys]
+
+    fernet = None
+    summaries = []
+    for key in keys:
+        if not isinstance(key, dict):
+            continue
+        usable = False
+        try:
+            filename = key.get('filename')
+            if not filename or Path(filename).name != filename:
+                raise ValueError('invalid key filename')
+
+            raw = (keys_dir / filename).read_bytes()
+            if key_encryption.is_encrypted(raw):
+                if fernet is None:
+                    fernet = key_encryption.get_user_fernet(str(user_id))
+                raw = fernet.decrypt(raw)
+
+            identify_private_key(raw.decode('utf-8'))
+            usable = True
+        except (
+            OSError,
+            UnicodeDecodeError,
+            key_encryption.InvalidToken,
+            paramiko.PasswordRequiredException,
+            paramiko.SSHException,
+            UnsupportedPrivateKeyError,
+            ValueError,
+            TypeError,
+        ):
+            pass
+        summaries.append({**key, 'usable': usable})
+    return summaries
+
+
 def delete_key(user_id, key_id):
     """Delete an SSH key and its metadata for a specific user."""
     try:
