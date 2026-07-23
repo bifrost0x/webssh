@@ -113,6 +113,7 @@ window.CommandSetManager = {
         this.renderSelect();
         this.renderPreview();
         this.renderManagementList();
+        window.ConnectionCommandManager?.onDataChanged();
     },
 
     getById(id) {
@@ -217,7 +218,7 @@ window.CommandSetManager = {
         document.getElementById('commandSetNameInput').value = source?.name || '';
         document.getElementById('commandSetDescriptionInput').value = source?.description || '';
         const sudoInput = document.getElementById('commandSetUseSudoInput');
-        if (sudoInput) sudoInput.checked = source ? source.use_sudo === true : true;
+        if (sudoInput) sudoInput.checked = source ? source.use_sudo === true : false;
         document.getElementById('commandSetEditorTitle').textContent = source
             ? this.t('commandSets.edit', 'Edit command set')
             : this.t('commandSets.create', 'Create command set');

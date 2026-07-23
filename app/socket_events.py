@@ -1,7 +1,8 @@
 from flask_socketio import emit, join_room, disconnect
 from flask import request, current_app
 from flask_login import current_user
-from . import socketio, ssh_manager, profile_manager, key_manager, sftp_handler, jump_host_manager
+from . import (socketio, ssh_manager, profile_manager, key_manager,
+               sftp_handler, jump_host_manager, post_connect_manager)
 from .decorators import socket_login_required
 from .auth import register_socket_session, get_user_from_socket, check_socket_rate_limit
 from .models import db, SSHSession, SocketSession
@@ -15,7 +16,6 @@ from .tailscale_ssh import (
     profile_is_authorized_for_launch,
     validate_tailscale_ssh_access,
 )
-from .startup_commands import normalize_startup_commands
 from .storage_utils import storage_lock
 from . import binary_transfer, connection_pool
 import base64
@@ -268,21 +268,11 @@ def handle_ssh_connect(data, current_user=None):
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
 
-        command_set_id = data.get('command_set_id')
-        if command_set_id is not None:
-            from . import command_set_manager
-
-            with storage_lock(f'command-config:{current_user.id}'):
-                startup_commands, startup_commands_error = command_set_manager.resolve_command_set(
-                    current_user.id, command_set_id
+        with storage_lock(f'command-config:{current_user.id}'):
+            startup_commands, startup_commands_error = (
+                post_connect_manager.resolve_configuration(
+                    current_user.id, data
                 )
-            if not startup_commands_error:
-                startup_commands, startup_commands_error = normalize_startup_commands(
-                    startup_commands
-                )
-        else:
-            startup_commands, startup_commands_error = normalize_startup_commands(
-                data.get('startup_commands', '')
             )
         if startup_commands_error:
             emit_error(startup_commands_error)
@@ -596,46 +586,34 @@ def handle_list_profiles(current_user=None):
 @socketio.on('save_profile')
 @socket_login_required
 def handle_save_profile(data, current_user=None):
-    """Save a new connection profile for this user."""
+    """Create or update a connection profile without starting SSH."""
     try:
-        name = data.get('name')
-        host = data.get('host')
-        port = data.get('port', 22)
-        username = data.get('username')
+        data = data if isinstance(data, dict) else {}
         auth_type = data.get('auth_type')
-        key_id = data.get('key_id')
-        jump_host_id = data.get('jump_host_id')
-        startup_commands = data.get('startup_commands')
-        command_set_id = data.get('command_set_id')
+        host = data.get('host')
+        username = data.get('username')
 
         if auth_type == 'tailscale':
             access_error = validate_tailscale_ssh_access(current_user, host, username)
             if access_error:
                 emit('error', {'error': access_error})
-                return
+                return {'success': False, 'error': access_error}
 
-        profile, error = profile_manager.add_profile(
-            user_id=current_user.id,
-            name=name,
-            host=host,
-            port=port,
-            username=username,
-            auth_type=auth_type,
-            key_id=key_id,
-            jump_host_id=jump_host_id,
-            startup_commands=startup_commands,
-            command_set_id=command_set_id,
-        )
+        profile, error = profile_manager.upsert_profile(current_user.id, data)
 
         if error:
             emit('error', {'error': error})
+            return {'success': False, 'error': error}
         else:
-            emit('profile_saved', {'profile': profile})
+            payload = {'success': True, 'profile': profile}
+            emit('profile_saved', payload)
             handle_list_profiles(current_user=current_user)
+            return payload
 
     except Exception as e:
         log_error("Failed to save profile", error=str(e))
         emit('error', {'error': 'Failed to save profile'})
+        return {'success': False, 'error': 'Failed to save profile'}
 
 @socketio.on('delete_profile')
 @socket_login_required
@@ -1124,7 +1102,9 @@ def handle_list_command_sets(data=None, current_user=None):
     """Return all named command sets owned by the current user."""
     from . import command_set_manager
 
-    command_sets, error = command_set_manager.load_command_sets(current_user.id)
+    command_sets, error = command_set_manager.load_command_sets_with_resolution(
+        current_user.id
+    )
     if error:
         return _command_set_error(error)
     payload = {'success': True, 'command_sets': command_sets}

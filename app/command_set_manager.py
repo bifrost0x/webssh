@@ -402,13 +402,8 @@ def duplicate_command_set(user_id, command_set_id):
             return (copy.deepcopy(duplicate), None) if saved else (None, error)
 
 
-def resolve_command_set(user_id, command_set_id):
-    command_set, error = get_command_set(user_id, command_set_id)
-    if error:
-        return None, error
-    commands, error = _command_index(user_id)
-    if error:
-        return None, error
+def _resolve_loaded_command_set(command_set, commands):
+    """Resolve one already-loaded set using an already-built command index."""
     _steps, resolved_parts, error = _normalize_steps(
         command_set.get('steps'), commands
     )
@@ -432,6 +427,37 @@ def resolve_command_set(user_id, command_set_id):
     return resolved, None
 
 
+def resolve_command_set(user_id, command_set_id):
+    command_set, error = get_command_set(user_id, command_set_id)
+    if error:
+        return None, error
+    commands, error = _command_index(user_id)
+    if error:
+        return None, error
+    return _resolve_loaded_command_set(command_set, commands)
+
+
+def load_command_sets_with_resolution(user_id):
+    """Load sets with exact previews without repeating command-library reads."""
+    command_sets, error = load_command_sets(user_id)
+    if error:
+        return None, error
+    commands, error = _command_index(user_id)
+    if error:
+        return None, error
+
+    enriched = []
+    for command_set in command_sets:
+        item = copy.deepcopy(command_set)
+        resolved, resolution_error = _resolve_loaded_command_set(item, commands)
+        if resolution_error:
+            item['resolution_error'] = resolution_error
+        else:
+            item['resolved_command'] = resolved
+        enriched.append(item)
+    return enriched, None
+
+
 def get_command_usage(user_id, command_id):
     command_sets, error = load_command_sets(user_id)
     if error:
@@ -441,7 +467,23 @@ def get_command_usage(user_id, command_id):
         steps = command_set.get('steps', []) if isinstance(command_set, dict) else []
         if any(step.get('type') == 'library' and step.get('command_id') == command_id
                for step in steps if isinstance(step, dict)):
-            usages.append({'id': command_set.get('id'), 'name': command_set.get('name', '')})
+            usages.append({
+                'id': command_set.get('id'),
+                'name': command_set.get('name', ''),
+                'type': 'command_set',
+            })
+
+    profiles, error = _load_profile_references(user_id)
+    if error:
+        return None, error
+    for profile in profiles:
+        if (isinstance(profile, dict)
+                and profile.get('command_id') == command_id):
+            usages.append({
+                'id': profile.get('id'),
+                'name': profile.get('name', ''),
+                'type': 'profile',
+            })
     return usages, None
 
 

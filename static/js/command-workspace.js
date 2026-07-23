@@ -1,6 +1,6 @@
 /* Shared shell for the command library and reusable command sets. */
 window.CommandWorkspace = {
-    activeSection: 'library',
+    activeSection: 'sets',
 
     init() {
         const libraryTab = document.getElementById('commandLibraryTab');
@@ -21,10 +21,10 @@ window.CommandWorkspace = {
             this.select(this.activeSection === 'library' ? 'sets' : 'library', true);
         }));
 
-        this.select('library');
+        this.select('sets');
     },
 
-    open(section = 'library') {
+    open(section = 'sets') {
         this.select(section);
         const modal = document.getElementById('commandWorkspaceModal');
         if (!modal) return;

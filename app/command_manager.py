@@ -149,7 +149,13 @@ def delete_user_command(user_id, command_id):
         if error:
             return False, error, []
         if usages:
-            noun = 'command set' if len(usages) == 1 else 'command sets'
+            usage_types = {usage.get('type') for usage in usages}
+            if usage_types == {'command_set'}:
+                noun = 'command set' if len(usages) == 1 else 'command sets'
+            elif usage_types == {'profile'}:
+                noun = 'profile' if len(usages) == 1 else 'profiles'
+            else:
+                noun = 'reference' if len(usages) == 1 else 'references'
             return False, f'Command is used by {len(usages)} {noun}', usages
 
         with storage_lock(f'commands:{user_id}'):

@@ -18,7 +18,7 @@ def test_app_exposes_a_complete_connection_profile_reset_helper():
     )
 
     assert helper is not None
-    assert "CommandSetManager?.selectForConnection('')" in helper.group('body')
+    assert 'ConnectionCommandManager?.clear()' in helper.group('body')
     assert 'ProfileManager.clearLegacyCommands()' in helper.group('body')
     assert "document.getElementById('profileSelect')" in helper.group('body')
     assert re.search(r'profileSelect\.value\s*=\s*[\'\"]{2}', helper.group('body'))

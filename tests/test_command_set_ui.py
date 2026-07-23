@@ -10,11 +10,22 @@ def read(path):
 def test_connection_form_uses_command_set_selector_and_preview():
     template = read('templates/index.html')
 
-    assert 'id="startupCommandsInput"' not in template
     for element_id in (
+        'connectionCommandModeNone',
+        'connectionCommandModeSet',
+        'connectionCommandModeCommand',
+        'connectionCommandModeFreeText',
+        'connectionCommandSetPanel',
+        'connectionSingleCommandPanel',
+        'connectionFreeTextPanel',
+        'connectionCommandSelect',
+        'connectionCommandParameters',
+        'startupCommandsInput',
         'commandSetSelect',
-        'createCommandSetBtn',
-        'commandSetPreview',
+        'manageCommandSetsBtn',
+        'editSelectedCommandSetBtn',
+        'editSelectedCommandBtn',
+        'connectionCommandPreview',
         'legacyCommandsNotice',
         'convertLegacyCommandsBtn',
     ):
@@ -24,7 +35,6 @@ def test_connection_form_uses_command_set_selector_and_preview():
 def test_commands_workspace_unifies_library_and_command_sets():
     template = read('templates/index.html')
 
-    assert 'id="manageCommandSetsBtn"' not in template
     assert 'id="commandSetManagementModal"' not in template
     assert re.search(
         r'id="commandLibraryBtn"[^>]*>\s*'
@@ -54,6 +64,7 @@ def test_commands_workspace_unifies_library_and_command_sets():
     assert 'role="tablist"' in template
     assert template.count('role="tab"') == 2
     assert template.count('role="tabpanel"') == 2
+    assert template.index('id="commandSetsTab"') < template.index('id="commandLibraryTab"')
     assert 'data-os="linux"' in template
     assert 'data-os="windows"' in template
 
@@ -65,10 +76,13 @@ def test_commands_workspace_controller_owns_all_entry_points():
     app = read('static/js/app.js')
     template = read('templates/index.html')
 
-    assert "open(section = 'library')" in workspace
+    assert "activeSection: 'sets'" in workspace
+    assert "open(section = 'sets')" in workspace
+    assert "this.select('sets')" in workspace
     assert 'select(section)' in workspace
     assert "CommandWorkspace.open('library')" in library
     assert "CommandWorkspace.open('sets')" in sets
+    assert 'openEditor(commandId, returnToModalId = null)' in library
     assert 'CommandWorkspace.init()' in app
     assert "filename='js/command-workspace.js'" in template
 
@@ -80,28 +94,23 @@ def test_command_set_scripts_load_in_dependency_order_before_app():
     workspace = template.index("filename='js/command-workspace.js'")
     library = template.index("filename='js/command-library.js'")
     manager = template.index("filename='js/command-set-manager.js'")
+    connection = template.index("filename='js/connection-command-manager.js'")
     app = template.index("filename='js/app.js'")
-    assert utils < workspace < library < manager < app
+    assert utils < workspace < library < manager < connection < app
 
 
 def test_connection_and_profile_payloads_send_only_selected_set_id():
     source = read('static/js/app.js')
 
-    assert "CommandSetManager.getSelectedId()" in source
-    assert re.search(r'profilePayload\.command_set_id\s*=\s*commandSetId', source)
-    assert re.search(r'connectionData\.command_set_id\s*=\s*commandSetId', source)
-    assert 'profilePayload.startup_commands' not in source
-    assert re.search(
-        r'if \(legacyStartupCommands\) \{\s*'
-        r'connectionData\.startup_commands\s*=\s*legacyStartupCommands',
-        source,
-    )
+    assert 'ConnectionCommandManager.getPayload()' in source
+    assert "window.socket.emit('save_profile'" not in source
+    assert 'saveProfileCheck' not in source
 
 
 def test_profile_selection_supports_set_references_and_legacy_conversion():
     source = read('static/js/profile-manager.js')
 
-    assert 'CommandSetManager.selectForConnection(profile.command_set_id)' in source
+    assert 'ConnectionCommandManager?.applyProfile(profile)' in source
     assert 'profile.startup_commands' in source
     assert 'CommandSetManager.openLegacyConversion(profile)' in source
     assert 'getLegacyStartupCommands()' in source
@@ -125,6 +134,18 @@ def test_command_library_can_return_a_new_command_to_inline_promotion():
     assert 'pendingSaveCallback' in source
     assert re.search(r'showAddCommandForm\([^)]*options', source)
     assert "window.socket.emit('add_command', data," in source
+
+
+def test_editing_a_selected_command_returns_to_the_connection_dialog():
+    connection_source = read('static/js/connection-command-manager.js')
+    library_source = read('static/js/command-library.js')
+
+    assert re.search(
+        r"openEditor\(\s*this\.selectedCommandId,\s*'connectionModal'\s*\)",
+        connection_source,
+    )
+    assert 'returnToModalId' in library_source
+    assert 'window.ModalManager.activeModal = returnModal' in library_source
 
 
 def test_command_library_os_filter_does_not_capture_command_set_filters():
@@ -156,7 +177,7 @@ def test_closing_command_set_editor_resets_the_next_management_visit():
 def test_command_set_editor_controls_sudo_defaults_and_payload():
     source = read('static/js/command-set-manager.js')
 
-    assert 'sudoInput.checked = source ? source.use_sudo === true : true' in source
+    assert 'sudoInput.checked = source ? source.use_sudo === true : false' in source
     legacy_conversion = re.search(
         r'openLegacyConversion\(profile\) \{(?P<body>.*?)\n    \},',
         source,
@@ -172,11 +193,77 @@ def test_command_set_editor_controls_sudo_defaults_and_payload():
     assert 'command-set-sudo-badge' in source
 
 
+def test_account_menu_owns_profile_key_and_jump_host_management():
+    template = read('templates/index.html')
+
+    header_group = re.search(
+        r'<div class="header-group"[^>]*>(?P<body>.*?)</div>',
+        template,
+        re.DOTALL,
+    )
+    account_menu = re.search(
+        r'<div class="account-dropdown-header"[^>]*>(?P<body>.*?)'
+        r'<button id="logoutBtn"',
+        template,
+        re.DOTALL,
+    )
+    assert header_group
+    assert account_menu
+    assert 'manageKeysBtn' not in header_group.group('body')
+    for element_id in ('manageProfilesBtn', 'manageKeysBtn', 'manageJumpHostsBtn'):
+        assert f'id="{element_id}"' in account_menu.group('body')
+
+
+def test_profile_management_is_independent_from_connect_submit():
+    template = read('templates/index.html')
+    profile_source = read('static/js/profile-manager.js')
+
+    for element_id in (
+        'profileManagementModal',
+        'profileManagementList',
+        'newProfileBtn',
+        'profileEditorForm',
+        'profileEditorName',
+        'profileEditorHost',
+        'profileEditorPort',
+        'profileEditorUsername',
+        'profileEditorAuthType',
+        'profileEditorPostConnectMode',
+        'profileEditorCommandSelect',
+        'profileEditorCommandSetSelect',
+        'profileEditorStartupCommands',
+        'profileEditorCommandPreview',
+    ):
+        assert f'id="{element_id}"' in template
+    profile_modal = re.search(
+        r'id="profileManagementModal"(?P<body>.*?)</div>\s*</div>\s*</div>',
+        template,
+        re.DOTALL,
+    )
+    assert profile_modal
+    assert 'type="password"' not in profile_modal.group('body')
+    assert "window.socket.emit('save_profile'" in profile_source
+    assert "window.socket.emit('ssh_connect'" not in profile_source
+    assert 'renderEditorCommandPreview()' in profile_source
+
+
+def test_connection_mode_help_uses_accessible_tooltips():
+    template = read('templates/index.html')
+
+    tooltip_ids = set(re.findall(r'id="([^"]+Tooltip)"[^>]*role="tooltip"', template))
+    references = re.findall(r'aria-describedby="([^"]+Tooltip)"', template)
+    assert references
+    assert set(references).issubset(tooltip_ids)
+    assert 'class="info-tooltip-trigger"' in template
+
+
 def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
     readme = read('README.md')
 
     for phrase in (
-        'Create new',
+        'Run after',
+        'exact',
+        'Free text',
         'Command Sets',
         'Save as library command',
         'maximum 4096 characters',
@@ -186,9 +273,11 @@ def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
         'cannot be deleted while a profile references it',
         'No additional environment variable, Compose setting',
         'Run commands with sudo',
-        'Existing command sets from an earlier version',
-        'sets produced by legacy conversion',
+        'opt-in for new command sets',
+        'Existing command sets',
+        'legacy conversion keep their saved',
         'does not store or answer a sudo password',
+        'created, inspected, updated, or deleted without opening an SSH',
         'joined with `&&`',
         'inside a free-text step remain unchanged',
         'legacy startup commands',

@@ -34,7 +34,6 @@
                 <div class="header-group" role="group" aria-label="Tools">
                     <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
                     <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
-                    <button id="manageKeysBtn" class="btn btn-secondary"><span data-i18n="keys.manageKeys">Manage Keys</span> 🔑</button>
                 </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
@@ -73,8 +72,10 @@
 
                         <div class="account-divider" role="separator"></div>
 
-                        {% if current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                        <button id="manageProfilesBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🗂️</span> <span data-i18n="profiles.manage">Profiles</span></button>
+                        <button id="manageKeysBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔑</span> <span data-i18n="keys.manageKeys">SSH Keys</span></button>
                         <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
+                        {% if current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
                         <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>
@@ -256,27 +257,58 @@
                         <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="commandSetSelect" data-i18n="connection.commandSet">Commands after connecting (optional)</label>
-                        <div class="command-set-selector-row">
-                            <select id="commandSetSelect" class="form-control">
-                                <option value="" data-i18n="commandSets.none">None</option>
-                            </select>
-                            <button type="button" id="createCommandSetBtn" class="btn btn-secondary" data-i18n="commandSets.createNew">Create new</button>
+                    <div class="form-group post-connect-config">
+                        <div class="post-connect-label">
+                            <span data-i18n="connection.runAfterConnect">Run after connecting (optional)</span>
+                            <button type="button" class="info-tooltip-trigger" aria-label="About post-connect modes" aria-describedby="postConnectModeTooltip">?</button>
+                            <span id="postConnectModeTooltip" class="info-tooltip" role="tooltip" data-i18n="connection.runAfterConnectTooltip">Choose one source. The exact command is shown before connecting.</span>
                         </div>
-                        <div id="commandSetPreview" class="command-set-preview empty" aria-live="polite"></div>
+                        <div class="post-connect-mode-selector" role="group" aria-label="Post-connect command source">
+                            <button type="button" id="connectionCommandModeNone" class="post-connect-mode active" data-command-mode="none" aria-pressed="true" data-i18n="commandModes.none">None</button>
+                            <button type="button" id="connectionCommandModeSet" class="post-connect-mode" data-command-mode="command_set" aria-pressed="false" data-i18n="commandModes.commandSet">Command Set</button>
+                            <button type="button" id="connectionCommandModeCommand" class="post-connect-mode" data-command-mode="command" aria-pressed="false" data-i18n="commandModes.command">Command</button>
+                            <button type="button" id="connectionCommandModeFreeText" class="post-connect-mode" data-command-mode="free_text" aria-pressed="false" data-i18n="commandModes.freeText">Free text</button>
+                        </div>
+
+                        <div id="connectionCommandSetPanel" class="post-connect-panel hidden">
+                            <label for="commandSetSelect" data-i18n="connection.commandSet">Command Set</label>
+                            <div class="command-set-selector-row">
+                                <select id="commandSetSelect" class="form-control">
+                                    <option value="" data-i18n="commandSets.none">Select a command set</option>
+                                </select>
+                                <button type="button" id="editSelectedCommandSetBtn" class="btn btn-secondary btn-sm" data-i18n="common.edit">Edit</button>
+                                <button type="button" id="manageCommandSetsBtn" class="btn btn-secondary btn-sm" data-i18n="commands.workspace">Commands</button>
+                            </div>
+                        </div>
+
+                        <div id="connectionSingleCommandPanel" class="post-connect-panel hidden">
+                            <label for="connectionCommandSelect" data-i18n="commandModes.selectCommand">Saved Command</label>
+                            <div class="command-set-selector-row">
+                                <select id="connectionCommandSelect" class="form-control"></select>
+                                <button type="button" id="editSelectedCommandBtn" class="btn btn-secondary btn-sm" data-i18n="common.edit">Edit</button>
+                            </div>
+                            <label for="connectionCommandParameters" class="post-connect-parameters-label">
+                                <span data-i18n="commands.parameters">Parameters</span>
+                                <button type="button" class="info-tooltip-trigger" aria-label="About parameter overrides" aria-describedby="commandParametersTooltip">?</button>
+                                <span id="commandParametersTooltip" class="info-tooltip" role="tooltip" data-i18n="commandModes.parametersTooltip">Leave unchanged to use the saved default. Editing parameters does not modify the saved Command.</span>
+                            </label>
+                            <input type="text" id="connectionCommandParameters" class="form-control" maxlength="4096">
+                        </div>
+
+                        <div id="connectionFreeTextPanel" class="post-connect-panel hidden">
+                            <label for="startupCommandsInput" data-i18n="commandModes.freeText">Free text</label>
+                            <textarea id="startupCommandsInput" class="form-control" rows="4" maxlength="4096" spellcheck="false"></textarea>
+                        </div>
+
+                        <div class="post-connect-preview-header">
+                            <span data-i18n="commandModes.exactPreview">Exact command preview</span>
+                        </div>
+                        <pre id="connectionCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
                         <div id="legacyCommandsNotice" class="legacy-command-notice hidden">
                             <span data-i18n="commandSets.legacyNotice">This profile still uses legacy free-text commands.</span>
                             <button type="button" id="convertLegacyCommandsBtn" class="btn btn-secondary btn-sm" data-i18n="commandSets.convert">Convert</button>
                         </div>
-                        <div class="field-hint" id="commandSetHint" data-i18n="connection.commandSetHint">Runs on the remote host after a successful connection, not in WebSSH. Not run again when reconnecting to an existing tmux session.</div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="saveProfileCheck">
-                            <span data-i18n="connection.saveAsProfile">Save as profile</span>
-                        </label>
+                        <div class="field-hint" data-i18n="connection.commandSetHint">Runs on the remote host after a successful connection, not in WebSSH. Not run again when reconnecting to an existing tmux session.</div>
                     </div>
 
                     {% if tmux_enabled %}
@@ -289,12 +321,6 @@
                     </div>
                     {% endif %}
 
-                    <div class="form-group hidden" id="profileNameGroup">
-                        <label for="profileNameInput" data-i18n="connection.profileName">Profile Name</label>
-                        <input type="text" id="profileNameInput" class="form-control" data-i18n="connection.profileNamePlaceholder" placeholder="My Server">
-                        <div class="field-hint" id="profileHint"></div>
-                    </div>
-
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelConnectionBtn" data-i18n="common.cancel">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="connectBtn">
@@ -303,6 +329,103 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal panel-left" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="profileManagementTitle" data-i18n="profiles.manage">Profiles</h2>
+                <span class="close" id="closeProfileManagementModal" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <section id="profileManagementView">
+                    <div class="profile-management-toolbar">
+                        <p data-i18n="profiles.manageHint">Save and update connection settings without connecting.</p>
+                        <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create profile</button>
+                    </div>
+                    <div id="profileManagementList" class="profile-management-list"></div>
+                </section>
+
+                <section id="profileEditorView" class="hidden">
+                    <form id="profileEditorForm">
+                        <input type="hidden" id="profileEditorId">
+                        <div class="form-group">
+                            <label for="profileEditorName" data-i18n="connection.profileName">Profile Name *</label>
+                            <input type="text" id="profileEditorName" class="form-control" maxlength="128" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group flex-2">
+                                <label for="profileEditorHost" data-i18n="connection.host">Host *</label>
+                                <input type="text" id="profileEditorHost" class="form-control" required>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="profileEditorPort" data-i18n="connection.port">Port *</label>
+                                <input type="number" id="profileEditorPort" class="form-control" min="1" max="65535" value="22" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileEditorUsername" data-i18n="auth.username">Username *</label>
+                            <input type="text" id="profileEditorUsername" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileEditorAuthType" data-i18n="connection.authMethod">Authentication Method</label>
+                            <select id="profileEditorAuthType" class="form-control">
+                                <option value="password" data-i18n="auth.password">Password</option>
+                                <option value="key" data-i18n="connection.sshKey">SSH Key</option>
+                                {% if tailscale_ssh_allowed %}<option value="tailscale" data-i18n="connection.tailscaleSSH">Tailscale SSH</option>{% endif %}
+                            </select>
+                        </div>
+                        <div class="form-group hidden" id="profileEditorKeyGroup">
+                            <label for="profileEditorKeySelect" data-i18n="connection.sshKey">SSH Key</label>
+                            <select id="profileEditorKeySelect" class="form-control"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
+                            <select id="profileEditorJumpHostSelect" class="form-control"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileEditorPostConnectMode" data-i18n="connection.runAfterConnect">Run after connecting</label>
+                            <select id="profileEditorPostConnectMode" class="form-control">
+                                <option value="none" data-i18n="commandModes.none">None</option>
+                                <option value="command_set" data-i18n="commandModes.commandSet">Command Set</option>
+                                <option value="command" data-i18n="commandModes.command">Command</option>
+                                <option value="free_text" data-i18n="commandModes.freeText">Free text</option>
+                            </select>
+                        </div>
+                        <div id="profileEditorCommandSetGroup" class="form-group hidden">
+                            <label for="profileEditorCommandSetSelect" data-i18n="connection.commandSet">Command Set</label>
+                            <select id="profileEditorCommandSetSelect" class="form-control"></select>
+                        </div>
+                        <div id="profileEditorCommandGroup" class="hidden">
+                            <div class="form-group">
+                                <label for="profileEditorCommandSelect" data-i18n="commandModes.selectCommand">Saved Command</label>
+                                <select id="profileEditorCommandSelect" class="form-control"></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="profileEditorCommandParameters" data-i18n="commands.parameters">Parameters</label>
+                                <input type="text" id="profileEditorCommandParameters" class="form-control" maxlength="4096">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="profileEditorUseDefaultParameters" checked>
+                                    <span data-i18n="commandModes.useSavedParameters">Use saved default parameters</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="profileEditorFreeTextGroup" class="form-group hidden">
+                            <label for="profileEditorStartupCommands" data-i18n="commandModes.freeText">Free text</label>
+                            <textarea id="profileEditorStartupCommands" class="form-control" rows="5" maxlength="4096" spellcheck="false"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="profileEditorCommandPreview" data-i18n="commandModes.exactPreview">Exact command preview</label>
+                            <pre id="profileEditorCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" id="cancelProfileEditorBtn" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
+                            <button type="submit" class="btn btn-primary" data-i18n="common.save">Save</button>
+                        </div>
+                    </form>
+                </section>
             </div>
         </div>
     </div>
@@ -346,11 +469,11 @@
                 <span class="close" id="closeCommandWorkspaceModal" aria-label="Close">&times;</span>
             </div>
             <div class="command-workspace-tabs" role="tablist" aria-label="Command management">
-                <button type="button" id="commandLibraryTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandLibraryPanel" data-command-workspace-section="library" data-i18n="commands.library">Command Library</button>
-                <button type="button" id="commandSetsTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
+                <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
+                <button type="button" id="commandLibraryTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandLibraryPanel" data-command-workspace-section="library" data-i18n="commands.library">Command Library</button>
             </div>
             <div class="modal-body command-workspace-body">
-                <section id="commandLibraryPanel" class="command-workspace-panel" role="tabpanel" aria-labelledby="commandLibraryTab">
+                <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
                     <div class="command-toolbar">
                         <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
                         <button class="btn btn-primary" id="addCommandBtn"><span data-i18n="commands.addCommand">Add Command</span> ➕</button>
@@ -382,7 +505,7 @@
                     </div>
                 </section>
 
-                <section id="commandSetsPanel" class="command-workspace-panel hidden command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
+                <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
                 <section id="commandSetManagementView">
                     <div class="command-set-management-toolbar">
                         <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any connection profile.</p>
@@ -776,6 +899,7 @@
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=2"></script>
