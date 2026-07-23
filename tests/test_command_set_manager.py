@@ -722,6 +722,35 @@ def test_get_command_usage_and_delete_guard_report_names(app, monkeypatch):
     assert profiles == ['Production']
 
 
+def test_direct_profile_command_reference_blocks_command_deletion(app):
+    from app import command_manager, command_set_manager, profile_manager
+
+    user_id = create_user(app)
+    with app.app_context():
+        profile_manager.save_profiles(user_id, [{
+            'id': 'profile-command',
+            'name': 'Direct Command Profile',
+            'startup_mode': 'command',
+            'command_id': 'cmd-direct',
+        }])
+        usages, usage_error = command_set_manager.get_command_usage(
+            user_id, 'cmd-direct'
+        )
+        success, delete_error, delete_usages = command_manager.delete_user_command(
+            user_id, 'cmd-direct'
+        )
+
+    assert usage_error is None
+    assert usages == [{
+        'id': 'profile-command',
+        'name': 'Direct Command Profile',
+        'type': 'profile',
+    }]
+    assert success is False
+    assert delete_error == 'Command is used by 1 profile'
+    assert delete_usages == usages
+
+
 def test_delete_unreferenced_command_set(app, monkeypatch):
     from app import command_manager, command_set_manager
 

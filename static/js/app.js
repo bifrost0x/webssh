@@ -117,7 +117,7 @@
     };
 
     window.clearConnectionProfileState = () => {
-        window.CommandSetManager?.selectForConnection('');
+        window.ConnectionCommandManager?.clear();
         ProfileManager.clearLegacyCommands();
 
         const profileSelect = document.getElementById('profileSelect');
@@ -1095,25 +1095,6 @@
         setConnectLoading(false);
     }
 
-    function clearSaveProfileState() {
-        const saveProfileCheck = document.getElementById('saveProfileCheck');
-        const profileNameInput = document.getElementById('profileNameInput');
-        const profileNameGroup = document.getElementById('profileNameGroup');
-        const profileHint = document.getElementById('profileHint');
-
-        if (saveProfileCheck) {
-            saveProfileCheck.checked = false;
-        }
-        if (profileNameInput) {
-            profileNameInput.value = '';
-            profileNameInput.required = false;
-            setFieldState(profileNameInput, profileHint, '', null);
-        }
-        if (profileNameGroup) {
-            profileNameGroup.classList.add('hidden');
-        }
-    }
-
     function selectConnectionProfile(profileId) {
         const profileSelect = document.getElementById('profileSelect');
         const deleteBtn = document.getElementById('deleteProfileBtn');
@@ -1123,7 +1104,7 @@
 
         if (!profileId) {
             ProfileManager.clearLegacyCommands();
-            CommandSetManager.selectForConnection('');
+            ConnectionCommandManager.clear();
             deleteBtn.style.display = 'none';
             delete deleteBtn.dataset.profileId;
             return null;
@@ -1184,7 +1165,6 @@
         const mode = ProfileManager.getLaunchMode(selected);
         const form = document.getElementById('connectionForm');
         if (mode === 'connect' && isSelectedProfileReady(selected)) {
-            clearSaveProfileState();
             form.requestSubmit();
             return;
         }
@@ -1199,6 +1179,11 @@
     }
 
     window.launchProfileForPane = launchProfileForPane;
+
+    window.openConnectionModalForProfile = (profileId) => {
+        openConnectionModalForPane(getDefaultPaneIndex());
+        selectConnectionProfile(profileId);
+    };
 
     function queuePaneConnection(paneIndex) {
         if (paneIndex === null || paneIndex === undefined) {
@@ -1914,6 +1899,8 @@
         CommandWorkspace.init();
         CommandLibrary.init();
         window.CommandSetManager?.init();
+        window.ConnectionCommandManager?.init();
+        ProfileManager.init();
 
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();
@@ -1957,12 +1944,6 @@
             const authType = document.getElementById('authTypeSelect').value;
             const password = document.getElementById('passwordInput').value;
             const keyId = document.getElementById('keySelect').value;
-            const saveProfile = document.getElementById('saveProfileCheck').checked;
-            const profileName = document.getElementById('profileNameInput').value;
-            const commandSetId = CommandSetManager.getSelectedId();
-            const legacyStartupCommands = commandSetId
-                ? ''
-                : ProfileManager.getLegacyStartupCommands();
             const targetPane = pendingPaneIndex;
 
             if (!host || !username) {
@@ -2010,25 +1991,6 @@
             }
 
             pendingPaneIndex = null;
-
-            if (saveProfile && profileName) {
-                const profilePayload = {
-                    name: profileName,
-                    host: host,
-                    port: parseInt(port),
-                    username: username,
-                    auth_type: authType,
-                    key_id: authType === 'key' ? keyId : null
-                };
-                if (commandSetId) {
-                    profilePayload.command_set_id = commandSetId;
-                }
-                if (jumpHostId) {
-                    profilePayload.jump_host_id = jumpHostId;
-                }
-                ProfileManager.saveProfile(profilePayload);
-            }
-
             currentConnectRequestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
             SessionManager.createPendingConnection(currentConnectRequestId, host, username, port);
             if (targetPane !== null && targetPane !== undefined) {
@@ -2042,12 +2004,7 @@
                 client_request_id: currentConnectRequestId,
                 auth_type: authType
             };
-            if (commandSetId) {
-                connectionData.command_set_id = commandSetId;
-            }
-            if (legacyStartupCommands) {
-                connectionData.startup_commands = legacyStartupCommands;
-            }
+            Object.assign(connectionData, ConnectionCommandManager.getPayload());
 
             if (authType === 'password') {
                 connectionData.password = password;
@@ -2119,17 +2076,6 @@
         document.getElementById('jumpHostSelect').addEventListener('change', () => {
             if (window.JumpHostManager) {
                 window.JumpHostManager.updatePasswordVisibility();
-            }
-        });
-
-        document.getElementById('saveProfileCheck').addEventListener('change', (e) => {
-            const profileNameGroup = document.getElementById('profileNameGroup');
-            if (e.target.checked) {
-                profileNameGroup.classList.remove('hidden');
-                document.getElementById('profileNameInput').required = true;
-            } else {
-                profileNameGroup.classList.add('hidden');
-                document.getElementById('profileNameInput').required = false;
             }
         });
 

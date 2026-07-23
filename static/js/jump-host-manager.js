@@ -16,6 +16,7 @@ window.JumpHostManager = {
         this.jumpHosts = Array.isArray(list) ? list : [];
         this.renderSelect();
         this.renderList();
+        window.ProfileManager?.renderEditorSelects();
         if (typeof SessionManager !== 'undefined') {
             SessionManager.refreshEmptyPanes();
         }

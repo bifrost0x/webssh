@@ -7,6 +7,7 @@ const CommandLibrary = {
     renderCursor: 0,
     chunkSize: 40,
     pendingSaveCallback: null,
+    returnToModalId: null,
 
     init() {
         this.loadCommands();
@@ -40,7 +41,9 @@ const CommandLibrary = {
     setupEventListeners() {
         const commandLibraryBtn = document.getElementById('commandLibraryBtn');
         if (commandLibraryBtn) {
-            commandLibraryBtn.addEventListener('click', () => this.openLibrary());
+            commandLibraryBtn.addEventListener('click', () => {
+                window.CommandSetManager?.openManagement();
+            });
         }
 
         const commandSearchInput = document.getElementById('commandSearchInput');
@@ -102,6 +105,7 @@ const CommandLibrary = {
         this.filteredCommands = commands;
         this.renderCommandsList();
         window.CommandSetManager?.onCommandsChanged();
+        window.ConnectionCommandManager?.onDataChanged();
         const osDisplay = document.getElementById('currentOsDisplay');
         if (osDisplay) {
             osDisplay.textContent = this.currentOs.charAt(0).toUpperCase() + this.currentOs.slice(1);
@@ -109,6 +113,7 @@ const CommandLibrary = {
     },
 
     openLibrary() {
+        this.returnToModalId = null;
         const activeSessionId = SessionManager.getActiveSession();
 
         if (!activeSessionId) {
@@ -123,11 +128,29 @@ const CommandLibrary = {
         }, 100);
     },
 
+    openEditor(commandId, returnToModalId = null) {
+        const command = this.commands.find(item => item.id === commandId);
+        if (!command) return;
+        this.returnToModalId = returnToModalId;
+        window.CommandWorkspace.open('library');
+        if (command.isSystem) this.copyCommand(commandId);
+        else this.editCommand(commandId);
+    },
+
     closeLibrary() {
+        const returnModalId = this.returnToModalId;
         window.CommandWorkspace.close();
         document.getElementById('commandSearchInput').value = '';
         this.filteredCommands = this.commands;
         this.renderCommandsList();
+        if (returnModalId && window.ModalManager) {
+            const returnModal = document.getElementById(returnModalId);
+            if (returnModal?.classList.contains('show')) {
+                window.ModalManager.activeModal = returnModal;
+                document.getElementById('editSelectedCommandBtn')?.focus();
+            }
+        }
+        this.returnToModalId = null;
     },
 
     detectOs() {
@@ -418,6 +441,10 @@ const CommandLibrary = {
         }
         this.editingCommandId = null;
         this.pendingSaveCallback = null;
+        const workspace = document.getElementById('commandWorkspaceModal');
+        if (workspace?.classList.contains('show') && window.ModalManager) {
+            window.ModalManager.activeModal = workspace;
+        }
     },
 
     escapeHtml(text) {

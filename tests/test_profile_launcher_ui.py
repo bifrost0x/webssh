@@ -69,20 +69,14 @@ def test_profile_launch_prefills_before_requesting_submit():
     )
     assert "mode === 'connect'" in body
     assert 'isSelectedProfileReady(selected)' in body
-    assert body.index('clearSaveProfileState()') < body.index(
-        'form.requestSubmit()'
-    )
 
 
-def test_auto_launch_clears_save_profile_validation_state():
+def test_auto_launch_has_no_coupled_save_profile_state():
+    template = read('templates/index.html')
     source = read('static/js/app.js')
-    start = source.index('function clearSaveProfileState')
-    end = source.index('function selectConnectionProfile', start)
-    body = source[start:end]
-    assert 'saveProfileCheck.checked = false' in body
-    assert "profileNameInput.value = ''" in body
-    assert 'profileNameInput.required = false' in body
-    assert "profileNameGroup.classList.add('hidden')" in body
+    assert 'saveProfileCheck' not in template
+    assert 'profileNameInput' not in template
+    assert "socket.emit('save_profile'" not in source
 
 
 def test_password_modes_focus_the_missing_runtime_secret():

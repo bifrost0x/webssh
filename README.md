@@ -230,9 +230,15 @@ session from the WebSSH interface terminates its remote tmux session.
 
 ### Commands After Connecting
 
-The connection dialog lets you select one optional, named **command set**. Use
-**Create new** directly beside the selector, or open **Commands** and switch to
-the **Command Sets** tab to manage all sets. The builder can search the complete
+The connection dialog offers four explicit choices under **Run after
+connecting**: nothing, one reusable **Command Set**, one saved **Command**, or
+one-off **Free text**. Only the active mode is sent to the server. An exact
+preview shows what will run before the connection is started. A selected
+Command can use its saved parameters, an override, or an intentionally empty
+override without modifying the library entry.
+
+Open **Commands** to manage both reusable commands and sets. The **Command
+Sets** tab is first and opens by default. The builder can search the complete
 command library by name, command text, parameters, description, or category and
 filter the results by operating system.
 
@@ -247,19 +253,24 @@ Steps can be reordered by drag and drop or by the accessible up/down buttons.
   <img src="assets/command-sets.gif" alt="Command workflow showing full-text search, user commands, sudo-enabled command sets, multiline steps, ordering, and profile assignment" width="1100">
 </p>
 
-New command sets enable **Run commands with sudo** by default. When enabled,
-WebSSH prefixes each non-empty resolved command line unless it already starts
-with `sudo`; blank and comment-only lines remain unchanged. Existing command sets from an earlier version and sets produced by legacy conversion keep sudo disabled, so upgrading or converting does not change what runs.
+**Run commands with sudo** is opt-in for new command sets. When enabled, WebSSH
+prefixes each non-empty resolved command line unless it already starts with
+`sudo`; blank and comment-only lines remain unchanged. Existing command sets
+from an earlier version and sets produced by legacy conversion keep their saved
+sudo setting, so upgrading or converting does not change what runs.
 
 WebSSH does not store or answer a sudo password. If the remote account requires
 one, its normal prompt appears in the terminal. The added prefixes count toward
 the existing maximum 4096 characters for the resolved command text.
 
-Profiles store only the selected command-set ID. Editing a set or one of its
-referenced library commands therefore updates every profile that uses it. A set
-cannot be deleted while a profile references it, and a user-created library
-command cannot be deleted while a set references it. The UI reports the
-profiles or sets that must be changed first.
+Profiles are managed independently from connecting under the account menu.
+They can be created, inspected, updated, or deleted without opening an SSH
+session. A profile stores the selected post-connect mode and only its relevant
+reference or free text; credentials are never stored. Editing a referenced set
+or library command therefore updates every profile that uses its saved
+definition. A set cannot be deleted while a profile references it, and a
+user-created library command cannot be deleted while a set or profile
+references it. The UI reports the profiles or sets that must be changed first.
 
 After a new SSH connection succeeds, WebSSH resolves the latest referenced
 commands on the server, validates the combined text (maximum 4096 characters),

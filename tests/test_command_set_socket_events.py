@@ -49,7 +49,9 @@ def test_command_set_crud_socket_events_return_structured_acknowledgements(app, 
     listed, _emitted = call_socket_handler(
         app, monkeypatch, socket_events.handle_list_command_sets, sid
     )
-    assert listed == {'success': True, 'command_sets': [saved['command_set']]}
+    assert listed['success'] is True
+    assert listed['command_sets'][0]['id'] == saved['command_set']['id']
+    assert listed['command_sets'][0]['resolved_command'] == 'uptime'
 
     duplicated, _emitted = call_socket_handler(
         app,
@@ -73,6 +75,75 @@ def test_command_set_crud_socket_events_return_structured_acknowledgements(app, 
         'success': True,
         'command_set_id': duplicated['command_set']['id'],
     }
+
+
+def test_profile_save_and_update_return_ack_without_connecting(app, monkeypatch):
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'profile_socket_crud')
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError('saving a profile must not connect')
+        ),
+    )
+
+    created, _emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_profile,
+        sid,
+        {
+            'name': 'Production',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        },
+    )
+    updated, _emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_profile,
+        sid,
+        {
+            'id': created['profile']['id'],
+            'name': 'Production',
+            'host': 'new.example.com',
+            'port': 2222,
+            'username': 'deploy',
+            'auth_type': 'password',
+        },
+    )
+
+    assert created['success'] is True
+    assert updated['success'] is True
+    assert updated['profile']['id'] == created['profile']['id']
+    assert updated['profile']['host'] == 'new.example.com'
+
+
+def test_profile_update_rejects_foreign_or_missing_id(app, monkeypatch):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'profile_socket_missing')
+    result, _emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_profile,
+        sid,
+        {
+            'id': 'not-owned',
+            'name': 'Production',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        },
+    )
+
+    assert result == {'success': False, 'error': 'Profile not found'}
 
 
 def test_socket_command_set_errors_are_structured(app, monkeypatch):
@@ -132,7 +203,11 @@ def test_referenced_command_set_and_library_command_cannot_be_deleted(app, monke
         success, error, usages = command_manager.delete_user_command(user_id, command['id'])
         assert success is False
         assert error == 'Command is used by 1 command set'
-        assert usages == [{'id': command_set['id'], 'name': 'Bootstrap'}]
+        assert usages == [{
+            'id': command_set['id'],
+            'name': 'Bootstrap',
+            'type': 'command_set',
+        }]
         assert any(item['id'] == command['id'] for item in command_manager.load_user_commands(user_id))
 
     blocked, _emitted = call_socket_handler(
@@ -258,6 +333,105 @@ def test_ssh_connect_resolves_command_set_and_ignores_legacy_text(app, monkeypat
         })
 
     assert calls[0]['startup_commands'] == 'sudo echo first && sudo echo second'
+
+
+def test_ssh_connect_resolves_single_library_command_with_parameter_override(
+    app, monkeypatch
+):
+    from flask import request
+    from app import command_manager, ssh_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'single_command_connect')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id,
+            'Echo',
+            'echo',
+            'default',
+            'Echo text',
+            ['all'],
+            'custom',
+        )
+
+    calls = []
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **kwargs: (calls.append(kwargs) or ('command-session', None)),
+    )
+    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+
+    with app.test_request_context(
+        '/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}
+    ):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'startup_mode': 'command',
+            'command_id': command['id'],
+            'parameters_override': 'hello world',
+        })
+
+    assert calls[0]['startup_commands'] == 'echo hello world'
+
+
+def test_conflicting_command_modes_stop_before_dns_and_ssh(app, monkeypatch):
+    from flask import request
+    from app import command_manager, ssh_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'conflicting_command_connect')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Echo', 'echo', '', 'Echo', ['all'], 'custom'
+        )
+
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('connection validation or DNS must not run')
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError('SSH manager must not run')
+        ),
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+
+    with app.test_request_context(
+        '/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}
+    ):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'must-not-resolve.invalid',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'startup_mode': 'command',
+            'command_id': command['id'],
+            'command_set_id': 'unexpected',
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {
+            'error': 'Conflicting post-connect command configuration',
+            'client_request_id': None,
+        },
+    )]
 
 
 def test_sudo_expansion_limit_stops_before_connection_validation(app, monkeypatch):

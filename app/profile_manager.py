@@ -1,11 +1,11 @@
 import json
-import uuid
 import re
 import ipaddress
-from datetime import datetime
-from pathlib import Path
-import config
-from .audit_logger import log_info, log_warning, log_error, log_debug
+import uuid
+from datetime import datetime, timezone
+
+from .audit_logger import log_error
+from .post_connect_manager import validate_configuration
 from .storage_utils import storage_lock, atomic_write_json
 from .startup_commands import normalize_startup_commands
 
@@ -82,84 +82,136 @@ def save_profiles(user_id, profiles):
         log_error(f"Error saving profiles", user_id=user_id, error=str(e))
         return False
 
-def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
-                jump_host_id=None, startup_commands=None, command_set_id=None):
-    """Add a new connection profile for a specific user.
+def _validate_profile_payload(user_id, payload):
+    """Validate storable profile fields without accepting credentials."""
+    if not isinstance(payload, dict):
+        return None, 'Invalid profile data'
 
-    jump_host_id (optional): reference to a saved jump host (bastion). Only the id
-    is stored; the jump host details live in jump_hosts.json.
-    """
+    name = payload.get('name')
+    host = payload.get('host')
+    username = payload.get('username')
+    auth_type = payload.get('auth_type')
+    if not all([name, host, username, auth_type]):
+        return None, 'Missing required fields'
+    if not isinstance(name, str) or not name.strip():
+        return None, 'Invalid profile name'
+    name = name.strip()[:128]
+
+    host = str(host).strip()
+    if not _is_valid_host(host):
+        return None, 'Invalid host format'
+
     try:
-        if not all([name, host, username, auth_type]):
-            return None, "Missing required fields"
+        port = int(payload.get('port') or 22)
+        if not 1 <= port <= 65535:
+            return None, 'Port must be between 1 and 65535'
+    except (ValueError, TypeError):
+        return None, 'Invalid port number'
 
-        host = str(host).strip()
-        if not _is_valid_host(host):
-            return None, "Invalid host format"
+    username = str(username).strip()
+    if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
+        return None, 'Invalid username format'
+    if auth_type not in {'password', 'key', 'tailscale'}:
+        return None, 'Invalid auth_type'
 
-        try:
-            port = int(port) if port else 22
-            if not (1 <= port <= 65535):
-                return None, "Port must be between 1 and 65535"
-        except (ValueError, TypeError):
-            return None, "Invalid port number"
+    key_id = payload.get('key_id')
+    if auth_type == 'key' and not key_id:
+        return None, 'key_id required for key authentication'
 
-        username = str(username).strip()
-        if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
-            return None, "Invalid username format"
+    post_connect, error = validate_configuration(user_id, payload)
+    if error:
+        return None, error
 
-        if auth_type not in ['password', 'key', 'tailscale']:
-            return None, "Invalid auth_type"
+    result = {
+        'name': name,
+        'host': host,
+        'port': port,
+        'username': username,
+        'auth_type': auth_type,
+        'key_id': key_id if auth_type == 'key' else None,
+        **post_connect,
+    }
+    jump_host_id = payload.get('jump_host_id')
+    if jump_host_id:
+        result['jump_host_id'] = str(jump_host_id)[:64]
+    return result, None
 
-        if auth_type == 'key' and not key_id:
-            return None, "key_id required for key authentication"
 
-        normalized_startup_commands = None
-        if startup_commands is not None:
-            normalized_startup_commands, error = normalize_startup_commands(startup_commands)
+def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
+    """Create or update a profile under the per-user coordinator lock."""
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            validated, error = _validate_profile_payload(user_id, payload)
             if error:
                 return None, error
 
-        with storage_lock(f'command-config:{user_id}'):
-            if command_set_id is not None:
-                from .command_set_manager import get_command_set
-
-                command_set, error = get_command_set(user_id, command_set_id)
+            if preserve_legacy_fallback and payload.get('startup_commands'):
+                legacy, error = normalize_startup_commands(
+                    payload['startup_commands']
+                )
                 if error:
                     return None, error
-                command_set_id = command_set['id']
-
-            profile = {
-                'id': str(uuid.uuid4()),
-                'name': name[:128],
-                'host': host,
-                'port': port,
-                'username': username,
-                'auth_type': auth_type,
-                'key_id': key_id,
-                'created_at': datetime.utcnow().isoformat()
-            }
-
-            # Optional reference to a saved jump host (bastion).
-            if jump_host_id:
-                profile['jump_host_id'] = str(jump_host_id)[:64]
-
-            if normalized_startup_commands:
-                profile['startup_commands'] = normalized_startup_commands
-            if command_set_id:
-                profile['command_set_id'] = command_set_id
+                if legacy:
+                    validated['startup_commands'] = legacy
 
             with storage_lock(f'profiles:{user_id}'):
                 profiles, error = _load_profiles_for_write(user_id)
                 if error:
                     return None, error
-                profiles.append(profile)
+
+                profile_id = payload.get('id')
+                now = datetime.now(timezone.utc).isoformat()
+                if profile_id:
+                    for index, existing in enumerate(profiles):
+                        if existing.get('id') == profile_id:
+                            result = {
+                                **validated,
+                                'id': profile_id,
+                                'created_at': existing.get('created_at', now),
+                                'updated_at': now,
+                            }
+                            profiles[index] = result
+                            break
+                    else:
+                        return None, 'Profile not found'
+                else:
+                    result = {
+                        **validated,
+                        'id': str(uuid.uuid4()),
+                        'created_at': now,
+                        'updated_at': now,
+                    }
+                    profiles.append(result)
 
                 if save_profiles(user_id, profiles):
-                    return profile, None
-                return None, "Failed to save profile"
-    except Exception as e:
-        return None, str(e)
+                    return result, None
+                return None, 'Failed to save profile'
+    except Exception as exc:
+        log_error('Error saving profile', user_id=user_id, error=str(exc))
+        return None, 'Failed to save profile'
+
+
+def add_profile(user_id, name, host, port, username, auth_type, key_id=None,
+                jump_host_id=None, startup_commands=None, command_set_id=None):
+    """Compatibility wrapper for callers that create legacy profile payloads."""
+    payload = {
+        'name': name,
+        'host': host,
+        'port': port,
+        'username': username,
+        'auth_type': auth_type,
+        'key_id': key_id,
+        'jump_host_id': jump_host_id,
+    }
+    if startup_commands is not None:
+        payload['startup_commands'] = startup_commands
+    if command_set_id is not None:
+        payload['command_set_id'] = command_set_id
+    return upsert_profile(
+        user_id,
+        payload,
+        preserve_legacy_fallback=bool(command_set_id and startup_commands),
+    )
 
 def get_profile(user_id, profile_id):
     """Get a specific profile by ID for a specific user."""
@@ -200,6 +252,7 @@ def assign_command_set(user_id, profile_id, command_set_id):
                     return None, error
                 for profile in profiles:
                     if profile.get('id') == profile_id:
+                        profile['startup_mode'] = 'command_set'
                         profile['command_set_id'] = command_set['id']
                         if not save_profiles(user_id, profiles):
                             return None, 'Failed to save profile'

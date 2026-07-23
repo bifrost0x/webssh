@@ -4109,6 +4109,168 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 /* Reusable post-connect command sets */
+.post-connect-config {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.post-connect-label,
+.post-connect-parameters-label,
+.post-connect-preview-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+}
+
+.post-connect-mode-selector {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+}
+
+.post-connect-mode {
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.post-connect-mode:hover,
+.post-connect-mode:focus-visible {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.post-connect-mode.active {
+    border-color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    color: var(--accent-primary);
+}
+
+.post-connect-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--bg-secondary);
+}
+
+.post-connect-config #connectionCommandPreview,
+#profileEditorCommandPreview {
+    display: block;
+    min-height: 42px;
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--accent-secondary);
+    font-family: monospace;
+}
+
+.post-connect-config #connectionCommandPreview.error,
+#profileEditorCommandPreview.error {
+    border-color: var(--danger-color, #f85149);
+    color: var(--danger-color, #f85149);
+}
+
+.info-tooltip-trigger {
+    display: inline-grid;
+    width: 19px;
+    height: 19px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: help;
+}
+
+.info-tooltip {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 7px);
+    left: 0;
+    width: min(300px, 80vw);
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-lg);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-3px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.info-tooltip-trigger:hover + .info-tooltip,
+.info-tooltip-trigger:focus-visible + .info-tooltip {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.profile-management-toolbar,
+.profile-management-item,
+.profile-management-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.profile-management-toolbar,
+.profile-management-item {
+    justify-content: space-between;
+}
+
+.profile-management-toolbar p {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.profile-management-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.profile-management-item {
+    padding: 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--bg-secondary);
+}
+
+.profile-management-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.profile-management-info span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
 .command-set-selector-row {
     display: flex;
     gap: 10px;
@@ -4437,15 +4599,25 @@ body.keyboard-open.notepad-focused .notepad-panel {
     }
 
     .command-set-management-item,
-    .command-set-management-toolbar {
+    .command-set-management-toolbar,
+    .profile-management-item,
+    .profile-management-toolbar {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .profile-management-actions {
+        flex-wrap: wrap;
     }
 }
 
 @media (max-width: 520px) {
     .command-set-selector-row {
         flex-direction: column;
+    }
+
+    .post-connect-mode-selector {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
