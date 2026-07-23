@@ -1095,6 +1095,25 @@
         setConnectLoading(false);
     }
 
+    function clearSaveProfileState() {
+        const saveProfileCheck = document.getElementById('saveProfileCheck');
+        const profileNameInput = document.getElementById('profileNameInput');
+        const profileNameGroup = document.getElementById('profileNameGroup');
+        const profileHint = document.getElementById('profileHint');
+
+        if (saveProfileCheck) {
+            saveProfileCheck.checked = false;
+        }
+        if (profileNameInput) {
+            profileNameInput.value = '';
+            profileNameInput.required = false;
+            setFieldState(profileNameInput, profileHint, '', null);
+        }
+        if (profileNameGroup) {
+            profileNameGroup.classList.add('hidden');
+        }
+    }
+
     function selectConnectionProfile(profileId) {
         const profileSelect = document.getElementById('profileSelect');
         const deleteBtn = document.getElementById('deleteProfileBtn');
@@ -1165,6 +1184,7 @@
         const mode = ProfileManager.getLaunchMode(selected);
         const form = document.getElementById('connectionForm');
         if (mode === 'connect' && isSelectedProfileReady(selected)) {
+            clearSaveProfileState();
             form.requestSubmit();
             return;
         }
