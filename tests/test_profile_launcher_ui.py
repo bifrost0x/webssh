@@ -17,7 +17,7 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=3',
+        "filename='css/style.css'": '?v=4',
         "filename='js/i18n.js'": '?v=1',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/profile-manager.js'": '?v=4',
@@ -72,6 +72,46 @@ def test_launcher_css_is_scrollable_responsive_and_keyboard_visible():
         assert selector in source
     assert 'overflow-y: auto' in source
     assert 'min-height: var(--touch-target-min)' in source
+
+
+def test_launcher_cards_keep_content_readable_with_many_profiles():
+    source = read('static/css/style.css')
+
+    launcher_list = source[source.index('.profile-launcher-list {'):source.index(
+        '.profile-launcher-card {',
+    )]
+    endpoint = source[source.index('.profile-launcher-endpoint {'):source.index(
+        '.profile-launcher-action {',
+    )]
+
+    assert 'width: min(1120px, 100%);' in launcher_list
+    assert (
+        'grid-template-columns: repeat(auto-fit, '
+        'minmax(min(300px, 100%), 1fr));'
+    ) in launcher_list
+    assert 'grid-column: 1 / -1;' in endpoint
+
+
+def test_mobile_launcher_stacks_status_below_profile_details():
+    source = read('static/css/style.css')
+    mobile_start = source.index(
+        '@media (max-width: 767px) {',
+        source.index('.profile-launcher-new'),
+    )
+    mobile_end = source.index('\n}\n\n.terminal-wrapper', mobile_start)
+    mobile = source[mobile_start:mobile_end]
+
+    assert 'grid-template-columns: minmax(0, 1fr);' in mobile
+    assert '.profile-launcher-action {' in mobile
+    assert 'grid-column: 1;' in mobile
+    assert 'grid-row: auto;' in mobile
+    assert 'justify-self: start;' in mobile
+
+
+def test_profile_launcher_stylesheet_uses_current_cache_version():
+    template = read('templates/index.html')
+
+    assert "filename='css/style.css') }}?v=4" in template
 
 
 def test_profile_launch_prefills_before_requesting_submit():

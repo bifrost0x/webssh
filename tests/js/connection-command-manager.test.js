@@ -60,3 +60,49 @@ test('infers legacy profile modes without mutating the profile', () => {
     assert.equal(manager.inferProfileMode(commandSet), 'command_set');
     assert.deepEqual(legacy, { startup_commands: 'echo ready' });
 });
+
+test('rerenders controls when the selected command set changes', () => {
+    reset();
+    const listeners = {};
+    const select = {
+        addEventListener(type, listener) {
+            listeners[type] = listener;
+        },
+    };
+    const originalDocument = global.document;
+    const originalCommandSetManager = global.CommandSetManager;
+    const originalRender = manager.render;
+    let selectedId = null;
+    let renderCalls = 0;
+
+    global.document = {
+        getElementById(id) {
+            return id === 'commandSetSelect' ? select : null;
+        },
+        querySelectorAll() {
+            return [];
+        },
+    };
+    global.CommandSetManager = {
+        selectForConnection(id) {
+            selectedId = id;
+        },
+    };
+    manager.render = () => {
+        renderCalls += 1;
+    };
+
+    try {
+        manager.init();
+        renderCalls = 0;
+        listeners.change({ target: { value: 'set-updates' } });
+
+        assert.equal(manager.selectedCommandSetId, 'set-updates');
+        assert.equal(selectedId, 'set-updates');
+        assert.equal(renderCalls, 1);
+    } finally {
+        manager.render = originalRender;
+        global.document = originalDocument;
+        global.CommandSetManager = originalCommandSetManager;
+    }
+});

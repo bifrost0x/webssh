@@ -34,7 +34,7 @@
             document.getElementById('commandSetSelect')?.addEventListener('change', event => {
                 this.selectedCommandSetId = event.target.value || '';
                 root.CommandSetManager?.selectForConnection(this.selectedCommandSetId);
-                this.renderPreview();
+                this.render();
             });
             document.getElementById('connectionCommandSelect')?.addEventListener('change', event => {
                 this.selectedCommandId = event.target.value || '';

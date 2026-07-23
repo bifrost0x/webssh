@@ -99,6 +99,12 @@ def test_command_set_scripts_load_in_dependency_order_before_app():
     assert utils < workspace < library < manager < connection < app
 
 
+def test_connection_command_manager_uses_current_cache_version():
+    template = read('templates/index.html')
+
+    assert "filename='js/connection-command-manager.js') }}?v=2" in template
+
+
 def test_connection_and_profile_payloads_send_only_selected_set_id():
     source = read('static/js/app.js')
 

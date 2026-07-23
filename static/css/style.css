@@ -1768,11 +1768,11 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 }
 
 .profile-launcher-list {
-    width: min(760px, 100%);
+    width: min(1120px, 100%);
     max-height: min(48vh, 420px);
     min-height: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
     gap: 10px;
     padding: 4px;
     overflow-y: auto;
@@ -1820,7 +1820,7 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 }
 
 .profile-launcher-endpoint {
-    grid-column: 1;
+    grid-column: 1 / -1;
     color: var(--text-secondary);
     font-family: var(--font-mono);
     font-size: 11px;
@@ -1863,7 +1863,14 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     }
 
     .profile-launcher-card {
+        grid-template-columns: minmax(0, 1fr);
         padding: 12px;
+    }
+
+    .profile-launcher-action {
+        grid-column: 1;
+        grid-row: auto;
+        justify-self: start;
     }
 }
 
