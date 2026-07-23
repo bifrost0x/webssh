@@ -27,3 +27,14 @@ def validate_tailscale_ssh_access(user, host, remote_username):
         return 'Tailscale SSH remote username is not allowed'
 
     return None
+
+
+def profile_is_authorized_for_launch(user, profile):
+    """Return whether a saved profile is still allowed by current policy."""
+    if not isinstance(profile, dict) or profile.get('auth_type') != 'tailscale':
+        return True
+    return validate_tailscale_ssh_access(
+        user,
+        profile.get('host'),
+        profile.get('username'),
+    ) is None

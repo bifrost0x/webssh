@@ -17,6 +17,9 @@ const SessionManager = {
         }
         this.ensureTerminalGrid();
         this.setSplitLayout(1);
+        window.addEventListener('languageChanged', () => {
+            this.refreshEmptyPanes();
+        });
         const sessionBar = document.getElementById('sessionBar');
         if (sessionBar) {
             sessionBar.classList.remove('hidden');
@@ -77,7 +80,6 @@ const SessionManager = {
         terminalContainer.className = 'terminal-wrapper unassigned';
         document.getElementById('terminalsContainer').appendChild(terminalContainer);
 
-        document.getElementById('noSessions').classList.add('hidden');
         const sessionBar = document.getElementById('sessionBar');
         if (sessionBar) {
             sessionBar.classList.remove('hidden');
@@ -145,7 +147,6 @@ const SessionManager = {
             }
         });
 
-        document.getElementById('noSessions').classList.add('hidden');
         const sessionBar = document.getElementById('sessionBar');
         if (sessionBar) {
             sessionBar.classList.remove('hidden');
@@ -339,7 +340,6 @@ const SessionManager = {
             }
         } else {
             this.activeSessionId = null;
-            document.getElementById('noSessions').classList.remove('hidden');
             this.updateSessionMeta(null);
         }
     },
@@ -759,6 +759,14 @@ const SessionManager = {
         this.updateSplitControls();
     },
 
+    refreshEmptyPanes() {
+        this.paneAssignments.forEach((sessionId, index) => {
+            if (!this.paneAssignments[index]) {
+                this.renderPane(index);
+            }
+        });
+    },
+
     renderPane(paneIndex) {
         const grid = this.ensureTerminalGrid();
         if (!grid) {
@@ -785,28 +793,13 @@ const SessionManager = {
             return;
         }
 
-        const empty = document.createElement('div');
-        empty.className = 'pane-empty';
-
-        const icon = document.createElement('div');
-        icon.className = 'pane-empty-icon';
-        icon.textContent = '💻';
-        empty.appendChild(icon);
-
-        const emptyText = document.createElement('div');
-        emptyText.className = 'pane-empty-text';
-        emptyText.textContent = window.i18n ? window.i18n.t('panes.emptyPane') : 'Empty pane';
-        empty.appendChild(emptyText);
-
-        const button = document.createElement('button');
-        button.className = 'btn btn-primary';
-        button.textContent = window.i18n ? window.i18n.t('connection.newConnection') : 'New connection';
-        button.addEventListener('click', () => {
-            if (window.openConnectionModalForPane) {
-                window.openConnectionModalForPane(paneIndex);
-            }
-        });
-        empty.appendChild(button);
+        const empty = typeof ProfileManager !== 'undefined'
+            ? ProfileManager.createEmptyPaneContent(paneIndex)
+            : document.createElement('div');
+        if (!empty.className) {
+            empty.className = 'pane-empty';
+            empty.textContent = window.i18n ? i18n.t('panes.emptyPane') : 'Empty pane';
+        }
         pane.appendChild(empty);
     },
 

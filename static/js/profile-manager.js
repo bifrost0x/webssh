@@ -1,6 +1,7 @@
 const ProfileManager = {
     profiles: [],
     keys: [],
+    profilesLoaded: false,
     selectedLegacyStartupCommands: '',
 
     loadProfiles() {
@@ -16,14 +17,119 @@ const ProfileManager = {
     },
 
     setProfiles(profiles) {
-        this.profiles = profiles;
+        this.profiles = Array.isArray(profiles) ? profiles : [];
+        this.profilesLoaded = true;
         this.renderProfileSelect();
+        this.refreshEmptyPanes();
     },
 
     setKeys(keys) {
-        this.keys = keys;
+        this.keys = Array.isArray(keys) ? keys : [];
         this.renderKeySelect();
         this.renderKeysList();
+        this.refreshEmptyPanes();
+    },
+
+    refreshEmptyPanes() {
+        if (typeof SessionManager !== 'undefined') {
+            SessionManager.refreshEmptyPanes();
+        }
+    },
+
+    getProfile(profileId) {
+        return this.profiles.find(profile => profile && profile.id === profileId) || null;
+    },
+
+    getLaunchMode(profile) {
+        return ProfileLauncherUtils.determineLaunchMode(profile, {
+            keys: this.keys,
+            jumpHosts: window.JumpHostManager?.jumpHosts || [],
+        });
+    },
+
+    createEmptyPaneContent(paneIndex) {
+        const empty = document.createElement('div');
+        empty.className = 'pane-empty profile-launcher';
+
+        const icon = document.createElement('div');
+        icon.className = 'pane-empty-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '💻';
+        empty.appendChild(icon);
+
+        const profiles = this.profilesLoaded ? this.profiles : [];
+        const title = document.createElement('div');
+        title.className = 'profile-launcher-title';
+        title.textContent = profiles.length
+            ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Saved Profiles')
+            : (window.i18n ? i18n.t('panes.emptyPane') : 'Empty pane');
+        empty.appendChild(title);
+
+        const hint = document.createElement('div');
+        hint.className = 'profile-launcher-hint';
+        hint.textContent = profiles.length
+            ? (window.i18n ? i18n.t('connection.savedProfilesHint') : 'Choose a profile to connect')
+            : (window.i18n ? i18n.t('panes.selectSession') : 'Select a session or open a connection');
+        empty.appendChild(hint);
+
+        if (profiles.length) {
+            const list = document.createElement('div');
+            list.className = 'profile-launcher-list';
+            profiles.forEach(profile => {
+                if (!profile || !profile.id) return;
+
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'profile-launcher-card';
+                button.dataset.profileId = profile.id;
+
+                const name = document.createElement('span');
+                name.className = 'profile-launcher-name';
+                name.textContent = profile.name;
+
+                const endpoint = document.createElement('span');
+                endpoint.className = 'profile-launcher-endpoint';
+                endpoint.textContent = ProfileLauncherUtils.formatEndpoint(profile);
+
+                const mode = this.getLaunchMode(profile);
+                const action = document.createElement('span');
+                action.className = `profile-launcher-action mode-${mode}`;
+                action.textContent = mode === 'connect'
+                    ? (window.i18n ? i18n.t('connection.connectNow') : 'Connect now')
+                    : (mode === 'password' || mode === 'jump-host-password'
+                        ? (window.i18n ? i18n.t('connection.passwordRequired') : 'Password required')
+                        : (window.i18n ? i18n.t('connection.reviewConnection') : 'Review connection'));
+
+                button.setAttribute(
+                    'aria-label',
+                    `${String(profile.name || '')}, ${ProfileLauncherUtils.formatEndpoint(profile)}, ${action.textContent}`,
+                );
+                button.append(name, endpoint, action);
+                button.addEventListener('click', event => {
+                    event.stopPropagation();
+                    if (window.launchProfileForPane) {
+                        window.launchProfileForPane(profile.id, paneIndex);
+                    }
+                });
+                list.appendChild(button);
+            });
+            empty.appendChild(list);
+        }
+
+        const newConnection = document.createElement('button');
+        newConnection.type = 'button';
+        newConnection.className = profiles.length
+            ? 'btn btn-secondary profile-launcher-new'
+            : 'btn btn-primary profile-launcher-new';
+        newConnection.textContent = window.i18n
+            ? i18n.t('connection.newConnection')
+            : 'New Connection';
+        newConnection.addEventListener('click', event => {
+            event.stopPropagation();
+            window.openConnectionModalForPane?.(paneIndex);
+        });
+        empty.appendChild(newConnection);
+        return empty;
     },
 
     renderProfileSelect() {

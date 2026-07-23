@@ -67,6 +67,86 @@ def test_tailscale_ssh_enforces_target_and_remote_user_allowlists(monkeypatch):
     )
 
 
+def test_profile_launch_authorization_tracks_target_policy(monkeypatch):
+    from app.tailscale_ssh import profile_is_authorized_for_launch
+
+    _set_policy(
+        monkeypatch,
+        enabled=True,
+        targets=('tiny-server',),
+        remote_users=('root',),
+    )
+    user = SimpleNamespace(is_admin=True, username='admin')
+
+    assert profile_is_authorized_for_launch(user, {
+        'auth_type': 'tailscale',
+        'host': 'tiny-server',
+        'username': 'root',
+    }) is True
+    assert profile_is_authorized_for_launch(user, {
+        'auth_type': 'tailscale',
+        'host': 'other-server',
+        'username': 'root',
+    }) is False
+    assert profile_is_authorized_for_launch(user, {
+        'auth_type': 'key',
+        'host': 'other-server',
+        'username': 'root',
+    }) is True
+
+
+def test_profile_list_includes_transient_tailscale_authorization(
+        monkeypatch):
+    import app.socket_events as socket_events
+
+    _set_policy(
+        monkeypatch,
+        enabled=True,
+        targets=('tiny-server',),
+        remote_users=('root',),
+    )
+    user = SimpleNamespace(id=7, is_admin=True, username='admin')
+    stored_profiles = [
+        {
+            'id': 'allowed',
+            'auth_type': 'tailscale',
+            'host': 'tiny-server',
+            'username': 'root',
+        },
+        {
+            'id': 'denied',
+            'auth_type': 'tailscale',
+            'host': 'other-server',
+            'username': 'root',
+        },
+        {
+            'id': 'key',
+            'auth_type': 'key',
+            'host': 'server.example',
+            'username': 'root',
+        },
+    ]
+    monkeypatch.setattr(
+        socket_events.profile_manager,
+        'load_profiles',
+        lambda _user_id: stored_profiles,
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload: emitted.append((event, payload)),
+    )
+
+    socket_events.handle_list_profiles.__wrapped__(current_user=user)
+
+    profiles = emitted[0][1]['profiles']
+    assert profiles[0]['tailscale_authorized'] is True
+    assert profiles[1]['tailscale_authorized'] is False
+    assert 'tailscale_authorized' not in profiles[2]
+    assert all('tailscale_authorized' not in profile for profile in stored_profiles)
+
+
 def test_backend_rejects_unauthorized_tailscale_connection(app, monkeypatch):
     from flask import request
     from app import ssh_manager

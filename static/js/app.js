@@ -1095,6 +1095,91 @@
         setConnectLoading(false);
     }
 
+    function selectConnectionProfile(profileId) {
+        const profileSelect = document.getElementById('profileSelect');
+        const deleteBtn = document.getElementById('deleteProfileBtn');
+        if (profileSelect) {
+            profileSelect.value = profileId || '';
+        }
+
+        if (!profileId) {
+            ProfileManager.clearLegacyCommands();
+            CommandSetManager.selectForConnection('');
+            deleteBtn.style.display = 'none';
+            delete deleteBtn.dataset.profileId;
+            return null;
+        }
+
+        const profile = ProfileManager.getProfile(profileId);
+        if (!profile) {
+            if (profileSelect) {
+                profileSelect.value = '';
+            }
+            deleteBtn.style.display = 'none';
+            delete deleteBtn.dataset.profileId;
+            return null;
+        }
+        ProfileManager.selectProfile(profileId);
+        deleteBtn.style.display = 'block';
+        deleteBtn.dataset.profileId = profileId;
+        return profile;
+    }
+
+    window.selectConnectionProfile = selectConnectionProfile;
+
+    function isSelectedProfileReady(profile) {
+        const authTypeSelect = document.getElementById('authTypeSelect');
+        const keySelect = document.getElementById('keySelect');
+        const jumpHostSelect = document.getElementById('jumpHostSelect');
+        if (!profile || authTypeSelect.value !== profile.auth_type) {
+            return false;
+        }
+        if (profile.auth_type === 'key' && keySelect.value !== profile.key_id) {
+            return false;
+        }
+        if (jumpHostSelect.value !== (profile.jump_host_id || '')) {
+            return false;
+        }
+        return true;
+    }
+
+    function launchProfileForPane(profileId, paneIndex) {
+        const profile = ProfileManager.getProfile(profileId);
+        if (!profile) {
+            showNotification(
+                window.i18n
+                    ? i18n.t('connection.profileUnavailable')
+                    : 'This profile is no longer available.',
+                'warning',
+            );
+            ProfileManager.loadProfiles();
+            return;
+        }
+
+        openConnectionModalForPane(paneIndex);
+        const selected = selectConnectionProfile(profileId);
+        if (!selected) {
+            return;
+        }
+
+        const mode = ProfileManager.getLaunchMode(selected);
+        const form = document.getElementById('connectionForm');
+        if (mode === 'connect' && isSelectedProfileReady(selected)) {
+            form.requestSubmit();
+            return;
+        }
+
+        let focusTarget = document.getElementById('connectBtn');
+        if (mode === 'password') {
+            focusTarget = document.getElementById('passwordInput');
+        } else if (mode === 'jump-host-password') {
+            focusTarget = document.getElementById('jumpHostPasswordInput');
+        }
+        window.requestAnimationFrame(() => focusTarget?.focus());
+    }
+
+    window.launchProfileForPane = launchProfileForPane;
+
     function queuePaneConnection(paneIndex) {
         if (paneIndex === null || paneIndex === undefined) {
             return;
@@ -1859,7 +1944,6 @@
                 ? ''
                 : ProfileManager.getLegacyStartupCommands();
             const targetPane = pendingPaneIndex;
-            pendingPaneIndex = null;
 
             if (!host || !username) {
                 showNotification('Host and username are required', 'error');
@@ -1868,6 +1952,7 @@
 
             if (authType === 'password' && !password) {
                 showNotification('Password is required', 'error');
+                document.getElementById('passwordInput').focus();
                 return;
             }
 
@@ -1895,6 +1980,7 @@
                     const jhPass = document.getElementById('jumpHostPasswordInput').value;
                     if (!jhPass) {
                         showNotification('Jump host password is required', 'error');
+                        document.getElementById('jumpHostPasswordInput').focus();
                         return;
                     }
                     proxyJump.password = jhPass;
@@ -1902,6 +1988,8 @@
                     proxyJump.key_id = jh.key_id;
                 }
             }
+
+            pendingPaneIndex = null;
 
             if (saveProfile && profileName) {
                 const profilePayload = {
@@ -1993,19 +2081,7 @@
         });
 
         document.getElementById('profileSelect').addEventListener('change', (e) => {
-            const profileId = e.target.value;
-            const deleteBtn = document.getElementById('deleteProfileBtn');
-
-            if (profileId) {
-                ProfileManager.selectProfile(profileId);
-                deleteBtn.style.display = 'block';
-                deleteBtn.dataset.profileId = profileId;
-            } else {
-                ProfileManager.clearLegacyCommands();
-                CommandSetManager.selectForConnection('');
-                deleteBtn.style.display = 'none';
-                delete deleteBtn.dataset.profileId;
-            }
+            selectConnectionProfile(e.target.value);
         });
 
         document.getElementById('deleteProfileBtn').addEventListener('click', (e) => {
