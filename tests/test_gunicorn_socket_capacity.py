@@ -1,5 +1,6 @@
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -121,6 +122,7 @@ def test_socket_limit_keeps_ready_endpoint_responsive(tmp_path):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
     clients = []
     try:
@@ -156,10 +158,10 @@ def test_socket_limit_keeps_ready_endpoint_responsive(tmp_path):
     finally:
         for client in clients:
             if client.connected:
-                client.disconnect()
-        process.terminate()
+                client.eio.disconnect(abort=True)
+        os.killpg(process.pid, signal.SIGTERM)
         try:
             process.communicate(timeout=10)
         except subprocess.TimeoutExpired:
-            process.kill()
+            os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
