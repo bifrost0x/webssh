@@ -142,11 +142,11 @@ def test_user_settings_schema_rejects_invalid_document_without_overwrite(
     app, document
 ):
     from app import user_settings
-    from app.models import User
+    from app.models import User, db
 
     user_id = _create_user(app)
     with app.app_context():
-        path = User.query.get(user_id).get_data_dir() / 'settings.json'
+        path = db.session.get(User, user_id).get_data_dir() / 'settings.json'
         raw = json.dumps(document).encode()
         path.write_bytes(raw)
 
@@ -222,7 +222,7 @@ def test_all_store_writers_reject_schema_invalid_final_documents(
         app_settings, command_manager, command_set_manager,
         jump_host_manager, key_manager, profile_manager, user_settings,
     )
-    from app.models import User
+    from app.models import User, db
 
     user_id = _create_user(app, 'invalid-writer-input')
     with app.app_context():
@@ -231,7 +231,10 @@ def test_all_store_writers_reject_schema_invalid_final_documents(
         profile_path = profile_manager.get_user_profiles_file(user_id)
         jump_path = jump_host_manager._get_file(user_id)
         key_path = key_manager.get_user_keys_file(user_id)
-        settings_path = User.query.get(user_id).get_data_dir() / 'settings.json'
+        settings_path = db.session.get(
+            User,
+            user_id,
+        ).get_data_dir() / 'settings.json'
         app_path = tmp_path / 'app_settings.json'
         monkeypatch.setattr(app_settings, '_SETTINGS_FILE', app_path)
 

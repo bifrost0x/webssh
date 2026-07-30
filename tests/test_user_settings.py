@@ -17,12 +17,12 @@ def _create_user(app):
 
 def test_save_user_settings_preserves_corrupt_storage(app):
     from app import user_settings
-    from app.models import User
+    from app.models import User, db
 
     user_id = _create_user(app)
     corrupt = b'\xff'
     with app.app_context():
-        path = User.query.get(user_id).get_data_dir() / 'settings.json'
+        path = db.session.get(User, user_id).get_data_dir() / 'settings.json'
         path.write_bytes(corrupt)
 
         with pytest.raises(StorageCorruptionError) as exc_info:

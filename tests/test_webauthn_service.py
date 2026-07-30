@@ -83,3 +83,42 @@ def test_challenge_rejects_wrong_user_wrong_session_and_expiry(app):
                     purpose="authenticate",
                     **kwargs,
                 )
+
+
+def test_creating_challenge_prunes_expired_rows_for_other_bindings(app):
+    from app.models import WebAuthnChallenge
+    from app.webauthn_service import create_challenge
+
+    now = datetime.now(timezone.utc)
+    with app.app_context():
+        create_challenge(
+            user_id=None,
+            purpose="authenticate",
+            session_binding="expired-browser-binding",
+            challenge=b"expired-authentication-challenge",
+            now=now - timedelta(minutes=10),
+            ttl=timedelta(minutes=5),
+        )
+        create_challenge(
+            user_id=None,
+            purpose="authenticate",
+            session_binding="live-browser-binding",
+            challenge=b"live-authentication-challenge",
+            now=now,
+        )
+        create_challenge(
+            user_id=None,
+            purpose="authenticate",
+            session_binding="new-browser-binding",
+            challenge=b"new-authentication-challenge",
+            now=now,
+        )
+
+        rows = WebAuthnChallenge.query.order_by(
+            WebAuthnChallenge.id.asc()
+        ).all()
+
+    assert [bytes(row.challenge) for row in rows] == [
+        b"live-authentication-challenge",
+        b"new-authentication-challenge",
+    ]

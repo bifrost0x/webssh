@@ -29,8 +29,8 @@ def _is_valid_host(host_str):
 
 def get_user_profiles_file(user_id):
     """Get the profiles file path for a specific user."""
-    from .models import User
-    user = User.query.get(user_id)
+    from .models import User, db
+    user = db.session.get(User, user_id)
     if not user:
         return None
     user_dir = user.get_data_dir()

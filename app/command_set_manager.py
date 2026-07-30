@@ -174,9 +174,9 @@ def _append_step_separator(value):
 
 
 def _command_sets_file(user_id):
-    from .models import User
+    from .models import User, db
 
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return None
     return user.get_data_dir() / 'command_sets.json'

@@ -9,6 +9,9 @@ from .models import RecoveryCode, db
 
 
 _DOMAIN = b"webssh-recovery-code-v1\0"
+_DUMMY_KDF_SALT = b"webssh-recovery-verification-v1"
+_DUMMY_KDF_ITERATIONS = 200_000
+_MAX_RECOVERY_CODES = 20
 _recovery_lock = Lock()
 
 
@@ -22,8 +25,25 @@ def _hash(code):
     ).digest()
 
 
+_DUMMY_CODE_HASHES = tuple(
+    _hash(f"dummy-recovery-code-{index}")
+    for index in range(_MAX_RECOVERY_CODES)
+)
+
+
+def _equalize_verification_cost(candidate):
+    """Perform fixed expensive work on every recovery-code verification."""
+    hashlib.pbkdf2_hmac(
+        "sha256",
+        candidate,
+        _DUMMY_KDF_SALT,
+        _DUMMY_KDF_ITERATIONS,
+        dklen=32,
+    )
+
+
 def generate_codes(user_id, *, count=10):
-    if type(count) is not int or not 1 <= count <= 20:
+    if type(count) is not int or not 1 <= count <= _MAX_RECOVERY_CODES:
         raise ValueError("Recovery code count must be between 1 and 20")
     with _recovery_lock:
         RecoveryCode.query.filter_by(user_id=user_id).delete()
@@ -45,12 +65,24 @@ def generate_codes(user_id, *, count=10):
 
 def consume_code(user_id, code):
     candidate = _hash(code)
+    _equalize_verification_cost(candidate)
     with _recovery_lock:
-        rows = RecoveryCode.query.filter_by(user_id=user_id).all()
-        for row in rows:
-            if not hmac.compare_digest(bytes(row.code_hash), candidate):
-                continue
-            db.session.delete(row)
+        query_user_id = user_id if user_id is not None else -1
+        rows = RecoveryCode.query.filter_by(
+            user_id=query_user_id
+        ).limit(_MAX_RECOVERY_CODES).all()
+        matched_row = None
+        for index in range(_MAX_RECOVERY_CODES):
+            row = rows[index] if index < len(rows) else None
+            expected = (
+                bytes(row.code_hash)
+                if row is not None
+                else _DUMMY_CODE_HASHES[index]
+            )
+            if hmac.compare_digest(expected, candidate) and row is not None:
+                matched_row = row
+        if matched_row is not None:
+            db.session.delete(matched_row)
             db.session.commit()
             return True
     return False

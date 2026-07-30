@@ -36,6 +36,9 @@ def create_challenge(
     now = as_naive_utc(now or datetime.now(timezone.utc))
     binding_hash = _binding_hash(session_binding)
     with _challenge_lock:
+        WebAuthnChallenge.query.filter(
+            WebAuthnChallenge.expires_at < now
+        ).delete(synchronize_session=False)
         WebAuthnChallenge.query.filter_by(
             user_id=user_id,
             purpose=purpose,

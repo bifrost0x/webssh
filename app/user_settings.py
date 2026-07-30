@@ -35,8 +35,8 @@ def _valid_settings_update(value):
 
 
 def _get_user_settings_with_lock_held(user_id):
-    from .models import User
-    user = User.query.get(user_id)
+    from .models import User, db
+    user = db.session.get(User, user_id)
     if not user:
         return DEFAULT_SETTINGS.copy()
 
@@ -60,8 +60,8 @@ def get_user_settings(user_id):
 
 def save_user_settings(user_id, settings):
     """Persist user settings to disk."""
-    from .models import User
-    user = User.query.get(user_id)
+    from .models import User, db
+    user = db.session.get(User, user_id)
     if not user or not _valid_settings_update(settings):
         return False
 

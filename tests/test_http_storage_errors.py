@@ -27,13 +27,13 @@ def _login(client, username):
 def test_corrupt_user_settings_returns_safe_html_without_render_recursion(
     app, client
 ):
-    from app.models import User
+    from app.models import User, db
 
     user_id = _create_user(app, 'corrupt_html_settings')
     _login(client, 'corrupt_html_settings')
     corrupt = b'{private-user-setting'
     with app.app_context():
-        path = User.query.get(user_id).get_data_dir() / 'settings.json'
+        path = db.session.get(User, user_id).get_data_dir() / 'settings.json'
         path.write_bytes(corrupt)
 
     response = client.get('/')

@@ -36,8 +36,8 @@ def _is_valid_host(host):
 
 
 def _get_file(user_id):
-    from .models import User
-    user = User.query.get(user_id)
+    from .models import User, db
+    user = db.session.get(User, user_id)
     if not user:
         return None
     return user.get_data_dir() / 'jump_hosts.json'

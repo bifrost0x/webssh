@@ -211,3 +211,16 @@ def test_workflows_use_an_explicit_runner_release():
         assert 'ubuntu-latest' not in text, workflow
         for runner in re.findall(r'runs-on:\s*(\S+)', text):
             assert runner == 'ubuntu-24.04', f'{workflow}: {runner}'
+
+
+def test_browser_ci_runs_javascript_units_before_playwright():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    browser_job = workflow.split('  browser-e2e:', 1)[1].split(
+        '\n  container-threading-smoke:',
+        1,
+    )[0]
+
+    unit_step = browser_job.index('run: npm run test:js')
+    browser_step = browser_job.index('run: npm run test:e2e')
+
+    assert unit_step < browser_step

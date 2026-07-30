@@ -13,9 +13,9 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 
 def get_user_commands_file(user_id):
-    from .models import User
+    from .models import User, db
 
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     return user.get_data_dir() / 'commands.json' if user else None
 
 

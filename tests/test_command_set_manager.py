@@ -55,11 +55,11 @@ def test_load_command_sets_returns_empty_for_missing_file(app):
 
 def test_load_command_sets_reports_corrupt_json_without_overwriting(app):
     from app import command_set_manager
-    from app.models import User
+    from app.models import User, db
 
     user_id = create_user(app)
     with app.app_context():
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         path = user.get_data_dir() / 'command_sets.json'
         path.write_text('{broken', encoding='utf-8')
 

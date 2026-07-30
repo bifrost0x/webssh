@@ -329,11 +329,11 @@ def _create_user(app, username):
 def test_manager_load_migrates_legacy_once_under_its_store_lock(
     app, store_name, relative_path, legacy, loader
 ):
-    from app.models import User
+    from app.models import User, db
 
     with app.app_context():
         user_id = _create_user(app, f'migration-{store_name}')
-        path = User.query.get(user_id).get_data_dir() / relative_path
+        path = db.session.get(User, user_id).get_data_dir() / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         original = json.dumps(legacy, separators=(',', ':')).encode('utf-8')
         path.write_bytes(original)
@@ -352,11 +352,11 @@ def test_manager_load_migrates_legacy_once_under_its_store_lock(
 
 def test_manager_rejects_future_version_without_backup_or_write(app):
     from app import profile_manager
-    from app.models import User
+    from app.models import User, db
 
     with app.app_context():
         user_id = _create_user(app, 'migration-future')
-        path = User.query.get(user_id).get_data_dir() / 'profiles.json'
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
         source = json.dumps({
             'schema_version': CURRENT_STORAGE_VERSIONS['profiles'] + 1,
             'profiles': [],
@@ -427,11 +427,11 @@ def test_manager_rejects_future_version_without_backup_or_write(app):
 def test_each_manager_rejects_future_version_without_touching_source(
     app, store_name, relative_path, document, loader
 ):
-    from app.models import User
+    from app.models import User, db
 
     with app.app_context():
         user_id = _create_user(app, f'migration-future-{store_name}')
-        path = User.query.get(user_id).get_data_dir() / relative_path
+        path = db.session.get(User, user_id).get_data_dir() / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         source = json.dumps({
             **document,
@@ -491,12 +491,12 @@ def test_each_manager_rejects_future_version_without_touching_source(
 def test_each_manager_leaves_corrupt_source_untouched(
     app, relative_path, loader
 ):
-    from app.models import User
+    from app.models import User, db
 
     with app.app_context():
         username = relative_path.replace('/', '-').replace('.', '-')
         user_id = _create_user(app, f'migration-corrupt-{username}')
-        path = User.query.get(user_id).get_data_dir() / relative_path
+        path = db.session.get(User, user_id).get_data_dir() / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         source = b'{broken'
         path.write_bytes(source)
@@ -511,7 +511,7 @@ def test_each_manager_leaves_corrupt_source_untouched(
 
 def test_commands_manager_keeps_list_api_while_migrating_disk_wrapper_once(app):
     from app import command_manager
-    from app.models import User
+    from app.models import User, db
 
     command = {
         'id': 'legacy-command',
@@ -526,7 +526,7 @@ def test_commands_manager_keeps_list_api_while_migrating_disk_wrapper_once(app):
 
     with app.app_context():
         user_id = _create_user(app, 'migration-command-wrapper')
-        path = User.query.get(user_id).get_data_dir() / 'commands.json'
+        path = db.session.get(User, user_id).get_data_dir() / 'commands.json'
         source = json.dumps([command], separators=(',', ':')).encode('utf-8')
         path.write_bytes(source)
 

@@ -6,7 +6,8 @@ import config
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required, login_user
 
-from .audit_logger import log_security_event
+from .audit_logger import log_rate_limit_exceeded, log_security_event
+from .auth import check_rate_limit
 from .decorators import admin_required
 from .models import User, db
 from .recovery_service import consume_code, generate_codes
@@ -45,24 +46,38 @@ def regenerate_own_recovery_codes():
 @recovery_blueprint.post("/login/recovery")
 def recovery_login():
     _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_rate_limit(
+        client_ip,
+        "recovery_login",
+        config.RATELIMIT_LOGIN_LIMIT,
+    ):
+        log_rate_limit_exceeded("recovery_login", client_ip)
+        return jsonify({"error": "Too many login attempts"}), 429
     data = request.get_json(silent=True) or {}
     username = str(data.get("username") or "").strip()
     user = User.query.filter_by(username=username).first()
-    valid = (
-        user is not None
-        and not user.is_locked
-        and consume_code(user.id, data.get("code", ""))
+    active_user = user if user is not None and not user.is_locked else None
+    code_valid = consume_code(
+        active_user.id if active_user is not None else None,
+        data.get("code", ""),
     )
+    valid = active_user is not None and code_valid
     if not valid:
         log_security_event(
             "RECOVERY_LOGIN_REJECTED",
             level=logging.WARNING,
             user=username or None,
+            ip=client_ip,
         )
         return jsonify({"error": "Invalid recovery credentials"}), 401
     session.clear()
-    login_user(user)
-    log_security_event("RECOVERY_LOGIN_SUCCESS", user=user.username)
+    login_user(active_user)
+    log_security_event(
+        "RECOVERY_LOGIN_SUCCESS",
+        user=active_user.username,
+        ip=client_ip,
+    )
     return jsonify({"ok": True})
 
 

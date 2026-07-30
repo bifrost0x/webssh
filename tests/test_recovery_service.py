@@ -1,5 +1,7 @@
 """One-time account recovery code storage and route controls."""
 
+import hmac
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -107,3 +109,109 @@ def test_user_can_generate_and_consume_one_recovery_code(app, client):
 
     assert accepted.status_code == 200
     assert replayed.status_code == 401
+
+
+def test_recovery_login_is_rate_limited_like_password_login(
+    app, client, monkeypatch
+):
+    import config
+
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "2 per minute")
+
+    responses = [
+        client.post(
+            "/login/recovery",
+            json={"username": "missing_user", "code": "invalid"},
+        )
+        for _ in range(3)
+    ]
+
+    assert [response.status_code for response in responses] == [401, 401, 429]
+    assert responses[-1].get_json() == {
+        "error": "Too many login attempts"
+    }
+
+
+def test_recovery_login_equalizes_verification_work(
+    app, client, monkeypatch
+):
+    import config
+    import app.recovery_service as recovery_service
+
+    user_id = _create_user(app, "timing_recovery_user")
+    with app.app_context():
+        recovery_service.generate_codes(user_id, count=3)
+
+    monkeypatch.setattr(config, "RATELIMIT_LOGIN_LIMIT", "100 per minute")
+    real_compare_digest = hmac.compare_digest
+    comparisons = []
+    expensive_verifications = []
+
+    def record_comparison(left, right):
+        comparisons.append((left, right))
+        return real_compare_digest(left, right)
+
+    def record_expensive_verification(candidate):
+        expensive_verifications.append(candidate)
+
+    monkeypatch.setattr(
+        recovery_service.hmac,
+        "compare_digest",
+        record_comparison,
+    )
+    monkeypatch.setattr(
+        recovery_service,
+        "_equalize_verification_cost",
+        record_expensive_verification,
+        raising=False,
+    )
+
+    missing = client.post(
+        "/login/recovery",
+        json={"username": "missing_user", "code": "invalid"},
+    )
+    missing_comparisons = len(comparisons)
+    missing_expensive_verifications = len(expensive_verifications)
+    comparisons.clear()
+    expensive_verifications.clear()
+    existing = client.post(
+        "/login/recovery",
+        json={"username": "timing_recovery_user", "code": "invalid"},
+    )
+
+    assert missing.status_code == 401
+    assert existing.status_code == 401
+    assert missing_comparisons == 20
+    assert len(comparisons) == missing_comparisons
+    assert missing_expensive_verifications == 1
+    assert len(expensive_verifications) == missing_expensive_verifications
+
+
+def test_locked_user_cannot_consume_valid_recovery_code(app, client):
+    from app.models import User, db
+    from app.recovery_service import generate_codes
+
+    user_id = _create_user(app, "locked_recovery_user")
+    with app.app_context():
+        code = generate_codes(user_id, count=1)[0]
+        user = db.session.get(User, user_id)
+        user.is_locked = True
+        db.session.commit()
+
+    rejected = client.post(
+        "/login/recovery",
+        json={"username": "locked_recovery_user", "code": code},
+    )
+
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_locked = False
+        db.session.commit()
+
+    accepted = client.post(
+        "/login/recovery",
+        json={"username": "locked_recovery_user", "code": code},
+    )
+
+    assert rejected.status_code == 401
+    assert accepted.status_code == 200

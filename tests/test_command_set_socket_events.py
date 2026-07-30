@@ -285,7 +285,7 @@ def test_save_notepad_rejects_non_string_without_writing_or_success(
     app, monkeypatch, text
 ):
     from app import user_settings
-    from app.models import User
+    from app.models import User, db
     import app.socket_events as socket_events
 
     user_id, sid = create_socket_user(app, f'invalid_notepad_{type(text).__name__}')
@@ -293,7 +293,7 @@ def test_save_notepad_rejects_non_string_without_writing_or_success(
         assert user_settings.save_user_settings(
             user_id, {'notepad': 'safe'}
         ) is True
-        path = User.query.get(user_id).get_data_dir() / 'settings.json'
+        path = db.session.get(User, user_id).get_data_dir() / 'settings.json'
         before = path.read_bytes()
 
     acknowledgement, emitted = call_socket_handler(
@@ -1038,7 +1038,7 @@ def test_missing_command_update_and_profile_delete_emit_structured_errors(
 
 
 def test_socket_command_set_errors_are_structured(app, monkeypatch):
-    from app.models import User
+    from app.models import User, db
     import app.socket_events as socket_events
 
     user_id, sid = create_socket_user(app, 'command_set_errors')
@@ -1056,7 +1056,7 @@ def test_socket_command_set_errors_are_structured(app, monkeypatch):
     }
 
     with app.app_context():
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         path = user.get_data_dir() / 'command_sets.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{broken', encoding='utf-8')
@@ -1488,11 +1488,11 @@ def test_unresolvable_saved_set_stops_before_connection_validation(
 
 def test_add_library_command_does_not_overwrite_corrupt_storage(app):
     from app import command_manager
-    from app.models import User
+    from app.models import User, db
 
     user_id, _sid = create_socket_user(app, 'corrupt_command_library')
     with app.app_context():
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         path = user.get_data_dir() / 'commands.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{broken', encoding='utf-8')
