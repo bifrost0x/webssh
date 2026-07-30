@@ -2,7 +2,9 @@
 
 import os
 import sys
+import threading
 import types
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -90,6 +92,36 @@ class FlakyRedis:
         if self.failing:
             raise ConnectionError('redis unavailable')
         return True
+
+
+def test_in_memory_limiter_enforces_limit_under_concurrent_access():
+    """A non-atomic lookup/check/append sequence can admit both callers."""
+
+    lookup_barrier = threading.Barrier(2)
+
+    class CoordinatedLookupDict(dict):
+        def get(self, key, default=None):
+            value = super().get(key, default)
+            try:
+                lookup_barrier.wait(timeout=0.05)
+            except threading.BrokenBarrierError:
+                pass
+            return value
+
+    limiter = InMemoryRateLimiter()
+    limiter.events = CoordinatedLookupDict()
+    start = threading.Barrier(2)
+
+    def attempt():
+        start.wait(timeout=1)
+        return limiter.allow('login:parallel', 1, 60)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: attempt(), range(2)))
+
+    assert results.count(True) == 1
+    assert results.count(False) == 1
+    assert len(limiter.events['login:parallel']) == 1
 
 
 def test_denied_requests_do_not_grow_redis_bucket():

@@ -10,6 +10,7 @@ platform-neutral.
 import json
 import os
 from pathlib import Path
+import stat
 import tempfile
 import threading
 from typing import Callable, TypeVar
@@ -148,6 +149,58 @@ def atomic_write_bytes(path: Path, payload: bytes, mode: int = 0o600) -> None:
                 temporary_path.unlink()
             except FileNotFoundError:
                 pass
+
+
+def atomic_copy_file(
+    source: Path,
+    destination: Path,
+    mode: int = 0o600,
+) -> None:
+    """Durably stream a regular file into an atomic destination replace."""
+    source = Path(source)
+    destination = Path(destination)
+    source_stat = source.lstat()
+    if (
+        stat.S_ISLNK(source_stat.st_mode)
+        or not stat.S_ISREG(source_stat.st_mode)
+    ):
+        raise OSError('source must be a regular non-symlink file')
+
+    flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0)
+    flags |= getattr(os, 'O_NOFOLLOW', 0)
+    source_descriptor = os.open(source, flags)
+    temporary_path = None
+    try:
+        opened_stat = os.fstat(source_descriptor)
+        if (
+            (source_stat.st_dev, source_stat.st_ino)
+            != (opened_stat.st_dev, opened_stat.st_ino)
+            or not stat.S_ISREG(opened_stat.st_mode)
+        ):
+            raise OSError('source changed while being opened')
+        with os.fdopen(source_descriptor, 'rb') as source_handle:
+            source_descriptor = None
+            with tempfile.NamedTemporaryFile(
+                mode='wb',
+                dir=destination.parent,
+                prefix=f'.{destination.name}.',
+                suffix='.tmp',
+                delete=False,
+            ) as destination_handle:
+                temporary_path = Path(destination_handle.name)
+                while chunk := source_handle.read(1024 * 1024):
+                    destination_handle.write(chunk)
+                destination_handle.flush()
+                os.fsync(destination_handle.fileno())
+        os.chmod(temporary_path, mode)
+        os.replace(temporary_path, destination)
+        temporary_path = None
+        fsync_parent_directory(destination)
+    finally:
+        if source_descriptor is not None:
+            os.close(source_descriptor)
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def atomic_write_json(path, data, indent=2):

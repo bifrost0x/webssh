@@ -83,19 +83,19 @@ def test_synchronous_socketio_handler_never_queues_an_unbounded_task():
     assert observed_threads == [caller_thread]
 
 
-@pytest.mark.parametrize('thread_count', ['0', '1', '33', 'invalid'])
+@pytest.mark.parametrize('thread_count', ['0', '1', '7', '257', 'invalid'])
 def test_gunicorn_threads_rejects_values_outside_the_safe_range(thread_count):
     """An unbounded gthread worker could exhaust process memory under load."""
     result = _config_probe(thread_count)
 
     assert result.returncode != 0
-    assert 'CONFIGURATION ERROR: GUNICORN_THREADS must be between 2 and 32' in (
+    assert 'CONFIGURATION ERROR: GUNICORN_THREADS must be between 8 and 256' in (
         result.stderr
     )
 
 
-def test_gunicorn_threads_uses_the_canary_default():
-    """The container must have a conservative thread count without an override."""
+def test_gunicorn_threads_preserves_an_http_reserve_by_default():
+    """Held WebSockets must leave request threads for login and transfers."""
     environment = os.environ.copy()
     environment.update({
         'DEBUG': 'True',
@@ -116,7 +116,29 @@ def test_gunicorn_threads_uses_the_canary_default():
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.splitlines()[-1] == '3'
+    assert result.stdout.splitlines()[-1] == '64'
+
+
+def test_socket_capacity_rejects_configuration_without_http_reserve():
+    environment = os.environ.copy()
+    environment.update({
+        'DEBUG': 'True',
+        'SECRET_KEY': 'threading-runtime-test-secret',
+        'GUNICORN_THREADS': '16',
+        'MAX_SOCKET_CONNECTIONS': '13',
+    })
+
+    result = subprocess.run(
+        [sys.executable, '-c', 'import config'],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert 'at least 4 Gunicorn threads available for HTTP' in result.stderr
 
 
 def test_playwright_uses_the_configured_e2e_port():

@@ -7,19 +7,16 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-24.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -27,11 +24,13 @@ jobs:
         with:
           version: '0.12.0'
 
-      - name: Install graphify
-        run: uv tool install graphifyy==0.9.30
+      - name: Install locked graph dependencies
+        run: |
+          uv venv
+          uv pip install --require-hashes -r requirements-graph.txt
 
       - name: Build code graph
-        run: graphify update .
+        run: .venv/bin/graphify update .
 
       - name: Prepare Pages artifact
         run: |
@@ -42,5 +41,15 @@ jobs:
         with:
           path: _site
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
         id: deployment

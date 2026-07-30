@@ -3,8 +3,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hmac
+import json
 import os
 from pathlib import Path
+import re
 import stat
 import tempfile
 import uuid
@@ -13,6 +15,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .backup_manager import create_backup
 from .key_encryption import _derive_key, is_encrypted, key_operation_lock
+from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .storage_utils import atomic_write_bytes
 
 
@@ -24,6 +27,11 @@ class SecretRotationError(ValueError):
 class RotationReport:
     rotated_keys: int
     backup_path: Path
+
+
+_MIGRATION_BACKUP_PATTERN = re.compile(
+    r'^keys\.json\.[0-9a-f]{32}\.bak$'
+)
 
 
 def _write_staged_key(path, payload):
@@ -89,6 +97,10 @@ def _stored_key_files(data_dir):
                 )
         if current.name != 'keys':
             continue
+        if directory_names:
+            raise SecretRotationError(
+                'SSH key storage contains an unexpected directory'
+            )
         user_directory = current.parent.name
         if (
             not user_directory.startswith('user_')
@@ -96,9 +108,61 @@ def _stored_key_files(data_dir):
         ):
             raise SecretRotationError('SSH key user directory is invalid')
         user_id = user_directory.removeprefix('user_')
-        for file_name in file_names:
-            if file_name == 'keys.json':
-                continue
+        metadata_path = current / 'keys.json'
+        referenced_names = set()
+        if 'keys.json' in file_names:
+            try:
+                metadata_stat = metadata_path.lstat()
+                if (
+                    stat.S_ISLNK(metadata_stat.st_mode)
+                    or not stat.S_ISREG(metadata_stat.st_mode)
+                ):
+                    raise SecretRotationError(
+                        'SSH key metadata is not a regular file'
+                    )
+                document = json.loads(
+                    metadata_path.read_text(encoding='utf-8')
+                )
+            except SecretRotationError:
+                raise
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise SecretRotationError(
+                    'SSH key metadata is unreadable'
+                ) from exc
+            items = document.get('keys') if isinstance(document, dict) else None
+            if (
+                not isinstance(document, dict)
+                or document.get('schema_version')
+                != CURRENT_STORAGE_VERSIONS['keys']
+                or not isinstance(items, list)
+            ):
+                raise SecretRotationError('SSH key metadata is invalid')
+            for item in items:
+                filename = item.get('filename') if isinstance(item, dict) else None
+                if (
+                    not isinstance(filename, str)
+                    or not filename
+                    or Path(filename).name != filename
+                    or filename in referenced_names
+                ):
+                    raise SecretRotationError('SSH key metadata is invalid')
+                referenced_names.add(filename)
+
+        migration_backups = {
+            name for name in file_names
+            if _MIGRATION_BACKUP_PATTERN.fullmatch(name)
+        }
+        stored_names = set(file_names) - {'keys.json'} - migration_backups
+        if stored_names - referenced_names:
+            raise SecretRotationError(
+                'SSH key storage contains an unreferenced file'
+            )
+        if referenced_names - stored_names:
+            raise SecretRotationError(
+                'SSH key metadata references a missing file'
+            )
+
+        for file_name in sorted(migration_backups | referenced_names):
             path = current / file_name
             path_stat = path.lstat()
             if (
@@ -108,6 +172,8 @@ def _stored_key_files(data_dir):
                 raise SecretRotationError(
                     'SSH key storage contains an unsafe file'
                 )
+            if file_name in migration_backups:
+                continue
             key_files.append((user_id, path))
     return tuple(sorted(key_files, key=lambda item: str(item[1])))
 

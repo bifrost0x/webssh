@@ -93,13 +93,16 @@ Bootstrap the deployment in this order:
    docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
    ```
 3. Keep production self-registration disabled unless it is explicitly needed.
-   Accounts created through public registration are always non-administrators.
+   Because the administrator was created first, every later account created
+   through public registration is non-administrative. On an otherwise empty
+   installation, the first registered account would become administrator.
 4. Configure narrow target and remote-user allowlists, then change
    `TAILSCALE_SSH_ENABLED` to `true`.
 5. Apply the updated configuration with `docker compose up -d`.
 
-Production self-registration defaults to disabled. A registration setting
-saved in the Admin Panel takes precedence over the environment default.
+Production self-registration is always disabled. In the homelab profile, a
+registration setting saved in the Admin Panel takes precedence over the
+environment default.
 
 ### Homelab Compose example
 

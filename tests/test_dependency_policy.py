@@ -152,6 +152,37 @@ def test_ci_installs_only_hash_checked_python_dependencies():
     assert pip_policy_allows(workflow)
 
 
+def test_graph_dependencies_are_hash_locked_and_generated_with_other_locks():
+    graph_input = Path('requirements-graph.in').read_text(encoding='utf-8')
+    graph_lock = Path('requirements-graph.txt').read_text(encoding='utf-8')
+    lock_script = Path('scripts/lock_requirements.ps1').read_text(
+        encoding='utf-8'
+    )
+
+    assert 'graphifyy==0.9.30' in graph_input
+    assert '--require-hashes' in graph_lock
+    assert 'graphifyy==0.9.30' in graph_lock
+    assert 'requirements-graph.in' in lock_script
+    assert 'requirements-graph.txt' in lock_script
+
+
+def test_graph_pages_build_is_unprivileged_and_deploy_only_is_privileged():
+    workflow = Path('.github/workflows/graph-pages.yml').read_text(
+        encoding='utf-8'
+    )
+    build = workflow.split('\n  build:', 1)[1].split('\n  deploy:', 1)[0]
+    deploy = workflow.split('\n  deploy:', 1)[1]
+
+    assert 'permissions:\n  contents: read' in workflow
+    assert 'permissions:\n      contents: read' in build
+    assert 'pages: write' not in build
+    assert 'id-token: write' not in build
+    assert 'uv pip install --require-hashes -r requirements-graph.txt' in build
+    assert 'needs: build' in deploy
+    assert 'permissions:\n      pages: write\n      id-token: write' in deploy
+    assert 'graphify update .' not in deploy
+
+
 @pytest.mark.parametrize(
     ("lines", "allowed"),
     [

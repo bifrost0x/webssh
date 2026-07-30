@@ -77,6 +77,100 @@ def test_admin_link_requires_password_confirmation_and_stable_subject(
         assert identity.subject == "stable-subject"
 
 
+def test_oidc_link_rate_limits_before_bcrypt(app, client, monkeypatch):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import User
+
+    _create_user(app, "limited_oidc_admin", is_admin=True)
+    target_id = _create_user(app, "limited_oidc_target")
+    _login(client, "limited_oidc_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(
+        oidc_routes,
+        "check_reauth_rate_limit",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        User,
+        "check_password",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("bcrypt must not run after reauth throttling")
+        ),
+    )
+
+    response = client.post(
+        f"/admin/api/users/{target_id}/oidc-link",
+        json={
+            "password": "password123",
+            "confirm_username": "limited_oidc_target",
+            "subject": "subject",
+        },
+    )
+
+    assert response.status_code == 429
+    assert response.get_json() == {"error": "Too many password attempts"}
+
+
+def test_oidc_link_commit_failure_is_not_a_duplicate(
+    app, client, monkeypatch
+):
+    import config
+    from app.models import db
+
+    _create_user(app, "failing_oidc_admin", is_admin=True)
+    target_id = _create_user(app, "failing_oidc_target")
+    _login(client, "failing_oidc_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(
+        db.session,
+        "commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+
+    response = client.post(
+        f"/admin/api/users/{target_id}/oidc-link",
+        json={
+            "password": "password123",
+            "confirm_username": "failing_oidc_target",
+            "subject": "stable-subject",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "OIDC identity storage is temporarily unavailable"
+    }
+
+
+def test_oidc_login_rate_limit_can_be_disabled(app, client, monkeypatch):
+    import config
+    import app.oidc_routes as oidc_routes
+
+    class FakeClient:
+        @staticmethod
+        def authorize_redirect(*_args, **_kwargs):
+            return "redirected", 200
+
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "RATELIMIT_ENABLED", False)
+    monkeypatch.setattr(
+        oidc_routes,
+        "check_rate_limit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("disabled rate limiting must not be called")
+        ),
+    )
+    monkeypatch.setattr(oidc_routes, "_client", lambda: FakeClient())
+
+    response = client.get("/oidc/login")
+
+    assert response.status_code == 200
+    assert response.get_data(as_text=True) == "redirected"
+
+
 def test_linked_oidc_callback_is_single_use_and_normalizes_issuer(
     app, client, monkeypatch
 ):

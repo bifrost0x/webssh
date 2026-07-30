@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+import uuid
 
 from cryptography.fernet import Fernet
 import pytest
@@ -27,8 +29,49 @@ def _rotation_data(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         user_id = path.parts[-3].removeprefix('user_')
         path.write_bytes(_encrypt(old_secret, user_id, plaintext))
+        (path.parent / 'keys.json').write_text(
+            json.dumps({
+                'schema_version': 2,
+                'keys': [{
+                    'id': path.stem,
+                    'name': path.stem,
+                    'filename': path.name,
+                    'key_type': 'RSA',
+                    'encrypted': True,
+                }],
+            }),
+            encoding='utf-8',
+        )
     (data_dir / 'app.db').write_bytes(b'database')
     return data_dir, old_secret, new_secret, plaintexts
+
+
+def test_rotation_ignores_exact_keys_metadata_migration_backup(tmp_path):
+    data_dir, old_secret, new_secret, plaintexts = _rotation_data(tmp_path)
+    keys_dir = data_dir / 'users' / 'user_1' / 'keys'
+    metadata = keys_dir / 'keys.json'
+    migration_backup = keys_dir / (
+        f'keys.json.{uuid.uuid4().hex}.bak'
+    )
+    migration_backup.write_bytes(metadata.read_bytes())
+
+    report = rotate_secret(old_secret, new_secret, data_dir)
+
+    assert report.rotated_keys == 2
+    assert migration_backup.read_bytes() == metadata.read_bytes()
+    first_path = data_dir / next(iter(plaintexts))
+    assert Fernet(_derive_key(new_secret, '1')).decrypt(
+        first_path.read_bytes()
+    ) == b'first private key'
+
+
+def test_rotation_rejects_unreferenced_key_file(tmp_path):
+    data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
+    orphan = data_dir / 'users' / 'user_1' / 'keys' / 'orphan.pem'
+    orphan.write_bytes(_encrypt(old_secret, '1', b'orphan private key'))
+
+    with pytest.raises(SecretRotationError, match='unreferenced'):
+        rotate_secret(old_secret, new_secret, data_dir)
 
 
 def test_rotate_secret_reencrypts_every_key_and_publishes_secret_last(tmp_path):

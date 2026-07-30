@@ -22,6 +22,7 @@ from webauthn.helpers.structs import (
     ResidentKeyRequirement,
     UserVerificationRequirement,
 )
+from sqlalchemy.exc import IntegrityError
 
 import config
 
@@ -29,7 +30,7 @@ from .audit_logger import (
     log_rate_limit_exceeded,
     log_security_event,
 )
-from .auth import check_rate_limit
+from .auth import check_rate_limit, check_reauth_rate_limit
 from .models import User, WebAuthnCredential, db
 from .webauthn_service import ChallengeError, consume_challenge, create_challenge
 
@@ -81,6 +82,15 @@ def list_credentials():
 @login_required
 def registration_options():
     _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        current_user.id,
+        client_ip,
+        "webauthn_register_reauth",
+        config.RATELIMIT_REAUTH,
+    ):
+        log_rate_limit_exceeded("webauthn_register_reauth", client_ip)
+        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
     password = data.get("password", "")
     try:
@@ -165,9 +175,20 @@ def verify_registration():
     db.session.add(row)
     try:
         db.session.commit()
-    except Exception:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Passkey is already registered"}), 409
+    except Exception as exc:
+        db.session.rollback()
+        log_security_event(
+            "WEBAUTHN_CREDENTIAL_STORAGE_FAILED",
+            level=logging.ERROR,
+            user=current_user.username,
+            error=type(exc).__name__,
+        )
+        return jsonify({
+            "error": "Passkey storage is temporarily unavailable"
+        }), 503
     log_security_event(
         "WEBAUTHN_CREDENTIAL_REGISTERED",
         user=current_user.username,
@@ -179,6 +200,15 @@ def verify_registration():
 @login_required
 def delete_credential(credential_id):
     _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        current_user.id,
+        client_ip,
+        "webauthn_delete_reauth",
+        config.RATELIMIT_REAUTH,
+    ):
+        log_rate_limit_exceeded("webauthn_delete_reauth", client_ip)
+        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
     try:
         password_valid = current_user.check_password(data.get("password", ""))
@@ -202,7 +232,7 @@ def delete_credential(credential_id):
 def authentication_options():
     _require_enabled()
     client_ip = request.remote_addr or "unknown"
-    if check_rate_limit(
+    if config.RATELIMIT_ENABLED and check_rate_limit(
         client_ip,
         "webauthn_auth_options",
         config.RATELIMIT_LOGIN_LIMIT,
@@ -226,7 +256,7 @@ def authentication_options():
 def verify_authentication():
     _require_enabled()
     client_ip = request.remote_addr or "unknown"
-    if check_rate_limit(
+    if config.RATELIMIT_ENABLED and check_rate_limit(
         client_ip,
         "webauthn_auth_verify",
         config.RATELIMIT_LOGIN_LIMIT,

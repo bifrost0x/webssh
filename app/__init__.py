@@ -35,7 +35,30 @@ def get_client_ip():
     """
     return request.remote_addr or 'unknown'
 
-def create_app():
+def _initialize_persistent_storage(app):
+    """Initialize storage and schema for serving or explicit CLI mutation."""
+    if app.extensions.get('persistent_storage_initialized'):
+        return
+
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    from .audit_logger import initialize_file_logging
+    initialize_file_logging(config.DATA_DIR)
+    with app.app_context():
+        db.create_all()
+        from .models import ensure_user_columns, ensure_ssh_session_columns
+        ensure_user_columns()
+        ensure_ssh_session_columns()
+        from .auth import ensure_initial_admin, sync_admin_users
+        ensure_initial_admin()
+        sync_admin_users()
+        from .cli import warn_if_no_admin
+        warn_if_no_admin()
+        from .audit_logger import apply_audit_backup_count
+        apply_audit_backup_count()
+    app.extensions['persistent_storage_initialized'] = True
+
+
+def create_app(*, initialize_storage=True, start_runtime=True):
     base_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(base_dir, 'templates')
     static_dir = os.path.join(base_dir, 'static')
@@ -124,7 +147,6 @@ def create_app():
                         "This allows any domain to access your API - significant security risk. "
                         "Set CORS_ORIGINS to specific allowed origins.")
 
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{config.DATA_DIR / "app.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
@@ -147,26 +169,16 @@ def create_app():
     app.register_blueprint(recovery_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
-    transfer_runtime_binding = transfer_manager.bind_runtime()
-    app.extensions['runtime_lifecycle'].register_shutdown_callback(
-        'active_transfers',
-        lambda _deadline: transfer_manager.close_and_cancel(
-            transfer_runtime_binding
-        ),
-    )
-
-    with app.app_context():
-        db.create_all()
-        from .models import ensure_user_columns, ensure_ssh_session_columns
-        ensure_user_columns()
-        ensure_ssh_session_columns()
-        from .auth import ensure_initial_admin, sync_admin_users
-        ensure_initial_admin()
-        sync_admin_users()
-        from .cli import warn_if_no_admin
-        warn_if_no_admin()
-        from .audit_logger import apply_audit_backup_count
-        apply_audit_backup_count()
+    if initialize_storage:
+        _initialize_persistent_storage(app)
+    if start_runtime:
+        transfer_runtime_binding = transfer_manager.bind_runtime()
+        app.extensions['runtime_lifecycle'].register_shutdown_callback(
+            'active_transfers',
+            lambda _deadline: transfer_manager.close_and_cancel(
+                transfer_runtime_binding
+            ),
+        )
     cors_origins = config.CORS_ORIGINS
     if isinstance(cors_origins, str):
         cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
@@ -250,7 +262,8 @@ def create_app():
             raise
         log_info("Background session cleanup tasks started")
 
-    setup_background_tasks()
+    if start_runtime:
+        setup_background_tasks()
 
     @app.route('/')
     @login_required

@@ -27,6 +27,7 @@ import uuid
 from abc import ABC, abstractmethod
 from collections import deque
 from datetime import datetime, timezone
+from threading import RLock
 
 log = logging.getLogger(__name__)
 
@@ -80,33 +81,35 @@ class InMemoryRateLimiter(BaseRateLimiter):
 
     def __init__(self):
         self.events: dict[str, deque] = {}
+        self._lock = RLock()
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
         now = datetime.now(timezone.utc).timestamp()
         window_start = now - window_seconds
-        queue = self.events.get(key)
-        if queue is None:
-            queue = deque()
-            self.events[key] = queue
+        with self._lock:
+            queue = self.events.get(key)
+            if queue is None:
+                queue = deque()
+                self.events[key] = queue
 
-        # Remove expired entries
-        while queue and queue[0] < window_start:
-            queue.popleft()
+            # Remove expired entries
+            while queue and queue[0] < window_start:
+                queue.popleft()
 
-        # Check limit — do NOT record denied requests
-        if len(queue) >= limit:
-            return False
+            # Check limit — do NOT record denied requests
+            if len(queue) >= limit:
+                return False
 
-        # Record this request
-        queue.append(now)
+            # Record this request
+            queue.append(now)
 
-        # Periodic cleanup of stale keys (prevent memory leak)
-        if len(self.events) > 50:
-            stale = [k for k, q in self.events.items() if not q]
-            for k in stale:
-                del self.events[k]
+            # Periodic cleanup of stale keys (prevent memory leak)
+            if len(self.events) > 50:
+                stale = [k for k, q in self.events.items() if not q]
+                for k in stale:
+                    del self.events[k]
 
-        return True
+            return True
 
 
 class RedisRateLimiter(BaseRateLimiter):
@@ -123,22 +126,38 @@ class RedisRateLimiter(BaseRateLimiter):
         self.retry_interval_seconds = retry_interval_seconds
         self._fallback: InMemoryRateLimiter | None = None
         self._fallback_until = 0.0
+        self._fallback_lock = RLock()
 
     def _activate_fallback(self, error: Exception) -> None:
-        if self._fallback is None:
-            self._fallback = InMemoryRateLimiter()
-            log.warning(
-                "Rate limiter: Redis error (%s), falling back to in-memory "
-                "for this process",
-                error,
+        with self._fallback_lock:
+            if self._fallback is None:
+                self._fallback = InMemoryRateLimiter()
+                log.warning(
+                    "Rate limiter: Redis error (%s), falling back to in-memory "
+                    "for this process",
+                    error,
+                )
+            else:
+                log.warning(
+                    "Rate limiter: Redis recovery attempt failed (%s)",
+                    error,
+                )
+            self._fallback_until = (
+                time.monotonic() + self.retry_interval_seconds
             )
-        else:
-            log.warning("Rate limiter: Redis recovery attempt failed (%s)", error)
-        self._fallback_until = time.monotonic() + self.retry_interval_seconds
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
-        if self._fallback is not None and time.monotonic() < self._fallback_until:
-            return self._fallback.allow(key, limit, window_seconds)
+        with self._fallback_lock:
+            fallback = (
+                self._fallback
+                if (
+                    self._fallback is not None
+                    and time.monotonic() < self._fallback_until
+                )
+                else None
+            )
+        if fallback is not None:
+            return fallback.allow(key, limit, window_seconds)
 
         now = time.time()
         window_start = now - window_seconds
@@ -155,15 +174,21 @@ class RedisRateLimiter(BaseRateLimiter):
                 window_seconds + 1,
                 uuid.uuid4().hex,
             )
-            if self._fallback is not None:
-                log.info("Rate limiter: Redis recovered, clearing in-memory fallback")
-                self._fallback = None
-                self._fallback_until = 0.0
+            with self._fallback_lock:
+                if self._fallback is not None:
+                    log.info(
+                        "Rate limiter: Redis recovered, clearing in-memory "
+                        "fallback"
+                    )
+                    self._fallback = None
+                    self._fallback_until = 0.0
 
             return bool(allowed)
         except Exception as e:
             self._activate_fallback(e)
-            return self._fallback.allow(key, limit, window_seconds)
+            with self._fallback_lock:
+                fallback = self._fallback
+            return fallback.allow(key, limit, window_seconds)
 
 
 def create_rate_limiter(storage_url: str = "memory://") -> BaseRateLimiter:

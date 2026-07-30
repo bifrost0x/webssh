@@ -11,12 +11,42 @@ import pytest
 
 from app.storage_errors import StorageCorruptionError
 from app.storage_utils import (
+    atomic_copy_file,
     atomic_write_bytes,
     atomic_write_json,
     load_json_migrated,
     load_json_strict,
     storage_lock,
 )
+
+
+def test_atomic_copy_file_streams_exact_bytes_and_replaces_destination(
+    tmp_path,
+):
+    source = tmp_path / 'source.bin'
+    destination = tmp_path / 'destination.bin'
+    payload = (b'large-streaming-payload-' * 100000)
+    source.write_bytes(payload)
+    destination.write_bytes(b'old')
+
+    atomic_copy_file(source, destination)
+
+    assert destination.read_bytes() == payload
+    if os.name != 'nt':
+        assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+
+
+def test_atomic_copy_file_rejects_symlink_source(tmp_path):
+    source = tmp_path / 'source.bin'
+    source.write_bytes(b'secret')
+    link = tmp_path / 'linked.bin'
+    try:
+        link.symlink_to(source)
+    except OSError:
+        pytest.skip('symlinks are unavailable in this environment')
+
+    with pytest.raises(OSError, match='regular non-symlink'):
+        atomic_copy_file(link, tmp_path / 'destination.bin')
 
 
 class TestLoadJsonStrict:

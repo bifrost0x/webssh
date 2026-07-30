@@ -9,6 +9,7 @@ from pathlib import Path
 from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, abort, jsonify, redirect, request, session, url_for
 from flask_login import current_user, login_required, login_user
+from sqlalchemy.exc import IntegrityError
 
 import config
 
@@ -17,7 +18,7 @@ from .audit_logger import (
     log_security_event,
     log_warning,
 )
-from .auth import check_rate_limit
+from .auth import check_rate_limit, check_reauth_rate_limit
 from .decorators import admin_required
 from .models import OIDCIdentity, User, db
 from .oidc_service import (
@@ -88,7 +89,7 @@ def init_oidc(app):
 def oidc_login():
     _require_enabled()
     client_ip = request.remote_addr or "unknown"
-    if check_rate_limit(
+    if config.RATELIMIT_ENABLED and check_rate_limit(
         client_ip,
         "oidc_login",
         config.OIDC_LOGIN_RATE_LIMIT,
@@ -129,7 +130,7 @@ def oidc_login():
 def oidc_callback():
     _require_enabled()
     client_ip = request.remote_addr or "unknown"
-    if check_rate_limit(
+    if config.RATELIMIT_ENABLED and check_rate_limit(
         client_ip,
         "oidc_callback",
         config.OIDC_LOGIN_RATE_LIMIT,
@@ -208,6 +209,15 @@ def oidc_callback():
 @login_required
 def link_oidc_identity(user_id):
     _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        current_user.id,
+        client_ip,
+        "oidc_link_reauth",
+        config.RATELIMIT_REAUTH,
+    ):
+        log_rate_limit_exceeded("oidc_link_reauth", client_ip)
+        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
     try:
         password_valid = current_user.check_password(data.get("password", ""))
@@ -231,9 +241,21 @@ def link_oidc_identity(user_id):
     db.session.add(row)
     try:
         db.session.commit()
-    except Exception:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "OIDC identity is already linked"}), 409
+    except Exception as exc:
+        db.session.rollback()
+        log_security_event(
+            "OIDC_IDENTITY_STORAGE_FAILED",
+            level=logging.ERROR,
+            admin=current_user.username,
+            user=target.username,
+            error=type(exc).__name__,
+        )
+        return jsonify({
+            "error": "OIDC identity storage is temporarily unavailable"
+        }), 503
     log_security_event(
         "OIDC_IDENTITY_LINKED",
         admin=current_user.username,

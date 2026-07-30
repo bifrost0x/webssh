@@ -96,9 +96,11 @@ services:
       - HOST=0.0.0.0
       - PORT=5000
       - DATA_DIR=/app/data
-      # Native gthread runtime: keep one worker and choose a bounded count
-      # between 2 and 32. The default 3 is validated by config.py.
-      - GUNICORN_THREADS=3
+      # Native gthread runtime: keep one worker. Socket admission leaves
+      # request threads available for HTTP routes and file transfers.
+      - GUNICORN_THREADS=64
+      - MAX_SOCKET_CONNECTIONS=48
+      - MAX_SOCKET_CONNECTIONS_PER_USER=8
 
       # === Redis-backed rate limiting (optional) ===
       # Uncomment the two lines below AND the redis service section at the

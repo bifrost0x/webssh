@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import click
+from flask import current_app
 
 import config
 from .audit_logger import audit_logger, log_warning
@@ -118,6 +119,9 @@ def _read_password_file(password_file):
 )
 def create_admin(username, password_file):
     """Create a new administrator or promote an existing account."""
+    from . import _initialize_persistent_storage
+    _initialize_persistent_storage(current_app._get_current_object())
+
     user = User.query.filter_by(username=username).first()
     if user is not None:
         if password_file is not None:

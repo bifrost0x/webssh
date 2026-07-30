@@ -173,8 +173,10 @@ the maximum application grace. Gunicorn must continue to run exactly one worker
 because live SSH state and quota accounting are process-local.
 
 The native runtime uses Gunicorn 26 with the `gthread` worker class, exactly
-one worker, and `GUNICORN_THREADS=3` by default (accepted range: 2 through
-32). Socket.IO runs with `SOCKETIO_ASYNC_MODE=threading` and
+one worker, and `GUNICORN_THREADS=64` by default (accepted range: 8 through
+256). At most 48 Socket.IO connections are admitted globally and 8 per user
+by default. Configuration must leave at least four Gunicorn threads free for
+HTTP requests. Socket.IO runs with `SOCKETIO_ASYNC_MODE=threading` and
 `SOCKETIO_ASYNC_HANDLERS=False`; there is no Eventlet worker, fallback, or
 monkey patching path. One Gunicorn worker remains mandatory because live SSH
 sessions and quota accounting are process-local.
@@ -472,6 +474,11 @@ docker build -t webssh:local .
 | `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |
 | `AUDIT_LOG_MAX_BYTES` | No | `10485760` | Maximum size of each structured application or security audit log before rotation (10 MiB) |
 | `AUDIT_LOG_BACKUP_COUNT` | No | `5` | Number of rotated backups retained for each structured log |
+| `BACKUP_MAX_MEMBERS` | No | `10000` | Maximum number of ZIP members, including the manifest |
+| `BACKUP_MAX_FILE_SIZE` | No | `1073741824` | Maximum decompressed size of one backup file (1 GiB) |
+| `BACKUP_MAX_TOTAL_SIZE` | No | `10737418240` | Maximum total decompressed backup size (10 GiB) |
+| `BACKUP_MAX_COMPRESSION_RATIO` | No | `200` | Maximum decompressed-to-compressed ratio for one backup member |
+| `BACKUP_MAX_MANIFEST_SIZE` | No | `10485760` | Maximum decompressed manifest size (10 MiB) |
 
 Passkeys, OIDC, host trust, recovery codes, and audit retention are managed
 from the Security and Admin pages. Recovery codes are shown once and stored
@@ -533,6 +540,9 @@ server-to-server transfer work submitted to the runtime executor.
 |----------|----------|---------|-------------|
 | `BACKGROUND_WORKERS` | No | `3 + QUOTA_SSH_SESSION_GLOBAL + QUOTA_BACKGROUND_JOB_GLOBAL` (`17` with defaults) | Bounded executor capacity. Must be at least the displayed formula so three permanent cleanup jobs cannot starve allowed SSH readers or background transfers, and no more than `128` |
 | `RUNTIME_SHUTDOWN_GRACE_SECONDS` | No | `5` | Bounded cancellation grace for SIGTERM/SIGINT. Must be from `1` through `30`; the supplied Compose service allows 40 seconds before forced stop |
+| `GUNICORN_THREADS` | No | `64` | Threads in the mandatory single gthread worker; accepted range is 8 through 256 |
+| `MAX_SOCKET_CONNECTIONS` | No | `48` | Process-wide admitted Socket.IO connections; must leave at least four Gunicorn threads for HTTP |
+| `MAX_SOCKET_CONNECTIONS_PER_USER` | No | `8` | Admitted Socket.IO connections per user; cannot exceed the global limit |
 
 For compatibility, the deprecated
 `TemporaryConnectionPool(max_connections_per_user=...)` constructor argument
@@ -544,6 +554,7 @@ is still accepted but ignored. Configure the central
 |----------|----------|---------|-------------|
 | `RATELIMIT_ENABLED` | No | `True` | Enable rate limiting (`true` or `false`) |
 | `RATELIMIT_LOGIN_LIMIT` | No | `5 per minute` | Login rate limit (format: `N per {second\|minute\|hour}`) |
+| `RATELIMIT_REAUTH` | No | `5 per minute` | Per-user and per-IP limit for password-confirmed security operations |
 | `SSH_CONNECT_RATELIMIT` | No | `10 per minute` | Per-user limit on SSH connection attempts (`ssh_connect` / `quick_connect`; format: `N per {second\|minute\|hour}`) |
 | `RATELIMIT_DEFAULT` | No | `200 per hour` | Default rate limit for endpoints (format: `N per {second\|minute\|hour}`) |
 | `RATELIMIT_STORAGE_URL` | No | `memory://` | Rate-limit storage (`memory://`, `redis://`, or `rediss://`). Redis preserves counters across app restarts while the Redis service remains available; it does not remove the single-worker requirement. |

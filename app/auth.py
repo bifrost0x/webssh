@@ -73,6 +73,24 @@ def check_socket_rate_limit(user_id, endpoint, limit_str):
     key = f'{endpoint}:{user_id}'
     return not _get_rate_limiter().allow(key, limit, window)
 
+
+def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
+    """Return True when either the user or source IP exceeds reauth limits."""
+    limit, window = parse_rate_limit(limit_str)
+    limiter = _get_rate_limiter()
+    user_allowed = limiter.allow(
+        f'{endpoint}:user:{int(user_id)}',
+        limit,
+        window,
+    )
+    ip_allowed = limiter.allow(
+        f'{endpoint}:ip:{ip_address or "unknown"}',
+        limit,
+        window,
+    )
+    return not (user_allowed and ip_allowed)
+
+
 @login_manager.user_loader
 def load_user(user_id):
     """Load user by ID for Flask-Login."""

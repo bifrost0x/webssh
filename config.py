@@ -133,6 +133,19 @@ AUDIT_LOG_MAX_BYTES = _positive_int_env(
 AUDIT_LOG_BACKUP_COUNT = _positive_int_env(
     'AUDIT_LOG_BACKUP_COUNT', 5
 )
+BACKUP_MAX_MEMBERS = _positive_int_env('BACKUP_MAX_MEMBERS', 10000)
+BACKUP_MAX_FILE_SIZE = _positive_int_env(
+    'BACKUP_MAX_FILE_SIZE', 1024 * 1024 * 1024
+)
+BACKUP_MAX_TOTAL_SIZE = _positive_int_env(
+    'BACKUP_MAX_TOTAL_SIZE', 10 * 1024 * 1024 * 1024
+)
+BACKUP_MAX_COMPRESSION_RATIO = _positive_int_env(
+    'BACKUP_MAX_COMPRESSION_RATIO', 200
+)
+BACKUP_MAX_MANIFEST_SIZE = _positive_int_env(
+    'BACKUP_MAX_MANIFEST_SIZE', 10 * 1024 * 1024
+)
 
 
 # Atomic, in-process resource quotas. Per-user defaults remain below their
@@ -316,7 +329,21 @@ SOCKETIO_ASYNC_MODE = 'threading'
 # this at python-socketio's default would create one unbounded daemon thread
 # for every event received by a client.
 SOCKETIO_ASYNC_HANDLERS = False
-GUNICORN_THREADS = _bounded_int_env('GUNICORN_THREADS', 3, 2, 32)
+GUNICORN_THREADS = _bounded_int_env('GUNICORN_THREADS', 64, 8, 256)
+MAX_SOCKET_CONNECTIONS = _bounded_int_env(
+    'MAX_SOCKET_CONNECTIONS', 48, 1, 252)
+MAX_SOCKET_CONNECTIONS_PER_USER = _bounded_int_env(
+    'MAX_SOCKET_CONNECTIONS_PER_USER', 8, 1, 64)
+if MAX_SOCKET_CONNECTIONS_PER_USER > MAX_SOCKET_CONNECTIONS:
+    raise RuntimeError(
+        'CONFIGURATION ERROR: MAX_SOCKET_CONNECTIONS_PER_USER cannot exceed '
+        'MAX_SOCKET_CONNECTIONS'
+    )
+if GUNICORN_THREADS - MAX_SOCKET_CONNECTIONS < 4:
+    raise RuntimeError(
+        'CONFIGURATION ERROR: MAX_SOCKET_CONNECTIONS must leave at least 4 '
+        'Gunicorn threads available for HTTP'
+    )
 SOCKETIO_PING_TIMEOUT = 60
 SOCKETIO_PING_INTERVAL = 25
 
@@ -356,6 +383,7 @@ RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True') == 'True'
 RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
+RATELIMIT_REAUTH = os.environ.get('RATELIMIT_REAUTH', '5 per minute')
 # Per-user limit on SSH connection attempts via WebSocket (ssh_connect /
 # quick_connect). Prevents an authenticated user from abusing the server as an
 # unthrottled SSH brute-force / port-scan proxy against third-party hosts.

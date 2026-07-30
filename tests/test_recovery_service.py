@@ -111,6 +111,37 @@ def test_user_can_generate_and_consume_one_recovery_code(app, client):
     assert replayed.status_code == 401
 
 
+def test_recovery_code_regeneration_rate_limits_before_bcrypt(
+    app, client, monkeypatch
+):
+    import app.recovery_routes as recovery_routes
+    from app.models import User
+
+    _create_user(app, "limited_recovery_user")
+    _login(client, "limited_recovery_user")
+    monkeypatch.setattr(
+        recovery_routes,
+        "check_reauth_rate_limit",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        User,
+        "check_password",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("bcrypt must not run after reauth throttling")
+        ),
+    )
+
+    response = client.post(
+        "/api/recovery-codes",
+        json={"password": "password123"},
+    )
+
+    assert response.status_code == 429
+    assert response.get_json() == {"error": "Too many password attempts"}
+
+
 def test_recovery_login_is_rate_limited_like_password_login(
     app, client, monkeypatch
 ):

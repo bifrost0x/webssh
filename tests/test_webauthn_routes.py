@@ -68,6 +68,39 @@ def test_registration_options_require_current_password_and_exact_rp(
     assert base64.urlsafe_b64decode(options["challenge"] + "==")
 
 
+def test_registration_options_rate_limit_before_bcrypt(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import User
+
+    _create_user(app)
+    _login(client)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(
+        webauthn_routes,
+        "check_reauth_rate_limit",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        User,
+        "check_password",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("bcrypt must not run after reauth throttling")
+        ),
+    )
+
+    response = client.post(
+        "/api/webauthn/register/options",
+        json={"password": "password123"},
+    )
+
+    assert response.status_code == 429
+    assert response.get_json() == {"error": "Too many password attempts"}
+
+
 def test_authentication_options_are_username_less(
     app, client, monkeypatch
 ):
@@ -116,6 +149,28 @@ def test_authentication_options_are_username_less(
         assert "webauthn_auth_username" not in browser_session
 
 
+def test_webauthn_login_rate_limit_can_be_disabled(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "RATELIMIT_ENABLED", False)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "check_rate_limit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("disabled rate limiting must not be called")
+        ),
+    )
+
+    response = client.post("/api/webauthn/auth/options", json={})
+
+    assert response.status_code == 200
+
+
 def test_existing_credentials_have_a_password_authenticated_upgrade_path(
     app, client, monkeypatch
 ):
@@ -151,6 +206,49 @@ def test_existing_credentials_have_a_password_authenticated_upgrade_path(
     options = response.get_json()
     assert options["authenticatorSelection"]["residentKey"] == "required"
     assert options["excludeCredentials"] == []
+
+
+def test_webauthn_registration_commit_failure_is_not_a_duplicate(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import db
+
+    _create_user(app)
+    _login(client)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "consume_challenge",
+        lambda **_kwargs: b"challenge",
+    )
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_registration_response",
+        lambda **_kwargs: SimpleNamespace(
+            credential_id=b"new-credential",
+            credential_public_key=b"public-key",
+            sign_count=0,
+        ),
+    )
+    monkeypatch.setattr(
+        db.session,
+        "commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+
+    response = client.post(
+        "/api/webauthn/register/verify",
+        json={"credential": {"response": {"transports": []}}},
+    )
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "Passkey storage is temporarily unavailable"
+    }
 
 
 def test_authentication_resolves_account_from_discoverable_credential(

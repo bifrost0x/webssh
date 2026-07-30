@@ -5,12 +5,12 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
-import shutil
 import stat
 import tempfile
 import zipfile
 
-from .storage_utils import atomic_write_bytes, fsync_parent_directory
+import config
+from .storage_utils import atomic_copy_file, fsync_parent_directory
 
 
 _FORMAT_VERSION = 1
@@ -280,6 +280,8 @@ def create_backup(data_dir, destination):
 
 def _validated_members(backup):
     infos = backup.infolist()
+    if len(infos) > config.BACKUP_MAX_MEMBERS:
+        raise BackupIntegrityError('backup contains too many members')
     names = [info.filename for info in infos]
     if len(names) != len(set(names)):
         raise BackupIntegrityError('backup contains duplicate members')
@@ -292,18 +294,51 @@ def _validated_members(backup):
             raise BackupIntegrityError(
                 'backup contains a symbolic link'
             )
+        if info.flag_bits & 0x1:
+            raise BackupIntegrityError('encrypted backup members are unsupported')
     if names.count(_MANIFEST_NAME) != 1:
         raise BackupIntegrityError(
             'backup must contain exactly one manifest'
         )
-    return {info.filename: info for info in infos if not info.is_dir()}
+    members = {info.filename: info for info in infos if not info.is_dir()}
+    manifest_info = members[_MANIFEST_NAME]
+    if manifest_info.file_size > config.BACKUP_MAX_MANIFEST_SIZE:
+        raise BackupIntegrityError('backup manifest is too large')
+
+    total_size = 0
+    for name, info in members.items():
+        if name == _MANIFEST_NAME:
+            continue
+        if info.file_size > config.BACKUP_MAX_FILE_SIZE:
+            raise BackupIntegrityError('backup member exceeds file size limit')
+        total_size += info.file_size
+        if total_size > config.BACKUP_MAX_TOTAL_SIZE:
+            raise BackupIntegrityError('backup exceeds total size limit')
+        if (
+            info.file_size
+            and info.file_size / max(info.compress_size, 1)
+            > config.BACKUP_MAX_COMPRESSION_RATIO
+        ):
+            raise BackupIntegrityError(
+                'backup member exceeds compression ratio limit'
+            )
+    return members
+
+
+def _read_manifest(backup, members):
+    info = members[_MANIFEST_NAME]
+    with backup.open(info, 'r') as handle:
+        payload = handle.read(config.BACKUP_MAX_MANIFEST_SIZE + 1)
+    if len(payload) > config.BACKUP_MAX_MANIFEST_SIZE:
+        raise BackupIntegrityError('backup manifest is too large')
+    return _parse_manifest(payload)
 
 
 def verify_backup(archive):
     try:
         with zipfile.ZipFile(Path(archive), 'r') as backup:
             members = _validated_members(backup)
-            manifest = _parse_manifest(backup.read(_MANIFEST_NAME))
+            manifest = _read_manifest(backup, members)
             expected_names = {
                 _MANIFEST_NAME,
                 *(_DATA_PREFIX + item.path for item in manifest.files),
@@ -312,13 +347,28 @@ def verify_backup(archive):
                 raise BackupIntegrityError(
                     'backup members do not match the manifest'
                 )
+            total_size = 0
             for item in manifest.files:
+                info = members[_DATA_PREFIX + item.path]
+                if info.file_size != item.size:
+                    raise BackupIntegrityError(
+                        f'backup checksum or size mismatch for {item.path}'
+                    )
                 digest = hashlib.sha256()
                 size = 0
-                with backup.open(_DATA_PREFIX + item.path, 'r') as handle:
+                with backup.open(info, 'r') as handle:
                     while chunk := handle.read(1024 * 1024):
                         digest.update(chunk)
                         size += len(chunk)
+                        total_size += len(chunk)
+                        if (
+                            size > item.size
+                            or size > config.BACKUP_MAX_FILE_SIZE
+                            or total_size > config.BACKUP_MAX_TOTAL_SIZE
+                        ):
+                            raise BackupIntegrityError(
+                                'backup streamed size exceeds configured limits'
+                            )
                 if size != item.size or digest.hexdigest() != item.sha256:
                     raise BackupIntegrityError(
                         f'backup checksum mismatch for {item.path}'
@@ -406,8 +456,7 @@ def _copy_for_rollback(source, rollback, relative):
         exist_ok=True,
         mode=0o700,
     )
-    shutil.copyfile(source, rollback_path)
-    os.chmod(rollback_path, 0o600)
+    atomic_copy_file(source, rollback_path)
 
 
 def _restore_staged_files(
@@ -448,17 +497,14 @@ def _restore_staged_files(
                 rollback_paths.add(relative)
             else:
                 new_paths.add(relative)
-            atomic_write_bytes(target, (stage / relative).read_bytes())
+            atomic_copy_file(stage / relative, target)
         for relative in extra_paths:
             (data_dir / relative).unlink()
     except Exception:
         rollback_error = None
         for relative in reversed(tuple(rollback_paths)):
             try:
-                atomic_write_bytes(
-                    data_dir / relative,
-                    (rollback / relative).read_bytes(),
-                )
+                atomic_copy_file(rollback / relative, data_dir / relative)
             except Exception as exc:
                 rollback_error = rollback_error or exc
         for relative in new_paths:
@@ -520,15 +566,44 @@ def restore_backup(archive, data_dir):
         stage.mkdir(mode=0o700)
         rollback.mkdir(mode=0o700)
         with zipfile.ZipFile(archive, 'r') as backup:
+            members = _validated_members(backup)
+            if _read_manifest(backup, members) != manifest:
+                raise BackupIntegrityError(
+                    'backup changed after initial verification'
+                )
+            extracted_total = 0
             for item in manifest.files:
                 relative = Path(*PurePosixPath(item.path).parts)
                 target = stage / relative
                 target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                with backup.open(_DATA_PREFIX + item.path, 'r') as source:
+                info = members[_DATA_PREFIX + item.path]
+                if info.file_size != item.size:
+                    raise BackupIntegrityError(
+                        f'backup checksum or size mismatch for {item.path}'
+                    )
+                extracted_size = 0
+                with backup.open(info, 'r') as source:
                     with target.open('wb') as destination:
-                        shutil.copyfileobj(source, destination)
+                        while chunk := source.read(1024 * 1024):
+                            extracted_size += len(chunk)
+                            extracted_total += len(chunk)
+                            if (
+                                extracted_size > item.size
+                                or extracted_size > config.BACKUP_MAX_FILE_SIZE
+                                or extracted_total
+                                > config.BACKUP_MAX_TOTAL_SIZE
+                            ):
+                                raise BackupIntegrityError(
+                                    'backup streamed size exceeds configured '
+                                    'limits'
+                                )
+                            destination.write(chunk)
                         destination.flush()
                         os.fsync(destination.fileno())
+                if extracted_size != item.size:
+                    raise BackupIntegrityError(
+                        f'backup checksum or size mismatch for {item.path}'
+                    )
                 os.chmod(target, 0o600)
         _verify_staged_files(stage, manifest)
         _restore_staged_files(

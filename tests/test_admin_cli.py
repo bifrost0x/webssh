@@ -2,8 +2,12 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _admin(app, username):
@@ -11,6 +15,42 @@ def _admin(app, username):
 
     with app.app_context():
         return User.query.filter_by(username=username).first()
+
+
+def test_create_admin_maintenance_cli_initializes_storage_and_exits(tmp_path):
+    data_dir = tmp_path / 'new-data'
+    password_file = tmp_path / 'admin-password'
+    password_file.write_text('standalone-admin-password\n', encoding='utf-8')
+    environment = os.environ.copy()
+    environment.update({
+        'DATA_DIR': str(data_dir),
+        'DEBUG': 'True',
+        'SECRET_KEY': 'maintenance-cli-test-secret',
+    })
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-m',
+            'flask',
+            '--app',
+            'start',
+            'create-admin',
+            '--username',
+            'standaloneadmin',
+            '--password-file',
+            str(password_file),
+        ],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (data_dir / 'app.db').is_file()
 
 
 def test_create_admin_interactively_hides_password(app):

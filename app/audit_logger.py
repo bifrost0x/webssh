@@ -1,19 +1,14 @@
 import logging
 import json
 import sys
+from threading import RLock
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime
 import config
 
 LOGS_DIR = config.DATA_DIR / 'logs'
-try:
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-except PermissionError:
-    import tempfile
-    LOGS_DIR = Path(tempfile.gettempdir()) / 'webssh_logs'
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"⚠️  WARNING: Cannot write to {config.DATA_DIR / 'logs'}, using {LOGS_DIR}")
+_file_logging_lock = RLock()
 
 class StructuredFormatter(logging.Formatter):
     """JSON structured logging formatter for production."""
@@ -122,15 +117,49 @@ def setup_logger(name, log_file=None, level=logging.INFO):
 
 app_logger = setup_logger(
     'webssh',
-    log_file=LOGS_DIR / 'app.log',
     level=logging.DEBUG if config.DEBUG else logging.INFO
 )
 
 audit_logger = setup_logger(
     'security_audit',
-    log_file=LOGS_DIR / 'security_audit.log',
     level=logging.INFO
 )
+
+
+def initialize_file_logging(data_dir=None):
+    """Attach persistent handlers only after storage initialization is allowed."""
+    logs_dir = Path(data_dir or config.DATA_DIR) / 'logs'
+    with _file_logging_lock:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        for logger, filename in (
+            (app_logger, 'app.log'),
+            (audit_logger, 'security_audit.log'),
+        ):
+            target = logs_dir / filename
+            target_resolved = target.resolve()
+            for handler in tuple(logger.handlers):
+                if (
+                    isinstance(handler, RotatingFileHandler)
+                    and Path(handler.baseFilename) != target_resolved
+                ):
+                    logger.removeHandler(handler)
+                    handler.close()
+            if any(
+                isinstance(handler, RotatingFileHandler)
+                and Path(handler.baseFilename) == target_resolved
+                for handler in logger.handlers
+            ):
+                continue
+            _prune_excess_backups(target, config.AUDIT_LOG_BACKUP_COUNT)
+            file_handler = RotatingFileHandler(
+                target,
+                maxBytes=config.AUDIT_LOG_MAX_BYTES,
+                backupCount=config.AUDIT_LOG_BACKUP_COUNT,
+                encoding='utf-8',
+            )
+            file_handler.setLevel(logger.level)
+            file_handler.setFormatter(StructuredFormatter())
+            logger.addHandler(file_handler)
 
 def apply_audit_backup_count(value=None):
     """Apply the persisted rotation count to active log handlers."""

@@ -18,11 +18,24 @@ def revoke_user_access(user_id, socketio_instance=None):
     """
     user_id = int(user_id)
     result = {
+        'transfers': 0,
         'sockets': 0,
         'ssh_sessions': 0,
         'pool_connections': 0,
         'errors': [],
     }
+
+    try:
+        from .transfer_routes import transfer_manager
+
+        result['transfers'] = transfer_manager.cancel_all_for_user(user_id)
+    except Exception as exc:
+        result['errors'].append(f'transfers:{exc}')
+        log_warning(
+            "Failed to cancel revoked user transfers",
+            user_id=user_id,
+            error=str(exc),
+        )
 
     socket_sids = [
         row.socket_sid
@@ -97,6 +110,7 @@ def revoke_user_access(user_id, socketio_instance=None):
     log_info(
         "User access revoked",
         user_id=user_id,
+        transfers=result['transfers'],
         sockets=result['sockets'],
         ssh_sessions=result['ssh_sessions'],
         pool_connections=result['pool_connections'],

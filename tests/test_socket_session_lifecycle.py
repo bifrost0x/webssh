@@ -59,6 +59,16 @@ def _authenticated_socket(app, username='session_race_user'):
     return socket_client, user_id
 
 
+def _logged_in_http_client(app, username):
+    http_client = app.test_client()
+    response = http_client.post('/login', data={
+        'username': username,
+        'password': 'socket-password-123',
+    })
+    assert response.status_code == 302
+    return http_client
+
+
 def _collect_until(socket_client, event_name, timeout=5):
     deadline = time.monotonic() + timeout
     events = []
@@ -68,6 +78,72 @@ def _collect_until(socket_client, event_name, timeout=5):
             break
         time.sleep(0.02)
     return events
+
+
+def test_socket_capacity_preserves_per_user_and_global_reserve(app, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'MAX_SOCKET_CONNECTIONS', 2, raising=False)
+    monkeypatch.setattr(
+        config,
+        'MAX_SOCKET_CONNECTIONS_PER_USER',
+        1,
+        raising=False,
+    )
+    first_socket, _user_id = _authenticated_socket(app, 'capacity_first')
+    second_same_user = socketio.test_client(
+        app,
+        flask_test_client=_logged_in_http_client(app, 'capacity_first'),
+    )
+    other_socket, _other_id = _authenticated_socket(app, 'capacity_other')
+
+    with app.app_context():
+        user, error = register_user('capacity_third', 'socket-password-123')
+        assert error is None
+        assert user is not None
+    over_global_limit = socketio.test_client(
+        app,
+        flask_test_client=_logged_in_http_client(app, 'capacity_third'),
+    )
+
+    try:
+        assert not second_same_user.is_connected()
+        assert other_socket.is_connected()
+        assert not over_global_limit.is_connected()
+    finally:
+        for client in (
+            first_socket,
+            second_same_user,
+            other_socket,
+            over_global_limit,
+        ):
+            if client.is_connected():
+                client.disconnect()
+
+
+def test_locked_user_disconnect_still_cancels_owned_transfers(app, monkeypatch):
+    from app import socket_events
+    from app.models import User, db
+    from app.transfer_manager import TransferManager
+
+    socket_client, user_id = _authenticated_socket(app, 'locked_transfer_user')
+    manager = TransferManager()
+    record = manager.create(
+        user_id,
+        'locked-session',
+        'download',
+        {},
+    )
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_locked = True
+        db.session.commit()
+
+    socket_client.disconnect()
+
+    assert record.cancel_event.is_set()
+    assert manager._records == {}
 
 
 def test_connect_fails_closed_if_created_session_disappears(app, monkeypatch):

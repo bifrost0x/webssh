@@ -1,6 +1,9 @@
 import json
+import hashlib
 import os
 from pathlib import Path
+import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -11,6 +14,60 @@ from app.backup_manager import (
     restore_backup,
     verify_backup,
 )
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _maintenance_cli(data_dir, *arguments):
+    environment = os.environ.copy()
+    environment.update({
+        'DATA_DIR': str(data_dir),
+        'DEBUG': 'True',
+        'SECRET_KEY': 'maintenance-cli-test-secret',
+    })
+    return subprocess.run(
+        [
+            sys.executable,
+            '-m',
+            'flask',
+            '--app',
+            'start',
+            *arguments,
+        ],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+
+def test_backup_help_exits_without_initializing_runtime_or_storage(tmp_path):
+    data_dir = tmp_path / 'unused-data'
+
+    result = _maintenance_cli(data_dir, 'backup', '--help')
+
+    assert result.returncode == 0, result.stderr
+    assert 'Commands:' in result.stdout
+    assert not data_dir.exists()
+
+
+def test_backup_verify_missing_archive_does_not_initialize_storage(tmp_path):
+    data_dir = tmp_path / 'unused-data'
+    missing_archive = tmp_path / 'missing.zip'
+
+    result = _maintenance_cli(
+        data_dir,
+        'backup',
+        'verify',
+        str(missing_archive),
+    )
+
+    assert result.returncode != 0
+    assert 'does not exist' in result.stderr
+    assert not data_dir.exists()
 
 
 def _write_representative_data(data_dir):
@@ -50,6 +107,31 @@ def _corrupt_archive_member(source, destination, member):
     with zipfile.ZipFile(destination, 'w') as destination_zip:
         for name, payload in entries.items():
             destination_zip.writestr(name, payload)
+
+
+def _write_manifest_archive(archive, files):
+    manifest = {
+        'format_version': 1,
+        'files': [
+            {
+                'path': path,
+                'sha256': hashlib.sha256(payload).hexdigest(),
+                'size': len(payload),
+            }
+            for path, payload in sorted(files.items())
+        ],
+    }
+    with zipfile.ZipFile(
+        archive,
+        'w',
+        compression=zipfile.ZIP_DEFLATED,
+    ) as backup:
+        backup.writestr(
+            'manifest.json',
+            json.dumps(manifest, sort_keys=True, separators=(',', ':')),
+        )
+        for path, payload in sorted(files.items()):
+            backup.writestr(f'data/{path}', payload)
 
 
 def test_create_verify_and_restore_round_trip(tmp_path):
@@ -137,6 +219,68 @@ def test_verify_rejects_path_traversal_member(tmp_path):
 
     with pytest.raises(BackupIntegrityError, match='unsafe'):
         verify_backup(archive)
+
+
+def test_verify_rejects_excess_member_count_before_manifest_read(
+    tmp_path,
+    monkeypatch,
+):
+    import config
+
+    archive = tmp_path / 'members.zip'
+    _write_manifest_archive(archive, {'one': b'1', 'two': b'2'})
+    monkeypatch.setattr(config, 'BACKUP_MAX_MEMBERS', 2)
+
+    with pytest.raises(BackupIntegrityError, match='too many members'):
+        verify_backup(archive)
+
+
+def test_verify_rejects_excess_decompressed_total(tmp_path, monkeypatch):
+    import config
+
+    archive = tmp_path / 'total.zip'
+    _write_manifest_archive(archive, {'one': b'123', 'two': b'456'})
+    monkeypatch.setattr(config, 'BACKUP_MAX_TOTAL_SIZE', 5)
+
+    with pytest.raises(BackupIntegrityError, match='total size'):
+        verify_backup(archive)
+
+
+def test_verify_rejects_excess_compression_ratio(tmp_path, monkeypatch):
+    import config
+
+    archive = tmp_path / 'ratio.zip'
+    _write_manifest_archive(archive, {'zeros': b'\0' * 4096})
+    monkeypatch.setattr(config, 'BACKUP_MAX_COMPRESSION_RATIO', 2)
+
+    with pytest.raises(BackupIntegrityError, match='compression ratio'):
+        verify_backup(archive)
+
+
+def test_restore_streams_stage_commit_and_rollback_files(
+    tmp_path,
+    monkeypatch,
+):
+    source_dir = tmp_path / 'source'
+    source_dir.mkdir()
+    expected = _write_representative_data(source_dir)
+    archive = tmp_path / 'streaming.zip'
+    create_backup(source_dir, archive)
+    restore_dir = tmp_path / 'restore'
+    restore_dir.mkdir()
+    (restore_dir / 'app.db').write_bytes(b'old database')
+    original_read_bytes = Path.read_bytes
+
+    def reject_stage_or_rollback_reads(path):
+        if any(part in {'stage', 'rollback'} for part in Path(path).parts):
+            raise AssertionError('restore must stream stage and rollback files')
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', reject_stage_or_rollback_reads)
+
+    restore_backup(archive, restore_dir)
+
+    assert _snapshot(restore_dir) == expected
 
 
 def test_create_rejects_symlinks_without_publishing_archive(tmp_path):
@@ -267,20 +411,20 @@ def test_restore_commit_failure_rolls_back_every_original_file(
         path.write_bytes(b'original-' + relative_path.encode('utf-8'))
     before = _snapshot(restore_dir)
 
-    original_write = backup_manager.atomic_write_bytes
+    original_copy = backup_manager.atomic_copy_file
     writes = 0
 
-    def fail_second_commit(path, payload, mode=0o600):
+    def fail_second_commit(source, destination, mode=0o600):
         nonlocal writes
-        if Path(path).is_relative_to(restore_dir):
+        if Path(destination).is_relative_to(restore_dir):
             writes += 1
             if writes == 2:
                 raise OSError('forced restore commit failure')
-        return original_write(path, payload, mode)
+        return original_copy(source, destination, mode)
 
     monkeypatch.setattr(
         backup_manager,
-        'atomic_write_bytes',
+        'atomic_copy_file',
         fail_second_commit,
     )
 

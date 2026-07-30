@@ -22,6 +22,7 @@ from .network_policy import canonicalize_hostname
 from . import binary_transfer, connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaKind, quota_manager
+from .socket_capacity import socket_capacity
 import base64
 import os
 import posixpath
@@ -147,8 +148,27 @@ def handle_connect():
         return False
 
     socket_sid = request.sid
+    if not socket_capacity.reserve(
+        user.id,
+        socket_sid,
+        config.MAX_SOCKET_CONNECTIONS,
+        config.MAX_SOCKET_CONNECTIONS_PER_USER,
+    ):
+        log_warning(
+            'Socket connection capacity reached',
+            user_id=user.id,
+            sid=socket_sid,
+        )
+        emit('connected', {'status': 'unavailable'})
+        disconnect()
+        return False
+
     user_agent = request.headers.get('User-Agent', '')
-    register_socket_session(user.id, socket_sid, user_agent)
+    try:
+        register_socket_session(user.id, socket_sid, user_agent)
+    except Exception:
+        socket_capacity.release(socket_sid)
+        raise
 
     room = f'user_{user.id}'
     join_room(room)
@@ -166,38 +186,46 @@ def handle_connect():
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
     socket_sid = request.sid
+    owner_id = socket_capacity.release(socket_sid)
     user = get_user_from_socket(socket_sid)
+    user_id = user.id if user else owner_id
 
-    if user:
-        log_info(f"Client disconnected: {user.username}", user=user.username, sid=socket_sid)
+    if user_id is not None:
+        username = user.username if user else f'user {user_id}'
+        log_info(
+            f"Client disconnected: {username}",
+            user=user.username if user else None,
+            user_id=user_id,
+            sid=socket_sid,
+        )
 
         try:
-            transfer_manager.cancel_all_for_socket(user.id, socket_sid)
+            transfer_manager.cancel_all_for_socket(user_id, socket_sid)
         except Exception as error:
             log_error(
                 'Transfer cleanup failed on disconnect',
-                user_id=user.id,
+                user_id=user_id,
                 exception_type=type(error).__name__,
             )
 
         SocketSession.query.filter_by(socket_sid=socket_sid).delete()
         db.session.commit()
 
-        other_sessions = SocketSession.query.filter_by(user_id=user.id).count()
+        other_sessions = SocketSession.query.filter_by(user_id=user_id).count()
 
         if other_sessions == 0:
             try:
-                transfer_manager.cancel_all_for_user(user.id)
+                transfer_manager.cancel_all_for_user(user_id)
             except Exception as error:
                 log_error(
                     'Transfer cleanup failed on disconnect',
-                    user_id=user.id,
+                    user_id=user_id,
                     exception_type=type(error).__name__,
                 )
-            closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user.id))
+            closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user_id))
             if closed > 0:
-                log_info(f"Cleaned up {closed} Quick Connect connection(s) for {user.username}")
-            log_debug(f"Last socket for {user.username} disconnected, SSH sessions preserved")
+                log_info(f"Cleaned up {closed} Quick Connect connection(s) for {username}")
+            log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
 def restore_user_sessions(user_id):
     """Restore active SSH sessions when user reconnects."""

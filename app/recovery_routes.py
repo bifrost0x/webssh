@@ -7,7 +7,7 @@ from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required, login_user
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_rate_limit
+from .auth import check_rate_limit, check_reauth_rate_limit
 from .decorators import admin_required
 from .models import User, db
 from .recovery_service import consume_code, generate_codes
@@ -32,6 +32,15 @@ def _password_matches(user, password):
 @login_required
 def regenerate_own_recovery_codes():
     _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        current_user.id,
+        client_ip,
+        "recovery_codes_reauth",
+        config.RATELIMIT_REAUTH,
+    ):
+        log_rate_limit_exceeded("recovery_codes_reauth", client_ip)
+        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
     if not _password_matches(current_user, data.get("password", "")):
         return jsonify({"error": "Current password is incorrect"}), 403
@@ -86,6 +95,15 @@ def recovery_login():
 @login_required
 def admin_recovery(user_id):
     _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        current_user.id,
+        client_ip,
+        "admin_recovery_reauth",
+        config.RATELIMIT_REAUTH,
+    ):
+        log_rate_limit_exceeded("admin_recovery_reauth", client_ip)
+        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
     if not _password_matches(current_user, data.get("password", "")):
         return jsonify({"error": "Administrator password is incorrect"}), 403

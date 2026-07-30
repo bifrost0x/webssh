@@ -58,11 +58,24 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
                     if not chunk:
                         break
 
+                    observed_size = transferred + len(chunk)
+                    if observed_size > limit:
+                        max_mb = limit // (1024 * 1024)
+                        return None, (
+                            "File too large for download "
+                            f"({observed_size // (1024 * 1024)}MB). "
+                            f"Maximum: {max_mb}MB"
+                        )
+
                     binary_data.write(chunk)
-                    transferred += len(chunk)
+                    transferred = observed_size
 
                     if socketio_instance:
-                        percent = int((transferred / file_size) * 100)
+                        progress_total = max(file_size, transferred, 1)
+                        percent = min(
+                            100,
+                            int((transferred / progress_total) * 100),
+                        )
                         socketio_instance.emit('file_progress', {
                             'session_id': session_id,
                             'type': 'download',
