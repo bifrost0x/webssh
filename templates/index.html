@@ -75,7 +75,8 @@
 
                         <button id="manageKeysBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔑</span> <span data-i18n="keys.manageKeys">SSH Keys</span></button>
                         <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
-                        {% if current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span>Security</span></a>
+                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
                         <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>

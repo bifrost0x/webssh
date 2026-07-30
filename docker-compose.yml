@@ -1,5 +1,5 @@
 ##############################################
-# Web SSH Terminal - All-in-One Docker Compose
+# Web SSH Terminal - Homelab Docker Compose
 #
 # No .env file needed - edit values directly below
 #
@@ -15,9 +15,17 @@ services:
     image: ghcr.io/bifrost0x/webssh:latest
     container_name: webssh
     restart: unless-stopped
+    # Longer than the 30 s maximum in RUNTIME_SHUTDOWN_GRACE_SECONDS, so the
+    # lifecycle signal gate can cancel bounded work before Docker sends KILL.
+    stop_grace_period: 40s
     ports:
       - "5000:5000"
     environment:
+      # This default file intentionally preserves HTTP-friendly homelab
+      # compatibility. For an Internet-facing deployment, layer
+      # docker-compose.production.yml on top.
+      - DEPLOYMENT_PROFILE=homelab
+
       # === SECRET_KEY: OPTIONAL ===
       # Left unset, a strong key is auto-generated on first run and persisted to
       # the data volume below (/app/data/secret_key). Set it explicitly only if
@@ -41,7 +49,7 @@ services:
       # See README "Subfolder Deployment" section for nginx/Traefik/Caddy examples.
       # - APPLICATION_ROOT=/webssh
 
-      # === Set to false if accessing via HTTP without TLS ===
+      # === Homelab HTTP compatibility ===
       - SESSION_COOKIE_SECURE=false
 
       # === Persistent remote sessions via tmux ===
@@ -54,21 +62,43 @@ services:
       # === Tailscale SSH (optional, shared node identity) ===
       # Disabled by default. See docs/tailscale-ssh.md for the required
       # authorization controls and a persistent Tailscale sidecar example.
-      # Before enabling: create the first admin from a trusted network, disable
-      # self-registration, and configure narrow target/remote-user allowlists.
+      # Before enabling: create an administrator with the create-admin CLI and
+      # configure narrow target/remote-user allowlists. Production
+      # self-registration is disabled by default.
       - TAILSCALE_SSH_ENABLED=false
-      # After the controlled first-admin bootstrap, uncomment this as a
-      # configuration fallback in addition to disabling registration in Admin.
+      # Optional environment-level hard-disable in addition to the safe default.
       # - REGISTRATION_ENABLED=False
       # - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
       # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
       # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
+
+      # === Passkeys and OIDC (optional, disabled by default) ===
+      # Passkeys require the exact public browser domain and origin.
+      # - WEBAUTHN_ENABLED=true
+      # - WEBAUTHN_RP_ID=ssh.example.com
+      # - WEBAUTHN_RP_NAME=WebSSH
+      # - WEBAUTHN_ORIGIN=https://ssh.example.com
+      # - HOST_KEY_MANAGEMENT_ENABLED=true
+      # - RECOVERY_CODES_ENABLED=true
+      # - AUDIT_EXPORT_ENABLED=true
+      # OIDC additionally requires a read-only client-secret file mounted into
+      # the container. Accounts are linked by issuer + subject in Admin.
+      # - OIDC_ENABLED=true
+      # - OIDC_ISSUER=https://idp.example.com
+      # - OIDC_CLIENT_ID=webssh
+      # - OIDC_CLIENT_SECRET_FILE=/run/secrets/webssh_oidc_client_secret
+      # - OIDC_ALLOWED_SUBJECTS=
+      # - OIDC_ALLOWED_DOMAINS=example.com
+      # - OIDC_LOGIN_RATE_LIMIT=10 per minute
 
       # === Optional: Usually no changes needed ===
       - DEBUG=False
       - HOST=0.0.0.0
       - PORT=5000
       - DATA_DIR=/app/data
+      # Native gthread runtime: keep one worker and choose a bounded count
+      # between 2 and 32. The default 3 is validated by config.py.
+      - GUNICORN_THREADS=3
 
       # === Redis-backed rate limiting (optional) ===
       # Uncomment the two lines below AND the redis service section at the
@@ -81,7 +111,7 @@ services:
     volumes:
       - webssh_data:/app/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1', 5000), 2); s.close()"]
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"]
       interval: 30s
       timeout: 5s
       retries: 3

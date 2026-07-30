@@ -7,7 +7,9 @@
 venv/
 env/
 ENV/
-.venv/
+.venv*/
+.uv-cache*/
+.task*/
 
 # Python cache
 __pycache__/

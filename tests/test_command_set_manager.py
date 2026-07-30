@@ -2,8 +2,11 @@
 import json
 import shutil
 import subprocess
+import threading
 
 import pytest
+
+from app.storage_errors import StorageCorruptionError
 
 
 def create_user(app, username='command-set-user'):
@@ -60,17 +63,450 @@ def test_load_command_sets_reports_corrupt_json_without_overwriting(app):
         path = user.get_data_dir() / 'command_sets.json'
         path.write_text('{broken', encoding='utf-8')
 
-        command_sets, error = command_set_manager.load_command_sets(user_id)
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            command_set_manager.load_command_sets(user_id)
 
-        assert command_sets is None
-        assert error == 'Command set storage is unreadable'
+        assert exc_info.value.path == path
         assert path.read_text(encoding='utf-8') == '{broken'
+
+
+def test_upsert_command_set_preserves_corrupt_storage(app):
+    from app import command_set_manager
+
+    user_id = create_user(app, 'command-set-corrupt-upsert')
+    corrupt = b'{"command_sets":'
+    with app.app_context():
+        path = command_set_manager._command_sets_file(user_id)
+        path.write_bytes(corrupt)
+
+        with pytest.raises(StorageCorruptionError):
+            command_set_manager.upsert_command_set(
+                user_id,
+                {'name': 'Blocked', 'steps': [{'type': 'inline', 'command': 'uptime'}]},
+            )
+
+        assert path.read_bytes() == corrupt
+
+
+def test_command_set_mutation_acquires_coordinator_before_store_lock(
+    app, monkeypatch
+):
+    """The coordinator-first order cannot form an ABBA cycle with profiles."""
+    from app import command_set_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, 'command_set_lock_order')
+    first_request = threading.Event()
+    requested = []
+    result = {}
+
+    def instrumented_storage_lock(key):
+        if threading.current_thread().name == 'command-set-writer':
+            requested.append(key)
+            first_request.set()
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        command_set_manager, 'storage_lock', instrumented_storage_lock
+    )
+    coordinator = real_storage_lock(f'command-config:{user_id}')
+    coordinator.acquire()
+
+    def writer():
+        with app.app_context():
+            result['value'] = command_set_manager.upsert_command_set(
+                user_id,
+                {
+                    'name': 'Bootstrap',
+                    'steps': [{'type': 'inline', 'command': 'uptime'}],
+                },
+            )
+
+    thread = threading.Thread(
+        target=writer, name='command-set-writer', daemon=True
+    )
+    try:
+        thread.start()
+        assert first_request.wait(timeout=2)
+        assert requested == [f'command-config:{user_id}']
+
+        store_lock = real_storage_lock(f'command-sets:{user_id}')
+        assert store_lock.acquire(blocking=False) is True
+        store_lock.release()
+    finally:
+        coordinator.release()
+        thread.join(timeout=2)
+
+    assert thread.is_alive() is False
+    assert result['value'][1] is None
+
+
+@pytest.mark.parametrize('operation', ('add', 'update'))
+def test_command_writes_acquire_coordinator_before_command_store(
+    app, monkeypatch, operation
+):
+    from app import command_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, f'command_{operation}_lock_order')
+    with app.app_context():
+        existing = command_manager.add_user_command(
+            user_id, 'Existing', 'echo old', '', 'Existing', ['all'], 'custom'
+        )
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        command_manager, 'storage_lock', instrumented_storage_lock
+    )
+    with app.app_context():
+        if operation == 'add':
+            command_manager.add_user_command(
+                user_id, 'New', 'echo new', '', 'New', ['all'], 'custom'
+            )
+        else:
+            command_manager.update_user_command(
+                user_id, existing['id'], 'Existing', 'echo new', '',
+                'Existing', ['all'], 'custom'
+            )
+
+    assert requested[:2] == [
+        f'command-config:{user_id}',
+        f'commands:{user_id}',
+    ]
+
+
+def test_command_writer_cannot_race_command_set_validation(app, monkeypatch):
+    from app import command_manager, command_set_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, 'command_set_snapshot_race')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Mutable', 'echo old', '', 'Mutable', ['all'], 'custom'
+        )
+
+    snapshot_taken = threading.Event()
+    continue_validation = threading.Event()
+    writer_requested_lock = threading.Event()
+    writer_done = threading.Event()
+    set_result = {}
+    writer_result = {}
+    writer_requests = []
+    real_index = command_set_manager._command_index
+
+    def paused_command_index(value):
+        snapshot = real_index(value)
+        snapshot_taken.set()
+        assert continue_validation.wait(timeout=2)
+        return snapshot
+
+    def instrumented_command_lock(key):
+        if threading.current_thread().name == 'command-writer':
+            writer_requests.append(key)
+            writer_requested_lock.set()
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        command_set_manager, '_command_index', paused_command_index
+    )
+    monkeypatch.setattr(
+        command_manager, 'storage_lock', instrumented_command_lock
+    )
+
+    def create_set():
+        with app.app_context():
+            set_result['value'] = command_set_manager.upsert_command_set(
+                user_id,
+                {
+                    'name': 'Snapshot',
+                    'steps': [{
+                        'type': 'library',
+                        'command_id': command['id'],
+                    }],
+                },
+            )
+
+    def update_command():
+        with app.app_context():
+            writer_result['value'] = command_manager.update_user_command(
+                user_id, command['id'], 'Mutable', 'echo new', '',
+                'Mutable', ['all'], 'custom'
+            )
+        writer_done.set()
+
+    set_thread = threading.Thread(
+        target=create_set, name='command-set-writer', daemon=True
+    )
+    writer_thread = threading.Thread(
+        target=update_command, name='command-writer', daemon=True
+    )
+    try:
+        set_thread.start()
+        assert snapshot_taken.wait(timeout=2)
+        writer_thread.start()
+        assert writer_requested_lock.wait(timeout=2)
+        assert writer_requests == [f'command-config:{user_id}']
+        assert writer_done.is_set() is False
+    finally:
+        continue_validation.set()
+        set_thread.join(timeout=2)
+        writer_thread.join(timeout=2)
+
+    assert set_thread.is_alive() is False
+    assert writer_thread.is_alive() is False
+    assert set_result['value'][1] is None
+    assert writer_result['value'][1] is None
+
+
+def test_delete_command_reads_dependent_stores_before_command_store(
+    app, monkeypatch
+):
+    from app import command_manager, command_set_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, 'delete-command-lock-order')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Unused', 'true', '', 'Unused', ['all'], 'custom'
+        )
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        command_manager, 'storage_lock', instrumented_storage_lock
+    )
+    monkeypatch.setattr(
+        command_set_manager, 'storage_lock', instrumented_storage_lock
+    )
+
+    with app.app_context():
+        success, error, usages = command_manager.delete_user_command(
+            user_id, command['id']
+        )
+
+    assert (success, error, usages) == (True, None, [])
+    assert requested == [
+        f'command-config:{user_id}',
+        f'command-sets:{user_id}',
+        f'profiles:{user_id}',
+        f'commands:{user_id}',
+    ]
+
+
+def test_delete_command_set_reads_profiles_before_command_set_store(
+    app, monkeypatch
+):
+    from app import command_set_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, 'delete-command-set-lock-order')
+    with app.app_context():
+        command_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Unused',
+                'steps': [{'type': 'inline', 'command': 'true'}],
+            },
+        )
+        assert error is None
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        command_set_manager, 'storage_lock', instrumented_storage_lock
+    )
+    with app.app_context():
+        success, error, usages = command_set_manager.delete_command_set(
+            user_id, command_set['id']
+        )
+
+    assert (success, error, usages) == (True, None, [])
+    assert requested == [
+        f'command-config:{user_id}',
+        f'profiles:{user_id}',
+        f'command-sets:{user_id}',
+    ]
+
+
+@pytest.mark.parametrize(
+    ('operation', 'expected_stores'),
+    [
+        ('resolve', ('command-sets', 'commands')),
+        ('list', ('command-sets', 'commands')),
+        ('usage', ('command-sets', 'profiles')),
+    ],
+)
+def test_public_cross_store_reads_use_coordinator_and_sequential_snapshots(
+    app, monkeypatch, operation, expected_stores
+):
+    from app import command_manager, command_set_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, f'public-read-{operation}')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Reference', 'echo safe', '', 'Reference',
+            ['all'], 'custom'
+        )
+        command_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Reference',
+                'steps': [{
+                    'type': 'library',
+                    'command_id': command['id'],
+                }],
+            },
+        )
+        assert error is None
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        command_set_manager, 'storage_lock', instrumented_storage_lock
+    )
+    with app.app_context():
+        if operation == 'resolve':
+            result = command_set_manager.resolve_command_set(
+                user_id, command_set['id']
+            )
+            assert result == ('echo safe', None)
+        elif operation == 'list':
+            result = command_set_manager.load_command_sets_with_resolution(
+                user_id
+            )
+            assert result[1] is None
+        else:
+            result = command_set_manager.get_command_usage(
+                user_id, command['id']
+            )
+            assert result[1] is None
+
+    assert requested == [
+        f'command-config:{user_id}',
+        *(f'{store}:{user_id}' for store in expected_stores),
+    ]
+
+
+def test_public_command_set_resolution_blocks_command_writer_until_snapshot_done(
+    app, monkeypatch
+):
+    from app import command_manager, command_set_manager
+
+    user_id = create_user(app, 'public-resolve-snapshot-race')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Mutable', 'echo old', '', 'Mutable',
+            ['all'], 'custom'
+        )
+        command_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Snapshot',
+                'steps': [{
+                    'type': 'library',
+                    'command_id': command['id'],
+                }],
+            },
+        )
+        assert error is None
+
+    snapshot_paused = threading.Event()
+    continue_resolution = threading.Event()
+    writer_done = threading.Event()
+    resolver_result = {}
+    real_index = command_set_manager._command_index
+
+    def paused_index(value):
+        result = real_index(value)
+        snapshot_paused.set()
+        assert continue_resolution.wait(timeout=2)
+        return result
+
+    monkeypatch.setattr(command_set_manager, '_command_index', paused_index)
+
+    def resolve():
+        with app.app_context():
+            resolver_result['value'] = (
+                command_set_manager.resolve_command_set(
+                    user_id, command_set['id']
+                )
+            )
+
+    def write():
+        with app.app_context():
+            command_manager.update_user_command(
+                user_id, command['id'], 'Mutable', 'echo new', '',
+                'Mutable', ['all'], 'custom'
+            )
+        writer_done.set()
+
+    resolver = threading.Thread(target=resolve, daemon=True)
+    writer = threading.Thread(target=write, daemon=True)
+    try:
+        resolver.start()
+        assert snapshot_paused.wait(timeout=2)
+        writer.start()
+        assert writer_done.wait(timeout=0.2) is False
+    finally:
+        continue_resolution.set()
+        resolver.join(timeout=2)
+        writer.join(timeout=2)
+
+    assert resolver.is_alive() is False
+    assert writer.is_alive() is False
+    assert resolver_result['value'] == ('echo old', None)
+
+
+def test_command_set_update_preserves_unknown_stored_fields(app):
+    from app import command_set_manager
+
+    user_id = create_user(app, 'set-preserve-unknown')
+    with app.app_context():
+        original = {
+            'id': 'set-1',
+            'name': 'Original',
+            'steps': [{'type': 'inline', 'command': 'true'}],
+            'future': {'version': 2},
+        }
+        assert command_set_manager._save_command_sets(
+            user_id, [original]
+        ) == (True, None)
+
+        updated, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'id': 'set-1',
+                'name': 'Updated',
+                'steps': [{'type': 'inline', 'command': 'uptime'}],
+            },
+        )
+
+    assert error is None
+    assert updated['future'] == {'version': 2}
 
 
 def test_upsert_creates_updates_and_loads_command_set(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     with app.app_context():
         created, error = command_set_manager.upsert_command_set(user_id, {
@@ -100,7 +536,7 @@ def test_upsert_defaults_missing_sudo_to_false_and_accepts_boolean(app, monkeypa
     from app import command_manager, command_set_manager
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -126,7 +562,7 @@ def test_upsert_rejects_non_boolean_sudo(app, monkeypatch, invalid):
     from app import command_manager, command_set_manager
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -144,7 +580,7 @@ def test_upsert_rejects_non_boolean_sudo(app, monkeypatch, invalid):
 def test_upsert_rejects_case_insensitive_duplicate_names(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     with app.app_context():
         first, error = command_set_manager.upsert_command_set(user_id, {
@@ -164,7 +600,7 @@ def test_upsert_rejects_case_insensitive_duplicate_names(app, monkeypatch):
 def test_upsert_rejects_invalid_name_steps_and_references(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     cases = [
         ({'name': '', 'steps': [{'type': 'inline', 'command': 'pwd'}]}, 'Command set name is required'),
@@ -185,7 +621,7 @@ def test_upsert_rejects_invalid_name_steps_and_references(app, monkeypatch):
 def test_resolve_preserves_order_and_parameter_semantics(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     with app.app_context():
         created, error = command_set_manager.upsert_command_set(user_id, {
@@ -214,7 +650,7 @@ def test_resolve_chains_steps_without_rewriting_internal_inline_lines(app, monke
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -249,7 +685,7 @@ def test_resolve_trims_trailing_whitespace_at_step_boundaries(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -285,7 +721,7 @@ def test_resolve_preserves_trailing_comment_without_hiding_next_step(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -323,7 +759,7 @@ def test_resolve_preserves_inline_comment_without_hiding_next_step(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -356,7 +792,7 @@ def test_resolve_does_not_treat_literal_hash_as_shell_comment(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -392,7 +828,7 @@ def test_resolve_removes_only_unescaped_semicolon_before_comment(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -435,7 +871,7 @@ def test_resolve_handles_terminal_list_operators(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -471,7 +907,7 @@ def test_resolve_treats_comment_only_step_as_successful_noop(
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -499,7 +935,7 @@ def test_trailing_comment_boundary_preserves_errexit_semantics(app, monkeypatch)
 
     monkeypatch.setattr(
         command_manager,
-        'get_all_commands',
+        '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -543,7 +979,7 @@ def test_resolve_sudo_prefixes_commands_without_changing_non_commands(app, monke
     from app import command_manager, command_set_manager
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -589,7 +1025,7 @@ def test_resolve_revalidates_length_after_sudo_prefix(app, monkeypatch):
     from app import command_manager, command_set_manager
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -612,7 +1048,7 @@ def test_resolve_revalidates_length_after_step_separators(app, monkeypatch):
     from app import command_manager, command_set_manager
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -637,7 +1073,7 @@ def test_resolve_rejects_reference_removed_after_save(app, monkeypatch):
     from app import command_manager, command_set_manager
 
     commands = library_commands()
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: commands)
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: commands)
     user_id = create_user(app)
     with app.app_context():
         created, error = command_set_manager.upsert_command_set(user_id, {
@@ -656,7 +1092,7 @@ def test_resolve_rejects_reference_removed_after_save(app, monkeypatch):
 def test_upsert_rejects_nul_and_raw_or_normalized_limit_violations(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     cases = [
         ('Nul', 'echo safe\x00echo unsafe', 'Startup commands must not contain NUL bytes'),
@@ -677,7 +1113,7 @@ def test_upsert_rejects_nul_and_raw_or_normalized_limit_violations(app, monkeypa
 def test_duplicate_uses_new_id_and_unique_copy_name_but_keeps_references(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     with app.app_context():
         original, error = command_set_manager.upsert_command_set(user_id, {
@@ -698,7 +1134,7 @@ def test_duplicate_uses_new_id_and_unique_copy_name_but_keeps_references(app, mo
 def test_get_command_usage_and_delete_guard_report_names(app, monkeypatch):
     from app import command_manager, command_set_manager, profile_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     with app.app_context():
         created, error = command_set_manager.upsert_command_set(user_id, {
@@ -751,10 +1187,61 @@ def test_direct_profile_command_reference_blocks_command_deletion(app):
     assert delete_usages == usages
 
 
+def test_mixed_command_references_are_safe_and_missing_ids_are_not_found(app):
+    from app import command_manager, command_set_manager, profile_manager
+
+    user_id = create_user(app, 'mixed-command-guards')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id,
+            'Guarded',
+            'true',
+            '',
+            'Guarded',
+            ['all'],
+            'custom',
+        )
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Set\nName',
+            'steps': [{
+                'type': 'library',
+                'command_id': command['id'],
+            }],
+        })
+        assert error is None
+        assert profile_manager.save_profiles(user_id, [{
+            'id': 'profile-direct',
+            'name': 'Profile\rName',
+            'startup_mode': 'command',
+            'command_id': command['id'],
+        }])
+
+        success, error, usages = command_manager.delete_user_command(
+            user_id, command['id']
+        )
+        missing = command_manager.delete_user_command(user_id, 'missing')
+
+    assert success is False
+    assert error == 'Command is used by 2 references'
+    assert usages == [
+        {
+            'id': command_set['id'],
+            'name': 'Set\ufffdName',
+            'type': 'command_set',
+        },
+        {
+            'id': 'profile-direct',
+            'name': 'Profile\ufffdName',
+            'type': 'profile',
+        },
+    ]
+    assert missing == (False, 'Command not found', [])
+
+
 def test_delete_unreferenced_command_set(app, monkeypatch):
     from app import command_manager, command_set_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id, os_filter=None: library_commands())
+    monkeypatch.setattr(command_manager, '_get_all_commands_with_lock_held', lambda user_id, os_filter=None: library_commands())
     user_id = create_user(app)
     with app.app_context():
         created, error = command_set_manager.upsert_command_set(user_id, {

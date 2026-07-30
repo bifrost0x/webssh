@@ -1,12 +1,17 @@
 """Per-user named command sets for post-connect SSH automation."""
 import copy
-import json
 import uuid
 from datetime import datetime, timezone
 
 from .audit_logger import log_error
 from .startup_commands import normalize_startup_commands
-from .storage_utils import atomic_write_json, storage_lock
+from .storage_utils import (
+    atomic_write_json,
+    load_json_migrated,
+    safe_reference_name,
+    storage_lock,
+)
+from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 
 COMMAND_SET_NAME_MAX = 128
@@ -177,30 +182,86 @@ def _command_sets_file(user_id):
     return user.get_data_dir() / 'command_sets.json'
 
 
-def load_command_sets(user_id):
-    """Return ``(sets, error)`` without hiding corrupt storage as an empty list."""
+def _valid_step(step):
+    if not isinstance(step, dict):
+        return False
+    if step.get('type') == 'inline':
+        return isinstance(step.get('command'), str)
+    if step.get('type') == 'library':
+        if not isinstance(step.get('command_id'), str):
+            return False
+        return (
+            'parameters_override' not in step
+            or step['parameters_override'] is None
+            or isinstance(step['parameters_override'], str)
+        )
+    return False
+
+
+def _valid_command_set(item):
+    if not isinstance(item, dict):
+        return False
+    if not isinstance(item.get('id'), str) or not isinstance(item.get('name'), str):
+        return False
+    if not isinstance(item.get('steps'), list):
+        return False
+    if not all(_valid_step(step) for step in item['steps']):
+        return False
+    for field in ('description', 'created_at', 'updated_at'):
+        if field in item and not isinstance(item[field], str):
+            return False
+    if 'use_sudo' in item and type(item['use_sudo']) is not bool:
+        return False
+    return True
+
+
+def _valid_command_set_document(value):
+    return (
+        isinstance(value, dict)
+        and value.get('schema_version') == CURRENT_STORAGE_VERSIONS['command_sets']
+        and isinstance(value.get('command_sets'), list)
+        and all(_valid_command_set(item) for item in value['command_sets'])
+    )
+
+
+_COMMAND_SET_FIELDS = {
+    'id', 'name', 'description', 'use_sudo', 'steps',
+    'created_at', 'updated_at',
+}
+
+
+def _load_command_sets_with_lock_held(user_id):
     path = _command_sets_file(user_id)
     if path is None:
         return None, 'User not found'
-    if not path.exists():
-        return [], None
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-        if not isinstance(data, dict) or not isinstance(data.get('command_sets'), list):
-            raise ValueError('invalid command set storage shape')
-        return data['command_sets'], None
-    except (OSError, ValueError, TypeError) as exc:
-        log_error('Error loading command sets', user_id=user_id, error=str(exc))
-        return None, 'Command set storage is unreadable'
+    data = load_json_migrated(
+        path,
+        'command_sets',
+        lambda: {'command_sets': []},
+        _valid_command_set_document,
+    )
+    return data['command_sets'], None
+
+
+def load_command_sets(user_id):
+    """Return ``(sets, error)`` without hiding corrupt storage as an empty list."""
+    with storage_lock(f'command-sets:{user_id}'):
+        return _load_command_sets_with_lock_held(user_id)
 
 
 def _save_command_sets(user_id, command_sets):
     path = _command_sets_file(user_id)
     if path is None:
         return False, 'User not found'
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['command_sets'],
+        'command_sets': command_sets,
+    }
+    if not _valid_command_set_document(document):
+        return False, 'Invalid command set data'
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(path, {'command_sets': command_sets})
+        atomic_write_json(path, document)
         return True, None
     except OSError as exc:
         log_error('Error saving command sets', user_id=user_id, error=str(exc))
@@ -211,7 +272,7 @@ def _command_index(user_id):
     from . import command_manager
 
     try:
-        commands = command_manager.get_all_commands(user_id)
+        commands = command_manager._get_all_commands_with_lock_held(user_id)
     except (OSError, ValueError, TypeError) as exc:
         log_error('Error loading commands for command set', user_id=user_id, error=str(exc))
         return None, 'Command library is unreadable'
@@ -280,7 +341,7 @@ def _normalize_steps(steps, commands):
     return normalized_steps, resolved_parts, None
 
 
-def _validate_payload(user_id, payload, existing_sets):
+def _validate_payload(payload, existing_sets, commands):
     if not isinstance(payload, dict):
         return None, 'Invalid command set data'
     name = payload.get('name')
@@ -303,9 +364,6 @@ def _validate_payload(user_id, payload, existing_sets):
         if existing.get('id') != command_set_id and str(existing.get('name', '')).casefold() == name.casefold():
             return None, 'A command set with this name already exists'
 
-    commands, error = _command_index(user_id)
-    if error:
-        return None, error
     steps, _resolved_parts, error = _normalize_steps(payload.get('steps'), commands)
     if error:
         return None, error
@@ -330,14 +388,33 @@ def get_command_set(user_id, command_set_id):
     return None, 'Command set not found'
 
 
+def _get_command_set_with_lock_held(user_id, command_set_id):
+    if not isinstance(command_set_id, str) or not command_set_id:
+        return None, 'Command set not found'
+    command_sets, error = _load_command_sets_with_lock_held(user_id)
+    if error:
+        return None, error
+    for command_set in command_sets:
+        if command_set.get('id') == command_set_id:
+            return copy.deepcopy(command_set), None
+    return None, 'Command set not found'
+
+
 def upsert_command_set(user_id, payload):
     """Create or update one command set under the per-user coordinator lock."""
     with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'commands:{user_id}'):
+            commands, error = _command_index(user_id)
+        if error:
+            return None, error
+
         with storage_lock(f'command-sets:{user_id}'):
-            command_sets, error = load_command_sets(user_id)
+            command_sets, error = _load_command_sets_with_lock_held(user_id)
             if error:
                 return None, error
-            validated, error = _validate_payload(user_id, payload, command_sets)
+            validated, error = _validate_payload(
+                payload, command_sets, commands
+            )
             if error:
                 return None, error
 
@@ -346,7 +423,13 @@ def upsert_command_set(user_id, payload):
             if command_set_id:
                 for index, existing in enumerate(command_sets):
                     if existing.get('id') == command_set_id:
+                        unknown = {
+                            key: value
+                            for key, value in existing.items()
+                            if key not in _COMMAND_SET_FIELDS
+                        }
                         updated = {
+                            **unknown,
                             **validated,
                             'created_at': existing.get('created_at', now),
                             'updated_at': now,
@@ -372,7 +455,7 @@ def upsert_command_set(user_id, payload):
 def duplicate_command_set(user_id, command_set_id):
     with storage_lock(f'command-config:{user_id}'):
         with storage_lock(f'command-sets:{user_id}'):
-            command_sets, error = load_command_sets(user_id)
+            command_sets, error = _load_command_sets_with_lock_held(user_id)
             if error:
                 return None, error
             source = next((item for item in command_sets if item.get('id') == command_set_id), None)
@@ -427,22 +510,36 @@ def _resolve_loaded_command_set(command_set, commands):
     return resolved, None
 
 
-def resolve_command_set(user_id, command_set_id):
-    command_set, error = get_command_set(user_id, command_set_id)
+def _resolve_command_set_with_coordinator_held(user_id, command_set_id):
+    """Resolve a set while the caller owns ``command-config``."""
+    with storage_lock(f'command-sets:{user_id}'):
+        command_set, error = _get_command_set_with_lock_held(
+            user_id, command_set_id
+        )
     if error:
         return None, error
-    commands, error = _command_index(user_id)
+    with storage_lock(f'commands:{user_id}'):
+        commands, error = _command_index(user_id)
     if error:
         return None, error
     return _resolve_loaded_command_set(command_set, commands)
 
 
-def load_command_sets_with_resolution(user_id):
-    """Load sets with exact previews without repeating command-library reads."""
-    command_sets, error = load_command_sets(user_id)
+def resolve_command_set(user_id, command_set_id):
+    with storage_lock(f'command-config:{user_id}'):
+        return _resolve_command_set_with_coordinator_held(
+            user_id, command_set_id
+        )
+
+
+def _load_command_sets_with_resolution_with_coordinator_held(user_id):
+    """Load previews while the caller owns ``command-config``."""
+    with storage_lock(f'command-sets:{user_id}'):
+        command_sets, error = _load_command_sets_with_lock_held(user_id)
     if error:
         return None, error
-    commands, error = _command_index(user_id)
+    with storage_lock(f'commands:{user_id}'):
+        commands, error = _command_index(user_id)
     if error:
         return None, error
 
@@ -458,8 +555,18 @@ def load_command_sets_with_resolution(user_id):
     return enriched, None
 
 
-def get_command_usage(user_id, command_id):
-    command_sets, error = load_command_sets(user_id)
+def load_command_sets_with_resolution(user_id):
+    """Load sets with exact previews from coordinated store snapshots."""
+    with storage_lock(f'command-config:{user_id}'):
+        return _load_command_sets_with_resolution_with_coordinator_held(
+            user_id
+        )
+
+
+def _get_command_usage_with_coordinator_held(user_id, command_id):
+    """Read references while the caller owns ``command-config``."""
+    with storage_lock(f'command-sets:{user_id}'):
+        command_sets, error = _load_command_sets_with_lock_held(user_id)
     if error:
         return None, error
     usages = []
@@ -469,11 +576,12 @@ def get_command_usage(user_id, command_id):
                for step in steps if isinstance(step, dict)):
             usages.append({
                 'id': command_set.get('id'),
-                'name': command_set.get('name', ''),
+                'name': safe_reference_name(command_set.get('name')),
                 'type': 'command_set',
             })
 
-    profiles, error = _load_profile_references(user_id)
+    with storage_lock(f'profiles:{user_id}'):
+        profiles, error = _load_profile_references(user_id)
     if error:
         return None, error
     for profile in profiles:
@@ -481,41 +589,46 @@ def get_command_usage(user_id, command_id):
                 and profile.get('command_id') == command_id):
             usages.append({
                 'id': profile.get('id'),
-                'name': profile.get('name', ''),
+                'name': safe_reference_name(profile.get('name')),
                 'type': 'profile',
             })
     return usages, None
+
+
+def get_command_usage(user_id, command_id):
+    with storage_lock(f'command-config:{user_id}'):
+        return _get_command_usage_with_coordinator_held(user_id, command_id)
 
 
 def _load_profile_references(user_id):
     from . import profile_manager
 
     path = profile_manager.get_user_profiles_file(user_id)
-    if path is None or not path.exists():
+    if path is None:
         return [], None
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-        if not isinstance(data, dict) or not isinstance(data.get('profiles'), list):
-            raise ValueError('invalid profile storage shape')
-        return data['profiles'], None
-    except (OSError, ValueError, TypeError) as exc:
-        log_error('Error checking command set profile usage', user_id=user_id, error=str(exc))
-        return None, 'Profile storage is unreadable'
+    return profile_manager._load_profiles_with_lock_held(user_id), None
 
 
 def delete_command_set(user_id, command_set_id):
     with storage_lock(f'command-config:{user_id}'):
-        profiles, error = _load_profile_references(user_id)
+        with storage_lock(f'profiles:{user_id}'):
+            profiles, error = _load_profile_references(user_id)
         if error:
             return False, error, []
-        usages = [str(profile.get('name', '')) for profile in profiles
-                  if isinstance(profile, dict) and profile.get('command_set_id') == command_set_id]
+        usages = [
+            safe_reference_name(profile.get('name'))
+            for profile in profiles
+            if (
+                isinstance(profile, dict)
+                and profile.get('command_set_id') == command_set_id
+            )
+        ]
         if usages:
             noun = 'profile' if len(usages) == 1 else 'profiles'
             return False, f'Command set is used by {len(usages)} {noun}', usages
 
         with storage_lock(f'command-sets:{user_id}'):
-            command_sets, error = load_command_sets(user_id)
+            command_sets, error = _load_command_sets_with_lock_held(user_id)
             if error:
                 return False, error, []
             remaining = [item for item in command_sets if item.get('id') != command_set_id]

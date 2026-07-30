@@ -1,12 +1,13 @@
-import json
 import re
 import ipaddress
 import uuid
 from datetime import datetime, timezone
 
 from .audit_logger import log_error
-from .post_connect_manager import validate_configuration
-from .storage_utils import storage_lock, atomic_write_json
+from .post_connect_manager import infer_mode, validate_configuration
+from .storage_errors import StorageCorruptionError
+from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
+from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .startup_commands import normalize_startup_commands
 
 
@@ -35,19 +36,77 @@ def get_user_profiles_file(user_id):
     user_dir = user.get_data_dir()
     return user_dir / 'profiles.json'
 
+
+def _optional_string(item, field, allow_none=False):
+    if field not in item:
+        return True
+    return isinstance(item[field], str) or (allow_none and item[field] is None)
+
+
+def _valid_profile(item):
+    if not isinstance(item, dict):
+        return False
+    if not isinstance(item.get('id'), str) or not isinstance(item.get('name'), str):
+        return False
+    for field in (
+        'host', 'username', 'startup_commands', 'command_id',
+        'command_set_id', 'parameters_override', 'created_at', 'updated_at',
+    ):
+        if not _optional_string(item, field):
+            return False
+    for field in ('key_id', 'jump_host_id'):
+        if not _optional_string(item, field, allow_none=True):
+            return False
+    if 'port' in item and type(item['port']) is not int:
+        return False
+    if 'auth_type' in item and item['auth_type'] not in {
+        'password', 'key', 'tailscale',
+    }:
+        return False
+    if 'startup_mode' in item and item['startup_mode'] not in {
+        'none', 'free_text', 'command', 'command_set',
+    }:
+        return False
+    for field in ('use_tmux', 'tailscale_authorized'):
+        if field in item and type(item[field]) is not bool:
+            return False
+    return True
+
+
+def _valid_profile_document(value):
+    return (
+        isinstance(value, dict)
+        and value.get('schema_version') == CURRENT_STORAGE_VERSIONS['profiles']
+        and isinstance(value.get('profiles'), list)
+        and all(_valid_profile(item) for item in value['profiles'])
+    )
+
+
+_PROFILE_FIELDS = {
+    'id', 'name', 'host', 'port', 'username', 'auth_type', 'key_id',
+    'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
+    'command_set_id', 'parameters_override', 'use_tmux',
+    'tailscale_authorized', 'created_at', 'updated_at',
+}
+
+
+def _load_profiles_with_lock_held(user_id):
+    profiles_file = get_user_profiles_file(user_id)
+    if profiles_file is None:
+        return []
+    data = load_json_migrated(
+        profiles_file,
+        'profiles',
+        lambda: {'profiles': []},
+        _valid_profile_document,
+    )
+    return data['profiles']
+
+
 def load_profiles(user_id):
     """Load all connection profiles for a specific user."""
-    try:
-        profiles_file = get_user_profiles_file(user_id)
-        if not profiles_file or not profiles_file.exists():
-            return []
-
-        with open(profiles_file, 'r') as f:
-            data = json.load(f)
-            return data.get('profiles', [])
-    except Exception as e:
-        log_error(f"Error loading profiles", user_id=user_id, error=str(e))
-        return []
+    with storage_lock(f'profiles:{user_id}'):
+        return _load_profiles_with_lock_held(user_id)
 
 
 def _load_profiles_for_write(user_id):
@@ -55,34 +114,28 @@ def _load_profiles_for_write(user_id):
     profiles_file = get_user_profiles_file(user_id)
     if not profiles_file:
         return None, 'User not found'
-    if not profiles_file.exists():
-        return [], None
-    try:
-        with open(profiles_file, 'r', encoding='utf-8') as handle:
-            data = json.load(handle)
-        if not isinstance(data, dict) or not isinstance(data.get('profiles'), list):
-            raise ValueError('invalid profile storage shape')
-        return data['profiles'], None
-    except (OSError, ValueError, TypeError) as exc:
-        log_error('Error loading profiles for write', user_id=user_id, error=str(exc))
-        return None, 'Profile storage is unreadable'
+    return _load_profiles_with_lock_held(user_id), None
 
 def save_profiles(user_id, profiles):
     """Save profiles list to JSON file for a specific user."""
     try:
         profiles_file = get_user_profiles_file(user_id)
-        if not profiles_file:
+        document = {
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': profiles,
+        }
+        if not profiles_file or not _valid_profile_document(document):
             return False
 
         profiles_file.parent.mkdir(parents=True, exist_ok=True)
 
-        atomic_write_json(profiles_file, {'profiles': profiles})
+        atomic_write_json(profiles_file, document)
         return True
     except Exception as e:
         log_error(f"Error saving profiles", user_id=user_id, error=str(e))
         return False
 
-def _validate_profile_payload(user_id, payload):
+def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     """Validate storable profile fields without accepting credentials."""
     if not isinstance(payload, dict):
         return None, 'Invalid profile data'
@@ -118,7 +171,11 @@ def _validate_profile_payload(user_id, payload):
     if auth_type == 'key' and not key_id:
         return None, 'key_id required for key authentication'
 
-    post_connect, error = validate_configuration(user_id, payload)
+    post_connect, error = validate_configuration(
+        user_id,
+        payload,
+        dependent_lock_held=dependent_lock_held,
+    )
     if error:
         return None, error
 
@@ -141,9 +198,34 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
     """Create or update a profile under the per-user coordinator lock."""
     try:
         with storage_lock(f'command-config:{user_id}'):
-            validated, error = _validate_profile_payload(user_id, payload)
+            mode = infer_mode(payload)
+            dependent_store = {
+                'command': 'commands',
+                'command_set': 'command-sets',
+            }.get(mode)
+            if dependent_store:
+                with storage_lock(f'{dependent_store}:{user_id}'):
+                    validated, error = _validate_profile_payload(
+                        user_id,
+                        payload,
+                        dependent_lock_held=True,
+                    )
+            else:
+                validated, error = _validate_profile_payload(user_id, payload)
             if error:
                 return None, error
+
+            jump_host_id = validated.get('jump_host_id')
+            if jump_host_id:
+                from .jump_host_manager import (
+                    _get_jump_host_with_coordinator_held,
+                )
+
+                jump_host = _get_jump_host_with_coordinator_held(
+                    user_id, jump_host_id
+                )
+                if jump_host is None:
+                    return None, 'Jump host not found'
 
             if preserve_legacy_fallback and payload.get('startup_commands'):
                 legacy, error = normalize_startup_commands(
@@ -164,7 +246,13 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                 if profile_id:
                     for index, existing in enumerate(profiles):
                         if existing.get('id') == profile_id:
+                            unknown = {
+                                key: value
+                                for key, value in existing.items()
+                                if key not in _PROFILE_FIELDS
+                            }
                             result = {
+                                **unknown,
                                 **validated,
                                 'id': profile_id,
                                 'created_at': existing.get('created_at', now),
@@ -186,6 +274,8 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                 if save_profiles(user_id, profiles):
                     return result, None
                 return None, 'Failed to save profile'
+    except StorageCorruptionError:
+        raise
     except Exception as exc:
         log_error('Error saving profile', user_id=user_id, error=str(exc))
         return None, 'Failed to save profile'
@@ -228,21 +318,31 @@ def delete_profile(user_id, profile_id):
             with storage_lock(f'profiles:{user_id}'):
                 profiles, error = _load_profiles_for_write(user_id)
                 if error:
-                    return False
-                profiles = [p for p in profiles if p['id'] != profile_id]
-                return save_profiles(user_id, profiles)
+                    return False, error
+                found = any(profile.get('id') == profile_id for profile in profiles)
+                if not found:
+                    return False, 'Profile not found'
+                remaining = [profile for profile in profiles if profile.get('id') != profile_id]
+                if save_profiles(user_id, remaining):
+                    return True, None
+                return False, 'Failed to delete profile'
+    except StorageCorruptionError:
+        raise
     except Exception as e:
         log_error(f"Error deleting profile", user_id=user_id, error=str(e))
-        return False
+        return False, 'Failed to delete profile'
 
 
 def assign_command_set(user_id, profile_id, command_set_id):
     """Assign an existing command set without removing legacy fallback data."""
     try:
         with storage_lock(f'command-config:{user_id}'):
-            from .command_set_manager import get_command_set
+            from .command_set_manager import _get_command_set_with_lock_held
 
-            command_set, error = get_command_set(user_id, command_set_id)
+            with storage_lock(f'command-sets:{user_id}'):
+                command_set, error = _get_command_set_with_lock_held(
+                    user_id, command_set_id
+                )
             if error:
                 return None, error
 
@@ -258,6 +358,8 @@ def assign_command_set(user_id, profile_id, command_set_id):
                             return None, 'Failed to save profile'
                         return profile, None
                 return None, 'Profile not found'
+    except StorageCorruptionError:
+        raise
     except Exception as e:
         log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
         return None, str(e)

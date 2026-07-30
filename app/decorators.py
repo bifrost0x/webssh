@@ -2,15 +2,20 @@ from functools import wraps
 from flask_socketio import disconnect
 from flask import request, abort
 from flask_login import current_user
-from .auth import get_user_from_socket
+import config
+from .auth import get_user_from_socket, login_manager
 from .audit_logger import log_warning
 
 
 def admin_required(f):
-    """Require an authenticated admin for an HTTP route (use after @login_required)."""
+    """Require an enabled panel and authenticated admin (place above @login_required)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not getattr(current_user, 'is_admin', False):
+        if not config.ADMIN_PANEL_ENABLED:
+            abort(404)
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if not getattr(current_user, 'is_admin', False):
             log_warning("Unauthorized admin access attempt",
                         user=getattr(current_user, 'username', None),
                         path=getattr(request, 'path', None))

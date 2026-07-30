@@ -12,15 +12,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-locks:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.10.9'
+
+      - name: Check dependency locks
+        shell: pwsh
+        run: ./scripts/lock_requirements.ps1 -Check
+
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
       TEST_REDIS_URL: redis://localhost:6379/15
     services:
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -31,10 +54,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           # Mirror the runtime version shipped in the Docker image.
           python-version: '3.11'
@@ -45,8 +68,223 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
+          python -m pip install --require-hashes -r requirements-test.txt
 
       - name: Run tests
         run: pytest tests/ -v
+
+  redis-rate-limiter:
+    name: Redis rate limiter (${{ matrix.redis-version }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - redis-version: '7'
+            redis-image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+          - redis-version: '8'
+            redis-image: redis:8-alpine@sha256:8096655e437712b07503796fb64d81359256cfcff0ab29d95a7da72863786efb
+    env:
+      TEST_REDIS_URL: redis://localhost:6379/15
+    services:
+      redis:
+        image: ${{ matrix.redis-image }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-test.txt
+
+      - name: Run Redis rate limiter tests
+        run: pytest tests/test_rate_limiter.py -v
+
+  ssh-integration:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          # Mirror the runtime version shipped in the Docker image.
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-test.txt
+
+      - name: Run disposable OpenSSH integration tests
+        run: python scripts/run_integration_tests.py
+
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-test.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked Node dependencies
+        run: npm ci
+
+      - name: Install locked Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run required local browser gate
+        run: npm run test:e2e
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-e2e-failure
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container-threading-smoke:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build and start this checkout
+        shell: bash
+        run: |
+          image_tag="webssh-ci:${GITHUB_SHA}"
+          container_name="webssh-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ownership_label="webssh.ci-run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ownership_value="${ownership_label#*=}"
+
+          cleanup_start_failure() {
+            status=$?
+            trap - EXIT
+
+            if [ "$status" -ne 0 ] && docker container inspect "$container_name" >/dev/null 2>&1; then
+              if actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$container_name" 2>/dev/null)"; then
+                if [ "$actual_label" = "$ownership_value" ]; then
+                  docker rm --force "$container_name" || true
+                fi
+              fi
+            fi
+
+            exit "$status"
+          }
+          trap cleanup_start_failure EXIT
+
+          if docker container inspect "$container_name" >/dev/null 2>&1; then
+            echo "Refusing to reuse pre-existing container $container_name" >&2
+            exit 1
+          fi
+
+          docker build --tag "$image_tag" .
+          docker run --detach --name "$container_name" \
+            --label "$ownership_label" \
+            --env SECRET_KEY="container-smoke-test-secret" \
+            --publish 127.0.0.1::5000 \
+            "$image_tag"
+
+          {
+            echo "WEBSSH_CI_CONTAINER=$container_name"
+            echo "WEBSSH_CI_CONTAINER_LABEL_VALUE=$ownership_value"
+            echo "WEBSSH_CI_CONTAINER_CREATED=1"
+          } >> "$GITHUB_ENV"
+          trap - EXIT
+
+      - name: Verify gthread worker and readiness
+        shell: bash
+        run: |
+          binding="$(docker port "$WEBSSH_CI_CONTAINER" 5000/tcp | head --lines=1)"
+          port="${binding##*:}"
+
+          for attempt in {1..30}; do
+            ready_status="$(curl --output /dev/null --silent --show-error --write-out '%{http_code}' "http://127.0.0.1:${port}/ready" || true)"
+            if docker logs "$WEBSSH_CI_CONTAINER" 2>&1 | grep --quiet --fixed-strings "Using worker: gthread" \
+              && [ "$ready_status" = "200" ]; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          docker logs "$WEBSSH_CI_CONTAINER" >&2
+          exit 1
+
+      - name: Verify graceful gthread shutdown
+        shell: bash
+        run: |
+          actual_label="$(docker inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_CI_CONTAINER")"
+          if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
+            echo "Refusing to stop container with unexpected ownership label" >&2
+            exit 1
+          fi
+          docker stop --time 35 "$WEBSSH_CI_CONTAINER"
+          exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$WEBSSH_CI_CONTAINER")"
+          test "$exit_code" = "0"
+
+      - name: Clean up created container
+        if: always() && env.WEBSSH_CI_CONTAINER_CREATED == '1'
+        shell: bash
+        run: |
+          if ! docker container inspect "$WEBSSH_CI_CONTAINER" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_CI_CONTAINER")"
+          if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
+            echo "Refusing to remove container with unexpected ownership label" >&2
+            exit 1
+          fi
+
+          docker rm --force "$WEBSSH_CI_CONTAINER"

@@ -147,13 +147,52 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **User Management** - Create, lock/unlock, promote/demote and delete users; deletion revokes live access and quarantines the user's files outside the active user namespace
 - **Audit Log Viewer** - Browse security events with level filter, search and pagination
 - **Registration Toggle** - Enable or disable self-registration at runtime (hides the public sign-up link)
-- **Zero-Touch Bootstrap** - First registered user becomes admin; when upgrading an older install, the oldest existing account is granted admin automatically (additional admins configurable via `ADMIN_USERS`)
+- **Safe Admin Bootstrap** - The first registered account becomes administrator; later registrations remain standard users, and `create-admin` remains available for locked-down deployments and recovery
 
 ### Deployment
 - **Docker & Docker Compose** - Single-command deployment with healthcheck
 - **Reverse Proxy Ready** - Traefik, nginx, and Caddy examples included
 - **Subfolder Deployment** - Host under a URL subpath like `/webssh` (see [Subfolder Deployment](#subfolder-deployment))
 - **Homelab Friendly** - Wildcard CORS mode for internal networks
+
+### Runtime lifecycle and graceful stops
+
+WebSSH owns its cleanup loops, SSH output readers, and server-to-server
+transfers through a bounded runtime lifecycle. Set `BACKGROUND_WORKERS` only
+when the calculated default does not fit the deployment: it must be between
+`3 + QUOTA_SSH_SESSION_GLOBAL + QUOTA_BACKGROUND_JOB_GLOBAL` and `128`.
+The three permanent cleanup loops reserve the first three slots, so the default
+with the shipped quotas is `3 + 10 + 4 = 17`; this leaves capacity for every
+allowed SSH reader and background transfer.
+
+`RUNTIME_SHUTDOWN_GRACE_SECONDS` defaults to `5` and accepts values from `1`
+through `30`. On SIGTERM/SIGINT the process gate first signals lifecycle work
+and waits at most that interval before continuing normal server termination.
+The supplied Compose service uses a 40-second `stop_grace_period`, longer than
+the maximum application grace. Gunicorn must continue to run exactly one worker
+because live SSH state and quota accounting are process-local.
+
+The native runtime uses Gunicorn 26 with the `gthread` worker class, exactly
+one worker, and `GUNICORN_THREADS=3` by default (accepted range: 2 through
+32). Socket.IO runs with `SOCKETIO_ASYNC_MODE=threading` and
+`SOCKETIO_ASYNC_HANDLERS=False`; there is no Eventlet worker, fallback, or
+monkey patching path. One Gunicorn worker remains mandatory because live SSH
+sessions and quota accounting are process-local.
+
+The universal lock may contain `greenlet` only as SQLAlchemy's
+platform-marked transitive dependency. It is not selected as the WebSSH worker
+runtime and is unrelated to Eventlet or monkey patching. Removing it requires
+a separately reviewed SQLAlchemy dependency change, not a runtime switch.
+
+### Image-only runtime rollback
+
+Keep the previously deployed immutable image, identified by its recorded
+registry digest, available as a rollback artifact. To return from the
+Gunicorn-26 image, stop the candidate and start that immutable image against
+the same `/app/data` volume; do not restore, rewrite, or roll back the data
+volume. Verify `/ready`, login, stored-key listing, a direct terminal, and SFTP
+before returning service to users. The runtime migration changes no persistent
+format.
 
 ## Quick Start
 
@@ -174,9 +213,18 @@ docker run -d \
 > generated `SECRET_KEY` across updates. Set `SECRET_KEY` explicitly only for
 > multi-replica deployments.
 
-Open http://localhost:5000 and create your first account.
+Create the first administrator from the Docker host:
 
-### Docker Compose
+```bash
+docker exec -it webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
+```
+
+Then open http://localhost:5000 and sign in. Self-registration is disabled by
+default in production. When an operator explicitly enables registration on a
+fresh installation instead, the first registered account becomes administrator.
+Do not expose an unclaimed fresh instance to untrusted networks.
+
+### Docker Compose (Homelab)
 
 ```bash
 # Download docker-compose.yml
@@ -184,11 +232,46 @@ curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.y
 
 # Start the service — SECRET_KEY is auto-generated and persisted to the volume
 docker compose up -d
+
+# Create the first administrator
+docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
 ```
 
-Open http://localhost:5000 and create your first account.
+Open http://localhost:5000 and sign in with the administrator account.
 
-> **Tip:** Edit `docker-compose.yml` directly to change settings. No `.env` file needed!
+The default Compose file is explicitly labeled `homelab`. It preserves
+HTTP-friendly settings and logs security warnings instead of refusing startup.
+
+### Docker Compose (Production)
+
+Download both Compose files, set the public HTTPS origin, and apply the
+production override:
+
+```bash
+curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.production.yml
+
+export WEBSSH_ORIGIN=https://ssh.example.com
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.production.yml \
+  up -d
+```
+
+The production profile refuses to start with debug mode, wildcard CORS,
+insecure cookies, open registration, disabled internal-address blocking, or an
+unspecified trusted-proxy boundary. The override assumes one trusted reverse
+proxy; set `TRUSTED_PROXIES=0` explicitly only when no proxy headers are
+accepted. It binds WebSSH to `127.0.0.1:5000`, preventing direct clients from
+spoofing trusted forwarded headers. Point a reverse proxy on the same host at
+that address. For a containerized proxy, use a private shared network instead
+and do not publish the WebSSH port publicly.
+
+The command prompts for the password without echoing it. Running it for an
+existing username promotes that account without changing its password. For
+non-interactive provisioning, use `--password-file /path/in/container`; the
+path must be a regular, non-symlink file. One trailing newline is removed, and
+the password is never printed or written to the audit log.
 
 ### Tailscale SSH
 
@@ -199,10 +282,10 @@ tag, narrow ACL/SSH rules, and the optional WebSSH target and remote-username
 allowlists. The backend enforces these controls; hiding the UI option is not the
 security boundary.
 
-Before enabling the feature, create the first administrator from a trusted
-network and disable self-registration in the Admin Panel. Do not enable the
-shared Tailscale identity on a fresh, publicly reachable installation: the
-first registered WebSSH account becomes an administrator.
+Before enabling the feature, create the first administrator with the local
+`create-admin` CLI and keep self-registration disabled unless it is explicitly
+needed. On a fresh installation, the first registered account becomes
+administrator; every later registered account is non-administrative.
 
 See [Tailscale SSH deployment and security](docs/tailscale-ssh.md) for all
 configuration variables, ACL guidance, audit behavior, and a Docker sidecar
@@ -313,7 +396,7 @@ source venv/bin/activate  # Linux/macOS
 # or: venv\Scripts\activate  # Windows
 
 # Install dependencies
-pip install -r requirements.txt
+python -m pip install --require-hashes -r requirements.txt
 
 # Set required environment variable
 export SECRET_KEY=$(openssl rand -hex 32)
@@ -337,6 +420,7 @@ docker build -t webssh:local .
 |----------|----------|---------|-------------|
 | `SECRET_KEY` | No | auto | Session encryption key. Auto-generated and persisted to `DATA_DIR/secret_key` on first run (Docker). Set explicitly for multi-replica setups or non-Docker production: `openssl rand -hex 32` |
 | `DEBUG` | No | `False` | Enable debug mode (development only) |
+| `DEPLOYMENT_PROFILE` | No | `homelab` | `homelab` preserves compatibility and emits warnings; `production` rejects unsafe security combinations |
 | `DATA_DIR` | No | `/app/data` | Persistent data directory |
 
 #### Server
@@ -345,20 +429,34 @@ docker build -t webssh:local .
 | `HOST` | No | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | No | `5000` | Listen port |
 | `APPLICATION_ROOT` | No | - | URL subpath when deploying under a prefix (e.g. `/webssh`). See [Subfolder Deployment](#subfolder-deployment) |
-| `TRUSTED_PROXIES` | No | `0` | Set `1` when behind a reverse proxy |
+| `TRUSTED_PROXIES` | Production: yes | `0` | Number of trusted proxy layers. Production requires an explicit value, including `0` when no proxy headers are trusted |
 
 #### CORS & Security Headers
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CORS_ORIGINS` | No | `localhost:5000` | Allowed origins for CORS (comma-separated) |
+| `CORS_ORIGINS` | Production: yes | `localhost:5000` | Allowed origins for CORS (comma-separated). Production requires an explicit non-wildcard value |
 | `ALLOW_CORS_WILDCARD` | No | `false` | Set `true` to allow `*` as CORS origin (homelab use only) |
 | `SESSION_COOKIE_SECURE` | No | Auto | Set `true`/`false` to explicitly control secure cookies (auto-enabled in production) |
 
 #### Features
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `REGISTRATION_ENABLED` | No | `True` | Initial self-registration state (can be toggled later in the Admin Panel) |
-| `ADMIN_USERS` | No | - | Comma-separated usernames granted admin on startup (e.g. `alice,bob`) |
+| `REGISTRATION_ENABLED` | No | `False` in production, `True` in debug mode | Initial self-registration state. On a fresh database, the first registered account becomes administrator; later accounts do not. A saved Admin Panel setting takes precedence only in the homelab profile; production remains closed |
+| `WEBAUTHN_ENABLED` | No | `false` | Enable passkey enrollment and login for local accounts |
+| `WEBAUTHN_RP_ID` | With WebAuthn | `localhost` | Exact relying-party domain, without scheme or port |
+| `WEBAUTHN_RP_NAME` | No | `WebSSH` | Name shown by the authenticator |
+| `WEBAUTHN_ORIGIN` | With WebAuthn | `https://localhost` | Exact public browser origin, including scheme and optional port |
+| `HOST_KEY_MANAGEMENT_ENABLED` | No | `true` | Enable user and administrator host-key inventory and deletion routes |
+| `RECOVERY_CODES_ENABLED` | No | `true` | Enable recovery-code generation and alternative login |
+| `AUDIT_EXPORT_ENABLED` | No | `true` | Enable administrator audit viewer, bounded export, and retention controls |
+| `OIDC_ENABLED` | No | `false` | Enable the optional authorization-code flow with PKCE |
+| `OIDC_ISSUER` | With OIDC | - | Exact OpenID Provider issuer URL |
+| `OIDC_CLIENT_ID` | With OIDC | - | Registered client identifier |
+| `OIDC_CLIENT_SECRET_FILE` | With OIDC | - | Path to a private file containing the client secret; the secret is not accepted inline |
+| `OIDC_ALLOWED_SUBJECTS` | No | - | Optional comma-separated subject allowlist |
+| `OIDC_ALLOWED_DOMAINS` | No | - | Optional comma-separated email-domain policy; identity linking still uses issuer and subject only |
+| `OIDC_LOGIN_RATE_LIMIT` | No | `10 per minute` | Per-IP rate limit for starting OIDC login |
+| `ADMIN_USERS` | No | - | Compatibility option: comma-separated existing usernames granted admin on startup. Prefer `create-admin` for explicit bootstrap |
 | `SESSION_TIMEOUT` | No | `1800` | Idle SSH session timeout in seconds (30 minutes) |
 | `BLOCK_INTERNAL_SSH` | No | `false` | Block SSH connections to internal/loopback addresses (`true` or `false`) |
 | `TMUX_ENABLED` | No | `false` | Show and allow persistent tmux sessions. The provided Compose file sets this to `true` |
@@ -370,7 +468,76 @@ docker build -t webssh:local .
 | `TAILSCALE_SSH_ALLOWED_REMOTE_USERS` | No | - | Optional comma-separated exact remote OS username allowlist for Tailscale SSH |
 | `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
+| `TRANSFER_TEMP_DIR` | No | `<DATA_DIR>/tmp` | Private local directory for bounded fallback ZIP creation |
 | `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |
+| `AUDIT_LOG_MAX_BYTES` | No | `10485760` | Maximum size of each structured application or security audit log before rotation (10 MiB) |
+| `AUDIT_LOG_BACKUP_COUNT` | No | `5` | Number of rotated backups retained for each structured log |
+
+Passkeys, OIDC, host trust, recovery codes, and audit retention are managed
+from the Security and Admin pages. Recovery codes are shown once and stored
+only as hashes. OIDC never auto-links by email: an administrator must link the
+provider's stable `(issuer, subject)` identity to an existing local account.
+When OIDC runs in Docker, mount the client-secret file read-only and point
+`OIDC_CLIENT_SECRET_FILE` at its path inside the container.
+
+Passkey sign-in uses username-less discoverable credentials so the
+authentication-options endpoint does not reveal whether an account exists.
+Passkeys created by an older release as non-discoverable credentials cannot be
+used by this flow; sign in with the local password or a recovery code and
+use **Replace legacy passkey** on the Security page. After current-password
+confirmation, that path deliberately permits the same authenticator to create
+a discoverable replacement. Test it before deleting the old record.
+
+JSONL audit exports begin with a `webssh_audit_export` metadata record. Its
+`truncated`, `scanned`, and `scan_limit` fields state whether the export reached
+the bounded scan limit; the Admin UI also warns when an export is truncated.
+
+#### Health and Readiness
+
+`GET /health` is a process-liveness endpoint and returns HTTP 200 with
+`{"status":"ok"}` while the application can serve requests. `GET /ready`
+checks both the SQLite database and a create-write-fsync-delete probe inside
+`DATA_DIR`. It returns HTTP 200 when both checks pass and HTTP 503 with only
+the failed component categories when either dependency is unavailable. Docker
+and Docker Compose use `/ready` for their built-in healthcheck.
+
+#### Resource Quotas
+
+All quota values must be positive integers. For SSH sessions, quick
+connections, and transfers, the per-user value must be lower than the global
+value so one account cannot consume all available slots. These counters are
+in-process and therefore preserve, rather than replace, the mandatory
+single-worker deployment model.
+
+All listed quotas are enforced. Slot reservations are released on completion,
+cancellation, expiry, and connection teardown. Temporary-byte reservations
+cover local fallback archives, and background-job reservations bound
+server-to-server transfer work submitted to the runtime executor.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `QUOTA_SSH_SESSION_GLOBAL` | No | `10` | Maximum concurrent terminal SSH sessions |
+| `QUOTA_SSH_SESSION_PER_USER` | No | `5` | Maximum concurrent terminal SSH sessions per user |
+| `QUOTA_QUICK_CONNECTION_GLOBAL` | No | `12` | Maximum concurrent temporary SSH/SFTP connections |
+| `QUOTA_QUICK_CONNECTION_PER_USER` | No | `3` | Maximum concurrent temporary SSH/SFTP connections per user |
+| `QUOTA_TRANSFER_GLOBAL` | No | `8` | Maximum concurrent transfer records |
+| `QUOTA_TRANSFER_PER_USER` | No | `2` | Maximum concurrent transfer records per user |
+| `QUOTA_TEMP_BYTES_GLOBAL` | No | `1073741824` | Global temporary-storage reservation limit in bytes (1 GiB) |
+| `QUOTA_TEMP_BYTES_PER_USER` | No | `536870912` | Per-user temporary-storage reservation limit in bytes (512 MiB) |
+| `QUOTA_BACKGROUND_JOB_GLOBAL` | No | `4` | Maximum concurrent background transfer jobs |
+| `QUOTA_BACKGROUND_JOB_PER_USER` | No | `1` | Maximum concurrent background transfer jobs per user |
+
+#### Runtime lifecycle
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BACKGROUND_WORKERS` | No | `3 + QUOTA_SSH_SESSION_GLOBAL + QUOTA_BACKGROUND_JOB_GLOBAL` (`17` with defaults) | Bounded executor capacity. Must be at least the displayed formula so three permanent cleanup jobs cannot starve allowed SSH readers or background transfers, and no more than `128` |
+| `RUNTIME_SHUTDOWN_GRACE_SECONDS` | No | `5` | Bounded cancellation grace for SIGTERM/SIGINT. Must be from `1` through `30`; the supplied Compose service allows 40 seconds before forced stop |
+
+For compatibility, the deprecated
+`TemporaryConnectionPool(max_connections_per_user=...)` constructor argument
+is still accepted but ignored. Configure the central
+`QUOTA_QUICK_CONNECTION_PER_USER` limit instead.
 
 #### Rate Limiting
 | Variable | Required | Default | Description |
@@ -488,12 +655,37 @@ server.local {
 For homelab use where you access the service from various internal IPs:
 
 ```bash
+DEPLOYMENT_PROFILE=homelab
 CORS_ORIGINS=*
 ALLOW_CORS_WILDCARD=true
 TRUSTED_PROXIES=1
+SESSION_COOKIE_SECURE=false
+BLOCK_INTERNAL_SSH=false
 ```
 
 > **Note:** Only use wildcard CORS in trusted network environments.
+
+### Production Security Profile
+
+For an Internet-facing deployment:
+
+```bash
+DEPLOYMENT_PROFILE=production
+DEBUG=False
+CORS_ORIGINS=https://ssh.example.com
+ALLOW_CORS_WILDCARD=false
+SESSION_COOKIE_SECURE=true
+REGISTRATION_ENABLED=False
+BLOCK_INTERNAL_SSH=true
+TRUSTED_PROXIES=1
+```
+
+`SESSION_COOKIE_SECURE=true` remains required when the reverse proxy terminates
+TLS and forwards plain HTTP to WebSSH: the flag describes the browser-facing
+HTTPS connection. A production-profile administrator cannot reopen public
+registration through the Admin Panel. When `TRUSTED_PROXIES` is non-zero, keep
+the backend port restricted to the trusted proxy; the supplied production
+Compose override binds it to loopback.
 
 ## Themes
 
@@ -532,7 +724,7 @@ Web SSH Terminal includes 10 themes:
 - **Security Headers**: HSTS, CSP, X-Content-Type-Options, X-Frame-Options
 - **SSRF Protection**: with `BLOCK_INTERNAL_SSH=true`, hostnames are resolved and connections to loopback, link-local (incl. cloud-metadata `169.254.169.254`), private, and reserved addresses are blocked — a hostname that resolves to an internal address cannot bypass the guard
 - **Upload Limits**: bounded sizes for file uploads, editor saves, notepad, and SSH key uploads to prevent resource exhaustion
-- **Folder Download Limits**: `MAX_ZIP_DOWNLOAD_SIZE` is enforced both when a ZIP is created on the remote host and while it is streamed to the Web SSH Terminal server; the SFTP fallback enforces the same configured cap
+- **Folder Download Limits**: `MAX_ZIP_DOWNLOAD_SIZE` is enforced for declared input and streamed ZIP bytes; remote ZIPs stream directly over bounded HTTP, while the SFTP fallback uses a private, quota-reserved temporary file under `TRANSFER_TEMP_DIR`
 
 ### Paramiko 5 SSH Compatibility
 
@@ -564,6 +756,59 @@ key entry. Never point the check at the active writable data volume; it is
 designed for a read-only snapshot and never migrates plaintext legacy keys.
 Its report omits key content, configured key names, filenames, paths, and the
 `SECRET_KEY`.
+
+### Backup, Restore, and Secret Rotation
+
+Run mutating maintenance commands only while every WebSSH application process
+that uses the data directory is stopped. Archives contain the database, user
+stores, host keys, encrypted SSH keys, and—when the default Docker secret
+storage is used—the persisted `SECRET_KEY`. Store archives encrypted and with
+access restricted to administrators. Runtime `logs/` and incomplete transfers
+under `tmp/` are intentionally excluded.
+
+```bash
+# Stop WebSSH first, then create and verify a private archive outside DATA_DIR.
+flask --app start:app backup create \
+  --destination /secure-backups/webssh.zip \
+  --confirm-offline
+
+flask --app start:app backup verify /secure-backups/webssh.zip
+
+# Restore verifies every manifest checksum before writing any file.
+flask --app start:app backup restore \
+  /secure-backups/webssh.zip \
+  --confirm-offline
+
+# Creates a verified pre-rotation backup, re-encrypts and verifies every stored
+# SSH key, publishes the persisted secret last, and rolls back on failure.
+flask --app start:app rotate-secret-key --confirm-offline
+```
+
+For Docker Compose, mount a private host backup directory into the one-off
+maintenance container:
+
+```bash
+mkdir -p backups
+chmod 700 backups
+docker compose stop webssh
+docker compose run --rm \
+  -v "$PWD/backups:/backup" \
+  webssh flask --app start:app backup create \
+  --destination /backup/webssh.zip \
+  --confirm-offline
+docker compose run --rm \
+  -v "$PWD/backups:/backup:ro" \
+  webssh flask --app start:app backup verify /backup/webssh.zip
+docker compose up -d
+```
+
+Keep the service stopped for restore or rotation as well. After a successful
+rotation, restart it immediately so the application loads the new secret.
+`rotate-secret-key` deliberately supports only the secret persisted at
+`DATA_DIR/secret_key`; it refuses missing or mismatched state. If `SECRET_KEY`
+comes exclusively from Docker Secrets, Kubernetes, systemd credentials, or
+another external secrets manager, rotate that external value with a separate
+controlled migration procedure instead of this command.
 
 ### Hosting & Data Protection
 
@@ -670,8 +915,12 @@ private, and reserved targets after DNS resolution.
 
 - Terminate TLS at a trusted reverse proxy and configure `CORS_ORIGINS`,
   `TRUSTED_PROXIES`, and secure cookies for the public hostname.
-- Restrict and encrypt backups of `DATA_DIR`; they may contain logs, account
-  metadata, encrypted private keys, and the Docker-generated `SECRET_KEY`.
+- Restrict and encrypt backups of `DATA_DIR`; they contain account metadata,
+  encrypted private keys, and may include the Docker-generated `SECRET_KEY`.
+  Runtime logs and incomplete transfers are excluded.
+- Stop all WebSSH processes before backup creation, restore, or secret rotation.
+  Verify archives before transferring or restoring them, and restart
+  immediately after a successful persisted-secret rotation.
 - Define a retention and secure-disposal policy for `DATA_DIR/deleted_users`.
   Account deletion quarantines those files to prevent numeric user-id reuse
   from exposing them, but does not wipe them automatically.
@@ -704,7 +953,25 @@ Web SSH Terminal uses WebSocket (Socket.IO) for real-time communication. HTTP ro
 ### Running Tests
 
 ```bash
+python -m pip install --require-hashes -r requirements-test.txt
 pytest tests/
+```
+
+### Python dependency locks
+
+`requirements.in` and `requirements-test.in` contain the reviewed direct
+constraints. The committed `.txt` files contain the complete, hash-checked,
+cross-platform resolution used for installs. After intentionally changing an
+input, regenerate both locks and commit them together:
+
+```powershell
+pwsh -File scripts/lock_requirements.ps1
+```
+
+Validate that the committed locks are reproducible without changing them:
+
+```powershell
+pwsh -File scripts/lock_requirements.ps1 -Check
 ```
 
 ### Code Style

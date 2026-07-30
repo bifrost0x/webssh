@@ -21,6 +21,7 @@ def app():
         from app.models import db
 
         test_app = create_app()
+        runtime_lifecycle = test_app.extensions['runtime_lifecycle']
         # Re-register handlers on the Socket.IO server created for this app.
         from app import socket_events
         importlib.reload(socket_events)
@@ -30,12 +31,14 @@ def app():
             db.create_all()
         yield test_app
         with test_app.app_context():
+            runtime_lifecycle.begin_shutdown(
+                config.RUNTIME_SHUTDOWN_GRACE_SECONDS
+            )
             db.session.remove()
             db.engine.dispose()
 
 
-def _authenticated_socket(app):
-    username = 'session_race_user'
+def _authenticated_socket(app, username='session_race_user'):
     password = 'socket-password-123'
     with app.app_context():
         user, error = register_user(username, password)
@@ -99,3 +102,80 @@ def test_connect_fails_closed_if_created_session_disappears(app, monkeypatch):
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
+
+
+def test_last_socket_disconnect_cancels_user_transfers(app, monkeypatch):
+    from app import socket_events
+    from app.transfer_manager import TransferManager
+
+    username = 'transfer_disconnect_user'
+    first_socket, user_id = _authenticated_socket(app, username)
+    second_http = app.test_client()
+    response = second_http.post('/login', data={
+        'username': username,
+        'password': 'socket-password-123',
+    })
+    assert response.status_code == 302
+    second_socket = socketio.test_client(app, flask_test_client=second_http)
+    assert second_socket.is_connected()
+    second_socket.get_received()
+
+    manager = TransferManager()
+    first_record = manager.create(user_id, 'session-a', 'upload', {})
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+
+    first_socket.disconnect()
+    assert first_record.transfer_id in manager._records
+    assert not first_record.cancel_event.is_set()
+
+    second_record = manager.create(user_id, 'session-b', 'download', {})
+    second_socket.disconnect()
+
+    assert first_record.cancel_event.is_set()
+    assert second_record.cancel_event.is_set()
+    assert manager._records == {}
+
+
+def test_disconnect_cancels_only_transfers_prepared_by_that_socket(app, monkeypatch):
+    from app import socket_events, transfer_routes
+    from app.transfer_manager import TransferManager
+
+    username = 'transfer_socket_owner_user'
+    first_socket, user_id = _authenticated_socket(app, username)
+    second_http = app.test_client()
+    response = second_http.post('/login', data={
+        'username': username,
+        'password': 'socket-password-123',
+    })
+    assert response.status_code == 302
+    second_socket = socketio.test_client(app, flask_test_client=second_http)
+    assert second_socket.is_connected()
+    second_socket.get_received()
+
+    manager = TransferManager()
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(transfer_routes, 'session_is_owned', lambda *_args: True)
+
+    first_result = first_socket.emit('prepare_transfer', {
+        'direction': 'upload',
+        'session_id': 'owned-session',
+        'remote_path': '/remote/first.bin',
+    }, callback=True)
+    second_result = second_socket.emit('prepare_transfer', {
+        'direction': 'download',
+        'session_id': 'owned-session',
+        'remote_path': '/remote/second.bin',
+    }, callback=True)
+    first_record = manager._records[first_result['transfer_id']]
+    second_record = manager._records[second_result['transfer_id']]
+
+    first_socket.disconnect()
+
+    assert first_record.cancel_event.is_set()
+    assert first_record.transfer_id not in manager._records
+    assert not second_record.cancel_event.is_set()
+    assert second_record.transfer_id in manager._records
+    assert str(second_record.user_id) == str(user_id)
+
+    second_socket.disconnect()

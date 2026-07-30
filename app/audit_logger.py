@@ -1,6 +1,7 @@
 import logging
 import json
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime
 import config
@@ -66,6 +67,22 @@ class ConsoleFormatter(logging.Formatter):
 
         return msg
 
+
+def _prune_excess_backups(log_file, backup_count):
+    log_path = Path(log_file)
+    prefix = f'{log_path.name}.'
+    for candidate in log_path.parent.glob(f'{log_path.name}.*'):
+        suffix = candidate.name[len(prefix):]
+        if not suffix.isdigit():
+            continue
+        if int(suffix) <= backup_count:
+            continue
+        try:
+            candidate.unlink()
+        except FileNotFoundError:
+            continue
+
+
 def setup_logger(name, log_file=None, level=logging.INFO):
     """Setup a logger with console and optional file output."""
     logger = logging.getLogger(name)
@@ -73,6 +90,12 @@ def setup_logger(name, log_file=None, level=logging.INFO):
 
     if logger.handlers:
         return logger
+
+    if log_file:
+        _prune_excess_backups(
+            log_file,
+            config.AUDIT_LOG_BACKUP_COUNT,
+        )
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
@@ -85,7 +108,12 @@ def setup_logger(name, log_file=None, level=logging.INFO):
     logger.addHandler(console_handler)
 
     if log_file:
-        file_handler = logging.FileHandler(log_file)
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=config.AUDIT_LOG_MAX_BYTES,
+            backupCount=config.AUDIT_LOG_BACKUP_COUNT,
+            encoding='utf-8',
+        )
         file_handler.setLevel(level)
         file_handler.setFormatter(StructuredFormatter())
         logger.addHandler(file_handler)
@@ -103,6 +131,19 @@ audit_logger = setup_logger(
     log_file=LOGS_DIR / 'security_audit.log',
     level=logging.INFO
 )
+
+def apply_audit_backup_count(value=None):
+    """Apply the persisted rotation count to active log handlers."""
+    if value is None:
+        from .app_settings import get_audit_backup_count
+        value = get_audit_backup_count()
+    if type(value) is not int or not 1 <= value <= 90:
+        raise ValueError('Audit backup count must be between 1 and 90')
+    for logger in (app_logger, audit_logger):
+        for handler in logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                handler.backupCount = value
+    return value
 
 def log_info(message, **kwargs):
     """Log info message with optional structured data."""
@@ -263,30 +304,80 @@ def log_rate_limit_exceeded(endpoint, ip_address, user=None):
         f"ip={_sanitize_log_value(ip_address)}{user_info}"
     )
 
+def log_security_event(event, *, level=logging.INFO, **kwargs):
+    """Write a structured security action without placing secrets in the log."""
+    event_name = ''.join(
+        character if character.isalnum() else '_'
+        for character in str(event).upper()
+    ).strip('_')[:96]
+    details = ''.join(
+        f" | {key}={_sanitize_log_value(value)}"
+        for key, value in sorted(kwargs.items())
+        if value is not None
+    )
+    audit_logger.log(level, f"{event_name}{details}")
+
+
+def _iter_log_lines_newest_first(log_file, chunk_size=64 * 1024):
+    """Yield a log file from its last line without loading it completely."""
+    with open(log_file, 'rb') as fh:
+        fh.seek(0, 2)
+        position = fh.tell()
+        pending = b''
+
+        while position > 0:
+            read_size = min(chunk_size, position)
+            position -= read_size
+            fh.seek(position)
+            parts = (fh.read(read_size) + pending).split(b'\n')
+            pending = parts[0]
+            for line in reversed(parts[1:]):
+                if line:
+                    yield line.decode('utf-8', errors='replace')
+
+        if pending:
+            yield pending.decode('utf-8', errors='replace')
+
+
 def read_audit_logs(offset=0, limit=100, level=None, q=None, max_scan=20000):
     """Read parsed audit log entries, newest first, for the admin viewer.
 
-    Reads security_audit.log and scans at most the last `max_scan` lines so it
-    stays bounded on large files. Each line is one JSON object written by the
-    StructuredFormatter. Malformed lines are skipped.
+    Reads the active security audit log and its bounded rotated backups,
+    scanning at most the newest `max_scan` lines across all files. Each line
+    is one JSON object written by the StructuredFormatter. Malformed lines
+    are skipped.
 
     Returns: {'items': [...], 'total': int, 'offset': int, 'limit': int}
     """
-    from collections import deque
+    if max_scan <= 0:
+        return {'items': [], 'total': 0, 'offset': 0, 'limit': limit}
+
     log_file = LOGS_DIR / 'security_audit.log'
-    try:
-        with open(log_file, 'r', encoding='utf-8', errors='replace') as fh:
-            raw_lines = deque(fh, maxlen=max_scan)
-    except FileNotFoundError:
-        return {'items': [], 'total': 0, 'offset': 0, 'limit': limit}
-    except Exception:
-        return {'items': [], 'total': 0, 'offset': 0, 'limit': limit}
+    raw_lines = []
+    log_files = [log_file]
+    from .app_settings import get_audit_backup_count
+    log_files.extend(
+        log_file.with_name(f'{log_file.name}.{index}')
+        for index in range(1, get_audit_backup_count() + 1)
+    )
+    for candidate in log_files:
+        try:
+            for line in _iter_log_lines_newest_first(candidate):
+                raw_lines.append(line)
+                if len(raw_lines) >= max_scan:
+                    break
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+        if len(raw_lines) >= max_scan:
+            break
 
     level_norm = level.upper() if level else None
     q_norm = q.lower() if q else None
 
     entries = []
-    for line in reversed(raw_lines):  # newest first
+    for line in raw_lines:
         line = line.strip()
         if not line:
             continue

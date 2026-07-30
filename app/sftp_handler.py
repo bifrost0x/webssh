@@ -1,6 +1,9 @@
 import os
 import stat
 import posixpath
+import secrets
+import tempfile
+import zipfile
 from pathlib import Path
 from threading import Lock
 from contextlib import contextmanager
@@ -30,7 +33,7 @@ def _cleanup_sftp_lock(session_id):
 def sftp_session(identifier):
     """Context manager: acquire per-session lock and provide SFTP client.
 
-    Ensures only one greenthread uses the cached SFTPClient at a time,
+    Ensures only one execution context uses the cached SFTPClient at a time,
     preventing Paramiko's internal request/response queue corruption.
 
     Usage:
@@ -52,6 +55,187 @@ def sftp_session(identifier):
 class SFTPOperationError(Exception):
     """Raised when an SFTP operation cannot be performed (no connection, etc.)."""
     pass
+
+
+class UploadSizeExceeded(SFTPOperationError):
+    """The streamed upload exceeded its configured byte limit."""
+
+
+class TransferCancelled(SFTPOperationError):
+    """A caller cancelled a streamed SFTP operation."""
+
+
+class TransferSizeExceeded(SFTPOperationError):
+    """A streamed SFTP operation exceeded its configured byte limit."""
+
+
+def _is_cancelled(cancel_event):
+    return cancel_event is not None and cancel_event.is_set()
+
+
+def copy_sftp_stream(source, destination, *, cancel_event, max_bytes,
+                     chunk_size, progress=None):
+    """Copy between file-like objects without an unbounded read."""
+    transferred = 0
+    while True:
+        if _is_cancelled(cancel_event):
+            raise TransferCancelled()
+        chunk = source.read(chunk_size)
+        if not chunk:
+            return transferred
+        next_size = transferred + len(chunk)
+        if next_size > max_bytes:
+            raise TransferSizeExceeded()
+        destination.write(chunk)
+        transferred = next_size
+        if progress:
+            progress(transferred)
+        if _is_cancelled(cancel_event):
+            raise TransferCancelled()
+
+
+def stream_remote_zip(remote_file, *, cancel_event, max_bytes, chunk_size):
+    """Yield a remotely generated ZIP in bounded chunks."""
+    transferred = 0
+    while True:
+        if _is_cancelled(cancel_event):
+            raise TransferCancelled()
+        chunk = remote_file.read(chunk_size)
+        if not chunk:
+            return
+        transferred += len(chunk)
+        if transferred > max_bytes:
+            raise TransferSizeExceeded()
+        yield chunk
+
+
+def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
+                        depth=0):
+    """Validate archive entry names and bound declared uncompressed bytes."""
+    if depth > 50:
+        raise SFTPOperationError('maximum directory depth exceeded')
+    if _is_cancelled(cancel_event):
+        raise TransferCancelled()
+    total = 0
+    has_symlink = False
+    for entry in sftp.listdir_attr(remote_folder):
+        name = entry.filename
+        if (
+            not isinstance(name, str)
+            or name in {'', '.', '..'}
+            or '/' in name
+            or '\\' in name
+            or '\x00' in name
+        ):
+            raise SFTPOperationError('unsafe archive entry name')
+        path = posixpath.join(remote_folder, name)
+        try:
+            entry_stat = sftp.lstat(path)
+        except Exception:
+            entry_stat = entry
+        if stat.S_ISLNK(entry_stat.st_mode):
+            has_symlink = True
+            continue
+        if stat.S_ISDIR(entry_stat.st_mode):
+            child_total, child_symlink = inspect_remote_tree(
+                sftp,
+                path,
+                cancel_event=cancel_event,
+                max_bytes=max_bytes - total,
+                depth=depth + 1,
+            )
+            total += child_total
+            has_symlink = has_symlink or child_symlink
+        else:
+            total += getattr(entry_stat, 'st_size', 0) or 0
+        if total > max_bytes:
+            raise TransferSizeExceeded()
+    return total, has_symlink
+
+
+def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
+                               cancel_event, max_bytes, chunk_size,
+                               temp_dir=None, progress=None):
+    """Build a ZIP on disk while bounding every remote read and total input."""
+    if temp_dir is not None:
+        temp_dir = Path(temp_dir)
+        temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(temp_dir, 0o700)
+    temporary = tempfile.NamedTemporaryFile(
+        suffix='.zip', delete=False, dir=temp_dir
+    )
+    archive_path = Path(temporary.name)
+    temporary.close()
+    os.chmod(archive_path, 0o600)
+    transferred = 0
+
+    def add_directory(archive, remote_path, archive_prefix, depth=0):
+        nonlocal transferred
+        if depth > 50:
+            raise SFTPOperationError('maximum directory depth exceeded')
+        if _is_cancelled(cancel_event):
+            raise TransferCancelled()
+        entries = sftp.listdir_attr(remote_path)
+        if not entries and archive_prefix:
+            archive.writestr(archive_prefix.rstrip('/') + '/', b'')
+            if archive_path.stat().st_size > max_bytes:
+                raise TransferSizeExceeded()
+        for entry in entries:
+            if _is_cancelled(cancel_event):
+                raise TransferCancelled()
+            name = entry.filename
+            if (
+                not isinstance(name, str)
+                or name in {'', '.', '..'}
+                or '/' in name
+                or '\\' in name
+                or '\x00' in name
+            ):
+                raise SFTPOperationError('unsafe archive entry name')
+            source_path = posixpath.join(remote_path, name)
+            archive_pathname = posixpath.join(archive_prefix, name)
+            try:
+                entry_stat = sftp.lstat(source_path)
+            except Exception:
+                entry_stat = entry
+            if stat.S_ISLNK(entry_stat.st_mode):
+                continue
+            if stat.S_ISDIR(entry_stat.st_mode):
+                add_directory(
+                    archive, source_path, archive_pathname, depth + 1
+                )
+                continue
+            declared_size = getattr(entry_stat, 'st_size', 0) or 0
+            if transferred + declared_size > max_bytes:
+                raise TransferSizeExceeded()
+            with sftp.file(source_path, 'rb') as remote_file:
+                with archive.open(archive_pathname, 'w') as zip_entry:
+                    copied = copy_sftp_stream(
+                        remote_file,
+                        zip_entry,
+                        cancel_event=cancel_event,
+                        max_bytes=max_bytes - transferred,
+                        chunk_size=chunk_size,
+                        progress=(
+                            (lambda count: progress(transferred + count))
+                            if progress else None
+                        ),
+                    )
+            transferred += copied
+            if archive_path.stat().st_size > max_bytes:
+                raise TransferSizeExceeded()
+
+    try:
+        with zipfile.ZipFile(
+            archive_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6
+        ) as archive:
+            add_directory(archive, remote_folder, folder_name)
+        if archive_path.stat().st_size > max_bytes:
+            raise TransferSizeExceeded()
+        return archive_path
+    except Exception:
+        archive_path.unlink(missing_ok=True)
+        raise
 
 def get_sftp_client(session_id):
     """Get cached or create new SFTP client from existing SSH session.
@@ -116,6 +300,16 @@ def get_sftp_client_fresh(session_id):
         return sftp, None
     except Exception as e:
         return None, str(e)
+
+
+def get_ssh_client(identifier):
+    """Get the live Paramiko SSH client behind a session or quick connection."""
+    with ssh_manager.sessions_lock:
+        session = ssh_manager.sessions.get(identifier)
+        if session is not None and session.get('connected'):
+            return session.get('client')
+    from .connection_pool import temp_connection_pool
+    return temp_connection_pool.get_ssh_client(identifier)
 
 def close_sftp_cache(session_id):
     """Close and remove cached SFTP client for a session. Called on session close."""
@@ -194,90 +388,67 @@ def create_directory(session_id, remote_path):
     except Exception as e:
         return False, str(e)
 
-def upload_file_chunked(session_id, filename, chunks, remote_path, socketio_instance=None):
-    """Upload file from chunks sent by client."""
-    try:
-        safe_path = sanitize_path(remote_path)
-        if safe_path is None:
-            return False, "Invalid remote path"
 
-        total_size = sum(len(chunk) for chunk in chunks)
-        transferred = 0
+def upload_request_stream(session_id, remote_path, source, *, chunk_size,
+                          max_bytes, cancelled=None, progress=None):
+    """Write a request stream to a temporary remote file and atomically rename it.
 
-        with sftp_session(session_id) as (sftp, source_type):
-            with sftp.file(safe_path, 'wb') as remote_file:
-                for i, chunk in enumerate(chunks):
-                    remote_file.write(chunk)
-                    transferred += len(chunk)
+    ``source`` is purposely consumed only with an explicit ``chunk_size``.
+    The final path is never opened for writing: an interrupted or oversized
+    request can leave at most a best-effort-cleaned temporary sibling.
+    """
+    safe_path = sanitize_path(remote_path)
+    if safe_path is None:
+        raise SFTPOperationError('invalid remote path')
+    temporary_path = f'{safe_path}.webssh-upload-{secrets.token_hex(12)}.tmp'
+    transferred = 0
 
-                    if socketio_instance:
-                        percent = int((transferred / total_size) * 100)
-                        socketio_instance.emit('file_progress', {
-                            'session_id': session_id,
-                            'type': 'upload',
-                            'filename': filename,
-                            'transferred': transferred,
-                            'total': total_size,
-                            'percent': percent
-                        })
-
-        if socketio_instance:
-            socketio_instance.emit('file_complete', {
-                'session_id': session_id,
-                'type': 'upload',
-                'filename': filename,
-                'remote_path': safe_path
-            })
-
-        return True, None
-    except SFTPOperationError as e:
-        return False, str(e)
-    except Exception as e:
-        return False, str(e)
-
-def download_file_chunked(session_id, remote_path, socketio_instance=None):
-    """Download file and send in chunks to client."""
-    try:
-        safe_path = sanitize_path(remote_path)
-        if safe_path is None:
-            return None, "Invalid remote path"
-
-        with sftp_session(session_id) as (sftp, source_type):
-            file_stat = sftp.stat(safe_path)
-            file_size = file_stat.st_size
-            if file_size > config.MAX_DOWNLOAD_SIZE:
-                max_mb = config.MAX_DOWNLOAD_SIZE // (1024 * 1024)
-                return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
-            filename = posixpath.basename(safe_path)
-
-            chunks = []
-            transferred = 0
-
-            with sftp.file(safe_path, 'rb') as remote_file:
+    with sftp_session(session_id) as (sftp, _source_type):
+        try:
+            with sftp.file(temporary_path, 'wb') as remote_file:
                 while True:
-                    chunk = remote_file.read(config.CHUNK_SIZE)
+                    if cancelled and cancelled():
+                        raise TransferCancelled()
+                    chunk = source.read(chunk_size)
                     if not chunk:
                         break
+                    next_size = transferred + len(chunk)
+                    if next_size > max_bytes:
+                        raise UploadSizeExceeded()
+                    remote_file.write(chunk)
+                    transferred = next_size
+                    if progress:
+                        progress(transferred)
+                    if cancelled and cancelled():
+                        raise TransferCancelled()
 
-                    chunks.append(chunk)
-                    transferred += len(chunk)
+            if cancelled and cancelled():
+                raise TransferCancelled()
+            try:
+                sftp.stat(safe_path)
+                destination_exists = True
+            except (FileNotFoundError, IOError, OSError):
+                destination_exists = False
+            if destination_exists:
+                # ``rename`` must not be used for replacement: standard SFTP
+                # servers may reject it, and deleting first loses the original.
+                # The OpenSSH posix-rename extension is atomic replacement.
+                try:
+                    sftp.posix_rename(temporary_path, safe_path)
+                except (AttributeError, IOError, OSError) as error:
+                    raise SFTPOperationError(
+                        'atomic replacement is unavailable'
+                    ) from error
+            else:
+                sftp.rename(temporary_path, safe_path)
+        except Exception:
+            try:
+                sftp.remove(temporary_path)
+            except Exception:
+                pass
+            raise
 
-                    if socketio_instance:
-                        percent = int((transferred / file_size) * 100)
-                        socketio_instance.emit('file_progress', {
-                            'session_id': session_id,
-                            'type': 'download',
-                            'filename': filename,
-                            'transferred': transferred,
-                            'total': file_size,
-                            'percent': percent
-                        })
-
-        return {'filename': filename, 'chunks': chunks, 'size': file_size}, None
-    except SFTPOperationError as e:
-        return None, str(e)
-    except Exception as e:
-        return None, str(e)
+    return transferred
 
 def rename_item(session_id, old_path, new_path):
     """Rename a file or directory on remote server."""
@@ -649,9 +820,41 @@ def get_any_sftp_client(identifier):
 
     return None, f"No active connection found for: {identifier}", None
 
+
+def _remove_sftp_tree(sftp, remote_path):
+    """Best-effort removal for a generated temporary SFTP tree."""
+    try:
+        entries = sftp.listdir_attr(remote_path)
+    except Exception:
+        try:
+            sftp.remove(remote_path)
+        except Exception:
+            pass
+        return
+    for entry in entries:
+        child = posixpath.join(remote_path, entry.filename)
+        try:
+            child_stat = sftp.lstat(child)
+        except Exception:
+            child_stat = entry
+        if stat.S_ISDIR(child_stat.st_mode) and not stat.S_ISLNK(
+            child_stat.st_mode
+        ):
+            _remove_sftp_tree(sftp, child)
+        else:
+            try:
+                sftp.remove(child)
+            except Exception:
+                pass
+    try:
+        sftp.rmdir(remote_path)
+    except Exception:
+        pass
+
 def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                               dest_path, transfer_id, socketio_instance=None,
-                              is_dir=False, user_room=None):
+                              is_dir=False, user_room=None, cancel_event=None,
+                              max_bytes=None, chunk_size=None):
     """
     Direct server-to-server SFTP streaming transfer.
     Streams data from source SSH host to destination SSH host without
@@ -670,7 +873,14 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     Returns:
         tuple: (success: bool, error: str or None)
     """
-    CHUNK_SIZE = 65536
+    max_bytes = config.MAX_ZIP_DOWNLOAD_SIZE if max_bytes is None else max_bytes
+    chunk_size = config.CHUNK_SIZE if chunk_size is None else chunk_size
+    total_transferred = 0
+    sftp_source = None
+    sftp_dest = None
+    source_type = None
+    dest_type = None
+    directory_total = None
 
     try:
         sftp_source, error = get_sftp_client_fresh(source_session_id)
@@ -693,18 +903,23 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
         def emit_progress(filename, transferred, total, status='transferring'):
             """Emit progress update to client."""
             if socketio_instance and user_room:
+                safe_total = max(int(total), int(transferred), 0)
+                percent = (
+                    min(100, max(0, int((transferred / safe_total) * 100)))
+                    if safe_total > 0 else 0
+                )
                 socketio_instance.emit('s2s_transfer_progress', {
                     'transfer_id': transfer_id,
                     'filename': filename,
                     'transferred': transferred,
-                    'total': total,
-                    'percent': int((transferred / total) * 100) if total > 0 else 0,
+                    'total': safe_total,
+                    'percent': percent,
                     'status': status
                 }, room=user_room)
 
         def transfer_single_file(src_path, dst_path):
             """Transfer a single file from source to destination."""
-            nonlocal sftp_source, sftp_dest
+            nonlocal sftp_source, sftp_dest, total_transferred
 
             try:
                 source_stat = sftp_source.stat(src_path)
@@ -713,23 +928,110 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                 return False, f"Source file not found: {src_path}"
 
             filename = os.path.basename(src_path)
+            if total_transferred + file_size > max_bytes:
+                return False, 'Transfer exceeds configured size limit'
+            temporary_path = (
+                f'{dst_path}.webssh-transfer-{secrets.token_hex(12)}.tmp'
+            )
             transferred = 0
 
-            with sftp_source.open(src_path, 'rb') as src_file:
-                with sftp_dest.open(dst_path, 'wb') as dst_file:
-                    while True:
-                        chunk = src_file.read(CHUNK_SIZE)
-                        if not chunk:
-                            break
+            def report(count):
+                nonlocal transferred
+                transferred = count
+                aggregate_total = (
+                    directory_total if directory_total is not None else file_size
+                )
+                emit_progress(
+                    filename,
+                    total_transferred + count,
+                    aggregate_total,
+                )
 
-                        dst_file.write(chunk)
-                        transferred += len(chunk)
+            try:
+                with sftp_source.open(src_path, 'rb') as src_file:
+                    with sftp_dest.open(temporary_path, 'wb') as dst_file:
+                        transferred = copy_sftp_stream(
+                            src_file,
+                            dst_file,
+                            cancel_event=cancel_event,
+                            max_bytes=max_bytes - total_transferred,
+                            chunk_size=chunk_size,
+                            progress=report,
+                        )
+                if _is_cancelled(cancel_event):
+                    raise TransferCancelled()
+                try:
+                    sftp_dest.stat(dst_path)
+                    destination_exists = True
+                except (FileNotFoundError, IOError, OSError):
+                    destination_exists = False
+                if destination_exists:
+                    try:
+                        sftp_dest.posix_rename(temporary_path, dst_path)
+                    except (AttributeError, IOError, OSError) as error:
+                        raise SFTPOperationError(
+                            'atomic replacement is unavailable'
+                        ) from error
+                else:
+                    sftp_dest.rename(temporary_path, dst_path)
+                total_transferred += transferred
+            except Exception:
+                try:
+                    sftp_dest.remove(temporary_path)
+                except Exception:
+                    pass
+                raise
 
-                        if transferred % (CHUNK_SIZE * 4) == 0 or transferred == file_size:
-                            emit_progress(filename, transferred, file_size)
-
-            emit_progress(filename, file_size, file_size, 'completed')
+            aggregate_total = (
+                directory_total if directory_total is not None else file_size
+            )
+            emit_progress(
+                filename,
+                total_transferred,
+                aggregate_total,
+                'completed',
+            )
             return True, None
+
+        def calculate_directory_total(src_dir, depth=0):
+            """Calculate a bounded directory total before copying any data."""
+            if depth > 50:
+                raise SFTPOperationError(
+                    'Maximum directory depth exceeded (50 levels)'
+                )
+            if _is_cancelled(cancel_event):
+                raise TransferCancelled()
+
+            total = 0
+            for entry in sftp_source.listdir_attr(src_dir):
+                if _is_cancelled(cancel_event):
+                    raise TransferCancelled()
+                name = entry.filename
+                if (
+                    not isinstance(name, str)
+                    or name in {'', '.', '..'}
+                    or '/' in name
+                    or '\\' in name
+                    or '\x00' in name
+                ):
+                    raise SFTPOperationError('unsafe transfer entry name')
+                entry_path = posixpath.join(src_dir, name)
+                try:
+                    entry_stat = sftp_source.lstat(entry_path)
+                except Exception:
+                    entry_stat = entry
+                if stat.S_ISLNK(entry_stat.st_mode):
+                    continue
+                if stat.S_ISDIR(entry_stat.st_mode):
+                    total += calculate_directory_total(entry_path, depth + 1)
+                else:
+                    size = int(getattr(entry_stat, 'st_size', 0))
+                    if size < 0:
+                        raise SFTPOperationError('invalid transfer entry size')
+                    total += size
+                if total > max_bytes:
+                    raise TransferSizeExceeded()
+            return total
 
         def transfer_directory_recursive(src_dir, dst_dir, depth=0):
             """Recursively transfer a directory."""
@@ -737,17 +1039,32 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
             if depth > 50:
                 return False, "Maximum directory depth exceeded (50 levels)"
+            if _is_cancelled(cancel_event):
+                raise TransferCancelled()
 
-            try:
-                sftp_dest.mkdir(dst_dir)
-            except IOError:
-                pass
+            sftp_dest.mkdir(dst_dir)
 
             for entry in sftp_source.listdir_attr(src_dir):
-                src_entry_path = f"{src_dir}/{entry.filename}"
-                dst_entry_path = f"{dst_dir}/{entry.filename}"
-
-                if entry.st_mode & 0o040000:
+                if _is_cancelled(cancel_event):
+                    raise TransferCancelled()
+                name = entry.filename
+                if (
+                    not isinstance(name, str)
+                    or name in {'', '.', '..'}
+                    or '/' in name
+                    or '\\' in name
+                    or '\x00' in name
+                ):
+                    raise SFTPOperationError('unsafe transfer entry name')
+                src_entry_path = posixpath.join(src_dir, name)
+                dst_entry_path = posixpath.join(dst_dir, name)
+                try:
+                    entry_stat = sftp_source.lstat(src_entry_path)
+                except Exception:
+                    entry_stat = entry
+                if stat.S_ISLNK(entry_stat.st_mode):
+                    continue
+                if stat.S_ISDIR(entry_stat.st_mode):
                     success, error = transfer_directory_recursive(src_entry_path, dst_entry_path, depth + 1)
                     if not success:
                         return False, error
@@ -767,29 +1084,55 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
             }, room=user_room)
 
         if is_dir:
-            success, error = transfer_directory_recursive(source_path, dest_path)
+            directory_total = calculate_directory_total(source_path)
+            temporary_root = (
+                f'{dest_path}.webssh-transfer-{secrets.token_hex(12)}.tmp'
+            )
+            try:
+                success, error = transfer_directory_recursive(
+                    source_path, temporary_root
+                )
+                if not success:
+                    raise SFTPOperationError(error or 'directory transfer failed')
+                if _is_cancelled(cancel_event):
+                    raise TransferCancelled()
+                try:
+                    sftp_dest.stat(dest_path)
+                    destination_exists = True
+                except (FileNotFoundError, IOError, OSError):
+                    destination_exists = False
+                if destination_exists:
+                    raise SFTPOperationError('destination already exists')
+                sftp_dest.rename(temporary_root, dest_path)
+                emit_progress(
+                    os.path.basename(source_path.rstrip('/')) or source_path,
+                    total_transferred,
+                    total_transferred,
+                    'completed',
+                )
+            except Exception:
+                _remove_sftp_tree(sftp_dest, temporary_root)
+                raise
         else:
             success, error = transfer_single_file(source_path, dest_path)
 
-        if source_type == 'session':
-            sftp_source.close()
-        if dest_type == 'session':
-            sftp_dest.close()
-
-        if success and socketio_instance and user_room:
-            socketio_instance.emit('s2s_transfer_complete', {
-                'transfer_id': transfer_id,
-                'source_path': source_path,
-                'dest_path': dest_path
-            }, room=user_room)
-
         return success, error
 
+    except TransferCancelled:
+        return False, 'Transfer cancelled'
+    except TransferSizeExceeded:
+        return False, 'Transfer exceeds configured size limit'
     except Exception as e:
         log_error("S2S transfer failed", error=str(e), transfer_id=transfer_id)
-        if socketio_instance and user_room:
-            socketio_instance.emit('s2s_transfer_error', {
-                'transfer_id': transfer_id,
-                'error': 'Transfer failed'
-            }, room=user_room)
         return False, "Transfer failed"
+    finally:
+        if source_type == 'session' and sftp_source is not None:
+            try:
+                sftp_source.close()
+            except Exception:
+                pass
+        if dest_type == 'session' and sftp_dest is not None:
+            try:
+                sftp_dest.close()
+            except Exception:
+                pass

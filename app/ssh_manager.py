@@ -4,16 +4,27 @@ import shlex
 import time
 import uuid
 import socket
-from threading import Lock, Thread, Timer
+from threading import Lock, Timer
 import config
-from pathlib import Path
 from .audit_logger import log_info, log_warning, log_error, log_debug
+from .host_key_store import HostKeyStore
+from .network_policy import (
+    canonicalize_hostname,
+    open_validated_socket,
+    proxy_jump_remote_dns_allowed,
+    resolve_allowed_target,
+)
 from .ssh_key_loader import load_private_key as _load_private_key
 from .startup_commands import to_terminal_input
+from .quota_manager import (
+    QuotaExceeded,
+    QuotaKind,
+    quota_manager,
+    release_reservation,
+)
 
 sessions = {}
 sessions_lock = Lock()
-_pending_connections = 0
 TMUX_KILL_TIMEOUT = 2.0
 
 
@@ -28,30 +39,9 @@ class TailscaleSSHAuthStrategy(AuthStrategy):
         yield NoneAuth(self.username)
 
 
-class PersistentHostKeyPolicy(paramiko.MissingHostKeyPolicy):
-    """Secure host key policy with logging and audit trail."""
-    def __init__(self, known_hosts_path):
-        self.known_hosts_path = Path(known_hosts_path)
-
-    def missing_host_key(self, client, hostname, key):
-        import binascii
-
-        key_type = key.get_name()
-        key_fingerprint = binascii.hexlify(key.get_fingerprint()).decode('utf-8')
-        key_fingerprint_formatted = ':'.join([key_fingerprint[i:i+2] for i in range(0, len(key_fingerprint), 2)])
-
-        log_warning(f"SECURITY: New SSH host key detected",
-                    host=hostname, key_type=key_type, fingerprint=key_fingerprint_formatted)
-
-        host_keys = client.get_host_keys()
-        host_keys.add(hostname, key.get_name(), key)
-        self.known_hosts_path.parent.mkdir(parents=True, exist_ok=True)
-
-        host_keys.save(str(self.known_hosts_path))
-        import os
-        os.chmod(str(self.known_hosts_path), 0o600)
-
-        log_info(f"Host key stored", path=str(self.known_hosts_path))
+def _configure_host_key_trust(client, store):
+    store.load_into(client)
+    client.set_missing_host_key_policy(store.missing_key_policy())
 
 def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
                           socketio_instance=None, app=None, user_id=None,
@@ -75,32 +65,75 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         proxy_jump_*: Optional jump host (bastion) connection parameters
         auth_type: Target authentication method (password, key, or tailscale)
     """
-    global _pending_connections
+    try:
+        host_key_store = HostKeyStore(
+            user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR
+        )
+    except (TypeError, ValueError):
+        return None, "User identity is required"
+    user_id = host_key_store.user_id
+
+    try:
+        reservation = quota_manager.reserve(
+            QuotaKind.SSH_SESSION, user_id
+        )
+    except QuotaExceeded:
+        return None, "Maximum number of sessions reached"
 
     bastion_client = None
+    client = None
+    validated_socket = None
     connection_stored = False
-    slot_reserved = False
     try:
-        with sessions_lock:
-            if len(sessions) + _pending_connections >= config.MAX_SESSIONS:
-                return None, "Maximum number of sessions reached"
-            _pending_connections += 1
-            slot_reserved = True
-
         # Optional ProxyJump: connect to the bastion first, then tunnel to the target.
         sock = None
         if proxy_jump_host:
             try:
+                host = canonicalize_hostname(host)
+                proxy_jump_host = canonicalize_hostname(proxy_jump_host)
+                try:
+                    target = resolve_allowed_target(
+                        host,
+                        port,
+                        allow_internal=not config.BLOCK_INTERNAL_SSH,
+                    )
+                    channel_destination = (target.ip, target.port)
+                    host = target.hostname
+                    port = target.port
+                except ValueError:
+                    remote_dns_allowed = (
+                        not config.BLOCK_INTERNAL_SSH
+                        or proxy_jump_remote_dns_allowed(
+                            host,
+                            config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST,
+                        )
+                    )
+                    if not remote_dns_allowed:
+                        return (
+                            None,
+                            'Connections to this address are not allowed',
+                        )
+                    host = canonicalize_hostname(host)
+                    port = int(port)
+                    channel_destination = (host, port)
+
+                bastion_target = resolve_allowed_target(
+                    proxy_jump_host,
+                    proxy_jump_port or 22,
+                    allow_internal=not config.BLOCK_INTERNAL_SSH,
+                )
+                validated_socket = open_validated_socket(
+                    bastion_target, config.SSH_CONNECT_TIMEOUT
+                )
                 bastion_client = paramiko.SSHClient()
-                if config.KNOWN_HOSTS_FILE.exists():
-                    bastion_client.load_host_keys(str(config.KNOWN_HOSTS_FILE))
-                bastion_client.set_missing_host_key_policy(PersistentHostKeyPolicy(config.KNOWN_HOSTS_FILE))
+                _configure_host_key_trust(bastion_client, host_key_store)
 
                 bastion_auth = {
-                    'hostname': proxy_jump_host,
-                    'port': proxy_jump_port or 22,
+                    'hostname': bastion_target.hostname,
+                    'port': bastion_target.port,
                     'username': proxy_jump_username,
                     'timeout': config.SSH_CONNECT_TIMEOUT,
+                    'sock': validated_socket,
                     'look_for_keys': False,
                     'allow_agent': False,
                 }
@@ -115,28 +148,45 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 bastion_transport = bastion_client.get_transport()
                 if bastion_transport:
                     bastion_transport.set_keepalive(30)
+
                 sock = bastion_transport.open_channel(
-                    'direct-tcpip', (host, port), ('127.0.0.1', 0)
+                    'direct-tcpip',
+                    channel_destination,
+                    ('127.0.0.1', 0),
                 )
                 log_info("Jump host connection established", bastion=proxy_jump_host)
             except paramiko.AuthenticationException:
                 return None, "Jump host authentication failed - invalid credentials"
             except Exception as e:
-                return None, f"Jump host connection failed: {str(e)}"
+                log_warning(
+                    "Jump host connection failed",
+                    bastion=proxy_jump_host,
+                    error_type=type(e).__name__,
+                )
+                return None, "Jump host connection failed"
+        else:
+            target = resolve_allowed_target(
+                host,
+                port,
+                allow_internal=not config.BLOCK_INTERNAL_SSH,
+            )
+            host = target.hostname
+            port = target.port
+            validated_socket = open_validated_socket(
+                target, config.SSH_CONNECT_TIMEOUT
+            )
+            sock = validated_socket
 
         client = paramiko.SSHClient()
-        if config.KNOWN_HOSTS_FILE.exists():
-            client.load_host_keys(str(config.KNOWN_HOSTS_FILE))
-        client.set_missing_host_key_policy(PersistentHostKeyPolicy(config.KNOWN_HOSTS_FILE))
+        _configure_host_key_trust(client, host_key_store)
 
         auth_kwargs = {
             'hostname': host,
             'port': port,
             'username': username,
-            'timeout': config.SSH_CONNECT_TIMEOUT
+            'timeout': config.SSH_CONNECT_TIMEOUT,
+            'sock': sock,
         }
-        if sock:
-            auth_kwargs['sock'] = sock
 
         if auth_type == 'tailscale':
             auth_kwargs['auth_strategy'] = TailscaleSSHAuthStrategy(username)
@@ -177,11 +227,17 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             safe_user = username.replace('.', '_').replace('-', '_')
             if reconnect_tmux_name:
                 tmux_session_name = reconnect_tmux_name
-                tmux_cmd = f'{tmux_command} new-session -A -s {tmux_session_name}'
+                tmux_cmd = (
+                    f'{tmux_command} new-session -A -s '
+                    f'{shlex.quote(tmux_session_name)}'
+                )
             else:
                 unique_suffix = uuid.uuid4().hex[:8]
                 tmux_session_name = f"{config.TMUX_SESSION_PREFIX}_{safe_user}_{safe_host}_{port}_{unique_suffix}"
-                tmux_cmd = f'{tmux_command} new-session -s {tmux_session_name}'
+                tmux_cmd = (
+                    f'{tmux_command} new-session -s '
+                    f'{shlex.quote(tmux_session_name)}'
+                )
 
             log_info(f"Using tmux persistent session", tmux_session=tmux_session_name, host=f"{host}:{port}")
 
@@ -228,47 +284,56 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         time.sleep(0.1)
 
-        capacity_reached = False
         with sessions_lock:
-            _pending_connections -= 1
-            slot_reserved = False
-            if len(sessions) >= config.MAX_SESSIONS:
-                capacity_reached = True
-            else:
-                sessions[session_id] = {
-                    'client': client,
-                    'channel': channel,
-                    'host': host,
-                    'port': port,
-                    'username': username,
-                    'user_id': user_id,
-                    'connected': True,
-                    'last_activity': time.time(),
-                    'bastion_client': bastion_client,
-                    'proxy_jump_host': proxy_jump_host,
-                    'auth_type': auth_type,
-                    'use_tmux': use_tmux,
-                    'tmux_session_name': tmux_session_name,
-                    'output_buffer': [],
-                    'output_buffer_size': 0,
-                    'output_buffer_max': 512000  # 512KB max buffer
-                }
-                connection_stored = True
-
-        if capacity_reached:
-            try:
-                client.close()
-            except Exception:
-                pass
-            return None, "Maximum number of sessions reached"
+            sessions[session_id] = {
+                'client': client,
+                'channel': channel,
+                'host': host,
+                'port': port,
+                'username': username,
+                'user_id': user_id,
+                'connected': True,
+                'last_activity': time.time(),
+                'bastion_client': bastion_client,
+                'proxy_jump_host': proxy_jump_host,
+                'auth_type': auth_type,
+                'use_tmux': use_tmux,
+                'tmux_session_name': tmux_session_name,
+                'output_buffer': [],
+                'output_buffer_size': 0,
+                'output_buffer_max': 512000,  # 512KB max buffer
+                'quota_reservation': reservation,
+                'reader_handle': None,
+            }
+            connection_stored = True
 
         if socketio_instance and app:
-            thread = Thread(
-                target=read_ssh_output,
-                args=(session_id, socketio_instance, app),
-                daemon=True
-            )
-            thread.start()
+            lifecycle = getattr(app, 'extensions', {}).get('runtime_lifecycle')
+            if lifecycle is None:
+                close_session(session_id, kill_tmux=use_tmux)
+                return None, "Connection failed"
+            try:
+                reader_handle = lifecycle.start_job(
+                    'ssh_output_reader',
+                    lambda cancel_event: read_ssh_output(
+                        session_id, socketio_instance, app, cancel_event
+                    ),
+                    owner_id=user_id,
+                )
+            except Exception as exc:
+                log_error(
+                    'Unable to start SSH output reader',
+                    session_id=session_id,
+                    error_type=type(exc).__name__,
+                )
+                close_session(session_id, kill_tmux=use_tmux)
+                return None, "Connection failed"
+            with sessions_lock:
+                active_session = sessions.get(session_id)
+                if active_session is None:
+                    reader_handle.cancel()
+                else:
+                    active_session['reader_handle'] = reader_handle
 
         if startup_commands and not reconnect_tmux_name:
             terminal_input = to_terminal_input(startup_commands).rstrip('\r') + '\r'
@@ -283,6 +348,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
+    except ValueError as e:
+        return None, str(e)
     except paramiko.SSHException as e:
         # Detail to the server log only; the client gets a generic message so
         # low-level errors cannot be used to probe remote hosts/ports.
@@ -297,9 +364,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         log_error("SSH connection unexpected error", host=f"{host}:{port}", error=str(e))
         return None, "Connection failed"
     finally:
-        if slot_reserved:
-            with sessions_lock:
-                _pending_connections -= 1
+        if not connection_stored:
+            release_reservation(reservation)
 
         # Avoid leaking the bastion connection if the target connect failed.
         if bastion_client is not None and not connection_stored:
@@ -307,19 +373,24 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 bastion_client.close()
             except Exception:
                 pass
+        if client is not None and not connection_stored:
+            try:
+                client.close()
+            except Exception:
+                pass
+        if validated_socket is not None and not connection_stored:
+            try:
+                validated_socket.close()
+            except Exception:
+                pass
 
-def read_ssh_output(session_id, socketio_instance, app):
-    """Background greenthread to continuously read SSH output and emit to client.
+def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
+    """Continuously read SSH output and emit it until cancelled or disconnected.
 
-    IMPORTANT: Do NOT use select.select() on the paramiko channel here.
-    Under eventlet, select.select() watches the transport socket FD, which
-    conflicts with paramiko's own transport reader greenthread and any
-    concurrent SFTP operations on the same transport. This causes SFTP
-    operations to hang intermittently.
-
-    Instead, use channel.recv() directly with a timeout. Paramiko's channel
-    internally uses green-compatible Events (monkey-patched threading.Event)
-    that properly yield to other greenthreads.
+    IMPORTANT: Do NOT use select.select() on the Paramiko channel here.
+    Let Paramiko own transport readiness and use channel.recv() with a finite
+    timeout, so the reader observes cancellation and concurrent SFTP activity
+    continues to make progress on the shared transport.
     """
     from datetime import datetime, timezone
 
@@ -332,10 +403,16 @@ def read_ssh_output(session_id, socketio_instance, app):
 
             db_session = None
             for _attempt in range(30):
+                if cancel_event is not None and cancel_event.is_set():
+                    return
                 db_session = SSHSession.query.filter_by(session_id=session_id).first()
                 if db_session:
                     break
-                time.sleep(0.1)
+                if cancel_event is not None:
+                    if cancel_event.wait(0.1):
+                        return
+                else:
+                    time.sleep(0.1)
 
             if db_session:
                 cached_room = f'user_{db_session.user_id}'
@@ -344,7 +421,7 @@ def read_ssh_output(session_id, socketio_instance, app):
                 log_error(f"No DB session found for output reader", session_id=session_id)
                 return
 
-            while True:
+            while cancel_event is None or not cancel_event.is_set():
                 with sessions_lock:
                     if session_id not in sessions:
                         break
@@ -485,12 +562,18 @@ def close_session(session_id, kill_tmux=False):
                leaving tmux running so the session shows up as a reconnect
                candidate. Pass True only from explicit user disconnect.
     """
+    reservation = None
+    reader_handle = None
     try:
         with sessions_lock:
             session = sessions.pop(session_id, None)
             if session is None:
                 return False
             session['connected'] = False
+        reservation = session.get('quota_reservation')
+        reader_handle = session.get('reader_handle')
+        if reader_handle is not None:
+            reader_handle.cancel()
 
         # All network I/O happens after removing the session from the shared
         # registry, so a slow or half-open SSH transport cannot block unrelated
@@ -547,10 +630,15 @@ def close_session(session_id, kill_tmux=False):
             except Exception as e:
                 log_debug(f"Error closing jump host client", session_id=session_id, error=str(e))
 
+        if reader_handle is not None:
+            reader_handle.join(1.0)
+
         return True
     except Exception as e:
         log_error(f"Error closing session", session_id=session_id, error=str(e))
         return False
+    finally:
+        release_reservation(reservation)
 
 def get_session(session_id):
     """Get session info by ID."""

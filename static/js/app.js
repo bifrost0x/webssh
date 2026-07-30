@@ -645,11 +645,10 @@
 
         downloadFile() {
             if (!this.currentSessionId || !this.currentPath) return;
-
-            socket.emit('download_file_binary', {
-                session_id: this.currentSessionId,
-                remote_path: this.currentPath
-            });
+            window._httpTransferClient ||= new BinaryTransferClient(socket);
+            window._httpTransferClient.downloadFile(
+                this.currentPath, this.currentSessionId
+            );
         },
 
         // ---- Inline editor ----
@@ -1957,6 +1956,7 @@
                     return;
                 }
                 proxyJump = {
+                    jump_host_id: jumpHostId,
                     host: jh.host,
                     port: jh.port,
                     username: jh.username,

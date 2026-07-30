@@ -8,7 +8,8 @@ from pathlib import Path
 from datetime import datetime
 import config
 from .audit_logger import log_error
-from .storage_utils import storage_lock, atomic_write_json
+from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
+from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 
 def get_user_commands_file(user_id):
@@ -16,6 +17,59 @@ def get_user_commands_file(user_id):
 
     user = User.query.get(user_id)
     return user.get_data_dir() / 'commands.json' if user else None
+
+
+def _valid_command(item):
+    if not isinstance(item, dict):
+        return False
+    if not all(
+        isinstance(item.get(field), str)
+        for field in ('id', 'name', 'command')
+    ):
+        return False
+    for field in ('parameters', 'description', 'category', 'createdAt'):
+        if field in item and not isinstance(item[field], str):
+            return False
+    if 'os' in item and (
+        not isinstance(item['os'], list)
+        or not all(isinstance(value, str) for value in item['os'])
+    ):
+        return False
+    if 'isSystem' in item and type(item['isSystem']) is not bool:
+        return False
+    if 'userId' in item and (
+        item['userId'] is not None or type(item['userId']) is bool
+    ) and type(item['userId']) is not int:
+        return False
+    return True
+
+
+def _valid_commands(value):
+    return isinstance(value, list) and all(_valid_command(item) for item in value)
+
+
+def _valid_commands_document(value):
+    return (
+        isinstance(value, dict)
+        and value.get('schema_version') == CURRENT_STORAGE_VERSIONS['commands']
+        and _valid_commands(value.get('commands'))
+    )
+
+
+def valid_user_command_input(
+    name, command, parameters, description, os_list, category
+):
+    """Return whether client-controlled command fields have storable types."""
+    return (
+        isinstance(name, str)
+        and isinstance(command, str)
+        and isinstance(parameters, str)
+        and isinstance(description, str)
+        and isinstance(os_list, list)
+        and all(isinstance(value, str) for value in os_list)
+        and isinstance(category, str)
+    )
+
 
 def load_system_commands():
     """Load global system commands from JSON."""
@@ -30,23 +84,23 @@ def load_system_commands():
             return json.load(f)
     return []
 
-def load_user_commands(user_id):
-    """Load user-specific commands."""
+def _load_user_commands_with_lock_held(user_id):
     user_commands_file = get_user_commands_file(user_id)
     if not user_commands_file:
         return []
-    if user_commands_file.exists():
-        try:
-            with open(user_commands_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
-        except (ValueError, OSError) as e:
-            # Corrupt/unreadable file: fail soft instead of crashing the whole
-            # command feature. Do NOT overwrite it here, so the data can be
-            # recovered manually.
-            log_error("Error loading user commands", user_id=user_id, error=str(e))
-            return []
-    return []
+    data = load_json_migrated(
+        user_commands_file,
+        'commands',
+        list,
+        _valid_commands_document,
+    )
+    return data['commands']
+
+
+def load_user_commands(user_id):
+    """Load user-specific commands."""
+    with storage_lock(f'commands:{user_id}'):
+        return _load_user_commands_with_lock_held(user_id)
 
 
 def _load_user_commands_for_write(user_id):
@@ -54,25 +108,21 @@ def _load_user_commands_for_write(user_id):
     user_commands_file = get_user_commands_file(user_id)
     if not user_commands_file:
         return None, 'User not found'
-    if not user_commands_file.exists():
-        return [], None
-    try:
-        with open(user_commands_file, 'r', encoding='utf-8') as handle:
-            data = json.load(handle)
-        if not isinstance(data, list):
-            raise ValueError('invalid command storage shape')
-        return data, None
-    except (OSError, ValueError, TypeError) as exc:
-        log_error('Error loading user commands for write', user_id=user_id, error=str(exc))
-        return None, 'Command storage is unreadable'
+    return _load_user_commands_with_lock_held(user_id), None
 
 def save_user_commands(user_id, commands):
     """Save user-specific commands."""
     user_commands_file = get_user_commands_file(user_id)
-    if not user_commands_file:
+    if not user_commands_file or not _valid_commands(commands):
         return False
     user_commands_file.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(user_commands_file, commands)
+    atomic_write_json(
+        user_commands_file,
+        {
+            'schema_version': CURRENT_STORAGE_VERSIONS['commands'],
+            'commands': commands,
+        },
+    )
     return True
 
 def get_all_commands(user_id, os_filter=None):
@@ -98,8 +148,33 @@ def get_all_commands(user_id, os_filter=None):
 
     return all_commands
 
+
+def _get_all_commands_with_lock_held(user_id, os_filter=None):
+    system_cmds = load_system_commands()
+    user_cmds = _load_user_commands_with_lock_held(user_id)
+    for cmd in system_cmds:
+        cmd['isSystem'] = True
+        cmd['userId'] = None
+    for cmd in user_cmds:
+        cmd['isSystem'] = False
+        cmd['userId'] = user_id
+    all_commands = system_cmds + user_cmds
+    if os_filter:
+        all_commands = [
+            cmd for cmd in all_commands
+            if 'all' in cmd.get('os', ['all'])
+            or os_filter.lower() in [
+                value.lower() for value in cmd.get('os', [])
+            ]
+        ]
+    return all_commands
+
 def add_user_command(user_id, name, command, parameters, description, os_list, category):
     """Add a new user command."""
+    if not valid_user_command_input(
+        name, command, parameters, description, os_list, category
+    ):
+        return None
     new_cmd = {
         'id': str(uuid.uuid4()),
         'name': name,
@@ -113,39 +188,59 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
         'createdAt': datetime.utcnow().isoformat()
     }
 
-    with storage_lock(f'commands:{user_id}'):
-        user_cmds, error = _load_user_commands_for_write(user_id)
-        if error:
-            return None
-        user_cmds.append(new_cmd)
-        return new_cmd if save_user_commands(user_id, user_cmds) else None
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'commands:{user_id}'):
+            user_cmds, error = _load_user_commands_for_write(user_id)
+            if error:
+                return None
+            user_cmds.append(new_cmd)
+            return new_cmd if save_user_commands(user_id, user_cmds) else None
 
 def update_user_command(user_id, command_id, name, command, parameters, description, os_list, category):
     """Update an existing user command."""
-    with storage_lock(f'commands:{user_id}'):
-        user_cmds, error = _load_user_commands_for_write(user_id)
-        if error:
-            return False
+    if not valid_user_command_input(
+        name, command, parameters, description, os_list, category
+    ):
+        return None, 'Invalid command data'
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'commands:{user_id}'):
+            user_cmds, error = _load_user_commands_for_write(user_id)
+            if error:
+                return None, error
 
-        for cmd in user_cmds:
-            if cmd['id'] == command_id:
-                cmd['name'] = name
-                cmd['command'] = command
-                cmd['parameters'] = parameters or ''
-                cmd['description'] = description
-                cmd['os'] = os_list
-                cmd['category'] = category or 'custom'
-                break
+            for cmd in user_cmds:
+                if cmd['id'] == command_id:
+                    cmd['name'] = name
+                    cmd['command'] = command
+                    cmd['parameters'] = parameters or ''
+                    cmd['description'] = description
+                    cmd['os'] = os_list
+                    cmd['category'] = category or 'custom'
+                    break
+            else:
+                return None, 'Command not found'
 
-        save_user_commands(user_id, user_cmds)
-    return True
+            try:
+                saved = save_user_commands(user_id, user_cmds)
+            except OSError as exc:
+                log_error(
+                    'Error saving user command',
+                    user_id=user_id,
+                    error=str(exc),
+                )
+                return None, 'Failed to save command'
+            if saved:
+                return cmd, None
+            return None, 'Failed to save command'
 
 def delete_user_command(user_id, command_id):
     """Delete a user command."""
-    from .command_set_manager import get_command_usage
+    from .command_set_manager import _get_command_usage_with_coordinator_held
 
     with storage_lock(f'command-config:{user_id}'):
-        usages, error = get_command_usage(user_id, command_id)
+        usages, error = _get_command_usage_with_coordinator_held(
+            user_id, command_id
+        )
         if error:
             return False, error, []
         if usages:

@@ -80,26 +80,26 @@ namespace.
 
 ### Safe first-time setup
 
-Do not enable Tailscale SSH on a fresh, publicly reachable WebSSH database. The
-first WebSSH account ever registered becomes an administrator, and administrators
-can use Tailscale SSH whenever the feature is enabled.
+Do not enable Tailscale SSH on a fresh, publicly reachable WebSSH database.
+Create the administrator explicitly on the Docker host before enabling the
+shared Tailscale identity.
 
 Bootstrap the deployment in this order:
 
 1. Save and start the sidecar configuration below as-is on a trusted network.
-   It deliberately starts with `TAILSCALE_SSH_ENABLED=false` and leaves
-   registration at its default so a fresh installation can create its first
-   account.
-2. Create the first WebSSH account. This account becomes the administrator.
-3. In the Admin Panel, disable self-registration. The setting is stored in the
-   persistent `webssh_data` volume.
+   It deliberately starts with `TAILSCALE_SSH_ENABLED=false`.
+2. Create the first administrator explicitly:
+   ```bash
+   docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
+   ```
+3. Keep production self-registration disabled unless it is explicitly needed.
+   Accounts created through public registration are always non-administrators.
 4. Configure narrow target and remote-user allowlists, then change
    `TAILSCALE_SSH_ENABLED` to `true`.
 5. Apply the updated configuration with `docker compose up -d`.
 
-Do not set `REGISTRATION_ENABLED=False` before the first account exists. If you
-want an environment-level fallback in addition to the saved Admin Panel
-setting, add it only after the administrator bootstrap is complete.
+Production self-registration defaults to disabled. A registration setting
+saved in the Admin Panel takes precedence over the environment default.
 
 ### Homelab Compose example
 
@@ -142,8 +142,7 @@ services:
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
       - SESSION_COOKIE_SECURE=false
-      # Keep disabled until the first administrator exists and registration
-      # has been disabled in the Admin Panel.
+      # Keep disabled until an administrator has been created with the CLI.
       - TAILSCALE_SSH_ENABLED=false
       # Leave empty to allow only existing WebSSH administrators.
       - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=
@@ -158,8 +157,7 @@ volumes:
 ```
 
 After the administrator bootstrap and allowlist configuration, enable the
-feature by changing the value to `TAILSCALE_SSH_ENABLED=true`. Optionally add
-`REGISTRATION_ENABLED=False` at that point as an environment-level fallback.
+feature by changing the value to `TAILSCALE_SSH_ENABLED=true`.
 
 For an HTTPS deployment, replace the three homelab browser settings with the
 public origin and secure cookies:

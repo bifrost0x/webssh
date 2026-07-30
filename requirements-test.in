@@ -1,0 +1,3 @@
+# Direct test dependency. Runtime constraints are included from requirements.in.
+-r requirements.in
+pytest==9.1.1

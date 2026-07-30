@@ -1,9 +1,9 @@
-import base64
 import os
 import tempfile
 import time
 import importlib
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -16,6 +16,13 @@ pytestmark = pytest.mark.skipif(
 
 TARGET_HOST = os.environ.get('PARAMIKO5_TARGET_HOST', 'target')
 TARGET_PORT = int(os.environ.get('PARAMIKO5_TARGET_PORT', '22'))
+PROXY_TARGET_HOST = os.environ.get(
+    'PARAMIKO5_PROXY_TARGET_HOST',
+    'target',
+)
+PROXY_TARGET_PORT = int(
+    os.environ.get('PARAMIKO5_PROXY_TARGET_PORT', '22')
+)
 BASTION_HOST = os.environ.get('PARAMIKO5_BASTION_HOST', 'bastion')
 BASTION_PORT = int(os.environ.get('PARAMIKO5_BASTION_PORT', '22'))
 USERNAME = 'testuser'
@@ -36,12 +43,16 @@ def app():
         from app.models import db
 
         test_app = create_app()
+        runtime_lifecycle = test_app.extensions['runtime_lifecycle']
         test_app.config['TESTING'] = True
         test_app.config['WTF_CSRF_ENABLED'] = False
         with test_app.app_context():
             db.create_all()
         yield test_app
         with test_app.app_context():
+            runtime_lifecycle.begin_shutdown(
+                config.RUNTIME_SHUTDOWN_GRACE_SECONDS
+            )
             db.session.remove()
             db.engine.dispose()
 
@@ -116,21 +127,24 @@ def create_authenticated_socket(app, username):
     )
     assert socket_client.is_connected()
     wait_for_event(socket_client, 'connected')
-    return socket_client, user_id
+    return socket_client, http_client, user_id
 
 
 def emit_ssh_connect(socket_client, **overrides):
+    uses_proxy = 'proxy_jump' in overrides
+    target_host = PROXY_TARGET_HOST if uses_proxy else TARGET_HOST
+    target_port = PROXY_TARGET_PORT if uses_proxy else TARGET_PORT
     payload = {
-        'host': TARGET_HOST,
-        'port': TARGET_PORT,
+        'host': target_host,
+        'port': target_port,
         'username': USERNAME,
         'client_request_id': 'integration-request',
     }
     payload.update(overrides)
     socket_client.emit('ssh_connect', payload)
     connected = wait_for_event(socket_client, 'ssh_connected')
-    assert connected['host'] == TARGET_HOST
-    assert connected['port'] == TARGET_PORT
+    assert connected['host'] == target_host
+    assert connected['port'] == target_port
     assert connected['username'] == USERNAME
     assert connected['client_request_id'] == 'integration-request'
     return connected['session_id']
@@ -172,7 +186,7 @@ def test_socket_password_terminal_resize_and_disconnect(app, monkeypatch):
     import config
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, _user_id = create_authenticated_socket(
+    socket_client, _http_client, _user_id = create_authenticated_socket(
         app,
         'socket_password_user',
     )
@@ -211,7 +225,7 @@ def test_socket_stored_key_terminal_roundtrip(
     import config
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, user_id = create_authenticated_socket(
+    socket_client, _http_client, user_id = create_authenticated_socket(
         app,
         f'socket_{key_name}_user',
     )
@@ -241,7 +255,7 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
     import config
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, user_id = create_authenticated_socket(
+    socket_client, http_client, user_id = create_authenticated_socket(
         app,
         f'socket_quick_{auth}_user',
     )
@@ -274,15 +288,19 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
         created = wait_for_event(socket_client, 'directory_created')
         assert created['path'] == remote_dir
 
-        socket_client.emit('upload_file', {
+        upload = socket_client.emit('prepare_transfer', {
+            'direction': 'upload',
             'session_id': connection_id,
-            'filename': 'payload.bin',
-            'file_data': base64.b64encode(payload).decode('ascii'),
             'remote_path': remote_file,
-        })
-        completed = wait_for_event(socket_client, 'file_complete')
-        assert completed['type'] == 'upload'
-        assert completed['remote_path'] == remote_file
+        }, callback=True)
+        assert upload['success'] is True
+        uploaded = http_client.post(
+            upload['url'],
+            data=payload,
+            content_type='application/octet-stream',
+        )
+        assert uploaded.status_code == 200
+        assert uploaded.get_json() == {'success': True}
 
         socket_client.emit('list_directory', {
             'session_id': connection_id,
@@ -293,13 +311,15 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
         assert listing['path'] == remote_dir
         assert {item['name'] for item in listing['files']} == {'payload.bin'}
 
-        socket_client.emit('download_file', {
+        download = socket_client.emit('prepare_transfer', {
+            'direction': 'download',
             'session_id': connection_id,
             'remote_path': remote_file,
-        })
-        downloaded = wait_for_event(socket_client, 'file_download_ready')
-        assert downloaded['filename'] == 'payload.bin'
-        assert base64.b64decode(downloaded['file_data']) == payload
+        }, callback=True)
+        assert download['success'] is True
+        downloaded = http_client.get(download['url'])
+        assert downloaded.status_code == 200
+        assert downloaded.data == payload
 
         socket_client.emit('delete_item', {
             'session_id': connection_id,
@@ -321,13 +341,94 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
             socket_client.disconnect()
 
 
+def test_threaded_runtime_keeps_terminal_sftp_and_http_work_making_progress(app):
+    """One terminal reader must not stall independent SFTP or HTTP work."""
+    from app import socketio
+
+    assert socketio.async_mode == 'threading'
+    terminal_client, _terminal_http, _terminal_user_id = (
+        create_authenticated_socket(app, 'threaded_terminal_user')
+    )
+    sftp_client, _sftp_http, _sftp_user_id = create_authenticated_socket(
+        app, 'threaded_sftp_user'
+    )
+    terminal_session_id = emit_ssh_connect(
+        terminal_client,
+        password=PASSWORD,
+    )
+    marker = 'PARAMIKO5_THREADED_TERMINAL_PROGRESS'
+    remote_dir = f'/tmp/paramiko5-threaded-{uuid.uuid4().hex}'
+
+    def run_sftp_workload():
+        sftp_client.emit('quick_connect', {
+            'host': TARGET_HOST,
+            'port': TARGET_PORT,
+            'username': USERNAME,
+            'password': PASSWORD,
+        })
+        connection_id = wait_for_event(
+            sftp_client,
+            'quick_connect_success',
+        )['connection_id']
+        sftp_client.emit('create_directory', {
+            'session_id': connection_id,
+            'remote_path': remote_dir,
+        })
+        assert wait_for_event(sftp_client, 'directory_created')['path'] == remote_dir
+        sftp_client.emit('list_directory', {
+            'session_id': connection_id,
+            'remote_path': remote_dir,
+        })
+        assert wait_for_event(sftp_client, 'directory_listing')['path'] == remote_dir
+        sftp_client.emit('delete_item', {
+            'session_id': connection_id,
+            'path': remote_dir,
+        })
+        assert wait_for_event(sftp_client, 'item_deleted')['path'] == remote_dir
+        sftp_client.emit('quick_disconnect', {
+            'connection_id': connection_id,
+        })
+        assert wait_for_event(
+            sftp_client,
+            'quick_disconnect_success',
+        )['connection_id'] == connection_id
+
+    def request_readiness():
+        response = app.test_client().get('/ready')
+        assert response.status_code == 200
+
+    try:
+        terminal_client.emit('ssh_input', {
+            'session_id': terminal_session_id,
+            'data': (
+                "for step in 1 2 3 4 5; do "
+                f"printf '%s%s\\n' '{marker[:len(marker) // 2]}' "
+                f"'{marker[len(marker) // 2:]}'; sleep 0.1; done\n"
+            ),
+        })
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            sftp_result = executor.submit(run_sftp_workload)
+            readiness_result = executor.submit(request_readiness)
+            assert marker in wait_for_output(terminal_client, marker)
+            sftp_result.result(timeout=10)
+            readiness_result.result(timeout=10)
+    finally:
+        if terminal_client.is_connected():
+            terminal_client.emit('ssh_disconnect', {
+                'session_id': terminal_session_id,
+            })
+            terminal_client.disconnect()
+        if sftp_client.is_connected():
+            sftp_client.disconnect()
+
+
 @pytest.mark.parametrize('auth', ['password', 'rsa'])
 def test_socket_proxy_jump_terminal_and_sftp_roundtrip(
         app, monkeypatch, auth):
     import config
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, user_id = create_authenticated_socket(
+    socket_client, _http_client, user_id = create_authenticated_socket(
         app,
         f'socket_jump_{auth}_user',
     )
@@ -374,7 +475,7 @@ def test_socket_invalid_credentials_keep_generic_error(app, monkeypatch):
     import config
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, _user_id = create_authenticated_socket(
+    socket_client, _http_client, _user_id = create_authenticated_socket(
         app,
         'socket_invalid_user',
     )
@@ -397,7 +498,7 @@ def test_socket_missing_key_id_keeps_generic_key_error(app, monkeypatch):
     import config
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, _user_id = create_authenticated_socket(
+    socket_client, _http_client, _user_id = create_authenticated_socket(
         app,
         'socket_missing_key_user',
     )
@@ -422,7 +523,7 @@ def test_socket_dsa_upload_is_rejected_without_storage(
     from app import key_manager
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, user_id = create_authenticated_socket(
+    socket_client, _http_client, user_id = create_authenticated_socket(
         app,
         'socket_dsa_user',
     )
@@ -449,7 +550,7 @@ def test_revocation_closes_real_paramiko_transport(app, monkeypatch):
     from app.user_lifecycle import revoke_user_access
 
     monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
-    socket_client, user_id = create_authenticated_socket(
+    socket_client, _http_client, user_id = create_authenticated_socket(
         app,
         'socket_revoke_user',
     )

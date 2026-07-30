@@ -5,7 +5,8 @@
   "description": "Frontend vendor dependencies for webssh. These packages are copied into static/vendor/ by `npm run vendor` and served as static assets. Node is only needed to update vendored assets, never at runtime.",
   "scripts": {
     "vendor": "node scripts/vendor.js",
-    "test:js": "node --test tests/js/*.test.js"
+    "test:js": "node --test tests/js/*.test.js",
+    "test:e2e": "playwright test --forbid-only"
   },
   "dependencies": {
     "@highlightjs/cdn-assets": "11.11.1",

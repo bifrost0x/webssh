@@ -6,6 +6,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="current-user" content="{{ username }}">
+    <meta name="oidc-enabled" content="{{ 'true' if oidc_enabled else 'false' }}">
+    <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
     <title>Admin · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -26,7 +28,9 @@
     <main class="admin-main">
         <div class="admin-tabs">
             <button class="admin-tab active" data-tab="users" data-i18n="admin.users">Users</button>
+            {% if audit_export_enabled %}
             <button class="admin-tab" data-tab="audit" data-i18n="admin.auditLogs">Audit Logs</button>
+            {% endif %}
             <button class="admin-tab" data-tab="settings" data-i18n="admin.settings">Settings</button>
         </div>
 
@@ -53,6 +57,7 @@
             </div>
         </section>
 
+        {% if audit_export_enabled %}
         <section class="admin-panel hidden" id="tab-audit">
             <div class="admin-toolbar">
                 <input type="search" id="auditSearch" class="form-control" placeholder="Search…" data-i18n-placeholder="admin.search">
@@ -63,6 +68,7 @@
                     <option value="ERROR">ERROR</option>
                 </select>
                 <button class="btn btn-secondary" id="auditRefresh" data-i18n="admin.refresh">Refresh</button>
+                <button class="btn btn-secondary" id="auditExportBtn">Export JSONL</button>
             </div>
             <div class="admin-table-wrap">
                 <table class="admin-table" id="adminAuditTable">
@@ -84,6 +90,7 @@
             </div>
         </section>
 
+        {% endif %}
         <section class="admin-panel hidden" id="tab-settings">
             <div class="admin-setting-row">
                 <label class="admin-checkbox">
@@ -92,6 +99,30 @@
                 </label>
                 <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
             </div>
+            {% if audit_export_enabled %}
+            <div class="admin-setting-row" style="margin-top:16px;">
+                <label for="auditRetention"><strong>Audit retention backups</strong></label>
+                <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
+                    <input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5">
+                    <button class="btn btn-secondary" id="auditRetentionSave">Save</button>
+                </div>
+                <p class="admin-muted">Changes apply to future rotations. Existing archives are not deleted immediately.</p>
+            </div>
+            {% endif %}
+            {% if host_key_management_enabled %}
+            <div class="admin-setting-row" style="margin-top:16px;max-width:none;">
+                <div class="admin-toolbar">
+                    <strong>Global SSH host trust</strong>
+                    <button class="btn btn-secondary" id="globalHostKeyRefresh">Refresh</button>
+                </div>
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead><tr><th>Host</th><th>Status</th><th>Algorithm</th><th>Fingerprint</th><th>Action</th></tr></thead>
+                        <tbody id="globalHostKeyList"></tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
         </section>
     </main>
 
@@ -118,9 +149,42 @@
         </div>
     </div>
 
+    {% if recovery_codes_enabled or oidc_enabled %}
+    <div class="modal modal-small" id="securityActionModal" role="dialog" aria-modal="true" aria-labelledby="securityActionTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="securityActionTitle">Account recovery</h2>
+                <span class="close" id="closeSecurityAction" aria-label="Close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="securityActionHint" class="admin-muted"></p>
+                <div class="form-group">
+                    <label for="securityActionPassword">Your administrator password</label>
+                    <input type="password" id="securityActionPassword" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="securityActionConfirmation">Type the target username to confirm</label>
+                    <input type="text" id="securityActionConfirmation" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group hidden" id="securityActionSubjectGroup">
+                    <label for="securityActionSubject">Stable OIDC subject</label>
+                    <input type="text" id="securityActionSubject" class="form-control" autocomplete="off">
+                </div>
+                <button class="btn btn-primary" id="submitSecurityAction">Continue</button>
+                <div class="form-group hidden" id="securityActionResultGroup" style="margin-top:16px;">
+                    <label for="securityActionResult">One-time recovery codes</label>
+                    <textarea id="securityActionResult" class="form-control" rows="10" readonly></textarea>
+                    <p class="admin-muted">Copy these codes now. They will not be shown again.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div id="notificationContainer" class="notification-container"></div>
 
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>
 </html>

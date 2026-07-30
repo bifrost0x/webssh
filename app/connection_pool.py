@@ -17,28 +17,54 @@ import threading
 import paramiko
 from datetime import datetime, timedelta
 import config
-from .ssh_manager import PersistentHostKeyPolicy
+from .host_key_store import HostKeyStore
+from .network_policy import open_validated_socket, resolve_allowed_target
 from .ssh_key_loader import load_private_key as _load_private_key
 from .audit_logger import log_info, log_warning, log_error, log_debug
+from .quota_manager import (
+    QuotaExceeded,
+    QuotaKind,
+    quota_manager,
+    release_reservation,
+)
+
 
 class TemporaryConnectionPool:
     """Manages short-lived SSH connections for file transfers."""
 
-    def __init__(self, cleanup_interval=300, max_connections_per_user=3):
+    def __init__(
+        self, cleanup_interval=300, max_connections_per_user=None
+    ):
         """
         Initialize the connection pool.
 
         Args:
             cleanup_interval (int): Seconds before inactive connection is closed
-            max_connections_per_user (int): Maximum concurrent connections per user
+            max_connections_per_user: Deprecated compatibility argument. The
+                central QUOTA_QUICK_CONNECTION_PER_USER setting always wins.
         """
+        del max_connections_per_user
         self.connections = {}
         self.cleanup_interval = cleanup_interval
-        self.max_connections_per_user = max_connections_per_user
         self.lock = threading.Lock()
+        self.quota_manager = quota_manager
+        self.cleanup_handle = None
+        self._cleanup_lifecycle = None
 
-        self.cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
-        self.cleanup_thread.start()
+    def bind_lifecycle(self, lifecycle):
+        """Run this pool's cleanup loop through one app-owned lifecycle."""
+        with self.lock:
+            if self._cleanup_lifecycle is lifecycle and self.cleanup_handle:
+                return self.cleanup_handle
+            if self.cleanup_handle is not None:
+                self.cleanup_handle.cancel()
+            self._cleanup_lifecycle = lifecycle
+            self.cleanup_handle = lifecycle.start_job(
+                'temporary_connection_cleanup',
+                self._cleanup_loop,
+                defer_cancel_until_callbacks=True,
+            )
+            return self.cleanup_handle
 
     def create_connection(self, host, port, username, password=None, key_path=None, key_content=None, user_id=None):
         """
@@ -56,26 +82,50 @@ class TemporaryConnectionPool:
         Returns:
             tuple: (connection_id: str or None, error: str or None)
         """
-        with self.lock:
-            user_connections = [
-                c for c in self.connections.values()
-                if c['user_id'] == user_id
-            ]
-
-            if len(user_connections) >= self.max_connections_per_user:
-                return None, f"Maximum {self.max_connections_per_user} connections per user exceeded"
+        lifecycle = self._cleanup_lifecycle
+        if lifecycle is not None and not lifecycle.accepting_work():
+            return None, "Runtime is shutting down"
 
         try:
+            host_key_store = HostKeyStore(
+                user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR
+            )
+        except (TypeError, ValueError):
+            return None, "User identity is required"
+        user_id = str(host_key_store.user_id)
+
+        try:
+            reservation = self.quota_manager.reserve(
+                QuotaKind.QUICK_CONNECTION, user_id
+            )
+        except QuotaExceeded:
+            return None, "Maximum number of quick connections reached"
+
+        client = None
+        sftp = None
+        validated_socket = None
+        connection_stored = False
+        try:
+            target = resolve_allowed_target(
+                host,
+                port,
+                allow_internal=not config.BLOCK_INTERNAL_SSH,
+            )
+            host = target.hostname
+            port = target.port
+            validated_socket = open_validated_socket(target, 10)
             client = paramiko.SSHClient()
-            if config.KNOWN_HOSTS_FILE.exists():
-                client.load_host_keys(str(config.KNOWN_HOSTS_FILE))
-            client.set_missing_host_key_policy(PersistentHostKeyPolicy(config.KNOWN_HOSTS_FILE))
+            host_key_store.load_into(client)
+            client.set_missing_host_key_policy(
+                host_key_store.missing_key_policy()
+            )
 
             connect_kwargs = {
                 'hostname': host,
                 'port': port,
                 'username': username,
                 'timeout': 10,
+                'sock': validated_socket,
                 'look_for_keys': False,
                 'allow_agent': False
             }
@@ -102,6 +152,12 @@ class TemporaryConnectionPool:
             conn_id = uuid.uuid4().hex
 
             with self.lock:
+                lifecycle = self._cleanup_lifecycle
+                if (
+                    lifecycle is not None
+                    and not lifecycle.accepting_work()
+                ):
+                    return None, "Runtime is shutting down"
                 self.connections[conn_id] = {
                     'client': client,
                     'sftp': sftp,
@@ -110,14 +166,18 @@ class TemporaryConnectionPool:
                     'user_id': user_id,
                     'host': host,
                     'port': port,
-                    'username': username
+                    'username': username,
+                    'quota_reservation': reservation,
                 }
+                connection_stored = True
 
             log_info(f"Temporary connection created: {conn_id}", user=username, host=f"{host}:{port}")
             return conn_id, None
 
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
+        except ValueError as e:
+            return None, str(e)
         except paramiko.SSHException as e:
             # Keep the raw error in the server log only; a generic client message
             # avoids leaking remote details that could aid host/port scanning.
@@ -128,6 +188,24 @@ class TemporaryConnectionPool:
         except Exception as e:
             log_error("Pool connection error", host=f"{host}:{port}", error=str(e))
             return None, "Connection failed"
+        finally:
+            if not connection_stored:
+                release_reservation(reservation)
+                if sftp is not None:
+                    try:
+                        sftp.close()
+                    except Exception:
+                        pass
+                if client is not None:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+                if validated_socket is not None:
+                    try:
+                        validated_socket.close()
+                    except Exception:
+                        pass
 
     def get_sftp_client(self, connection_id):
         """
@@ -140,28 +218,33 @@ class TemporaryConnectionPool:
         Returns:
             tuple: (sftp_client or None, error: str or None)
         """
+        stale_connection = None
         with self.lock:
-            if connection_id not in self.connections:
+            conn = self.connections.get(connection_id)
+            if conn is None:
                 return None, "Connection not found or expired"
-
-            conn = self.connections[connection_id]
 
             try:
                 transport = conn['client'].get_transport()
                 if transport is None or not transport.is_active():
-                    self._close_connection(connection_id)
-                    return None, "Connection has been closed"
+                    stale_connection = self.connections.pop(connection_id)
+                else:
+                    conn['last_used'] = time.time()
+                    client = conn['client']
             except Exception:
-                self._close_connection(connection_id)
-                return None, "Connection has been closed"
+                stale_connection = self.connections.pop(connection_id)
 
-            conn['last_used'] = time.time()
+        if stale_connection is not None:
+            self._close_detached_connections(
+                ((connection_id, stale_connection),)
+            )
+            return None, "Connection has been closed"
 
-            try:
-                sftp = conn['client'].open_sftp()
-                return sftp, None
-            except Exception as e:
-                return None, f"Failed to open SFTP channel: {str(e)}"
+        try:
+            sftp = client.open_sftp()
+            return sftp, None
+        except Exception as e:
+            return None, f"Failed to open SFTP channel: {str(e)}"
 
     def close_connection(self, connection_id):
         """
@@ -173,42 +256,47 @@ class TemporaryConnectionPool:
         Returns:
             bool: True if connection was closed, False if not found
         """
+        detached = self._detach_connections(
+            lambda candidate_id, _conn: candidate_id == connection_id
+        )
+        self._close_detached_connections(detached)
+        return bool(detached)
+
+    def _detach_connections(self, predicate=None):
+        """Atomically remove matching records before any blocking cleanup."""
         with self.lock:
-            return self._close_connection(connection_id)
+            detached = []
+            for connection_id, conn in list(self.connections.items()):
+                if predicate is None or predicate(connection_id, conn):
+                    detached.append((connection_id, self.connections.pop(
+                        connection_id
+                    )))
+            return detached
 
-    def _close_connection(self, connection_id):
-        """
-        Internal method to close connection (must be called with lock held).
+    def _close_detached_connections(self, detached_connections):
+        """Release detached resources without holding the pool registry lock."""
+        for connection_id, conn in detached_connections:
+            try:
+                from .sftp_handler import close_sftp_cache
+                close_sftp_cache(connection_id)
+            except Exception:
+                pass
 
-        Args:
-            connection_id (str): Connection ID to close
-
-        Returns:
-            bool: True if closed, False if not found
-        """
-        if connection_id not in self.connections:
-            return False
-
-        conn = self.connections[connection_id]
-
-        try:
-            from .sftp_handler import close_sftp_cache
-            close_sftp_cache(connection_id)
-        except Exception:
-            pass
-
-        try:
-            if conn['sftp']:
-                conn['sftp'].close()
-            if conn['client']:
-                conn['client'].close()
-        except Exception as e:
-            log_warning(f"Error closing connection", connection_id=connection_id, error=str(e))
-
-        del self.connections[connection_id]
-        log_debug(f"Temporary connection closed: {connection_id}")
-
-        return True
+            for resource_name in ('sftp', 'client'):
+                resource = conn.get(resource_name)
+                if resource is None:
+                    continue
+                try:
+                    resource.close()
+                except Exception as exc:
+                    log_warning(
+                        "Error closing connection resource",
+                        connection_id=connection_id,
+                        resource=resource_name,
+                        error=str(exc),
+                    )
+            release_reservation(conn.get('quota_reservation'))
+            log_debug(f"Temporary connection closed: {connection_id}")
 
     def cleanup_expired(self):
         """
@@ -218,30 +306,28 @@ class TemporaryConnectionPool:
             int: Number of connections cleaned up
         """
         current_time = time.time()
-        expired = []
-
-        with self.lock:
-            for conn_id, conn in self.connections.items():
-                age = current_time - conn['last_used']
-                if age > self.cleanup_interval:
-                    expired.append(conn_id)
-
-            for conn_id in expired:
-                self._close_connection(conn_id)
+        expired = self._detach_connections(
+            lambda _connection_id, conn: (
+                current_time - conn['last_used'] > self.cleanup_interval
+            )
+        )
+        self._close_detached_connections(expired)
 
         if expired:
             log_info(f"Cleaned up {len(expired)} expired temporary connection(s)")
 
         return len(expired)
 
-    def _cleanup_loop(self):
-        """Background thread that periodically cleans up expired connections."""
-        while True:
-            time.sleep(60)
-            try:
-                self.cleanup_expired()
-            except Exception as e:
-                log_error(f"Error in cleanup loop", error=str(e))
+    def _cleanup_loop(self, cancel_event):
+        """Periodically clean up expired connections until lifecycle shutdown."""
+        try:
+            while not cancel_event.wait(60):
+                try:
+                    self.cleanup_expired()
+                except Exception as e:
+                    log_error(f"Error in cleanup loop", error=str(e))
+        finally:
+            self.close_all_connections()
 
     def get_connection_info(self, connection_id):
         """
@@ -270,6 +356,19 @@ class TemporaryConnectionPool:
                 'user_id': conn['user_id']
             }
 
+    def get_ssh_client(self, connection_id):
+        """Return the live SSH client for an internal pool consumer."""
+        with self.lock:
+            conn = self.connections.get(connection_id)
+            if conn is None:
+                return None
+            client = conn.get('client')
+            transport = client.get_transport() if client is not None else None
+            if transport is None or not transport.is_active():
+                return None
+            conn['last_used'] = time.time()
+            return client
+
     def close_all_user_connections(self, user_id):
         """
         Close all connections for a specific user.
@@ -280,22 +379,37 @@ class TemporaryConnectionPool:
         Returns:
             int: Number of connections closed
         """
-        user_connections = []
+        detached = self._detach_connections(
+            lambda _connection_id, conn: conn['user_id'] == user_id
+        )
+        self._close_detached_connections(detached)
+        return len(detached)
 
-        with self.lock:
-            for conn_id, conn in self.connections.items():
-                if conn['user_id'] == user_id:
-                    user_connections.append(conn_id)
-
-            for conn_id in user_connections:
-                self._close_connection(conn_id)
-
-        return len(user_connections)
+    def close_all_connections(self):
+        """Close every pooled connection before this pool is discarded."""
+        detached = self._detach_connections()
+        self._close_detached_connections(detached)
+        return len(detached)
 
     def __del__(self):
         """Cleanup when pool is destroyed."""
-        with self.lock:
-            for conn_id in list(self.connections.keys()):
-                self._close_connection(conn_id)
+        self.close_all_connections()
 
 temp_connection_pool = TemporaryConnectionPool()
+
+
+def bind_temp_connection_pool(lifecycle):
+    """Bind the module-global pool to the lifecycle of the current app factory."""
+    global temp_connection_pool
+
+    if temp_connection_pool._cleanup_lifecycle is lifecycle:
+        return temp_connection_pool
+
+    previous_pool = temp_connection_pool
+    if previous_pool.cleanup_handle is not None:
+        previous_pool.cleanup_handle.cancel()
+    previous_pool.close_all_connections()
+
+    temp_connection_pool = TemporaryConnectionPool()
+    temp_connection_pool.bind_lifecycle(lifecycle)
+    return temp_connection_pool

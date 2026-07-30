@@ -6,6 +6,14 @@ from pathlib import Path
 
 db = SQLAlchemy()
 
+
+def as_naive_utc(value):
+    """Normalize a datetime for database columns that store naive UTC."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 class User(db.Model, UserMixin):
     """User model for authentication."""
     __tablename__ = 'users'
@@ -20,6 +28,24 @@ class User(db.Model, UserMixin):
 
     socket_sessions = db.relationship('SocketSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
     ssh_sessions = db.relationship('SSHSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
+    webauthn_credentials = db.relationship(
+        'WebAuthnCredential',
+        backref='user',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
+    recovery_codes = db.relationship(
+        'RecoveryCode',
+        backref='user',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
+    oidc_identities = db.relationship(
+        'OIDCIdentity',
+        backref='user',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
 
     def set_password(self, password):
         """Hash and set user password using bcrypt."""
@@ -65,7 +91,7 @@ def ensure_user_columns():
     # before. Grant admin ONLY to the oldest account (lowest id) instead of every
     # user, so upgrading a multi-user install does not silently make everyone an
     # admin. Runs once — on later starts the column already exists, so this block
-    # is skipped. (New installs seed their first admin via auth bootstrap.)
+    # is skipped. New installs create administrators explicitly via the CLI.
     if added_is_admin:
         result = db.session.execute(text(
             "UPDATE users SET is_admin = 1 "
@@ -93,6 +119,114 @@ class SocketSession(db.Model):
 
     def __repr__(self):
         return f'<SocketSession user_id={self.user_id} sid={self.socket_sid[:8]}...>'
+
+
+class WebAuthnCredential(db.Model):
+    """A verified passkey bound to one local account."""
+
+    __tablename__ = 'webauthn_credentials'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        index=True,
+    )
+    credential_id = db.Column(db.LargeBinary, unique=True, nullable=False)
+    public_key = db.Column(db.LargeBinary, nullable=False)
+    sign_count = db.Column(db.Integer, nullable=False, default=0)
+    transports = db.Column(db.Text, nullable=False, default='[]')
+    name = db.Column(db.String(80), nullable=False, default='Passkey')
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    last_used_at = db.Column(db.DateTime)
+
+
+class WebAuthnChallenge(db.Model):
+    """Short-lived, one-use server-side WebAuthn ceremony state."""
+
+    __tablename__ = 'webauthn_challenges'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=True,
+        index=True,
+    )
+    purpose = db.Column(db.String(16), nullable=False, index=True)
+    session_binding_hash = db.Column(
+        db.String(64),
+        nullable=False,
+        index=True,
+    )
+    challenge = db.Column(db.LargeBinary, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+
+
+class RecoveryCode(db.Model):
+    """A single-use, domain-separated account recovery verifier."""
+
+    __tablename__ = 'recovery_codes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        index=True,
+    )
+    code_hash = db.Column(db.LargeBinary(32), nullable=False, index=True)
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class OIDCIdentity(db.Model):
+    """Administrator-approved stable external identity mapping."""
+
+    __tablename__ = 'oidc_identities'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'issuer',
+            'subject',
+            name='uq_oidc_issuer_subject',
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        index=True,
+    )
+    issuer = db.Column(db.String(512), nullable=False)
+    subject = db.Column(db.String(512), nullable=False)
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class OIDCLoginState(db.Model):
+    """Short-lived server-side OIDC state, nonce, and PKCE verifier."""
+
+    __tablename__ = 'oidc_login_states'
+
+    id = db.Column(db.Integer, primary_key=True)
+    state_hash = db.Column(db.String(64), unique=True, nullable=False)
+    session_binding_hash = db.Column(db.String(64), nullable=False, index=True)
+    nonce = db.Column(db.String(128), nullable=False)
+    code_verifier = db.Column(db.String(128), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
 class SSHSession(db.Model):
     """Tracks SSH connections for users (persistent across browser reconnects)."""

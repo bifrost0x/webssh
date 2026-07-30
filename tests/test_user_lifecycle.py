@@ -3,11 +3,12 @@ from types import SimpleNamespace
 import pytest
 
 
-def _create_user(username, password='password123'):
+def _create_user(username, password='password123', *, is_admin=False):
     from app.auth import register_user
 
     user, error = register_user(username, password)
     assert error is None
+    user.is_admin = is_admin
     return user
 
 
@@ -149,7 +150,7 @@ class TestUserAccessRevocation:
 
     def test_admin_lock_revokes_user_access(self, app, client, monkeypatch):
         with app.app_context():
-            admin = _create_user('admin')
+            admin = _create_user('admin', is_admin=True)
             target = _create_user('locktarget')
             target_id = target.id
             assert admin.is_admin
@@ -196,7 +197,7 @@ class TestSafeUserDeletion:
         with app.app_context():
             from app.models import db
 
-            admin = _create_user('deleteadmin')
+            admin = _create_user('deleteadmin', is_admin=True)
             target = _create_user('deletetarget')
             target_id = target.id
             target_data_dir = target.get_data_dir()

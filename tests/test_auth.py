@@ -1,6 +1,8 @@
 """Tests for authentication and rate limiting."""
 
 import pytest
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 
@@ -85,6 +87,93 @@ class TestUserRegistration:
             assert user is not None
             assert error is None
             assert user.username == 'testuser'
+
+    def test_first_registered_user_is_an_administrator(self, app):
+        with app.app_context():
+            from app.auth import register_user
+
+            user, error = register_user('firstuser', 'password123')
+
+            assert error is None
+            assert user is not None
+            assert user.is_admin is True
+
+    def test_only_first_registered_user_is_an_administrator(self, app):
+        with app.app_context():
+            from app.auth import register_user
+
+            first, first_error = register_user('firstuser', 'password123')
+            second, second_error = register_user('seconduser', 'password123')
+
+            assert first_error is None
+            assert second_error is None
+            assert first.is_admin is True
+            assert second.is_admin is False
+
+    def test_initial_admin_repair_preserves_existing_administrators(self, app):
+        with app.app_context():
+            from app.auth import ensure_initial_admin
+            from app.models import User, db
+
+            first = User(username='firstuser', is_admin=True)
+            first.set_password('password123')
+            second = User(username='seconduser', is_admin=True)
+            second.set_password('password123')
+            db.session.add_all([first, second])
+            db.session.commit()
+
+            result = ensure_initial_admin()
+
+            assert result.id == first.id
+            assert User.query.filter_by(is_admin=True).order_by(User.id).all() == [
+                first,
+                second,
+            ]
+
+    def test_initial_admin_repair_promotes_only_oldest_user(self, app):
+        with app.app_context():
+            from app.auth import ensure_initial_admin
+            from app.models import User, db
+
+            first = User(username='firstuser', is_admin=False)
+            first.set_password('password123')
+            second = User(username='seconduser', is_admin=False)
+            second.set_password('password123')
+            db.session.add_all([first, second])
+            db.session.commit()
+
+            promoted = ensure_initial_admin()
+            repeated = ensure_initial_admin()
+
+            assert promoted.id == first.id
+            assert repeated.id == first.id
+            assert db.session.get(User, first.id).is_admin is True
+            assert db.session.get(User, second.id).is_admin is False
+
+    def test_parallel_first_registrations_create_exactly_one_admin(self, app):
+        from app.auth import register_user
+        from app.models import User
+
+        worker_count = 4
+        start = threading.Barrier(worker_count)
+
+        def register(index):
+            with app.app_context():
+                start.wait(timeout=5)
+                user, error = register_user(
+                    f'parallel{index}',
+                    'password123',
+                )
+                return user.id if user is not None else None, error
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results = list(executor.map(register, range(worker_count)))
+
+        assert all(error is None for _, error in results)
+        assert all(user_id is not None for user_id, _ in results)
+        with app.app_context():
+            assert User.query.count() == worker_count
+            assert User.query.filter_by(is_admin=True).count() == 1
 
     def test_register_short_username(self, app):
         with app.app_context():
@@ -178,6 +267,22 @@ class TestUserRegistration:
 class TestAuthentication:
     """Tests for user authentication."""
 
+    def test_login_rejects_overlong_utf8_password_for_existing_and_missing_users(self, app, client):
+        """The login route must turn bcrypt-length inputs into invalid credentials."""
+        with app.app_context():
+            from app.auth import register_user
+            register_user('existing', 'correct-password')
+
+        overlong_password = '\u00e9' * 37
+        responses = [
+            client.post('/login', data={'username': username, 'password': overlong_password})
+            for username in ('existing', 'missing')
+        ]
+
+        for response in responses:
+            assert response.status_code == 200
+            assert b'Invalid username or password' in response.data
+
     def test_authenticate_valid_credentials(self, app):
         with app.app_context():
             from app.auth import register_user, authenticate_user
@@ -214,9 +319,64 @@ class TestAuthentication:
             assert user is None
             assert 'Invalid' in error
 
+    def test_authenticate_rejects_overlong_password_for_existing_user(self, app):
+        with app.app_context():
+            from app.auth import register_user, authenticate_user
+            register_user('existing', 'correct-password')
+            user, error = authenticate_user('existing', 'x' * 73)
+            assert user is None
+            assert error == 'Invalid username or password'
+
+    def test_authenticate_rejects_overlong_password_for_missing_user(self, app):
+        with app.app_context():
+            from app.auth import authenticate_user
+            user, error = authenticate_user('missing', '\u00e9' * 37)
+            assert user is None
+            assert error == 'Invalid username or password'
+
+    def test_authenticate_rejects_unpaired_surrogate_for_existing_user(self, app):
+        with app.app_context():
+            from app.auth import register_user, authenticate_user
+            register_user('existing', 'correct-password')
+            user, error = authenticate_user('existing', '\ud800')
+            assert user is None
+            assert error == 'Invalid username or password'
+
+    def test_authenticate_rejects_unpaired_surrogate_for_missing_user(self, app):
+        with app.app_context():
+            from app.auth import authenticate_user
+            user, error = authenticate_user('missing', '\ud800')
+            assert user is None
+            assert error == 'Invalid username or password'
+
 
 class TestPasswordChange:
     """Password changes must enforce bcrypt's byte-based input boundary."""
+
+    def test_change_password_rejects_overlong_current_password(self, app, client):
+        with app.app_context():
+            from app.auth import register_user
+            register_user('changeuser', 'current-password')
+
+        login_response = client.post('/login', data={
+            'username': 'changeuser',
+            'password': 'current-password',
+        })
+        assert login_response.status_code == 302
+
+        response = client.post('/change-password', data={
+            'current_password': 'x' * 73,
+            'new_password': 'changed-password',
+            'confirm_password': 'changed-password',
+        })
+
+        assert response.status_code == 200
+        assert b'Current password is incorrect' in response.data
+
+        with app.app_context():
+            from app.models import User
+            user = User.query.filter_by(username='changeuser').one()
+            assert user.check_password('current-password')
 
     def test_change_password_rejects_more_than_72_utf8_bytes(self, app, client):
         with app.app_context():
@@ -244,46 +404,26 @@ class TestPasswordChange:
             assert user.check_password('current-password')
 
 
-class TestSSRFGuard:
-    """_is_internal_address underpins BLOCK_INTERNAL_SSH; it must catch internal
-    targets given as literal IPs *and* as hostnames that resolve to them."""
+class TestSSHParameterValidation:
+    """Socket input validation is syntactic; network policy owns DNS."""
 
-    def test_literal_loopback_blocked(self):
-        from app.socket_events import _is_internal_address
-        assert _is_internal_address('127.0.0.1')
-        assert _is_internal_address('::1')
+    def test_canonicalizes_idna_hostname_without_resolving(self, monkeypatch):
+        import socket
+        from app.socket_events import _validate_ssh_params
 
-    def test_literal_private_and_metadata_blocked(self):
-        from app.socket_events import _is_internal_address
-        assert _is_internal_address('10.0.0.5')
-        assert _is_internal_address('192.168.1.1')
-        assert _is_internal_address('172.16.0.1')
-        assert _is_internal_address('169.254.169.254')  # cloud metadata
-
-    def test_localhost_name_blocked(self):
-        from app.socket_events import _is_internal_address
-        assert _is_internal_address('localhost')
-
-    def test_hostname_resolving_to_loopback_blocked(self, monkeypatch):
-        import app.socket_events as se
         monkeypatch.setattr(
-            se.socket, 'getaddrinfo',
-            lambda *a, **k: [(2, 1, 6, '', ('127.0.0.1', 0))]
+            socket,
+            'getaddrinfo',
+            lambda *args, **kwargs: pytest.fail('validation triggered DNS'),
         )
-        assert se._is_internal_address('evil.example.com')
 
-    def test_public_address_allowed(self, monkeypatch):
-        import app.socket_events as se
-        assert not se._is_internal_address('8.8.8.8')
-        monkeypatch.setattr(
-            se.socket, 'getaddrinfo',
-            lambda *a, **k: [(2, 1, 6, '', ('93.184.216.34', 0))]
-        )
-        assert not se._is_internal_address('example.com')
+        assert _validate_ssh_params(
+            'BÜCHER.Example.', '2222', 'alice'
+        ) == ('xn--bcher-kva.example', 2222, 'alice', None)
 
-    def test_unresolvable_host_not_flagged(self, monkeypatch):
-        import app.socket_events as se
-        def _boom(*a, **k):
-            raise se.socket.gaierror('nope')
-        monkeypatch.setattr(se.socket, 'getaddrinfo', _boom)
-        assert not se._is_internal_address('does-not-exist.invalid')
+    def test_accepts_and_normalizes_bracketed_ipv6(self):
+        from app.socket_events import _validate_ssh_params
+
+        assert _validate_ssh_params(
+            '[2606:4700:4700::1111]', 22, 'alice'
+        ) == ('2606:4700:4700::1111', 22, 'alice', None)

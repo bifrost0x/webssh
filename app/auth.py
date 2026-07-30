@@ -1,5 +1,6 @@
 import bcrypt
 import config
+from threading import Lock
 from flask import request
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b'account-enumeration-mitigation', bcrypt.g
 # Rate limiter instance — initialized in init_auth().
 # Falls back to in-memory automatically if Redis is unavailable.
 _rate_limiter = None
+_registration_lock = Lock()
 
 
 def _get_rate_limiter():
@@ -28,7 +30,10 @@ def _get_rate_limiter():
 
 def password_exceeds_bcrypt_limit(password):
     """Return whether a password exceeds bcrypt's UTF-8 byte limit."""
-    return len((password or '').encode('utf-8')) > config.MAX_PASSWORD_LENGTH
+    try:
+        return len((password or '').encode('utf-8')) > config.MAX_PASSWORD_LENGTH
+    except UnicodeEncodeError:
+        return True
 
 def parse_rate_limit(limit_str, default_limit=5, default_window=60):
     """Parse rate limit strings like '5 per minute'."""
@@ -89,36 +94,77 @@ def init_auth(app):
         getattr(config, 'RATELIMIT_STORAGE_URL', 'memory://')
     )
 
+def validate_new_user(username, password):
+    """Return a validation error for new credentials, or None."""
+    if not username or len(username) < 3 or len(username) > 32:
+        return "Username must be between 3 and 32 characters"
+
+    if not username.replace('_', '').isalnum():
+        return "Username can only contain letters, numbers, and underscores"
+
+    if User.query.filter_by(username=username).first():
+        return "Username already exists"
+
+    if not password or len(password) < 8:
+        return "Password must be at least 8 characters"
+
+    if password_exceeds_bcrypt_limit(password):
+        return (
+            f"Password must not exceed {config.MAX_PASSWORD_LENGTH} bytes "
+            "when encoded as UTF-8"
+        )
+
+    return None
+
+
 def register_user(username, password):
     """
-    Register a new user.
+    Register a user, granting administrator rights only to the first account.
     Returns:
         tuple: (User object, error message) - one will be None
     """
-    if not username or len(username) < 3 or len(username) > 32:
-        return None, "Username must be between 3 and 32 characters"
+    with _registration_lock:
+        error = validate_new_user(username, password)
+        if error:
+            return None, error
 
-    if not username.replace('_', '').isalnum():
-        return None, "Username can only contain letters, numbers, and underscores"
-
-    if User.query.filter_by(username=username).first():
-        return None, "Username already exists"
-
-    if not password or len(password) < 8:
-        return None, "Password must be at least 8 characters"
-
-    if password_exceeds_bcrypt_limit(password):
-        return None, f"Password must not exceed {config.MAX_PASSWORD_LENGTH} bytes when encoded as UTF-8"
-
-    user = User(username=username)
-    user.set_password(password)
-    # The very first user ever registered becomes admin (bootstrap on a fresh DB).
-    if User.query.count() == 0:
-        user.is_admin = True
-    db.session.add(user)
-    db.session.commit()
+        is_first_user = User.query.order_by(User.id).first() is None
+        user = User(username=username, is_admin=is_first_user)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
     user.get_data_dir()
+    if is_first_user:
+        from .audit_logger import log_security_event
+        log_security_event(
+            'INITIAL_ADMIN_REGISTERED',
+            user=user.username,
+        )
     return user, None
+
+
+def ensure_initial_admin():
+    """Return an existing admin or promote the oldest user if none exists."""
+    with _registration_lock:
+        existing_admin = User.query.filter_by(
+            is_admin=True
+        ).order_by(User.id).first()
+        if existing_admin is not None:
+            return existing_admin
+
+        oldest_user = User.query.order_by(User.id).first()
+        if oldest_user is None:
+            return None
+
+        oldest_user.is_admin = True
+        db.session.commit()
+
+    from .audit_logger import log_security_event
+    log_security_event(
+        'INITIAL_ADMIN_REPAIRED',
+        user=oldest_user.username,
+    )
+    return oldest_user
 
 def authenticate_user(username, password):
     """
@@ -128,6 +174,8 @@ def authenticate_user(username, password):
         tuple: (User object, error message) - one will be None
     """
     password = password or ''
+    if password_exceeds_bcrypt_limit(password):
+        return None, "Invalid username or password"
     user = User.query.filter_by(username=username).first()
     if user is None:
         # Verify against a dummy hash so a missing account takes the same time

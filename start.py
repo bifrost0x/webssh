@@ -6,6 +6,9 @@ import config
 import os
 
 app = create_app()
+app.extensions['runtime_lifecycle'].install_process_shutdown_signals(
+    config.RUNTIME_SHUTDOWN_GRACE_SECONDS
+)
 
 if __name__ == '__main__':
     host = os.environ.get('HOST', '127.0.0.1')

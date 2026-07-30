@@ -1,0 +1,28 @@
+# Direct runtime dependencies. Regenerate requirements.txt with
+# scripts/lock_requirements.ps1 after changing this file.
+Flask==3.1.3
+Werkzeug==3.1.8
+Flask-SocketIO==5.6.1
+python-socketio==5.16.3
+paramiko==5.0.0
+# Compatibility: keep the reviewed Fernet, PBKDF2, and key-loading APIs within cryptography 49.
+cryptography>=49.0,<50
+python-dotenv==1.2.2
+Flask-Login==0.6.3
+Flask-SQLAlchemy==3.1.1
+# Compatibility: bcrypt 5 enforces the tested 72-byte password boundary; a new major requires an auth review.
+bcrypt>=5.0,<6
+# Compatibility: the production command and lifecycle gates are qualified specifically for Gunicorn 26 gthread.
+gunicorn>=26,<27
+# Compatibility: Flask-SocketIO's native-thread transport is qualified with the simple-websocket 1.x API.
+simple-websocket>=1.1,<2
+Flask-WTF==1.3.0
+dnspython==2.8.0
+# Compatibility: the rate-limiter client contract is tested on redis-py 8 against Redis server 7 and 8.
+redis>=8.0,<9
+# Compatibility: WebAuthn 3 keeps the reviewed ceremony and PQC-capable verification APIs.
+webauthn>=3.0,<4
+# Compatibility: Authlib 1.7 is qualified for OIDC discovery, PKCE, state, nonce, and token validation.
+Authlib>=1.7,<2
+# Compatibility: Authlib's Flask client uses the reviewed Requests 2.x transport API.
+requests>=2.34,<3

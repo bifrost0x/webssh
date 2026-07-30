@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
 from flask_socketio import SocketIO
 from flask_login import login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -12,10 +12,15 @@ from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_e
                               log_login_attempt, log_logout, log_registration, log_password_change)
 from .user_settings import get_user_settings
 from .app_settings import is_registration_enabled, set_registration_enabled
+from .storage_errors import StorageCorruptionError
 from . import sftp_handler
 from .tailscale_ssh import user_can_use_tailscale_ssh
+from .runtime_lifecycle import RuntimeLifecycle
 
-socketio = SocketIO()
+socketio = SocketIO(
+    async_mode=config.SOCKETIO_ASYNC_MODE,
+    async_handlers=config.SOCKETIO_ASYNC_HANDLERS,
+)
 csrf = CSRFProtect()
 
 def get_client_ip():
@@ -36,6 +41,36 @@ def create_app():
     static_dir = os.path.join(base_dir, 'static')
     app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     app.config.from_object(config)
+    app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
+        max_workers=config.BACKGROUND_WORKERS
+    )
+
+    for warning in config.SECURITY_CONFIG_WARNINGS:
+        log_warning('Deployment security warning', warning=warning)
+
+    @app.errorhandler(StorageCorruptionError)
+    def handle_storage_corruption(error):
+        """Return a safe response without rendering another template."""
+        log_error(
+            'Storage corruption detected',
+            store=error.path.name,
+            path=str(error.path),
+            reason=error.reason,
+        )
+        message = 'Stored data is unreadable. Please restore or remove it.'
+        if request.path.startswith('/api/') or request.path.startswith('/admin/api/'):
+            return jsonify({
+                'success': False,
+                'error': message,
+                'code': 'storage_error',
+            }), 503
+        body = (
+            '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<title>Stored data unavailable</title></head><body>'
+            f'<main><h1>Stored data unavailable</h1><p>{message}</p></main>'
+            '</body></html>'
+        )
+        return app.response_class(body, status=503, mimetype='text/html')
 
     url_prefix = getattr(config, 'APPLICATION_ROOT', '')
     if url_prefix:
@@ -49,10 +84,25 @@ def create_app():
             'registration_enabled': is_registration_enabled(),
             'tmux_enabled': config.TMUX_ENABLED,
             'tmux_default': config.TMUX_DEFAULT,
+            'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
+            'webauthn_enabled': config.WEBAUTHN_ENABLED,
+            'oidc_enabled': config.OIDC_ENABLED,
+            'recovery_codes_enabled': config.RECOVERY_CODES_ENABLED,
+            'host_key_management_enabled': (
+                config.HOST_KEY_MANAGEMENT_ENABLED
+            ),
+            'audit_export_enabled': config.AUDIT_EXPORT_ENABLED,
             'tailscale_ssh_allowed': user_can_use_tailscale_ssh(current_user)
         }
 
-    trusted_proxies = int(os.environ.get('TRUSTED_PROXIES', '0'))
+    @app.before_request
+    def hide_disabled_admin_panel():
+        if not config.ADMIN_PANEL_ENABLED and (
+            request.path == '/admin' or request.path.startswith('/admin/')
+        ):
+            abort(404)
+
+    trusted_proxies = config.TRUSTED_PROXIES
     if trusted_proxies > 0:
         app.wsgi_app = ProxyFix(
             app.wsgi_app,
@@ -80,14 +130,43 @@ def create_app():
     db.init_app(app)
     init_auth(app)
     csrf.init_app(app)
+    from .cli import register_cli
+    from .audit_export import audit_export_blueprint
+    from .health import health_blueprint
+    from .host_key_routes import host_key_blueprint
+    from .oidc_routes import init_oidc, oidc_blueprint
+    from .recovery_routes import recovery_blueprint
+    from .transfer_routes import transfer_blueprint, transfer_manager
+    from .webauthn_routes import webauthn_blueprint
+    register_cli(app)
+    init_oidc(app)
+    app.register_blueprint(audit_export_blueprint)
+    app.register_blueprint(health_blueprint)
+    app.register_blueprint(host_key_blueprint)
+    app.register_blueprint(oidc_blueprint)
+    app.register_blueprint(recovery_blueprint)
+    app.register_blueprint(transfer_blueprint)
+    app.register_blueprint(webauthn_blueprint)
+    transfer_runtime_binding = transfer_manager.bind_runtime()
+    app.extensions['runtime_lifecycle'].register_shutdown_callback(
+        'active_transfers',
+        lambda _deadline: transfer_manager.close_and_cancel(
+            transfer_runtime_binding
+        ),
+    )
 
     with app.app_context():
         db.create_all()
         from .models import ensure_user_columns, ensure_ssh_session_columns
         ensure_user_columns()
         ensure_ssh_session_columns()
-        from .auth import sync_admin_users
+        from .auth import ensure_initial_admin, sync_admin_users
+        ensure_initial_admin()
         sync_admin_users()
+        from .cli import warn_if_no_admin
+        warn_if_no_admin()
+        from .audit_logger import apply_audit_backup_count
+        apply_audit_backup_count()
     cors_origins = config.CORS_ORIGINS
     if isinstance(cors_origins, str):
         cors_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
@@ -98,6 +177,7 @@ def create_app():
         app,
         cors_allowed_origins=cors_origins,
         async_mode=config.SOCKETIO_ASYNC_MODE,
+        async_handlers=config.SOCKETIO_ASYNC_HANDLERS,
         ping_timeout=config.SOCKETIO_PING_TIMEOUT,
         ping_interval=config.SOCKETIO_PING_INTERVAL,
         max_http_buffer_size=110 * 1024 * 1024,
@@ -134,18 +214,16 @@ def create_app():
 
         return response
 
-    from . import socket_events, command_manager
+    from . import socket_events, command_manager, connection_pool
 
     def setup_background_tasks():
         """Setup background tasks like session cleanup."""
-        import threading
         from .auth import cleanup_inactive_socket_sessions
         from .ssh_manager import cleanup_idle_sessions
+        lifecycle = app.extensions['runtime_lifecycle']
 
-        def db_cleanup_task():
-            while True:
-                import time
-                time.sleep(1800)
+        def db_cleanup_task(cancel_event):
+            while not cancel_event.wait(1800):
                 try:
                     with app.app_context():
                         deleted = cleanup_inactive_socket_sessions(timeout_minutes=30)
@@ -154,19 +232,22 @@ def create_app():
                 except Exception as e:
                     log_error(f"Session cleanup error", error=str(e))
 
-        def ssh_cleanup_task():
-            while True:
-                import time
-                time.sleep(60)
+        def ssh_cleanup_task(cancel_event):
+            while not cancel_event.wait(60):
                 try:
                     cleanup_idle_sessions()
                 except Exception as e:
                     log_error(f"SSH cleanup error", error=str(e))
 
-        cleanup_thread = threading.Thread(target=db_cleanup_task, daemon=True)
-        cleanup_thread.start()
-        ssh_cleanup_thread = threading.Thread(target=ssh_cleanup_task, daemon=True)
-        ssh_cleanup_thread.start()
+        try:
+            lifecycle.start_job(
+                'inactive_socket_session_cleanup', db_cleanup_task
+            )
+            lifecycle.start_job('idle_ssh_session_cleanup', ssh_cleanup_task)
+            connection_pool.bind_temp_connection_pool(lifecycle)
+        except Exception:
+            lifecycle.begin_shutdown(config.RUNTIME_SHUTDOWN_GRACE_SECONDS)
+            raise
         log_info("Background session cleanup tasks started")
 
     setup_background_tasks()
@@ -276,7 +357,8 @@ def create_app():
             new_password = request.form.get('new_password', '')
             confirm_password = request.form.get('confirm_password', '')
 
-            if not current_user.check_password(current_password):
+            if (password_exceeds_bcrypt_limit(current_password)
+                    or not current_user.check_password(current_password)):
                 flash('Current password is incorrect', 'error')
             elif new_password != confirm_password:
                 flash('New passwords do not match', 'error')
@@ -302,6 +384,16 @@ def create_app():
         theme = settings.get('theme', 'glass')
         return render_template('change_password.html', theme=theme)
 
+    @app.route('/security')
+    @login_required
+    def security_center():
+        settings = get_user_settings(current_user.id)
+        return render_template(
+            'security.html',
+            username=current_user.username,
+            theme=settings.get('theme', 'glass'),
+        )
+
     from .decorators import admin_required
     from .models import User
     from .audit_logger import read_audit_logs
@@ -317,23 +409,23 @@ def create_app():
         }
 
     @app.route('/admin')
-    @login_required
     @admin_required
+    @login_required
     def admin_page():
         settings = get_user_settings(current_user.id)
         theme = settings.get('theme', 'glass')
         return render_template('admin.html', username=current_user.username, theme=theme)
 
     @app.route('/admin/api/users', methods=['GET'])
-    @login_required
     @admin_required
+    @login_required
     def admin_list_users():
         users = User.query.order_by(User.id.asc()).all()
         return jsonify({'users': [_user_to_dict(u) for u in users]})
 
     @app.route('/admin/api/users', methods=['POST'])
-    @login_required
     @admin_required
+    @login_required
     def admin_create_user():
         data = request.get_json(silent=True) or {}
         username = (data.get('username') or '').strip()
@@ -350,8 +442,8 @@ def create_app():
         return jsonify({'user': _user_to_dict(user)}), 201
 
     @app.route('/admin/api/users/<int:user_id>/<action>', methods=['POST'])
-    @login_required
     @admin_required
+    @login_required
     def admin_user_action(user_id, action):
         from . import user_lifecycle
 
@@ -412,9 +504,11 @@ def create_app():
         return jsonify({'user': _user_to_dict(target)})
 
     @app.route('/admin/api/audit', methods=['GET'])
-    @login_required
     @admin_required
+    @login_required
     def admin_audit():
+        if not config.AUDIT_EXPORT_ENABLED:
+            abort(404)
         try:
             offset = int(request.args.get('offset', 0))
             limit = int(request.args.get('limit', 100))
@@ -426,80 +520,34 @@ def create_app():
         return jsonify(result)
 
     @app.route('/admin/api/settings', methods=['GET'])
-    @login_required
     @admin_required
+    @login_required
     def admin_get_settings():
         return jsonify({'registration_enabled': is_registration_enabled()})
 
     @app.route('/admin/api/settings', methods=['POST'])
-    @login_required
     @admin_required
+    @login_required
     def admin_set_settings():
         data = request.get_json(silent=True) or {}
         if 'registration_enabled' in data:
-            val = set_registration_enabled(bool(data['registration_enabled']))
+            if type(data['registration_enabled']) is not bool:
+                return jsonify({
+                    'error': 'registration_enabled must be a boolean'
+                }), 400
+            if (
+                config.DEPLOYMENT_PROFILE == 'production'
+                and data['registration_enabled']
+            ):
+                return jsonify({
+                    'error': (
+                        'Registration cannot be enabled in the production '
+                        'profile'
+                    )
+                }), 400
+            val = set_registration_enabled(data['registration_enabled'])
             log_info("Admin changed registration setting",
                      admin=current_user.username, registration_enabled=val)
         return jsonify({'registration_enabled': is_registration_enabled()})
-
-    @app.route('/api/upload', methods=['POST'])
-    @login_required
-    def api_upload():
-        """HTTP file upload endpoint for SFTP."""
-        try:
-            file = request.files.get('file')
-            session_id = request.form.get('session_id')
-            remote_path = request.form.get('remote_path')
-
-            if not all([file, session_id, remote_path]):
-                return jsonify({'error': 'Missing required fields'}), 400
-
-            max_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
-
-            # Reject oversized uploads from the Content-Length header BEFORE
-            # buffering anything, so a large request cannot exhaust memory.
-            if request.content_length and request.content_length > config.MAX_UPLOAD_SIZE:
-                return jsonify({'error': f'File too large. Maximum: {max_mb}MB'}), 413
-
-            from .socket_events import verify_session_ownership
-            from . import connection_pool
-            if not verify_session_ownership(session_id, current_user.id):
-                conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-                if not conn_info or conn_info['user_id'] != str(current_user.id):
-                    return jsonify({'error': 'Unauthorized'}), 403
-
-            # Read incrementally with a hard cap instead of file.read() into one
-            # buffer plus a second full copy. This also guards against a missing
-            # or dishonest Content-Length (e.g. chunked transfer-encoding).
-            chunk_size = config.CHUNK_SIZE
-            chunks = []
-            total = 0
-            while True:
-                chunk = file.read(chunk_size)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > config.MAX_UPLOAD_SIZE:
-                    return jsonify({'error': f'File too large. Maximum: {max_mb}MB'}), 413
-                chunks.append(chunk)
-
-            success, error = sftp_handler.upload_file_chunked(
-                session_id=session_id,
-                filename=file.filename,
-                chunks=chunks,
-                remote_path=remote_path,
-                socketio_instance=None
-            )
-
-            if error:
-                log_error("Upload failed in SFTP handler", error=str(error), user=current_user.username, path=remote_path)
-                return jsonify({'error': 'Upload failed'}), 500
-
-            log_info(f"File uploaded via HTTP: {file.filename}", user=current_user.username, path=remote_path)
-            return jsonify({'success': True, 'filename': file.filename}), 200
-
-        except Exception as e:
-            log_error(f"Upload failed", error=str(e))
-            return jsonify({'error': 'Upload failed'}), 500
 
     return app

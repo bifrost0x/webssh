@@ -28,40 +28,17 @@ const FileTransferManager = {
     },
 
     uploadFile(sessionId, file, remotePath) {
-        const reader = new FileReader();
-
-        reader.onload = (e) => {
-            const arrayBuffer = e.target.result;
-            const base64Data = this.arrayBufferToBase64(arrayBuffer);
-
-            if (window.socket) {
-                window.socket.emit('upload_file', {
-                    session_id: sessionId,
-                    filename: file.name,
-                    file_data: base64Data,
-                    remote_path: remotePath
-                });
-
-                this.showUploadProgress(0);
-            }
-        };
-
-        reader.onerror = (e) => {
-            window.showNotification('File read error', 'error');
-        };
-
-        reader.readAsArrayBuffer(file);
+        if (!window.socket || !window.BinaryTransferClient) return;
+        this.transferClient ||= new window.BinaryTransferClient(window.socket);
+        this.transferClient.uploadFile(file, remotePath, sessionId);
+        this.showUploadProgress(0);
     },
 
     downloadFile(sessionId, remotePath) {
-        if (window.socket) {
-            window.socket.emit('download_file', {
-                session_id: sessionId,
-                remote_path: remotePath
-            });
-
-            this.showDownloadProgress(0);
-        }
+        if (!window.socket || !window.BinaryTransferClient) return;
+        this.transferClient ||= new window.BinaryTransferClient(window.socket);
+        this.transferClient.downloadFile(remotePath, sessionId);
+        this.showDownloadProgress(0);
     },
 
     handleDownloadReady(data) {

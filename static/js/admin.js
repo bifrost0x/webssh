@@ -4,6 +4,8 @@
     const APP_ROOT = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
     const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const CURRENT_USER = document.querySelector('meta[name="current-user"]')?.content || '';
+    const OIDC_ENABLED = document.querySelector('meta[name="oidc-enabled"]')?.content === 'true';
+    const RECOVERY_ENABLED = document.querySelector('meta[name="recovery-enabled"]')?.content === 'true';
 
     const t = (key, fallback) => (window.i18n && i18n.t ? i18n.t(key) : null) || fallback || key;
 
@@ -80,6 +82,12 @@
         } else {
             parts.push(`<button class="btn btn-secondary" data-act="lock" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.lock', 'Lock'))}</button>`);
         }
+        if (RECOVERY_ENABLED) {
+            parts.push(`<button class="btn btn-secondary" data-act="recovery">${escapeHtml(t('admin.recovery', 'Recovery'))}</button>`);
+        }
+        if (OIDC_ENABLED) {
+            parts.push(`<button class="btn btn-secondary" data-act="oidc-link">${escapeHtml(t('admin.oidcLink', 'Link OIDC'))}</button>`);
+        }
         parts.push(`<button class="btn btn-danger" data-act="delete" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.delete', 'Delete'))}</button>`);
         return `<div class="admin-actions">${parts.join('')}</div>`;
     }
@@ -90,6 +98,7 @@
         users.forEach(u => {
             const tr = document.createElement('tr');
             tr.dataset.userId = u.id;
+            tr.dataset.username = u.username;
             const role = u.is_admin
                 ? `<span class="admin-badge admin">${escapeHtml(t('admin.roleAdmin', 'Admin'))}</span>`
                 : `<span class="admin-badge">${escapeHtml(t('admin.roleUser', 'User'))}</span>`;
@@ -127,6 +136,72 @@
         }
     }
 
+    const securityAction = {
+        mode: null,
+        userId: null,
+        username: null
+    };
+
+    function closeSecurityAction() {
+        const modal = document.getElementById('securityActionModal');
+        modal?.classList.remove('show');
+        modal?.setAttribute('aria-hidden', 'true');
+        securityAction.mode = null;
+        securityAction.userId = null;
+        securityAction.username = null;
+        ['securityActionPassword', 'securityActionConfirmation', 'securityActionSubject', 'securityActionResult']
+            .forEach(id => {
+                const field = document.getElementById(id);
+                if (field) { field.value = ''; }
+            });
+        document.getElementById('securityActionResultGroup')?.classList.add('hidden');
+    }
+
+    function openSecurityAction(mode, userId, username) {
+        securityAction.mode = mode;
+        securityAction.userId = userId;
+        securityAction.username = username;
+        const isOidc = mode === 'oidc-link';
+        document.getElementById('securityActionTitle').textContent = isOidc
+            ? t('admin.oidcLink', 'Link OIDC identity')
+            : t('admin.recovery', 'Generate recovery codes');
+        document.getElementById('securityActionHint').textContent = isOidc
+            ? `Link a stable provider subject to ${username}. Email addresses are never used as identity keys.`
+            : `Generate a new one-time recovery set for ${username}. Existing recovery codes will stop working.`;
+        document.getElementById('securityActionSubjectGroup')?.classList.toggle('hidden', !isOidc);
+        document.getElementById('securityActionResultGroup')?.classList.add('hidden');
+        const modal = document.getElementById('securityActionModal');
+        modal?.classList.add('show');
+        modal?.setAttribute('aria-hidden', 'false');
+        document.getElementById('securityActionPassword')?.focus();
+    }
+
+    async function submitSecurityAction() {
+        if (!securityAction.mode || !securityAction.userId) { return; }
+        const body = {
+            password: document.getElementById('securityActionPassword').value,
+            confirm_username: document.getElementById('securityActionConfirmation').value.trim()
+        };
+        let path = `/admin/api/users/${securityAction.userId}/recovery`;
+        if (securityAction.mode === 'oidc-link') {
+            body.subject = document.getElementById('securityActionSubject').value.trim();
+            path = `/admin/api/users/${securityAction.userId}/oidc-link`;
+        }
+        try {
+            const result = await api(path, { method: 'POST', body });
+            if (securityAction.mode === 'recovery') {
+                document.getElementById('securityActionResult').value = (result.codes || []).join('\n');
+                document.getElementById('securityActionResultGroup')?.classList.remove('hidden');
+                notify(t('admin.recoveryGenerated', 'Recovery codes generated'), 'success');
+            } else {
+                notify(t('admin.oidcLinked', 'OIDC identity linked'), 'success');
+                closeSecurityAction();
+            }
+        } catch (e) {
+            notify(e.message, 'error');
+        }
+    }
+
     function initUsers() {
         document.getElementById('adminRefreshUsers')?.addEventListener('click', loadUsers);
         document.getElementById('adminUsersBody')?.addEventListener('click', (e) => {
@@ -134,11 +209,21 @@
             if (!btn || btn.disabled) { return; }
             const tr = btn.closest('tr');
             const userId = tr?.dataset.userId;
+            const username = tr?.dataset.username;
             const action = btn.dataset.act;
             if (!userId) { return; }
+            if (action === 'recovery' || action === 'oidc-link') {
+                openSecurityAction(action, userId, username);
+                return;
+            }
             if (action === 'delete' && !window.confirm(t('admin.confirmDelete', 'Delete this user permanently?'))) { return; }
             doUserAction(userId, action);
         });
+        document.getElementById('closeSecurityAction')?.addEventListener('click', closeSecurityAction);
+        document.getElementById('securityActionModal')?.addEventListener('click', e => {
+            if (e.target.id === 'securityActionModal') { closeSecurityAction(); }
+        });
+        document.getElementById('submitSecurityAction')?.addEventListener('click', submitSecurityAction);
 
         // Add-user modal
         const modal = document.getElementById('addUserModal');
@@ -239,6 +324,26 @@
             audit.offset = audit.offset + audit.limit;
             loadAudit();
         });
+        document.getElementById('auditExportBtn')?.addEventListener('click', async () => {
+            const params = new URLSearchParams();
+            const level = document.getElementById('auditLevel').value;
+            const q = document.getElementById('auditSearch').value.trim();
+            if (level) { params.set('level', level); }
+            if (q) { params.set('q', q); }
+            try {
+                const result = await window.WebSSHSecurityUI.downloadAuditExport(
+                    APP_ROOT + '/admin/api/audit/export?' + params.toString()
+                );
+                if (result.truncated) {
+                    notify(
+                        `Audit export contains only the newest ${result.scanned} retained records because the scan limit was reached.`,
+                        'warning'
+                    );
+                }
+            } catch (err) {
+                notify(err.message, 'error');
+            }
+        });
     }
 
     // ---- Settings ----
@@ -266,6 +371,55 @@
                 notify(err.message, 'error');
             }
         });
+        document.getElementById('auditRetentionSave')?.addEventListener('click', async () => {
+            const value = Number(document.getElementById('auditRetention').value);
+            try {
+                const data = await api('/admin/api/audit/retention', {
+                    method: 'POST',
+                    body: { backup_count: value }
+                });
+                document.getElementById('auditRetention').value = data.backup_count;
+                notify('Audit retention saved', 'success');
+            } catch (err) {
+                notify(err.message, 'error');
+            }
+        });
+        document.getElementById('globalHostKeyRefresh')?.addEventListener('click', loadGlobalHostKeys);
+    }
+
+    async function loadGlobalHostKeys() {
+        const body = document.getElementById('globalHostKeyList');
+        if (!body) { return; }
+        try {
+            const data = await api('/admin/api/host-keys');
+            body.innerHTML = '';
+            (data.entries || []).forEach(entry => {
+                const row = document.createElement('tr');
+                const hostLabel = (entry.hosts || [{ host: entry.host, port: entry.port }])
+                    .map(item => `${item.host}:${item.port || ''}`).join(', ');
+                const presentation = window.WebSSHSecurityUI.describeHostKey(entry);
+                row.innerHTML =
+                    `<td>${escapeHtml(hostLabel)}</td>` +
+                    `<td>${escapeHtml(presentation.status)}</td>` +
+                    `<td>${escapeHtml(entry.algorithm)}</td>` +
+                    `<td>${escapeHtml(entry.fingerprint)}</td>` +
+                    '<td></td>';
+                const button = document.createElement('button');
+                button.className = 'btn btn-danger';
+                button.textContent = presentation.action;
+                button.addEventListener('click', async () => {
+                    if (!window.confirm(
+                        `Really ${presentation.confirmationAction} ${hostLabel}?`
+                    )) { return; }
+                    await api(`/admin/api/host-keys/${entry.id}`, { method: 'DELETE' });
+                    await loadGlobalHostKeys();
+                });
+                row.lastElementChild.appendChild(button);
+                body.appendChild(row);
+            });
+        } catch (err) {
+            notify(err.message, 'error');
+        }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -275,5 +429,6 @@
         initAudit();
         initSettings();
         loadUsers();
+        loadGlobalHostKeys();
     });
 })();

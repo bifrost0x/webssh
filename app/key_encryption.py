@@ -10,14 +10,34 @@ Key derivation:
 """
 
 import base64
-import hashlib
+from contextlib import contextmanager
+from functools import wraps
+import hmac
+import os
+from pathlib import Path
+import tempfile
+import threading
+
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import config
 from .audit_logger import log_info, log_warning, log_error
+from .ssh_key_loader import identify_private_key
+from .storage_utils import atomic_write_bytes, fsync_parent_directory
 
 _DERIVATION_SALT = b'webssh_key_encryption_v1'
+_key_file_locks = {}
+_key_file_locks_guard = threading.Lock()
+key_operation_lock = threading.RLock()
+
+
+def _serialized_key_operation(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        with key_operation_lock:
+            return function(*args, **kwargs)
+    return wrapper
 
 def _derive_key(secret: str, user_id: str) -> bytes:
     """
@@ -122,57 +142,170 @@ def is_encrypted(data: bytes) -> bool:
     except:
         return False
 
-def migrate_key_to_encrypted(user_id: str, key_path: str) -> bool:
+def _canonical_key_path(path: Path) -> str:
+    """Return one identity for path aliases, including existing symlinks."""
+    return os.path.normcase(str(path.resolve(strict=False)))
+
+
+@contextmanager
+def _key_file_lock(
+        path: Path, *, must_exist: bool = True,
+        allowed_root: Path = None):
+    """Lock and yield the one canonical path used for the whole operation.
+
+    Callers that obtain paths from metadata must validate the resolved target
+    against the user's keys directory before entering this trusted file layer.
+    """
+    operation_path = path.resolve(strict=must_exist)
+    if allowed_root is not None:
+        canonical_root = Path(allowed_root).resolve(strict=True)
+        if not operation_path.is_relative_to(canonical_root):
+            raise ValueError('key path escaped user keys directory')
+    identity = os.path.normcase(str(operation_path))
+    with _key_file_locks_guard:
+        entry = _key_file_locks.get(identity)
+        if entry is None:
+            entry = {'lock': threading.Lock(), 'refs': 0}
+            _key_file_locks[identity] = entry
+        entry['refs'] += 1
+
+    acquired = False
+    try:
+        entry['lock'].acquire()
+        acquired = True
+        yield operation_path
+    finally:
+        if acquired:
+            entry['lock'].release()
+        with _key_file_locks_guard:
+            entry['refs'] -= 1
+            if (
+                entry['refs'] == 0
+                and _key_file_locks.get(identity) is entry
+            ):
+                del _key_file_locks[identity]
+
+
+def _ensure_private_permissions(path: Path) -> None:
+    """Enforce and verify the key-file mode on POSIX systems."""
+    if os.name != 'posix':
+        return
+    if path.stat().st_mode & 0o077:
+        path.chmod(0o600)
+    if path.stat().st_mode & 0o077:
+        raise PermissionError('SSH key file permissions are not private')
+
+
+def _decrypt_stored_key(
+        user_id: str, path: Path, encrypted: bytes) -> str:
+    """Authenticate stored ciphertext and enforce its private file mode."""
+    plaintext = decrypt_key_content(user_id, encrypted)
+    _ensure_private_permissions(path)
+    return plaintext
+
+
+def _restore_plaintext(path: Path, plaintext: bytes) -> None:
+    """Atomically restore plaintext after a failed migration attempt."""
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='wb',
+            dir=path.parent,
+            prefix=f'.{path.name}.',
+            suffix='.rollback.tmp',
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(plaintext)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_path, 0o600)
+        os.replace(temporary_path, path)
+        temporary_path = None
+        fsync_parent_directory(path)
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _decode_validated_legacy_key(plaintext: bytes) -> str:
+    plaintext_text = plaintext.decode('utf-8')
+    identify_private_key(plaintext_text)
+    return plaintext_text
+
+
+def _migrate_key_to_encrypted_locked(
+        user_id: str, path: Path, plaintext: bytes) -> None:
+    """Replace plaintext with verified ciphertext while its file lock is held."""
+    plaintext_text = _decode_validated_legacy_key(plaintext)
+    encrypted = encrypt_key_content(
+        user_id, plaintext_text
+    )
+
+    try:
+        atomic_write_bytes(path, encrypted, mode=0o600)
+        stored = path.read_bytes()
+        verified = decrypt_key_content(user_id, stored).encode('utf-8')
+        if not hmac.compare_digest(verified, plaintext):
+            raise ValueError('Legacy key migration verification failed')
+    except Exception:
+        try:
+            _restore_plaintext(path, plaintext)
+        except Exception as rollback_error:
+            raise RuntimeError(
+                'Legacy key migration rollback failed'
+            ) from rollback_error
+        raise
+
+
+@_serialized_key_operation
+def migrate_key_to_encrypted(
+        user_id: str, key_path: str, *,
+        allowed_root: Path = None) -> None:
     """
     Migrate an unencrypted key file to encrypted format.
 
-    Reads the plaintext key, encrypts it, and writes back.
-    Creates a backup with .bak extension first.
+    Reads the plaintext key, encrypts it, atomically writes it, and verifies
+    the stored ciphertext before returning. Any failed migration restores the
+    original plaintext bytes before raising.
 
     Args:
         user_id: User identifier
         key_path: Path to the key file
 
-    Returns:
-        True if migration successful, False otherwise
+    Raises:
+        FileNotFoundError: If the key file does not exist.
+        Exception: If encryption, writing, or verification fails.
     """
-    from pathlib import Path
-    import os
-
-    try:
-        path = Path(key_path)
-        if not path.exists():
-            log_warning(f"Key file not found for migration", path=key_path)
-            return False
-
-        with open(path, 'rb') as f:
-            content = f.read()
-
+    path = Path(key_path)
+    with _key_file_lock(
+            path, allowed_root=allowed_root) as operation_path:
+        content = operation_path.read_bytes()
         if is_encrypted(content):
-            log_info(f"Key already encrypted", path=key_path)
-            return True
+            _decrypt_stored_key(str(user_id), operation_path, content)
+            return
 
-        encrypted = encrypt_key_content(user_id, content.decode('utf-8'))
+        try:
+            _migrate_key_to_encrypted_locked(
+                str(user_id), operation_path, content
+            )
+        except Exception as exc:
+            log_error(
+                "Failed to migrate legacy key",
+                user_id=user_id,
+                error_type=type(exc).__name__,
+            )
+            raise
+        log_info("Legacy key encrypted successfully", user_id=user_id)
 
-        backup_path = str(path) + '.bak'
-        with open(backup_path, 'wb') as f:
-            f.write(content)
-        os.chmod(backup_path, 0o600)
 
-        with open(path, 'wb') as f:
-            f.write(encrypted)
-        os.chmod(path, 0o600)
-
-        Path(backup_path).unlink(missing_ok=True)
-
-        log_info(f"Key encrypted successfully", path=key_path, user_id=user_id)
-        return True
-
-    except Exception as e:
-        log_error(f"Failed to encrypt key", path=key_path, error=str(e))
-        return False
-
-def read_key_content(user_id: str, key_path: str) -> str:
+@_serialized_key_operation
+def read_key_content(
+        user_id: str, key_path: str, migrate_legacy: bool = True, *,
+        allowed_root: Path = None) -> str:
     """
     Read and decrypt SSH key content from file.
 
@@ -182,6 +315,7 @@ def read_key_content(user_id: str, key_path: str) -> str:
     Args:
         user_id: User identifier
         key_path: Path to the key file
+        migrate_legacy: Encrypt a legacy plaintext key before returning it.
 
     Returns:
         Decrypted SSH private key content
@@ -190,26 +324,40 @@ def read_key_content(user_id: str, key_path: str) -> str:
         FileNotFoundError: If key file doesn't exist
         InvalidToken: If decryption fails
     """
-    from pathlib import Path
-
     path = Path(key_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Key file not found: {key_path}")
+    with _key_file_lock(
+            path, allowed_root=allowed_root) as operation_path:
+        content = operation_path.read_bytes()
+        if is_encrypted(content):
+            return _decrypt_stored_key(
+                str(user_id), operation_path, content
+            )
 
-    with open(path, 'rb') as f:
-        content = f.read()
+        plaintext = _decode_validated_legacy_key(content)
+        if not migrate_legacy:
+            return plaintext
 
-    if is_encrypted(content):
-        return decrypt_key_content(user_id, content)
-    else:
-        log_warning(f"Found unencrypted legacy key, migrating", path=key_path)
-        plaintext = content.decode('utf-8')
-
-        migrate_key_to_encrypted(user_id, key_path)
-
+        log_warning(
+            "Found unencrypted legacy key, migrating",
+            user_id=user_id,
+        )
+        try:
+            _migrate_key_to_encrypted_locked(
+                str(user_id), operation_path, content
+            )
+        except Exception as exc:
+            log_error(
+                "Failed to migrate legacy key",
+                user_id=user_id,
+                error_type=type(exc).__name__,
+            )
+            raise
         return plaintext
 
-def write_key_content(user_id: str, key_path: str, key_content: str) -> bool:
+@_serialized_key_operation
+def write_key_content(
+        user_id: str, key_path: str, key_content: str, *,
+        allowed_root: Path = None) -> bool:
     """
     Encrypt and write SSH key content to file.
 
@@ -221,22 +369,22 @@ def write_key_content(user_id: str, key_path: str, key_content: str) -> bool:
     Returns:
         True if successful
     """
-    import os
-    from pathlib import Path
-
     try:
         encrypted = encrypt_key_content(user_id, key_content)
 
         path = Path(key_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(path, 'wb') as f:
-            f.write(encrypted)
-
-        os.chmod(path, 0o600)
+        with _key_file_lock(
+                path, must_exist=False,
+                allowed_root=allowed_root) as operation_path:
+            atomic_write_bytes(operation_path, encrypted, mode=0o600)
 
         return True
 
     except Exception as e:
-        log_error(f"Failed to write encrypted key", path=key_path, error=str(e))
+        log_error(
+            "Failed to write encrypted key",
+            user_id=user_id,
+            error_type=type(e).__name__,
+        )
         return False

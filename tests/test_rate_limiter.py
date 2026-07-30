@@ -154,6 +154,27 @@ def test_invalid_redis_configuration_falls_back_to_memory(monkeypatch):
     assert isinstance(limiter, InMemoryRateLimiter)
 
 
+@pytest.mark.parametrize(
+    ('storage_url', 'connection_class'),
+    [
+        ('redis://localhost:6379/0', 'Connection'),
+        ('rediss://localhost:6380/0', 'SSLConnection'),
+    ],
+)
+def test_redis_url_scheme_preserves_transport_configuration(
+    monkeypatch, storage_url, connection_class
+):
+    """A scheme regression must not silently turn TLS Redis into memory-only."""
+    import redis
+
+    monkeypatch.setattr(redis.Redis, 'ping', lambda _client: True)
+
+    limiter = create_rate_limiter(storage_url)
+
+    assert isinstance(limiter, RedisRateLimiter)
+    assert limiter.redis.connection_pool.connection_class.__name__ == connection_class
+
+
 @pytest.mark.skipif(not os.environ.get('TEST_REDIS_URL'), reason='TEST_REDIS_URL is not configured')
 def test_real_redis_does_not_store_denied_requests():
     import redis

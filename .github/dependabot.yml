@@ -63,6 +63,42 @@ updates:
         update-types:
           - "version-update:semver-major"
 
+  # Production container base image
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:30"
+      timezone: "Europe/Berlin"
+
+    open-pull-requests-limit: 2
+
+    labels:
+      - "dependencies"
+      - "docker"
+
+    commit-message:
+      prefix: "deps(docker)"
+
+  # Disposable OpenSSH integration image
+  - package-ecosystem: "docker"
+    directory: "/tests/integration/paramiko5"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:45"
+      timezone: "Europe/Berlin"
+
+    open-pull-requests-limit: 2
+
+    labels:
+      - "dependencies"
+      - "docker"
+
+    commit-message:
+      prefix: "deps(docker)"
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
