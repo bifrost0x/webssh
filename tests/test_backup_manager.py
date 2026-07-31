@@ -76,6 +76,42 @@ def test_backup_help_does_not_require_oidc_secret(tmp_path):
     assert not data_dir.exists()
 
 
+def test_server_option_value_named_backup_still_initializes_oidc(tmp_path):
+    data_dir = tmp_path / 'server-data'
+    missing_oidc_secret = tmp_path / 'missing-oidc-secret'
+    environment = os.environ.copy()
+    environment.update({
+        'DATA_DIR': str(data_dir),
+        'DEBUG': 'True',
+        'SECRET_KEY': 'server-start-test-secret',
+        'OIDC_ENABLED': 'true',
+        'OIDC_ISSUER': 'https://issuer.example',
+        'OIDC_CLIENT_ID': 'server-client',
+        'OIDC_CLIENT_SECRET_FILE': str(missing_oidc_secret),
+    })
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-c',
+            (
+                "import sys; "
+                "sys.argv = ['gunicorn', '--name', 'backup', 'start:app']; "
+                "import start"
+            ),
+        ],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode != 0
+    assert 'FileNotFoundError' in result.stderr
+
+
 def test_backup_verify_missing_archive_does_not_initialize_storage(tmp_path):
     data_dir = tmp_path / 'unused-data'
     missing_archive = tmp_path / 'missing.zip'
