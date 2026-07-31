@@ -1005,3 +1005,44 @@ def test_remote_zip_command_uses_private_permissions():
     assert commands[0].startswith('umask 077 && ')
     assert 'chmod 600 ' in commands[0]
     assert client.transport.open_timeout == transfer_routes.config.SSH_CONNECT_TIMEOUT
+
+
+def test_remote_zip_prefixes_leading_dash_folder_member():
+    from app import transfer_routes
+
+    commands = []
+
+    class Channel:
+        def settimeout(self, _timeout):
+            pass
+
+        def exec_command(self, command):
+            commands.append(command)
+
+        def recv_exit_status(self):
+            return 0
+
+        def close(self):
+            pass
+
+    class Transport:
+        def open_session(self, timeout=None):
+            return Channel()
+
+    class SSHClient:
+        def get_transport(self):
+            return Transport()
+
+    class SFTP:
+        def stat(self, _path):
+            return SimpleNamespace(st_size=10)
+
+    result = transfer_routes._remote_zip_path(
+        SFTP(),
+        SSHClient(),
+        '/srv/-reports',
+    )
+
+    assert result[1] == 10
+    assert ' ./-reports && ' in commands[0]
+    assert ' -reports && ' not in commands[0]

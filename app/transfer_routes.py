@@ -280,11 +280,12 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
     if ssh_client is None:
         return None
     folder_name = posixpath.basename(remote_path.rstrip('/')) or 'download'
+    zip_member = f'./{folder_name}' if folder_name.startswith('-') else folder_name
     archive_path = f'/tmp/{folder_name}_{secrets.token_hex(8)}.zip'
     parent = posixpath.dirname(remote_path.rstrip('/')) or '/'
     command = (
         f'umask 077 && cd {shlex.quote(parent)} && '
-        f'zip -r -q {shlex.quote(archive_path)} {shlex.quote(folder_name)} && '
+        f'zip -r -q {shlex.quote(archive_path)} {shlex.quote(zip_member)} && '
         f'chmod 600 {shlex.quote(archive_path)}'
     )
     transport = ssh_client.get_transport()
