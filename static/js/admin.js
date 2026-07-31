@@ -145,6 +145,13 @@
         username: null
     };
 
+    function clearSecurityReauthentication() {
+        ['securityActionPassword', 'securityActionConfirmation'].forEach(id => {
+            const field = document.getElementById(id);
+            if (field) { field.value = ''; }
+        });
+    }
+
     function closeSecurityAction() {
         const modal = document.getElementById('securityActionModal');
         modal?.classList.remove('show');
@@ -158,6 +165,38 @@
                 if (field) { field.value = ''; }
             });
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
+        document.getElementById('securityActionOidcListGroup')?.classList.add('hidden');
+        const oidcList = document.getElementById('securityActionOidcList');
+        if (oidcList) { oidcList.textContent = ''; }
+    }
+
+    async function loadOidcIdentities() {
+        if (securityAction.mode !== 'oidc-link' || !securityAction.userId) { return; }
+        const list = document.getElementById('securityActionOidcList');
+        if (!list) { return; }
+        list.textContent = t('admin.loading', 'Loading...');
+        try {
+            const data = await api(`/admin/api/users/${securityAction.userId}/oidc-identities`);
+            const identities = data.identities || [];
+            if (!identities.length) {
+                list.textContent = t('admin.oidcNone', 'No linked OIDC identities');
+                return;
+            }
+            list.innerHTML = identities.map(identity => (
+                `<div class="admin-oidc-identity">` +
+                    `<div class="admin-oidc-identity-details">` +
+                        `<code>${escapeHtml(identity.subject)}</code>` +
+                        `<small>${escapeHtml(identity.issuer)}</small>` +
+                    `</div>` +
+                    `<button type="button" class="btn btn-danger" data-oidc-identity-id="${escapeHtml(identity.id)}">` +
+                        `${escapeHtml(t('admin.oidcUnlink', 'Unlink'))}` +
+                    `</button>` +
+                `</div>`
+            )).join('');
+        } catch (e) {
+            list.textContent = e.message;
+            notify(e.message, 'error');
+        }
     }
 
     function openSecurityAction(mode, userId, username) {
@@ -166,17 +205,42 @@
         securityAction.username = username;
         const isOidc = mode === 'oidc-link';
         document.getElementById('securityActionTitle').textContent = isOidc
-            ? t('admin.oidcLink', 'Link OIDC identity')
+            ? t('admin.oidcManage', 'Manage OIDC identities')
             : t('admin.recovery', 'Generate recovery codes');
         document.getElementById('securityActionHint').textContent = isOidc
-            ? `Link a stable provider subject to ${username}. Email addresses are never used as identity keys.`
+            ? `Manage stable provider subjects for ${username}. Enter your password and the target username before linking or unlinking.`
             : `Generate a new one-time recovery set for ${username}. Existing recovery codes will stop working.`;
         document.getElementById('securityActionSubjectGroup')?.classList.toggle('hidden', !isOidc);
+        document.getElementById('securityActionOidcListGroup')?.classList.toggle('hidden', !isOidc);
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
+        document.getElementById('submitSecurityAction').textContent = isOidc
+            ? t('admin.oidcLink', 'Link OIDC identity')
+            : t('admin.continue', 'Continue');
         const modal = document.getElementById('securityActionModal');
         modal?.classList.add('show');
         modal?.setAttribute('aria-hidden', 'false');
+        if (isOidc) { loadOidcIdentities(); }
         document.getElementById('securityActionPassword')?.focus();
+    }
+
+    async function unlinkOidcIdentity(identityId) {
+        if (securityAction.mode !== 'oidc-link' || !securityAction.userId) { return; }
+        if (!window.confirm(t('admin.oidcUnlinkConfirm', 'Unlink this OIDC identity?'))) { return; }
+        const body = {
+            password: document.getElementById('securityActionPassword').value,
+            confirm_username: document.getElementById('securityActionConfirmation').value.trim()
+        };
+        try {
+            await api(
+                `/admin/api/users/${securityAction.userId}/oidc-identities/${identityId}`,
+                { method: 'DELETE', body }
+            );
+            clearSecurityReauthentication();
+            notify(t('admin.oidcUnlinked', 'OIDC identity unlinked'), 'success');
+            await loadOidcIdentities();
+        } catch (e) {
+            notify(e.message, 'error');
+        }
     }
 
     async function submitSecurityAction() {
@@ -197,8 +261,10 @@
                 document.getElementById('securityActionResultGroup')?.classList.remove('hidden');
                 notify(t('admin.recoveryGenerated', 'Recovery codes generated'), 'success');
             } else {
+                clearSecurityReauthentication();
                 notify(t('admin.oidcLinked', 'OIDC identity linked'), 'success');
-                closeSecurityAction();
+                document.getElementById('securityActionSubject').value = '';
+                await loadOidcIdentities();
             }
         } catch (e) {
             notify(e.message, 'error');
@@ -227,6 +293,10 @@
             if (e.target.id === 'securityActionModal') { closeSecurityAction(); }
         });
         document.getElementById('submitSecurityAction')?.addEventListener('click', submitSecurityAction);
+        document.getElementById('securityActionOidcList')?.addEventListener('click', e => {
+            const button = e.target.closest('button[data-oidc-identity-id]');
+            if (button) { unlinkOidcIdentity(button.dataset.oidcIdentityId); }
+        });
 
         // Add-user modal
         const modal = document.getElementById('addUserModal');

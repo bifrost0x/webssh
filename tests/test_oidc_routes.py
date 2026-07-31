@@ -77,6 +77,185 @@ def test_admin_link_requires_password_confirmation_and_stable_subject(
         assert identity.subject == "stable-subject"
 
 
+def test_admin_can_list_and_unlink_the_exact_oidc_identity(
+    app, client, monkeypatch
+):
+    import config
+    from app.models import OIDCIdentity, db
+
+    _create_user(app, "unlink_oidc_admin", is_admin=True)
+    target_id = _create_user(app, "unlink_oidc_target")
+    other_id = _create_user(app, "unlink_oidc_other")
+    _login(client, "unlink_oidc_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+
+    with app.app_context():
+        target_identity = OIDCIdentity(
+            user_id=target_id,
+            issuer="https://issuer.example",
+            subject="target-subject",
+        )
+        other_identity = OIDCIdentity(
+            user_id=other_id,
+            issuer="https://issuer.example",
+            subject="other-subject",
+        )
+        db.session.add_all([target_identity, other_identity])
+        db.session.commit()
+        target_identity_id = target_identity.id
+        other_identity_id = other_identity.id
+
+    listed = client.get(
+        f"/admin/api/users/{target_id}/oidc-identities"
+    )
+    wrong_target = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/{other_identity_id}",
+        json={
+            "password": "password123",
+            "confirm_username": "unlink_oidc_target",
+        },
+    )
+    removed = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/{target_identity_id}",
+        json={
+            "password": "password123",
+            "confirm_username": "unlink_oidc_target",
+        },
+    )
+
+    assert listed.status_code == 200
+    assert listed.get_json() == {
+        "identities": [{
+            "id": target_identity_id,
+            "issuer": "https://issuer.example",
+            "subject": "target-subject",
+            "created_at": listed.get_json()["identities"][0]["created_at"],
+        }]
+    }
+    assert listed.get_json()["identities"][0]["created_at"]
+    assert wrong_target.status_code == 404
+    assert removed.status_code == 200
+    assert removed.get_json() == {"ok": True}
+    with app.app_context():
+        assert db.session.get(OIDCIdentity, target_identity_id) is None
+        assert db.session.get(OIDCIdentity, other_identity_id) is not None
+
+
+def test_oidc_unlink_requires_admin_reauthentication_and_confirmation(
+    app, client, monkeypatch
+):
+    import config
+    from app.models import OIDCIdentity, db
+
+    _create_user(app, "reauth_oidc_admin", is_admin=True)
+    target_id = _create_user(app, "reauth_oidc_target")
+    _login(client, "reauth_oidc_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    with app.app_context():
+        identity = OIDCIdentity(
+            user_id=target_id,
+            issuer="https://issuer.example",
+            subject="reauth-subject",
+        )
+        db.session.add(identity)
+        db.session.commit()
+        identity_id = identity.id
+
+    wrong_password = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/{identity_id}",
+        json={
+            "password": "wrong",
+            "confirm_username": "reauth_oidc_target",
+        },
+    )
+    wrong_confirmation = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/{identity_id}",
+        json={
+            "password": "password123",
+            "confirm_username": "someone-else",
+        },
+    )
+
+    assert wrong_password.status_code == 403
+    assert wrong_confirmation.status_code == 400
+    with app.app_context():
+        assert db.session.get(OIDCIdentity, identity_id) is not None
+
+
+def test_oidc_unlink_rate_limits_before_bcrypt(app, client, monkeypatch):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import User
+
+    _create_user(app, "limited_unlink_admin", is_admin=True)
+    target_id = _create_user(app, "limited_unlink_target")
+    _login(client, "limited_unlink_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(
+        oidc_routes,
+        "check_reauth_rate_limit",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        User,
+        "check_password",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("bcrypt must not run after reauth throttling")
+        ),
+    )
+
+    response = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/1",
+        json={
+            "password": "password123",
+            "confirm_username": "limited_unlink_target",
+        },
+    )
+
+    assert response.status_code == 429
+
+
+def test_oidc_unlink_commit_failure_preserves_the_mapping(
+    app, client, monkeypatch
+):
+    import config
+    from app.models import OIDCIdentity, db
+
+    _create_user(app, "failing_unlink_admin", is_admin=True)
+    target_id = _create_user(app, "failing_unlink_target")
+    _login(client, "failing_unlink_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    with app.app_context():
+        identity = OIDCIdentity(
+            user_id=target_id,
+            issuer="https://issuer.example",
+            subject="failure-subject",
+        )
+        db.session.add(identity)
+        db.session.commit()
+        identity_id = identity.id
+
+    monkeypatch.setattr(
+        db.session,
+        "commit",
+        lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+    response = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/{identity_id}",
+        json={
+            "password": "password123",
+            "confirm_username": "failing_unlink_target",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "OIDC identity storage is temporarily unavailable"
+    }
+    with app.app_context():
+        assert db.session.get(OIDCIdentity, identity_id) is not None
+
+
 def test_oidc_link_rate_limits_before_bcrypt(app, client, monkeypatch):
     import config
     import app.oidc_routes as oidc_routes

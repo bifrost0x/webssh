@@ -20,6 +20,7 @@ import config
 from .host_key_store import HostKeyStore
 from .network_policy import open_validated_socket, resolve_allowed_target
 from .ssh_key_loader import load_private_key as _load_private_key
+from .paramiko_channels import open_sftp_client
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .quota_manager import (
     QuotaExceeded,
@@ -147,7 +148,11 @@ class TemporaryConnectionPool:
             if transport:
                 transport.set_keepalive(30)
 
-            sftp = client.open_sftp()
+            sftp = open_sftp_client(
+                transport,
+                timeout=config.SSH_CONNECT_TIMEOUT,
+                operation_timeout=config.SFTP_OPERATION_TIMEOUT,
+            )
 
             conn_id = uuid.uuid4().hex
 
@@ -241,7 +246,11 @@ class TemporaryConnectionPool:
             return None, "Connection has been closed"
 
         try:
-            sftp = client.open_sftp()
+            sftp = open_sftp_client(
+                transport,
+                timeout=config.SSH_CONNECT_TIMEOUT,
+                operation_timeout=config.SFTP_OPERATION_TIMEOUT,
+            )
             return sftp, None
         except Exception as e:
             return None, f"Failed to open SFTP channel: {str(e)}"

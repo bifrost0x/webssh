@@ -1723,6 +1723,21 @@ def handle_preview_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
+        try:
+            max_bytes, offset, tail_lines = (
+                sftp_handler.normalize_file_preview_options(
+                    max_bytes=max_bytes,
+                    offset=offset,
+                    tail_lines=tail_lines,
+                )
+            )
+        except ValueError as exc:
+            emit('preview_error', {
+                'error': f'Invalid preview options: {exc}',
+                'path': path,
+            })
+            return
+
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):

@@ -56,6 +56,7 @@ class FakeChannel:
         self.timeout = None
         self.command = None
         self.pty = None
+        self.shell_invoked = False
 
     def settimeout(self, timeout):
         self.timeout = timeout
@@ -69,8 +70,14 @@ class FakeChannel:
     def recv_exit_status(self):
         return 0
 
+    def exit_status_ready(self):
+        return True
+
     def get_pty(self, term, width, height):
         self.pty = (term, width, height)
+
+    def invoke_shell(self):
+        self.shell_invoked = True
 
     def close(self):
         self.closed = True
@@ -236,12 +243,10 @@ def test_direct_password_connect_preserves_connect_contract(monkeypatch):
         'password': 'secret',
     }
     assert clients[0].transport.keepalive == 30
-    assert clients[0].shell_kwargs == {
-        'term': 'xterm-256color',
-        'width': 80,
-        'height': 24,
-    }
-    assert clients[0].channel.timeout == 0.1
+    shell_channel = clients[0].transport.session_channels[0]
+    assert shell_channel.pty == ('xterm-256color', 80, 24)
+    assert shell_channel.shell_invoked is True
+    assert shell_channel.timeout == 0.1
 
 
 def test_direct_connection_pins_real_resolution_through_paramiko(monkeypatch):

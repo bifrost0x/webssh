@@ -474,6 +474,10 @@ docker build -t webssh:local .
 | `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
 | `MAX_TRANSFER_MEMBERS` | No | `10000` | Maximum number of files, directories, and links traversed during one folder transfer |
+| `MAX_PREVIEW_SIZE` | No | `512000` | Maximum bytes loaded into memory for one file preview |
+| `MAX_PREVIEW_TAIL_LINES` | No | `10000` | Maximum requested line count for tail-mode previews |
+| `MAX_SUPPORTED_FILE_SIZE` | No | `1073741824` | Maximum remote file size accepted by the preview service (1 GiB) |
+| `SFTP_OPERATION_TIMEOUT` | No | `30` | Timeout in seconds for individual SFTP channel operations |
 | `TRANSFER_TEMP_DIR` | No | `<DATA_DIR>/tmp` | Private local directory for bounded fallback ZIP creation |
 | `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |
 | `AUDIT_LOG_MAX_BYTES` | No | `10485760` | Maximum size of each structured application or security audit log before rotation (10 MiB) |

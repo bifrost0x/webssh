@@ -20,6 +20,7 @@ from paramiko.sftp import (
 from paramiko.sftp_attr import SFTPAttributes
 import config
 from . import ssh_manager
+from .paramiko_channels import open_sftp_client
 from .audit_logger import log_info, log_warning, log_error, log_debug
 
 _sftp_cache = {}
@@ -66,6 +67,29 @@ def sftp_session(identifier):
 class SFTPOperationError(Exception):
     """Raised when an SFTP operation cannot be performed (no connection, etc.)."""
     pass
+
+
+def normalize_file_preview_options(max_bytes=512000, offset=0, tail_lines=None):
+    """Validate client preview controls and enforce server-side limits."""
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+        raise ValueError('max_bytes must be a positive integer')
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError('offset must be a non-negative integer')
+    if tail_lines is not None and (
+        isinstance(tail_lines, bool)
+        or not isinstance(tail_lines, int)
+        or tail_lines <= 0
+    ):
+        raise ValueError('tail_lines must be a positive integer')
+
+    max_preview_size = config.MAX_PREVIEW_SIZE
+    max_supported_file = config.MAX_SUPPORTED_FILE_SIZE
+    max_tail_lines = config.MAX_PREVIEW_TAIL_LINES
+    if offset > max_supported_file:
+        raise ValueError('offset exceeds the supported file size')
+    if tail_lines is not None and tail_lines > max_tail_lines:
+        raise ValueError('tail_lines exceeds the configured limit')
+    return min(max_bytes, max_preview_size), offset, tail_lines
 
 
 class UploadSizeExceeded(SFTPOperationError):
@@ -372,7 +396,11 @@ def get_sftp_client(session_id):
 
             client = session['client']
 
-        sftp = client.open_sftp()
+        sftp = open_sftp_client(
+            client.get_transport(),
+            timeout=config.SSH_CONNECT_TIMEOUT,
+            operation_timeout=config.SFTP_OPERATION_TIMEOUT,
+        )
 
         with _sftp_cache_lock:
             _sftp_cache[session_id] = sftp
@@ -394,7 +422,11 @@ def get_sftp_client_fresh(session_id):
 
             client = session['client']
 
-        sftp = client.open_sftp()
+        sftp = open_sftp_client(
+            client.get_transport(),
+            timeout=config.SSH_CONNECT_TIMEOUT,
+            operation_timeout=config.SFTP_OPERATION_TIMEOUT,
+        )
 
         return sftp, None
     except Exception as e:
@@ -687,6 +719,11 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
                content_dict contains: content, size, truncated, is_binary
     """
     try:
+        max_bytes, offset, tail_lines = normalize_file_preview_options(
+            max_bytes=max_bytes,
+            offset=offset,
+            tail_lines=tail_lines,
+        )
         safe_path = sanitize_path(path)
         if safe_path is None:
             return None, "Invalid path"
@@ -695,10 +732,7 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
             file_stat = sftp.stat(safe_path)
             file_size = file_stat.st_size
 
-            max_preview_size = getattr(config, 'MAX_PREVIEW_SIZE', 512000)
-            max_bytes = min(max_bytes, max_preview_size)
-
-            max_supported_file = getattr(config, 'MAX_SUPPORTED_FILE_SIZE', 1024 * 1024 * 1024)
+            max_supported_file = config.MAX_SUPPORTED_FILE_SIZE
             if file_size > max_supported_file:
                 return None, f"File too large ({file_size} bytes). Maximum supported size is {max_supported_file} bytes."
 
@@ -980,26 +1014,19 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     total_transferred = 0
     sftp_source = None
     sftp_dest = None
-    source_type = None
-    dest_type = None
     directory_total = None
 
     try:
         sftp_source, error = get_sftp_client_fresh(source_session_id)
-        source_type = 'session' if sftp_source else None
         if error:
             sftp_source, error = get_sftp_client_from_pool(source_session_id)
-            source_type = 'pool' if sftp_source else None
         if error:
             return False, f"Source connection error: {error}"
 
         sftp_dest, error = get_sftp_client_fresh(dest_session_id)
-        dest_type = 'session' if sftp_dest else None
         if error:
             sftp_dest, error = get_sftp_client_from_pool(dest_session_id)
-            dest_type = 'pool' if sftp_dest else None
         if error:
-            sftp_source.close()
             return False, f"Destination connection error: {error}"
 
         def emit_progress(filename, transferred, total, status='transferring'):
@@ -1248,12 +1275,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
         log_error("S2S transfer failed", error=str(e), transfer_id=transfer_id)
         return False, "Transfer failed"
     finally:
-        if source_type == 'session' and sftp_source is not None:
+        if sftp_source is not None:
             try:
                 sftp_source.close()
             except Exception:
                 pass
-        if dest_type == 'session' and sftp_dest is not None:
+        if sftp_dest is not None:
             try:
                 sftp_dest.close()
             except Exception:

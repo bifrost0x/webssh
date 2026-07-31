@@ -259,6 +259,7 @@ if RUNTIME_SHUTDOWN_GRACE_SECONDS > RUNTIME_SHUTDOWN_GRACE_SECONDS_MAX:
 # Backwards-compatible code/config alias for the former global-only limit.
 MAX_SESSIONS = QUOTA_SSH_SESSION_GLOBAL
 SSH_CONNECT_TIMEOUT = 10
+SFTP_OPERATION_TIMEOUT = _positive_int_env('SFTP_OPERATION_TIMEOUT', 30)
 
 CHUNK_SIZE = 65536
 MAX_UPLOAD_SIZE = 1024 * 1024 * 100
@@ -418,6 +419,11 @@ PROXY_JUMP_REMOTE_DNS_ALLOWLIST = tuple(
 MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))
 MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))
 MAX_TRANSFER_MEMBERS = _positive_int_env('MAX_TRANSFER_MEMBERS', 10000)
+MAX_PREVIEW_SIZE = _positive_int_env('MAX_PREVIEW_SIZE', 512000)
+MAX_PREVIEW_TAIL_LINES = _positive_int_env('MAX_PREVIEW_TAIL_LINES', 10000)
+MAX_SUPPORTED_FILE_SIZE = _positive_int_env(
+    'MAX_SUPPORTED_FILE_SIZE', 1024 * 1024 * 1024
+)
 
 # Persistent sessions via tmux on the remote host.
 # When enabled, SSH sessions are wrapped in a tmux session on the remote host.

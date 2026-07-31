@@ -16,6 +16,7 @@ from .network_policy import (
 )
 from .ssh_key_loader import load_private_key as _load_private_key
 from .startup_commands import to_terminal_input
+from . import paramiko_channels
 from .quota_manager import (
     QuotaExceeded,
     QuotaKind,
@@ -273,15 +274,24 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 probe_channel.recv(1)
             except Exception:
                 pass
-            tmux_available = probe_channel.recv_exit_status() == 0
-            probe_channel.close()
+            try:
+                tmux_available = paramiko_channels.wait_for_exit_status(
+                    probe_channel,
+                    timeout=3.0,
+                ) == 0
+            except socket.timeout:
+                tmux_available = False
+            finally:
+                probe_channel.close()
 
             if not tmux_available:
                 log_warning(f"tmux not found on target host, falling back to regular shell",
                            host=f"{host}:{port}")
                 tmux_session_name = None
                 use_tmux = False
-                channel = client.invoke_shell(
+                channel = paramiko_channels.open_shell_channel(
+                    transport,
+                    timeout=config.SSH_CONNECT_TIMEOUT,
                     term='xterm-256color',
                     width=80,
                     height=24
@@ -298,7 +308,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
                 channel.settimeout(0.1)
         else:
-            channel = client.invoke_shell(
+            channel = paramiko_channels.open_shell_channel(
+                transport,
+                timeout=config.SSH_CONNECT_TIMEOUT,
                 term='xterm-256color',
                 width=80,
                 height=24

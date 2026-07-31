@@ -69,6 +69,12 @@ class _StartupCommandChannel:
     def recv_exit_status(self):
         return 0
 
+    def exit_status_ready(self):
+        return True
+
+    def invoke_shell(self):
+        pass
+
     def close(self):
         self.closed = True
         self.close_calls += 1
@@ -101,7 +107,9 @@ class _StartupCommandTransport:
 class _StartupCommandClient:
     def __init__(self, channel, transport=None):
         self.channel = channel
-        self.transport = transport or _StartupCommandTransport()
+        self.transport = transport or _StartupCommandTransport(
+            lambda _index: channel
+        )
         self.host_keys = paramiko.HostKeys()
         self.closed = False
         self.close_calls = 0

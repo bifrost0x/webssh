@@ -251,6 +251,57 @@ def test_webauthn_registration_commit_failure_is_not_a_duplicate(
     }
 
 
+def test_registration_verify_rechecks_passkey_limit_before_storage(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import WebAuthnCredential, db
+
+    user_id = _create_user(app)
+    with app.app_context():
+        db.session.add_all([
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=f"credential-{index}".encode(),
+                public_key=b"public-key",
+                sign_count=0,
+                transports="[]",
+                name=f"Passkey {index}",
+            )
+            for index in range(10)
+        ])
+        db.session.commit()
+    _login(client)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "consume_challenge",
+        lambda **_kwargs: b"challenge",
+    )
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_registration_response",
+        lambda **_kwargs: SimpleNamespace(
+            credential_id=b"eleventh-credential",
+            credential_public_key=b"public-key",
+            sign_count=0,
+        ),
+    )
+
+    response = client.post(
+        "/api/webauthn/register/verify",
+        json={"credential": {"response": {"transports": []}}},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "Passkey limit reached"}
+    with app.app_context():
+        assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 10
+
+
 def test_authentication_resolves_account_from_discoverable_credential(
     app, client, monkeypatch
 ):

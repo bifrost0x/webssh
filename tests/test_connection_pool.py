@@ -11,6 +11,7 @@ from app.quota_manager import QuotaKind, QuotaManager
 class FakeTransport:
     def __init__(self):
         self.keepalive = None
+        self.sftp_open_options = None
 
     def set_keepalive(self, seconds):
         self.keepalive = seconds
@@ -301,6 +302,15 @@ def install_ssh_client(monkeypatch, connect_error=None):
         return result
 
     monkeypatch.setattr(connection_pool, 'open_validated_socket', open_socket)
+
+    def open_sftp(transport, *, timeout, operation_timeout):
+        transport.sftp_open_options = (timeout, operation_timeout)
+        return next(
+            client.sftp for client in clients
+            if client.transport is transport
+        )
+
+    monkeypatch.setattr(connection_pool, 'open_sftp_client', open_sftp)
     clients.append_sockets = opened_sockets
     return clients
 
@@ -339,6 +349,10 @@ def test_pool_password_connection_opens_sftp(monkeypatch):
         'password': 'secret',
     }
     assert clients[0].transport.keepalive == 30
+    assert clients[0].transport.sftp_open_options == (
+        connection_pool.config.SSH_CONNECT_TIMEOUT,
+        connection_pool.config.SFTP_OPERATION_TIMEOUT,
+    )
     record = pool.connections[connection_id]
     assert record['client'] is clients[0]
     assert record['sftp'] is clients[0].sftp

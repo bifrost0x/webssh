@@ -158,6 +158,10 @@
             </div>
             <div class="modal-body">
                 <p id="securityActionHint" class="admin-muted"></p>
+                <div class="form-group hidden" id="securityActionOidcListGroup">
+                    <label>Linked OIDC identities</label>
+                    <div id="securityActionOidcList" class="admin-oidc-list" aria-live="polite"></div>
+                </div>
                 <div class="form-group">
                     <label for="securityActionPassword">Your administrator password</label>
                     <input type="password" id="securityActionPassword" class="form-control" autocomplete="current-password">

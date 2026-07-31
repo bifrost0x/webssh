@@ -15,6 +15,8 @@ class FakeChannel:
         self.command = None
         self.timeout = None
         self.events = []
+        self.pty = None
+        self.shell_invoked = False
 
     def settimeout(self, timeout):
         self.timeout = timeout
@@ -29,14 +31,21 @@ class FakeChannel:
     def recv(self, _size):
         return b''
 
+    def get_pty(self, term, width, height):
+        self.pty = (term, width, height)
+
+    def invoke_shell(self):
+        self.shell_invoked = True
+
     def close(self):
         self.closed = True
 
 
 class FakeTransport:
-    def __init__(self, kill_channel=None):
+    def __init__(self, kill_channel=None, shell_channel=None):
         self.keepalive = None
         self.kill_channel = kill_channel
+        self.shell_channel = shell_channel
         self.open_timeout = None
 
     def set_keepalive(self, seconds):
@@ -47,7 +56,7 @@ class FakeTransport:
 
     def open_session(self, timeout=None):
         self.open_timeout = timeout
-        return self.kill_channel
+        return self.kill_channel or self.shell_channel
 
     def _send_user_message(self, _message):
         pass
@@ -63,8 +72,8 @@ class FakeSSHClient:
         self.connect_release = connect_release
         self.close_started = close_started
         self.close_release = close_release
-        self.transport = transport or FakeTransport()
         self.channel = FakeChannel()
+        self.transport = transport or FakeTransport(shell_channel=self.channel)
         self.host_keys = paramiko.HostKeys()
         self.closed = False
 

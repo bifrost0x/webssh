@@ -43,6 +43,13 @@ def _require_enabled():
         abort(404)
 
 
+def _password_matches(user, password):
+    try:
+        return user.check_password(password)
+    except (TypeError, ValueError):
+        return False
+
+
 def _binding():
     return session.setdefault("oidc_binding", secrets.token_urlsafe(32))
 
@@ -219,11 +226,7 @@ def link_oidc_identity(user_id):
         log_rate_limit_exceeded("oidc_link_reauth", client_ip)
         return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
-    try:
-        password_valid = current_user.check_password(data.get("password", ""))
-    except (TypeError, ValueError):
-        password_valid = False
-    if not password_valid:
+    if not _password_matches(current_user, data.get("password", "")):
         return jsonify({"error": "Administrator password is incorrect"}), 403
     target = db.session.get(User, user_id)
     if target is None:
@@ -263,3 +266,81 @@ def link_oidc_identity(user_id):
         issuer=row.issuer,
     )
     return jsonify({"id": row.id}), 201
+
+
+@oidc_blueprint.get("/admin/api/users/<int:user_id>/oidc-identities")
+@admin_required
+@login_required
+def list_oidc_identities(user_id):
+    _require_enabled()
+    target = db.session.get(User, user_id)
+    if target is None:
+        return jsonify({"error": "User not found"}), 404
+    rows = (
+        OIDCIdentity.query
+        .filter_by(user_id=target.id)
+        .order_by(OIDCIdentity.created_at.asc(), OIDCIdentity.id.asc())
+        .all()
+    )
+    return jsonify({
+        "identities": [{
+            "id": row.id,
+            "issuer": row.issuer,
+            "subject": row.subject,
+            "created_at": row.created_at.isoformat(),
+        } for row in rows]
+    })
+
+
+@oidc_blueprint.delete(
+    "/admin/api/users/<int:user_id>/oidc-identities/<int:identity_id>"
+)
+@admin_required
+@login_required
+def unlink_oidc_identity(user_id, identity_id):
+    _require_enabled()
+    client_ip = request.remote_addr or "unknown"
+    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
+        current_user.id,
+        client_ip,
+        "oidc_unlink_reauth",
+        config.RATELIMIT_REAUTH,
+    ):
+        log_rate_limit_exceeded("oidc_unlink_reauth", client_ip)
+        return jsonify({"error": "Too many password attempts"}), 429
+    data = request.get_json(silent=True) or {}
+    if not _password_matches(current_user, data.get("password", "")):
+        return jsonify({"error": "Administrator password is incorrect"}), 403
+    target = db.session.get(User, user_id)
+    if target is None:
+        return jsonify({"error": "User not found"}), 404
+    if data.get("confirm_username") != target.username:
+        return jsonify({"error": "Target confirmation does not match"}), 400
+    identity = db.session.get(OIDCIdentity, identity_id)
+    if identity is None or identity.user_id != target.id:
+        return jsonify({"error": "OIDC identity not found"}), 404
+    issuer = identity.issuer
+    db.session.delete(identity)
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        log_security_event(
+            "OIDC_IDENTITY_STORAGE_FAILED",
+            level=logging.ERROR,
+            admin=current_user.username,
+            user=target.username,
+            error=type(exc).__name__,
+        )
+        return jsonify({
+            "error": "OIDC identity storage is temporarily unavailable"
+        }), 503
+    log_security_event(
+        "OIDC_IDENTITY_UNLINKED",
+        level=logging.WARNING,
+        admin=current_user.username,
+        user=target.username,
+        issuer=issuer,
+        identity_id=identity_id,
+    )
+    return jsonify({"ok": True})

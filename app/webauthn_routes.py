@@ -37,6 +37,7 @@ from .webauthn_service import ChallengeError, consume_challenge, create_challeng
 
 webauthn_blueprint = Blueprint("webauthn", __name__)
 _authentication_lock = Lock()
+_registration_lock = Lock()
 _AUTHENTICATION_DESCRIPTOR_COUNT = 10
 
 
@@ -172,23 +173,29 @@ def verify_registration():
         transports=json.dumps(transports),
         name=name,
     )
-    db.session.add(row)
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({"error": "Passkey is already registered"}), 409
-    except Exception as exc:
-        db.session.rollback()
-        log_security_event(
-            "WEBAUTHN_CREDENTIAL_STORAGE_FAILED",
-            level=logging.ERROR,
-            user=current_user.username,
-            error=type(exc).__name__,
-        )
-        return jsonify({
-            "error": "Passkey storage is temporarily unavailable"
-        }), 503
+    with _registration_lock:
+        credential_count = WebAuthnCredential.query.filter_by(
+            user_id=current_user.id
+        ).count()
+        if credential_count >= _AUTHENTICATION_DESCRIPTOR_COUNT:
+            return jsonify({"error": "Passkey limit reached"}), 409
+        db.session.add(row)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({"error": "Passkey is already registered"}), 409
+        except Exception as exc:
+            db.session.rollback()
+            log_security_event(
+                "WEBAUTHN_CREDENTIAL_STORAGE_FAILED",
+                level=logging.ERROR,
+                user=current_user.username,
+                error=type(exc).__name__,
+            )
+            return jsonify({
+                "error": "Passkey storage is temporarily unavailable"
+            }), 503
     log_security_event(
         "WEBAUTHN_CREDENTIAL_REGISTERED",
         user=current_user.username,

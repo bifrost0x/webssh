@@ -1,14 +1,9 @@
 """
-Binary File Transfer Module
+Bounded Binary Preview Module
 
-Handles efficient binary file transfers over WebSocket without base64 encoding.
-Provides 33% reduction in transfer size and better performance.
-
-Features:
-- Direct binary streaming to/from SFTP
-- Chunked transfer with progress tracking
-- Pause/resume capability (future enhancement)
-- Memory-efficient streaming
+Reads preview data from SFTP in bounded chunks for the legacy Socket.IO preview
+event. The caller applies the configured editor cap before encoding the result
+for the browser. Full file transfers use the tokenized HTTP transfer routes.
 """
 
 import io
@@ -95,23 +90,3 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
         return None, "Remote file not found"
     except Exception as e:
         return None, str(e)
-
-def validate_binary_data(binary_data, max_size_mb=1024):
-    """
-    Validate binary data before transfer.
-
-    Args:
-        binary_data (bytes): Binary data to validate
-        max_size_mb (int): Maximum allowed size in megabytes
-
-    Returns:
-        tuple: (valid: bool, error: str or None)
-    """
-    if not isinstance(binary_data, (bytes, bytearray)):
-        return False, "Data must be bytes or bytearray"
-
-    max_size_bytes = max_size_mb * 1024 * 1024
-    if len(binary_data) > max_size_bytes:
-        return False, f"File size exceeds maximum allowed size of {max_size_mb}MB"
-
-    return True, None

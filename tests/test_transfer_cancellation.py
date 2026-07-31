@@ -57,6 +57,7 @@ class S2SSFTP:
         self.removed = []
         self.renamed = []
         self.closed = False
+        self.close_calls = 0
 
     def stat(self, path):
         if self.destination:
@@ -138,6 +139,7 @@ class S2SSFTP:
 
     def close(self):
         self.closed = True
+        self.close_calls += 1
 
 
 class FallbackSFTP:
@@ -164,6 +166,65 @@ class FallbackSFTP:
         reader = BoundedReader(self.files[path])
         self.readers.append(reader)
         return reader
+
+
+def test_server_transfer_closes_fresh_pool_channels_on_success(monkeypatch):
+    """Quick-connection SFTP channels are per-operation and must be closed."""
+    import app.sftp_handler as sftp_handler
+
+    source = S2SSFTP(b'payload')
+    destination = S2SSFTP(destination=True)
+    monkeypatch.setattr(
+        sftp_handler,
+        'get_sftp_client_fresh',
+        lambda _identifier: (None, 'not an SSH session'),
+    )
+    monkeypatch.setattr(
+        sftp_handler,
+        'get_sftp_client_from_pool',
+        lambda identifier: (
+            (source, None) if identifier == 'source' else (destination, None)
+        ),
+    )
+
+    success, error = sftp_handler.transfer_server_to_server(
+        'source', '/from.bin', 'destination', '/to.bin', 'pool-success',
+        cancel_event=threading.Event(), max_bytes=100, chunk_size=4,
+    )
+
+    assert success is True
+    assert error is None
+    assert source.close_calls == 1
+    assert destination.close_calls == 1
+
+
+def test_server_transfer_closes_pool_source_once_if_destination_fails(monkeypatch):
+    """Opening the destination must not leak or double-close the pool source."""
+    import app.sftp_handler as sftp_handler
+
+    source = S2SSFTP(b'payload')
+    monkeypatch.setattr(
+        sftp_handler,
+        'get_sftp_client_fresh',
+        lambda _identifier: (None, 'not an SSH session'),
+    )
+    monkeypatch.setattr(
+        sftp_handler,
+        'get_sftp_client_from_pool',
+        lambda identifier: (
+            (source, None)
+            if identifier == 'source'
+            else (None, 'destination unavailable')
+        ),
+    )
+
+    success, error = sftp_handler.transfer_server_to_server(
+        'source', '/from.bin', 'destination', '/to.bin', 'pool-error',
+    )
+
+    assert success is False
+    assert error == 'Destination connection error: destination unavailable'
+    assert source.close_calls == 1
 
 
 class EmptyDirectorySFTP:

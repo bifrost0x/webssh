@@ -198,3 +198,30 @@
     font-size: 13px;
     line-height: 1.5;
 }
+
+.admin-oidc-list {
+    display: grid;
+    gap: 8px;
+}
+
+.admin-oidc-identity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+
+.admin-oidc-identity-details {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.admin-oidc-identity-details small {
+    display: block;
+    color: var(--text-muted);
+    margin-top: 3px;
+}

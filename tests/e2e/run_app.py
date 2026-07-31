@@ -195,6 +195,8 @@ def main():
         prefix='webssh-e2e-',
         ignore_cleanup_errors=True,
     ) as data_dir:
+        oidc_secret = Path(data_dir) / 'oidc-client-secret'
+        oidc_secret.write_text('e2e-only-oidc-secret', encoding='utf-8')
         os.environ.update({
             'DATA_DIR': data_dir,
             'SECRET_KEY': 'e2e-only-secret-key',
@@ -215,6 +217,10 @@ def main():
                 'http://localhost:'
                 + os.environ.get('WEBSSH_E2E_PORT', '4173')
             ),
+            'OIDC_ENABLED': 'true',
+            'OIDC_ISSUER': 'https://issuer.example',
+            'OIDC_CLIENT_ID': 'webssh-e2e',
+            'OIDC_CLIENT_SECRET_FILE': str(oidc_secret),
             'TAILSCALE_SSH_ENABLED': 'true',
             'TAILSCALE_SSH_ALLOWED_TARGETS': 'tail-node',
             'TAILSCALE_SSH_ALLOWED_REMOTE_USERS': 'root',
@@ -225,6 +231,8 @@ def main():
 
         app = create_app()
         with app.app_context():
+            from app.models import OIDCIdentity, db
+
             admin, error = register_user('e2e_admin', 'browser-password')
             if error:
                 raise RuntimeError(error)
@@ -234,6 +242,12 @@ def main():
                 raise RuntimeError(error)
             if not admin.is_admin or user.is_admin:
                 raise RuntimeError('E2E user roles were not seeded deterministically')
+            db.session.add(OIDCIdentity(
+                user_id=user.id,
+                issuer='https://issuer.example',
+                subject='existing-e2e-subject',
+            ))
+            db.session.commit()
             key = _seed_launcher_profiles(admin, user)
             _seed_post_connect_profiles(admin, key)
 
