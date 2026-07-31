@@ -14,6 +14,7 @@ _FLASK_OPTIONS_WITH_VALUES = frozenset({
     '--app',
     '-A',
     '--env-file',
+    '-e',
 })
 
 
