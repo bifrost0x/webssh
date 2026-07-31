@@ -417,6 +417,7 @@ PROXY_JUMP_REMOTE_DNS_ALLOWLIST = tuple(
 
 MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))
 MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))
+MAX_TRANSFER_MEMBERS = _positive_int_env('MAX_TRANSFER_MEMBERS', 10000)
 
 # Persistent sessions via tmux on the remote host.
 # When enabled, SSH sessions are wrapped in a tmux session on the remote host.

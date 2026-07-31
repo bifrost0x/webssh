@@ -287,8 +287,14 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
         f'zip -r -q {shlex.quote(archive_path)} {shlex.quote(folder_name)} && '
         f'chmod 600 {shlex.quote(archive_path)}'
     )
-    _stdin, stdout, _stderr = ssh_client.exec_command(command)
-    channel = stdout.channel
+    transport = ssh_client.get_transport()
+    if transport is None:
+        return None
+    channel = ssh_manager._open_exec_channel(
+        transport,
+        command,
+        timeout=config.SSH_CONNECT_TIMEOUT,
+    )
     channel.settimeout(300)
     if hasattr(channel, 'exit_status_ready'):
         deadline = time.monotonic() + 300
@@ -393,6 +399,7 @@ def download_folder_transfer(token):
                     )
                 except (
                     sftp_handler.TransferSizeExceeded,
+                    sftp_handler.TransferMemberLimitExceeded,
                     sftp_handler.TransferCancelled,
                 ):
                     raise
@@ -428,7 +435,10 @@ def download_folder_transfer(token):
     except FolderUnavailable:
         finish('failed')
         abort(404)
-    except sftp_handler.TransferSizeExceeded:
+    except (
+        sftp_handler.TransferSizeExceeded,
+        sftp_handler.TransferMemberLimitExceeded,
+    ):
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 413
     except sftp_handler.TransferCancelled:

@@ -7,7 +7,10 @@
     const OIDC_ENABLED = document.querySelector('meta[name="oidc-enabled"]')?.content === 'true';
     const RECOVERY_ENABLED = document.querySelector('meta[name="recovery-enabled"]')?.content === 'true';
 
-    const t = (key, fallback) => (window.i18n && i18n.t ? i18n.t(key) : null) || fallback || key;
+    const t = (key, fallback) => {
+        const translated = window.i18n && i18n.t ? i18n.t(key) : null;
+        return translated && translated !== key ? translated : (fallback || key);
+    };
 
     function escapeHtml(s) {
         return String(s == null ? '' : s)
@@ -393,7 +396,16 @@
         try {
             const data = await api('/admin/api/host-keys');
             body.innerHTML = '';
-            (data.entries || []).forEach(entry => {
+            const entries = data.entries || [];
+            if (entries.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="5" class="admin-muted">${escapeHtml(
+                    t('admin.noHostKeys', 'No global host keys stored.')
+                )}</td>`;
+                body.appendChild(row);
+                return;
+            }
+            entries.forEach(entry => {
                 const row = document.createElement('tr');
                 const hostLabel = (entry.hosts || [{ host: entry.host, port: entry.port }])
                     .map(item => `${item.host}:${item.port || ''}`).join(', ');

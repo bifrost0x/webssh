@@ -32,6 +32,14 @@ def test_container_ci_run_is_labeled_with_the_workflow_attempt_identity():
     assert '--label "$ownership_label"' in workflow
 
 
+def test_container_ci_image_is_bound_to_the_tested_revision():
+    workflow = container_smoke_workflow()
+
+    assert 'docker build --build-arg VCS_REF="${GITHUB_SHA}"' in workflow
+    assert 'org.opencontainers.image.revision' in workflow
+    assert 'if [ "$image_revision" != "$GITHUB_SHA" ]; then' in workflow
+
+
 def test_container_ci_start_failure_trap_removes_only_its_labeled_container():
     workflow = container_smoke_workflow()
     start_step = workflow.split("      - name: Verify gthread worker and readiness", 1)[0]

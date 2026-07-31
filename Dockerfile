@@ -1,8 +1,11 @@
 FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
+ARG VCS_REF=unknown
+
 LABEL org.opencontainers.image.source=https://github.com/bifrost0x/webssh
 LABEL org.opencontainers.image.description="Web SSH Terminal - A modern web-based SSH client with SFTP file manager"
 LABEL org.opencontainers.image.licenses=MIT
+LABEL org.opencontainers.image.revision=$VCS_REF
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

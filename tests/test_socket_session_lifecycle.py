@@ -121,6 +121,38 @@ def test_socket_capacity_preserves_per_user_and_global_reserve(app, monkeypatch)
                 client.disconnect()
 
 
+def test_socket_connect_is_rejected_while_runtime_is_shutting_down(
+        app, monkeypatch):
+    from app.models import SocketSession
+    from app.socket_capacity import socket_capacity
+
+    username = 'shutdown_connect_user'
+    with app.app_context():
+        user, error = register_user(username, 'socket-password-123')
+        assert error is None
+        user_id = user.id
+
+    http_client = _logged_in_http_client(app, username)
+    lifecycle = app.extensions['runtime_lifecycle']
+    monkeypatch.setattr(lifecycle, 'accepting_work', lambda: False)
+    monkeypatch.setattr(
+        socket_capacity,
+        'reserve',
+        lambda *_args, **_kwargs: pytest.fail(
+            'shutdown socket reached capacity reservation'
+        ),
+    )
+
+    socket_client = socketio.test_client(
+        app,
+        flask_test_client=http_client,
+    )
+
+    assert not socket_client.is_connected()
+    with app.app_context():
+        assert SocketSession.query.filter_by(user_id=user_id).count() == 0
+
+
 def test_locked_user_disconnect_still_cancels_owned_transfers(app, monkeypatch):
     from app import socket_events
     from app.models import User, db

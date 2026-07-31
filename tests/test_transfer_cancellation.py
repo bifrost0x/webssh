@@ -182,6 +182,29 @@ class EmptyDirectorySFTP:
         return SimpleNamespace(st_mode=stat.S_IFDIR, st_size=0)
 
 
+class ManyZeroFilesSFTP:
+    def __init__(self, count):
+        self.count = count
+
+    def listdir_attr(self, path):
+        if path != '/reports':
+            return []
+        return [
+            SimpleNamespace(
+                filename=f'empty-{index}.txt',
+                st_mode=stat.S_IFREG,
+                st_size=0,
+            )
+            for index in range(self.count)
+        ]
+
+    def lstat(self, _path):
+        return SimpleNamespace(st_mode=stat.S_IFREG, st_size=0)
+
+    def file(self, _path, _mode):
+        return BoundedReader(b'')
+
+
 def test_copy_sftp_stream_uses_bounded_reads_and_checks_cancellation():
     from app.sftp_handler import TransferCancelled, copy_sftp_stream
 
@@ -289,6 +312,131 @@ def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(tmp_path):
         )
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_remote_tree_counts_zero_byte_members():
+    from app.sftp_handler import (
+        TransferMemberLimitExceeded,
+        inspect_remote_tree,
+    )
+
+    with pytest.raises(TransferMemberLimitExceeded):
+        inspect_remote_tree(
+            ManyZeroFilesSFTP(4),
+            '/reports',
+            cancel_event=threading.Event(),
+            max_bytes=1,
+            max_members=3,
+        )
+
+
+def test_remote_tree_closes_paramiko_directory_handle_on_member_rejection():
+    import paramiko
+    from paramiko.message import Message
+    from paramiko.sftp import CMD_CLOSE, CMD_HANDLE, CMD_NAME, CMD_OPENDIR, CMD_READDIR
+    from paramiko.sftp_attr import SFTPAttributes
+    from app.sftp_handler import (
+        TransferMemberLimitExceeded,
+        inspect_remote_tree,
+    )
+
+    class ProtocolSFTP(paramiko.SFTPClient):
+        def __init__(self):
+            self.requests = []
+
+        def _adjust_cwd(self, path):
+            return path
+
+        def _log(self, *_args):
+            pass
+
+        def _request(self, command, *args):
+            self.requests.append((command, args))
+            message = Message()
+            if command == CMD_OPENDIR:
+                message.add_string(b'directory-handle')
+                message.rewind()
+                return CMD_HANDLE, message
+            if command == CMD_READDIR:
+                message.add_int(2)
+                for filename in ('first.txt', 'second.txt'):
+                    message.add_string(filename)
+                    message.add_string(filename)
+                    attributes = SFTPAttributes()
+                    attributes.st_mode = stat.S_IFREG
+                    attributes.st_size = 0
+                    attributes._pack(message)
+                message.rewind()
+                return CMD_NAME, message
+            if command == CMD_CLOSE:
+                return 0, message
+            raise AssertionError(f'unexpected SFTP command {command}')
+
+        def lstat(self, _path):
+            return SimpleNamespace(st_mode=stat.S_IFREG, st_size=0)
+
+    sftp = ProtocolSFTP()
+
+    with pytest.raises(TransferMemberLimitExceeded):
+        inspect_remote_tree(
+            sftp,
+            '/reports',
+            cancel_event=threading.Event(),
+            max_bytes=1,
+            max_members=1,
+        )
+
+    assert [command for command, _args in sftp.requests].count(CMD_CLOSE) == 1
+
+
+def test_fallback_zip_counts_zero_byte_members(tmp_path):
+    from app.sftp_handler import (
+        TransferMemberLimitExceeded,
+        build_fallback_zip_to_disk,
+    )
+
+    with pytest.raises(TransferMemberLimitExceeded):
+        build_fallback_zip_to_disk(
+            ManyZeroFilesSFTP(4),
+            '/reports',
+            'reports',
+            cancel_event=threading.Event(),
+            max_bytes=1024,
+            max_members=3,
+            chunk_size=4,
+            temp_dir=tmp_path,
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_server_directory_copy_rejects_excess_members(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    source = ManyZeroFilesSFTP(4)
+    source.close = lambda: None
+    destination = S2SSFTP(destination=True)
+    monkeypatch.setattr(
+        sftp_handler,
+        'get_sftp_client_fresh',
+        lambda session_id: (
+            (source, None) if session_id == 'source' else (destination, None)
+        ),
+    )
+
+    success, error = sftp_handler.transfer_server_to_server(
+        'source', '/reports', 'destination', '/copy', 'transfer-members',
+        is_dir=True,
+        cancel_event=threading.Event(),
+        max_bytes=1,
+        max_members=3,
+        chunk_size=4,
+    )
+
+    assert success is False
+    assert error == 'Transfer exceeds configured member limit'
+    assert destination.files == {}
+    assert destination.dirs == set()
 
 
 def test_server_copy_cancellation_removes_partial_destination(monkeypatch):
@@ -700,14 +848,19 @@ def test_remote_zip_command_can_be_cancelled_before_exit():
 
     class Channel:
         def settimeout(self, _timeout): pass
+        def exec_command(self, _command): pass
         def exit_status_ready(self): return False
         def close(self): pass
 
+    class Transport:
+        def open_session(self, timeout=None):
+            return Channel()
+
     class SFTP:
         def __init__(self):
-            self._client = SimpleNamespace(exec_command=lambda _command: (
-                None, SimpleNamespace(channel=Channel()), None,
-            ))
+            self._client = SimpleNamespace(
+                get_transport=lambda: Transport(),
+            )
             self.removed = []
 
         def remove(self, path):

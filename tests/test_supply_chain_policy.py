@@ -172,6 +172,27 @@ def test_security_workflow_gates_publish_and_preserves_scan_evidence():
     assert re.search(r'\n\s+provenance:\s+mode=max\b', publish)
 
 
+def test_publish_records_and_verifies_the_immutable_image_identity():
+    publish = (WORKFLOWS / 'docker-publish.yml').read_text(encoding='utf-8')
+
+    assert re.search(
+        r'- name: Build and push Docker image\s+id:\s+build\b',
+        publish,
+    )
+    assert 'VCS_REF=${{ github.sha }}' in publish
+    assert 'IMAGE_DIGEST: ${{ steps.build.outputs.digest }}' in publish
+    assert 'docker buildx imagetools inspect "$immutable_ref"' in publish
+    assert 'name: image-release-${{ github.sha }}' in publish
+    assert 'path: image-release.json' in publish
+
+
+def test_docker_image_declares_the_source_revision_label():
+    dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
+
+    assert 'ARG VCS_REF=unknown' in dockerfile
+    assert 'LABEL org.opencontainers.image.revision=$VCS_REF' in dockerfile
+
+
 def test_trivy_suppressions_are_justified_and_expire():
     policy = json.loads(
         (ROOT / '.trivyignore.yaml').read_text(encoding='utf-8')

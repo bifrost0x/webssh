@@ -56,6 +56,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
@@ -63,7 +64,35 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
           sbom: true
           provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify published image and record immutable identity
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Build did not return a valid image digest" >&2
+            exit 1
+          fi
+
+          immutable_ref="${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+          docker buildx imagetools inspect "$immutable_ref" >/dev/null
+          printf '{\n  "repository": "%s",\n  "revision": "%s",\n  "digest": "%s",\n  "immutable_ref": "%s"\n}\n' \
+            "${REGISTRY}/${IMAGE_NAME}" "$GITHUB_SHA" "$IMAGE_DIGEST" "$immutable_ref" \
+            > image-release.json
+
+      - name: Upload immutable image identity
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-release-${{ github.sha }}
+          path: image-release.json
+          if-no-files-found: error
+          retention-days: 90

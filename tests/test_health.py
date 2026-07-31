@@ -12,6 +12,20 @@ def test_ready_reports_success_when_dependencies_are_available(client):
     assert response.get_json() == {'status': 'ready'}
 
 
+def test_ready_reports_runtime_shutdown(app, client, monkeypatch):
+    lifecycle = app.extensions['runtime_lifecycle']
+    monkeypatch.setattr(lifecycle, 'accepting_work', lambda: False)
+
+    response = client.get('/ready')
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        'status': 'not_ready',
+        'failed': ['runtime'],
+    }
+    assert client.get('/health').get_json() == {'status': 'ok'}
+
+
 def test_ready_reports_only_database_category_when_database_probe_fails(
     client,
     monkeypatch,

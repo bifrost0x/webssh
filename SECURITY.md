@@ -166,7 +166,7 @@ The Docker image runs as non-root user (`appuser`) with:
 - No unnecessary capabilities
 - Health check enabled
 - Gunicorn 26 `gthread` runtime with exactly one worker and a bounded,
-  configurable `GUNICORN_THREADS` value (default: 3)
+  configurable `GUNICORN_THREADS` value (default: 64)
 - Native Socket.IO threading only; no Eventlet worker or monkey patching path
 
 `greenlet` can appear in the universal lock only because SQLAlchemy declares it
@@ -177,7 +177,10 @@ requires its own reviewed SQLAlchemy upgrade.
 Keep the previously deployed immutable image by its recorded registry digest
 as the image-only rollback artifact for the Gunicorn-26 runtime. Redeploy it
 with the existing `/app/data` volume and verify readiness, login, stored keys,
-terminal, and SFTP. No persistent-data rollback or format rewrite is required.
+terminal, and SFTP. Successful publishes retain a verified
+`image-release-<commit-sha>` Actions artifact containing the immutable registry
+reference for 90 days. Preserve the deployed revision's artifact before an
+upgrade. No persistent-data rollback or format rewrite is required.
 
 ## Known Limitations
 

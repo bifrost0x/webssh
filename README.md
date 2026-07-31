@@ -193,8 +193,11 @@ registry digest, available as a rollback artifact. To return from the
 Gunicorn-26 image, stop the candidate and start that immutable image against
 the same `/app/data` volume; do not restore, rewrite, or roll back the data
 volume. Verify `/ready`, login, stored-key listing, a direct terminal, and SFTP
-before returning service to users. The runtime migration changes no persistent
-format.
+before returning service to users. Each successful publish stores the verified
+repository, source revision, digest, and immutable reference in the GitHub
+Actions artifact `image-release-<commit-sha>` for 90 days. Preserve the
+currently deployed artifact before upgrading. The runtime migration changes no
+persistent format.
 
 ## Quick Start
 
@@ -470,6 +473,7 @@ docker build -t webssh:local .
 | `TAILSCALE_SSH_ALLOWED_REMOTE_USERS` | No | - | Optional comma-separated exact remote OS username allowlist for Tailscale SSH |
 | `MAX_DOWNLOAD_SIZE` | No | `104857600` | Maximum file download size in bytes (100 MB) |
 | `MAX_ZIP_DOWNLOAD_SIZE` | No | `524288000` | Maximum ZIP download size in bytes (500 MB) |
+| `MAX_TRANSFER_MEMBERS` | No | `10000` | Maximum number of files, directories, and links traversed during one folder transfer |
 | `TRANSFER_TEMP_DIR` | No | `<DATA_DIR>/tmp` | Private local directory for bounded fallback ZIP creation |
 | `MAX_EDITOR_FILE_SIZE` | No | `5242880` | Maximum file size editable in the inline editor in bytes (5 MB) |
 | `AUDIT_LOG_MAX_BYTES` | No | `10485760` | Maximum size of each structured application or security audit log before rotation (10 MiB) |
@@ -735,7 +739,7 @@ Web SSH Terminal includes 10 themes:
 - **Security Headers**: HSTS, CSP, X-Content-Type-Options, X-Frame-Options
 - **SSRF Protection**: with `BLOCK_INTERNAL_SSH=true`, hostnames are resolved and connections to loopback, link-local (incl. cloud-metadata `169.254.169.254`), private, and reserved addresses are blocked — a hostname that resolves to an internal address cannot bypass the guard
 - **Upload Limits**: bounded sizes for file uploads, editor saves, notepad, and SSH key uploads to prevent resource exhaustion
-- **Folder Download Limits**: `MAX_ZIP_DOWNLOAD_SIZE` is enforced for declared input and streamed ZIP bytes; remote ZIPs stream directly over bounded HTTP, while the SFTP fallback uses a private, quota-reserved temporary file under `TRANSFER_TEMP_DIR`
+- **Folder Download Limits**: `MAX_ZIP_DOWNLOAD_SIZE` bounds declared input and streamed ZIP bytes, while `MAX_TRANSFER_MEMBERS` bounds recursive entry counts, including zero-byte files; remote ZIPs stream directly over bounded HTTP, while the SFTP fallback uses a private, quota-reserved temporary file under `TRANSFER_TEMP_DIR`
 
 ### Paramiko 5 SSH Compatibility
 

@@ -43,6 +43,25 @@ def _configure_host_key_trust(client, store):
     store.load_into(client)
     client.set_missing_host_key_policy(store.missing_key_policy())
 
+
+def _open_exec_channel(transport, command, *, timeout, pty=None):
+    """Open an exec channel and bound every Paramiko request handshake."""
+    channel = transport.open_session(timeout=timeout)
+    channel.settimeout(timeout)
+    timeout_guard = Timer(timeout, channel.close)
+    timeout_guard.daemon = True
+    timeout_guard.start()
+    try:
+        if pty is not None:
+            channel.get_pty(*pty)
+        channel.exec_command(command)
+    except Exception:
+        channel.close()
+        raise
+    finally:
+        timeout_guard.cancel()
+    return channel
+
 def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
                           socketio_instance=None, app=None, user_id=None,
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
@@ -153,6 +172,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     'direct-tcpip',
                     channel_destination,
                     ('127.0.0.1', 0),
+                    timeout=config.SSH_CONNECT_TIMEOUT,
                 )
                 log_info("Jump host connection established", bastion=proxy_jump_host)
             except paramiko.AuthenticationException:
@@ -244,9 +264,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             # Probe for tmux on a separate exec channel before opening the
             # real session. This avoids locale-dependent error string matching
             # and avoids swallowing tmux's initial screen draw.
-            probe_channel = transport.open_session()
-            probe_channel.exec_command('command -v tmux')
-            probe_channel.settimeout(3.0)
+            probe_channel = _open_exec_channel(
+                transport,
+                'command -v tmux',
+                timeout=3.0,
+            )
             try:
                 probe_channel.recv(1)
             except Exception:
@@ -268,9 +290,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             else:
                 # Use exec_command with PTY to run tmux directly.
                 # This replaces the shell with tmux, attaching to existing or creating new.
-                channel = transport.open_session()
-                channel.get_pty('xterm-256color', 80, 24)
-                channel.exec_command(tmux_cmd)
+                channel = _open_exec_channel(
+                    transport,
+                    tmux_cmd,
+                    timeout=config.SSH_CONNECT_TIMEOUT,
+                    pty=('xterm-256color', 80, 24),
+                )
                 channel.settimeout(0.1)
         else:
             channel = client.invoke_shell(
@@ -589,20 +614,16 @@ def close_session(session_id, kill_tmux=False):
             try:
                 transport = session['client'].get_transport()
                 if transport and transport.is_active():
-                    kill_channel = transport.open_session(timeout=TMUX_KILL_TIMEOUT)
-                    kill_channel.settimeout(TMUX_KILL_TIMEOUT)
                     command = 'tmux kill-session -t ' + shlex.quote(session['tmux_session_name'])
-                    timeout_guard = Timer(TMUX_KILL_TIMEOUT, kill_channel.close)
-                    timeout_guard.daemon = True
-                    timeout_guard.start()
+                    kill_channel = _open_exec_channel(
+                        transport,
+                        command,
+                        timeout=TMUX_KILL_TIMEOUT,
+                    )
                     try:
-                        kill_channel.exec_command(command)
-                        try:
-                            kill_channel.recv(1)
-                        except Exception:
-                            pass
-                    finally:
-                        timeout_guard.cancel()
+                        kill_channel.recv(1)
+                    except Exception:
+                        pass
             except Exception as e:
                 log_debug(f"Error killing tmux session", session_id=session_id, error=str(e))
             finally:

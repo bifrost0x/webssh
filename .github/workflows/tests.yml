@@ -232,7 +232,12 @@ jobs:
             exit 1
           fi
 
-          docker build --tag "$image_tag" .
+          docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag "$image_tag" .
+          image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_tag")"
+          if [ "$image_revision" != "$GITHUB_SHA" ]; then
+            echo "Built image revision does not match the checkout" >&2
+            exit 1
+          fi
           docker run --detach --name "$container_name" \
             --label "$ownership_label" \
             --env SECRET_KEY="container-smoke-test-secret" \

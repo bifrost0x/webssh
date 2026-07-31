@@ -66,6 +66,7 @@ class ConsoleFormatter(logging.Formatter):
 def _prune_excess_backups(log_file, backup_count):
     log_path = Path(log_file)
     prefix = f'{log_path.name}.'
+    failures = []
     for candidate in log_path.parent.glob(f'{log_path.name}.*'):
         suffix = candidate.name[len(prefix):]
         if not suffix.isdigit():
@@ -76,6 +77,9 @@ def _prune_excess_backups(log_file, backup_count):
             candidate.unlink()
         except FileNotFoundError:
             continue
+        except OSError as error:
+            failures.append((candidate, type(error).__name__))
+    return failures
 
 
 def setup_logger(name, log_file=None, level=logging.INFO):
@@ -168,10 +172,25 @@ def apply_audit_backup_count(value=None):
         value = get_audit_backup_count()
     if type(value) is not int or not 1 <= value <= 90:
         raise ValueError('Audit backup count must be between 1 and 90')
-    for logger in (app_logger, audit_logger):
-        for handler in logger.handlers:
-            if isinstance(handler, RotatingFileHandler):
-                handler.backupCount = value
+    deferred_prunes = 0
+    with _file_logging_lock:
+        for logger in (app_logger, audit_logger):
+            for handler in logger.handlers:
+                if isinstance(handler, RotatingFileHandler):
+                    handler.acquire()
+                    try:
+                        handler.backupCount = value
+                        failures = _prune_excess_backups(
+                            handler.baseFilename, value
+                        )
+                        deferred_prunes += len(failures)
+                    finally:
+                        handler.release()
+    if deferred_prunes:
+        log_warning(
+            'Audit log archive pruning deferred',
+            count=deferred_prunes,
+        )
     return value
 
 def log_info(message, **kwargs):

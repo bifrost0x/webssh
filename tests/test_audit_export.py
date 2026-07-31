@@ -205,16 +205,13 @@ def test_retention_rejects_out_of_range_without_changing_handlers(
     assert calls == []
 
 
-def test_retention_updates_future_rotation_without_deleting_archives(
-    app, client, tmp_path, monkeypatch
+def test_retention_endpoint_applies_selected_backup_count(
+    app, client, monkeypatch
 ):
     from app import audit_export
 
     _create_user(app, "admin", is_admin=True)
     _login(client, "admin")
-    archive = tmp_path / "security_audit.log.9"
-    archive.write_text("keep", encoding="utf-8")
-    monkeypatch.setattr(audit_export, "AUDIT_LOG_FILE", tmp_path / "security_audit.log")
     calls = []
     monkeypatch.setattr(
         audit_export,
@@ -230,7 +227,90 @@ def test_retention_updates_future_rotation_without_deleting_archives(
     assert response.status_code == 200
     assert response.get_json() == {"backup_count": 14}
     assert calls == [14]
-    assert archive.read_text(encoding="utf-8") == "keep"
+
+
+def test_reducing_retention_prunes_archives_beyond_new_limit(
+    tmp_path, monkeypatch
+):
+    import logging
+    from app import audit_logger
+
+    log_path = tmp_path / 'security_audit.log'
+    log_path.write_text('current', encoding='utf-8')
+    for index in range(1, 5):
+        (tmp_path / f'security_audit.log.{index}').write_text(
+            str(index), encoding='utf-8'
+        )
+
+    logger = logging.getLogger(f'audit-retention-{id(tmp_path)}')
+    logger.handlers.clear()
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=1024,
+        backupCount=5,
+        encoding='utf-8',
+    )
+    logger.addHandler(handler)
+    monkeypatch.setattr(audit_logger, 'app_logger', logger)
+    monkeypatch.setattr(audit_logger, 'audit_logger', logging.getLogger(
+        f'audit-retention-empty-{id(tmp_path)}'
+    ))
+
+    try:
+        assert audit_logger.apply_audit_backup_count(1) == 1
+        assert handler.backupCount == 1
+        assert (tmp_path / 'security_audit.log.1').exists()
+        assert not (tmp_path / 'security_audit.log.2').exists()
+        assert not (tmp_path / 'security_audit.log.3').exists()
+        assert not (tmp_path / 'security_audit.log.4').exists()
+    finally:
+        handler.close()
+        logger.handlers.clear()
+
+
+def test_retention_prune_failure_does_not_block_runtime_configuration(
+    tmp_path, monkeypatch, caplog
+):
+    import logging
+    from pathlib import Path
+    from app import audit_logger
+
+    log_path = tmp_path / 'security_audit.log'
+    log_path.write_text('current', encoding='utf-8')
+    locked_archive = tmp_path / 'security_audit.log.2'
+    locked_archive.write_text('locked', encoding='utf-8')
+
+    logger = logging.getLogger(f'audit-retention-locked-{id(tmp_path)}')
+    logger.handlers.clear()
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=1024,
+        backupCount=5,
+        encoding='utf-8',
+    )
+    logger.addHandler(handler)
+    monkeypatch.setattr(audit_logger, 'app_logger', logger)
+    monkeypatch.setattr(audit_logger, 'audit_logger', logging.getLogger(
+        f'audit-retention-locked-empty-{id(tmp_path)}'
+    ))
+    original_unlink = Path.unlink
+
+    def reject_locked_archive(path, *args, **kwargs):
+        if path == locked_archive:
+            raise PermissionError('archive is locked')
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'unlink', reject_locked_archive)
+
+    try:
+        with caplog.at_level(logging.WARNING):
+            assert audit_logger.apply_audit_backup_count(1) == 1
+        assert handler.backupCount == 1
+        assert locked_archive.exists()
+        assert 'Audit log archive pruning deferred' in caplog.text
+    finally:
+        handler.close()
+        logger.handlers.clear()
 
 
 def test_persisted_retention_is_applied_to_active_handlers(

@@ -139,6 +139,12 @@ def handle_connect():
         disconnect()
         return False
 
+    lifecycle = current_app.extensions.get('runtime_lifecycle')
+    if lifecycle is None or not lifecycle.accepting_work():
+        log_warning('Socket connection rejected during shutdown', sid=request.sid)
+        emit('connected', {'status': 'unavailable'})
+        return False
+
     from .models import User
     user = db.session.get(User, int(user_id))
     if not user or user.is_locked:

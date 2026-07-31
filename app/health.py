@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from sqlalchemy import text
 
 import config
@@ -46,6 +46,9 @@ def health():
 @health_blueprint.get('/ready')
 def ready():
     failed = []
+    lifecycle = current_app.extensions.get('runtime_lifecycle')
+    if lifecycle is None or not lifecycle.accepting_work():
+        failed.append('runtime')
     for category, probe in (
         ('database', _probe_database),
         ('data_directory', _probe_data_directory),

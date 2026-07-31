@@ -690,13 +690,19 @@ def test_folder_download_streams_remote_zip_and_cleans_it(
     transfer_routes, manager = transfer_components
     payload = b'zip-data-' * (app.config['CHUNK_SIZE'] + 1)
 
+    class Channel:
+        def settimeout(self, _timeout): pass
+        def exec_command(self, _command): pass
+        def recv_exit_status(self): return 0
+        def close(self): pass
+
+    class Transport:
+        def open_session(self, timeout=None):
+            return Channel()
+
     class SSHClient:
-        def exec_command(self, _command):
-            channel = SimpleNamespace(
-                settimeout=lambda _timeout: None,
-                recv_exit_status=lambda: 0,
-            )
-            return None, SimpleNamespace(channel=channel), None
+        def get_transport(self):
+            return Transport()
 
     class FolderSFTP:
         def __init__(self):
@@ -832,25 +838,48 @@ def test_folder_preflight_failure_marks_request_done(
 
 
 def test_remote_zip_command_uses_private_permissions():
-    from app.transfer_routes import _remote_zip_path
+    from app import transfer_routes
+
+    _remote_zip_path = transfer_routes._remote_zip_path
 
     commands = []
 
-    class SSHClient:
+    class Channel:
+        def settimeout(self, _timeout):
+            pass
+
         def exec_command(self, command):
             commands.append(command)
-            channel = SimpleNamespace(
-                settimeout=lambda _timeout: None,
-                recv_exit_status=lambda: 0,
-            )
-            return None, SimpleNamespace(channel=channel), None
+
+        def recv_exit_status(self):
+            return 0
+
+        def close(self):
+            pass
+
+    class Transport:
+        def __init__(self):
+            self.open_timeout = None
+
+        def open_session(self, timeout=None):
+            self.open_timeout = timeout
+            return Channel()
+
+    class SSHClient:
+        def __init__(self):
+            self.transport = Transport()
+
+        def get_transport(self):
+            return self.transport
 
     class SFTP:
         def stat(self, _path):
             return SimpleNamespace(st_size=10)
 
-    result = _remote_zip_path(SFTP(), SSHClient(), '/reports')
+    client = SSHClient()
+    result = _remote_zip_path(SFTP(), client, '/reports')
 
     assert result[1] == 10
     assert commands[0].startswith('umask 077 && ')
     assert 'chmod 600 ' in commands[0]
+    assert client.transport.open_timeout == transfer_routes.config.SSH_CONNECT_TIMEOUT

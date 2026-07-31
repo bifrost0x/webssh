@@ -7,6 +7,17 @@ import zipfile
 from pathlib import Path
 from threading import Lock
 from contextlib import contextmanager
+from paramiko import SFTPClient
+from paramiko.message import Message
+from paramiko.sftp import (
+    CMD_CLOSE,
+    CMD_HANDLE,
+    CMD_NAME,
+    CMD_OPENDIR,
+    CMD_READDIR,
+    SFTPError,
+)
+from paramiko.sftp_attr import SFTPAttributes
 import config
 from . import ssh_manager
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -69,6 +80,80 @@ class TransferSizeExceeded(SFTPOperationError):
     """A streamed SFTP operation exceeded its configured byte limit."""
 
 
+class TransferMemberLimitExceeded(SFTPOperationError):
+    """A recursive SFTP operation exceeded its entry-count limit."""
+
+
+class _TransferMemberBudget:
+    def __init__(self, limit):
+        if type(limit) is not int or limit < 1:
+            raise ValueError('transfer member limit must be a positive integer')
+        self.limit = limit
+        self.used = 0
+
+    def consume(self):
+        self.used += 1
+        if self.used > self.limit:
+            raise TransferMemberLimitExceeded()
+
+
+def _iter_paramiko_directory_entries(sftp, remote_path):
+    """Stream one directory and always close its remote SFTP handle."""
+    adjusted_path = sftp._adjust_cwd(remote_path)
+    sftp._log(10, f'listdir({adjusted_path!r})')
+    response_type, message = sftp._request(CMD_OPENDIR, adjusted_path)
+    if response_type != CMD_HANDLE:
+        raise SFTPError('Expected handle')
+    handle = message.get_binary()
+    try:
+        while True:
+            try:
+                response_type, message = sftp._request(CMD_READDIR, handle)
+            except EOFError:
+                return
+            if response_type != CMD_NAME:
+                raise SFTPError('Expected name response')
+            for _index in range(message.get_int()):
+                filename = message.get_text()
+                longname = message.get_text()
+                attributes = SFTPAttributes._from_msg(
+                    message, filename, longname
+                )
+                if filename not in ('.', '..'):
+                    yield attributes
+    finally:
+        try:
+            sftp._request(CMD_CLOSE, handle)
+        except Exception as error:
+            try:
+                sftp.close()
+            except Exception:
+                pass
+            log_warning(
+                'SFTP directory handle close failed; channel closed',
+                exception_type=type(error).__name__,
+            )
+
+
+@contextmanager
+def _directory_entries(sftp, remote_path):
+    if isinstance(sftp, SFTPClient):
+        iterator = _iter_paramiko_directory_entries(sftp, remote_path)
+    else:
+        factory = getattr(sftp, 'listdir_iter', None)
+        iterator = (
+            factory(remote_path)
+            if callable(factory)
+            else iter(sftp.listdir_attr(remote_path))
+        )
+    try:
+        yield iterator
+    finally:
+        close = getattr(iterator, 'close', None)
+        if callable(close):
+            close()
+
+
 def _is_cancelled(cancel_event):
     return cancel_event is not None and cancel_event.is_set()
 
@@ -110,52 +195,60 @@ def stream_remote_zip(remote_file, *, cancel_event, max_bytes, chunk_size):
 
 
 def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
-                        depth=0):
+                        max_members=None, depth=0, _member_budget=None):
     """Validate archive entry names and bound declared uncompressed bytes."""
+    if _member_budget is None:
+        _member_budget = _TransferMemberBudget(
+            config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
+        )
     if depth > 50:
         raise SFTPOperationError('maximum directory depth exceeded')
     if _is_cancelled(cancel_event):
         raise TransferCancelled()
     total = 0
     has_symlink = False
-    for entry in sftp.listdir_attr(remote_folder):
-        name = entry.filename
-        if (
-            not isinstance(name, str)
-            or name in {'', '.', '..'}
-            or '/' in name
-            or '\\' in name
-            or '\x00' in name
-        ):
-            raise SFTPOperationError('unsafe archive entry name')
-        path = posixpath.join(remote_folder, name)
-        try:
-            entry_stat = sftp.lstat(path)
-        except Exception:
-            entry_stat = entry
-        if stat.S_ISLNK(entry_stat.st_mode):
-            has_symlink = True
-            continue
-        if stat.S_ISDIR(entry_stat.st_mode):
-            child_total, child_symlink = inspect_remote_tree(
-                sftp,
-                path,
-                cancel_event=cancel_event,
-                max_bytes=max_bytes - total,
-                depth=depth + 1,
-            )
-            total += child_total
-            has_symlink = has_symlink or child_symlink
-        else:
-            total += getattr(entry_stat, 'st_size', 0) or 0
-        if total > max_bytes:
-            raise TransferSizeExceeded()
+    with _directory_entries(sftp, remote_folder) as entries:
+        for entry in entries:
+            _member_budget.consume()
+            name = entry.filename
+            if (
+                not isinstance(name, str)
+                or name in {'', '.', '..'}
+                or '/' in name
+                or '\\' in name
+                or '\x00' in name
+            ):
+                raise SFTPOperationError('unsafe archive entry name')
+            path = posixpath.join(remote_folder, name)
+            try:
+                entry_stat = sftp.lstat(path)
+            except Exception:
+                entry_stat = entry
+            if stat.S_ISLNK(entry_stat.st_mode):
+                has_symlink = True
+                continue
+            if stat.S_ISDIR(entry_stat.st_mode):
+                child_total, child_symlink = inspect_remote_tree(
+                    sftp,
+                    path,
+                    cancel_event=cancel_event,
+                    max_bytes=max_bytes - total,
+                    max_members=max_members,
+                    depth=depth + 1,
+                    _member_budget=_member_budget,
+                )
+                total += child_total
+                has_symlink = has_symlink or child_symlink
+            else:
+                total += getattr(entry_stat, 'st_size', 0) or 0
+            if total > max_bytes:
+                raise TransferSizeExceeded()
     return total, has_symlink
 
 
 def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
                                cancel_event, max_bytes, chunk_size,
-                               temp_dir=None, progress=None):
+                               max_members=None, temp_dir=None, progress=None):
     """Build a ZIP on disk while bounding every remote read and total input."""
     if temp_dir is not None:
         temp_dir = Path(temp_dir)
@@ -168,6 +261,9 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
     temporary.close()
     os.chmod(archive_path, 0o600)
     transferred = 0
+    member_budget = _TransferMemberBudget(
+        config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
+    )
 
     def add_directory(archive, remote_path, archive_prefix, depth=0):
         nonlocal transferred
@@ -175,53 +271,56 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
             raise SFTPOperationError('maximum directory depth exceeded')
         if _is_cancelled(cancel_event):
             raise TransferCancelled()
-        entries = sftp.listdir_attr(remote_path)
-        if not entries and archive_prefix:
-            archive.writestr(archive_prefix.rstrip('/') + '/', b'')
-            if archive_path.stat().st_size > max_bytes:
-                raise TransferSizeExceeded()
-        for entry in entries:
-            if _is_cancelled(cancel_event):
-                raise TransferCancelled()
-            name = entry.filename
-            if (
-                not isinstance(name, str)
-                or name in {'', '.', '..'}
-                or '/' in name
-                or '\\' in name
-                or '\x00' in name
-            ):
-                raise SFTPOperationError('unsafe archive entry name')
-            source_path = posixpath.join(remote_path, name)
-            archive_pathname = posixpath.join(archive_prefix, name)
-            try:
-                entry_stat = sftp.lstat(source_path)
-            except Exception:
-                entry_stat = entry
-            if stat.S_ISLNK(entry_stat.st_mode):
-                continue
-            if stat.S_ISDIR(entry_stat.st_mode):
-                add_directory(
-                    archive, source_path, archive_pathname, depth + 1
-                )
-                continue
-            declared_size = getattr(entry_stat, 'st_size', 0) or 0
-            if transferred + declared_size > max_bytes:
-                raise TransferSizeExceeded()
-            with sftp.file(source_path, 'rb') as remote_file:
-                with archive.open(archive_pathname, 'w') as zip_entry:
-                    copied = copy_sftp_stream(
-                        remote_file,
-                        zip_entry,
-                        cancel_event=cancel_event,
-                        max_bytes=max_bytes - transferred,
-                        chunk_size=chunk_size,
-                        progress=(
-                            (lambda count: progress(transferred + count))
-                            if progress else None
-                        ),
+        saw_entry = False
+        with _directory_entries(sftp, remote_path) as entries:
+            for entry in entries:
+                saw_entry = True
+                member_budget.consume()
+                if _is_cancelled(cancel_event):
+                    raise TransferCancelled()
+                name = entry.filename
+                if (
+                    not isinstance(name, str)
+                    or name in {'', '.', '..'}
+                    or '/' in name
+                    or '\\' in name
+                    or '\x00' in name
+                ):
+                    raise SFTPOperationError('unsafe archive entry name')
+                source_path = posixpath.join(remote_path, name)
+                archive_pathname = posixpath.join(archive_prefix, name)
+                try:
+                    entry_stat = sftp.lstat(source_path)
+                except Exception:
+                    entry_stat = entry
+                if stat.S_ISLNK(entry_stat.st_mode):
+                    continue
+                if stat.S_ISDIR(entry_stat.st_mode):
+                    add_directory(
+                        archive, source_path, archive_pathname, depth + 1
                     )
-            transferred += copied
+                    continue
+                declared_size = getattr(entry_stat, 'st_size', 0) or 0
+                if transferred + declared_size > max_bytes:
+                    raise TransferSizeExceeded()
+                with sftp.file(source_path, 'rb') as remote_file:
+                    with archive.open(archive_pathname, 'w') as zip_entry:
+                        copied = copy_sftp_stream(
+                            remote_file,
+                            zip_entry,
+                            cancel_event=cancel_event,
+                            max_bytes=max_bytes - transferred,
+                            chunk_size=chunk_size,
+                            progress=(
+                                (lambda count: progress(transferred + count))
+                                if progress else None
+                            ),
+                        )
+                transferred += copied
+                if archive_path.stat().st_size > max_bytes:
+                    raise TransferSizeExceeded()
+        if not saw_entry and archive_prefix:
+            archive.writestr(archive_prefix.rstrip('/') + '/', b'')
             if archive_path.stat().st_size > max_bytes:
                 raise TransferSizeExceeded()
 
@@ -854,7 +953,7 @@ def _remove_sftp_tree(sftp, remote_path):
 def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                               dest_path, transfer_id, socketio_instance=None,
                               is_dir=False, user_room=None, cancel_event=None,
-                              max_bytes=None, chunk_size=None):
+                              max_bytes=None, max_members=None, chunk_size=None):
     """
     Direct server-to-server SFTP streaming transfer.
     Streams data from source SSH host to destination SSH host without
@@ -874,6 +973,9 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
         tuple: (success: bool, error: str or None)
     """
     max_bytes = config.MAX_ZIP_DOWNLOAD_SIZE if max_bytes is None else max_bytes
+    max_members = (
+        config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
+    )
     chunk_size = config.CHUNK_SIZE if chunk_size is None else chunk_size
     total_transferred = 0
     sftp_source = None
@@ -993,6 +1095,8 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
             )
             return True, None
 
+        preflight_member_budget = _TransferMemberBudget(max_members)
+
         def calculate_directory_total(src_dir, depth=0):
             """Calculate a bounded directory total before copying any data."""
             if depth > 50:
@@ -1003,35 +1107,43 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                 raise TransferCancelled()
 
             total = 0
-            for entry in sftp_source.listdir_attr(src_dir):
-                if _is_cancelled(cancel_event):
-                    raise TransferCancelled()
-                name = entry.filename
-                if (
-                    not isinstance(name, str)
-                    or name in {'', '.', '..'}
-                    or '/' in name
-                    or '\\' in name
-                    or '\x00' in name
-                ):
-                    raise SFTPOperationError('unsafe transfer entry name')
-                entry_path = posixpath.join(src_dir, name)
-                try:
-                    entry_stat = sftp_source.lstat(entry_path)
-                except Exception:
-                    entry_stat = entry
-                if stat.S_ISLNK(entry_stat.st_mode):
-                    continue
-                if stat.S_ISDIR(entry_stat.st_mode):
-                    total += calculate_directory_total(entry_path, depth + 1)
-                else:
-                    size = int(getattr(entry_stat, 'st_size', 0))
-                    if size < 0:
-                        raise SFTPOperationError('invalid transfer entry size')
-                    total += size
-                if total > max_bytes:
-                    raise TransferSizeExceeded()
+            with _directory_entries(sftp_source, src_dir) as entries:
+                for entry in entries:
+                    preflight_member_budget.consume()
+                    if _is_cancelled(cancel_event):
+                        raise TransferCancelled()
+                    name = entry.filename
+                    if (
+                        not isinstance(name, str)
+                        or name in {'', '.', '..'}
+                        or '/' in name
+                        or '\\' in name
+                        or '\x00' in name
+                    ):
+                        raise SFTPOperationError('unsafe transfer entry name')
+                    entry_path = posixpath.join(src_dir, name)
+                    try:
+                        entry_stat = sftp_source.lstat(entry_path)
+                    except Exception:
+                        entry_stat = entry
+                    if stat.S_ISLNK(entry_stat.st_mode):
+                        continue
+                    if stat.S_ISDIR(entry_stat.st_mode):
+                        total += calculate_directory_total(
+                            entry_path, depth + 1
+                        )
+                    else:
+                        size = int(getattr(entry_stat, 'st_size', 0))
+                        if size < 0:
+                            raise SFTPOperationError(
+                                'invalid transfer entry size'
+                            )
+                        total += size
+                    if total > max_bytes:
+                        raise TransferSizeExceeded()
             return total
+
+        transfer_member_budget = _TransferMemberBudget(max_members)
 
         def transfer_directory_recursive(src_dir, dst_dir, depth=0):
             """Recursively transfer a directory."""
@@ -1044,34 +1156,42 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
             sftp_dest.mkdir(dst_dir)
 
-            for entry in sftp_source.listdir_attr(src_dir):
-                if _is_cancelled(cancel_event):
-                    raise TransferCancelled()
-                name = entry.filename
-                if (
-                    not isinstance(name, str)
-                    or name in {'', '.', '..'}
-                    or '/' in name
-                    or '\\' in name
-                    or '\x00' in name
-                ):
-                    raise SFTPOperationError('unsafe transfer entry name')
-                src_entry_path = posixpath.join(src_dir, name)
-                dst_entry_path = posixpath.join(dst_dir, name)
-                try:
-                    entry_stat = sftp_source.lstat(src_entry_path)
-                except Exception:
-                    entry_stat = entry
-                if stat.S_ISLNK(entry_stat.st_mode):
-                    continue
-                if stat.S_ISDIR(entry_stat.st_mode):
-                    success, error = transfer_directory_recursive(src_entry_path, dst_entry_path, depth + 1)
-                    if not success:
-                        return False, error
-                else:
-                    success, error = transfer_single_file(src_entry_path, dst_entry_path)
-                    if not success:
-                        return False, error
+            with _directory_entries(sftp_source, src_dir) as entries:
+                for entry in entries:
+                    transfer_member_budget.consume()
+                    if _is_cancelled(cancel_event):
+                        raise TransferCancelled()
+                    name = entry.filename
+                    if (
+                        not isinstance(name, str)
+                        or name in {'', '.', '..'}
+                        or '/' in name
+                        or '\\' in name
+                        or '\x00' in name
+                    ):
+                        raise SFTPOperationError(
+                            'unsafe transfer entry name'
+                        )
+                    src_entry_path = posixpath.join(src_dir, name)
+                    dst_entry_path = posixpath.join(dst_dir, name)
+                    try:
+                        entry_stat = sftp_source.lstat(src_entry_path)
+                    except Exception:
+                        entry_stat = entry
+                    if stat.S_ISLNK(entry_stat.st_mode):
+                        continue
+                    if stat.S_ISDIR(entry_stat.st_mode):
+                        success, error = transfer_directory_recursive(
+                            src_entry_path, dst_entry_path, depth + 1
+                        )
+                        if not success:
+                            return False, error
+                    else:
+                        success, error = transfer_single_file(
+                            src_entry_path, dst_entry_path
+                        )
+                        if not success:
+                            return False, error
 
             return True, None
 
@@ -1122,6 +1242,8 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
         return False, 'Transfer cancelled'
     except TransferSizeExceeded:
         return False, 'Transfer exceeds configured size limit'
+    except TransferMemberLimitExceeded:
+        return False, 'Transfer exceeds configured member limit'
     except Exception as e:
         log_error("S2S transfer failed", error=str(e), transfer_id=transfer_id)
         return False, "Transfer failed"

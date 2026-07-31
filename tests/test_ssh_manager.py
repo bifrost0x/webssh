@@ -1,5 +1,6 @@
 import paramiko
 import pytest
+import threading
 
 from app import ssh_manager
 from app.network_policy import ResolvedTarget
@@ -28,15 +29,19 @@ class FakeTransport:
         self.opened_channel = None
         self.forward_channel = FakeForwardChannel()
         self.session_channels = []
+        self.open_timeout = None
+        self.channel_timeout = None
 
     def set_keepalive(self, seconds):
         self.keepalive = seconds
 
-    def open_channel(self, kind, destination, source):
+    def open_channel(self, kind, destination, source, timeout=None):
         self.opened_channel = (kind, destination, source)
+        self.channel_timeout = timeout
         return self.forward_channel
 
-    def open_session(self):
+    def open_session(self, timeout=None):
+        self.open_timeout = timeout
         channel = FakeChannel()
         self.session_channels.append(channel)
         return channel
@@ -166,6 +171,51 @@ def test_ssh_manager_exposes_the_shared_loader():
     from app.ssh_key_loader import load_private_key
 
     assert ssh_manager._load_private_key is load_private_key
+
+
+def test_open_exec_channel_bounds_paramiko_request_handshake():
+    class BlockingTransport:
+        def __init__(self):
+            self.open_timeout = None
+            self.channel = paramiko.Channel(1)
+            self.channel.active = True
+            self.channel.remote_chanid = 1
+            self.channel.transport = self
+
+        def open_session(self, timeout=None):
+            self.open_timeout = timeout
+            return self.channel
+
+        def _send_user_message(self, _message):
+            pass
+
+        def get_exception(self):
+            return None
+
+    transport = BlockingTransport()
+    finished = threading.Event()
+    errors = []
+
+    def execute():
+        try:
+            ssh_manager._open_exec_channel(
+                transport, 'command -v tmux', timeout=0.05)
+        except Exception as error:
+            errors.append(error)
+        finally:
+            finished.set()
+
+    worker = threading.Thread(target=execute, daemon=True)
+    worker.start()
+    completed = finished.wait(0.5)
+    if not completed:
+        transport.channel.close()
+    worker.join(2)
+
+    assert completed, 'Paramiko exec request exceeded its deadline'
+    assert transport.open_timeout == 0.05
+    assert transport.channel.closed is True
+    assert errors
 
 
 def test_direct_password_connect_preserves_connect_contract(monkeypatch):
@@ -424,6 +474,10 @@ def test_proxy_jump_password_opens_direct_tcpip_channel(monkeypatch):
         ('1.1.1.1', 22),
         ('127.0.0.1', 0),
     )
+    assert (
+        bastion.transport.channel_timeout
+        == ssh_manager.config.SSH_CONNECT_TIMEOUT
+    )
     assert target.connect_kwargs['sock'] is bastion.transport.forward_channel
     assert ssh_manager.sessions[session_id]['bastion_client'] is bastion
 
@@ -443,7 +497,6 @@ def test_proxy_jump_remote_dns_is_rejected_when_internal_blocking_is_on(
     monkeypatch.setattr(
         ssh_manager.config, 'PROXY_JUMP_REMOTE_DNS_ALLOWLIST', ()
     )
-
     session_id, error = connect_target(
         host='remote-only.example',
         password='target-password',
