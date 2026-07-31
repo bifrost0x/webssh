@@ -8,7 +8,6 @@ from pathlib import Path
 from threading import Lock
 from contextlib import contextmanager
 from paramiko import SFTPClient
-from paramiko.message import Message
 from paramiko.sftp import (
     CMD_CLOSE,
     CMD_HANDLE,
@@ -21,7 +20,7 @@ from paramiko.sftp_attr import SFTPAttributes
 import config
 from . import ssh_manager
 from .paramiko_channels import open_sftp_client
-from .audit_logger import log_info, log_warning, log_error, log_debug
+from .audit_logger import log_warning, log_error
 
 _sftp_cache = {}
 _sftp_cache_lock = Lock()

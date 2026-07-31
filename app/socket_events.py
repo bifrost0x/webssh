@@ -1,6 +1,5 @@
 from flask_socketio import emit, join_room, disconnect
 from flask import request, current_app, url_for
-from flask_login import current_user
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager)
 from .decorators import socket_login_required
@@ -16,15 +15,12 @@ from .tailscale_ssh import (
     profile_is_authorized_for_launch,
     validate_tailscale_ssh_access,
 )
-from .storage_utils import storage_lock
 from .storage_errors import StorageCorruptionError
 from .network_policy import canonicalize_hostname
 from . import binary_transfer, connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
-import base64
-import os
 import posixpath
 import re
 import time
@@ -651,7 +647,7 @@ def handle_ssh_disconnect(data, current_user=None):
             }, room=room)
             log_ssh_disconnect(current_user.username, host, port, request.remote_addr, reason='User requested')
 
-    except Exception as e:
+    except Exception:
         emit('ssh_error', {'error': 'Disconnect failed'})
 
 @socketio.on('list_profiles')
@@ -838,7 +834,7 @@ def handle_upload_key(data, current_user=None):
 
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
-    except Exception as e:
+    except Exception:
         emit('error', {'error': 'Failed to upload key'})
 
 @socketio.on('delete_key')
@@ -861,7 +857,7 @@ def handle_delete_key(data, current_user=None):
 
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
-    except Exception as e:
+    except Exception:
         emit('error', {'error': 'Failed to delete key'})
 
 @socketio.on('list_directory')
@@ -1418,7 +1414,7 @@ def handle_download_file_binary(data, current_user=None):
             log_file_download(current_user.username, target_host='via-sftp', filename=filename,
                             size=len(binary_data), success=True, ip_address=request.remote_addr)
 
-    except Exception as e:
+    except Exception:
         emit('error', {'error': 'Download failed'})
 
 @socketio.on('quick_connect')

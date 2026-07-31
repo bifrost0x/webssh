@@ -91,7 +91,7 @@ def ensure_user_columns():
     # before. Grant admin ONLY to the oldest account (lowest id) instead of every
     # user, so upgrading a multi-user install does not silently make everyone an
     # admin. Runs once — on later starts the column already exists, so this block
-    # is skipped. New installs create administrators explicitly via the CLI.
+    # is skipped. On fresh installs, the first registered user becomes admin.
     if added_is_admin:
         result = db.session.execute(text(
             "UPDATE users SET is_admin = 1 "

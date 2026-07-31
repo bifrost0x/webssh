@@ -167,6 +167,58 @@ def test_download_reads_remote_file_in_bounded_chunks(app, client, monkeypatch,
     assert sftp.download_file.closed is True
 
 
+def test_download_propagates_io_failure_after_first_chunk(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    first_chunk = b'valid-prefix'
+
+    class FailingRemoteFile(TrackingRemoteFile):
+        def read(self, size=-1):
+            if self.offset == 0:
+                self.read_sizes.append(size)
+                self.offset = len(first_chunk)
+                return first_chunk
+            raise OSError('midstream read failed')
+
+    sftp = FakeSFTP()
+    sftp.download_file = FailingRemoteFile()
+    sftp.reported_size = len(first_chunk) * 2
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler,
+        'sftp_session',
+        fake_session,
+    )
+    user_id = _login(client, app, 'midstream_download_user')
+    record = manager.create(
+        user_id=user_id,
+        session_id='owned-session',
+        direction='download',
+        metadata={
+            'remote_path': '/remote/report.bin',
+            'filename': 'report.bin',
+        },
+    )
+
+    response = client.get(
+        f'/api/transfers/{record.token}/download',
+        buffered=False,
+    )
+    stream = iter(response.response)
+
+    assert next(stream) == first_chunk
+    with pytest.raises(OSError, match='midstream read failed'):
+        next(stream)
+    response.close()
+
+    assert record.request_done_event.is_set()
+    assert manager._records == {}
+
+
 def test_content_disposition_has_safe_ascii_fallback_and_utf8_filename():
     from app.transfer_routes import _content_disposition
 
@@ -758,19 +810,89 @@ def test_folder_download_streams_remote_zip_and_cleans_it(
     assert manager._records == {}
 
 
-def test_unstarted_folder_response_releases_remote_archive_and_record(
+def test_folder_download_propagates_limit_after_first_chunk(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    payload = b'abcdef'
+
+    class FolderSFTP(FakeSFTP):
+        def stat(self, path):
+            if path == '/reports':
+                return SimpleNamespace(st_mode=stat.S_IFDIR)
+            return SimpleNamespace(st_size=3)
+
+    sftp = FolderSFTP(payload)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler,
+        'sftp_session',
+        fake_session,
+    )
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler,
+        'inspect_remote_tree',
+        lambda *_args, **_kwargs: (3, False),
+    )
+    monkeypatch.setattr(
+        transfer_routes,
+        '_remote_zip_path',
+        lambda *_args: ('/tmp/reports.zip', 3),
+    )
+    monkeypatch.setattr(
+        transfer_routes.config,
+        'MAX_ZIP_DOWNLOAD_SIZE',
+        4,
+    )
+    monkeypatch.setattr(transfer_routes, 'TRANSFER_CHUNK_SIZE', 3)
+
+    user_id = _login(client, app, 'folder_limit_user')
+    record = manager.create(
+        user_id=user_id,
+        session_id='owned-session',
+        direction='download',
+        metadata={
+            'remote_path': '/reports',
+            'filename': 'reports',
+            'archive': True,
+        },
+    )
+
+    response = client.get(
+        f'/api/transfers/{record.token}/folder-download',
+        buffered=False,
+    )
+    stream = iter(response.response)
+
+    assert next(stream) == b'abc'
+    with pytest.raises(transfer_routes.sftp_handler.TransferSizeExceeded):
+        next(stream)
+    response.close()
+
+    assert record.request_done_event.is_set()
+    assert manager._records == {}
+
+
+def test_closed_folder_response_releases_remote_archive_and_record(
         app, client, monkeypatch, transfer_components):
     transfer_routes, manager = transfer_components
 
     class FolderSFTP:
         def __init__(self):
             self.removed = []
+            self.remote = TrackingRemoteFile(b'zip-data')
 
         def stat(self, path):
             return SimpleNamespace(st_mode=stat.S_IFDIR)
 
         def remove(self, path):
             self.removed.append(path)
+
+        def file(self, _path, _mode):
+            return self.remote
 
     sftp = FolderSFTP()
 

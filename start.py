@@ -21,7 +21,11 @@ from app import create_app, socketio
 import config
 
 if _is_maintenance_cli_invocation():
-    app = create_app(initialize_storage=False, start_runtime=False)
+    app = create_app(
+        initialize_storage=False,
+        start_runtime=False,
+        initialize_oidc=False,
+    )
 else:
     app = create_app()
     app.extensions['runtime_lifecycle'].install_process_shutdown_signals(

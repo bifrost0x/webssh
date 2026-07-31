@@ -1,6 +1,5 @@
 """Bounded HTTP routes for user-owned SFTP transfers."""
 
-import os
 import posixpath
 import re
 import secrets
@@ -264,6 +263,7 @@ def download_transfer(token):
         except Exception as error:
             log_error('HTTP download failed', user_id=user_id,
                       exception_type=type(error).__name__)
+            raise
         finally:
             finish(outcome)
 
@@ -496,6 +496,7 @@ def download_folder_transfer(token):
         except Exception as error:
             log_error('Folder download stream failed', user_id=user_id,
                       exception_type=type(error).__name__)
+            raise
         finally:
             finish(outcome)
 

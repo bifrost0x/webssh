@@ -410,7 +410,6 @@ def test_default_process_signal_resets_then_terminates_without_recursion(
 def test_process_shutdown_signal_installation_is_main_thread_only_and_idempotent(
         monkeypatch):
     """Repeated factories must not wrap server handlers into a signal chain."""
-    import signal
     import app.runtime_lifecycle as runtime_lifecycle
 
     lifecycle = RuntimeLifecycle(max_workers=1)

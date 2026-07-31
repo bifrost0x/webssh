@@ -19,13 +19,14 @@ from app.backup_manager import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _maintenance_cli(data_dir, *arguments):
+def _maintenance_cli(data_dir, *arguments, environment_overrides=None):
     environment = os.environ.copy()
     environment.update({
         'DATA_DIR': str(data_dir),
         'DEBUG': 'True',
         'SECRET_KEY': 'maintenance-cli-test-secret',
     })
+    environment.update(environment_overrides or {})
     return subprocess.run(
         [
             sys.executable,
@@ -48,6 +49,27 @@ def test_backup_help_exits_without_initializing_runtime_or_storage(tmp_path):
     data_dir = tmp_path / 'unused-data'
 
     result = _maintenance_cli(data_dir, 'backup', '--help')
+
+    assert result.returncode == 0, result.stderr
+    assert 'Commands:' in result.stdout
+    assert not data_dir.exists()
+
+
+def test_backup_help_does_not_require_oidc_secret(tmp_path):
+    data_dir = tmp_path / 'unused-data'
+    missing_oidc_secret = tmp_path / 'missing-oidc-secret'
+
+    result = _maintenance_cli(
+        data_dir,
+        'backup',
+        '--help',
+        environment_overrides={
+            'OIDC_ENABLED': 'true',
+            'OIDC_ISSUER': 'https://issuer.example',
+            'OIDC_CLIENT_ID': 'maintenance-client',
+            'OIDC_CLIENT_SECRET_FILE': str(missing_oidc_secret),
+        },
+    )
 
     assert result.returncode == 0, result.stderr
     assert 'Commands:' in result.stdout

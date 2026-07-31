@@ -15,7 +15,7 @@ import time
 import uuid
 import threading
 import paramiko
-from datetime import datetime, timedelta
+from datetime import datetime
 import config
 from .host_key_store import HostKeyStore
 from .network_policy import open_validated_socket, resolve_allowed_target
@@ -235,7 +235,6 @@ class TemporaryConnectionPool:
                     stale_connection = self.connections.pop(connection_id)
                 else:
                     conn['last_used'] = time.time()
-                    client = conn['client']
             except Exception:
                 stale_connection = self.connections.pop(connection_id)
 

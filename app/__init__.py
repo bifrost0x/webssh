@@ -58,7 +58,12 @@ def _initialize_persistent_storage(app):
     app.extensions['persistent_storage_initialized'] = True
 
 
-def create_app(*, initialize_storage=True, start_runtime=True):
+def create_app(
+    *,
+    initialize_storage=True,
+    start_runtime=True,
+    initialize_oidc=True,
+):
     base_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(base_dir, 'templates')
     static_dir = os.path.join(base_dir, 'static')
@@ -161,7 +166,8 @@ def create_app(*, initialize_storage=True, start_runtime=True):
     from .transfer_routes import transfer_blueprint, transfer_manager
     from .webauthn_routes import webauthn_blueprint
     register_cli(app)
-    init_oidc(app)
+    if initialize_oidc:
+        init_oidc(app)
     app.register_blueprint(audit_export_blueprint)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(host_key_blueprint)

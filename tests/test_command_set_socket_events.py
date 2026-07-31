@@ -335,7 +335,12 @@ def test_ssh_connect_does_not_reacquire_coordinator_or_emit_while_holding_it(
         assert held['depth'] == 0, 'socket emit occurred under coordinator'
         emitted.append((event, payload))
 
-    monkeypatch.setattr(socket_events, 'storage_lock', instrumented_lock)
+    monkeypatch.setattr(
+        socket_events,
+        'storage_lock',
+        instrumented_lock,
+        raising=False,
+    )
     monkeypatch.setattr(post_connect_manager, 'storage_lock', instrumented_lock)
     monkeypatch.setattr(socket_events, 'emit', record_emit)
     monkeypatch.setattr(
