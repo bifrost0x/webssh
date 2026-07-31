@@ -139,11 +139,9 @@
         }
     }
 
-    const securityAction = {
-        mode: null,
-        userId: null,
-        username: null
-    };
+    const securityRequests = window.WebSSHSecurityUI.createRequestCoordinator({
+        persistentChannels: ['action']
+    });
 
     function clearSecurityReauthentication() {
         ['securityActionPassword', 'securityActionConfirmation'].forEach(id => {
@@ -152,18 +150,29 @@
         });
     }
 
-    function closeSecurityAction() {
-        const modal = document.getElementById('securityActionModal');
-        modal?.classList.remove('show');
-        modal?.setAttribute('aria-hidden', 'true');
-        securityAction.mode = null;
-        securityAction.userId = null;
-        securityAction.username = null;
+    function clearSecurityActionFields() {
         ['securityActionPassword', 'securityActionConfirmation', 'securityActionSubject', 'securityActionResult']
             .forEach(id => {
                 const field = document.getElementById(id);
                 if (field) { field.value = ''; }
             });
+    }
+
+    function setSecurityActionPending(pending) {
+        const submit = document.getElementById('submitSecurityAction');
+        if (submit) { submit.disabled = pending; }
+        document.querySelectorAll(
+            '#securityActionOidcList button[data-oidc-identity-id]'
+        ).forEach(button => { button.disabled = pending; });
+    }
+
+    function closeSecurityAction() {
+        securityRequests.close();
+        const modal = document.getElementById('securityActionModal');
+        modal?.classList.remove('show');
+        modal?.setAttribute('aria-hidden', 'true');
+        setSecurityActionPending(securityRequests.isPending('action'));
+        clearSecurityActionFields();
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
         document.getElementById('securityActionOidcListGroup')?.classList.add('hidden');
         const oidcList = document.getElementById('securityActionOidcList');
@@ -171,12 +180,21 @@
     }
 
     async function loadOidcIdentities() {
-        if (securityAction.mode !== 'oidc-link' || !securityAction.userId) { return; }
+        const context = securityRequests.current();
+        if (context?.mode !== 'oidc-link' || !context.userId) { return; }
+        const requestState = securityRequests.begin('list', { replace: true });
+        if (!requestState) { return; }
         const list = document.getElementById('securityActionOidcList');
-        if (!list) { return; }
+        if (!list) {
+            securityRequests.finish(requestState);
+            return;
+        }
         list.textContent = t('admin.loading', 'Loading...');
         try {
-            const data = await api(`/admin/api/users/${securityAction.userId}/oidc-identities`);
+            const data = await api(
+                `/admin/api/users/${requestState.context.userId}/oidc-identities`
+            );
+            if (!securityRequests.isCurrent(requestState)) { return; }
             const identities = data.identities || [];
             if (!identities.length) {
                 list.textContent = t('admin.oidcNone', 'No linked OIDC identities');
@@ -193,16 +211,24 @@
                     `</button>` +
                 `</div>`
             )).join('');
+            setSecurityActionPending(securityRequests.isPending('action'));
         } catch (e) {
+            if (!securityRequests.isCurrent(requestState)) { return; }
             list.textContent = e.message;
             notify(e.message, 'error');
+        } finally {
+            securityRequests.finish(requestState);
         }
     }
 
     function openSecurityAction(mode, userId, username) {
-        securityAction.mode = mode;
-        securityAction.userId = userId;
-        securityAction.username = username;
+        securityRequests.open({
+            mode,
+            userId: String(userId),
+            username: String(username)
+        });
+        setSecurityActionPending(securityRequests.isPending('action'));
+        clearSecurityActionFields();
         const isOidc = mode === 'oidc-link';
         document.getElementById('securityActionTitle').textContent = isOidc
             ? t('admin.oidcManage', 'Manage OIDC identities')
@@ -224,50 +250,74 @@
     }
 
     async function unlinkOidcIdentity(identityId) {
-        if (securityAction.mode !== 'oidc-link' || !securityAction.userId) { return; }
+        const context = securityRequests.current();
+        if (context?.mode !== 'oidc-link' || !context.userId) { return; }
         if (!window.confirm(t('admin.oidcUnlinkConfirm', 'Unlink this OIDC identity?'))) { return; }
+        const requestState = securityRequests.begin('action');
+        if (!requestState) { return; }
         const body = {
             password: document.getElementById('securityActionPassword').value,
             confirm_username: document.getElementById('securityActionConfirmation').value.trim()
         };
+        setSecurityActionPending(true);
         try {
             await api(
-                `/admin/api/users/${securityAction.userId}/oidc-identities/${identityId}`,
+                `/admin/api/users/${requestState.context.userId}/oidc-identities/${identityId}`,
                 { method: 'DELETE', body }
             );
+            if (!securityRequests.isCurrent(requestState)) { return; }
             clearSecurityReauthentication();
             notify(t('admin.oidcUnlinked', 'OIDC identity unlinked'), 'success');
             await loadOidcIdentities();
         } catch (e) {
-            notify(e.message, 'error');
+            if (securityRequests.isCurrent(requestState)) {
+                notify(e.message, 'error');
+            }
+        } finally {
+            securityRequests.finish(requestState);
+            if (securityRequests.current()) {
+                setSecurityActionPending(securityRequests.isPending('action'));
+            }
         }
     }
 
     async function submitSecurityAction() {
-        if (!securityAction.mode || !securityAction.userId) { return; }
+        const context = securityRequests.current();
+        if (!context?.mode || !context.userId) { return; }
+        const requestState = securityRequests.begin('action');
+        if (!requestState) { return; }
         const body = {
             password: document.getElementById('securityActionPassword').value,
             confirm_username: document.getElementById('securityActionConfirmation').value.trim()
         };
-        let path = `/admin/api/users/${securityAction.userId}/recovery`;
-        if (securityAction.mode === 'oidc-link') {
+        let path = `/admin/api/users/${requestState.context.userId}/recovery`;
+        if (requestState.context.mode === 'oidc-link') {
             body.subject = document.getElementById('securityActionSubject').value.trim();
-            path = `/admin/api/users/${securityAction.userId}/oidc-link`;
+            path = `/admin/api/users/${requestState.context.userId}/oidc-link`;
         }
+        setSecurityActionPending(true);
         try {
             const result = await api(path, { method: 'POST', body });
-            if (securityAction.mode === 'recovery') {
+            if (!securityRequests.isCurrent(requestState)) { return; }
+            clearSecurityReauthentication();
+            if (requestState.context.mode === 'recovery') {
                 document.getElementById('securityActionResult').value = (result.codes || []).join('\n');
                 document.getElementById('securityActionResultGroup')?.classList.remove('hidden');
                 notify(t('admin.recoveryGenerated', 'Recovery codes generated'), 'success');
             } else {
-                clearSecurityReauthentication();
                 notify(t('admin.oidcLinked', 'OIDC identity linked'), 'success');
                 document.getElementById('securityActionSubject').value = '';
                 await loadOidcIdentities();
             }
         } catch (e) {
-            notify(e.message, 'error');
+            if (securityRequests.isCurrent(requestState)) {
+                notify(e.message, 'error');
+            }
+        } finally {
+            securityRequests.finish(requestState);
+            if (securityRequests.current()) {
+                setSecurityActionPending(securityRequests.isPending('action'));
+            }
         }
     }
 

@@ -36,6 +36,84 @@
         return Number.isFinite(value) ? value : null;
     }
 
+    function createRequestCoordinator(options) {
+        let generation = 0;
+        let sequence = 0;
+        let context = null;
+        const active = new Map();
+        const persistentChannels = new Set(options?.persistentChannels || []);
+
+        function clearTransientRequests() {
+            for (const channel of active.keys()) {
+                if (!persistentChannels.has(channel)) {
+                    active.delete(channel);
+                }
+            }
+        }
+
+        function open(nextContext) {
+            generation += 1;
+            clearTransientRequests();
+            context = Object.freeze({ ...(nextContext || {}) });
+            return context;
+        }
+
+        function close() {
+            generation += 1;
+            clearTransientRequests();
+            context = null;
+        }
+
+        function begin(channel, options) {
+            const replace = Boolean(options?.replace);
+            if (!context || !channel || (active.has(channel) && !replace)) {
+                return null;
+            }
+            const request = Object.freeze({
+                id: ++sequence,
+                generation,
+                channel,
+                context
+            });
+            active.set(channel, request.id);
+            return request;
+        }
+
+        function isCurrent(request) {
+            return Boolean(
+                request
+                && context
+                && request.generation === generation
+                && request.context === context
+                && active.get(request.channel) === request.id
+            );
+        }
+
+        function finish(request) {
+            if (request && active.get(request.channel) === request.id) {
+                active.delete(request.channel);
+            }
+        }
+
+        function isPending(channel) {
+            return active.has(channel);
+        }
+
+        function current() {
+            return context;
+        }
+
+        return Object.freeze({
+            begin,
+            close,
+            current,
+            finish,
+            isCurrent,
+            isPending,
+            open
+        });
+    }
+
     async function downloadAuditExport(url, dependencies) {
         const options = dependencies || {};
         const fetchImpl = options.fetchImpl || fetch;
@@ -65,5 +143,9 @@
         return metadata;
     }
 
-    return { describeHostKey, downloadAuditExport };
+    return {
+        createRequestCoordinator,
+        describeHostKey,
+        downloadAuditExport
+    };
 });
