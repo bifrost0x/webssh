@@ -451,6 +451,7 @@ docker build -t webssh:local .
 | `WEBAUTHN_RP_ID` | With WebAuthn | `localhost` | Exact relying-party domain, without scheme or port |
 | `WEBAUTHN_RP_NAME` | No | `WebSSH` | Name shown by the authenticator |
 | `WEBAUTHN_ORIGIN` | With WebAuthn | `https://localhost` | Exact public browser origin, including scheme and optional port |
+| `MAX_WEBAUTHN_JSON_SIZE` | No | `65536` | JSON request limit for WebAuthn endpoints in bytes; values above the hard 65536-byte ceiling are capped |
 | `HOST_KEY_MANAGEMENT_ENABLED` | No | `true` | Enable user and administrator host-key inventory and deletion routes |
 | `RECOVERY_CODES_ENABLED` | No | `true` | Enable recovery-code generation and alternative login |
 | `MAX_RECOVERY_JSON_SIZE` | No | `4096` | JSON request limit for recovery-code endpoints in bytes; values above the hard 4096-byte ceiling are capped |

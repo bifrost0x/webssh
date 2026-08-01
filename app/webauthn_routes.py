@@ -23,6 +23,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import RequestEntityTooLarge
 
 import config
 
@@ -41,9 +42,47 @@ _registration_lock = Lock()
 _AUTHENTICATION_DESCRIPTOR_COUNT = 10
 
 
+def init_webauthn_request_limits(app):
+    """Reject or bound WebAuthn bodies before CSRF accesses them."""
+
+    @app.before_request
+    def bound_webauthn_request_body():
+        if request.blueprint != webauthn_blueprint.name:
+            return None
+        if (
+            request.content_length is not None
+            and request.content_length > config.MAX_WEBAUTHN_JSON_SIZE
+        ):
+            return _request_body_too_large()
+        request.max_content_length = config.MAX_WEBAUTHN_JSON_SIZE + 1
+        return None
+
+
 def _require_enabled():
     if not config.WEBAUTHN_ENABLED:
         abort(404)
+
+
+def _bounded_json():
+    """Parse one WebAuthn payload with a one-byte overflow probe."""
+    request.max_content_length = config.MAX_WEBAUTHN_JSON_SIZE + 1
+    if (
+        request.content_length is not None
+        and request.content_length > config.MAX_WEBAUTHN_JSON_SIZE
+    ):
+        return None
+    try:
+        raw_data = request.get_data(cache=True)
+        if len(raw_data) > config.MAX_WEBAUTHN_JSON_SIZE:
+            return None
+        data = request.get_json(silent=True)
+    except RequestEntityTooLarge:
+        return None
+    return data if isinstance(data, dict) else {}
+
+
+def _request_body_too_large():
+    return jsonify({"error": "Request body too large"}), 413
 
 
 def _binding():
@@ -92,7 +131,9 @@ def registration_options():
     ):
         log_rate_limit_exceeded("webauthn_register_reauth", client_ip)
         return jsonify({"error": "Too many password attempts"}), 429
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     password = data.get("password", "")
     try:
         password_valid = current_user.check_password(password)
@@ -135,7 +176,9 @@ def registration_options():
 @login_required
 def verify_registration():
     _require_enabled()
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     credential = data.get("credential")
     name = str(data.get("name") or "Passkey").strip()[:80] or "Passkey"
     try:
@@ -216,7 +259,9 @@ def delete_credential(credential_id):
     ):
         log_rate_limit_exceeded("webauthn_delete_reauth", client_ip)
         return jsonify({"error": "Too many password attempts"}), 429
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     try:
         password_valid = current_user.check_password(data.get("password", ""))
     except (TypeError, ValueError):
@@ -269,7 +314,9 @@ def verify_authentication():
         config.RATELIMIT_LOGIN_LIMIT,
     ):
         return jsonify({"error": "Too many login attempts"}), 429
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     username = None
     user = None
     try:

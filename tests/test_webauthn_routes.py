@@ -1,8 +1,15 @@
 """Feature flags and ceremony option boundaries for WebAuthn routes."""
 
 import base64
+import io
+import json
 import logging
+import re
 from types import SimpleNamespace
+
+from flask import request as flask_request
+from werkzeug.test import EnvironBuilder
+from werkzeug.wrappers import Response
 
 
 def _create_user(app, username="passkey_user"):
@@ -346,6 +353,234 @@ def test_authentication_resolves_account_from_discoverable_credential(
         row = WebAuthnCredential.query.one()
         assert row.sign_count == 5
         assert row.last_used_at is not None
+
+
+def test_webauthn_auth_verify_rejects_oversized_json_before_challenge(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+
+    challenge_calls = []
+
+    def record_challenge(**kwargs):
+        challenge_calls.append(kwargs)
+        return b"challenge"
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(
+        webauthn_routes,
+        "check_rate_limit",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        webauthn_routes,
+        "consume_challenge",
+        record_challenge,
+    )
+    payload = json.dumps({
+        "credential": {"id": "invalid"},
+        "padding": "x" * 70000,
+    })
+
+    app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        login_page = client.get("/login")
+        token_match = re.search(
+            r'name="csrf_token"[^>]*value="([^"]+)"',
+            login_page.get_data(as_text=True),
+        )
+        assert token_match is not None
+        response = client.post(
+            "/api/webauthn/auth/verify",
+            data=payload,
+            content_type="application/json",
+            headers={"X-CSRFToken": token_match.group(1)},
+        )
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = False
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "Request body too large"}
+    assert challenge_calls == []
+
+
+def test_webauthn_rejects_declared_oversized_multipart_before_csrf_reads_body(
+    app, monkeypatch
+):
+    import config
+
+    class TrackingInput(io.BytesIO):
+        def __init__(self, data):
+            super().__init__(data)
+            self.bytes_read = 0
+
+        def read(self, size=-1):
+            data = super().read(size)
+            self.bytes_read += len(data)
+            return data
+
+        def readinto(self, buffer):
+            size = super().readinto(buffer)
+            self.bytes_read += size or 0
+            return size
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    builder = EnvironBuilder(
+        path="/api/webauthn/auth/verify",
+        method="POST",
+        data={
+            "payload": (
+                io.BytesIO(b"x" * 200000),
+                "oversized.bin",
+            )
+        },
+    )
+    environ = builder.get_environ()
+    body = environ["wsgi.input"].read()
+    tracking_input = TrackingInput(body)
+    environ["wsgi.input"] = tracking_input
+    assert int(environ["CONTENT_LENGTH"]) > config.MAX_WEBAUTHN_JSON_SIZE
+
+    app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        response = Response.from_app(app.wsgi_app, environ)
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = False
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "Request body too large"}
+    assert tracking_input.bytes_read == 0
+
+
+def test_webauthn_auth_verify_accepts_json_at_size_limit(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+
+    challenge_calls = []
+
+    def record_challenge(**kwargs):
+        challenge_calls.append(kwargs)
+        return b"challenge"
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(
+        webauthn_routes,
+        "check_rate_limit",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        webauthn_routes,
+        "consume_challenge",
+        record_challenge,
+    )
+    prefix = b'{"credential":{"id":"invalid"},"padding":"'
+    suffix = b'"}'
+    payload = (
+        prefix
+        + b"x" * (config.MAX_WEBAUTHN_JSON_SIZE - len(prefix) - len(suffix))
+        + suffix
+    )
+    assert len(payload) == config.MAX_WEBAUTHN_JSON_SIZE
+
+    response = client.post(
+        "/api/webauthn/auth/verify",
+        data=payload,
+        content_type="application/json",
+    )
+
+    assert response.status_code == 401
+    assert challenge_calls != []
+
+
+def test_webauthn_auth_verify_bounds_chunked_json_without_content_length(
+    app, client, monkeypatch
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+
+    challenge_calls = []
+
+    def record_challenge(**kwargs):
+        challenge_calls.append(kwargs)
+        return b"challenge"
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(
+        webauthn_routes,
+        "check_rate_limit",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        webauthn_routes,
+        "consume_challenge",
+        record_challenge,
+    )
+    request_states = []
+    original_bounded_json = webauthn_routes._bounded_json
+
+    def record_content_length():
+        cached_stream = flask_request.__dict__.get("stream")
+        request_states.append((
+            flask_request.content_length,
+            flask_request.max_content_length,
+            type(cached_stream).__name__,
+            getattr(cached_stream, "limit", None),
+        ))
+        return original_bounded_json()
+
+    monkeypatch.setattr(
+        webauthn_routes,
+        "_bounded_json",
+        record_content_length,
+    )
+    payload = json.dumps({
+        "credential": {"id": "invalid"},
+        "padding": "x" * 70000,
+    }).encode("utf-8")
+    app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        login_page = client.get("/login")
+        token_match = re.search(
+            r'name="csrf_token"[^>]*value="([^"]+)"',
+            login_page.get_data(as_text=True),
+        )
+        assert token_match is not None
+        session_cookie_name = app.config["SESSION_COOKIE_NAME"]
+        session_cookie = client.get_cookie(session_cookie_name)
+        assert session_cookie is not None
+        csrf_rejection = client.post(
+            "/api/webauthn/auth/verify",
+            json={},
+        )
+        assert csrf_rejection.status_code == 400
+        builder = EnvironBuilder(
+            path="/api/webauthn/auth/verify",
+            method="POST",
+            input_stream=io.BytesIO(payload),
+            content_type="application/json",
+            headers={"X-CSRFToken": token_match.group(1)},
+        )
+        environ = builder.get_environ()
+        environ.pop("CONTENT_LENGTH", None)
+        environ["wsgi.input_terminated"] = True
+        environ["HTTP_COOKIE"] = (
+            f"{session_cookie_name}={session_cookie.value}"
+        )
+
+        response = Response.from_app(app.wsgi_app, environ)
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = False
+
+    assert response.status_code == 413, request_states
+    assert response.get_json() == {"error": "Request body too large"}
+    assert challenge_calls == []
+    probe_limit = config.MAX_WEBAUTHN_JSON_SIZE + 1
+    assert request_states == [
+        (None, probe_limit, "LimitedStream", probe_limit)
+    ]
 
 
 def test_rejected_webauthn_ceremonies_are_security_audited(

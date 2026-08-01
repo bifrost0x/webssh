@@ -74,6 +74,16 @@ def test_recovery_json_limit_cannot_exceed_hard_security_ceiling():
     assert result.stdout.splitlines()[-1] == '4096'
 
 
+def test_webauthn_json_limit_cannot_exceed_hard_security_ceiling():
+    result = _load_config(
+        _production_env(MAX_WEBAUTHN_JSON_SIZE='1048576'),
+        'import config; print(config.MAX_WEBAUTHN_JSON_SIZE)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == '65536'
+
+
 @pytest.mark.parametrize(
     ('overrides', 'expected_setting'),
     (

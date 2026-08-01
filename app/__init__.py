@@ -156,6 +156,11 @@ def create_app(
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
     init_auth(app)
+    from .webauthn_routes import (
+        init_webauthn_request_limits,
+        webauthn_blueprint,
+    )
+    init_webauthn_request_limits(app)
     csrf.init_app(app)
     from .cli import register_cli
     from .audit_export import audit_export_blueprint
@@ -164,7 +169,6 @@ def create_app(
     from .oidc_routes import init_oidc, oidc_blueprint
     from .recovery_routes import recovery_blueprint
     from .transfer_routes import transfer_blueprint, transfer_manager
-    from .webauthn_routes import webauthn_blueprint
     register_cli(app)
     if initialize_oidc:
         init_oidc(app)
