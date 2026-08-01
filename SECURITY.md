@@ -68,6 +68,7 @@ Instead, report vulnerabilities via:
 | CORS | Configurable, safe localhost-only default if unset |
 | WebSocket | Authenticated, room-based isolation per user |
 | Reverse Proxy | ProxyFix support via `TRUSTED_PROXIES` |
+| Request Bodies | Unsafe control requests are capped at 64 KiB before CSRF parsing; Recovery uses 4 KiB, WebAuthn uses 64 KiB, and SFTP uploads retain their separate streaming limit |
 
 ### SSH Security
 

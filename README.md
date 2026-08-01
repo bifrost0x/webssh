@@ -744,7 +744,7 @@ Web SSH Terminal includes 10 themes:
 - **Secure Cookies**: HttpOnly, SameSite=Lax, Secure (in production)
 - **Security Headers**: HSTS, CSP, X-Content-Type-Options, X-Frame-Options
 - **SSRF Protection**: with `BLOCK_INTERNAL_SSH=true`, hostnames are resolved and connections to loopback, link-local (incl. cloud-metadata `169.254.169.254`), private, and reserved addresses are blocked — a hostname that resolves to an internal address cannot bypass the guard
-- **Upload Limits**: bounded sizes for file uploads, editor saves, notepad, and SSH key uploads to prevent resource exhaustion
+- **Request and Upload Limits**: unsafe control requests are bounded before CSRF parsing; Recovery and WebAuthn keep their documented limits, while SFTP uploads retain bounded streaming without whole-file buffering
 - **Folder Download Limits**: `MAX_ZIP_DOWNLOAD_SIZE` bounds declared input and streamed ZIP bytes, while `MAX_TRANSFER_MEMBERS` bounds recursive entry counts, including zero-byte files; remote ZIPs stream directly over bounded HTTP, while the SFTP fallback uses a private, quota-reserved temporary file under `TRANSFER_TEMP_DIR`
 
 ### Paramiko 5 SSH Compatibility

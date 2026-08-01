@@ -7,7 +7,6 @@ import logging
 import re
 from types import SimpleNamespace
 
-from flask import request as flask_request
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Response
 
@@ -518,23 +517,17 @@ def test_webauthn_auth_verify_bounds_chunked_json_without_content_length(
         "consume_challenge",
         record_challenge,
     )
-    request_states = []
+    bounded_json_calls = []
     original_bounded_json = webauthn_routes._bounded_json
 
-    def record_content_length():
-        cached_stream = flask_request.__dict__.get("stream")
-        request_states.append((
-            flask_request.content_length,
-            flask_request.max_content_length,
-            type(cached_stream).__name__,
-            getattr(cached_stream, "limit", None),
-        ))
+    def record_bounded_json_call():
+        bounded_json_calls.append(True)
         return original_bounded_json()
 
     monkeypatch.setattr(
         webauthn_routes,
         "_bounded_json",
-        record_content_length,
+        record_bounded_json_call,
     )
     payload = json.dumps({
         "credential": {"id": "invalid"},
@@ -574,13 +567,10 @@ def test_webauthn_auth_verify_bounds_chunked_json_without_content_length(
     finally:
         app.config["WTF_CSRF_ENABLED"] = False
 
-    assert response.status_code == 413, request_states
+    assert response.status_code == 413
     assert response.get_json() == {"error": "Request body too large"}
     assert challenge_calls == []
-    probe_limit = config.MAX_WEBAUTHN_JSON_SIZE + 1
-    assert request_states == [
-        (None, probe_limit, "LimitedStream", probe_limit)
-    ]
+    assert bounded_json_calls == []
 
 
 def test_rejected_webauthn_ceremonies_are_security_audited(

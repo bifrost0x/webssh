@@ -156,11 +156,9 @@ def create_app(
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
     init_auth(app)
-    from .webauthn_routes import (
-        init_webauthn_request_limits,
-        webauthn_blueprint,
-    )
-    init_webauthn_request_limits(app)
+    from .request_limits import init_request_limits
+    from .webauthn_routes import webauthn_blueprint
+    init_request_limits(app)
     csrf.init_app(app)
     from .cli import register_cli
     from .audit_export import audit_export_blueprint

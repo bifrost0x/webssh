@@ -42,22 +42,6 @@ _registration_lock = Lock()
 _AUTHENTICATION_DESCRIPTOR_COUNT = 10
 
 
-def init_webauthn_request_limits(app):
-    """Reject or bound WebAuthn bodies before CSRF accesses them."""
-
-    @app.before_request
-    def bound_webauthn_request_body():
-        if request.blueprint != webauthn_blueprint.name:
-            return None
-        if (
-            request.content_length is not None
-            and request.content_length > config.MAX_WEBAUTHN_JSON_SIZE
-        ):
-            return _request_body_too_large()
-        request.max_content_length = config.MAX_WEBAUTHN_JSON_SIZE + 1
-        return None
-
-
 def _require_enabled():
     if not config.WEBAUTHN_ENABLED:
         abort(404)
