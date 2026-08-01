@@ -620,66 +620,6 @@
         </div>
     </div>
 
-    <div class="modal" id="fileTransferModal" role="dialog" aria-modal="true" aria-labelledby="fileTransferTitle" aria-hidden="true">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="fileTransferTitle" data-i18n="files.fileTransfer">File Transfer</h2>
-                <span class="close" id="closeFileTransferModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="transfer-section">
-                    <h3 data-i18n="files.uploadToServer">Upload File to Server</h3>
-                    <form id="uploadForm">
-                        <div class="form-group">
-                            <label for="uploadSessionSelect" data-i18n="files.selectSession">Select Session</label>
-                            <select id="uploadSessionSelect" class="form-control" required>
-                                <option value="" data-i18n="files.selectActiveSession">-- Select Active Session --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="uploadFileInput" data-i18n="files.localFile">Local File</label>
-                            <input type="file" id="uploadFileInput" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="uploadRemotePathInput" data-i18n="files.remotePath">Remote Path</label>
-                            <input type="text" id="uploadRemotePathInput" class="form-control" placeholder="/home/user/file.txt" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary"><span data-i18n="files.upload">Upload</span> ⬆️</button>
-                    </form>
-                    <div class="progress-container hidden" id="uploadProgress">
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="uploadProgressFill"></div>
-                        </div>
-                        <div class="progress-text" id="uploadProgressText">0%</div>
-                    </div>
-                </div>
-
-                <div class="transfer-section">
-                    <h3 data-i18n="files.downloadFromServer">Download File from Server</h3>
-                    <form id="downloadForm">
-                        <div class="form-group">
-                            <label for="downloadSessionSelect" data-i18n="files.selectSession">Select Session</label>
-                            <select id="downloadSessionSelect" class="form-control" required>
-                                <option value="" data-i18n="files.selectActiveSession">-- Select Active Session --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="downloadRemotePathInput" data-i18n="files.remotePath">Remote Path</label>
-                            <input type="text" id="downloadRemotePathInput" class="form-control" placeholder="/home/user/file.txt" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary"><span data-i18n="files.download">Download</span> ⬇️</button>
-                    </form>
-                    <div class="progress-container hidden" id="downloadProgress">
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="downloadProgressFill"></div>
-                        </div>
-                        <div class="progress-text" id="downloadProgressText">0%</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="notification-container" id="notificationContainer"></div>
 
     <div class="modal" id="commandFormModal" role="dialog" aria-modal="true" aria-labelledby="commandFormTitle" aria-hidden="true">

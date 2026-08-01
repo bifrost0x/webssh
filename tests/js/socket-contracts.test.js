@@ -159,6 +159,14 @@ test('the own JavaScript inventory excludes stale client contracts', () => {
     }
 });
 
+test('first-party JavaScript contains no stale upload endpoint', () => {
+    for (const file of fs.readdirSync(JS_DIRECTORY)) {
+        if (!file.endsWith('.js')) continue;
+        const source = fs.readFileSync(path.join(JS_DIRECTORY, file), 'utf8');
+        assert.equal(source.includes('/api/upload'), false, file);
+    }
+});
+
 test('a stale one-time listener is not treated as absent', () => {
     const contracts = directSocketContracts(
         "this.socket.once('os_detection_started', () => {});",

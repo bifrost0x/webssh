@@ -14,6 +14,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const nodeModules = path.join(root, 'node_modules');
 const outDir = path.join(root, 'static', 'vendor');
+const checkOnly = process.argv.includes('--check');
 
 // [ source (relative to node_modules), destination (relative to static/vendor) ]
 const files = [
@@ -31,7 +32,16 @@ const files = [
   ['material-icons/iconfont/material-icons.woff', 'material-icons/material-icons.woff'],
 ];
 
+function contentsMatch(srcPath, destPath, dest) {
+  const source = fs.readFileSync(srcPath);
+  const destination = fs.readFileSync(destPath);
+  if (!/\.(?:css|js)$/.test(dest)) return source.equals(destination);
+  const normalize = value => value.toString('utf8').replace(/\r\n/g, '\n');
+  return normalize(source) === normalize(destination);
+}
+
 let count = 0;
+const stale = [];
 for (const [src, dest] of files) {
   const srcPath = path.join(nodeModules, src);
   const destPath = path.join(outDir, dest);
@@ -39,9 +49,27 @@ for (const [src, dest] of files) {
     console.error(`ERROR: missing source file: ${src}\nRun "npm install" first.`);
     process.exit(1);
   }
-  fs.mkdirSync(path.dirname(destPath), { recursive: true });
-  fs.copyFileSync(srcPath, destPath);
-  console.log(`  ${src}  ->  static/vendor/${dest}`);
+  if (checkOnly) {
+    if (!fs.existsSync(destPath)
+        || !contentsMatch(srcPath, destPath, dest)) {
+      stale.push(dest);
+    }
+  } else {
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    fs.copyFileSync(srcPath, destPath);
+    console.log(`  ${src}  ->  static/vendor/${dest}`);
+  }
   count++;
 }
-console.log(`\nVendored ${count} files into static/vendor/.`);
+if (checkOnly) {
+  if (stale.length) {
+    console.error(
+      `ERROR: stale vendored assets: ${stale.join(', ')}\n`
+      + 'Run "npm run vendor" and commit the resulting files.'
+    );
+    process.exit(1);
+  }
+  console.log(`Verified ${count} vendored frontend assets.`);
+} else {
+  console.log(`\nVendored ${count} files into static/vendor/.`);
+}

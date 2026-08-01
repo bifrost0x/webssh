@@ -263,7 +263,15 @@ SFTP_OPERATION_TIMEOUT = _positive_int_env('SFTP_OPERATION_TIMEOUT', 30)
 
 CHUNK_SIZE = 65536
 MAX_UPLOAD_SIZE = 1024 * 1024 * 100
-MAX_EDITOR_FILE_SIZE = int(os.environ.get('MAX_EDITOR_FILE_SIZE', str(5 * 1024 * 1024)))
+MAX_EDITOR_FILE_SIZE = _positive_int_env(
+    'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024
+)
+# Socket.IO now carries control events and bounded editor text only; bulk file
+# transfers use streaming HTTP routes. JSON can expand control characters to a
+# six-byte ``\uXXXX`` escape, so retain that worst-case expansion plus a small
+# envelope for the event name and metadata without preserving the obsolete
+# 110 MiB socket-upload allowance.
+SOCKETIO_MAX_MESSAGE_SIZE = MAX_EDITOR_FILE_SIZE * 6 + 64 * 1024
 
 # Admin panel: comma-separated usernames granted admin on startup.
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]

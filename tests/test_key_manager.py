@@ -1,5 +1,6 @@
 """Tests for SSH private-key validation and encrypted storage."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -152,7 +153,7 @@ def test_legacy_migration_failure_is_not_returned_as_key_content(
         assert secret_error not in repr(logged)
 
 
-def test_key_read_rejects_symlink_target_outside_user_keys_directory(
+def test_metadata_key_paths_reject_symlink_target_outside_keys_directory(
         app, rsa_private_key_pem, tmp_path):
     from app import key_manager
 
@@ -177,12 +178,16 @@ def test_key_read_rejects_symlink_target_outside_user_keys_directory(
                 f'symlink creation unavailable: {type(exc).__name__}'
             )
 
-        content, read_error = key_manager.read_key_content(
-            user_id, key_meta['id']
+        operations = (
+            lambda: key_manager.get_key_path(user_id, key_meta['id']),
+            lambda: key_manager.read_key_content(user_id, key_meta['id']),
+            lambda: key_manager.load_key_summaries(user_id),
+            lambda: key_manager.delete_key(user_id, key_meta['id']),
         )
+        for operation in operations:
+            with pytest.raises(StorageCorruptionError):
+                operation()
 
-        assert content is None
-        assert read_error == 'Failed to read key'
         assert key_path.is_symlink()
         assert outside.read_bytes() == original
 
@@ -319,6 +324,384 @@ def test_save_key_preserves_corrupt_metadata_store(app, rsa_private_key_pem):
         assert exc_info.value.path == metadata_path
         assert metadata_path.read_bytes() == corrupt
         assert set(metadata_path.parent.iterdir()) == before_files
+
+
+@pytest.mark.parametrize(
+    'filename',
+    [
+        '',
+        '.',
+        '..',
+        'nested/key.pem',
+        'nested\\key.pem',
+        'key\x00name.pem',
+        'keys.json',
+    ],
+)
+def test_load_keys_rejects_unsafe_metadata_filenames(app, filename):
+    from app import key_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, username=f'unsafe-key-name-{len(filename)}')
+    with app.app_context():
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        metadata_path.write_text(
+            json.dumps({
+                'schema_version': CURRENT_STORAGE_VERSIONS['keys'],
+                'keys': [{
+                    'id': 'unsafe-key',
+                    'name': 'Unsafe key',
+                    'filename': filename,
+                    'key_type': 'RSA',
+                }],
+            }),
+            encoding='utf-8',
+        )
+
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            key_manager.load_keys(user_id)
+
+        assert exc_info.value.path == metadata_path
+
+
+@pytest.mark.parametrize('duplicate_field', ['id', 'filename'])
+def test_load_keys_rejects_duplicate_key_metadata(
+    app, duplicate_field
+):
+    from app import key_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(
+        app, username=f'duplicate-key-{duplicate_field}'
+    )
+    with app.app_context():
+        first = {
+            'id': 'key-one',
+            'name': 'First key',
+            'filename': 'key-one.pem',
+            'key_type': 'RSA',
+        }
+        second = {
+            'id': 'key-two',
+            'name': 'Second key',
+            'filename': 'key-two.pem',
+            'key_type': 'RSA',
+        }
+        second[duplicate_field] = first[duplicate_field]
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        raw = json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['keys'],
+            'keys': [first, second],
+        }).encode('utf-8')
+        metadata_path.write_bytes(raw)
+
+        with pytest.raises(StorageCorruptionError):
+            key_manager.load_keys(user_id)
+
+        assert metadata_path.read_bytes() == raw
+
+
+def test_delete_key_rejects_metadata_path_outside_user_keys_directory(app):
+    from app import key_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    owner_id = create_user(app, username='key-path-owner')
+    outside_user_id = create_user(app, username='key-path-neighbor')
+    marker = 'outside-profile-must-survive'
+
+    with app.app_context():
+        keys_dir = key_manager.get_user_keys_dir(owner_id)
+        outside_path = (
+            key_manager.get_user_keys_dir(outside_user_id).parent
+            / 'profiles.json'
+        )
+        outside_path.write_text(marker, encoding='utf-8')
+        filename = f'../../user_{outside_user_id}/profiles.json'
+        assert (
+            (keys_dir / filename).resolve(strict=False)
+            == outside_path.resolve()
+        )
+
+        metadata_path = key_manager.get_user_keys_file(owner_id)
+        metadata_path.write_text(
+            json.dumps({
+                'schema_version': CURRENT_STORAGE_VERSIONS['keys'],
+                'keys': [{
+                    'id': 'outside-delete',
+                    'name': 'Unsafe delete',
+                    'filename': filename,
+                    'key_type': 'RSA',
+                }],
+            }),
+            encoding='utf-8',
+        )
+
+        with pytest.raises(StorageCorruptionError):
+            key_manager.delete_key(owner_id, 'outside-delete')
+
+        assert outside_path.read_text(encoding='utf-8') == marker
+
+
+def test_delete_key_rejects_directory_as_key_file(app):
+    from app import key_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, username='key-directory-target')
+    with app.app_context():
+        keys_dir = key_manager.get_user_keys_dir(user_id)
+        directory_path = keys_dir / 'directory.pem'
+        directory_path.mkdir()
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        raw = json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['keys'],
+            'keys': [{
+                'id': 'directory-key',
+                'name': 'Directory target',
+                'filename': directory_path.name,
+                'key_type': 'RSA',
+            }],
+        }).encode('utf-8')
+        metadata_path.write_bytes(raw)
+
+        with pytest.raises(StorageCorruptionError):
+            key_manager.delete_key(user_id, 'directory-key')
+
+        assert metadata_path.read_bytes() == raw
+        assert directory_path.is_dir()
+
+
+def test_safe_legacy_key_basename_remains_readable_and_deletable(
+    app, rsa_private_key_pem
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='safe-legacy-key-name')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id,
+            'Legacy basename',
+            rsa_private_key_pem,
+        )
+        assert error is None
+
+        generated_path = Path(key_manager.get_key_path(user_id, key['id']))
+        legacy_path = generated_path.with_name('legacy_rsa_key.pem')
+        generated_path.rename(legacy_path)
+        stored = key_manager.load_keys(user_id)
+        stored[0]['filename'] = legacy_path.name
+        assert key_manager.save_keys(user_id, stored) is True
+
+        content, read_error = key_manager.read_key_content(user_id, key['id'])
+        assert read_error is None
+        assert content == rsa_private_key_pem
+        assert key_manager.delete_key(user_id, key['id']) is True
+        assert legacy_path.exists() is False
+
+
+def test_tombstone_shaped_legacy_basename_is_not_treated_as_pending_delete(
+    app, rsa_private_key_pem
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='tombstone-shaped-legacy-key')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id,
+            'Tombstone-shaped legacy key',
+            rsa_private_key_pem,
+        )
+        assert error is None
+        stored = key_manager.load_keys(user_id)
+        generated_path = Path(key_manager.get_key_path(user_id, key['id']))
+        legacy_path = generated_path.with_name(
+            f'.delete-{"c" * 32}-legacy.pem'
+        )
+        generated_path.rename(legacy_path)
+        stored[0]['filename'] = legacy_path.name
+        assert key_manager.save_keys(user_id, stored) is True
+
+        content, read_error = key_manager.read_key_content(user_id, key['id'])
+
+        assert read_error is None
+        assert content == rsa_private_key_pem
+        assert legacy_path.exists() is True
+        assert key_manager.delete_key(user_id, key['id']) is True
+        assert legacy_path.exists() is False
+
+
+def test_delete_key_unlinks_safe_in_store_alias_without_deleting_target(
+    app, rsa_private_key_pem
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='safe-in-store-key-alias')
+    with app.app_context():
+        target, error = key_manager.save_key(
+            user_id,
+            'Alias target',
+            rsa_private_key_pem,
+        )
+        assert error is None
+        target_path = Path(key_manager.get_key_path(user_id, target['id']))
+        target_bytes = target_path.read_bytes()
+        alias_path = target_path.with_name('legacy_alias.pem')
+        try:
+            alias_path.symlink_to(target_path.name)
+        except OSError as exc:
+            pytest.skip(
+                f'symlink creation unavailable: {type(exc).__name__}'
+            )
+
+        stored = key_manager.load_keys(user_id)
+        stored.append({
+            'id': 'legacy-alias',
+            'name': 'Legacy alias',
+            'filename': alias_path.name,
+            'key_type': 'RSA',
+            'encrypted': True,
+        })
+        assert key_manager.save_keys(user_id, stored) is True
+
+        assert key_manager.delete_key(user_id, 'legacy-alias') is True
+        assert alias_path.is_symlink() is False
+        assert target_path.read_bytes() == target_bytes
+        assert key_manager.get_key(user_id, target['id']) == target
+
+
+def test_delete_key_restores_file_when_metadata_save_returns_false(
+    app, rsa_private_key_pem, monkeypatch
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='delete-save-false')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Keep on save failure', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        original_bytes = key_path.read_bytes()
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        original_metadata = metadata_path.read_bytes()
+        monkeypatch.setattr(key_manager, 'save_keys', lambda *_args: False)
+
+        assert key_manager.delete_key(user_id, key['id']) is False
+
+        assert key_path.read_bytes() == original_bytes
+        assert metadata_path.read_bytes() == original_metadata
+
+
+def test_delete_key_restores_file_when_metadata_save_raises(
+    app, rsa_private_key_pem, monkeypatch
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='delete-save-exception')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Keep on save exception', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        original_bytes = key_path.read_bytes()
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        original_metadata = metadata_path.read_bytes()
+        monkeypatch.setattr(
+            key_manager,
+            'save_keys',
+            lambda *_args: (_ for _ in ()).throw(RuntimeError('disk error')),
+        )
+
+        assert key_manager.delete_key(user_id, key['id']) is False
+
+        assert key_path.read_bytes() == original_bytes
+        assert metadata_path.read_bytes() == original_metadata
+
+
+def test_delete_key_restores_file_when_staging_fsync_fails(
+    app, rsa_private_key_pem, monkeypatch
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='delete-staging-fsync-failure')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Keep on staging failure', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        original_bytes = key_path.read_bytes()
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        original_metadata = metadata_path.read_bytes()
+        monkeypatch.setattr(
+            key_manager,
+            'fsync_parent_directory',
+            lambda *_args: (_ for _ in ()).throw(OSError('fsync failed')),
+        )
+
+        assert key_manager.delete_key(user_id, key['id']) is False
+
+        assert key_path.read_bytes() == original_bytes
+        assert metadata_path.read_bytes() == original_metadata
+
+
+def test_load_keys_restores_referenced_pending_delete_after_crash(
+    app, rsa_private_key_pem
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='delete-crash-rollback')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Recover after crash', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        original_bytes = key_path.read_bytes()
+        pending_path = key_path.with_name(
+            f'.delete-{"a" * 32}-{key_path.name}'
+        )
+        key_path.replace(pending_path)
+
+        assert key_manager.load_keys(user_id) == [key]
+
+        assert key_path.read_bytes() == original_bytes
+        assert pending_path.exists() is False
+
+
+def test_load_keys_removes_unreferenced_pending_delete_orphan(app):
+    from app import key_manager
+
+    user_id = create_user(app, username='delete-crash-cleanup')
+    with app.app_context():
+        keys_dir = key_manager.get_user_keys_dir(user_id)
+        orphan = keys_dir / f'.delete-{"b" * 32}-orphan.pem'
+        orphan.write_bytes(b'orphaned encrypted key material')
+
+        assert key_manager.load_keys(user_id) == []
+
+        assert orphan.exists() is False
+
+
+def test_successful_delete_leaves_no_pending_key_file(
+    app, rsa_private_key_pem
+):
+    from app import key_manager
+
+    user_id = create_user(app, username='delete-success-cleanup')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Delete cleanly', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        keys_dir = key_path.parent
+
+        assert key_manager.delete_key(user_id, key['id']) is True
+
+        assert key_path.exists() is False
+        assert list(keys_dir.glob('.delete-*')) == []
+        assert key_manager.load_keys(user_id) == []
 
 
 def test_save_key_removes_pem_before_propagating_typed_metadata_error(

@@ -5,6 +5,7 @@ import sys
 import threading
 import types
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 import pytest
 
@@ -122,6 +123,64 @@ def test_in_memory_limiter_enforces_limit_under_concurrent_access():
     assert results.count(True) == 1
     assert results.count(False) == 1
     assert len(limiter.events['login:parallel']) == 1
+
+
+def test_in_memory_limiter_reclaims_expired_unused_buckets(monkeypatch):
+    """Buckets must expire without requiring the same key to be reused."""
+    clock = {'now': 1_000.0}
+
+    class FrozenDateTime:
+        @classmethod
+        def now(cls, _timezone):
+            return datetime.fromtimestamp(clock['now'], timezone.utc)
+
+    monkeypatch.setattr('app.rate_limiter.datetime', FrozenDateTime)
+    limiter = InMemoryRateLimiter()
+
+    for index in range(100):
+        assert limiter.allow(f'login:client-{index}', 1, 10) is True
+    assert len(limiter.events) == 100
+
+    clock['now'] += 11
+    assert limiter.allow('login:fresh-client', 1, 10) is True
+
+    assert set(limiter.events) == {'login:fresh-client'}
+
+
+def test_denied_in_memory_requests_do_not_allocate_buckets():
+    limiter = InMemoryRateLimiter()
+
+    for index in range(100):
+        assert limiter.allow(f'login:denied-{index}', 0, 60) is False
+
+    assert limiter.events == {}
+
+
+def test_in_memory_cleanup_index_stays_bounded_and_releases_expired_keys(
+    monkeypatch,
+):
+    clock = {'now': 2_000.0}
+
+    class FrozenDateTime:
+        @classmethod
+        def now(cls, _timezone):
+            return datetime.fromtimestamp(clock['now'], timezone.utc)
+
+    monkeypatch.setattr('app.rate_limiter.datetime', FrozenDateTime)
+    limiter = InMemoryRateLimiter()
+
+    for index in range(256):
+        assert limiter.allow(f'login:rotating-{index}', 1, 10) is True
+
+    assert len(limiter._cleanup_keys) <= limiter._CLEANUP_WORK_PER_REQUEST
+
+    clock['now'] += 11
+    assert limiter.allow('login:after-expiry', 1, 10) is True
+
+    assert set(limiter.events) == {'login:after-expiry'}
+    assert set(limiter._expiry_deadlines) == {'login:after-expiry'}
+    assert len(limiter._expiry_heap) == 1
+    assert list(limiter._cleanup_keys) == ['login:after-expiry']
 
 
 def test_denied_requests_do_not_grow_redis_bucket():

@@ -21,6 +21,7 @@ Both backends record allowed requests only. Denied requests do not grow the
 sliding-window bucket and therefore cannot keep allocating backend storage.
 """
 
+import heapq
 import logging
 import time
 import uuid
@@ -79,35 +80,83 @@ class InMemoryRateLimiter(BaseRateLimiter):
     Denied requests are NOT recorded — the window drains naturally.
     """
 
+    _CLEANUP_WORK_PER_REQUEST = 64
+
     def __init__(self):
         self.events: dict[str, deque] = {}
+        self._expiry_heap: list[tuple[float, int, str]] = []
+        self._expiry_deadlines: dict[str, float] = {}
+        self._cleanup_keys = deque(maxlen=self._CLEANUP_WORK_PER_REQUEST)
+        self._expiry_sequence = 0
         self._lock = RLock()
+
+    def _remove_bucket(self, key: str) -> None:
+        self.events.pop(key, None)
+        self._expiry_deadlines.pop(key, None)
+
+    def _purge_expired_buckets(self, now: float) -> None:
+        while self._expiry_heap and self._expiry_heap[0][0] <= now:
+            deadline, _sequence, key = heapq.heappop(self._expiry_heap)
+            if self._expiry_deadlines.get(key) != deadline:
+                continue
+            self._remove_bucket(key)
+
+    def _cleanup_empty_buckets(self) -> None:
+        """Inspect a bounded rotating sample, including legacy empty queues."""
+        work = min(
+            self._CLEANUP_WORK_PER_REQUEST,
+            len(self._cleanup_keys),
+        )
+        for _ in range(work):
+            key = self._cleanup_keys.popleft()
+            queue = self.events.get(key)
+            if queue is None:
+                self._expiry_deadlines.pop(key, None)
+                continue
+            if not queue:
+                self._remove_bucket(key)
+                continue
+            self._cleanup_keys.append(key)
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
         now = datetime.now(timezone.utc).timestamp()
         window_start = now - window_seconds
         with self._lock:
-            queue = self.events.get(key)
-            if queue is None:
-                queue = deque()
-                self.events[key] = queue
+            self._purge_expired_buckets(now)
+            self._cleanup_empty_buckets()
 
-            # Remove expired entries
-            while queue and queue[0] < window_start:
-                queue.popleft()
+            queue = self.events.get(key)
+            if queue is not None:
+                while queue and queue[0] < window_start:
+                    queue.popleft()
+                if not queue:
+                    self._expiry_deadlines.pop(key, None)
 
             # Check limit — do NOT record denied requests
-            if len(queue) >= limit:
+            if limit <= 0 or (queue is not None and len(queue) >= limit):
+                if queue is not None and not queue:
+                    self._remove_bucket(key)
                 return False
 
             # Record this request
+            if queue is None:
+                queue = deque()
+                self.events[key] = queue
+                self._cleanup_keys.append(key)
             queue.append(now)
 
-            # Periodic cleanup of stale keys (prevent memory leak)
-            if len(self.events) > 50:
-                stale = [k for k, q in self.events.items() if not q]
-                for k in stale:
-                    del self.events[k]
+            # Expiry entries make untouched buckets reclaimable without a
+            # full dictionary sweep on every request.
+            deadline = max(
+                self._expiry_deadlines.get(key, float('-inf')),
+                now + max(window_seconds, 0),
+            )
+            self._expiry_deadlines[key] = deadline
+            self._expiry_sequence += 1
+            heapq.heappush(
+                self._expiry_heap,
+                (deadline, self._expiry_sequence, key),
+            )
 
             return True
 

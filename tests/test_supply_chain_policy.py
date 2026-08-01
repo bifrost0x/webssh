@@ -193,6 +193,52 @@ def test_docker_image_declares_the_source_revision_label():
     assert 'LABEL org.opencontainers.image.revision=$VCS_REF' in dockerfile
 
 
+def test_production_compose_override_documents_its_minimum_version():
+    overlay = (ROOT / 'docker-compose.production.yml').read_text(
+        encoding='utf-8'
+    )
+    if '!override' not in overlay:
+        return
+
+    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+    production_quickstart = readme.split(
+        '### Docker Compose (Production)', 1
+    )[1].split('\n### ', 1)[0]
+
+    assert '2.24.4' in production_quickstart
+    assert re.search(
+        r'(?:requires|minimum).{0,80}Docker Compose.{0,40}2\.24\.4'
+        r'|Docker Compose.{0,40}2\.24\.4.{0,40}(?:or newer|minimum)',
+        production_quickstart,
+        re.IGNORECASE | re.DOTALL,
+    )
+
+
+def test_ci_rejects_stale_vendored_frontend_assets():
+    package = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+
+    assert package['scripts']['vendor:check'] == (
+        'node scripts/vendor.js --check'
+    )
+    assert re.search(
+        r'Install locked Node dependencies.*?npm ci.*?'
+        r'Check vendored frontend assets.*?npm run vendor:check.*?'
+        r'Run JavaScript unit tests',
+        workflow,
+        re.DOTALL,
+    )
+
+
+def test_readme_describes_current_transfer_and_log_rotation_contracts():
+    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+
+    assert '`/api/upload`' not in readme
+    assert '`/api/transfers/<token>/upload`' in readme
+    assert '`/api/transfers/<token>/download`' in readme
+    assert 'does not rotate them itself' not in readme
+
+
 def test_trivy_suppressions_are_justified_and_expire():
     policy = json.loads(
         (ROOT / '.trivyignore.yaml').read_text(encoding='utf-8')

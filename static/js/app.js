@@ -645,8 +645,7 @@
 
         downloadFile() {
             if (!this.currentSessionId || !this.currentPath) return;
-            window._httpTransferClient ||= new BinaryTransferClient(socket);
-            window._httpTransferClient.downloadFile(
+            BinaryTransferClient.forSocket(socket).downloadFile(
                 this.currentPath, this.currentSessionId
             );
         },
@@ -916,7 +915,6 @@
 
         ConnectionHistory.addConnection(data.host, data.port, data.username);
 
-        FileTransferManager.updateSessionSelects();
     });
 
     socket.on('ssh_output', (data) => {
@@ -955,7 +953,6 @@
         console.log('SSH disconnected:', data);
         showNotification(`Session disconnected: ${data.reason}`, 'warning');
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
-        FileTransferManager.updateSessionSelects();
 
         if (window.sftpFileManager) {
             window.sftpFileManager.handleSessionDisconnected(data.session_id);
@@ -1003,18 +1000,6 @@
 
     socket.on('jump_host_deleted', (data) => {
         showNotification(window.i18n ? i18n.t('jumphosts.deleted') : 'Jump host deleted', 'success');
-    });
-
-    socket.on('file_progress', (data) => {
-        FileTransferManager.updateProgress(data);
-    });
-
-    socket.on('file_complete', (data) => {
-        FileTransferManager.handleTransferComplete(data);
-    });
-
-    socket.on('file_download_ready', (data) => {
-        FileTransferManager.handleDownloadReady(data);
     });
 
     socket.on('error', (data) => {
@@ -1692,7 +1677,7 @@
                 showNotification('Remote path required', 'error');
                 return;
             }
-            FileTransferManager.uploadFile(active, pendingFile, remotePath);
+            FileTransferManager.uploadFile(active.id, pendingFile, remotePath);
             pendingFile = null;
             if (window.ModalManager) {
                 window.ModalManager.close(modal);

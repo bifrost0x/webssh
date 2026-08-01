@@ -1,3 +1,4 @@
+# Requires Docker Compose 2.24.4 or newer for the !override tag below.
 services:
   webssh:
     ports: !override

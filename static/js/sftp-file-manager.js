@@ -19,6 +19,10 @@ class SFTPFileManager {
         this.transferQueue = [];
         this.activeTransfers = new Map();
         this.isTransferring = false;
+        this.uploadBatches = new Map();
+        this.uploadRefreshes = new Map();
+        this.s2sTerminalWaiters = new Map();
+        this.s2sEarlyTerminals = new Map();
 
         this.conflictAction = null;
         this.applyToAll = false;
@@ -531,9 +535,8 @@ class SFTPFileManager {
         });
 
         this.socket.on('directory_created', (data) => {
-            if (!this.currentUploadBatch) {
-                this.showNotification(`${this.t('fm.folderCreated', 'Folder created')}: ${data.path}`, 'success');
-            }
+            if (this.uploadBatches?.size > 0) return;
+            this.showNotification(`${this.t('fm.folderCreated', 'Folder created')}: ${data.path}`, 'success');
             this.refreshBothPanes();
         });
 
@@ -545,25 +548,6 @@ class SFTPFileManager {
         this.socket.on('item_deleted', (data) => {
             this.showNotification(`${this.t('fm.deleted', 'Deleted')}: ${data.path}`, 'success');
             this.refreshBothPanes();
-        });
-
-        this.socket.on('file_progress', (data) => {
-            this.updateTransferProgress(data);
-        });
-
-        this.socket.on('file_complete', (data) => {
-            this.completeTransfer(data, 'upload');
-
-            if (this.currentUploadBatch && data.type === 'upload') {
-                this.currentUploadBatch.completed++;
-                this.showUploadProgress();
-
-                if (this.currentUploadBatch.completed >= this.currentUploadBatch.total) {
-                    this.showUploadComplete();
-                    window._currentUploadBatchId = null;
-                    this.currentUploadBatch = null;
-                }
-            }
         });
 
         this.socket.on('s2s_transfer_started', (data) => {
@@ -1306,7 +1290,6 @@ class SFTPFileManager {
                 <div class="fm-file-item ${file.is_dir ? 'directory' : ''} ${state.selected.has(originalIndex) ? 'selected' : ''}"
                      data-index="${originalIndex}"
                      data-type="${file.is_dir ? 'directory' : 'file'}"
-                     data-name="${this.escapeHtml(file.name)}"
                      draggable="true">
                     <span class="material-icons fm-file-icon ${file.is_dir ? 'folder' : 'file'}">${icon}</span>
                     <div class="fm-file-info">
@@ -1548,70 +1531,26 @@ class SFTPFileManager {
 
             console.log('[FM] Starting upload of', files.length, 'files to', state.path, 'via session', sessionId);
             this.showNotification(`${this.t('fm.uploading', 'Uploading')} ${files.length} ${this.t('fm.files', 'file(s)')}...`, 'info');
+            const batch = this.startUploadBatch(files.length, sessionId);
 
             Array.from(files).forEach(file => {
-                this.uploadFileToBrowser(file, state.path, sessionId);
+                const remotePath = this.joinPath(state.path, file.name);
+                const transferId = this.getTransferClient().uploadFile(file, remotePath, sessionId);
+                this.queueTransfer({
+                    id: transferId,
+                    type: 'upload',
+                    filename: file.name,
+                    targetPath: remotePath,
+                    size: file.size,
+                    sessionId: sessionId,
+                    batchId: batch.id
+                });
             });
         } else {
             this.showNotification(this.t('fm.uploadSSHOnly', 'Upload only available for SSH connections'), 'warning');
         }
 
         e.target.value = '';
-    }
-
-    uploadFileToBrowser(file, remotePath, sessionId) {
-        const self = this;
-
-        const fullRemotePath = remotePath.endsWith('/')
-            ? remotePath + file.name
-            : remotePath + '/' + file.name;
-
-        console.log('[FM] Starting HTTP upload:', file.name, 'size:', file.size, 'to:', fullRemotePath);
-
-        const transferId = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        self.queueTransfer({
-            id: transferId,
-            type: 'upload',
-            filename: file.name,
-            size: file.size,
-            source: 'local',
-            destination: remotePath
-        });
-
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('session_id', sessionId);
-        formData.append('remote_path', fullRemotePath);
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
-            || document.querySelector('input[name="csrf_token"]')?.value;
-        const headers = {};
-        if (csrfToken) {
-            headers['X-CSRFToken'] = csrfToken;
-        }
-
-        fetch((window.APP_ROOT || '') + '/api/upload', {
-            method: 'POST',
-            body: formData,
-            headers: headers,
-            credentials: 'same-origin'
-        })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (status === 200 && data.success) {
-                self.completeTransferById(transferId);
-                self.refreshPane(self.activePane);
-                self.showNotification(`${file.name} ${self.t('fm.uploaded', 'uploaded')}`, 'success');
-            } else {
-                self.failTransferById(transferId, data.error || 'Upload failed');
-                self.showNotification(`${self.t('fm.uploadError', 'Upload error')}: ${data.error || self.t('fm.unknown', 'Unknown')}`, 'error');
-            }
-        })
-        .catch(err => {
-            console.error('[FM] Upload error:', err);
-            self.failTransferById(transferId, err.message);
-            self.showNotification(`${self.t('fm.uploadError', 'Upload error')}: ${err.message}`, 'error');
-        });
     }
 
     selectAll() {
@@ -1719,6 +1658,7 @@ class SFTPFileManager {
     }
 
     async executeTransfer() {
+        if (this.transferExecutionInProgress) return;
         const sourcePane = this.activePane;
         const targetPane = sourcePane === 'left' ? 'right' : 'left';
 
@@ -1746,32 +1686,37 @@ class SFTPFileManager {
 
         const transferType = `${source.type}-to-${target.type}`;
         this.showNotification(`${this.t('fm.startingTransfer', 'Starting transfer of')} ${selectedItems.length} ${this.t('fm.items', 'item(s)')}...`, 'info');
+        this.transferExecutionInProgress = true;
 
-        for (const item of selectedItems) {
-            const sourcePath = source.path === '/' ? '/' + item.name : source.path + '/' + item.name;
-            const targetPath = target.path === '/' ? '/' + item.name : target.path + '/' + item.name;
+        try {
+            for (const item of selectedItems) {
+                const sourcePath = source.path === '/' ? '/' + item.name : source.path + '/' + item.name;
+                const targetPath = target.path === '/' ? '/' + item.name : target.path + '/' + item.name;
 
-            switch (transferType) {
-                case 'browser-local-to-ssh':
-                    await this.transferBrowserToSSH(item, targetPath, target);
-                    break;
+                switch (transferType) {
+                    case 'browser-local-to-ssh':
+                        await this.transferBrowserToSSH(item, targetPath, target);
+                        break;
 
-                case 'ssh-to-browser-local':
-                    await this.transferSSHToBrowser(
-                        sourcePath,
-                        source,
-                        item.name,
-                        targetPane,
-                    );
-                    break;
+                    case 'ssh-to-browser-local':
+                        await this.transferSSHToBrowser(
+                            sourcePath,
+                            source,
+                            item.name,
+                            targetPane,
+                        );
+                        break;
 
-                case 'ssh-to-ssh':
-                    await this.transferSSHtoSSH(sourcePath, source, targetPath, target, item);
-                    break;
+                    case 'ssh-to-ssh':
+                        await this.transferSSHtoSSH(sourcePath, source, targetPath, target, item);
+                        break;
 
-                default:
-                    this.showNotification(`${this.t('fm.transferNotSupported', 'Transfer type not supported')}: ${transferType}`, 'error');
+                    default:
+                        this.showNotification(`${this.t('fm.transferNotSupported', 'Transfer type not supported')}: ${transferType}`, 'error');
+                }
             }
+        } finally {
+            this.transferExecutionInProgress = false;
         }
     }
 
@@ -1789,7 +1734,9 @@ class SFTPFileManager {
                     type: 'upload',
                     filename: item.name,
                     targetPath: targetPath,
-                    size: file.size
+                    size: file.size,
+                    sessionId: sessionId,
+                    batchId: null
                 });
             } catch (e) {
                 this.showNotification(`${this.t('fm.failedToRead', 'Failed to read')} ${item.name}: ${e.message}`, 'error');
@@ -1797,7 +1744,7 @@ class SFTPFileManager {
         }
     }
 
-    async uploadBrowserFolderToSSH(dirHandle, remotePath, sessionId) {
+    async uploadBrowserFolderToSSH(dirHandle, remotePath, sessionId, batchId = null) {
         this.socket.emit('create_directory', { session_id: sessionId, remote_path: remotePath });
         await new Promise(r => setTimeout(r, 100));
 
@@ -1805,7 +1752,7 @@ class SFTPFileManager {
             const entryPath = remotePath + '/' + entry.name;
 
             if (entry.kind === 'directory') {
-                await this.uploadBrowserFolderToSSH(entry, entryPath, sessionId);
+                await this.uploadBrowserFolderToSSH(entry, entryPath, sessionId, batchId);
             } else {
                 try {
                     const file = await entry.getFile();
@@ -1815,7 +1762,9 @@ class SFTPFileManager {
                         type: 'upload',
                         filename: entry.name,
                         targetPath: entryPath,
-                        size: file.size
+                        size: file.size,
+                        sessionId: sessionId,
+                        batchId: batchId
                     });
                 } catch (e) {
                     console.error('Failed to upload:', entry.name, e);
@@ -1879,6 +1828,7 @@ class SFTPFileManager {
             return;
         }
         const transferId = acknowledgement.transfer_id;
+        const terminal = this.waitForS2STerminal(transferId);
 
         this.queueTransfer({
             id: transferId,
@@ -1888,6 +1838,16 @@ class SFTPFileManager {
             targetPath: targetPath,
             size: item.size || 0
         });
+        const earlyTerminal = this.s2sEarlyTerminals?.get(transferId);
+        if (earlyTerminal) {
+            this.s2sEarlyTerminals.delete(transferId);
+            this.finalizeTransferById(
+                transferId,
+                earlyTerminal.status,
+                earlyTerminal.error
+            );
+        }
+        await terminal;
     }
 
     handleDrop(e, targetPane) {
@@ -1942,10 +1902,7 @@ class SFTPFileManager {
             if (entry.isFile) {
                 return 1;
             } else if (entry.isDirectory) {
-                const reader = entry.createReader();
-                const subEntries = await new Promise((resolve, reject) => {
-                    reader.readEntries(resolve, reject);
-                });
+                const subEntries = await this.readAllDirectoryEntries(entry);
                 let count = 0;
                 for (const subEntry of subEntries) {
                     count += await countFiles(subEntry);
@@ -1960,48 +1917,44 @@ class SFTPFileManager {
             totalFiles += await countFiles(entry);
         }
 
-        const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        this.currentUploadBatch = {
-            id: batchId,
-            total: totalFiles,
-            completed: 0,
-            sessionId: sessionId
-        };
-
-        window._currentUploadBatchId = batchId;
-
-        this.showUploadProgress();
+        const batch = this.startUploadBatch(totalFiles, sessionId);
 
         for (const entry of entries) {
             if (entry.isFile) {
                 entry.file(file => {
-                    this.uploadSingleFileToSSH(file, basePath, sessionId, true);
+                    this.uploadSingleFileToSSH(file, basePath, sessionId, batch.id);
                 });
             } else if (entry.isDirectory) {
-                await this.uploadDirectoryToSSH(entry, basePath, sessionId, true);
+                await this.uploadDirectoryToSSH(entry, basePath, sessionId, batch.id);
             }
         }
-
-        if (this.uploadRefreshTimer) {
-            clearTimeout(this.uploadRefreshTimer);
-        }
-        this.uploadRefreshTimer = setTimeout(() => {
-            this.refreshPane(this.getPaneForSession(sessionId));
-            this.uploadRefreshTimer = null;
-        }, 2000);
     }
 
-    uploadSingleFileToSSH(file, basePath, sessionId, isBatchUpload = false) {
+    uploadSingleFileToSSH(file, basePath, sessionId, batchId = null) {
         const remotePath = this.joinPath(basePath, file.name);
         const transferId = this.getTransferClient().uploadFile(file, remotePath, sessionId);
         this.queueTransfer({
             id: transferId,
             type: 'upload', filename: file.name, targetPath: remotePath,
-            size: file.size
+            size: file.size,
+            sessionId: sessionId,
+            batchId: batchId
         });
     }
 
-    async uploadDirectoryToSSH(directoryEntry, basePath, sessionId, isBatchUpload = false) {
+    async readAllDirectoryEntries(directoryEntry) {
+        const reader = directoryEntry.createReader();
+        const entries = [];
+        while (true) {
+            const page = await new Promise((resolve, reject) => {
+                reader.readEntries(resolve, reject);
+            });
+            if (!page || page.length === 0) return entries;
+            entries.push(...page);
+        }
+    }
+
+    async uploadDirectoryToSSH(directoryEntry, basePath, sessionId, batchId = null) {
         const dirPath = this.joinPath(basePath, directoryEntry.name);
 
         this.socket.emit('create_directory', {
@@ -2009,19 +1962,16 @@ class SFTPFileManager {
             remote_path: dirPath
         });
 
-        const reader = directoryEntry.createReader();
-        const entries = await new Promise((resolve, reject) => {
-            reader.readEntries(resolve, reject);
-        });
+        const entries = await this.readAllDirectoryEntries(directoryEntry);
 
         const promises = [];
         for (const entry of entries) {
             if (entry.isFile) {
                 entry.file(file => {
-                    this.uploadSingleFileToSSH(file, dirPath, sessionId, isBatchUpload);
+                    this.uploadSingleFileToSSH(file, dirPath, sessionId, batchId);
                 });
             } else if (entry.isDirectory) {
-                promises.push(this.uploadDirectoryToSSH(entry, dirPath, sessionId, isBatchUpload));
+                promises.push(this.uploadDirectoryToSSH(entry, dirPath, sessionId, batchId));
             }
         }
 
@@ -2030,28 +1980,92 @@ class SFTPFileManager {
 
     async uploadDesktopFilesToSSH(files, targetPane) {
         const sessionId = targetPane.sessionId || targetPane.connectionId;
+        const batch = this.startUploadBatch(files.length, sessionId);
 
         for (const file of files) {
-            this.uploadSingleFileToSSH(file, targetPane.path, sessionId);
+            this.uploadSingleFileToSSH(file, targetPane.path, sessionId, batch.id);
+        }
+    }
+
+    startUploadBatch(total, sessionId) {
+        if (!Number.isInteger(total) || total <= 0) {
+            return { id: null, total: 0, completed: 0, sessionId: sessionId };
+        }
+        if (!this.uploadBatches) this.uploadBatches = new Map();
+        const batch = {
+            id: `batch_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+            total: total,
+            completed: 0,
+            succeeded: 0,
+            failed: 0,
+            cancelled: 0,
+            sessionId: sessionId
+        };
+        this.uploadBatches.set(batch.id, batch);
+        this.currentUploadBatch = batch;
+        window._currentUploadBatchId = batch.id;
+        this.showUploadProgress(batch);
+        return batch;
+    }
+
+    recordUploadTerminal(transfer, status) {
+        if (transfer.type !== 'upload' || transfer.uploadTerminalRecorded) return;
+        transfer.uploadTerminalRecorded = true;
+
+        const batch = transfer.batchId && this.uploadBatches
+            ? this.uploadBatches.get(transfer.batchId)
+            : null;
+        if (!batch) {
+            this.scheduleUploadRefresh(transfer.sessionId);
+            return;
         }
 
-        if (this.uploadRefreshTimer) {
-            clearTimeout(this.uploadRefreshTimer);
+        batch.completed++;
+        if (status === 'complete') batch.succeeded++;
+        else if (status === 'cancelled') batch.cancelled++;
+        else batch.failed++;
+
+        if (this.currentUploadBatch?.id === batch.id) {
+            this.showUploadProgress(batch);
         }
-        this.uploadRefreshTimer = setTimeout(() => {
-            this.refreshPane(this.getPaneForSession(sessionId));
-            this.uploadRefreshTimer = null;
-        }, 2000);
+        if (batch.completed < batch.total) return;
+
+        this.uploadBatches.delete(batch.id);
+        if (this.currentUploadBatch?.id === batch.id) {
+            this.showUploadComplete(batch);
+            this.currentUploadBatch = null;
+            window._currentUploadBatchId = null;
+        }
+        this.scheduleUploadRefresh(batch.sessionId);
+    }
+
+    scheduleUploadRefresh(sessionId) {
+        if (!sessionId) return;
+        const pane = this.getPaneForSession(sessionId);
+        if (!pane) return;
+        if (!this.uploadRefreshes) this.uploadRefreshes = new Map();
+        const key = `${pane}:${sessionId}`;
+        if (this.uploadRefreshes.has(key)) return;
+
+        const scheduled = Promise.resolve().then(() => {
+            this.uploadRefreshes.delete(key);
+            if (this.getPaneForSession(sessionId) !== pane) return;
+            return this.refreshPane(pane);
+        }).catch(error => {
+            console.error('[FM] Failed to refresh upload destination:', error);
+        });
+        this.uploadRefreshes.set(key, scheduled);
     }
 
     getPaneForSession(sessionId) {
+        if (!this.panes) return null;
         if (this.panes.left.sessionId === sessionId || this.panes.left.connectionId === sessionId) {
             return 'left';
         }
         if (this.panes.right.sessionId === sessionId || this.panes.right.connectionId === sessionId) {
             return 'right';
         }
-        return 'left';
+        return null;
     }
 
     handleDragStart(e, pane, index) {
@@ -2072,6 +2086,10 @@ class SFTPFileManager {
     queueTransfer(transfer) {
         if (!transfer.id) {
             transfer.id = Date.now() + Math.random();
+        }
+        if (transfer.type === 'upload') {
+            if (!Object.hasOwn(transfer, 'sessionId')) transfer.sessionId = null;
+            if (!Object.hasOwn(transfer, 'batchId')) transfer.batchId = null;
         }
         transfer.status = 'pending';
         transfer.progress = 0;
@@ -2119,44 +2137,40 @@ class SFTPFileManager {
         this.renderTransferQueue();
     }
 
-    completeTransfer(data, type) {
-        const transfer = this.transferQueue.find(t =>
-            t.status === 'active' && t.type === type
-        );
-
-        if (transfer) {
-            transfer.status = 'complete';
-            transfer.progress = 100;
-            this.activeTransfers.delete(transfer.id);
-            this.isTransferring = false;
-            this.renderTransferQueue();
-            this.refreshBothPanes();
-            setTimeout(() => this.processTransferQueue(), 100);
-        }
-    }
-
     completeS2STransfer(data) {
-        const transfer = this.transferQueue.find(t => t.id === data.transfer_id);
-        if (transfer) {
-            transfer.status = 'complete';
-            transfer.progress = 100;
-            this.activeTransfers.delete(transfer.id);
-            this.isTransferring = false;
-            this.renderTransferQueue();
-            setTimeout(() => this.processTransferQueue(), 100);
-        }
+        this.finalizeOrBufferS2STerminal(data.transfer_id, 'complete');
     }
 
     failS2STransfer(data) {
-        const transfer = this.transferQueue.find(t => t.id === data.transfer_id);
+        this.finalizeOrBufferS2STerminal(data.transfer_id, 'error', data.error);
+    }
+
+    finalizeOrBufferS2STerminal(transferId, status, error = null) {
+        const transfer = this.transferQueue?.find(item => item.id === transferId);
         if (transfer) {
-            transfer.status = 'error';
-            transfer.error = data.error;
-            this.activeTransfers.delete(transfer.id);
-            this.isTransferring = false;
-            this.renderTransferQueue();
-            setTimeout(() => this.processTransferQueue(), 100);
+            this.finalizeTransferById(transferId, status, error);
+            return;
         }
+        if (!this.s2sEarlyTerminals) this.s2sEarlyTerminals = new Map();
+        this.s2sEarlyTerminals.set(transferId, { status: status, error: error });
+    }
+
+    waitForS2STerminal(transferId) {
+        const transfer = this.transferQueue?.find(item => item.id === transferId);
+        if (transfer && ['complete', 'error', 'cancelled'].includes(transfer.status)) {
+            return Promise.resolve(transfer.status);
+        }
+        if (!this.s2sTerminalWaiters) this.s2sTerminalWaiters = new Map();
+        return new Promise(resolve => {
+            this.s2sTerminalWaiters.set(transferId, resolve);
+        });
+    }
+
+    resolveS2STerminal(transferId, status) {
+        const resolve = this.s2sTerminalWaiters?.get(transferId);
+        if (!resolve) return;
+        this.s2sTerminalWaiters.delete(transferId);
+        resolve(status);
     }
 
     completeTransferById(transferId) {
@@ -2190,6 +2204,7 @@ class SFTPFileManager {
     finalizeTransferById(transferId, status, error = null) {
         const transfer = this.transferQueue.find(t => t.id === transferId);
         if (!transfer) return;
+        if (['complete', 'error', 'cancelled'].includes(transfer.status)) return;
 
         const wasActive = transfer.status === 'active';
         transfer.status = status;
@@ -2199,6 +2214,10 @@ class SFTPFileManager {
             transfer.error = error;
         }
         this.activeTransfers.delete(transfer.id);
+        this.recordUploadTerminal(transfer, status);
+        if (transfer.type === 's2s') {
+            this.resolveS2STerminal(transfer.id, status);
+        }
         if (wasActive) {
             this.isTransferring = false;
             setTimeout(() => this.processTransferQueue(), 100);
@@ -2265,7 +2284,7 @@ class SFTPFileManager {
         if (!this.transferClient) {
             this.transferClient = this.createTransferClient
                 ? this.createTransferClient()
-                : new BinaryTransferClient(this.socket);
+                : BinaryTransferClient.forSocket(this.socket);
             this.transferClient.on('progress', data => this.updateTransferById(data));
             this.transferClient.on('complete', data => this.completeTransferById(data.transferId));
             this.transferClient.on('error', data => this.failTransferById(data.transferId, data.error));
@@ -2583,10 +2602,10 @@ class SFTPFileManager {
         return div.innerHTML;
     }
 
-    showUploadProgress() {
-        if (!this.currentUploadBatch) return;
+    showUploadProgress(batch = this.currentUploadBatch) {
+        if (!batch) return;
 
-        const { completed, total } = this.currentUploadBatch;
+        const { completed, total } = batch;
         const percent = Math.round((completed / total) * 100);
 
         if (!this.uploadProgressNotification) {
@@ -2710,7 +2729,7 @@ class SFTPFileManager {
         }
     }
 
-    showUploadComplete() {
+    showUploadComplete(batch = this.currentUploadBatch) {
         if (!this.uploadProgressNotification) return;
 
         this.uploadProgressNotification.classList.add('success');
@@ -2722,7 +2741,7 @@ class SFTPFileManager {
                 <div class="upload-progress-info">
                     <div class="upload-progress-text">${this.t('fm.uploadComplete', 'Upload complete')}!</div>
                     <div class="upload-progress-stats">
-                        <span>${this.currentUploadBatch ? this.currentUploadBatch.total : 0} ${this.t('fm.filesUploaded', 'files uploaded')}</span>
+                        <span>${batch ? batch.succeeded : 0} / ${batch ? batch.total : 0} ${this.t('fm.filesUploaded', 'files uploaded')}</span>
                     </div>
                 </div>
             </div>

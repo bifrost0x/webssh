@@ -200,7 +200,7 @@ def create_app(
         async_handlers=config.SOCKETIO_ASYNC_HANDLERS,
         ping_timeout=config.SOCKETIO_PING_TIMEOUT,
         ping_interval=config.SOCKETIO_PING_INTERVAL,
-        max_http_buffer_size=110 * 1024 * 1024,
+        max_http_buffer_size=config.SOCKETIO_MAX_MESSAGE_SIZE,
         logger=False,
         engineio_logger=False
     )

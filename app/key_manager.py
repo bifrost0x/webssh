@@ -1,6 +1,7 @@
 import uuid
 import os
 import paramiko
+import stat
 from datetime import datetime
 from pathlib import Path
 import config
@@ -8,7 +9,12 @@ from .audit_logger import log_info, log_warning, log_error, log_debug
 from . import key_encryption
 from .ssh_key_loader import identify_private_key, UnsupportedPrivateKeyError
 from .storage_errors import StorageCorruptionError
-from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
+from .storage_utils import (
+    atomic_write_json,
+    fsync_parent_directory,
+    load_json_migrated,
+    storage_lock,
+)
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 def get_user_keys_dir(user_id):
@@ -31,11 +37,47 @@ def get_user_keys_file(user_id):
     return keys_dir / 'keys.json'
 
 
+def _is_safe_key_filename(filename):
+    return (
+        isinstance(filename, str)
+        and bool(filename)
+        and filename not in {'.', '..', 'keys.json'}
+        and '/' not in filename
+        and '\\' not in filename
+        and '\x00' not in filename
+        and not Path(filename).is_absolute()
+        and Path(filename).name == filename
+    )
+
+
+def _safe_key_path(keys_dir, filename):
+    """Resolve one metadata filename without leaving its owning key store."""
+    keys_dir = Path(keys_dir)
+    metadata_path = keys_dir / 'keys.json'
+    if not _is_safe_key_filename(filename):
+        raise StorageCorruptionError(metadata_path, 'invalid key filename')
+    try:
+        resolved_keys_dir = keys_dir.resolve(strict=True)
+        lexical_path = keys_dir / filename
+        candidate = lexical_path.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise StorageCorruptionError(
+            metadata_path, 'key path validation failed'
+        ) from exc
+    if candidate.parent != resolved_keys_dir:
+        raise StorageCorruptionError(
+            metadata_path, 'key path escaped keys directory'
+        )
+    return lexical_path
+
+
 def _valid_key_metadata(item):
     if not isinstance(item, dict):
         return False
     required_strings = ('id', 'name', 'filename', 'key_type')
     if not all(isinstance(item.get(field), str) for field in required_strings):
+        return False
+    if not _is_safe_key_filename(item['filename']):
         return False
     if 'encrypted' in item and type(item['encrypted']) is not bool:
         return False
@@ -47,12 +89,166 @@ def _valid_key_metadata(item):
 
 
 def _valid_key_document(value):
+    if (
+        not isinstance(value, dict)
+        or value.get('schema_version') != CURRENT_STORAGE_VERSIONS['keys']
+        or not isinstance(value.get('keys'), list)
+        or not all(_valid_key_metadata(item) for item in value['keys'])
+    ):
+        return False
+    key_ids = [item['id'] for item in value['keys']]
+    filenames = [item['filename'] for item in value['keys']]
     return (
-        isinstance(value, dict)
-        and value.get('schema_version') == CURRENT_STORAGE_VERSIONS['keys']
-        and isinstance(value.get('keys'), list)
-        and all(_valid_key_metadata(item) for item in value['keys'])
+        len(key_ids) == len(set(key_ids))
+        and len(filenames) == len(set(filenames))
     )
+
+
+_DELETE_STAGING_PREFIX = '.delete-'
+_DELETE_TOKEN_LENGTH = 32
+
+
+def _pending_delete_filename(path):
+    name = Path(path).name
+    if not name.startswith(_DELETE_STAGING_PREFIX):
+        return None
+    remainder = name[len(_DELETE_STAGING_PREFIX):]
+    token, separator, filename = remainder.partition('-')
+    if (
+        separator != '-'
+        or len(token) != _DELETE_TOKEN_LENGTH
+        or any(character not in '0123456789abcdef' for character in token)
+        or not _is_safe_key_filename(filename)
+    ):
+        return None
+    return filename
+
+
+def _path_entry_exists(path):
+    try:
+        Path(path).lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _replace_key_entry(source, destination):
+    os.replace(source, destination)
+    fsync_parent_directory(destination)
+
+
+def _remove_pending_key_entry(path, *, user_id, key_id=None):
+    try:
+        Path(path).unlink(missing_ok=True)
+        fsync_parent_directory(path)
+    except Exception as exc:
+        log_warning(
+            "Failed to remove pending key deletion",
+            user_id=user_id,
+            key_id=key_id,
+            cleanup_error=type(exc).__name__,
+        )
+        return False
+    return True
+
+
+def _reconcile_pending_key_deletions(user_id, keys_dir, keys):
+    """Recover an interrupted delete using committed metadata as authority."""
+    referenced_filenames = {key['filename'] for key in keys}
+    try:
+        pending_entries = sorted(
+            path for path in Path(keys_dir).iterdir()
+            if _pending_delete_filename(path) is not None
+        )
+    except OSError as exc:
+        raise StorageCorruptionError(
+            Path(keys_dir) / 'keys.json',
+            'pending key deletion scan failed',
+        ) from exc
+
+    for pending_path in pending_entries:
+        if pending_path.name in referenced_filenames:
+            continue
+        try:
+            pending_stat = pending_path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise StorageCorruptionError(
+                Path(keys_dir) / 'keys.json',
+                'pending key deletion inspection failed',
+            ) from exc
+        if not (
+            stat.S_ISREG(pending_stat.st_mode)
+            or stat.S_ISLNK(pending_stat.st_mode)
+        ):
+            raise StorageCorruptionError(
+                Path(keys_dir) / 'keys.json',
+                'invalid pending key deletion entry',
+            )
+        filename = _pending_delete_filename(pending_path)
+        key_path = Path(keys_dir) / filename
+        if filename not in referenced_filenames or _path_entry_exists(key_path):
+            _remove_pending_key_entry(pending_path, user_id=user_id)
+            continue
+        try:
+            _replace_key_entry(pending_path, key_path)
+        except OSError as exc:
+            raise StorageCorruptionError(
+                Path(keys_dir) / 'keys.json',
+                'pending key deletion recovery failed',
+            ) from exc
+
+
+def _stage_key_deletion(keys_dir, key_path):
+    try:
+        key_stat = Path(key_path).lstat()
+    except FileNotFoundError:
+        return None
+    if not (
+        stat.S_ISREG(key_stat.st_mode)
+        or stat.S_ISLNK(key_stat.st_mode)
+    ):
+        raise StorageCorruptionError(
+            Path(keys_dir) / 'keys.json',
+            'key path is not a file',
+        )
+    pending_path = Path(keys_dir) / (
+        f'{_DELETE_STAGING_PREFIX}{uuid.uuid4().hex}-{Path(key_path).name}'
+    )
+    try:
+        _replace_key_entry(key_path, pending_path)
+    except Exception:
+        if _path_entry_exists(pending_path) and not _path_entry_exists(key_path):
+            try:
+                os.replace(pending_path, key_path)
+                fsync_parent_directory(key_path)
+            except Exception:
+                pass
+        raise
+    return pending_path
+
+
+def _rollback_key_deletion(user_id, key_id, pending_path, key_path):
+    if pending_path is None or not _path_entry_exists(pending_path):
+        return True
+    try:
+        if _path_entry_exists(key_path):
+            return _remove_pending_key_entry(
+                pending_path,
+                user_id=user_id,
+                key_id=key_id,
+            )
+        _replace_key_entry(pending_path, key_path)
+    except Exception as exc:
+        log_warning(
+            "Failed to restore key after metadata save failure",
+            user_id=user_id,
+            key_id=key_id,
+            cleanup_error=type(exc).__name__,
+        )
+        return False
+    return True
 
 
 def _load_keys_with_lock_held(user_id):
@@ -65,7 +261,9 @@ def _load_keys_with_lock_held(user_id):
         lambda: {'keys': []},
         _valid_key_document,
     )
-    return data['keys']
+    keys = data['keys']
+    _reconcile_pending_key_deletions(user_id, keys_file.parent, keys)
+    return keys
 
 
 def load_keys(user_id):
@@ -177,7 +375,7 @@ def get_key_path(user_id, key_id):
 
     for key in keys:
         if key['id'] == key_id:
-            return str(keys_dir / key['filename'])
+            return str(_safe_key_path(keys_dir, key['filename']))
     return None
 
 
@@ -188,10 +386,7 @@ def _get_key_path_with_lock_held(user_id, key_id):
         return None
     for key in keys:
         if key['id'] == key_id:
-            filename = key['filename']
-            if not filename or Path(filename).name != filename:
-                raise ValueError('invalid key filename')
-            return str(keys_dir / filename)
+            return str(_safe_key_path(keys_dir, key['filename']))
     return None
 
 def get_key(user_id, key_id):
@@ -260,11 +455,8 @@ def load_key_summaries(user_id):
             continue
         usable = False
         try:
-            filename = key.get('filename')
-            if not filename or Path(filename).name != filename:
-                raise ValueError('invalid key filename')
-
-            raw = (keys_dir / filename).read_bytes()
+            key_path = _safe_key_path(keys_dir, key.get('filename'))
+            raw = key_path.read_bytes()
             if key_encryption.is_encrypted(raw):
                 if fernet is None:
                     fernet = key_encryption.get_user_fernet(str(user_id))
@@ -303,12 +495,44 @@ def delete_key(user_id, key_id):
                     return False
 
                 keys_dir = get_user_keys_dir(user_id)
+                key_path = None
+                pending_path = None
                 if keys_dir:
-                    key_path = keys_dir / key_to_delete['filename']
-                    key_path.unlink(missing_ok=True)
+                    key_path = _safe_key_path(
+                        keys_dir, key_to_delete['filename']
+                    )
+                    pending_path = _stage_key_deletion(keys_dir, key_path)
 
                 keys = [k for k in keys if k['id'] != key_id]
-                return save_keys(user_id, keys)
+                try:
+                    metadata_saved = save_keys(user_id, keys)
+                except Exception:
+                    if key_path is not None:
+                        _rollback_key_deletion(
+                            user_id,
+                            key_id,
+                            pending_path,
+                            key_path,
+                        )
+                    raise
+
+                if not metadata_saved:
+                    if key_path is not None:
+                        _rollback_key_deletion(
+                            user_id,
+                            key_id,
+                            pending_path,
+                            key_path,
+                        )
+                    return False
+
+                if pending_path is not None:
+                    _remove_pending_key_entry(
+                        pending_path,
+                        user_id=user_id,
+                        key_id=key_id,
+                    )
+                return True
     except StorageCorruptionError:
         raise
     except Exception as e:

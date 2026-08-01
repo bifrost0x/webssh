@@ -3,6 +3,7 @@ import os
 import stat
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -264,6 +265,318 @@ class ManyZeroFilesSFTP:
 
     def file(self, _path, _mode):
         return BoundedReader(b'')
+
+
+class CleanupDirectoryIterator:
+    """Iterator that makes eager or over-budget cleanup observable."""
+
+    def __init__(self, entries, *, fail_after=None):
+        self._entries = iter(entries)
+        self.fail_after = fail_after
+        self.consumed = 0
+        self.closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.fail_after is not None and self.consumed >= self.fail_after:
+            raise AssertionError('cleanup consumed an entry beyond its budget')
+        entry = next(self._entries)
+        self.consumed += 1
+        return entry
+
+    def close(self):
+        self.closed = True
+
+
+class CleanupSFTP:
+    """Minimal remote tree whose listings are streamed and inspectable."""
+
+    def __init__(self, listings, modes):
+        self.listings = listings
+        self.modes = modes
+        self.iterators = []
+        self.removed = []
+        self.removed_dirs = []
+        self.listed = []
+        self.lstat_calls = []
+
+    def listdir_iter(self, path):
+        self.listed.append(path)
+        iterator = self.listings[path]
+        self.iterators.append(iterator)
+        return iterator
+
+    def lstat(self, path):
+        self.lstat_calls.append(path)
+        return SimpleNamespace(st_mode=self.modes[path])
+
+    def remove(self, path):
+        self.removed.append(path)
+
+    def rmdir(self, path):
+        self.removed_dirs.append(path)
+
+
+def cleanup_entry(name, mode):
+    return SimpleNamespace(filename=name, st_mode=mode, st_size=0, st_mtime=0)
+
+
+@contextmanager
+def cleanup_sftp_session(sftp):
+    yield sftp, 'session'
+
+
+def test_remove_sftp_tree_streams_entries_and_closes_iterator():
+    from app.sftp_handler import _remove_sftp_tree
+
+    iterator = CleanupDirectoryIterator([
+        cleanup_entry('payload.txt', stat.S_IFREG),
+    ])
+    sftp = CleanupSFTP(
+        {'/temporary': iterator},
+        {'/temporary/payload.txt': stat.S_IFREG},
+    )
+
+    assert _remove_sftp_tree(sftp, '/temporary', max_members=1) is True
+    assert iterator.closed is True
+    assert sftp.removed == ['/temporary/payload.txt']
+    assert sftp.removed_dirs == ['/temporary']
+
+
+def test_remove_sftp_tree_stops_at_member_budget_without_consuming_extra_entry():
+    from app.sftp_handler import _remove_sftp_tree
+
+    iterator = CleanupDirectoryIterator(
+        [
+            cleanup_entry('first.txt', stat.S_IFREG),
+            cleanup_entry('extra.txt', stat.S_IFREG),
+        ],
+    )
+    sftp = CleanupSFTP(
+        {'/temporary': iterator},
+        {
+            '/temporary/first.txt': stat.S_IFREG,
+            '/temporary/extra.txt': stat.S_IFREG,
+        },
+    )
+
+    assert _remove_sftp_tree(sftp, '/temporary', max_members=1) is False
+    assert iterator.consumed == 2
+    assert iterator.closed is True
+    assert sftp.removed == ['/temporary/first.txt']
+    assert sftp.lstat_calls == ['/temporary/first.txt']
+    assert sftp.removed_dirs == []
+
+
+def test_remove_sftp_tree_stops_before_listing_when_cancelled():
+    from app.sftp_handler import _remove_sftp_tree
+
+    cancelled = threading.Event()
+    cancelled.set()
+    iterator = CleanupDirectoryIterator([])
+    sftp = CleanupSFTP({'/temporary': iterator}, {})
+
+    assert _remove_sftp_tree(
+        sftp, '/temporary', max_members=2, cancel_event=cancelled
+    ) is False
+    assert sftp.listed == []
+    assert iterator.closed is False
+    assert sftp.removed == []
+    assert sftp.removed_dirs == []
+
+
+def test_remove_sftp_tree_does_not_recurse_beyond_depth_limit():
+    from app.sftp_handler import _remove_sftp_tree
+
+    root_iterator = CleanupDirectoryIterator([
+        cleanup_entry('nested', stat.S_IFDIR),
+    ])
+    nested_iterator = CleanupDirectoryIterator([
+        cleanup_entry('too-deep', stat.S_IFDIR),
+    ])
+    sftp = CleanupSFTP(
+        {
+            '/temporary': root_iterator,
+            '/temporary/nested': nested_iterator,
+        },
+        {
+            '/temporary/nested': stat.S_IFDIR,
+            '/temporary/nested/too-deep': stat.S_IFDIR,
+        },
+    )
+
+    assert _remove_sftp_tree(
+        sftp, '/temporary', max_members=4, max_depth=1
+    ) is False
+    assert sftp.listed == ['/temporary', '/temporary/nested']
+    assert root_iterator.closed is True
+    assert nested_iterator.closed is True
+    assert sftp.removed_dirs == []
+
+
+def test_remove_sftp_tree_stops_on_cyclic_directory_response():
+    from app.sftp_handler import _remove_sftp_tree
+
+    root_iterator = CleanupDirectoryIterator([
+        cleanup_entry('loop', stat.S_IFDIR),
+    ])
+    loop_iterator = CleanupDirectoryIterator([
+        cleanup_entry('loop', stat.S_IFDIR),
+    ])
+    sftp = CleanupSFTP(
+        {
+            '/temporary': root_iterator,
+            '/temporary/loop': loop_iterator,
+        },
+        {
+            '/temporary/loop': stat.S_IFDIR,
+            '/temporary/loop/loop': stat.S_IFDIR,
+        },
+    )
+
+    assert _remove_sftp_tree(
+        sftp, '/temporary', max_members=3, max_depth=1
+    ) is False
+    assert sftp.listed == ['/temporary', '/temporary/loop']
+    assert sftp.removed_dirs == []
+
+
+def test_remove_sftp_tree_removes_symlink_without_following_it():
+    from app.sftp_handler import _remove_sftp_tree
+
+    iterator = CleanupDirectoryIterator([
+        cleanup_entry('linked', stat.S_IFLNK),
+    ])
+    sftp = CleanupSFTP(
+        {'/temporary': iterator},
+        {'/temporary/linked': stat.S_IFLNK},
+    )
+
+    assert _remove_sftp_tree(sftp, '/temporary', max_members=2) is True
+    assert sftp.listed == ['/temporary']
+    assert sftp.removed == ['/temporary/linked']
+    assert sftp.removed_dirs == ['/temporary']
+
+
+def test_remove_sftp_tree_stops_on_unsafe_entry_name():
+    from app.sftp_handler import _remove_sftp_tree
+
+    iterator = CleanupDirectoryIterator([
+        cleanup_entry('../outside', stat.S_IFREG),
+    ])
+    sftp = CleanupSFTP({'/temporary': iterator}, {})
+
+    assert _remove_sftp_tree(sftp, '/temporary', max_members=2) is False
+    assert iterator.closed is True
+    assert sftp.removed == []
+    assert sftp.removed_dirs == []
+
+
+def test_list_directory_allows_exact_configured_member_limit(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    iterator = CleanupDirectoryIterator([cleanup_entry('visible.txt', stat.S_IFREG)])
+    sftp = CleanupSFTP(
+        {'/remote': iterator},
+        {'/remote/visible.txt': stat.S_IFREG},
+    )
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
+    monkeypatch.setattr(
+        sftp_handler, 'sftp_session', lambda _session_id: cleanup_sftp_session(sftp)
+    )
+
+    files, error = sftp_handler.list_directory('session', '/remote')
+
+    assert error is None
+    assert [file['name'] for file in files] == ['visible.txt']
+    assert iterator.consumed == 1
+    assert iterator.closed is True
+
+
+def test_list_directory_rejects_limit_plus_one_without_appending_probe(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    iterator = CleanupDirectoryIterator([
+        cleanup_entry('visible.txt', stat.S_IFREG),
+        cleanup_entry('probe.txt', stat.S_IFREG),
+    ])
+    sftp = CleanupSFTP(
+        {'/remote': iterator},
+        {
+            '/remote/visible.txt': stat.S_IFREG,
+            '/remote/probe.txt': stat.S_IFREG,
+        },
+    )
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
+    monkeypatch.setattr(
+        sftp_handler, 'sftp_session', lambda _session_id: cleanup_sftp_session(sftp)
+    )
+
+    files, error = sftp_handler.list_directory('session', '/remote')
+
+    assert files is None
+    assert error == 'Directory exceeds configured member limit'
+    assert iterator.consumed == 2
+    assert iterator.closed is True
+
+
+def test_recursive_delete_allows_exact_configured_member_limit(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    root_iterator = CleanupDirectoryIterator([cleanup_entry('first.txt', stat.S_IFREG)])
+    sftp = CleanupSFTP(
+        {'/remote': root_iterator},
+        {
+            '/remote': stat.S_IFDIR,
+            '/remote/first.txt': stat.S_IFREG,
+        },
+    )
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
+    monkeypatch.setattr(
+        sftp_handler, 'sftp_session', lambda _session_id: cleanup_sftp_session(sftp)
+    )
+
+    success, error = sftp_handler.delete_directory_recursive('session', '/remote')
+
+    assert success is True
+    assert error is None
+    assert root_iterator.consumed == 1
+    assert root_iterator.closed is True
+    assert sftp.removed == ['/remote/first.txt']
+    assert sftp.removed_dirs == ['/remote']
+
+
+def test_recursive_delete_rejects_limit_plus_one_without_processing_probe(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    root_iterator = CleanupDirectoryIterator([
+        cleanup_entry('first.txt', stat.S_IFREG),
+        cleanup_entry('probe.txt', stat.S_IFREG),
+    ])
+    sftp = CleanupSFTP(
+        {'/remote': root_iterator},
+        {
+            '/remote': stat.S_IFDIR,
+            '/remote/first.txt': stat.S_IFREG,
+            '/remote/probe.txt': stat.S_IFREG,
+        },
+    )
+    monkeypatch.setattr(sftp_handler.config, 'MAX_TRANSFER_MEMBERS', 1)
+    monkeypatch.setattr(
+        sftp_handler, 'sftp_session', lambda _session_id: cleanup_sftp_session(sftp)
+    )
+
+    success, error = sftp_handler.delete_directory_recursive('session', '/remote')
+
+    assert success is False
+    assert error == 'Directory exceeds configured member limit'
+    assert root_iterator.consumed == 2
+    assert root_iterator.closed is True
+    assert sftp.removed == ['/remote/first.txt']
+    assert sftp.lstat_calls == ['/remote', '/remote/first.txt']
+    assert sftp.removed_dirs == []
 
 
 def test_copy_sftp_stream_uses_bounded_reads_and_checks_cancellation():
@@ -530,7 +843,7 @@ def test_server_copy_cancellation_removes_partial_destination(monkeypatch):
     assert destination.removed[0].startswith('/to.txt.webssh-transfer-')
 
 
-def test_server_directory_cancellation_removes_temporary_tree(monkeypatch):
+def test_server_directory_cancellation_leaves_temporary_tree_untouched(monkeypatch):
     import app.sftp_handler as sftp_handler
 
     source = S2SSFTP(b'a' * 12)
@@ -558,7 +871,8 @@ def test_server_directory_cancellation_removes_temporary_tree(monkeypatch):
     assert success is False
     assert error == 'Transfer cancelled'
     assert destination.files == {}
-    assert destination.dirs == set()
+    assert len(destination.dirs) == 1
+    assert next(iter(destination.dirs)).startswith('/copy.webssh-transfer-')
     assert destination.renamed == []
 
 

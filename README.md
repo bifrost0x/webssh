@@ -249,6 +249,9 @@ HTTP-friendly settings and logs security warnings instead of refusing startup.
 
 ### Docker Compose (Production)
 
+The production overlay requires Docker Compose 2.24.4 or newer because it uses
+the `!override` tag to replace the homelab port binding safely.
+
 Download both Compose files, set the public HTTPS origin, and apply the
 production override:
 
@@ -945,8 +948,10 @@ private, and reserved targets after DNS resolution.
 - Define a retention and secure-disposal policy for `DATA_DIR/deleted_users`.
   Account deletion quarantines those files to prevent numeric user-id reuse
   from exposing them, but does not wipe them automatically.
-- Configure log rotation and a retention policy. The application writes log
-  files but does not rotate them itself.
+- Configure retention and secure disposal for rotated audit logs. The
+  application rotates each structured log at `AUDIT_LOG_MAX_BYTES` and keeps
+  `AUDIT_LOG_BACKUP_COUNT` backups; operators remain responsible for exporting
+  or deleting those files according to their policy.
 - Keep the service single-worker while SSH state remains in memory. Running
   multiple workers does not share live SSH sessions.
 
@@ -956,7 +961,8 @@ Please report security vulnerabilities by opening a GitHub issue or contacting t
 
 ## API
 
-Web SSH Terminal uses WebSocket (Socket.IO) for real-time communication. HTTP routes handle authentication, the main UI is served over WebSocket.
+Web SSH Terminal uses HTTP for pages and bounded file streams, with WebSocket
+(Socket.IO) control events for real-time terminal and SFTP communication.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -965,7 +971,9 @@ Web SSH Terminal uses WebSocket (Socket.IO) for real-time communication. HTTP ro
 | `/register` | GET/POST | User registration |
 | `/logout` | POST | End the browser login and revoke tracked Socket.IO, SSH, and temporary SFTP connections |
 | `/change-password` | GET/POST | Password change |
-| `/api/upload` | POST | File upload (multipart) |
+| `/api/transfers/<token>/upload` | POST | User-bound, single-use streaming file upload |
+| `/api/transfers/<token>/download` | GET | User-bound, single-use streaming file download |
+| `/api/transfers/<token>/folder-download` | GET | Bounded streaming folder archive download |
 | `/admin`, `/admin/api/*` | GET/POST | Admin panel: user management, audit log, settings (admin-only) |
 | `/socket.io/` | WS | Terminal, SFTP, profiles, keys, commands |
 

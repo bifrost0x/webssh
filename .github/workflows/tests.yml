@@ -176,6 +176,9 @@ jobs:
       - name: Install locked Node dependencies
         run: npm ci
 
+      - name: Check vendored frontend assets
+        run: npm run vendor:check
+
       - name: Run JavaScript unit tests
         run: npm run test:js
 

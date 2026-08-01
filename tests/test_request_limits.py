@@ -145,3 +145,16 @@ def test_lengthless_recovery_body_is_bounded_before_csrf(app, client):
     assert response.status_code == 413
     assert response.get_json() == {"error": "Request body too large"}
     assert tracking_input.bytes_read <= config.MAX_RECOVERY_JSON_SIZE + 1
+
+
+def test_socketio_message_limit_tracks_control_payloads_not_http_uploads(app):
+    import config
+    from app import socketio
+
+    assert socketio.server.eio.max_http_buffer_size == (
+        config.SOCKETIO_MAX_MESSAGE_SIZE
+    )
+    assert config.SOCKETIO_MAX_MESSAGE_SIZE < config.MAX_UPLOAD_SIZE
+    assert config.SOCKETIO_MAX_MESSAGE_SIZE >= (
+        config.MAX_EDITOR_FILE_SIZE * 6 + 64 * 1024
+    )

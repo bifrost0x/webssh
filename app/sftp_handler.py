@@ -486,18 +486,26 @@ def list_directory(session_id, remote_path='.'):
 
         with sftp_session(session_id) as (sftp, source_type):
             files = []
-            entries = sftp.listdir_attr(safe_path)
-            for entry in entries:
-                is_symlink = stat.S_ISLNK(entry.st_mode)
-                files.append({
-                    'name': entry.filename,
-                    'size': entry.st_size,
-                    'mode': entry.st_mode,
-                    'is_dir': stat.S_ISDIR(entry.st_mode),
-                    'is_symlink': is_symlink,
-                    'modified': entry.st_mtime
-                })
+            member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
+            with _directory_entries(sftp, safe_path) as entries:
+                while True:
+                    try:
+                        entry = next(entries)
+                    except StopIteration:
+                        break
+                    member_budget.consume()
+                    is_symlink = stat.S_ISLNK(entry.st_mode)
+                    files.append({
+                        'name': entry.filename,
+                        'size': entry.st_size,
+                        'mode': entry.st_mode,
+                        'is_dir': stat.S_ISDIR(entry.st_mode),
+                        'is_symlink': is_symlink,
+                        'modified': entry.st_mtime
+                    })
         return files, None
+    except TransferMemberLimitExceeded:
+        return None, 'Directory exceeds configured member limit'
     except SFTPOperationError as e:
         return None, str(e)
     except Exception as e:
@@ -605,7 +613,9 @@ def delete_directory_recursive(session_id, path):
         if safe_path is None:
             return False, "Invalid path"
 
-        def _delete_recursive(sftp_client, dir_path, base_path, depth=0):
+        member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
+
+        def _delete_recursive(sftp_client, dir_path, depth=0):
             """
             Internal recursive delete function with security checks.
 
@@ -615,23 +625,33 @@ def delete_directory_recursive(session_id, path):
             if depth > 50:
                 raise ValueError("Maximum recursion depth exceeded")
 
-            for entry in sftp_client.listdir_attr(dir_path):
-                full_path = f"{dir_path}/{entry.filename}"
+            with _directory_entries(sftp_client, dir_path) as entries:
+                while True:
+                    try:
+                        entry = next(entries)
+                    except StopIteration:
+                        break
+                    member_budget.consume()
+                    name = entry.filename
+                    if not _is_safe_transfer_entry_name(name):
+                        raise SFTPOperationError('unsafe directory entry name')
+                    full_path = posixpath.join(dir_path, name)
+                    child_stat = sftp_client.lstat(full_path)
 
-                if stat_module.S_ISLNK(entry.st_mode):
-                    sftp_client.remove(full_path)
-                    continue
+                    if stat_module.S_ISLNK(child_stat.st_mode):
+                        sftp_client.remove(full_path)
+                        continue
 
-                if stat_module.S_ISDIR(entry.st_mode):
-                    _delete_recursive(sftp_client, full_path, base_path, depth + 1)
-                    sftp_client.rmdir(full_path)
-                else:
-                    sftp_client.remove(full_path)
+                    if stat_module.S_ISDIR(child_stat.st_mode):
+                        _delete_recursive(sftp_client, full_path, depth + 1)
+                        sftp_client.rmdir(full_path)
+                    else:
+                        sftp_client.remove(full_path)
 
         with sftp_session(session_id) as (sftp, source_type):
             stat_result = sftp.lstat(safe_path)
             if stat_module.S_ISDIR(stat_result.st_mode):
-                _delete_recursive(sftp, safe_path, safe_path)
+                _delete_recursive(sftp, safe_path)
                 sftp.rmdir(safe_path)
             elif stat_module.S_ISLNK(stat_result.st_mode):
                 sftp.remove(safe_path)
@@ -639,6 +659,8 @@ def delete_directory_recursive(session_id, path):
                 sftp.remove(safe_path)
 
         return True, None
+    except TransferMemberLimitExceeded:
+        return False, 'Directory exceeds configured member limit'
     except SFTPOperationError as e:
         return False, str(e)
     except FileNotFoundError:
@@ -953,35 +975,71 @@ def get_any_sftp_client(identifier):
     return None, f"No active connection found for: {identifier}", None
 
 
-def _remove_sftp_tree(sftp, remote_path):
-    """Best-effort removal for a generated temporary SFTP tree."""
-    try:
-        entries = sftp.listdir_attr(remote_path)
-    except Exception:
+def _is_safe_transfer_entry_name(name):
+    return (
+        isinstance(name, str)
+        and name not in {'', '.', '..'}
+        and '/' not in name
+        and '\\' not in name
+        and '\x00' not in name
+    )
+
+
+def _remove_sftp_tree(sftp, remote_path, *, max_members, max_depth=50,
+                      cancel_event=None):
+    """Bounded, fail-safe removal for a generated temporary SFTP tree.
+
+    ``False`` means cleanup stopped before the full tree was verified; the
+    temporary remote data is intentionally left in place rather than risking
+    unbounded traversal or destructive operation on an unsafe response.
+    """
+    member_budget = _TransferMemberBudget(max_members)
+
+    def remove_directory(path, depth=0):
+        if depth > max_depth or _is_cancelled(cancel_event):
+            return False
+
         try:
-            sftp.remove(remote_path)
+            with _directory_entries(sftp, path) as entries:
+                while True:
+                    if _is_cancelled(cancel_event):
+                        return False
+                    try:
+                        entry = next(entries)
+                    except StopIteration:
+                        break
+                    member_budget.consume()
+                    if _is_cancelled(cancel_event):
+                        return False
+                    name = getattr(entry, 'filename', None)
+                    if not _is_safe_transfer_entry_name(name):
+                        return False
+                    child = posixpath.join(path, name)
+                    try:
+                        child_stat = sftp.lstat(child)
+                    except Exception:
+                        return False
+                    mode = getattr(child_stat, 'st_mode', None)
+                    if not isinstance(mode, int):
+                        return False
+                    if stat.S_ISDIR(mode) and not stat.S_ISLNK(mode):
+                        if not remove_directory(child, depth + 1):
+                            return False
+                    else:
+                        try:
+                            sftp.remove(child)
+                        except Exception:
+                            return False
         except Exception:
-            pass
-        return
-    for entry in entries:
-        child = posixpath.join(remote_path, entry.filename)
+            return False
+
         try:
-            child_stat = sftp.lstat(child)
+            sftp.rmdir(path)
         except Exception:
-            child_stat = entry
-        if stat.S_ISDIR(child_stat.st_mode) and not stat.S_ISLNK(
-            child_stat.st_mode
-        ):
-            _remove_sftp_tree(sftp, child)
-        else:
-            try:
-                sftp.remove(child)
-            except Exception:
-                pass
-    try:
-        sftp.rmdir(remote_path)
-    except Exception:
-        pass
+            return False
+        return True
+
+    return remove_directory(remote_path)
 
 def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                               dest_path, transfer_id, socketio_instance=None,
@@ -1257,7 +1315,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                     'completed',
                 )
             except Exception:
-                _remove_sftp_tree(sftp_dest, temporary_root)
+                _remove_sftp_tree(
+                    sftp_dest,
+                    temporary_root,
+                    max_members=max_members,
+                    cancel_event=cancel_event,
+                )
                 raise
         else:
             success, error = transfer_single_file(source_path, dest_path)
