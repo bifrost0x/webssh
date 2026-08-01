@@ -15,7 +15,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .backup_manager import create_backup
 from .key_encryption import _derive_key, is_encrypted, key_operation_lock
-from .storage_migrations import CURRENT_STORAGE_VERSIONS
+from .storage_migrations import CURRENT_STORAGE_VERSIONS, migrate_document
 from .storage_utils import atomic_write_bytes
 
 
@@ -129,10 +129,15 @@ def _stored_key_files(data_dir):
                 raise SecretRotationError(
                     'SSH key metadata is unreadable'
                 ) from exc
-            items = document.get('keys') if isinstance(document, dict) else None
+            try:
+                document, _changed = migrate_document('keys', document)
+            except ValueError as exc:
+                raise SecretRotationError(
+                    'SSH key metadata is invalid'
+                ) from exc
+            items = document.get('keys')
             if (
-                not isinstance(document, dict)
-                or document.get('schema_version')
+                document.get('schema_version')
                 != CURRENT_STORAGE_VERSIONS['keys']
                 or not isinstance(items, list)
             ):

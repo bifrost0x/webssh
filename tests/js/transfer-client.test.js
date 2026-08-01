@@ -59,3 +59,74 @@ test('folder downloads use archive metadata and native HTTP navigation', async (
     assert.equal(emitted[0][1].archive, true);
     assert.equal(clicked, true);
 });
+
+test('pane downloads pipe the HTTP body into a writable stream without native navigation', async () => {
+    const emitted = [];
+    let clicked = false;
+    let piped;
+    const writable = { kind: 'browser-file-writable' };
+    global.document.createElement = () => ({
+        click() { clicked = true; }, remove() {}, style: {}, href: '', download: '',
+    });
+    const socket = { on() {}, emit(event, payload, ack) {
+        emitted.push([event, payload]);
+        if (event === 'prepare_transfer') {
+            ack({ success: true, transfer_id: 'pane-id', url: '/pane-download' });
+        }
+    }};
+    global.fetch = async () => ({
+        ok: true,
+        body: {
+            async pipeTo(destination, options) {
+                piped = { destination, options };
+            },
+        },
+    });
+    const client = new BinaryTransferClient(socket);
+
+    const transfer = client.downloadFileToWritable(
+        '/remote/report.bin',
+        'session',
+        async () => writable,
+    );
+    await transfer.done;
+
+    assert.equal(emitted[0][0], 'prepare_transfer');
+    assert.equal(piped.destination, writable);
+    assert.ok(piped.options.signal);
+    assert.equal(clicked, false);
+});
+
+test('a browser-file write failure cancels the server transfer', async () => {
+    const emitted = [];
+    let aborted = false;
+    const writable = {
+        async abort() { aborted = true; },
+    };
+    const socket = { on() {}, emit(event, payload, ack) {
+        emitted.push([event, payload]);
+        if (event === 'prepare_transfer') {
+            ack({ success: true, transfer_id: 'failed-pane-id', url: '/pane-download' });
+        }
+    }};
+    global.fetch = async () => ({
+        ok: true,
+        body: {
+            async pipeTo() { throw new Error('local write failed'); },
+        },
+    });
+    const client = new BinaryTransferClient(socket);
+
+    const transfer = client.downloadFileToWritable(
+        '/remote/report.bin',
+        'session',
+        async () => writable,
+    );
+    await assert.rejects(transfer.done, /local write failed/);
+
+    assert.equal(aborted, true);
+    assert.equal(emitted.some(([event, payload]) => (
+        event === 'cancel_transfer'
+        && payload.transfer_id === 'failed-pane-id'
+    )), true);
+});

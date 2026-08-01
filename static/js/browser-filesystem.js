@@ -174,6 +174,17 @@ class BrowserFileSystem {
         }
     }
 
+    async createWritableSink(fileName, directoryHandle = this.currentHandle) {
+        if (!directoryHandle) {
+            throw new Error('No directory access');
+        }
+        const fileHandle = await directoryHandle.getFileHandle(
+            fileName,
+            { create: true },
+        );
+        return await fileHandle.createWritable();
+    }
+
     async createDirectory(name) {
         if (!this.hasAccess()) {
             throw new Error('No directory access');

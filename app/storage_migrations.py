@@ -14,7 +14,6 @@ from .storage_utils import atomic_write_json, fsync_parent_directory
 
 CURRENT_STORAGE_VERSIONS = {
     'profiles': 2,
-    'commands': 2,
     'command_sets': 2,
     'jump_hosts': 2,
     'keys': 2,
@@ -52,16 +51,6 @@ def migrate_profiles_v1_to_v2(document):
                 profile['startup_mode'] = 'none'
     result['schema_version'] = 2
     return result
-
-
-def migrate_commands_v0_to_v1(document):
-    if isinstance(document, list):
-        return {'schema_version': 1, 'commands': deepcopy(document)}
-    return _version_document(document, 1)
-
-
-def migrate_commands_v1_to_v2(document):
-    return _version_document(document, 2)
 
 
 def migrate_command_sets_v0_to_v1(document):
@@ -120,8 +109,6 @@ def migrate_document(store_name: str, document: object) -> tuple[object, bool]:
 
     if isinstance(document, dict):
         version = document.get('schema_version', 0)
-    elif store_name == 'commands' and isinstance(document, list):
-        version = 0
     else:
         raise ValueError(f'invalid storage document for {store_name}')
     if type(version) is not int or version < 0:

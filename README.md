@@ -453,6 +453,7 @@ docker build -t webssh:local .
 | `WEBAUTHN_ORIGIN` | With WebAuthn | `https://localhost` | Exact public browser origin, including scheme and optional port |
 | `HOST_KEY_MANAGEMENT_ENABLED` | No | `true` | Enable user and administrator host-key inventory and deletion routes |
 | `RECOVERY_CODES_ENABLED` | No | `true` | Enable recovery-code generation and alternative login |
+| `MAX_RECOVERY_JSON_SIZE` | No | `4096` | JSON request limit for recovery-code endpoints in bytes; values above the hard 4096-byte ceiling are capped |
 | `AUDIT_EXPORT_ENABLED` | No | `true` | Enable administrator audit viewer, bounded export, and retention controls |
 | `OIDC_ENABLED` | No | `false` | Enable the optional authorization-code flow with PKCE |
 | `OIDC_ISSUER` | With OIDC | - | Exact OpenID Provider issuer URL |

@@ -5,6 +5,7 @@ import logging
 import config
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required, login_user
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import check_rate_limit, check_reauth_rate_limit
@@ -28,6 +29,25 @@ def _password_matches(user, password):
         return False
 
 
+def _bounded_json():
+    """Parse one small recovery payload without materializing an unbounded body."""
+    request.max_content_length = config.MAX_RECOVERY_JSON_SIZE
+    if (
+        request.content_length is not None
+        and request.content_length > config.MAX_RECOVERY_JSON_SIZE
+    ):
+        return None
+    try:
+        data = request.get_json(silent=True)
+    except RequestEntityTooLarge:
+        return None
+    return data if isinstance(data, dict) else {}
+
+
+def _request_body_too_large():
+    return jsonify({"error": "Request body too large"}), 413
+
+
 @recovery_blueprint.post("/api/recovery-codes")
 @login_required
 def regenerate_own_recovery_codes():
@@ -41,7 +61,9 @@ def regenerate_own_recovery_codes():
     ):
         log_rate_limit_exceeded("recovery_codes_reauth", client_ip)
         return jsonify({"error": "Too many password attempts"}), 429
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     if not _password_matches(current_user, data.get("password", "")):
         return jsonify({"error": "Current password is incorrect"}), 403
     codes = generate_codes(current_user.id)
@@ -63,7 +85,9 @@ def recovery_login():
     ):
         log_rate_limit_exceeded("recovery_login", client_ip)
         return jsonify({"error": "Too many login attempts"}), 429
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     username = str(data.get("username") or "").strip()
     user = User.query.filter_by(username=username).first()
     active_user = user if user is not None and not user.is_locked else None
@@ -104,7 +128,9 @@ def admin_recovery(user_id):
     ):
         log_rate_limit_exceeded("admin_recovery_reauth", client_ip)
         return jsonify({"error": "Too many password attempts"}), 429
-    data = request.get_json(silent=True) or {}
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
     if not _password_matches(current_user, data.get("password", "")):
         return jsonify({"error": "Administrator password is incorrect"}), 403
     target = db.session.get(User, user_id)

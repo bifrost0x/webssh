@@ -4,12 +4,14 @@ Handles system and user-specific command storage and retrieval.
 """
 import json
 import uuid
-from pathlib import Path
 from datetime import datetime
 import config
 from .audit_logger import log_error
-from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
-from .storage_migrations import CURRENT_STORAGE_VERSIONS
+from .storage_utils import atomic_write_json, load_json_strict, storage_lock
+from .storage_migrations import backup_before_migration
+
+
+_PR_COMMAND_WRAPPER_VERSIONS = frozenset({1, 2})
 
 
 def get_user_commands_file(user_id):
@@ -51,9 +53,13 @@ def _valid_commands(value):
 def _valid_commands_document(value):
     return (
         isinstance(value, dict)
-        and value.get('schema_version') == CURRENT_STORAGE_VERSIONS['commands']
+        and value.get('schema_version') in _PR_COMMAND_WRAPPER_VERSIONS
         and _valid_commands(value.get('commands'))
     )
+
+
+def _valid_commands_storage(value):
+    return _valid_commands(value) or _valid_commands_document(value)
 
 
 def valid_user_command_input(
@@ -88,13 +94,18 @@ def _load_user_commands_with_lock_held(user_id):
     user_commands_file = get_user_commands_file(user_id)
     if not user_commands_file:
         return []
-    data = load_json_migrated(
+    data = load_json_strict(
         user_commands_file,
-        'commands',
         list,
-        _valid_commands_document,
+        _valid_commands_storage,
     )
-    return data['commands']
+    if isinstance(data, list):
+        return data
+
+    commands = data['commands']
+    backup_before_migration(user_commands_file)
+    atomic_write_json(user_commands_file, commands)
+    return commands
 
 
 def load_user_commands(user_id):
@@ -116,13 +127,7 @@ def save_user_commands(user_id, commands):
     if not user_commands_file or not _valid_commands(commands):
         return False
     user_commands_file.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(
-        user_commands_file,
-        {
-            'schema_version': CURRENT_STORAGE_VERSIONS['commands'],
-            'commands': commands,
-        },
-    )
+    atomic_write_json(user_commands_file, commands)
     return True
 
 def get_all_commands(user_id, os_filter=None):

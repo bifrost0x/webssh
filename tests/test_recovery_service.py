@@ -1,6 +1,10 @@
 """One-time account recovery code storage and route controls."""
 
 import hmac
+import io
+import json
+
+from werkzeug.test import EnvironBuilder
 
 
 def _create_user(app, username, *, is_admin=False):
@@ -161,6 +165,57 @@ def test_recovery_login_is_rate_limited_like_password_login(
     assert responses[-1].get_json() == {
         "error": "Too many login attempts"
     }
+
+
+def test_recovery_login_rejects_oversized_json_before_code_verification(
+    app, client, monkeypatch
+):
+    import app.recovery_routes as recovery_routes
+
+    verification_calls = []
+
+    def record_verification(*args):
+        verification_calls.append(args)
+        return False
+
+    monkeypatch.setattr(recovery_routes, "consume_code", record_verification)
+    payload = json.dumps({
+        "username": "missing_user",
+        "code": "invalid",
+        "padding": "x" * 5000,
+    })
+
+    response = client.post(
+        "/login/recovery",
+        data=payload,
+        content_type="application/json",
+    )
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "Request body too large"}
+    assert verification_calls == []
+
+
+def test_recovery_login_bounds_chunked_json_without_content_length(app, client):
+    payload = json.dumps({
+        "username": "missing_user",
+        "code": "invalid",
+        "padding": "x" * 5000,
+    }).encode("utf-8")
+    builder = EnvironBuilder(
+        path="/login/recovery",
+        method="POST",
+        input_stream=io.BytesIO(payload),
+        content_type="application/json",
+    )
+    environ = builder.get_environ()
+    environ.pop("CONTENT_LENGTH", None)
+    environ["wsgi.input_terminated"] = True
+
+    response = client.open(environ)
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "Request body too large"}
 
 
 def test_recovery_login_equalizes_verification_work(

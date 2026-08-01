@@ -64,6 +64,16 @@ def test_safe_production_profile_loads():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_recovery_json_limit_cannot_exceed_hard_security_ceiling():
+    result = _load_config(
+        _production_env(MAX_RECOVERY_JSON_SIZE='1048576'),
+        'import config; print(config.MAX_RECOVERY_JSON_SIZE)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == '4096'
+
+
 @pytest.mark.parametrize(
     ('overrides', 'expected_setting'),
     (

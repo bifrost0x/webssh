@@ -424,6 +424,10 @@ MAX_PREVIEW_TAIL_LINES = _positive_int_env('MAX_PREVIEW_TAIL_LINES', 10000)
 MAX_SUPPORTED_FILE_SIZE = _positive_int_env(
     'MAX_SUPPORTED_FILE_SIZE', 1024 * 1024 * 1024
 )
+MAX_RECOVERY_JSON_SIZE = min(
+    _positive_int_env('MAX_RECOVERY_JSON_SIZE', 4096),
+    4096,
+)
 
 # Persistent sessions via tmux on the remote host.
 # When enabled, SSH sessions are wrapped in a tmux session on the remote host.

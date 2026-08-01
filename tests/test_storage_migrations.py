@@ -19,7 +19,6 @@ from app.storage_errors import StorageCorruptionError
 
 STORE_DOCUMENTS = {
     'profiles': {'profiles': []},
-    'commands': [],
     'command_sets': {'command_sets': []},
     'jump_hosts': {'jump_hosts': []},
     'keys': {'keys': []},
@@ -54,15 +53,6 @@ def test_migration_is_idempotent_and_preserves_unknown_fields():
     assert changed_again is False
     assert second == first
     assert second['future_field'] == {'keep': True}
-
-
-def test_commands_legacy_list_becomes_versioned_wrapper_without_api_data_loss():
-    source = [{'id': 'command-1', 'name': 'One', 'command': 'whoami'}]
-
-    migrated, changed = migrate_document('commands', source)
-
-    assert changed is True
-    assert migrated['commands'] == source
 
 
 def test_profiles_preserve_legacy_and_explicit_post_connect_semantics():
@@ -285,14 +275,6 @@ def _create_user(app, username):
             ).load_profiles(uid),
         ),
         (
-            'commands',
-            'commands.json',
-            [],
-            lambda uid: __import__(
-                'app.command_manager', fromlist=['load_user_commands']
-            ).load_user_commands(uid),
-        ),
-        (
             'command_sets',
             'command_sets.json',
             {'command_sets': []},
@@ -381,14 +363,6 @@ def test_manager_rejects_future_version_without_backup_or_write(app):
             lambda uid: __import__(
                 'app.profile_manager', fromlist=['load_profiles']
             ).load_profiles(uid),
-        ),
-        (
-            'commands',
-            'commands.json',
-            {'commands': []},
-            lambda uid: __import__(
-                'app.command_manager', fromlist=['load_user_commands']
-            ).load_user_commands(uid),
         ),
         (
             'command_sets',
@@ -509,7 +483,7 @@ def test_each_manager_leaves_corrupt_source_untouched(
         assert list(path.parent.glob(f'{path.name}.*.bak')) == []
 
 
-def test_commands_manager_keeps_list_api_while_migrating_disk_wrapper_once(app):
+def test_commands_manager_restores_versioned_wrapper_to_base_compatible_list(app):
     from app import command_manager
     from app.models import User, db
 
@@ -527,23 +501,59 @@ def test_commands_manager_keeps_list_api_while_migrating_disk_wrapper_once(app):
     with app.app_context():
         user_id = _create_user(app, 'migration-command-wrapper')
         path = db.session.get(User, user_id).get_data_dir() / 'commands.json'
-        source = json.dumps([command], separators=(',', ':')).encode('utf-8')
+        source = json.dumps({
+            'schema_version': 2,
+            'commands': [command],
+        }, separators=(',', ':')).encode('utf-8')
         path.write_bytes(source)
 
         first = command_manager.load_user_commands(user_id)
-        migrated_bytes = path.read_bytes()
+        restored_bytes = path.read_bytes()
         second = command_manager.load_user_commands(user_id)
 
         assert first == [command]
         assert second == [command]
-        assert json.loads(migrated_bytes) == {
-            'schema_version': CURRENT_STORAGE_VERSIONS['commands'],
-            'commands': [command],
-        }
-        assert path.read_bytes() == migrated_bytes
+        assert json.loads(restored_bytes) == [command]
+        assert path.read_bytes() == restored_bytes
         backups = list(path.parent.glob('commands.json.*.bak'))
         assert len(backups) == 1
         assert backups[0].read_bytes() == source
+
+
+def test_commands_manager_keeps_base_list_bytes_without_backup(app):
+    from app import command_manager
+    from app.models import User, db
+
+    command = {'id': 'base', 'name': 'Base', 'command': 'whoami'}
+    with app.app_context():
+        user_id = _create_user(app, 'base-compatible-commands')
+        path = db.session.get(User, user_id).get_data_dir() / 'commands.json'
+        source = json.dumps([command], separators=(',', ':')).encode('utf-8')
+        path.write_bytes(source)
+
+        assert command_manager.load_user_commands(user_id) == [command]
+        assert path.read_bytes() == source
+        assert list(path.parent.glob('commands.json.*.bak')) == []
+
+
+def test_commands_manager_rejects_unknown_wrapper_version_without_write(app):
+    from app import command_manager
+    from app.models import User, db
+
+    with app.app_context():
+        user_id = _create_user(app, 'future-command-wrapper')
+        path = db.session.get(User, user_id).get_data_dir() / 'commands.json'
+        source = json.dumps({
+            'schema_version': 3,
+            'commands': [],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(source)
+
+        with pytest.raises(StorageCorruptionError):
+            command_manager.load_user_commands(user_id)
+
+        assert path.read_bytes() == source
+        assert list(path.parent.glob('commands.json.*.bak')) == []
 
 
 def test_app_settings_loader_migrates_once(monkeypatch, tmp_path):

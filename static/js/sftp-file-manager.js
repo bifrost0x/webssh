@@ -1757,7 +1757,12 @@ class SFTPFileManager {
                     break;
 
                 case 'ssh-to-browser-local':
-                    await this.transferSSHToBrowser(sourcePath, source, item.name);
+                    await this.transferSSHToBrowser(
+                        sourcePath,
+                        source,
+                        item.name,
+                        targetPane,
+                    );
                     break;
 
                 case 'ssh-to-ssh':
@@ -1819,16 +1824,36 @@ class SFTPFileManager {
         }
     }
 
-    async transferSSHToBrowser(sourcePath, sourcePane, filename) {
+    async transferSSHToBrowser(
+        sourcePath,
+        sourcePane,
+        filename,
+        targetPane,
+    ) {
         const sessionId = sourcePane.sessionId || sourcePane.connectionId;
-        const transferId = this.getTransferClient().downloadFile(sourcePath, sessionId);
+        const targetDirectory = this.browserFS.currentHandle;
+        const transfer = this.getTransferClient().downloadFileToWritable(
+            sourcePath,
+            sessionId,
+            () => this.browserFS.createWritableSink(
+                filename,
+                targetDirectory,
+            ),
+        );
 
         this.queueTransfer({
-            id: transferId,
+            id: transfer.id,
             type: 'download',
             filename: filename,
             sourcePath: sourcePath
         });
+        try {
+            if (await transfer.done) {
+                await this.refreshBrowserPane(targetPane);
+            }
+        } catch (_error) {
+            // BinaryTransferClient reports the bounded transfer error to the queue.
+        }
     }
 
     async transferSSHtoSSH(sourcePath, sourcePane, targetPath, targetPane, item) {

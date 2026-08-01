@@ -31,6 +31,63 @@ test('browser file upload queues the returned id and file size without buffering
     assert.equal(queued.size, file.size);
 });
 
+test('SSH pane transfer streams into the selected browser directory and refreshes it', async () => {
+    const targetDirectory = { name: 'selected-target' };
+    const writable = { kind: 'writable' };
+    let sinkRequest;
+    let downloadRequest;
+    let queued;
+    const refreshed = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        activePane: 'left',
+        panes: {
+            left: {
+                type: 'ssh', sessionId: 'ssh-session', connectionId: null,
+                path: '/remote', files: [{ name: 'report.bin', is_dir: false, size: 12 }],
+                selected: new Set([0]),
+            },
+            right: {
+                type: 'browser-local', path: '/chosen', files: [],
+                selected: new Set(),
+            },
+        },
+        browserFS: {
+            currentHandle: targetDirectory,
+            async createWritableSink(name, directory) {
+                sinkRequest = { name, directory };
+                return writable;
+            },
+        },
+        getTransferClient: () => ({
+            downloadFileToWritable(path, sessionId, sinkFactory) {
+                downloadRequest = { path, sessionId, sinkFactory };
+                return { id: 'pane-local-id', done: Promise.resolve(true) };
+            },
+        }),
+        queueTransfer(transfer) { queued = transfer; },
+        async refreshBrowserPane(pane) { refreshed.push(pane); },
+        showNotification() {},
+        t(_key, fallback) { return fallback; },
+    });
+
+    await manager.executeTransfer();
+    const sink = await downloadRequest.sinkFactory();
+
+    assert.deepEqual(downloadRequest, {
+        path: '/remote/report.bin',
+        sessionId: 'ssh-session',
+        sinkFactory: downloadRequest.sinkFactory,
+    });
+    assert.deepEqual(sinkRequest, {
+        name: 'report.bin',
+        directory: targetDirectory,
+    });
+    assert.equal(sink, writable);
+    assert.equal(queued.id, 'pane-local-id');
+    assert.deepEqual(refreshed, ['right']);
+});
+
 test('client events advance two queue entries and report byte progress by id', () => {
     const listeners = {};
     const client = {

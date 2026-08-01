@@ -92,6 +92,21 @@ class BinaryTransferClient {
         return localId;
     }
 
+    downloadFileToWritable(remotePath, sessionId, sinkFactory) {
+        const localId = this.generateId();
+        const filename = remotePath.split('/').pop() || 'download';
+        const transfer = {
+            id: localId, type: 'download', filename, transferred: 0,
+            status: 'preparing', sessionId, remotePath,
+            controller: new AbortController(), writableDestination: true,
+        };
+        this.activeTransfers.set(localId, transfer);
+        return {
+            id: localId,
+            done: this._downloadToWritable(transfer, sinkFactory),
+        };
+    }
+
     async _download(transfer) {
         try {
             const prepared = await this.prepare(
@@ -120,6 +135,56 @@ class BinaryTransferClient {
         }
     }
 
+    async _downloadToWritable(transfer, sinkFactory) {
+        let writable;
+        try {
+            const prepared = await this.prepare(
+                'download', transfer.sessionId, transfer.remotePath,
+            );
+            transfer.transferId = prepared.transfer_id;
+            if (transfer.status === 'cancelled') {
+                this.socket.emit('cancel_transfer', { transfer_id: prepared.transfer_id });
+                return false;
+            }
+            transfer.status = 'downloading';
+            this.emit('start', {
+                transferId: transfer.id,
+                type: 'download',
+                filename: transfer.filename,
+            });
+            const response = await fetch(prepared.url, {
+                credentials: 'same-origin',
+                signal: transfer.controller.signal,
+            });
+            if (!response.ok || !response.body) {
+                throw new Error('Transfer unavailable');
+            }
+            writable = await sinkFactory();
+            await response.body.pipeTo(
+                writable,
+                { signal: transfer.controller.signal },
+            );
+            if (transfer.status === 'cancelled') return false;
+            this.complete(transfer);
+            return true;
+        } catch (error) {
+            try {
+                await writable?.abort?.();
+            } catch (_abortError) {
+                // The stream may already have been aborted by pipeTo().
+            }
+            if (transfer.status === 'cancelled') return false;
+            transfer.controller.abort();
+            if (transfer.transferId && !transfer.serverFinished) {
+                this.socket.emit('cancel_transfer', {
+                    transfer_id: transfer.transferId,
+                });
+            }
+            this.handleError(transfer.id, 'Transfer unavailable');
+            throw error;
+        }
+    }
+
     cancelTransfer(localId) {
         const transfer = this.activeTransfers.get(localId);
         if (!transfer) return;
@@ -145,8 +210,22 @@ class BinaryTransferClient {
         this.socket.on('transfer_finished', data => {
             for (const transfer of this.activeTransfers.values()) {
                 if (transfer.transferId !== data.transfer_id) continue;
+                if (
+                    transfer.writableDestination
+                    && data.status === 'completed'
+                ) {
+                    transfer.serverFinished = true;
+                    continue;
+                }
                 if (data.status === 'completed') this.complete(transfer);
-                else if (data.status !== 'cancelled') this.handleError(transfer.id, 'Transfer unavailable');
+                else if (data.status !== 'cancelled') {
+                    transfer.controller?.abort();
+                    this.handleError(transfer.id, 'Transfer unavailable');
+                } else {
+                    transfer.status = 'cancelled';
+                    transfer.controller?.abort();
+                    this.emit('cancel', { transferId: transfer.id });
+                }
                 this.activeTransfers.delete(transfer.id);
             }
         });

@@ -65,6 +65,31 @@ def test_rotation_ignores_exact_keys_metadata_migration_backup(tmp_path):
     ) == b'first private key'
 
 
+def test_rotation_accepts_legacy_key_metadata_without_rewriting_it(tmp_path):
+    data_dir, old_secret, new_secret, plaintexts = _rotation_data(tmp_path)
+    metadata_paths = sorted(data_dir.glob('users/user_*/keys/keys.json'))
+    original_metadata = {}
+    for metadata_path in metadata_paths:
+        document = json.loads(metadata_path.read_text(encoding='utf-8'))
+        document.pop('schema_version')
+        payload = json.dumps(document, separators=(',', ':')).encode('utf-8')
+        metadata_path.write_bytes(payload)
+        original_metadata[metadata_path] = payload
+
+    report = rotate_secret(old_secret, new_secret, data_dir)
+
+    assert report.rotated_keys == len(plaintexts)
+    assert {
+        path: path.read_bytes() for path in metadata_paths
+    } == original_metadata
+    for relative_path, plaintext in plaintexts.items():
+        path = data_dir / relative_path
+        user_id = path.parts[-3].removeprefix('user_')
+        assert Fernet(_derive_key(new_secret, user_id)).decrypt(
+            path.read_bytes()
+        ) == plaintext
+
+
 def test_rotation_rejects_unreferenced_key_file(tmp_path):
     data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
     orphan = data_dir / 'users' / 'user_1' / 'keys' / 'orphan.pem'
