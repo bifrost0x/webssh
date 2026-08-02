@@ -36,9 +36,18 @@ jobs:
         run: ./scripts/lock_requirements.ps1 -Check
 
   pytest:
+    name: ${{ matrix.check_name }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python_version: '3.14'
+            check_name: pytest
+          - python_version: '3.11'
+            check_name: pytest (Python 3.11 minimum)
     env:
       TEST_REDIS_URL: redis://localhost:6379/15
     services:
@@ -59,8 +68,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          # Mirror the runtime version shipped in the Docker image.
-          python-version: '3.11'
+          # Test both the production runtime and documented minimum version.
+          python-version: ${{ matrix.python_version }}
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -132,7 +141,7 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           # Mirror the runtime version shipped in the Docker image.
-          python-version: '3.11'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -157,7 +166,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11'
+          # Mirror the runtime version shipped in the Docker image.
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: |
             requirements.txt
