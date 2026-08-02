@@ -317,11 +317,14 @@ def test_rotate_secret_cli_generates_and_persists_new_secret(app, monkeypatch):
     import config
 
     data_dir = Path(config.DATA_DIR)
-    old_secret = 'unit-test-cli-rotation-key-material'
-    monkeypatch.setattr(config, 'SECRET_KEY', old_secret)
     (data_dir / 'secret_key').write_text(
-        old_secret + '\n',
+        'unit-test-cli-rotation-key-material\n',
         encoding='utf-8',
+    )
+    monkeypatch.setattr(
+        config,
+        'SECRET_KEY',
+        'unit-test-cli-rotation-key-material',
     )
 
     result = app.test_cli_runner().invoke(
@@ -333,7 +336,7 @@ def test_rotate_secret_cli_generates_and_persists_new_secret(app, monkeypatch):
         encoding='utf-8',
     ).rstrip('\n')
     assert new_secret
-    assert new_secret != old_secret
+    assert new_secret != 'unit-test-cli-rotation-key-material'
     assert 'restart' in result.output.lower()
     assert len(list(data_dir.parent.glob(
         f'{data_dir.name}-pre-rotation-*.zip'
