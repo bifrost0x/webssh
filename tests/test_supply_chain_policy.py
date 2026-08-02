@@ -20,16 +20,16 @@ PINNED_ACTIONS = {
         'v5',
     ),
     'actions/setup-node': (
-        '249970729cb0ef3589644e2896645e5dc5ba9c38',
-        'v6',
+        '820762786026740c76f36085b0efc47a31fe5020',
+        'v7.0.0',
     ),
     'actions/setup-python': (
-        'ece7cb06caefa5fff74198d8649806c4678c61a1',
-        'v6',
+        '5fda3b95a4ea91299a34e894583c3862153e4b97',
+        'v7.0.0',
     ),
     'actions/upload-artifact': (
-        'ea165f8d65b6e75b540449e92b4886f43607fa02',
-        'v4',
+        '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+        'v7.0.1',
     ),
     'actions/upload-pages-artifact': (
         'fc324d3547104276b827a68afc52ff2a11cc49c9',
@@ -44,7 +44,7 @@ PINNED_ACTIONS = {
         'v0.36.0',
     ),
     'astral-sh/setup-uv': (
-        '94527f2e458b27549849d47d273a16bec83a01e9',
+        '37802adc94f370d6bfd71619e3f0bf239e1f3b78',
         'v7',
     ),
     'docker/build-push-action': (
