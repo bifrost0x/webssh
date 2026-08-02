@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import sys
+import re
+from pathlib import Path
 
 import pytest
 
@@ -9,6 +11,7 @@ import pytest
 SECURITY_ENV_NAMES = {
     'ALLOW_CORS_WILDCARD',
     'BLOCK_INTERNAL_SSH',
+    'BOOTSTRAP_REGISTRATION_ENABLED',
     'CORS_ORIGINS',
     'DEBUG',
     'DEPLOYMENT_PROFILE',
@@ -35,6 +38,7 @@ def _production_env(**overrides):
         'SESSION_COOKIE_SECURE': 'true',
         'REGISTRATION_ENABLED': 'False',
         'BLOCK_INTERNAL_SSH': 'true',
+        'BOOTSTRAP_REGISTRATION_ENABLED': 'false',
         'TRUSTED_PROXIES': '1',
         'PYTHONIOENCODING': 'utf-8',
     })
@@ -116,6 +120,11 @@ def test_webauthn_json_limit_cannot_exceed_hard_security_ceiling():
             id='open-registration',
         ),
         pytest.param(
+            {'BOOTSTRAP_REGISTRATION_ENABLED': 'true'},
+            'BOOTSTRAP_REGISTRATION_ENABLED',
+            id='browser-bootstrap',
+        ),
+        pytest.param(
             {'BLOCK_INTERNAL_SSH': 'false'},
             'BLOCK_INTERNAL_SSH',
             id='internal-ssh',
@@ -161,6 +170,49 @@ def test_unknown_deployment_profile_is_rejected():
 
     assert result.returncode != 0
     assert 'DEPLOYMENT_PROFILE' in result.stdout + result.stderr
+
+
+def test_env_example_documents_every_runtime_environment_variable():
+    config_source = Path('config.py').read_text(encoding='utf-8')
+    start_source = Path('start.py').read_text(encoding='utf-8')
+    runtime_names = set(re.findall(
+        r"(?:os\.environ\.get|os\.getenv|_positive_int_env|"
+        r"_bounded_int_env|_non_negative_int_env|_csv_env)"
+        r"\(\s*['\"]([A-Z][A-Z0-9_]*)['\"]",
+        config_source + '\n' + start_source,
+    ))
+    runtime_names.add('SECRET_KEY')
+
+    example_source = Path('.env.example').read_text(encoding='utf-8')
+    documented_names = set(re.findall(
+        r'^#?\s*([A-Z][A-Z0-9_]*)=',
+        example_source,
+        re.MULTILINE,
+    ))
+
+    assert runtime_names - documented_names == set()
+
+
+def test_homelab_compose_exposes_major_operator_choices():
+    compose = Path('docker-compose.yml').read_text(encoding='utf-8')
+    expected_names = {
+        'APPLICATION_ROOT',
+        'AUDIT_EXPORT_ENABLED',
+        'BLOCK_INTERNAL_SSH',
+        'BOOTSTRAP_REGISTRATION_ENABLED',
+        'HOST_KEY_MANAGEMENT_ENABLED',
+        'OIDC_ENABLED',
+        'RECOVERY_CODES_ENABLED',
+        'REGISTRATION_ENABLED',
+        'TAILSCALE_SSH_ENABLED',
+        'TMUX_DEFAULT',
+        'TMUX_ENABLED',
+        'WEBAUTHN_ENABLED',
+    }
+
+    assert {
+        name for name in expected_names if name not in compose
+    } == set()
 
 
 @pytest.mark.parametrize(

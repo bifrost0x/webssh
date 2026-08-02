@@ -12,10 +12,12 @@
   "dependencies": {
     "@highlightjs/cdn-assets": "11.11.1",
     "material-icons": "1.13.14",
-    "playwright": "^1.61.1",
     "socket.io-client": "4.8.3",
     "xterm": "5.3.0",
     "xterm-addon-fit": "0.8.0",
     "xterm-addon-search": "0.13.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
   }
 }

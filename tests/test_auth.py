@@ -175,6 +175,111 @@ class TestUserRegistration:
             assert User.query.count() == worker_count
             assert User.query.filter_by(is_admin=True).count() == 1
 
+    def test_parallel_bootstrap_registrations_create_only_one_account(self, app):
+        from app.auth import register_user
+        from app.models import User
+
+        worker_count = 4
+        start = threading.Barrier(worker_count)
+
+        def register(index):
+            with app.app_context():
+                start.wait(timeout=5)
+                user, error = register_user(
+                    f'bootstrap{index}',
+                    'password123',
+                    first_user_only=True,
+                )
+                return user.id if user is not None else None, error
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results = list(executor.map(register, range(worker_count)))
+
+        successful = [user_id for user_id, _error in results if user_id]
+        rejected = [error for user_id, error in results if user_id is None]
+        assert len(successful) == 1
+        assert rejected == ['Registration is currently disabled.'] * 3
+        with app.app_context():
+            assert User.query.count() == 1
+            assert User.query.filter_by(is_admin=True).count() == 1
+
+    def test_fresh_homelab_redirects_to_one_time_registration(
+        self,
+        app,
+        client,
+        monkeypatch,
+    ):
+        import config
+
+        monkeypatch.setattr(config, 'DEPLOYMENT_PROFILE', 'homelab')
+        monkeypatch.setattr(config, 'REGISTRATION_ENABLED', False)
+        monkeypatch.setattr(
+            config,
+            'BOOTSTRAP_REGISTRATION_ENABLED',
+            True,
+            raising=False,
+        )
+
+        login = client.get('/login')
+        assert login.status_code == 302
+        assert login.headers['Location'].endswith('/register')
+
+        registration = client.get('/register')
+        assert registration.status_code == 200
+
+        created = client.post('/register', data={
+            'username': 'firstadmin',
+            'password': 'password123',
+            'confirm_password': 'password123',
+        })
+        assert created.status_code == 302
+        assert created.headers['Location'].endswith('/')
+
+        with app.app_context():
+            from app.models import User
+
+            first = User.query.filter_by(username='firstadmin').one()
+            assert first.is_admin is True
+
+        from app import socketio
+
+        socket_client = socketio.test_client(
+            app,
+            flask_test_client=client,
+        )
+        assert socket_client.is_connected()
+        socket_client.disconnect()
+
+        logout = client.post('/logout')
+        assert logout.status_code == 302
+
+        closed = client.get('/register')
+        assert closed.status_code == 302
+        assert closed.headers['Location'].endswith('/login')
+
+    def test_production_profile_does_not_offer_browser_bootstrap(
+        self,
+        app,
+        client,
+        monkeypatch,
+    ):
+        import config
+
+        monkeypatch.setattr(config, 'DEPLOYMENT_PROFILE', 'production')
+        monkeypatch.setattr(config, 'REGISTRATION_ENABLED', False)
+        monkeypatch.setattr(
+            config,
+            'BOOTSTRAP_REGISTRATION_ENABLED',
+            False,
+            raising=False,
+        )
+
+        login = client.get('/login')
+        assert login.status_code == 200
+        registration = client.get('/register')
+        assert registration.status_code == 302
+        assert registration.headers['Location'].endswith('/login')
+
     def test_register_short_username(self, app):
         with app.app_context():
             from app.auth import register_user

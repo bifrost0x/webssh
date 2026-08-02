@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const {
     createRequestCoordinator,
     describeHostKey,
-    downloadAuditExport
+    downloadAuditExport,
+    hostKeyConfirmation
 } = require('../../static/js/security-ui.js');
 
 test('request snapshots become stale when the security modal context changes', () => {
@@ -65,14 +66,20 @@ test('a pending sensitive action survives modal generations until it finishes', 
 test('revoked host keys are presented as revocations, not trust records', () => {
     assert.deepEqual(describeHostKey({ marker: '@revoked' }), {
         status: 'Revoked key',
-        action: 'Remove revocation',
-        confirmationAction: 'remove the revocation for'
+        action: 'Remove revocation'
     });
     assert.deepEqual(describeHostKey({ marker: null }), {
         status: 'Trusted key',
-        action: 'Delete trust',
-        confirmationAction: 'delete trust for'
+        action: 'Delete trust'
     });
+    assert.equal(
+        hostKeyConfirmation({ marker: '@revoked' }, 'example.com:22'),
+        'Really remove the revocation for example.com:22?'
+    );
+    assert.equal(
+        hostKeyConfirmation({ marker: null }, 'example.com:22'),
+        'Really delete trust for example.com:22?'
+    );
 });
 
 test('audit export checks metadata before starting a native download', async () => {

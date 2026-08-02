@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -150,6 +151,13 @@ def test_ci_installs_only_hash_checked_python_dependencies():
     workflow = Path(".github/workflows/tests.yml").read_text(encoding="utf-8")
 
     assert pip_policy_allows(workflow)
+
+
+def test_browser_test_runner_is_not_a_frontend_runtime_dependency():
+    package = json.loads(Path('package.json').read_text(encoding='utf-8'))
+
+    assert 'playwright' not in package.get('dependencies', {})
+    assert package.get('devDependencies', {}).get('playwright')
 
 
 def test_graph_dependencies_are_hash_locked_and_generated_with_other_locks():

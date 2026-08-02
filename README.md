@@ -116,8 +116,13 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Security Headers** - HSTS, CSP, X-Frame-Options
 - **SSRF Protection** - Optionally block SSH to internal/loopback addresses (`BLOCK_INTERNAL_SSH`)
 - **Host Key Auditing** - Persistent `known_hosts` policy with change detection
-- **Audit Logging** - Structured JSON logs for auth, SSH, and file events
+- **Host Trust Center** - Users can inspect and revoke their SSH trust records; administrators manage the global trust store
+- **Passkeys** - Optional username-less WebAuthn sign-in with discoverable credentials and a safe legacy-passkey replacement flow
+- **Recovery Codes** - One-time account recovery codes stored only as hashes
+- **OpenID Connect** - Optional authorization-code flow with PKCE and explicit administrator linking by stable issuer and subject
+- **Audit Logging & Export** - Structured JSON logs for auth, SSH, and file events, plus bounded administrator export and configurable retention
 - **Session Ownership Checks** - Guards against cross-user session hijacking
+- **Resource Quotas** - Global and per-user limits for SSH sessions, temporary connections, transfers, background jobs, and temporary disk use
 - **Tailscale SSH** - Optional credential-free SSH through the WebSSH node's shared Tailscale identity, restricted by WebSSH users, targets, remote users, and tailnet policy
 
 ### Customization
@@ -146,8 +151,11 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Admin Panel** - Dedicated `/admin` page for administrators (role-gated)
 - **User Management** - Create, lock/unlock, promote/demote and delete users; deletion revokes live access and quarantines the user's files outside the active user namespace
 - **Audit Log Viewer** - Browse security events with level filter, search and pagination
+- **Audit Retention & Export** - Adjust rotated-log retention and export bounded JSONL from the Admin Panel
 - **Registration Toggle** - Enable or disable self-registration at runtime (hides the public sign-up link)
-- **Safe Admin Bootstrap** - The first registered account becomes administrator; later registrations remain standard users, and `create-admin` remains available for locked-down deployments and recovery
+- **Safe Admin Bootstrap** - A fresh homelab opens one-time browser registration; exactly the first account becomes administrator and bootstrap registration then closes. `create-admin` remains available for production and recovery
+- **Account Recovery Administration** - Generate replacement recovery sets and explicitly link or unlink stable OIDC identities after reauthentication
+- **Offline Maintenance CLI** - Verified backup, restore, compatibility checks, and persisted-secret rotation with rollback safeguards
 
 ### Deployment
 - **Docker & Docker Compose** - Single-command deployment with healthcheck
@@ -215,18 +223,14 @@ docker run -d \
 ```
 
 > **Note:** Mounting a volume on `/app/data` keeps your users, keys, and the
-> generated `SECRET_KEY` across updates. Set `SECRET_KEY` explicitly only for
-> multi-replica deployments.
+> generated `SECRET_KEY` across updates. Set `SECRET_KEY` explicitly only when
+> an external secret-management policy requires it. WebSSH must still run as a
+> single application worker because live SSH state is process-local.
 
-Create the first administrator from the Docker host:
-
-```bash
-docker exec -it webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
-```
-
-Then open http://localhost:5000 and sign in. Self-registration is disabled by
-default in production. When an operator explicitly enables registration on a
-fresh installation instead, the first registered account becomes administrator.
+Open http://localhost:5000. A fresh standard container redirects to
+`/register`; exactly that first account becomes administrator and the one-time
+bootstrap registration closes immediately afterward. Additional accounts can
+be created by the administrator or enabled temporarily from the Admin Panel.
 Do not expose an unclaimed fresh instance to untrusted networks.
 
 ### Docker Compose (Homelab)
@@ -237,12 +241,10 @@ curl -O https://raw.githubusercontent.com/bifrost0x/webssh/main/docker-compose.y
 
 # Start the service — SECRET_KEY is auto-generated and persisted to the volume
 docker compose up -d
-
-# Create the first administrator
-docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
 ```
 
-Open http://localhost:5000 and sign in with the administrator account.
+Open http://localhost:5000 and create the first administrator in the browser.
+The registration page closes automatically after that account exists.
 
 The default Compose file is explicitly labeled `homelab`. It preserves
 HTTP-friendly settings and logs security warnings instead of refusing startup.
@@ -264,11 +266,18 @@ docker compose \
   -f docker-compose.yml \
   -f docker-compose.production.yml \
   up -d
+
+# Production keeps browser bootstrap closed; create or promote the admin here.
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.production.yml \
+  exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
 ```
 
 The production profile refuses to start with debug mode, wildcard CORS,
-insecure cookies, open registration, disabled internal-address blocking, or an
-unspecified trusted-proxy boundary. The override assumes one trusted reverse
+insecure cookies, browser bootstrap, open registration, disabled
+internal-address blocking, or an unspecified trusted-proxy boundary. The
+override assumes one trusted reverse
 proxy; set `TRUSTED_PROXIES=0` explicitly only when no proxy headers are
 accepted. It binds WebSSH to `127.0.0.1:5000`, preventing direct clients from
 spoofing trusted forwarded headers. Point a reverse proxy on the same host at
@@ -290,10 +299,9 @@ tag, narrow ACL/SSH rules, and the optional WebSSH target and remote-username
 allowlists. The backend enforces these controls; hiding the UI option is not the
 security boundary.
 
-Before enabling the feature, create the first administrator with the local
-`create-admin` CLI and keep self-registration disabled unless it is explicitly
-needed. On a fresh installation, the first registered account becomes
-administrator; every later registered account is non-administrative.
+Before enabling the feature, complete the one-time browser bootstrap in a
+homelab or use `create-admin` in production. Keep normal self-registration
+disabled unless it is explicitly needed.
 
 See [Tailscale SSH deployment and security](docs/tailscale-ssh.md) for all
 configuration variables, ACL guidance, audit behavior, and a Docker sidecar
@@ -426,7 +434,7 @@ docker build -t webssh:local .
 #### Core
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SECRET_KEY` | No | auto | Session encryption key. Auto-generated and persisted to `DATA_DIR/secret_key` on first run (Docker). Set explicitly for multi-replica setups or non-Docker production: `openssl rand -hex 32` |
+| `SECRET_KEY` | Docker: no; source: yes | auto in Docker | Root key for signed browser sessions and per-user SSH-key encryption. Docker generates and persists it under `DATA_DIR`; non-Docker production must provide it explicitly: `openssl rand -hex 32` |
 | `DEBUG` | No | `False` | Enable debug mode (development only) |
 | `DEPLOYMENT_PROFILE` | No | `homelab` | `homelab` preserves compatibility and emits warnings; `production` rejects unsafe security combinations |
 | `DATA_DIR` | No | `/app/data` | Persistent data directory |
@@ -450,6 +458,7 @@ docker build -t webssh:local .
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `REGISTRATION_ENABLED` | No | `False` in production, `True` in debug mode | Initial self-registration state. On a fresh database, the first registered account becomes administrator; later accounts do not. A saved Admin Panel setting takes precedence only in the homelab profile; production remains closed |
+| `BOOTSTRAP_REGISTRATION_ENABLED` | No | `true` in homelab, `false` in production | Allow exactly one browser-created account while the database has no users. The path closes atomically after the first account; production rejects `true` |
 | `WEBAUTHN_ENABLED` | No | `false` | Enable passkey enrollment and login for local accounts |
 | `WEBAUTHN_RP_ID` | With WebAuthn | `localhost` | Exact relying-party domain, without scheme or port |
 | `WEBAUTHN_RP_NAME` | No | `WebSSH` | Name shown by the authenticator |
@@ -467,8 +476,10 @@ docker build -t webssh:local .
 | `OIDC_ALLOWED_DOMAINS` | No | - | Optional comma-separated email-domain policy; identity linking still uses issuer and subject only |
 | `OIDC_LOGIN_RATE_LIMIT` | No | `10 per minute` | Per-IP rate limit for starting OIDC login |
 | `ADMIN_USERS` | No | - | Compatibility option: comma-separated existing usernames granted admin on startup. Prefer `create-admin` for explicit bootstrap |
+| `ADMIN_PANEL_ENABLED` | No | `True` | Expose the role-gated Admin Panel and its API routes |
 | `SESSION_TIMEOUT` | No | `1800` | Idle SSH session timeout in seconds (30 minutes) |
 | `BLOCK_INTERNAL_SSH` | No | `false` | Block SSH connections to internal/loopback addresses (`true` or `false`) |
+| `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | No | - | Exact comma-separated hostnames a trusted bastion may resolve remotely when local validation cannot resolve them; wildcards and IP literals are rejected |
 | `TMUX_ENABLED` | No | `false` | Show and allow persistent tmux sessions. The provided Compose file sets this to `true` |
 | `TMUX_DEFAULT` | No | `false` | Select persistent tmux for new connections by default. The provided Compose file sets this to `true` |
 | `TMUX_SESSION_PREFIX` | No | `webssh` | Prefix used for tmux session names created on remote hosts |
@@ -700,6 +711,7 @@ CORS_ORIGINS=https://ssh.example.com
 ALLOW_CORS_WILDCARD=false
 SESSION_COOKIE_SECURE=true
 REGISTRATION_ENABLED=False
+BOOTSTRAP_REGISTRATION_ENABLED=false
 BLOCK_INTERNAL_SSH=true
 TRUSTED_PROXIES=1
 ```
@@ -968,13 +980,19 @@ Web SSH Terminal uses HTTP for pages and bounded file streams, with WebSocket
 |----------|--------|-------------|
 | `/` | GET | Main application |
 | `/login` | GET/POST | Authentication |
-| `/register` | GET/POST | User registration |
+| `/register` | GET/POST | One-time initial administrator bootstrap or explicitly enabled self-registration |
 | `/logout` | POST | End the browser login and revoke tracked Socket.IO, SSH, and temporary SFTP connections |
 | `/change-password` | GET/POST | Password change |
+| `/security` | GET | User security center for host trust, passkeys, and recovery codes |
+| `/api/host-keys/*` | GET/DELETE | User-scoped SSH host-trust inventory and removal |
+| `/api/webauthn/*` | GET/POST/DELETE | Passkey enrollment, authentication, inventory, and deletion when enabled |
+| `/api/recovery-codes`, `/login/recovery` | POST | Generate one-time recovery codes or consume one for login when enabled |
+| `/oidc/login`, `/oidc/callback` | GET | Optional OIDC authorization-code flow with PKCE |
 | `/api/transfers/<token>/upload` | POST | User-bound, single-use streaming file upload |
 | `/api/transfers/<token>/download` | GET | User-bound, single-use streaming file download |
 | `/api/transfers/<token>/folder-download` | GET | Bounded streaming folder archive download |
-| `/admin`, `/admin/api/*` | GET/POST | Admin panel: user management, audit log, settings (admin-only) |
+| `/admin`, `/admin/api/*` | GET/POST/DELETE | Admin panel: users, OIDC/recovery actions, host trust, audit logs/export/retention, and settings |
+| `/health`, `/ready` | GET | Liveness and storage/readiness probes |
 | `/socket.io/` | WS | Terminal, SFTP, profiles, keys, commands |
 
 ## Development
@@ -1041,37 +1059,39 @@ commands above. Dependabot keeps `package.json` up to date.
 
 ```
 webssh/
-├── app/                    # Flask application (24 modules)
-│   ├── __init__.py        # App factory, routes, security headers
-│   ├── auth.py            # Authentication + rate limiting
-│   ├── models.py          # SQLAlchemy models
-│   ├── socket_events.py   # WebSocket event handlers
-│   ├── ssh_manager.py     # SSH connection management
-│   ├── sftp_handler.py    # SFTP file operations
-│   ├── connection_pool.py # SSH connection pooling
-│   ├── key_manager.py     # SSH key storage
-│   ├── key_encryption.py  # SSH key encryption at rest
-│   ├── ssh_key_loader.py  # Shared Paramiko private-key validation
-│   ├── profile_manager.py # Connection profiles
-│   ├── jump_host_manager.py # Jump host (bastion) storage
-│   ├── command_manager.py # Command library
-│   ├── binary_transfer.py # Binary file transfer protocol
-│   ├── user_settings.py   # User preferences
-│   ├── user_lifecycle.py  # Account revocation and deletion quarantine
-│   ├── app_settings.py    # Runtime app settings (e.g. registration toggle)
-│   ├── storage_utils.py   # Atomic JSON writes + per-user locks
-│   ├── audit_logger.py    # Security audit logging
-│   └── decorators.py      # Shared decorators
+├── app/                       # Flask application
+│   ├── __init__.py           # App factory, page/admin routes, security headers
+│   ├── auth.py, models.py    # Authentication, bootstrap roles, persistence
+│   ├── socket_events.py      # Authenticated Socket.IO control events
+│   ├── ssh_manager.py        # SSH terminal lifecycle
+│   ├── sftp_handler.py       # SFTP operations and bounded previews
+│   ├── transfer_*.py         # Token-bound streaming transfers and cancellation
+│   ├── connection_pool.py    # Temporary SSH/SFTP connections
+│   ├── key_*.py              # Encrypted SSH-key storage and validation
+│   ├── host_key_*.py         # Persistent user/global SSH host trust
+│   ├── webauthn_*.py         # Optional passkey service and routes
+│   ├── oidc_*.py             # Optional OIDC PKCE service and routes
+│   ├── recovery_*.py         # One-time recovery-code service and routes
+│   ├── backup_manager.py     # Verified offline backup and restore
+│   ├── secret_rotation.py    # Transactional persisted-secret rotation
+│   ├── quota_manager.py      # Global and per-user resource reservations
+│   ├── runtime_lifecycle.py  # Bounded jobs and graceful shutdown
+│   ├── network_policy.py     # SSRF and target-address policy
+│   ├── storage_*.py          # Atomic JSON, schemas, migrations, errors
+│   ├── audit_*.py            # Structured logs, export, and retention
+│   └── health.py, cli.py     # Health/readiness endpoints and operator CLI
 ├── static/
-│   ├── css/               # Stylesheets (4 files)
-│   ├── js/                # Frontend JavaScript (18 modules)
-│   └── vendor/            # Vendored browser libs (see Frontend Assets)
-├── templates/             # Jinja2 templates (5 files)
-├── config.py              # Central configuration
-├── scripts/               # Vendor and readiness utilities
-├── start.py               # Entry point
-├── Dockerfile             # Container definition
-└── docker-compose.yml     # Compose file
+│   ├── css/                  # Stylesheets
+│   ├── js/                   # Framework-free application modules and i18n
+│   └── vendor/               # Vendored browser libraries (offline capable)
+├── templates/                # Jinja2 pages, dialogs, and security/admin UI
+├── tests/                    # Python, Node, integration, and Playwright gates
+├── scripts/                  # Lock, readiness, and release utilities
+├── config.py                 # Validated environment configuration
+├── start.py                  # Native and Gunicorn entry point
+├── Dockerfile                # Non-root production image
+├── docker-compose.yml        # Zero-config homelab deployment
+└── docker-compose.production.yml # Strict reverse-proxy overlay
 ```
 
 ## Contributing

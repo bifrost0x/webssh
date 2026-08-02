@@ -75,29 +75,29 @@
             </form>
 
             {% if webauthn_enabled %}
-            <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;">
+            <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
                 Sign in with passkey
             </button>
             {% endif %}
             {% if oidc_enabled %}
-            <a class="btn-primary" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}" style="display:block;text-align:center;margin-top:12px;text-decoration:none;">
+            <a class="btn-primary" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}" style="display:block;text-align:center;margin-top:12px;text-decoration:none;" data-i18n="auth.signInWithIdentityProvider">
                 Sign in with identity provider
             </a>
             {% endif %}
             {% if recovery_codes_enabled %}
-            <button type="button" class="btn-primary" id="recoveryLoginBtn" style="margin-top:12px;">
+            <button type="button" class="btn-primary" id="recoveryLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithRecoveryCode">
                 Sign in with recovery code
             </button>
             <div id="recoveryLoginPanel" class="hidden" style="margin-top:12px;">
                 <div class="form-group">
-                    <label for="recoveryUsername">Username</label>
-                    <input type="text" id="recoveryUsername" class="form-control" autocomplete="username">
+                    <label for="recoveryUsername" data-i18n="auth.username">Username</label>
+                    <input type="text" id="recoveryUsername" class="form-control" autocomplete="username" data-i18n-placeholder="auth.username" placeholder="Username">
                 </div>
                 <div class="form-group">
-                    <label for="recoveryCode">Recovery code</label>
-                    <input type="text" id="recoveryCode" class="form-control" autocomplete="one-time-code">
+                    <label for="recoveryCode" data-i18n="auth.recoveryCode">Recovery code</label>
+                    <input type="text" id="recoveryCode" class="form-control" autocomplete="one-time-code" data-i18n-placeholder="auth.recoveryCode" placeholder="Recovery code">
                 </div>
-                <button type="button" class="btn-primary" id="submitRecoveryLogin">
+                <button type="button" class="btn-primary" id="submitRecoveryLogin" data-i18n="auth.useRecoveryCode">
                     Use recovery code
                 </button>
             </div>

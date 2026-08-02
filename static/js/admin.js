@@ -232,15 +232,21 @@
         const isOidc = mode === 'oidc-link';
         document.getElementById('securityActionTitle').textContent = isOidc
             ? t('admin.oidcManage', 'Manage OIDC identities')
-            : t('admin.recovery', 'Generate recovery codes');
+            : t('admin.generateRecoveryCodes', 'Generate recovery codes');
         document.getElementById('securityActionHint').textContent = isOidc
-            ? `Manage stable provider subjects for ${username}. Enter your password and the target username before linking or unlinking.`
-            : `Generate a new one-time recovery set for ${username}. Existing recovery codes will stop working.`;
+            ? t(
+                'admin.oidcManageHint',
+                'Manage stable provider subjects for {username}. Enter your password and the target username before linking or unlinking.'
+            ).replace('{username}', username)
+            : t(
+                'admin.recoveryGenerateHint',
+                'Generate a new one-time recovery set for {username}. Existing recovery codes will stop working.'
+            ).replace('{username}', username);
         document.getElementById('securityActionSubjectGroup')?.classList.toggle('hidden', !isOidc);
         document.getElementById('securityActionOidcListGroup')?.classList.toggle('hidden', !isOidc);
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
         document.getElementById('submitSecurityAction').textContent = isOidc
-            ? t('admin.oidcLink', 'Link OIDC identity')
+            ? t('admin.oidcLinkIdentity', 'Link OIDC identity')
             : t('admin.continue', 'Continue');
         const modal = document.getElementById('securityActionModal');
         modal?.classList.add('show');
@@ -455,11 +461,15 @@
             if (q) { params.set('q', q); }
             try {
                 const result = await window.WebSSHSecurityUI.downloadAuditExport(
-                    APP_ROOT + '/admin/api/audit/export?' + params.toString()
+                    APP_ROOT + '/admin/api/audit/export?' + params.toString(),
+                    { translate: t }
                 );
                 if (result.truncated) {
                     notify(
-                        `Audit export contains only the newest ${result.scanned} retained records because the scan limit was reached.`,
+                        t(
+                            'admin.auditExportTruncated',
+                            'Audit export contains only the newest {count} retained records because the scan limit was reached.'
+                        ).replace('{count}', result.scanned),
                         'warning'
                     );
                 }
@@ -502,7 +512,7 @@
                     body: { backup_count: value }
                 });
                 document.getElementById('auditRetention').value = data.backup_count;
-                notify('Audit retention saved', 'success');
+                notify(t('admin.auditRetentionSaved', 'Audit retention saved'), 'success');
             } catch (err) {
                 notify(err.message, 'error');
             }
@@ -529,7 +539,7 @@
                 const row = document.createElement('tr');
                 const hostLabel = (entry.hosts || [{ host: entry.host, port: entry.port }])
                     .map(item => `${item.host}:${item.port || ''}`).join(', ');
-                const presentation = window.WebSSHSecurityUI.describeHostKey(entry);
+                const presentation = window.WebSSHSecurityUI.describeHostKey(entry, t);
                 row.innerHTML =
                     `<td>${escapeHtml(hostLabel)}</td>` +
                     `<td>${escapeHtml(presentation.status)}</td>` +
@@ -541,7 +551,11 @@
                 button.textContent = presentation.action;
                 button.addEventListener('click', async () => {
                     if (!window.confirm(
-                        `Really ${presentation.confirmationAction} ${hostLabel}?`
+                        window.WebSSHSecurityUI.hostKeyConfirmation(
+                            entry,
+                            hostLabel,
+                            t
+                        )
                     )) { return; }
                     await api(`/admin/api/host-keys/${entry.id}`, { method: 'DELETE' });
                     await loadGlobalHostKeys();

@@ -377,6 +377,7 @@ def test_webauthn_auth_verify_rejects_oversized_json_before_challenge(
         "consume_challenge",
         record_challenge,
     )
+    _create_user(app, "webauthn_oversized_user")
     payload = json.dumps({
         "credential": {"id": "invalid"},
         "padding": "x" * 70000,
@@ -529,6 +530,7 @@ def test_webauthn_auth_verify_bounds_chunked_json_without_content_length(
         "_bounded_json",
         record_bounded_json_call,
     )
+    _create_user(app, "webauthn_chunked_user")
     payload = json.dumps({
         "credential": {"id": "invalid"},
         "padding": "x" * 70000,

@@ -6,7 +6,7 @@ mkdir -p /app/data/logs /app/data/keys
 chmod 700 /app/data/logs /app/data/keys
 
 # SECRET_KEY resolution order:
-#   1) SECRET_KEY environment variable (explicit; wins, e.g. multi-replica setups)
+#   1) SECRET_KEY environment variable (explicit; wins, e.g. external secrets)
 #   2) persisted file under the data dir (survives restarts if /app/data is a volume)
 #   3) auto-generated and persisted (zero-config first run)
 # Known placeholders (e.g. the compose template) are treated as "not set".

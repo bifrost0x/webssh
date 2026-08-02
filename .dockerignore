@@ -55,6 +55,18 @@ logs/
 # Node / frontend tooling (vendored assets live in static/vendor/ and are
 # already committed; node_modules is only needed to regenerate them).
 node_modules/
+package*.json
+playwright.config.js
+
+# Repository-only build, test, and release inputs. requirements.txt remains
+# available because it is the reviewed runtime lock installed by Dockerfile.
+requirements.in
+requirements-test.*
+requirements-graph.*
+scripts/
+.trivyignore.yaml
+.env.example
+docker-compose*.yml
 
 # Distribution / packaging
 build/

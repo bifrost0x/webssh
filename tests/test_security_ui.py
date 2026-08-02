@@ -50,6 +50,7 @@ def test_login_shows_only_enabled_external_authentication(
 ):
     import config
 
+    _create_user(app, "login_options_user")
     disabled = client.get("/login")
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "OIDC_ENABLED", True)

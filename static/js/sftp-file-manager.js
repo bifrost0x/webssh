@@ -2178,7 +2178,10 @@ class SFTPFileManager {
     }
 
     failTransferById(transferId, error) {
-        this.finalizeTransferById(transferId, 'error', error);
+        const displayError = error === 'Transfer unavailable'
+            ? this.t('fm.transferUnavailable', 'Transfer unavailable')
+            : error;
+        this.finalizeTransferById(transferId, 'error', displayError);
     }
 
     cancelTransferById(transferId) {

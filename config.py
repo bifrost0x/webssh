@@ -403,6 +403,10 @@ REGISTRATION_ENABLED = os.environ.get(
     'REGISTRATION_ENABLED',
     'True' if DEBUG else 'False',
 ).lower() == 'true'
+BOOTSTRAP_REGISTRATION_ENABLED = os.environ.get(
+    'BOOTSTRAP_REGISTRATION_ENABLED',
+    'true' if DEPLOYMENT_PROFILE == 'homelab' else 'false',
+).lower() == 'true'
 
 _env_app_root = os.environ.get('APPLICATION_ROOT', '').rstrip('/')
 if _env_app_root:
@@ -536,6 +540,10 @@ def validate_security_config():
             violations.append('SESSION_COOKIE_SECURE must be true')
         if REGISTRATION_ENABLED:
             violations.append('REGISTRATION_ENABLED must be False')
+        if BOOTSTRAP_REGISTRATION_ENABLED:
+            violations.append(
+                'BOOTSTRAP_REGISTRATION_ENABLED must be false'
+            )
         if not BLOCK_INTERNAL_SSH:
             violations.append('BLOCK_INTERNAL_SSH must be true')
         if not _trusted_proxies_explicit:
@@ -563,6 +571,11 @@ def validate_security_config():
     if REGISTRATION_ENABLED:
         warnings.append(
             'REGISTRATION_ENABLED is enabled for the homelab profile'
+        )
+    if BOOTSTRAP_REGISTRATION_ENABLED:
+        warnings.append(
+            'BOOTSTRAP_REGISTRATION_ENABLED permits one browser-created '
+            'administrator while no user account exists'
         )
     if not BLOCK_INTERNAL_SSH:
         warnings.append(

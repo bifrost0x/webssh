@@ -5,27 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
-    <title>Security · Web SSH Terminal</title>
+    <title data-i18n="security.pageTitle">Security · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
-            <h1 class="app-title">Security</h1>
-            <a class="btn btn-secondary" href="{{ url_for('index') }}">← Back to terminal</a>
+            <h1 class="app-title" data-i18n="security.title">Security</h1>
+            <a class="btn btn-secondary" href="{{ url_for('index') }}">← <span data-i18n="security.backToTerminal">Back to terminal</span></a>
         </div>
     </header>
     <main class="admin-main">
         {% if host_key_management_enabled %}
         <section class="admin-setting-row" style="max-width:none;">
             <div class="admin-toolbar">
-                <h2>SSH host trust</h2>
-                <button class="btn btn-secondary" id="hostKeyRefresh">Refresh</button>
+                <h2 data-i18n="security.sshHostTrust">SSH host trust</h2>
+                <button class="btn btn-secondary" id="hostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
             </div>
             <div class="admin-table-wrap">
                 <table class="admin-table">
-                    <thead><tr><th>Host</th><th>Status</th><th>Algorithm</th><th>Fingerprint</th><th>Action</th></tr></thead>
+                    <thead><tr><th data-i18n="security.host">Host</th><th data-i18n="security.status">Status</th><th data-i18n="security.algorithm">Algorithm</th><th data-i18n="security.fingerprint">Fingerprint</th><th data-i18n="security.action">Action</th></tr></thead>
                     <tbody id="hostKeyList"></tbody>
                 </table>
             </div>
@@ -33,33 +33,34 @@
         {% endif %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
-                <h2>Passkeys</h2>
+                <h2 data-i18n="security.passkeys">Passkeys</h2>
                 {% if webauthn_enabled %}
-                <button class="btn btn-primary" id="passkeyAddBtn">Add passkey</button>
-                <button class="btn btn-secondary" id="passkeyUpgradeBtn">Replace legacy passkey</button>
+                <button class="btn btn-primary" id="passkeyAddBtn" data-i18n="security.addPasskey">Add passkey</button>
+                <button class="btn btn-secondary" id="passkeyUpgradeBtn" data-i18n="security.replaceLegacyPasskey">Replace legacy passkey</button>
                 {% endif %}
             </div>
             {% if webauthn_enabled %}
-            <p class="admin-muted">
+            <p class="admin-muted" data-i18n="security.legacyPasskeyHint">
                 If a non-discoverable passkey from an older release no longer
                 appears during username-less sign-in, use Replace legacy
                 passkey. Test the replacement before deleting the old record.
             </p>
             <div id="passkeyList"></div>
             {% else %}
-            <p class="admin-muted" id="passkeyList">Passkeys are disabled by configuration.</p>
+            <p class="admin-muted" id="passkeyList" data-i18n="security.passkeysDisabled">Passkeys are disabled by configuration.</p>
             {% endif %}
         </section>
         {% if recovery_codes_enabled %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
-            <h2>Recovery codes</h2>
-            <p class="admin-muted">Generating new codes invalidates all previous codes. Each code works once.</p>
-            <button class="btn btn-primary" id="recoveryGenerateBtn">Generate recovery codes</button>
+            <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
+            <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>
+            <button class="btn btn-primary" id="recoveryGenerateBtn" data-i18n="security.generateRecoveryCodes">Generate recovery codes</button>
             <pre id="recoveryCodes" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
         {% endif %}
     </main>
     <div id="notificationContainer" class="notification-container"></div>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>
 </body>

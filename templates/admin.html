@@ -68,7 +68,7 @@
                     <option value="ERROR">ERROR</option>
                 </select>
                 <button class="btn btn-secondary" id="auditRefresh" data-i18n="admin.refresh">Refresh</button>
-                <button class="btn btn-secondary" id="auditExportBtn">Export JSONL</button>
+                <button class="btn btn-secondary" id="auditExportBtn" data-i18n="admin.exportJsonl">Export JSONL</button>
             </div>
             <div class="admin-table-wrap">
                 <table class="admin-table" id="adminAuditTable">
@@ -101,23 +101,23 @@
             </div>
             {% if audit_export_enabled %}
             <div class="admin-setting-row" style="margin-top:16px;">
-                <label for="auditRetention"><strong>Audit retention backups</strong></label>
+                <label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label>
                 <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
                     <input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5">
-                    <button class="btn btn-secondary" id="auditRetentionSave">Save</button>
+                    <button class="btn btn-secondary" id="auditRetentionSave" data-i18n="common.save">Save</button>
                 </div>
-                <p class="admin-muted">The new limit applies immediately; older rotated archives beyond it are removed.</p>
+                <p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p>
             </div>
             {% endif %}
             {% if host_key_management_enabled %}
             <div class="admin-setting-row" style="margin-top:16px;max-width:none;">
                 <div class="admin-toolbar">
-                    <strong>Global SSH host trust</strong>
-                    <button class="btn btn-secondary" id="globalHostKeyRefresh">Refresh</button>
+                    <strong data-i18n="admin.globalSshHostTrust">Global SSH host trust</strong>
+                    <button class="btn btn-secondary" id="globalHostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
                 </div>
                 <div class="admin-table-wrap">
                     <table class="admin-table">
-                        <thead><tr><th>Host</th><th>Status</th><th>Algorithm</th><th>Fingerprint</th><th>Action</th></tr></thead>
+                        <thead><tr><th data-i18n="security.host">Host</th><th data-i18n="security.status">Status</th><th data-i18n="security.algorithm">Algorithm</th><th data-i18n="security.fingerprint">Fingerprint</th><th data-i18n="security.action">Action</th></tr></thead>
                         <tbody id="globalHostKeyList"></tbody>
                     </table>
                 </div>
@@ -153,32 +153,32 @@
     <div class="modal modal-small" id="securityActionModal" role="dialog" aria-modal="true" aria-labelledby="securityActionTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="securityActionTitle">Account recovery</h2>
-                <span class="close" id="closeSecurityAction" aria-label="Close">&times;</span>
+                <h2 id="securityActionTitle" data-i18n="admin.accountRecovery">Account recovery</h2>
+                <span class="close" id="closeSecurityAction" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <p id="securityActionHint" class="admin-muted"></p>
                 <div class="form-group hidden" id="securityActionOidcListGroup">
-                    <label>Linked OIDC identities</label>
+                    <label data-i18n="admin.linkedOidcIdentities">Linked OIDC identities</label>
                     <div id="securityActionOidcList" class="admin-oidc-list" aria-live="polite"></div>
                 </div>
                 <div class="form-group">
-                    <label for="securityActionPassword">Your administrator password</label>
+                    <label for="securityActionPassword" data-i18n="admin.administratorPassword">Your administrator password</label>
                     <input type="password" id="securityActionPassword" class="form-control" autocomplete="current-password">
                 </div>
                 <div class="form-group">
-                    <label for="securityActionConfirmation">Type the target username to confirm</label>
+                    <label for="securityActionConfirmation" data-i18n="admin.confirmTargetUsername">Type the target username to confirm</label>
                     <input type="text" id="securityActionConfirmation" class="form-control" autocomplete="off">
                 </div>
                 <div class="form-group hidden" id="securityActionSubjectGroup">
-                    <label for="securityActionSubject">Stable OIDC subject</label>
+                    <label for="securityActionSubject" data-i18n="admin.stableOidcSubject">Stable OIDC subject</label>
                     <input type="text" id="securityActionSubject" class="form-control" autocomplete="off">
                 </div>
-                <button class="btn btn-primary" id="submitSecurityAction">Continue</button>
+                <button class="btn btn-primary" id="submitSecurityAction" data-i18n="admin.continue">Continue</button>
                 <div class="form-group hidden" id="securityActionResultGroup" style="margin-top:16px;">
-                    <label for="securityActionResult">One-time recovery codes</label>
+                    <label for="securityActionResult" data-i18n="admin.oneTimeRecoveryCodes">One-time recovery codes</label>
                     <textarea id="securityActionResult" class="form-control" rows="10" readonly></textarea>
-                    <p class="admin-muted">Copy these codes now. They will not be shown again.</p>
+                    <p class="admin-muted" data-i18n="admin.copyRecoveryCodesNow">Copy these codes now. They will not be shown again.</p>
                 </div>
             </div>
         </div>

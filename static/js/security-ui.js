@@ -9,26 +9,45 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
     'use strict';
 
-    function describeHostKey(entry) {
+    function describeHostKey(entry, translate) {
+        const t = typeof translate === 'function'
+            ? translate
+            : (_key, fallback) => fallback;
         if (entry && entry.marker === '@revoked') {
             return {
-                status: 'Revoked key',
-                action: 'Remove revocation',
-                confirmationAction: 'remove the revocation for'
+                status: t('security.hostKeyRevoked', 'Revoked key'),
+                action: t('security.removeRevocation', 'Remove revocation')
             };
         }
         if (entry && entry.marker === '@cert-authority') {
             return {
-                status: 'Certificate authority',
-                action: 'Delete authority',
-                confirmationAction: 'delete the certificate authority for'
+                status: t(
+                    'security.certificateAuthority',
+                    'Certificate authority'
+                ),
+                action: t('security.deleteAuthority', 'Delete authority')
             };
         }
         return {
-            status: 'Trusted key',
-            action: 'Delete trust',
-            confirmationAction: 'delete trust for'
+            status: t('security.hostKeyTrusted', 'Trusted key'),
+            action: t('security.deleteTrust', 'Delete trust')
         };
+    }
+
+    function hostKeyConfirmation(entry, host, translate) {
+        const t = typeof translate === 'function'
+            ? translate
+            : (_key, fallback) => fallback;
+        let key = 'security.confirmDeleteTrust';
+        let fallback = 'Really delete trust for {host}?';
+        if (entry && entry.marker === '@revoked') {
+            key = 'security.confirmRemoveRevocation';
+            fallback = 'Really remove the revocation for {host}?';
+        } else if (entry && entry.marker === '@cert-authority') {
+            key = 'security.confirmDeleteAuthority';
+            fallback = 'Really delete the certificate authority for {host}?';
+        }
+        return t(key, fallback).replace('{host}', host);
     }
 
     function integerHeader(headers, name) {
@@ -118,13 +137,19 @@
         const options = dependencies || {};
         const fetchImpl = options.fetchImpl || fetch;
         const locationRef = options.locationRef || window.location;
+        const t = typeof options.translate === 'function'
+            ? options.translate
+            : (_key, fallback) => fallback;
         const response = await fetchImpl(url, {
             method: 'HEAD',
             credentials: 'same-origin',
             headers: { 'Accept': 'application/x-ndjson' }
         });
         if (!response.ok) {
-            throw new Error(`Audit export failed (${response.status})`);
+            throw new Error(
+                t('admin.auditExportFailed', 'Audit export failed ({status})')
+                    .replace('{status}', response.status)
+            );
         }
         const metadata = {
             truncated: (
@@ -146,6 +171,7 @@
     return {
         createRequestCoordinator,
         describeHostKey,
-        downloadAuditExport
+        downloadAuditExport,
+        hostKeyConfirmation
     };
 });

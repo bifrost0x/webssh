@@ -169,6 +169,13 @@ def create_admin(username, password_file):
 
 def warn_if_no_admin():
     if User.query.filter_by(is_admin=True).first() is None:
+        if config.BOOTSTRAP_REGISTRATION_ENABLED:
+            log_warning(
+                'No administrator account exists. One-time browser '
+                'registration is available until the first account is created. '
+                'Do not expose an unclaimed instance to untrusted networks.'
+            )
+            return
         log_warning(
             'No administrator account exists. Run the Flask create-admin '
             'command from a trusted host.'

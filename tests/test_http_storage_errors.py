@@ -54,7 +54,7 @@ def test_corrupt_app_settings_in_context_processor_returns_safe_html(
     path.write_bytes(corrupt)
     monkeypatch.setattr(app_settings, '_SETTINGS_FILE', path)
 
-    response = client.get('/login')
+    response = client.get('/login', follow_redirects=True)
 
     assert response.status_code == 503
     assert response.content_type.startswith('text/html')

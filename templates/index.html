@@ -40,7 +40,7 @@
                 <span class="header-divider" aria-hidden="true"></span>
 
                 <div class="account-selector">
-                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
+                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
                         <span class="account-avatar" aria-hidden="true">👤</span>
                         <span class="account-name">{{ current_user.username }}</span>
                         <span class="account-caret" aria-hidden="true">▾</span>
@@ -71,7 +71,7 @@
                             <div class="account-item account-scrollback">
                                 <span class="account-item-icon" aria-hidden="true">📜</span>
                                 <span class="account-expander-label" data-i18n="account.scrollback">Scrollback</span>
-                                <input type="number" id="scrollbackInput" class="account-scrollback-input" min="50" max="10000" step="50" title="Terminal scrollback lines">
+                                <input type="number" id="scrollbackInput" class="account-scrollback-input" min="50" max="10000" step="50" title="Terminal scrollback lines" data-i18n-title="account.scrollbackTitle">
                                 <span class="account-unit" data-i18n="account.lines">lines</span>
                             </div>
                         </div>
@@ -92,7 +92,7 @@
                             <span class="account-caret" aria-hidden="true">▾</span>
                         </button>
                         <div class="account-menu-group account-submenu" id="accountSecurityGroup">
-                            <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span>Security</span></a>
+                            <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span data-i18n="security.title">Security</span></a>
                             {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
                             <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         </div>

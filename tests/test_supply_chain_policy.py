@@ -193,6 +193,40 @@ def test_docker_image_declares_the_source_revision_label():
     assert 'LABEL org.opencontainers.image.revision=$VCS_REF' in dockerfile
 
 
+def test_runtime_image_excludes_repository_only_tooling():
+    ignored = {
+        line.strip()
+        for line in (ROOT / '.dockerignore').read_text(
+            encoding='utf-8'
+        ).splitlines()
+        if line.strip() and not line.lstrip().startswith('#')
+    }
+
+    assert {
+        '.env.example',
+        '.trivyignore.yaml',
+        'docker-compose*.yml',
+        'package*.json',
+        'playwright.config.js',
+        'requirements-graph.*',
+        'requirements-test.*',
+        'requirements.in',
+        'scripts/',
+    } <= ignored
+
+
+def test_docker_exec_cli_examples_load_the_persisted_secret():
+    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+    exec_lines = [
+        line.strip()
+        for line in readme.splitlines()
+        if 'exec webssh' in line and 'flask ' in line
+    ]
+
+    assert exec_lines
+    assert all('/app/entrypoint.sh flask ' in line for line in exec_lines)
+
+
 def test_production_compose_override_documents_its_minimum_version():
     overlay = (ROOT / 'docker-compose.production.yml').read_text(
         encoding='utf-8'

@@ -9,7 +9,7 @@ os.environ['DEBUG'] = 'True'
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
     """Create Flask test application."""
     # ignore_cleanup_errors: on Windows the SQLite file can still be locked at
     # teardown; disposing the engine below handles the normal case, this is a
@@ -21,7 +21,12 @@ def app():
         import config
         importlib.reload(config)
 
-        from app import create_app
+        from app import app_settings, create_app
+        monkeypatch.setattr(
+            app_settings,
+            '_SETTINGS_FILE',
+            config.DATA_DIR / 'app_settings.json',
+        )
         app = create_app()
         runtime_lifecycle = app.extensions['runtime_lifecycle']
         app.config['TESTING'] = True

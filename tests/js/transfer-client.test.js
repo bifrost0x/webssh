@@ -441,6 +441,6 @@ test('FileTransferManager and DragDropManager use the shared socket coordinator'
     });
     assert.deepEqual(notifications, [
         ['Uploading report.txt...', 'info'],
-        ['Uploaded: report.txt', 'success'],
+        ['Upload complete: report.txt', 'success'],
     ]);
 });

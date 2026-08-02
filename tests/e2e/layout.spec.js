@@ -88,3 +88,32 @@ test('admin security actions and empty host trust use user-facing copy', async (
     );
     await expect(page.locator('#globalHostKeyList td')).toHaveAttribute('colspan', '5');
 });
+
+test('new login, security, and admin controls honor the stored locale', async ({ page }) => {
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.setItem('language', 'de'));
+    await page.reload();
+
+    await expect(page.locator('#passkeyLoginBtn')).toHaveText('Mit Passkey anmelden');
+    await expect(page.locator('#oidcLoginBtn')).toHaveText('Mit Identitätsanbieter anmelden');
+    await expect(page.locator('#recoveryLoginBtn')).toHaveText('Mit Wiederherstellungscode anmelden');
+
+    await login(page);
+    await page.goto('/security');
+    await expect(page.locator('h1')).toContainText('Sicherheit');
+    await expect(page.locator('#hostKeyRefresh')).toHaveText('Aktualisieren');
+    await expect(page.locator('#passkeyAddBtn')).toHaveText('Passkey hinzufügen');
+    await expect(page.locator('#recoveryGenerateBtn')).toHaveText(
+        'Wiederherstellungscodes erstellen'
+    );
+
+    await page.goto('/admin');
+    await page.locator('.admin-tab[data-tab="settings"]').click();
+    await expect(page.locator('label[for="auditRetention"]')).toContainText(
+        'Audit-Aufbewahrungssicherungen'
+    );
+    await expect(page.locator('#globalHostKeyRefresh')).toHaveText('Aktualisieren');
+    await expect(page.locator('#globalHostKeyList')).toContainText(
+        'Keine globalen Host-Schlüssel gespeichert.'
+    );
+});

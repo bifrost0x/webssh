@@ -3,6 +3,10 @@
 
     const root = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const t = (key, fallback) => {
+        const translated = window.i18n && i18n.t ? i18n.t(key) : null;
+        return translated && translated !== key ? translated : (fallback || key);
+    };
 
     async function api(path, options) {
         const opts = Object.assign({ headers: {} }, options || {});
@@ -17,7 +21,10 @@
         const response = await fetch(root + path, opts);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(data.error || `Request failed (${response.status})`);
+            throw new Error(
+                data.error || t('common.requestFailed', 'Request failed ({status})')
+                    .replace('{status}', response.status)
+            );
         }
         return data;
     }
@@ -89,7 +96,7 @@
             const row = document.createElement('tr');
             const hostLabel = (entry.hosts || [{ host: entry.host, port: entry.port }])
                 .map(item => `${item.host}:${item.port || ''}`).join(', ');
-            const presentation = window.WebSSHSecurityUI.describeHostKey(entry);
+            const presentation = window.WebSSHSecurityUI.describeHostKey(entry, t);
             for (const value of [
                 hostLabel,
                 presentation.status,
@@ -106,7 +113,11 @@
             button.textContent = presentation.action;
             button.addEventListener('click', async () => {
                 if (!window.confirm(
-                    `Really ${presentation.confirmationAction} ${hostLabel}?`
+                    window.WebSSHSecurityUI.hostKeyConfirmation(
+                        entry,
+                        hostLabel,
+                        t
+                    )
                 )) { return; }
                 await api(`/api/host-keys/${entry.id}`, { method: 'DELETE' });
                 await loadHostKeys();
@@ -129,9 +140,9 @@
             label.textContent = `${credential.name} · ${new Date(credential.created_at).toLocaleString()}`;
             const button = document.createElement('button');
             button.className = 'btn btn-danger';
-            button.textContent = 'Delete';
+            button.textContent = t('common.delete', 'Delete');
             button.addEventListener('click', async () => {
-                const password = window.prompt('Current password');
+                const password = window.prompt(t('auth.currentPassword', 'Current password'));
                 if (password === null) { return; }
                 await api(`/api/webauthn/credentials/${credential.id}`, {
                     method: 'DELETE',
@@ -147,19 +158,27 @@
     async function registerPasskey(legacyUpgrade) {
         try {
             if (!window.PublicKeyCredential) {
-                throw new Error('This browser does not support passkeys');
+                throw new Error(t(
+                    'security.passkeysUnsupported',
+                    'This browser does not support passkeys'
+                ));
             }
             if (legacyUpgrade && !window.confirm(
-                'Create a discoverable replacement without excluding older credentials?'
+                t(
+                    'security.legacyPasskeyConfirm',
+                    'Create a discoverable replacement without excluding older credentials?'
+                )
             )) {
                 return;
             }
-            const password = window.prompt('Current password');
+            const password = window.prompt(t('auth.currentPassword', 'Current password'));
             if (password === null) { return; }
             const name = window.prompt(
-                'Passkey name',
-                legacyUpgrade ? 'Replacement passkey' : 'Passkey'
-            ) || 'Passkey';
+                t('security.passkeyName', 'Passkey name'),
+                legacyUpgrade
+                    ? t('security.replacementPasskey', 'Replacement passkey')
+                    : t('security.passkeyDefaultName', 'Passkey')
+            ) || t('security.passkeyDefaultName', 'Passkey');
             const body = { password };
             if (legacyUpgrade) { body.legacy_upgrade = true; }
             const options = decodeCreationOptions(await api(
@@ -174,7 +193,7 @@
                 body: { name, credential: serializeCredential(credential) }
             });
             await loadPasskeys();
-            notify('Passkey added', 'success');
+            notify(t('security.passkeyAdded', 'Passkey added'), 'success');
         } catch (error) {
             notify(error.message, 'error');
         }
@@ -189,14 +208,17 @@
         }
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {
-                const password = window.prompt('Current password');
+                const password = window.prompt(t('auth.currentPassword', 'Current password'));
                 if (password === null) { return; }
                 const data = await api('/api/recovery-codes', {
                     method: 'POST',
                     body: { password }
                 });
                 document.getElementById('recoveryCodes').textContent = data.codes.join('\n');
-                notify('Store these codes now. They will not be shown again.', 'success');
+                notify(t(
+                    'security.storeRecoveryCodes',
+                    'Store these codes now. They will not be shown again.'
+                ), 'success');
             } catch (error) {
                 notify(error.message, 'error');
             }

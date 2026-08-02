@@ -135,18 +135,25 @@ def validate_new_user(username, password):
     return None
 
 
-def register_user(username, password):
+def register_user(username, password, *, first_user_only=False):
     """
     Register a user, granting administrator rights only to the first account.
+
+    ``first_user_only`` atomically closes browser bootstrap registration as
+    soon as any account exists. Administrative and explicitly enabled normal
+    registration keep the default behavior.
     Returns:
         tuple: (User object, error message) - one will be None
     """
     with _registration_lock:
+        is_first_user = User.query.order_by(User.id).first() is None
+        if first_user_only and not is_first_user:
+            return None, 'Registration is currently disabled.'
+
         error = validate_new_user(username, password)
         if error:
             return None, error
 
-        is_first_user = User.query.order_by(User.id).first() is None
         user = User(username=username, is_admin=is_first_user)
         user.set_password(password)
         db.session.add(user)
@@ -159,6 +166,13 @@ def register_user(username, password):
             user=user.username,
         )
     return user, None
+
+
+def is_bootstrap_registration_available():
+    """Return whether the one-time browser bootstrap is still unclaimed."""
+    if not config.BOOTSTRAP_REGISTRATION_ENABLED:
+        return False
+    return User.query.with_entities(User.id).order_by(User.id).first() is None
 
 
 def ensure_initial_admin():

@@ -6,6 +6,23 @@ global.document = { getElementById: () => null };
 require('../../static/js/sftp-file-manager.js');
 const SFTPFileManager = global.window.SFTPFileManager;
 
+test('generic transfer failures are localized before entering the queue', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    let finalized;
+    manager.t = (key, fallback) => (
+        key === 'fm.transferUnavailable' ? 'Transfer nicht verfügbar' : fallback
+    );
+    manager.finalizeTransferById = (...args) => { finalized = args; };
+
+    manager.failTransferById('transfer-1', 'Transfer unavailable');
+
+    assert.deepEqual(finalized, [
+        'transfer-1',
+        'error',
+        'Transfer nicht verfügbar',
+    ]);
+});
+
 test('browser file upload queues the returned id and file size without buffering', async () => {
     const file = { name: 'large.bin', size: 987654 };
     let uploaded;

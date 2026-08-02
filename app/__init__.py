@@ -7,7 +7,8 @@ import config
 import os
 from .models import db
 from .auth import (login_manager, init_auth, authenticate_user, register_user,
-                   check_rate_limit, password_exceeds_bcrypt_limit)
+                   check_rate_limit, is_bootstrap_registration_available,
+                   password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
 from .user_settings import get_user_settings
@@ -107,9 +108,13 @@ def create_app(
 
     @app.context_processor
     def inject_url_prefix():
+        registration_available = (
+            is_registration_enabled()
+            or is_bootstrap_registration_available()
+        )
         return {
             'url_prefix': url_prefix,
-            'registration_enabled': is_registration_enabled(),
+            'registration_enabled': registration_available,
             'tmux_enabled': config.TMUX_ENABLED,
             'tmux_default': config.TMUX_DEFAULT,
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
@@ -285,6 +290,11 @@ def create_app(
     def login():
         if current_user.is_authenticated:
             return redirect(url_for('index'))
+        if (
+            request.method == 'GET'
+            and is_bootstrap_registration_available()
+        ):
+            return redirect(url_for('register'))
         if request.method == 'POST':
             client_ip = get_client_ip()
             if config.RATELIMIT_ENABLED and check_rate_limit(
@@ -312,7 +322,9 @@ def create_app(
 
     @app.route('/register', methods=['GET', 'POST'])
     def register():
-        if not is_registration_enabled():
+        ongoing_registration = is_registration_enabled()
+        bootstrap_registration = is_bootstrap_registration_available()
+        if not ongoing_registration and not bootstrap_registration:
             flash('Registration is currently disabled.', 'error')
             return redirect(url_for('login'))
         if current_user.is_authenticated:
@@ -335,7 +347,11 @@ def create_app(
             if password != confirm_password:
                 flash('Passwords do not match', 'error')
             else:
-                user, error = register_user(username, password)
+                user, error = register_user(
+                    username,
+                    password,
+                    first_user_only=not ongoing_registration,
+                )
                 if user:
                     session.clear()
                     login_user(user)

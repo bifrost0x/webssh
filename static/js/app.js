@@ -827,7 +827,13 @@
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar && reconnectBar.style.display !== 'none') {
             reconnectBar.style.display = 'none';
-            showNotification('Reconnected!', 'success', 2000);
+            showNotification(
+                window.i18n
+                    ? i18n.t('connection.reconnected')
+                    : 'Reconnected!',
+                'success',
+                2000
+            );
         }
         if (!keepAliveInterval) {
             keepAliveInterval = setInterval(() => {
@@ -849,7 +855,10 @@
         if (reconnectBar) {
             const textEl = reconnectBar.querySelector('.reconnect-text');
             if (textEl) {
-                textEl.textContent = `Connection lost. Reconnecting... (attempt ${attempt})`;
+                textEl.textContent = window.i18n
+                    ? i18n.t('connection.lostReconnectingAttempt')
+                        .replace('{attempt}', attempt)
+                    : `Connection lost. Reconnecting... (attempt ${attempt})`;
             }
         }
     });
@@ -862,7 +871,12 @@
 
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
-        showNotification('Disconnected from server', 'error');
+        showNotification(
+            window.i18n
+                ? i18n.t('connection.disconnectedFromServer')
+                : 'Disconnected from server',
+            'error'
+        );
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar) {
             reconnectBar.style.display = 'flex';
@@ -1857,7 +1871,12 @@
         reconnectBar.id = 'reconnectBar';
         reconnectBar.className = 'reconnect-bar';
         reconnectBar.style.display = 'none';
-        reconnectBar.innerHTML = '<span class="reconnect-text">Connection lost. Reconnecting...</span>';
+        const reconnectText = document.createElement('span');
+        reconnectText.className = 'reconnect-text';
+        reconnectText.textContent = window.i18n
+            ? i18n.t('connection.lostReconnecting')
+            : 'Connection lost. Reconnecting...';
+        reconnectBar.appendChild(reconnectText);
         const header = document.querySelector('.header');
         if (header) {
             header.after(reconnectBar);

@@ -111,7 +111,7 @@ def test_lengthless_recovery_body_is_bounded_before_csrf(app, client):
         "code": "invalid",
         "padding": "x" * 5000,
     }).encode("utf-8")
-    login_page = client.get("/login")
+    login_page = client.get("/register")
     token_match = re.search(
         r'name="csrf_token"[^>]*value="([^"]+)"',
         login_page.get_data(as_text=True),
