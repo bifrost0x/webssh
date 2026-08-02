@@ -40,44 +40,64 @@
                 <span class="header-divider" aria-hidden="true"></span>
 
                 <div class="account-selector">
-                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" aria-haspopup="true">
+                    <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
                         <span class="account-avatar" aria-hidden="true">👤</span>
                         <span class="account-name">{{ current_user.username }}</span>
                         <span class="account-caret" aria-hidden="true">▾</span>
                     </button>
                     <div class="account-dropdown-header" id="accountDropdownHeader">
-                        <button type="button" class="account-item account-expander" onclick="toggleThemeDropdownHeader(event)" aria-haspopup="true">
-                            <span class="account-item-icon" aria-hidden="true">🎨</span>
-                            <span class="account-expander-label" data-i18n="account.theme">Theme</span>
-                            <span class="account-current" id="currentThemeLabel"></span>
+                        <button type="button" class="account-item account-expander account-group-toggle" id="accountPreferencesToggle" onclick="toggleAccountMenuGroup(event, 'accountPreferencesGroup')" aria-expanded="false" aria-controls="accountPreferencesGroup">
+                            <span class="account-item-icon" aria-hidden="true">🎛️</span>
+                            <span class="account-expander-label" data-i18n="account.preferences">Preferences</span>
                             <span class="account-caret" aria-hidden="true">▾</span>
                         </button>
-                        <div class="theme-dropdown-header account-submenu" id="themeDropdownHeader"></div>
+                        <div class="account-menu-group account-submenu" id="accountPreferencesGroup">
+                            <button type="button" class="account-item account-expander" id="accountThemeToggle" onclick="toggleThemeDropdownHeader(event)" aria-haspopup="true" aria-expanded="false" aria-controls="themeDropdownHeader">
+                                <span class="account-item-icon" aria-hidden="true">🎨</span>
+                                <span class="account-expander-label" data-i18n="account.theme">Theme</span>
+                                <span class="account-current" id="currentThemeLabel"></span>
+                                <span class="account-caret" aria-hidden="true">▾</span>
+                            </button>
+                            <div class="theme-dropdown-header account-submenu" id="themeDropdownHeader"></div>
 
-                        <button type="button" class="account-item account-expander" onclick="toggleLangDropdownHeader(event)" aria-haspopup="true">
-                            <span class="account-item-icon" aria-hidden="true">🌐</span>
-                            <span class="account-expander-label" data-i18n="account.language">Language</span>
-                            <span class="account-current account-current-flag" id="currentLangFlagHeader">🇬🇧</span>
+                            <button type="button" class="account-item account-expander" id="accountLanguageToggle" onclick="toggleLangDropdownHeader(event)" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdownHeader">
+                                <span class="account-item-icon" aria-hidden="true">🌐</span>
+                                <span class="account-expander-label" data-i18n="account.language">Language</span>
+                                <span class="account-current account-current-flag" id="currentLangFlagHeader">🇬🇧</span>
+                                <span class="account-caret" aria-hidden="true">▾</span>
+                            </button>
+                            <div class="lang-dropdown-header account-submenu" id="langDropdownHeader"></div>
+
+                            <div class="account-item account-scrollback">
+                                <span class="account-item-icon" aria-hidden="true">📜</span>
+                                <span class="account-expander-label" data-i18n="account.scrollback">Scrollback</span>
+                                <input type="number" id="scrollbackInput" class="account-scrollback-input" min="50" max="10000" step="50" title="Terminal scrollback lines">
+                                <span class="account-unit" data-i18n="account.lines">lines</span>
+                            </div>
+                        </div>
+
+                        <button type="button" class="account-item account-expander account-group-toggle" id="accountConnectionsToggle" onclick="toggleAccountMenuGroup(event, 'accountConnectionsGroup')" aria-expanded="false" aria-controls="accountConnectionsGroup">
+                            <span class="account-item-icon" aria-hidden="true">🔌</span>
+                            <span class="account-expander-label" data-i18n="account.connectionSetup">Connection Setup</span>
                             <span class="account-caret" aria-hidden="true">▾</span>
                         </button>
-                        <div class="lang-dropdown-header account-submenu" id="langDropdownHeader"></div>
+                        <div class="account-menu-group account-submenu" id="accountConnectionsGroup">
+                            <button id="manageKeysBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔑</span> <span data-i18n="keys.manageKeys">SSH Keys</span></button>
+                            <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
+                        </div>
 
-                        <div class="account-item" style="display:flex;align-items:center;gap:8px;padding:6px 12px;">
-                            <span class="account-item-icon" aria-hidden="true">📜</span>
-                            <span class="account-expander-label">Scrollback</span>
-                            <input type="number" id="scrollbackInput" min="50" max="10000" step="50"
-                                   style="width:70px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);padding:2px 6px;font-size:12px;text-align:right;"
-                                   title="Terminal scrollback lines">
-                            <span style="font-size:11px;opacity:0.6;">lines</span>
+                        <button type="button" class="account-item account-expander account-group-toggle" id="accountSecurityToggle" onclick="toggleAccountMenuGroup(event, 'accountSecurityGroup')" aria-expanded="false" aria-controls="accountSecurityGroup">
+                            <span class="account-item-icon" aria-hidden="true">🛡️</span>
+                            <span class="account-expander-label" data-i18n="account.securityAccount">Security &amp; Account</span>
+                            <span class="account-caret" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="account-menu-group account-submenu" id="accountSecurityGroup">
+                            <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span>Security</span></a>
+                            {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                            <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         </div>
 
                         <div class="account-divider" role="separator"></div>
-
-                        <button id="manageKeysBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔑</span> <span data-i18n="keys.manageKeys">SSH Keys</span></button>
-                        <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
-                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span>Security</span></a>
-                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
-                        <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>
                 </div>
@@ -861,9 +881,12 @@
             if (event) {
                 event.stopPropagation();
             }
-            document.getElementById('langDropdownHeader')?.classList.remove('show');
+            const languageDropdown = document.getElementById('langDropdownHeader');
+            languageDropdown?.classList.remove('show');
+            document.getElementById('accountLanguageToggle')?.setAttribute('aria-expanded', 'false');
             const dropdown = document.getElementById('themeDropdownHeader');
-            dropdown.classList.toggle('show');
+            const isOpen = dropdown.classList.toggle('show');
+            document.getElementById('accountThemeToggle')?.setAttribute('aria-expanded', String(isOpen));
         }
 
         function initThemeSelectorHeader() {
@@ -931,9 +954,12 @@
             if (event) {
                 event.stopPropagation();
             }
-            document.getElementById('themeDropdownHeader')?.classList.remove('show');
+            const themeDropdown = document.getElementById('themeDropdownHeader');
+            themeDropdown?.classList.remove('show');
+            document.getElementById('accountThemeToggle')?.setAttribute('aria-expanded', 'false');
             const dropdown = document.getElementById('langDropdownHeader');
-            dropdown.classList.toggle('show');
+            const isOpen = dropdown.classList.toggle('show');
+            document.getElementById('accountLanguageToggle')?.setAttribute('aria-expanded', String(isOpen));
         }
 
         function initLanguageSelectorHeader() {
@@ -964,20 +990,62 @@
             document.getElementById('currentLangFlagHeader').textContent = lang.flag;
         }
 
+        function closeAccountMenuGroups() {
+            document.querySelectorAll('#accountDropdownHeader .account-menu-group').forEach(group => {
+                group.classList.remove('show');
+            });
+            document.querySelectorAll('#accountDropdownHeader .account-group-toggle').forEach(toggle => {
+                toggle.setAttribute('aria-expanded', 'false');
+            });
+            document.getElementById('themeDropdownHeader')?.classList.remove('show');
+            document.getElementById('langDropdownHeader')?.classList.remove('show');
+            document.getElementById('accountThemeToggle')?.setAttribute('aria-expanded', 'false');
+            document.getElementById('accountLanguageToggle')?.setAttribute('aria-expanded', 'false');
+        }
+
+        function toggleAccountMenuGroup(event, groupId) {
+            if (event) {
+                event.stopPropagation();
+            }
+            const group = document.getElementById(groupId);
+            const toggle = event?.currentTarget;
+            if (!group) {
+                return;
+            }
+            const shouldOpen = !group.classList.contains('show');
+            closeAccountMenuGroups();
+            if (shouldOpen) {
+                group.classList.add('show');
+                toggle?.setAttribute('aria-expanded', 'true');
+            }
+        }
+
+        function closeAccountDropdownHeader() {
+            closeAccountMenuGroups();
+            document.getElementById('accountDropdownHeader')?.classList.remove('show');
+            document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'false');
+        }
+
         function toggleAccountDropdownHeader(event) {
             if (event) {
                 event.stopPropagation();
             }
-            document.getElementById('themeDropdownHeader')?.classList.remove('show');
-            document.getElementById('langDropdownHeader')?.classList.remove('show');
-            document.getElementById('accountDropdownHeader')?.classList.toggle('show');
+            const dropdown = document.getElementById('accountDropdownHeader');
+            if (!dropdown) {
+                return;
+            }
+            if (dropdown.classList.contains('show')) {
+                closeAccountDropdownHeader();
+                return;
+            }
+            closeAccountMenuGroups();
+            dropdown.classList.add('show');
+            document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'true');
         }
 
         document.getElementById('accountDropdownHeader')?.addEventListener('click', (e) => {
-            // Only close the menu on a real action (Admin/Change Password/Logout);
-            // the Theme/Language expanders toggle their sub-section in place.
             if (e.target.closest('.account-action')) {
-                document.getElementById('accountDropdownHeader').classList.remove('show');
+                closeAccountDropdownHeader();
             }
         });
 
@@ -995,10 +1063,7 @@
                 }
             }
             if (!e.target.closest('.account-selector')) {
-                const dropdown = document.getElementById('accountDropdownHeader');
-                if (dropdown) {
-                    dropdown.classList.remove('show');
-                }
+                closeAccountDropdownHeader();
             }
         });
 
