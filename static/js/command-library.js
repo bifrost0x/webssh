@@ -3,7 +3,6 @@ const CommandLibrary = {
     filteredCommands: [],
     currentOs: 'all',
     editingCommandId: null,
-    detectingOsForSession: null,
     renderCursor: 0,
     chunkSize: 40,
     pendingSaveCallback: null,
@@ -29,10 +28,6 @@ const CommandLibrary = {
                 window.showNotification('Command deleted successfully', 'success');
             });
 
-            window.socket.on('os_detection_started', (data) => {
-                console.log('OS detection started for session:', data.session_id);
-                this.detectingOsForSession = data.session_id;
-            });
         }
 
         this.setupEventListeners();

@@ -1,5 +1,10 @@
 """Tests for connection-profile persistence."""
 
+import pytest
+import threading
+
+from app.storage_errors import StorageCorruptionError
+
 
 def create_user(app, username='profile-user'):
     from app.models import User, db
@@ -155,12 +160,12 @@ def test_add_profile_does_not_overwrite_corrupt_profile_storage(app):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{broken', encoding='utf-8')
 
-        profile, error = profile_manager.add_profile(
-            user_id, 'Production', 'example.com', 22, 'deploy', 'password'
-        )
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            profile_manager.add_profile(
+                user_id, 'Production', 'example.com', 22, 'deploy', 'password'
+            )
 
-        assert profile is None
-        assert error == 'Profile storage is unreadable'
+        assert exc_info.value.path == path
         assert path.read_text(encoding='utf-8') == '{broken'
 
 
@@ -215,6 +220,25 @@ def test_upsert_profile_rejects_unknown_id_without_writing(app):
         assert profile_manager.load_profiles(user_id) == []
 
 
+def test_delete_profile_rejects_unknown_id_without_writing(app, monkeypatch):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-unknown-delete')
+    with app.app_context():
+        monkeypatch.setattr(
+            profile_manager,
+            'save_profiles',
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError('missing profiles must not be saved')
+            ),
+        )
+        deleted, error = profile_manager.delete_profile(user_id, 'not-owned')
+
+        assert deleted is False
+        assert error == 'Profile not found'
+        assert profile_manager.load_profiles(user_id) == []
+
+
 def test_upsert_profile_mode_change_removes_stale_command_fields(app):
     from app import command_set_manager, profile_manager
 
@@ -259,12 +283,16 @@ def test_upsert_profile_persists_single_command_reference_and_override(
 ):
     from app import command_manager, profile_manager
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', lambda user_id: [{
+    monkeypatch.setattr(
+        command_manager,
+        '_get_all_commands_with_lock_held',
+        lambda user_id: [{
         'id': 'cmd-echo',
         'name': 'Echo',
         'command': 'echo',
         'parameters': 'default',
-    }])
+    }],
+    )
     user_id = create_user(app, 'profile-command')
 
     with app.app_context():
@@ -296,14 +324,203 @@ def test_upsert_profile_does_not_overwrite_corrupt_storage(app):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{broken', encoding='utf-8')
 
-        profile, error = profile_manager.upsert_profile(user_id, {
-            'name': 'Production',
-            'host': 'example.com',
-            'port': 22,
-            'username': 'deploy',
-            'auth_type': 'password',
-        })
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            profile_manager.upsert_profile(user_id, {
+                'name': 'Production',
+                'host': 'example.com',
+                'port': 22,
+                'username': 'deploy',
+                'auth_type': 'password',
+            })
 
-        assert profile is None
-        assert error == 'Profile storage is unreadable'
+        assert exc_info.value.path == path
         assert path.read_text(encoding='utf-8') == '{broken'
+
+
+def test_profile_mutation_acquires_coordinator_before_store_lock(app, monkeypatch):
+    """The global-first order prevents profile/command-set ABBA deadlocks."""
+    from app import profile_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, 'profile-lock-order')
+    first_request = threading.Event()
+    requested = []
+    result = {}
+
+    def instrumented_storage_lock(key):
+        if threading.current_thread().name == 'profile-writer':
+            requested.append(key)
+            first_request.set()
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        profile_manager, 'storage_lock', instrumented_storage_lock
+    )
+    coordinator = real_storage_lock(f'command-config:{user_id}')
+    coordinator.acquire()
+
+    def writer():
+        with app.app_context():
+            result['value'] = profile_manager.upsert_profile(user_id, {
+                'name': 'Production',
+                'host': 'example.com',
+                'port': 22,
+                'username': 'deploy',
+                'auth_type': 'password',
+            })
+
+    thread = threading.Thread(
+        target=writer, name='profile-writer', daemon=True
+    )
+    try:
+        thread.start()
+        assert first_request.wait(timeout=2)
+        assert requested == [f'command-config:{user_id}']
+
+        profile_lock = real_storage_lock(f'profiles:{user_id}')
+        assert profile_lock.acquire(blocking=False) is True
+        profile_lock.release()
+    finally:
+        coordinator.release()
+        thread.join(timeout=2)
+
+    assert thread.is_alive() is False
+    assert result['value'][1] is None
+
+
+@pytest.mark.parametrize(
+    ('mode', 'dependent_store'),
+    (('command', 'commands'), ('command_set', 'command-sets')),
+)
+def test_profile_reference_validation_locks_dependent_store_before_profiles(
+    app, monkeypatch, mode, dependent_store
+):
+    from app import command_manager, command_set_manager, profile_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, f'profile-{mode}-lock-order')
+    with app.app_context():
+        if mode == 'command':
+            reference = command_manager.add_user_command(
+                user_id, 'Reference', 'true', '', 'Reference',
+                ['all'], 'custom'
+            )
+        else:
+            reference, error = command_set_manager.upsert_command_set(
+                user_id,
+                {
+                    'name': 'Reference',
+                    'steps': [{'type': 'inline', 'command': 'true'}],
+                },
+            )
+            assert error is None
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        profile_manager, 'storage_lock', instrumented_storage_lock
+    )
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            user_id,
+            {
+                'name': 'Production',
+                'host': 'example.com',
+                'port': 22,
+                'username': 'deploy',
+                'auth_type': 'password',
+                'startup_mode': mode,
+                f'{mode}_id': reference['id'],
+            },
+        )
+
+    assert error is None
+    assert profile is not None
+    assert requested == [
+        f'command-config:{user_id}',
+        f'{dependent_store}:{user_id}',
+        f'profiles:{user_id}',
+    ]
+
+
+def test_assign_command_set_locks_set_snapshot_before_profiles(
+    app, monkeypatch
+):
+    from app import command_set_manager, profile_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, 'assign-set-lock-order')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(
+            user_id,
+            {
+                'name': 'Production',
+                'host': 'example.com',
+                'port': 22,
+                'username': 'deploy',
+                'auth_type': 'password',
+            },
+        )
+        assert error is None
+        command_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Bootstrap',
+                'steps': [{'type': 'inline', 'command': 'true'}],
+            },
+        )
+        assert error is None
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        profile_manager, 'storage_lock', instrumented_storage_lock
+    )
+    with app.app_context():
+        updated, error = profile_manager.assign_command_set(
+            user_id, profile['id'], command_set['id']
+        )
+
+    assert error is None
+    assert updated['command_set_id'] == command_set['id']
+    assert requested == [
+        f'command-config:{user_id}',
+        f'command-sets:{user_id}',
+        f'profiles:{user_id}',
+    ]
+
+
+def test_profile_update_preserves_unknown_stored_fields(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-preserve-unknown')
+    with app.app_context():
+        original = {
+            'id': 'profile-1',
+            'name': 'Original',
+            'future': {'version': 2},
+        }
+        assert profile_manager.save_profiles(user_id, [original]) is True
+
+        updated, error = profile_manager.upsert_profile(
+            user_id,
+            {
+                'id': 'profile-1',
+                'name': 'Updated',
+                'host': 'example.com',
+                'port': 22,
+                'username': 'deploy',
+                'auth_type': 'password',
+            },
+        )
+
+    assert error is None
+    assert updated['future'] == {'version': 2}

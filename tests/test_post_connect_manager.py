@@ -1,5 +1,11 @@
 """Tests for canonical post-connect command selection and resolution."""
 
+import threading
+
+import pytest
+
+from app.storage_errors import StorageCorruptionError
+
 
 def create_user(app, username='post-connect-user'):
     from app.models import User, db
@@ -103,7 +109,7 @@ def test_resolve_single_command_uses_default_or_override_parameters(app, monkeyp
     from app.post_connect_manager import resolve_configuration
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -140,7 +146,9 @@ def test_resolve_single_command_loads_the_library_once(app, monkeypatch):
         calls += 1
         return library_commands()
 
-    monkeypatch.setattr(command_manager, 'get_all_commands', get_commands)
+    monkeypatch.setattr(
+        command_manager, '_get_all_commands_with_lock_held', get_commands
+    )
     user_id = create_user(app)
 
     with app.app_context():
@@ -158,7 +166,7 @@ def test_resolve_rejects_missing_command_and_invalid_parameters(app, monkeypatch
     from app.post_connect_manager import resolve_configuration
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -202,7 +210,7 @@ def test_resolve_command_set_uses_existing_safe_resolver(app, monkeypatch):
     from app.post_connect_manager import resolve_configuration
 
     monkeypatch.setattr(
-        command_manager, 'get_all_commands',
+        command_manager, '_get_all_commands_with_lock_held',
         lambda user_id, os_filter=None: library_commands(),
     )
     user_id = create_user(app)
@@ -224,3 +232,144 @@ def test_resolve_command_set_uses_existing_safe_resolver(app, monkeypatch):
     assert create_error is None
     assert resolve_error is None
     assert resolved == 'sudo pwd && sudo whoami'
+
+
+def test_resolve_configuration_propagates_corrupt_command_store(app):
+    from app import command_manager
+    from app.post_connect_manager import resolve_configuration
+
+    user_id = create_user(app, 'post-connect-corrupt-commands')
+    with app.app_context():
+        path = command_manager.get_user_commands_file(user_id)
+        path.write_bytes(b'{broken')
+
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            resolve_configuration(
+                user_id,
+                {'startup_mode': 'command', 'command_id': 'missing'},
+            )
+
+        assert exc_info.value.path == path
+
+
+@pytest.mark.parametrize(
+    ('mode', 'expected_stores'),
+    [
+        ('command', ('commands',)),
+        ('command_set', ('command-sets', 'commands')),
+    ],
+)
+def test_post_connect_public_resolution_uses_one_coordinator_and_store_snapshots(
+    app, monkeypatch, mode, expected_stores
+):
+    from app import command_manager, command_set_manager, post_connect_manager
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    user_id = create_user(app, f'post-connect-lock-{mode}')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Reference', 'echo safe', '', 'Reference',
+            ['all'], 'custom'
+        )
+        command_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Reference',
+                'steps': [{
+                    'type': 'library',
+                    'command_id': command['id'],
+                }],
+            },
+        )
+        assert error is None
+
+    requested = []
+
+    def instrumented_storage_lock(key):
+        requested.append(key)
+        return real_storage_lock(key)
+
+    monkeypatch.setattr(
+        post_connect_manager, 'storage_lock', instrumented_storage_lock,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        command_set_manager, 'storage_lock', instrumented_storage_lock
+    )
+    payload = {'startup_mode': mode}
+    payload[f'{mode}_id'] = (
+        command['id'] if mode == 'command' else command_set['id']
+    )
+    with app.app_context():
+        resolved, error = post_connect_manager.resolve_configuration(
+            user_id, payload
+        )
+
+    assert (resolved, error) == ('echo safe', None)
+    assert requested == [
+        f'command-config:{user_id}',
+        *(f'{store}:{user_id}' for store in expected_stores),
+    ]
+
+
+def test_post_connect_command_resolution_blocks_writer_until_snapshot_done(
+    app, monkeypatch
+):
+    from app import command_manager, post_connect_manager
+
+    user_id = create_user(app, 'post-connect-snapshot-race')
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id, 'Mutable', 'echo old', '', 'Mutable',
+            ['all'], 'custom'
+        )
+
+    snapshot_paused = threading.Event()
+    continue_resolution = threading.Event()
+    writer_done = threading.Event()
+    resolver_result = {}
+    real_index = post_connect_manager._command_index
+
+    def paused_index(value, lock_held=False):
+        result = real_index(value, lock_held=lock_held)
+        snapshot_paused.set()
+        assert continue_resolution.wait(timeout=2)
+        return result
+
+    monkeypatch.setattr(post_connect_manager, '_command_index', paused_index)
+
+    def resolve():
+        with app.app_context():
+            resolver_result['value'] = (
+                post_connect_manager.resolve_configuration(
+                    user_id,
+                    {
+                        'startup_mode': 'command',
+                        'command_id': command['id'],
+                    },
+                )
+            )
+
+    def write():
+        with app.app_context():
+            command_manager.update_user_command(
+                user_id, command['id'], 'Mutable', 'echo new', '',
+                'Mutable', ['all'], 'custom'
+            )
+        writer_done.set()
+
+    resolver = threading.Thread(target=resolve, daemon=True)
+    writer = threading.Thread(target=write, daemon=True)
+    try:
+        resolver.start()
+        assert snapshot_paused.wait(timeout=2)
+        writer.start()
+        assert writer_done.wait(timeout=0.2) is False
+    finally:
+        continue_resolution.set()
+        resolver.join(timeout=2)
+        writer.join(timeout=2)
+
+    assert resolver.is_alive() is False
+    assert writer.is_alive() is False
+    assert resolver_result['value'] == ('echo old', None)

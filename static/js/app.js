@@ -645,11 +645,9 @@
 
         downloadFile() {
             if (!this.currentSessionId || !this.currentPath) return;
-
-            socket.emit('download_file_binary', {
-                session_id: this.currentSessionId,
-                remote_path: this.currentPath
-            });
+            BinaryTransferClient.forSocket(socket).downloadFile(
+                this.currentPath, this.currentSessionId
+            );
         },
 
         // ---- Inline editor ----
@@ -829,7 +827,13 @@
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar && reconnectBar.style.display !== 'none') {
             reconnectBar.style.display = 'none';
-            showNotification('Reconnected!', 'success', 2000);
+            showNotification(
+                window.i18n
+                    ? i18n.t('connection.reconnected')
+                    : 'Reconnected!',
+                'success',
+                2000
+            );
         }
         if (!keepAliveInterval) {
             keepAliveInterval = setInterval(() => {
@@ -851,7 +855,10 @@
         if (reconnectBar) {
             const textEl = reconnectBar.querySelector('.reconnect-text');
             if (textEl) {
-                textEl.textContent = `Connection lost. Reconnecting... (attempt ${attempt})`;
+                textEl.textContent = window.i18n
+                    ? i18n.t('connection.lostReconnectingAttempt')
+                        .replace('{attempt}', attempt)
+                    : `Connection lost. Reconnecting... (attempt ${attempt})`;
             }
         }
     });
@@ -864,7 +871,12 @@
 
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
-        showNotification('Disconnected from server', 'error');
+        showNotification(
+            window.i18n
+                ? i18n.t('connection.disconnectedFromServer')
+                : 'Disconnected from server',
+            'error'
+        );
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar) {
             reconnectBar.style.display = 'flex';
@@ -917,7 +929,6 @@
 
         ConnectionHistory.addConnection(data.host, data.port, data.username);
 
-        FileTransferManager.updateSessionSelects();
     });
 
     socket.on('ssh_output', (data) => {
@@ -956,7 +967,6 @@
         console.log('SSH disconnected:', data);
         showNotification(`Session disconnected: ${data.reason}`, 'warning');
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
-        FileTransferManager.updateSessionSelects();
 
         if (window.sftpFileManager) {
             window.sftpFileManager.handleSessionDisconnected(data.session_id);
@@ -1004,18 +1014,6 @@
 
     socket.on('jump_host_deleted', (data) => {
         showNotification(window.i18n ? i18n.t('jumphosts.deleted') : 'Jump host deleted', 'success');
-    });
-
-    socket.on('file_progress', (data) => {
-        FileTransferManager.updateProgress(data);
-    });
-
-    socket.on('file_complete', (data) => {
-        FileTransferManager.handleTransferComplete(data);
-    });
-
-    socket.on('file_download_ready', (data) => {
-        FileTransferManager.handleDownloadReady(data);
     });
 
     socket.on('error', (data) => {
@@ -1693,7 +1691,7 @@
                 showNotification('Remote path required', 'error');
                 return;
             }
-            FileTransferManager.uploadFile(active, pendingFile, remotePath);
+            FileTransferManager.uploadFile(active.id, pendingFile, remotePath);
             pendingFile = null;
             if (window.ModalManager) {
                 window.ModalManager.close(modal);
@@ -1873,7 +1871,12 @@
         reconnectBar.id = 'reconnectBar';
         reconnectBar.className = 'reconnect-bar';
         reconnectBar.style.display = 'none';
-        reconnectBar.innerHTML = '<span class="reconnect-text">Connection lost. Reconnecting...</span>';
+        const reconnectText = document.createElement('span');
+        reconnectText.className = 'reconnect-text';
+        reconnectText.textContent = window.i18n
+            ? i18n.t('connection.lostReconnecting')
+            : 'Connection lost. Reconnecting...';
+        reconnectBar.appendChild(reconnectText);
         const header = document.querySelector('.header');
         if (header) {
             header.after(reconnectBar);
@@ -1957,6 +1960,7 @@
                     return;
                 }
                 proxyJump = {
+                    jump_host_id: jumpHostId,
                     host: jh.host,
                     port: jh.port,
                     username: jh.username,

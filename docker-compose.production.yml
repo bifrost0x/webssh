@@ -1,0 +1,14 @@
+# Requires Docker Compose 2.24.4 or newer for the !override tag below.
+services:
+  webssh:
+    ports: !override
+      - "127.0.0.1:5000:5000"
+    environment:
+      DEPLOYMENT_PROFILE: production
+      CORS_ORIGINS: ${WEBSSH_ORIGIN:?Set WEBSSH_ORIGIN to the public HTTPS origin}
+      ALLOW_CORS_WILDCARD: "false"
+      SESSION_COOKIE_SECURE: "true"
+      REGISTRATION_ENABLED: "False"
+      BOOTSTRAP_REGISTRATION_ENABLED: "false"
+      BLOCK_INTERNAL_SSH: "true"
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}

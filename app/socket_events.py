@@ -1,6 +1,5 @@
 from flask_socketio import emit, join_room, disconnect
-from flask import request, current_app
-from flask_login import current_user
+from flask import request, current_app, url_for
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager)
 from .decorators import socket_login_required
@@ -16,115 +15,98 @@ from .tailscale_ssh import (
     profile_is_authorized_for_launch,
     validate_tailscale_ssh_access,
 )
-from .storage_utils import storage_lock
+from .storage_errors import StorageCorruptionError
+from .network_policy import canonicalize_hostname
 from . import binary_transfer, connection_pool
-import base64
-import os
+from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
+from .quota_manager import QuotaKind, quota_manager
+from .socket_capacity import socket_capacity
+import posixpath
 import re
-import socket
-import ipaddress
+import time
 import config
 
 
-class DownloadSizeLimitExceeded(Exception):
-    """Raised before a download writes more than its configured byte cap."""
+STORAGE_ERROR_MESSAGE = (
+    'Stored data is unreadable. Please restore or remove it.'
+)
 
 
-def _copy_file_with_limit(source, destination, max_bytes):
-    """Copy a binary stream while enforcing a hard maximum byte count."""
-    copied = 0
-    while True:
-        chunk = source.read(65536)
-        if not chunk:
-            return copied
-        next_size = copied + len(chunk)
-        if next_size > max_bytes:
-            raise DownloadSizeLimitExceeded(
-                f'download exceeds configured limit of {max_bytes} bytes'
-            )
-        destination.write(chunk)
-        copied = next_size
+class _CombinedCancellation:
+    """Expose user and runtime cancellation through one Event-like interface."""
+
+    def __init__(self, user_cancel_event, lifecycle_cancel_event):
+        self._user_cancel_event = user_cancel_event
+        self._lifecycle_cancel_event = lifecycle_cancel_event
+
+    def is_set(self):
+        return (
+            self._user_cancel_event.is_set()
+            or self._lifecycle_cancel_event.is_set()
+        )
+
+    def wait(self, timeout=None):
+        if self.is_set():
+            return True
+        if timeout is None:
+            while not self._user_cancel_event.wait(0.1):
+                if self._lifecycle_cancel_event.is_set():
+                    return True
+            return True
+        deadline = time.monotonic() + timeout
+        while not self.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            self._user_cancel_event.wait(min(remaining, 0.1))
+        return True
+
+
+def _storage_error_payload(error, *, user_id, include_success=True, **extra):
+    """Log storage metadata, never contents, and build one safe client error."""
+    log_error(
+        'Storage corruption detected',
+        user_id=user_id,
+        store=error.path.name,
+        path=str(error.path),
+        reason=error.reason,
+    )
+    payload = {
+        'error': STORAGE_ERROR_MESSAGE,
+        'code': 'storage_error',
+        **extra,
+    }
+    if include_success:
+        payload['success'] = False
+    return payload
+
+
+def _emit_storage_error(error, current_user):
+    payload = _storage_error_payload(error, user_id=current_user.id)
+    emit('error', payload)
+    return payload
+
 
 def _is_valid_host(host_str):
     """Validate host is a valid hostname or IP address."""
     try:
-        ipaddress.ip_address(host_str)
+        canonicalize_hostname(host_str)
         return True
     except ValueError:
-        pass
-    hostname_pattern = re.compile(
-        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
-        r'(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-    )
-    return bool(hostname_pattern.match(host_str))
-
-def _ip_is_internal(addr):
-    """True if an IP address is non-public and therefore off-limits when
-    BLOCK_INTERNAL_SSH is enabled.
-
-    Covers loopback (127.0.0.0/8, ::1), link-local (169.254.0.0/16 incl. the
-    cloud metadata address 169.254.169.254, fe80::/10), RFC1918 / ULA private
-    ranges, and other reserved/multicast/unspecified space.
-    """
-    return (addr.is_loopback or addr.is_link_local or addr.is_private
-            or addr.is_reserved or addr.is_multicast or addr.is_unspecified)
-
-def _is_internal_address(host_str):
-    """Check whether a host points at an internal address (SSRF protection).
-
-    When BLOCK_INTERNAL_SSH is enabled, prevents SSH connections to internal
-    addresses. Hostnames are resolved and EVERY address they map to is checked,
-    so a name that resolves to 127.0.0.1 / a private IP / the metadata address
-    cannot be used to bypass the guard (a literal-IP-only check could).
-
-    Note: DNS is resolved here and again by paramiko at connect time, so a host
-    under attacker DNS control could still rebind in between (TOCTOU). Closing
-    that fully would require pinning the connection to the validated IP.
-    """
-    host_str = (host_str or '').strip()
-    if not host_str:
         return False
-
-    # Literal IP address: check it directly.
-    try:
-        return _ip_is_internal(ipaddress.ip_address(host_str))
-    except ValueError:
-        pass
-
-    if host_str.lower() in ('localhost', 'localhost.localdomain', 'ip6-localhost'):
-        return True
-
-    # Hostname: resolve and reject if ANY resolved address is internal.
-    try:
-        infos = socket.getaddrinfo(host_str, None)
-    except socket.gaierror:
-        # Unresolvable name cannot reach an internal service; let the connect fail.
-        return False
-    for info in infos:
-        try:
-            if _ip_is_internal(ipaddress.ip_address(info[4][0])):
-                return True
-        except ValueError:
-            continue
-    return False
 
 def _validate_ssh_params(host, port, username, allow_internal=False):
     """Validate SSH connection parameters. Returns (clean_host, clean_port, clean_username, error).
 
-    allow_internal: skip the internal-address block. Used for the *target* of a
-    ProxyJump connection — it is reached from the bastion, not from this server,
-    so internal targets behind a bastion are legitimate. The bastion itself is
-    always validated without this flag (it is reached directly by the server).
+    ``allow_internal`` remains for compatibility with callers. DNS and address
+    policy are enforced only at the connector, where the validated result can
+    be pinned to the socket without a time-of-check/time-of-use gap.
     """
     host = (host or '').strip()
     if not host:
         return None, None, None, 'Host is required'
     if not _is_valid_host(host):
         return None, None, None, 'Invalid host format'
-
-    if config.BLOCK_INTERNAL_SSH and not allow_internal and _is_internal_address(host):
-        log_warning(f"SECURITY: SSH to internal address blocked", host=host)
-        return None, None, None, 'Connections to internal addresses are not allowed'
 
     try:
         port = int(port)
@@ -139,7 +121,7 @@ def _validate_ssh_params(host, port, username, allow_internal=False):
     if not re.match(r'^[a-zA-Z0-9_\-\.]{1,32}$', username):
         return None, None, None, 'Invalid username format'
 
-    return host, port, username, None
+    return canonicalize_hostname(host), port, username, None
 
 @socketio.on('connect')
 def handle_connect():
@@ -153,6 +135,12 @@ def handle_connect():
         disconnect()
         return False
 
+    lifecycle = current_app.extensions.get('runtime_lifecycle')
+    if lifecycle is None or not lifecycle.accepting_work():
+        log_warning('Socket connection rejected during shutdown', sid=request.sid)
+        emit('connected', {'status': 'unavailable'})
+        return False
+
     from .models import User
     user = db.session.get(User, int(user_id))
     if not user or user.is_locked:
@@ -162,8 +150,27 @@ def handle_connect():
         return False
 
     socket_sid = request.sid
+    if not socket_capacity.reserve(
+        user.id,
+        socket_sid,
+        config.MAX_SOCKET_CONNECTIONS,
+        config.MAX_SOCKET_CONNECTIONS_PER_USER,
+    ):
+        log_warning(
+            'Socket connection capacity reached',
+            user_id=user.id,
+            sid=socket_sid,
+        )
+        emit('connected', {'status': 'unavailable'})
+        disconnect()
+        return False
+
     user_agent = request.headers.get('User-Agent', '')
-    register_socket_session(user.id, socket_sid, user_agent)
+    try:
+        register_socket_session(user.id, socket_sid, user_agent)
+    except Exception:
+        socket_capacity.release(socket_sid)
+        raise
 
     room = f'user_{user.id}'
     join_room(room)
@@ -181,21 +188,46 @@ def handle_connect():
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
     socket_sid = request.sid
+    owner_id = socket_capacity.release(socket_sid)
     user = get_user_from_socket(socket_sid)
+    user_id = user.id if user else owner_id
 
-    if user:
-        log_info(f"Client disconnected: {user.username}", user=user.username, sid=socket_sid)
+    if user_id is not None:
+        username = user.username if user else f'user {user_id}'
+        log_info(
+            f"Client disconnected: {username}",
+            user=user.username if user else None,
+            user_id=user_id,
+            sid=socket_sid,
+        )
+
+        try:
+            transfer_manager.cancel_all_for_socket(user_id, socket_sid)
+        except Exception as error:
+            log_error(
+                'Transfer cleanup failed on disconnect',
+                user_id=user_id,
+                exception_type=type(error).__name__,
+            )
 
         SocketSession.query.filter_by(socket_sid=socket_sid).delete()
         db.session.commit()
 
-        other_sessions = SocketSession.query.filter_by(user_id=user.id).count()
+        other_sessions = SocketSession.query.filter_by(user_id=user_id).count()
 
         if other_sessions == 0:
-            closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user.id))
+            try:
+                transfer_manager.cancel_all_for_user(user_id)
+            except Exception as error:
+                log_error(
+                    'Transfer cleanup failed on disconnect',
+                    user_id=user_id,
+                    exception_type=type(error).__name__,
+                )
+            closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user_id))
             if closed > 0:
-                log_info(f"Cleaned up {closed} Quick Connect connection(s) for {user.username}")
-            log_debug(f"Last socket for {user.username} disconnected, SSH sessions preserved")
+                log_info(f"Cleaned up {closed} Quick Connect connection(s) for {username}")
+            log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
 def restore_user_sessions(user_id):
     """Restore active SSH sessions when user reconnects."""
@@ -259,31 +291,87 @@ def handle_ssh_connect(data, current_user=None):
     key_content = None
     bastion_password = None
     bastion_key_content = None
+    client_request_id = None
     try:
+        client_request_id = data.get('client_request_id')
+        if not current_app.extensions[
+            'runtime_lifecycle'
+        ].accepting_work():
+            emit('ssh_error', {
+                'error': 'Server is shutting down',
+                'client_request_id': client_request_id,
+            })
+            return
+
         password = data.get('password')
         key_id = data.get('key_id')
         auth_type = data.get('auth_type') or ('key' if key_id else 'password')
-        client_request_id = data.get('client_request_id')
 
         def emit_error(message):
             emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
 
-        with storage_lock(f'command-config:{current_user.id}'):
-            startup_commands, startup_commands_error = (
-                post_connect_manager.resolve_configuration(
-                    current_user.id, data
-                )
+        startup_commands, startup_commands_error = (
+            post_connect_manager.resolve_configuration(
+                current_user.id, data
             )
+        )
         if startup_commands_error:
             emit_error(startup_commands_error)
             return
+
+        proxy_jump = data.get('proxy_jump')
+        if not isinstance(proxy_jump, dict):
+            proxy_jump = None
+        saved_jump_host_id = (
+            proxy_jump.get('jump_host_id') if proxy_jump else None
+        )
+        if saved_jump_host_id:
+            live_jump_host = jump_host_manager.get_jump_host(
+                current_user.id, saved_jump_host_id
+            )
+            if live_jump_host is None:
+                emit_error('Jump host reference not found')
+                return
+            runtime_password = proxy_jump.get('password')
+            proxy_jump = {
+                'host': live_jump_host.get('host'),
+                'port': live_jump_host.get('port', 22),
+                'username': live_jump_host.get('username'),
+                'auth_type': live_jump_host.get('auth_type'),
+                'key_id': live_jump_host.get('key_id'),
+            }
+            if live_jump_host.get('auth_type') == 'password':
+                proxy_jump['password'] = runtime_password
+
+        if auth_type == 'key' and key_id:
+            key_content, key_error = key_manager.read_key_content(
+                current_user.id, key_id
+            )
+            if key_error:
+                emit_error(f'SSH key error: {key_error}')
+                return
+        if proxy_jump:
+            bastion_password = proxy_jump.get('password')
+            bastion_key_id = proxy_jump.get('key_id')
+            if not bastion_password and not bastion_key_id:
+                emit_error('Jump host password or SSH key required')
+                return
+            if bastion_key_id:
+                bastion_key_content, bastion_key_error = (
+                    key_manager.read_key_content(
+                        current_user.id, bastion_key_id
+                    )
+                )
+                if bastion_key_error:
+                    emit_error(
+                        f'Jump host SSH key error: {bastion_key_error}'
+                    )
+                    return
 
         if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
             log_warning("SSH connect rate limit hit", user=current_user.username)
             emit_error('Too many connection attempts. Please wait a moment.')
             return
-
-        proxy_jump = data.get('proxy_jump')
 
         # The target may be internal when reached via a bastion (legitimate).
         host, port, username, error = _validate_ssh_params(
@@ -316,8 +404,10 @@ def handle_ssh_connect(data, current_user=None):
             emit_error('Password or SSH key required')
             return
 
-        if key_id:
-            key_content, key_error = key_manager.read_key_content(current_user.id, key_id)
+        if key_id and key_content is None:
+            key_content, key_error = key_manager.read_key_content(
+                current_user.id, key_id
+            )
             if key_error:
                 emit_error(f'SSH key error: {key_error}')
                 return
@@ -332,18 +422,6 @@ def handle_ssh_connect(data, current_user=None):
             if bastion_error:
                 emit_error(f'Jump host: {bastion_error}')
                 return
-            bastion_password = proxy_jump.get('password')
-            bastion_key_id = proxy_jump.get('key_id')
-            if not bastion_password and not bastion_key_id:
-                emit_error('Jump host password or SSH key required')
-                return
-            if bastion_key_id:
-                bastion_key_content, bastion_key_error = key_manager.read_key_content(
-                    current_user.id, bastion_key_id
-                )
-                if bastion_key_error:
-                    emit_error(f'Jump host SSH key error: {bastion_key_error}')
-                    return
 
         use_tmux = bool(data.get('use_tmux')) and config.TMUX_ENABLED
         reconnect_tmux_name = None
@@ -451,6 +529,13 @@ def handle_ssh_connect(data, current_user=None):
             })
             log_ssh_connection(current_user.username, host, port, True, request.remote_addr)
 
+    except StorageCorruptionError as error:
+        emit('ssh_error', _storage_error_payload(
+            error,
+            user_id=current_user.id,
+            include_success=False,
+            client_request_id=client_request_id,
+        ))
     except Exception as e:
         log_error(f"SSH connection failed", error=str(e), user=current_user.username)
         emit('ssh_error', {'error': 'Connection failed'})
@@ -562,7 +647,7 @@ def handle_ssh_disconnect(data, current_user=None):
             }, room=room)
             log_ssh_disconnect(current_user.username, host, port, request.remote_addr, reason='User requested')
 
-    except Exception as e:
+    except Exception:
         emit('ssh_error', {'error': 'Disconnect failed'})
 
 @socketio.on('list_profiles')
@@ -579,6 +664,8 @@ def handle_list_profiles(current_user=None):
                 )
             profiles.append(profile)
         emit('profiles_list', {'profiles': profiles})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to load profiles", error=str(e))
         emit('error', {'error': 'Failed to load profiles'})
@@ -610,6 +697,8 @@ def handle_save_profile(data, current_user=None):
             handle_list_profiles(current_user=current_user)
             return payload
 
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to save profile", error=str(e))
         emit('error', {'error': 'Failed to save profile'})
@@ -625,16 +714,19 @@ def handle_delete_profile(data, current_user=None):
             emit('error', {'error': 'Profile ID required'})
             return
 
-        success = profile_manager.delete_profile(current_user.id, profile_id)
-        if success:
-            emit('profile_deleted', {'profile_id': profile_id})
-            handle_list_profiles(current_user=current_user)
-        else:
-            emit('error', {'error': 'Failed to delete profile'})
+        success, error = profile_manager.delete_profile(current_user.id, profile_id)
+        if error:
+            return _command_set_error(error)
+        payload = {'success': True, 'profile_id': profile_id}
+        emit('profile_deleted', payload)
+        handle_list_profiles(current_user=current_user)
+        return payload
 
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     except Exception as e:
         log_error("Failed to delete profile", error=str(e))
-        emit('error', {'error': 'Failed to delete profile'})
+        return _command_set_error('Failed to delete profile')
 
 @socketio.on('list_jump_hosts')
 @socket_login_required
@@ -642,6 +734,8 @@ def handle_list_jump_hosts(current_user=None):
     """Return list of saved jump hosts for this user."""
     try:
         emit('jump_hosts_list', {'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id)})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to load jump hosts", error=str(e))
         emit('error', {'error': 'Failed to load jump hosts'})
@@ -665,6 +759,8 @@ def handle_save_jump_host(data, current_user=None):
         else:
             emit('jump_host_saved', {'jump_host': jump_host})
             handle_list_jump_hosts(current_user=current_user)
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to save jump host", error=str(e))
         emit('error', {'error': 'Failed to save jump host'})
@@ -678,11 +774,17 @@ def handle_delete_jump_host(data, current_user=None):
         if not jump_host_id:
             emit('error', {'error': 'Jump host ID required'})
             return
-        if jump_host_manager.delete_jump_host(current_user.id, jump_host_id):
+        success, error, usages = jump_host_manager.delete_jump_host(
+            current_user.id, jump_host_id
+        )
+        if success:
             emit('jump_host_deleted', {'jump_host_id': jump_host_id})
             handle_list_jump_hosts(current_user=current_user)
+            return {'success': True, 'jump_host_id': jump_host_id}
         else:
-            emit('error', {'error': 'Failed to delete jump host'})
+            return _command_set_error(error, usages)
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to delete jump host", error=str(e))
         emit('error', {'error': 'Failed to delete jump host'})
@@ -694,6 +796,8 @@ def handle_list_keys(current_user=None):
     try:
         keys = key_manager.load_key_summaries(current_user.id)
         emit('keys_list', {'keys': keys})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to load keys", error=str(e))
         emit('error', {'error': 'Failed to load keys'})
@@ -728,7 +832,9 @@ def handle_upload_key(data, current_user=None):
             emit('key_uploaded', {'key': key_meta})
             handle_list_keys(current_user=current_user)
 
-    except Exception as e:
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception:
         emit('error', {'error': 'Failed to upload key'})
 
 @socketio.on('delete_key')
@@ -749,98 +855,10 @@ def handle_delete_key(data, current_user=None):
         else:
             emit('error', {'error': 'Failed to delete key'})
 
-    except Exception as e:
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception:
         emit('error', {'error': 'Failed to delete key'})
-
-@socketio.on('upload_file')
-@socket_login_required
-def handle_upload_file(data, current_user=None):
-    """Handle file upload via SFTP."""
-    try:
-        session_id = data.get('session_id')
-        filename = data.get('filename')
-        file_data = data.get('file_data')
-        remote_path = data.get('remote_path')
-
-        if not all([session_id, filename, file_data, remote_path]):
-            emit('error', {'error': 'Missing required fields for file upload'})
-            return
-
-        max_size = config.MAX_UPLOAD_SIZE
-        estimated_size = len(file_data) * 0.75 if file_data else 0
-        if estimated_size > max_size:
-            max_mb = max_size // (1024 * 1024)
-            emit('error', {'error': f'File too large. Maximum size: {max_mb}MB'})
-            return
-
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session'})
-                return
-
-        file_bytes = base64.b64decode(file_data)
-
-        chunk_size = 65536
-        chunks = [file_bytes[i:i+chunk_size] for i in range(0, len(file_bytes), chunk_size)]
-
-        success, error = sftp_handler.upload_file_chunked(
-            session_id=session_id,
-            filename=filename,
-            chunks=chunks,
-            remote_path=remote_path,
-            socketio_instance=socketio
-        )
-
-        if error:
-            emit('error', {'error': f'Upload failed: {error}'})
-        else:
-            log_file_upload(current_user.username, target_host='via-sftp', filename=filename,
-                          size=len(file_bytes), success=True, ip_address=request.remote_addr)
-
-    except Exception as e:
-        emit('error', {'error': 'Upload failed'})
-
-@socketio.on('download_file')
-@socket_login_required
-def handle_download_file(data, current_user=None):
-    """Handle file download via SFTP."""
-    try:
-        session_id = data.get('session_id')
-        remote_path = data.get('remote_path')
-
-        if not all([session_id, remote_path]):
-            emit('error', {'error': 'Missing required fields for file download'})
-            return
-
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session'})
-                return
-
-        result, error = sftp_handler.download_file_chunked(
-            session_id=session_id,
-            remote_path=remote_path,
-            socketio_instance=socketio
-        )
-
-        if error:
-            emit('error', {'error': f'Download failed: {error}'})
-        else:
-            file_bytes = b''.join(result['chunks'])
-            file_data = base64.b64encode(file_bytes).decode('utf-8')
-
-            emit('file_download_ready', {
-                'filename': result['filename'],
-                'file_data': file_data,
-                'size': result['size']
-            })
-            log_file_download(current_user.username, target_host='via-sftp', filename=result['filename'],
-                            size=result['size'], success=True, ip_address=request.remote_addr)
-
-    except Exception as e:
-        emit('error', {'error': 'Download failed'})
 
 @socketio.on('list_directory')
 @socket_login_required
@@ -890,31 +908,6 @@ def handle_list_directory(data, current_user=None):
         log_error(f"list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {'error': 'Failed to list directory'})
 
-@socketio.on('get_sessions')
-@socket_login_required
-def handle_get_sessions(current_user=None):
-    """Get list of active SSH sessions for this user."""
-    try:
-        db_sessions = SSHSession.query.filter_by(user_id=current_user.id, connected=True).all()
-
-        sessions = []
-        for db_session in db_sessions:
-            session = ssh_manager.get_session(db_session.session_id)
-            if session and session.get('connected'):
-                sessions.append({
-                    'session_id': db_session.session_id,
-                    'host': db_session.host,
-                    'port': db_session.port,
-                    'username': db_session.username,
-                    'use_tmux': session.get('use_tmux', False),
-                    'tmux_session_name': session.get('tmux_session_name')
-                })
-
-        emit('sessions_list', {'sessions': sessions})
-    except Exception as e:
-        log_error("Failed to get sessions", error=str(e))
-        emit('error', {'error': 'Failed to get sessions'})
-
 @socketio.on('set_theme')
 @socket_login_required
 def handle_set_theme(data, current_user=None):
@@ -934,6 +927,8 @@ def handle_set_theme(data, current_user=None):
             emit('theme_updated', {'theme': theme})
         else:
             emit('error', {'error': 'Failed to save theme'})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to save theme", error=str(e))
         emit('error', {'error': 'Failed to save theme'})
@@ -945,6 +940,8 @@ def handle_get_notepad(current_user=None):
     try:
         settings = get_user_settings(current_user.id)
         emit('notepad_data', {'notepad': settings.get('notepad', '')})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to load notepad", error=str(e))
         emit('error', {'error': 'Failed to load notepad'})
@@ -955,12 +952,21 @@ def handle_save_notepad(data, current_user=None):
     """Persist the notepad text for the current user."""
     try:
         text = data.get('text', '')
+        if not isinstance(text, str):
+            payload = {
+                'success': False,
+                'error': 'Invalid notepad content',
+            }
+            emit('error', payload)
+            return payload
         if len(text) > 100000:
             emit('error', {'error': 'Notepad content too large (max 100KB)'})
             return
         success = save_user_settings(current_user.id, {'notepad': text})
         if not success:
             emit('error', {'error': 'Failed to save notepad'})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to save notepad", error=str(e))
         emit('error', {'error': 'Failed to save notepad'})
@@ -976,6 +982,8 @@ def handle_list_commands(data, current_user=None):
 
         commands = command_manager.get_all_commands(current_user.id, os_filter)
         emit('commands_list', {'commands': commands})
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to load commands", error=str(e))
         emit('error', {'error': 'Failed to load commands'})
@@ -998,6 +1006,11 @@ def handle_add_command(data, current_user=None):
             emit('error', {'error': 'Name, command, and description are required'})
             return
 
+        if not command_manager.valid_user_command_input(
+            name, command, parameters, description, os_list, category
+        ):
+            return _command_set_error('Invalid command data')
+
         new_cmd = command_manager.add_user_command(
             current_user.id, name, command, parameters, description, os_list, category
         )
@@ -1009,6 +1022,8 @@ def handle_add_command(data, current_user=None):
         handle_list_commands({}, current_user=current_user)
         return {'success': True, 'command': new_cmd}
 
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to add command", error=str(e))
         emit('error', {'error': 'Failed to add command'})
@@ -1033,19 +1048,27 @@ def handle_update_command(data, current_user=None):
             emit('error', {'error': 'Command ID, name, command, and description are required'})
             return
 
-        success = command_manager.update_user_command(
+        if not command_manager.valid_user_command_input(
+            name, command, parameters, description, os_list, category
+        ):
+            return _command_set_error('Invalid command data')
+
+        updated, error = command_manager.update_user_command(
             current_user.id, command_id, name, command, parameters, description, os_list, category
         )
 
-        if success:
-            emit('command_updated', {'command_id': command_id})
-            handle_list_commands({}, current_user=current_user)
-        else:
-            emit('error', {'error': 'Failed to update command'})
+        if error:
+            return _command_set_error(error)
+        payload = {'success': True, 'command': updated}
+        emit('command_updated', payload)
+        handle_list_commands({}, current_user=current_user)
+        return payload
 
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     except Exception as e:
         log_error("Failed to update command", error=str(e))
-        emit('error', {'error': 'Failed to update command'})
+        return _command_set_error('Failed to update command')
 
 @socketio.on('delete_command')
 @socket_login_required
@@ -1068,13 +1091,20 @@ def handle_delete_command(data, current_user=None):
             payload = {
                 'success': False,
                 'error': error or 'Failed to delete command',
-                'code': 'in_use' if usages else 'delete_failed',
+                'code': (
+                    'in_use' if usages
+                    else 'not_found'
+                    if error == 'Command not found'
+                    else 'delete_failed'
+                ),
             }
             if usages:
                 payload['usages'] = usages
             emit('error', payload)
             return payload
 
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     except Exception as e:
         log_error("Failed to delete command", error=str(e))
         emit('error', {'error': 'Failed to delete command'})
@@ -1083,7 +1113,12 @@ def handle_delete_command(data, current_user=None):
 def _command_set_error(error, usages=None):
     if usages:
         code = 'in_use'
-    elif error in ('Command set not found', 'Profile not found'):
+    elif error in (
+        'Command not found',
+        'Command set not found',
+        'Profile not found',
+        'Jump host not found',
+    ):
         code = 'not_found'
     elif error and 'unreadable' in error:
         code = 'storage_error'
@@ -1102,9 +1137,12 @@ def handle_list_command_sets(data=None, current_user=None):
     """Return all named command sets owned by the current user."""
     from . import command_set_manager
 
-    command_sets, error = command_set_manager.load_command_sets_with_resolution(
-        current_user.id
-    )
+    try:
+        command_sets, error = command_set_manager.load_command_sets_with_resolution(
+            current_user.id
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if error:
         return _command_set_error(error)
     payload = {'success': True, 'command_sets': command_sets}
@@ -1118,7 +1156,12 @@ def handle_save_command_set(data, current_user=None):
     """Create or update a named command set."""
     from . import command_set_manager
 
-    command_set, error = command_set_manager.upsert_command_set(current_user.id, data)
+    try:
+        command_set, error = command_set_manager.upsert_command_set(
+            current_user.id, data
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if error:
         return _command_set_error(error)
     payload = {'success': True, 'command_set': command_set}
@@ -1134,9 +1177,12 @@ def handle_duplicate_command_set(data, current_user=None):
     from . import command_set_manager
 
     data = data if isinstance(data, dict) else {}
-    command_set, error = command_set_manager.duplicate_command_set(
-        current_user.id, data.get('command_set_id')
-    )
+    try:
+        command_set, error = command_set_manager.duplicate_command_set(
+            current_user.id, data.get('command_set_id')
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if error:
         return _command_set_error(error)
     payload = {'success': True, 'command_set': command_set}
@@ -1153,9 +1199,12 @@ def handle_delete_command_set(data, current_user=None):
 
     data = data if isinstance(data, dict) else {}
     command_set_id = data.get('command_set_id')
-    success, error, usages = command_set_manager.delete_command_set(
-        current_user.id, command_set_id
-    )
+    try:
+        success, error, usages = command_set_manager.delete_command_set(
+            current_user.id, command_set_id
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if not success:
         return _command_set_error(error, usages)
     payload = {'success': True, 'command_set_id': command_set_id}
@@ -1171,7 +1220,12 @@ def handle_convert_legacy_command_set(data, current_user=None):
     from . import command_set_manager
 
     data = data if isinstance(data, dict) else {}
-    profile = profile_manager.get_profile(current_user.id, data.get('profile_id'))
+    try:
+        profile = profile_manager.get_profile(
+            current_user.id, data.get('profile_id')
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if not profile:
         return _command_set_error('Profile not found')
     if profile.get('command_set_id'):
@@ -1180,18 +1234,27 @@ def handle_convert_legacy_command_set(data, current_user=None):
     if not isinstance(legacy_commands, str) or not legacy_commands.strip():
         return _command_set_error('Profile has no legacy startup commands')
 
-    command_set, error = command_set_manager.upsert_command_set(current_user.id, {
-        'name': data.get('name'),
-        'description': data.get('description', ''),
-        'use_sudo': False,
-        'steps': [{'type': 'inline', 'command': legacy_commands}],
-    })
+    try:
+        command_set, error = command_set_manager.upsert_command_set(
+            current_user.id,
+            {
+                'name': data.get('name'),
+                'description': data.get('description', ''),
+                'use_sudo': False,
+                'steps': [{'type': 'inline', 'command': legacy_commands}],
+            },
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if error:
         return _command_set_error(error)
 
-    updated_profile, error = profile_manager.assign_command_set(
-        current_user.id, profile['id'], command_set['id']
-    )
+    try:
+        updated_profile, error = profile_manager.assign_command_set(
+            current_user.id, profile['id'], command_set['id']
+        )
+    except StorageCorruptionError as storage_error:
+        return _emit_storage_error(storage_error, current_user)
     if error:
         return _command_set_error(error)
     payload = {
@@ -1203,12 +1266,6 @@ def handle_convert_legacy_command_set(data, current_user=None):
     handle_list_command_sets(current_user=current_user)
     handle_list_profiles(current_user=current_user)
     return payload
-
-@socketio.on('detect_os')
-@socket_login_required
-def handle_detect_os(data, current_user=None):
-    """OS detection disabled to avoid terminal noise."""
-    emit('error', {'error': 'OS detection is disabled'})
 
 @socketio.on('save_session_name')
 @socket_login_required
@@ -1254,42 +1311,63 @@ def verify_session_ownership(session_id, user_id):
 
     return False
 
-@socketio.on('upload_file_binary')
+
+@socketio.on('prepare_transfer')
 @socket_login_required
-def handle_upload_file_binary(data, current_user=None):
-    """Handle binary file upload (no base64 encoding)."""
+def handle_prepare_transfer(data, current_user=None):
+    """Issue only metadata for a later bounded HTTP transfer."""
     try:
-        session_id = data.get('session_id')
-        filename = data.get('filename')
-        file_data = data.get('file_data')
-        remote_path = data.get('remote_path')
-
-        if not all([session_id, filename, file_data, remote_path]):
-            emit('error', {'error': 'Missing required fields for binary upload'})
-            return
-
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session/connection'})
-                return
-
-        success, error = binary_transfer.handle_binary_upload(
-            session_id=session_id,
-            filename=filename,
-            binary_data=file_data,
-            remote_path=remote_path,
-            socketio_instance=socketio
+        direction = data.get('direction') if isinstance(data, dict) else None
+        session_id = data.get('session_id') if isinstance(data, dict) else None
+        remote_path = data.get('remote_path') if isinstance(data, dict) else None
+        archive = bool(data.get('archive')) if isinstance(data, dict) else False
+        record = prepare_transfer(
+            current_user.id, direction, session_id, remote_path,
+            owner_sid=getattr(request, 'sid', None),
+            archive=archive,
         )
-
-        if error:
-            emit('error', {'error': f'Upload failed: {error}'})
+        if record is None:
+            return {'success': False, 'error': 'Transfer unavailable'}
+        if direction == 'upload':
+            endpoint = 'transfers.upload_transfer'
+        elif archive:
+            endpoint = 'transfers.download_folder_transfer'
         else:
-            log_file_upload(current_user.username, target_host='via-sftp', filename=filename,
-                          size=len(file_data), success=True, ip_address=request.remote_addr)
+            endpoint = 'transfers.download_transfer'
+        transfer_url = url_for(endpoint, token=record.token)
+        application_root = getattr(config, 'APPLICATION_ROOT', '').rstrip('/')
+        if application_root and not transfer_url.startswith(f'{application_root}/'):
+            transfer_url = f'{application_root}{transfer_url}'
+        return {
+            'success': True,
+            'transfer_id': record.transfer_id,
+            'url': transfer_url,
+            'expires_at': record.expires_at,
+            'direction': direction,
+        }
+    except Exception as error:
+        log_error('Transfer preparation failed', user_id=current_user.id,
+                  exception_type=type(error).__name__)
+        return {'success': False, 'error': 'Transfer unavailable'}
 
-    except Exception as e:
-        emit('error', {'error': 'Upload failed'})
+
+@socketio.on('cancel_transfer')
+@socket_login_required
+def handle_cancel_transfer(data, current_user=None):
+    """Cancel a prepared or streaming transfer owned by this user only."""
+    transfer_id = data.get('transfer_id') if isinstance(data, dict) else None
+    try:
+        cancelled = transfer_manager.cancel(transfer_id, current_user.id)
+    except Exception as error:
+        log_error('Transfer cancellation failed', user_id=current_user.id,
+                  exception_type=type(error).__name__)
+        cancelled = False
+    if cancelled:
+        socketio.emit('transfer_finished', {
+            'transfer_id': transfer_id,
+            'status': 'cancelled',
+        }, room=f'user_{current_user.id}')
+    return {'success': bool(cancelled)}
 
 @socketio.on('download_file_binary')
 @socket_login_required
@@ -1300,7 +1378,7 @@ def handle_download_file_binary(data, current_user=None):
         remote_path = data.get('remote_path')
         for_preview = data.get('for_preview', False)
 
-        if not all([session_id, remote_path]):
+        if not all([session_id, remote_path]) or not for_preview:
             emit('error', {'error': 'Missing required fields for binary download'})
             return
 
@@ -1313,7 +1391,8 @@ def handle_download_file_binary(data, current_user=None):
         binary_data, error = binary_transfer.handle_binary_download(
             session_id=session_id,
             remote_path=remote_path,
-            socketio_instance=socketio
+            socketio_instance=None,
+            max_size=config.MAX_EDITOR_FILE_SIZE,
         )
 
         if error:
@@ -1323,294 +1402,35 @@ def handle_download_file_binary(data, current_user=None):
             import base64
             filename = os.path.basename(remote_path)
 
-            if for_preview:
-                encoded_data = base64.b64encode(binary_data).decode('ascii')
-                emit('file_download_ready_binary', {
-                    'session_id': session_id,
-                    'filename': filename,
-                    'file_data': encoded_data,
-                    'size': len(binary_data),
-                    'for_preview': True,
-                    'encoding': 'base64'
-                })
-            else:
-                emit('file_download_ready_binary', {
-                    'session_id': session_id,
-                    'filename': filename,
-                    'file_data': binary_data,
-                    'size': len(binary_data),
-                    'for_preview': False
-                })
+            encoded_data = base64.b64encode(binary_data).decode('ascii')
+            emit('file_download_ready_binary', {
+                'session_id': session_id,
+                'filename': filename,
+                'file_data': encoded_data,
+                'size': len(binary_data),
+                'for_preview': True,
+                'encoding': 'base64'
+            })
             log_file_download(current_user.username, target_host='via-sftp', filename=filename,
                             size=len(binary_data), success=True, ip_address=request.remote_addr)
 
-    except Exception as e:
+    except Exception:
         emit('error', {'error': 'Download failed'})
-
-@socketio.on('download_folder_binary')
-@socket_login_required
-def handle_download_folder_binary(data, current_user=None):
-    """Handle folder download as ZIP archive."""
-    try:
-        import zipfile
-        import tempfile
-        import os
-
-        session_id = data.get('session_id')
-        remote_path = data.get('remote_path')
-
-        if not all([session_id, remote_path]):
-            emit('error', {'error': 'Missing required fields for folder download'})
-            return
-
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session/connection'})
-                return
-
-        _sftp_lock = sftp_handler._get_sftp_lock(session_id)
-        _sftp_lock.acquire()
-        try:
-            sftp, error, source_type = sftp_handler.get_any_sftp_client(session_id)
-        except Exception as e:
-            _sftp_lock.release()
-            log_error("SFTP client error", error=str(e))
-            emit('error', {'error': 'SFTP operation failed'})
-            return
-        if error:
-            _sftp_lock.release()
-            emit('error', {'error': error})
-            return
-
-        safe_path = sftp_handler.sanitize_path(remote_path)
-        if safe_path is None:
-            _sftp_lock.release()
-            emit('error', {'error': 'Invalid remote path'})
-            return
-
-        try:
-            file_stat = sftp.stat(safe_path)
-            import stat
-            if not stat.S_ISDIR(file_stat.st_mode):
-                _sftp_lock.release()
-                emit('error', {'error': 'Path is not a directory'})
-                return
-        except FileNotFoundError:
-            _sftp_lock.release()
-            emit('error', {'error': 'Remote directory not found'})
-            return
-
-        folder_name = os.path.basename(safe_path.rstrip('/'))
-
-        def is_safe_for_shell(path):
-            """Validate path is safe for shell command use (defense in depth)."""
-            if not path:
-                return False
-            dangerous_chars = ['\n', '\r', '\x00', '`', '$', '|', ';', '&']
-            return not any(c in path for c in dangerous_chars)
-
-        remote_zip_path = f"/tmp/{folder_name}_{os.urandom(8).hex()}.zip"
-
-        try:
-            ssh_client = sftp._client if hasattr(sftp, '_client') else None
-            if ssh_client and is_safe_for_shell(safe_path):
-                import shlex
-                parent_dir = os.path.dirname(safe_path)
-                base_name = os.path.basename(safe_path)
-
-                if not (is_safe_for_shell(parent_dir) and is_safe_for_shell(base_name)):
-                    raise ValueError("Path contains unsafe characters")
-
-                zip_command = f"cd {shlex.quote(parent_dir)} && zip -r -q {shlex.quote(remote_zip_path)} {shlex.quote(base_name)}"
-
-                stdin, stdout, stderr = ssh_client.exec_command(zip_command)
-                stdout.channel.settimeout(300)
-                exit_code = stdout.channel.recv_exit_status()
-
-                if exit_code == 0:
-                    log_debug(f"Remote ZIP created: {remote_zip_path}")
-
-                    zip_path = None
-                    remote_completed = False
-                    try:
-                        remote_zip_stat = sftp.stat(remote_zip_path)
-                        remote_zip_size = getattr(remote_zip_stat, 'st_size', None)
-                        if (remote_zip_size is not None and
-                                remote_zip_size > config.MAX_ZIP_DOWNLOAD_SIZE):
-                            raise DownloadSizeLimitExceeded(
-                                'remote ZIP exceeds configured size limit'
-                            )
-
-                        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
-                            zip_path = tmp_zip.name
-                            os.chmod(zip_path, 0o600)
-                            with sftp.file(remote_zip_path, 'rb') as remote_file:
-                                _copy_file_with_limit(
-                                    remote_file,
-                                    tmp_zip,
-                                    config.MAX_ZIP_DOWNLOAD_SIZE,
-                                )
-
-                        with open(zip_path, 'rb') as f:
-                            zip_data = f.read()
-
-                        emit('file_download_ready_binary', {
-                            'session_id': session_id,
-                            'filename': f"{folder_name}.zip",
-                            'file_data': zip_data,
-                            'size': len(zip_data),
-                            'for_preview': False
-                        })
-
-                        log_info(f"Folder download (remote): {folder_name}.zip", user=current_user.username)
-                        remote_completed = True
-                    except DownloadSizeLimitExceeded:
-                        remote_completed = True
-                        log_warning(
-                            "Remote ZIP download rejected by size limit",
-                            user=current_user.username,
-                            path=safe_path,
-                            max_size=config.MAX_ZIP_DOWNLOAD_SIZE,
-                        )
-                        emit('error', {
-                            'error': 'ZIP archive exceeds the maximum allowed download size'
-                        })
-                    finally:
-                        if zip_path and os.path.exists(zip_path):
-                            try:
-                                os.unlink(zip_path)
-                            except Exception as cleanup_err:
-                                log_warning(f"Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
-
-                        try:
-                            sftp.remove(remote_zip_path)
-                        except Exception as remote_cleanup_err:
-                            log_warning(f"Failed to cleanup remote ZIP", path=remote_zip_path, error=str(remote_cleanup_err))
-
-                        if remote_completed and source_type == 'pool':
-                            sftp.close()
-
-                    if remote_completed:
-                        _sftp_lock.release()
-                        return
-                else:
-                    log_debug(f"Remote zip command failed, falling back to SFTP method")
-
-        except Exception as e:
-            log_debug(f"Remote ZIP creation failed, falling back to SFTP method", error=str(e))
-
-        zip_path = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False, mode='wb') as tmp_zip:
-                zip_path = tmp_zip.name
-            os.chmod(zip_path, 0o600)
-
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
-                file_count = 0
-                error_count = 0
-
-                cumulative_size = 0
-                max_zip_size = config.MAX_ZIP_DOWNLOAD_SIZE
-
-                def add_folder_to_zip(sftp_client, remote_folder, zip_prefix='', depth=0):
-                    """Recursively add folder contents to ZIP."""
-                    nonlocal file_count, error_count, cumulative_size
-
-                    if depth > 50:
-                        log_warning(f"Maximum recursion depth exceeded in folder download: {remote_folder}")
-                        error_count += 1
-                        return
-
-                    try:
-                        items = sftp_client.listdir_attr(remote_folder)
-
-                        if not items and zip_prefix:
-                            zipf.writestr(zip_prefix + '/', '')
-
-                        for item in items:
-                            item_path = f"{remote_folder}/{item.filename}"
-                            zip_item_path = f"{zip_prefix}/{item.filename}" if zip_prefix else item.filename
-
-                            try:
-                                try:
-                                    item_lstat = sftp_client.lstat(item_path)
-                                except Exception:
-                                    item_lstat = item
-
-                                if stat.S_ISLNK(item_lstat.st_mode):
-                                    log_debug(f"Skipping symlink in ZIP download: {item_path}")
-                                    continue
-
-                                if stat.S_ISDIR(item_lstat.st_mode):
-                                    zipf.writestr(zip_item_path + '/', '')
-                                    add_folder_to_zip(sftp_client, item_path, zip_item_path, depth + 1)
-                                else:
-                                    # Enforce the size limit using the file's stat
-                                    # size BEFORE reading it, so a single huge file
-                                    # cannot be pulled entirely into memory first.
-                                    file_size = item_lstat.st_size or 0
-                                    if cumulative_size + file_size > max_zip_size:
-                                        max_mb = max_zip_size // (1024 * 1024)
-                                        raise ValueError(f"Folder exceeds maximum download size ({max_mb}MB)")
-                                    with sftp_client.file(item_path, 'rb') as remote_file:
-                                        file_data = remote_file.read()
-                                        cumulative_size += len(file_data)
-                                        if cumulative_size > max_zip_size:
-                                            max_mb = max_zip_size // (1024 * 1024)
-                                            raise ValueError(f"Folder exceeds maximum download size ({max_mb}MB)")
-                                        zipf.writestr(zip_item_path, file_data)
-                                    file_count += 1
-                            except ValueError:
-                                raise
-                            except Exception as item_error:
-                                error_count += 1
-                                log_debug(f"Error adding {item_path}", error=str(item_error))
-
-                    except ValueError:
-                        raise
-                    except Exception as e:
-                        log_error(f"Error reading directory {remote_folder}", error=str(e))
-                        raise
-
-                log_debug(f"Starting folder download: {folder_name} from {safe_path}")
-                add_folder_to_zip(sftp, safe_path, folder_name)
-                log_debug(f"Added {file_count} files to ZIP ({error_count} errors)")
-
-            with open(zip_path, 'rb') as f:
-                zip_data = f.read()
-
-            emit('file_download_ready_binary', {
-                'session_id': session_id,
-                'filename': f"{folder_name}.zip",
-                'file_data': zip_data,
-                'size': len(zip_data),
-                'for_preview': False
-            })
-
-            log_info(f"Folder download: {folder_name}.zip", user=current_user.username)
-
-        finally:
-            if zip_path and os.path.exists(zip_path):
-                try:
-                    os.unlink(zip_path)
-                except Exception as cleanup_err:
-                    log_warning(f"Failed to cleanup temp file", path=zip_path, error=str(cleanup_err))
-
-            if source_type == 'pool':
-                sftp.close()
-
-            _sftp_lock.release()
-
-    except Exception as e:
-        log_error("Folder download failed", error=str(e))
-        emit('error', {'error': 'Folder download failed'})
 
 @socketio.on('quick_connect')
 @socket_login_required
 def handle_quick_connect(data, current_user=None):
     """Create temporary SSH connection for file transfers without active session."""
     try:
+        if not current_app.extensions[
+            'runtime_lifecycle'
+        ].accepting_work():
+            emit(
+                'quick_connect_error',
+                {'error': 'Server is shutting down'},
+            )
+            return
+
         if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
             log_warning("Quick connect rate limit hit", user=current_user.username)
             emit('quick_connect_error', {'error': 'Too many connection attempts. Please wait a moment.'})
@@ -1899,6 +1719,21 @@ def handle_preview_file(data, current_user=None):
             emit('error', {'error': 'Missing required fields'})
             return
 
+        try:
+            max_bytes, offset, tail_lines = (
+                sftp_handler.normalize_file_preview_options(
+                    max_bytes=max_bytes,
+                    offset=offset,
+                    tail_lines=tail_lines,
+                )
+            )
+        except ValueError as exc:
+            emit('preview_error', {
+                'error': f'Invalid preview options: {exc}',
+                'path': path,
+            })
+            return
+
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
@@ -2013,22 +1848,20 @@ def handle_transfer_server_to_server(data, current_user=None):
     Handle server-to-server file transfer.
     Streams files directly between two SSH servers without local buffering.
     """
-    import threading
-
     try:
         source_session_id = data.get('source_session_id')
         source_path = data.get('source_path')
         dest_session_id = data.get('dest_session_id')
         dest_path = data.get('dest_path')
-        transfer_id = data.get('transfer_id')
         is_dir = data.get('is_dir', False)
+        transfer_id = None
 
-        if not all([source_session_id, source_path, dest_session_id, dest_path, transfer_id]):
+        if not all([source_session_id, source_path, dest_session_id, dest_path]):
             emit('s2s_transfer_error', {
-                'transfer_id': transfer_id,
+                'transfer_id': None,
                 'error': 'Missing required fields'
             })
-            return
+            return {'success': False, 'error': 'Transfer unavailable'}
 
         source_path = sftp_handler.sanitize_path(source_path)
         dest_path = sftp_handler.sanitize_path(dest_path)
@@ -2037,7 +1870,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 'transfer_id': transfer_id,
                 'error': 'Invalid path'
             })
-            return
+            return {'success': False, 'error': 'Transfer unavailable'}
 
         source_authorized = False
         if verify_session_ownership(source_session_id, current_user.id):
@@ -2052,7 +1885,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 'transfer_id': transfer_id,
                 'error': 'Unauthorized access to source server'
             })
-            return
+            return {'success': False, 'error': 'Transfer unavailable'}
 
         dest_authorized = False
         if verify_session_ownership(dest_session_id, current_user.id):
@@ -2067,36 +1900,114 @@ def handle_transfer_server_to_server(data, current_user=None):
                 'transfer_id': transfer_id,
                 'error': 'Unauthorized access to destination server'
             })
-            return
+            return {'success': False, 'error': 'Transfer unavailable'}
 
-        user_room = f'user_{current_user.id}'
-
-        def run_transfer():
-            success, error = sftp_handler.transfer_server_to_server(
-                source_session_id=source_session_id,
-                source_path=source_path,
-                dest_session_id=dest_session_id,
-                dest_path=dest_path,
-                transfer_id=transfer_id,
-                socketio_instance=socketio,
-                is_dir=is_dir,
-                user_room=user_room
+        user_id = current_user.id
+        user_room = f'user_{user_id}'
+        background_reservation = quota_manager.reserve(
+            QuotaKind.BACKGROUND_JOB, user_id
+        )
+        try:
+            record = transfer_manager.create(
+                user_id=user_id,
+                session_id=source_session_id,
+                direction='server_to_server',
+                owner_sid=getattr(request, 'sid', None),
+                metadata={
+                    'source_path': source_path,
+                    'destination_session_id': dest_session_id,
+                    'destination_path': dest_path,
+                    'is_dir': bool(is_dir),
+                },
             )
+            transfer_manager.consume_token(record.token, user_id)
+        except Exception:
+            background_reservation.release()
+            raise
+        transfer_id = record.transfer_id
 
-            if not success and error:
-                socketio.emit('s2s_transfer_error', {
-                    'transfer_id': transfer_id,
-                    'error': error
-                }, room=user_room)
+        lifecycle = current_app.extensions['runtime_lifecycle']
 
-        transfer_thread = threading.Thread(target=run_transfer, daemon=True)
-        transfer_thread.start()
+        def run_transfer(lifecycle_cancel_event):
+            cancel_event = _CombinedCancellation(
+                record.cancel_event, lifecycle_cancel_event
+            )
+            try:
+                success, error = sftp_handler.transfer_server_to_server(
+                    source_session_id=source_session_id,
+                    source_path=source_path,
+                    dest_session_id=dest_session_id,
+                    dest_path=dest_path,
+                    transfer_id=transfer_id,
+                    socketio_instance=socketio,
+                    is_dir=is_dir,
+                    user_room=user_room,
+                    cancel_event=cancel_event,
+                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                    chunk_size=config.CHUNK_SIZE,
+                )
+
+                if success and _terminalize(
+                    record, user_id, 'completed', manager=transfer_manager
+                ):
+                    socketio.emit('s2s_transfer_complete', {
+                        'transfer_id': transfer_id,
+                        'filename': posixpath.basename(
+                            source_path.rstrip('/')
+                        ),
+                        'source_path': source_path,
+                        'dest_path': dest_path,
+                    }, room=user_room)
+                elif error and _terminalize(
+                    record, user_id, 'failed', manager=transfer_manager
+                ):
+                    log_error(
+                        'S2S transfer failed',
+                        user_id=user_id,
+                        transfer_id=transfer_id,
+                        detail=str(error),
+                    )
+                    socketio.emit('s2s_transfer_error', {
+                        'transfer_id': transfer_id,
+                        'error': 'Transfer unavailable'
+                    }, room=user_room)
+            except Exception as error:
+                if _terminalize(
+                    record, user_id, 'failed', manager=transfer_manager
+                ):
+                    log_error(
+                        'S2S transfer crashed',
+                        user_id=user_id,
+                        transfer_id=transfer_id,
+                        exception_type=type(error).__name__,
+                    )
+                    socketio.emit('s2s_transfer_error', {
+                        'transfer_id': transfer_id,
+                        'error': 'Transfer unavailable'
+                    }, room=user_room)
+            finally:
+                background_reservation.release()
+
+        try:
+            lifecycle.start_job(
+                'server_to_server_transfer', run_transfer, owner_id=user_id
+            )
+        except Exception:
+            try:
+                _terminalize(
+                    record, user_id, 'failed', manager=transfer_manager
+                )
+            finally:
+                background_reservation.release()
+            raise
 
         log_info(f"S2S transfer started: {source_path} -> {dest_path}", user=current_user.username)
+        return {'success': True, 'transfer_id': transfer_id}
 
     except Exception as e:
         log_error("S2S transfer setup failed", error=str(e), user=current_user.username)
         emit('s2s_transfer_error', {
-            'transfer_id': data.get('transfer_id'),
+            'transfer_id': data.get('transfer_id') if isinstance(data, dict) else None,
             'error': 'Failed to start transfer'
         })
+        return {'success': False, 'error': 'Transfer unavailable'}

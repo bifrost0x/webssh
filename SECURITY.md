@@ -47,6 +47,9 @@ Instead, report vulnerabilities via:
 | WebSocket Auth | Session-based with ownership verification |
 | CSRF Protection | Flask-WTF tokens on all forms |
 | Rate Limiting | 5 login attempts per minute per IP |
+| Passkeys | Optional WebAuthn with exact RP ID/origin checks, user verification, and one-use server-side challenges |
+| Recovery | Single-use codes hashed at rest; administrator regeneration requires reauthentication and target confirmation |
+| OIDC | Optional authorization-code flow with PKCE, nonce/state validation, and explicit issuer/subject linking |
 
 ### Data Protection
 
@@ -65,6 +68,7 @@ Instead, report vulnerabilities via:
 | CORS | Configurable, safe localhost-only default if unset |
 | WebSocket | Authenticated, room-based isolation per user |
 | Reverse Proxy | ProxyFix support via `TRUSTED_PROXIES` |
+| Request Bodies | Unsafe control requests are capped at 64 KiB before CSRF parsing; Recovery uses 4 KiB, WebAuthn uses 64 KiB, and SFTP uploads retain their separate streaming limit |
 
 ### SSH Security
 
@@ -79,28 +83,82 @@ Instead, report vulnerabilities via:
 
 ### Required
 
-1. **Set a strong SECRET_KEY**
+1. **Select and satisfy the production security profile**
+   ```bash
+   export DEPLOYMENT_PROFILE=production
+   export DEBUG=False
+   export CORS_ORIGINS=https://ssh.example.com
+   export ALLOW_CORS_WILDCARD=false
+   export SESSION_COOKIE_SECURE=true
+   export REGISTRATION_ENABLED=False
+   export BLOCK_INTERNAL_SSH=true
+   export TRUSTED_PROXIES=1
+   ```
+   Production startup fails closed if these boundaries are unsafe or
+   ambiguous. Set `TRUSTED_PROXIES=0` explicitly only when no proxy headers are
+   trusted. Secure cookies remain required when TLS terminates at the proxy.
+   When proxy headers are trusted, restrict the backend port to that proxy.
+   The supplied production Compose override binds it to `127.0.0.1:5000`;
+   use a private, unpublished network for a containerized reverse proxy.
+
+2. **Set a strong SECRET_KEY**
    ```bash
    export SECRET_KEY=$(openssl rand -hex 32)
    ```
 
-2. **Use TLS** - Deploy behind a reverse proxy with HTTPS
+3. **Bootstrap the first administrator**
+   ```bash
+   flask --app start:app create-admin --username admin
+   ```
+   With Docker Compose, run:
+   ```bash
+   docker compose exec webssh /app/entrypoint.sh flask --app start:app create-admin --username admin
+   ```
+   The command prompts without echoing the password. This explicit path is
+   recommended for production, where public registration is disabled. If an
+   operator enables registration on a fresh installation, the first registered
+   account becomes administrator and every later account remains a standard
+   user. Never expose an unclaimed fresh instance to untrusted networks.
 
-3. **Set specific CORS origins** (defaults to localhost if unset)
+4. **Use TLS** - Deploy behind a reverse proxy with HTTPS
+
+5. **Set specific CORS origins**
    ```bash
    export CORS_ORIGINS=https://your-domain.com
    ```
 
 ### Recommended
 
-4. **Enable TRUSTED_PROXIES** when behind a reverse proxy
+6. **Set TRUSTED_PROXIES** to the exact number of trusted proxy layers
    ```bash
    export TRUSTED_PROXIES=1
    ```
 
-5. **Restrict network access** - Don't expose directly to the internet without protection
+7. **Restrict network access** - Don't expose directly to the internet without protection
 
-6. **Regular updates** - Keep the container image updated
+8. **Regular updates** - Keep the container image updated
+
+9. **Create and verify offline backups**
+   ```bash
+   flask --app start:app backup create \
+     --destination /secure-backups/webssh.zip \
+     --confirm-offline
+   flask --app start:app backup verify /secure-backups/webssh.zip
+   ```
+   Stop every WebSSH process using `DATA_DIR` before create, restore, or
+   rotation operations. Backups contain security-sensitive data and may include
+   the persisted `SECRET_KEY`; encrypt them separately, restrict access, and
+   define retention and secure deletion.
+
+10. **Rotate only a persisted application secret**
+    ```bash
+    flask --app start:app rotate-secret-key --confirm-offline
+    ```
+    The command first creates and verifies a backup, stages and verifies every
+    re-encrypted SSH key, and publishes `DATA_DIR/secret_key` last. It refuses
+    an externally supplied secret that is missing from or differs from the
+    persisted file. Rotate secrets owned by an external secret manager through
+    that manager and a separately controlled key migration.
 
 ### Container Security
 
@@ -108,6 +166,22 @@ The Docker image runs as non-root user (`appuser`) with:
 - Restricted file permissions (0700 on data directories)
 - No unnecessary capabilities
 - Health check enabled
+- Gunicorn 26 `gthread` runtime with exactly one worker and a bounded,
+  configurable `GUNICORN_THREADS` value (default: 64)
+- Native Socket.IO threading only; no Eventlet worker or monkey patching path
+
+`greenlet` can appear in the universal lock only because SQLAlchemy declares it
+as a platform-marked transitive dependency. It is not a selectable WebSSH
+runtime and must not be removed independently; changing that dependency graph
+requires its own reviewed SQLAlchemy upgrade.
+
+Keep the previously deployed immutable image by its recorded registry digest
+as the image-only rollback artifact for the Gunicorn-26 runtime. Redeploy it
+with the existing `/app/data` volume and verify readiness, login, stored keys,
+terminal, and SFTP. Successful publishes retain a verified
+`image-release-<commit-sha>` Actions artifact containing the immutable registry
+reference for 90 days. Preserve the deployed revision's artifact before an
+upgrade. No persistent-data rollback or format rewrite is required.
 
 ## Known Limitations
 
@@ -115,8 +189,8 @@ The Docker image runs as non-root user (`appuser`) with:
 |------------|-------------|------------|
 | In-Memory Rate Limiting | Bypassed with multiple workers | Use single worker (default) |
 | TOFU Host Keys | First connection auto-accepted | Review logs for new host keys |
-| No MFA | Single-factor authentication only | Use strong passwords, restrict network access |
-| No LDAP/SSO | Local accounts only | Planned for future release |
+| Optional identity features | WebAuthn and OIDC are disabled by default | Configure exact public origins and keep local administrator recovery tested before enabling OIDC |
+| No LDAP | LDAP is not implemented | Use local accounts or the optional reviewed OIDC integration |
 
 ## Security Audit
 

@@ -91,6 +91,27 @@ test('missing or malformed references fall back to review', () => {
     assert.equal(determineLaunchMode(null, { keys, jumpHosts }), 'review');
 });
 
+test('revoked saved references remain review-only without credential expansion', () => {
+    const revokedKeyProfile = profile({ key_id: 'revoked-key' });
+    const revokedJumpProfile = profile({ jump_host_id: 'revoked-jump' });
+
+    assert.equal(determineLaunchMode(revokedKeyProfile, {
+        keys,
+        jumpHosts,
+    }), 'review');
+    assert.equal(determineLaunchMode(revokedJumpProfile, {
+        keys,
+        jumpHosts,
+    }), 'review');
+    assert.deepEqual(revokedKeyProfile, profile({ key_id: 'revoked-key' }));
+    assert.deepEqual(
+        revokedJumpProfile,
+        profile({ jump_host_id: 'revoked-jump' }),
+    );
+    assert.equal('password' in revokedKeyProfile, false);
+    assert.equal('proxy_jump' in revokedJumpProfile, false);
+});
+
 test('formatEndpoint normalizes missing values without injecting markup', () => {
     assert.equal(formatEndpoint(profile()), 'deploy@server.example:22');
     assert.equal(formatEndpoint({

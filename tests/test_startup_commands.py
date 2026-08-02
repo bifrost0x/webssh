@@ -3,12 +3,31 @@
 import re
 from pathlib import Path
 
+import paramiko
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _clean_ssh_sessions():
+def _clean_ssh_sessions(monkeypatch):
     from app import ssh_manager
+    from app.network_policy import ResolvedTarget
+
+    class FakeValidatedSocket:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        ssh_manager,
+        'resolve_allowed_target',
+        lambda host, port, allow_internal=False: ResolvedTarget(
+            host, port, '1.1.1.1', 2
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'open_validated_socket',
+        lambda target, timeout: FakeValidatedSocket(),
+    )
 
     with ssh_manager.sessions_lock:
         ssh_manager.sessions.clear()
@@ -50,6 +69,12 @@ class _StartupCommandChannel:
     def recv_exit_status(self):
         return 0
 
+    def exit_status_ready(self):
+        return True
+
+    def invoke_shell(self):
+        pass
+
     def close(self):
         self.closed = True
         self.close_calls += 1
@@ -82,12 +107,18 @@ class _StartupCommandTransport:
 class _StartupCommandClient:
     def __init__(self, channel, transport=None):
         self.channel = channel
-        self.transport = transport or _StartupCommandTransport()
+        self.transport = transport or _StartupCommandTransport(
+            lambda _index: channel
+        )
+        self.host_keys = paramiko.HostKeys()
         self.closed = False
         self.close_calls = 0
 
     def set_missing_host_key_policy(self, _policy):
         pass
+
+    def get_host_keys(self):
+        return self.host_keys
 
     def connect(self, **_kwargs):
         pass
@@ -202,6 +233,7 @@ def test_create_ssh_connection_delivers_startup_commands_once(
         port=22,
         username='alice',
         password='secret',
+        user_id=1,
         startup_commands=startup_commands,
     )
 
@@ -225,6 +257,7 @@ def test_create_ssh_connection_delivers_all_startup_commands_after_partial_send(
         port=22,
         username='alice',
         password='secret',
+        user_id=1,
         startup_commands='echo first\necho second',
     )
 
@@ -248,6 +281,7 @@ def test_create_ssh_connection_delivers_unicode_startup_commands_after_partial_s
         port=22,
         username='alice',
         password='secret',
+        user_id=1,
         startup_commands='echo €\necho done',
     )
 
@@ -271,6 +305,7 @@ def test_create_ssh_connection_closes_session_when_startup_delivery_fails(monkey
         port=22,
         username='alice',
         password='secret',
+        user_id=1,
         startup_commands='echo first',
     )
 
@@ -297,6 +332,7 @@ def test_create_ssh_connection_kills_new_tmux_when_startup_delivery_fails(monkey
         port=22,
         username='alice',
         password='secret',
+        user_id=1,
         use_tmux=True,
         startup_commands='echo first',
     )

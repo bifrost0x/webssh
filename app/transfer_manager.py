@@ -1,0 +1,480 @@
+"""Bounded lifecycle records for HTTP-streamed file transfers."""
+
+import copy
+import hmac
+import math
+import secrets
+import threading
+import time
+from enum import Enum
+from collections.abc import Mapping
+
+from .quota_manager import QuotaKind, quota_manager as default_quota_manager
+from .runtime_lifecycle import RuntimeShuttingDown
+
+
+class TransferState(Enum):
+    PENDING = 'pending'
+    RUNNING = 'running'
+    CANCELLED = 'cancelled'
+    FAILED = 'failed'
+    COMPLETED = 'completed'
+
+
+class InvalidTransferToken(LookupError):
+    """Opaque token rejection shared by all unavailable-token cases."""
+
+    def __init__(self):
+        super().__init__('Transfer token is invalid or unavailable')
+
+
+def _normalize_id(value, name):
+    if (
+        value is None
+        or isinstance(value, bool)
+        or not isinstance(value, (str, int))
+    ):
+        raise ValueError(f'{name} is required')
+    normalized = str(value).strip()
+    if not normalized:
+        raise ValueError(f'{name} is required')
+    return normalized
+
+
+class TransferRecord:
+    """A transfer descriptor whose identity binding cannot be reassigned."""
+
+    __slots__ = (
+        '_transfer_id',
+        '_token',
+        '_user_id',
+        '_owner_sid',
+        '_session_id',
+        '_direction',
+        '_metadata',
+        '_state',
+        '_cancel_event',
+        '_request_done_event',
+        '_expires_at',
+        '_token_consumed',
+        '_quota_reservation',
+    )
+
+    def __init__(
+        self,
+        transfer_id,
+        token,
+        user_id,
+        owner_sid,
+        session_id,
+        direction,
+        metadata,
+        expires_at,
+        quota_reservation,
+    ):
+        self._transfer_id = transfer_id
+        self._token = token
+        self._user_id = user_id
+        self._owner_sid = owner_sid
+        self._session_id = session_id
+        self._direction = direction
+        self._metadata = metadata
+        self._state = TransferState.PENDING
+        self._cancel_event = threading.Event()
+        self._request_done_event = threading.Event()
+        self._expires_at = expires_at
+        self._token_consumed = False
+        self._quota_reservation = quota_reservation
+
+    @property
+    def transfer_id(self):
+        return self._transfer_id
+
+    @property
+    def token(self):
+        return self._token
+
+    @property
+    def user_id(self):
+        return self._user_id
+
+    @property
+    def owner_sid(self):
+        return self._owner_sid
+
+    @property
+    def session_id(self):
+        return self._session_id
+
+    @property
+    def direction(self):
+        return self._direction
+
+    @property
+    def metadata(self):
+        return copy.deepcopy(self._metadata)
+
+    @property
+    def state(self):
+        return self._state
+
+    @property
+    def cancel_event(self):
+        return self._cancel_event
+
+    @property
+    def request_done_event(self):
+        return self._request_done_event
+
+    @property
+    def expires_at(self):
+        return self._expires_at
+
+    def __repr__(self):
+        return (
+            'TransferRecord('
+            f'transfer_id={self._transfer_id!r}, '
+            f'direction={self._direction!r}, '
+            f'state={self._state.value!r})'
+        )
+
+
+class TransferManager:
+    """Own transfer records, one-use tokens, and transfer quota slots."""
+
+    DIRECTIONS = frozenset({'upload', 'download', 'server_to_server'})
+    _DUMMY_TOKEN = 'A' * 43
+
+    def __init__(
+        self,
+        quota_manager=default_quota_manager,
+        token_ttl=300,
+        clock=time.monotonic,
+    ):
+        if quota_manager is None or not hasattr(quota_manager, 'reserve'):
+            raise ValueError('quota_manager must support reserve')
+        if (
+            isinstance(token_ttl, bool)
+            or not isinstance(token_ttl, (int, float))
+            or not math.isfinite(token_ttl)
+            or token_ttl <= 0
+        ):
+            raise ValueError('token_ttl must be a positive finite number')
+        if not callable(clock):
+            raise ValueError('clock must be callable')
+
+        self._quota_manager = quota_manager
+        self._token_ttl = float(token_ttl)
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._records = {}
+        self._runtime_binding = None
+        self._accepting = True
+
+    def bind_runtime(self):
+        """Open this worker manager for one app-runtime generation."""
+        binding = object()
+        with self._lock:
+            self._runtime_binding = binding
+            self._accepting = True
+        return binding
+
+    def create(self, user_id, session_id, direction, metadata, owner_sid=None):
+        user_id = _normalize_id(user_id, 'user_id')
+        session_id = _normalize_id(session_id, 'session_id')
+        if owner_sid is not None:
+            owner_sid = _normalize_id(owner_sid, 'owner_sid')
+        if not isinstance(direction, str) or direction not in self.DIRECTIONS:
+            raise ValueError('direction is invalid')
+        if not isinstance(metadata, Mapping):
+            raise ValueError('metadata must be a mapping')
+        try:
+            metadata_copy = copy.deepcopy(dict(metadata))
+        except Exception as exc:
+            raise ValueError('metadata must be copyable') from exc
+
+        now = self._clock()
+        with self._lock:
+            if not self._accepting:
+                raise RuntimeShuttingDown('runtime lifecycle is shutting down')
+            self._cleanup_expired_locked(now)
+            transfer_id = self._unique_transfer_id_locked()
+            token = self._unique_token_locked()
+            record = TransferRecord(
+                transfer_id=transfer_id,
+                token=token,
+                user_id=user_id,
+                owner_sid=owner_sid,
+                session_id=session_id,
+                direction=direction,
+                metadata=metadata_copy,
+                expires_at=now + self._token_ttl,
+                quota_reservation=None,
+            )
+            reservation = self._quota_manager.reserve(
+                QuotaKind.TRANSFER, user_id
+            )
+            record._quota_reservation = reservation
+            self._records[transfer_id] = record
+        return record
+
+    def consume_token(self, token, user_id):
+        token_is_valid = self._valid_token(token)
+        candidate_token = token if token_is_valid else self._DUMMY_TOKEN
+        try:
+            user_id = _normalize_id(user_id, 'user_id')
+            user_is_valid = True
+        except ValueError:
+            user_id = ''
+            user_is_valid = False
+
+        with self._lock:
+            if not self._accepting:
+                raise RuntimeShuttingDown('runtime lifecycle is shutting down')
+            self._cleanup_expired_locked(self._clock())
+            record = self._find_token_locked(candidate_token)
+            if (
+                not token_is_valid
+                or not user_is_valid
+                or record is None
+                or record._token_consumed
+                or record._user_id != user_id
+                or record._state is not TransferState.PENDING
+            ):
+                raise InvalidTransferToken()
+            record._token_consumed = True
+            record._token = None
+            record._state = TransferState.RUNNING
+            return record
+
+    def cancel(self, transfer_id, user_id):
+        return self._transition(
+            transfer_id,
+            user_id,
+            allowed_states={
+                TransferState.PENDING,
+                TransferState.RUNNING,
+            },
+            target_state=TransferState.CANCELLED,
+        )
+
+    def cancel_all_for_user(self, user_id):
+        """Atomically cancel every pending or running transfer for one user."""
+        try:
+            user_id = _normalize_id(user_id, 'user_id')
+        except ValueError:
+            return 0
+
+        with self._lock:
+            self._cleanup_expired_locked(self._clock())
+            records = [
+                record for record in self._records.values()
+                if (
+                    record._user_id == user_id
+                    and record._state in {
+                        TransferState.PENDING,
+                        TransferState.RUNNING,
+                    }
+                )
+            ]
+            return self._cancel_records_locked(records)
+
+    def close_and_cancel(self, binding):
+        """Atomically reject new transfers and cancel this runtime generation."""
+        with self._lock:
+            if binding is not self._runtime_binding:
+                return ()
+            self._accepting = False
+            self._cleanup_expired_locked(self._clock())
+            records = [
+                record for record in self._records.values()
+                if record._state in {
+                    TransferState.PENDING,
+                    TransferState.RUNNING,
+                }
+            ]
+            waiters = tuple(
+                (
+                    f'http_{record._direction}',
+                    record._transfer_id,
+                    record._request_done_event,
+                )
+                for record in records
+                if (
+                    record._direction in {'upload', 'download'}
+                    and record._state is TransferState.RUNNING
+                )
+            )
+            self._cancel_records_locked(records)
+            return waiters
+
+    def cancel_all_for_socket(self, user_id, owner_sid):
+        """Atomically cancel pending or running transfers owned by one Socket."""
+        try:
+            user_id = _normalize_id(user_id, 'user_id')
+            owner_sid = _normalize_id(owner_sid, 'owner_sid')
+        except ValueError:
+            return 0
+
+        with self._lock:
+            self._cleanup_expired_locked(self._clock())
+            records = [
+                record for record in self._records.values()
+                if (
+                    record._user_id == user_id
+                    and record._owner_sid == owner_sid
+                    and record._state in {
+                        TransferState.PENDING,
+                        TransferState.RUNNING,
+                    }
+                )
+            ]
+            return self._cancel_records_locked(records)
+
+    def complete(self, transfer_id, user_id):
+        return self._transition(
+            transfer_id,
+            user_id,
+            allowed_states={TransferState.RUNNING},
+            target_state=TransferState.COMPLETED,
+        )
+
+    def fail(self, transfer_id, user_id):
+        return self._transition(
+            transfer_id,
+            user_id,
+            allowed_states={
+                TransferState.PENDING,
+                TransferState.RUNNING,
+            },
+            target_state=TransferState.FAILED,
+        )
+
+    def cleanup_expired(self):
+        """Expire unused tokens and return the number of released records."""
+        with self._lock:
+            return self._cleanup_expired_locked(self._clock())
+
+    def _cancel_records_locked(self, records):
+        for record in records:
+            try:
+                self._release_for_terminal(record)
+            except Exception:
+                self._release_for_terminal(record)
+            self._finalize_record_locked(
+                record,
+                TransferState.CANCELLED,
+                set_cancel_event=True,
+            )
+        return len(records)
+
+    def _transition(
+        self,
+        transfer_id,
+        user_id,
+        allowed_states,
+        target_state,
+    ):
+        try:
+            transfer_id = _normalize_id(transfer_id, 'transfer_id')
+            user_id = _normalize_id(user_id, 'user_id')
+        except ValueError:
+            return False
+
+        with self._lock:
+            self._cleanup_expired_locked(self._clock())
+            record = self._records.get(transfer_id)
+            if (
+                record is None
+                or record._user_id != user_id
+                or record._state not in allowed_states
+            ):
+                return False
+            release_error = self._release_for_terminal(record)
+            self._finalize_record_locked(
+                record,
+                target_state,
+                set_cancel_event=target_state is TransferState.CANCELLED,
+            )
+            if release_error is not None:
+                raise release_error
+            return True
+
+    def _find_token_locked(self, token):
+        match = None
+        for record in self._records.values():
+            if (
+                record._token is not None
+                and hmac.compare_digest(token, record._token)
+            ):
+                match = record
+        return match
+
+    @staticmethod
+    def _valid_token(token):
+        return (
+            isinstance(token, str)
+            and len(token) == 43
+            and token.isascii()
+            and all(
+                character.isalnum() or character in '-_'
+                for character in token
+            )
+        )
+
+    def _unique_transfer_id_locked(self):
+        while True:
+            transfer_id = secrets.token_urlsafe(18)
+            if transfer_id not in self._records:
+                return transfer_id
+
+    def _unique_token_locked(self):
+        while True:
+            token = secrets.token_urlsafe(32)
+            if self._find_token_locked(token) is None:
+                return token
+
+    @staticmethod
+    def _release_for_terminal(record):
+        try:
+            record._quota_reservation.release()
+        except Exception as exc:
+            if not record._quota_reservation.released:
+                raise
+            return exc
+        return None
+
+    def _finalize_record_locked(
+        self,
+        record,
+        target_state,
+        set_cancel_event,
+    ):
+        record._state = target_state
+        record._token = None
+        record._token_consumed = True
+        if set_cancel_event:
+            record._cancel_event.set()
+        self._records.pop(record._transfer_id, None)
+
+    def _cleanup_expired_locked(self, now):
+        expired = [
+            transfer_id
+            for transfer_id, record in self._records.items()
+            if (
+                not record._token_consumed
+                and record._state is TransferState.PENDING
+                and now >= record._expires_at
+            )
+        ]
+        for transfer_id in expired:
+            record = self._records[transfer_id]
+            release_error = self._release_for_terminal(record)
+            self._finalize_record_locked(
+                record,
+                TransferState.FAILED,
+                set_cancel_event=True,
+            )
+            if release_error is not None:
+                raise release_error
+        return len(expired)

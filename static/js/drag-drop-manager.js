@@ -19,7 +19,7 @@ class DragDropManager {
     this.attachGlobalListeners();
 
     if (window.socket && window.BinaryTransferClient) {
-      this.transferClient = new BinaryTransferClient(window.socket);
+      this.transferClient = window.BinaryTransferClient.forSocket(window.socket);
     }
   }
 

@@ -1,92 +1,18 @@
 """
-Binary File Transfer Module
+Bounded Binary Preview Module
 
-Handles efficient binary file transfers over WebSocket without base64 encoding.
-Provides 33% reduction in transfer size and better performance.
-
-Features:
-- Direct binary streaming to/from SFTP
-- Chunked transfer with progress tracking
-- Pause/resume capability (future enhancement)
-- Memory-efficient streaming
+Reads preview data from SFTP in bounded chunks for the legacy Socket.IO preview
+event. The caller applies the configured editor cap before encoding the result
+for the browser. Full file transfers use the tokenized HTTP transfer routes.
 """
 
-import os
 import io
+import os
 from . import sftp_handler
 import config
 
-def handle_binary_upload(session_id, filename, binary_data, remote_path, socketio_instance=None):
-    """
-    Upload binary data directly to SFTP without base64 encoding.
-
-    Args:
-        session_id (str): SSH session ID
-        filename (str): Name of the file being uploaded
-        binary_data (bytes): Raw binary file data
-        remote_path (str): Target path on remote server
-        socketio_instance: SocketIO instance for progress updates
-
-    Returns:
-        tuple: (success: bool, error: str or None)
-    """
-    try:
-        max_size_mb = config.MAX_UPLOAD_SIZE // (1024 * 1024)
-        valid, error = validate_binary_data(binary_data, max_size_mb=max_size_mb)
-        if not valid:
-            return False, error
-
-        safe_path = sftp_handler.sanitize_path(remote_path)
-        if safe_path is None:
-            return False, "Invalid remote path"
-
-        total_size = len(binary_data)
-        chunk_size = 65536
-        transferred = 0
-
-        with sftp_handler.sftp_session(session_id) as (sftp, source_type):
-            with sftp.file(safe_path, 'wb') as remote_file:
-                data_stream = io.BytesIO(binary_data)
-
-                while True:
-                    chunk = data_stream.read(chunk_size)
-                    if not chunk:
-                        break
-
-                    remote_file.write(chunk)
-                    transferred += len(chunk)
-
-                    if socketio_instance:
-                        percent = int((transferred / total_size) * 100)
-                        socketio_instance.emit('file_progress', {
-                            'session_id': session_id,
-                            'type': 'upload',
-                            'filename': filename,
-                            'transferred': transferred,
-                            'total': total_size,
-                            'percent': percent
-                        })
-
-            if socketio_instance:
-                socketio_instance.emit('file_complete', {
-                    'session_id': session_id,
-                    'type': 'upload',
-                    'filename': filename,
-                    'remote_path': safe_path
-                })
-
-        return True, None
-
-    except sftp_handler.SFTPOperationError as e:
-        return False, str(e)
-    except PermissionError:
-        return False, "Permission denied: Cannot write to remote path"
-    except FileNotFoundError:
-        return False, "Remote directory not found"
-    except Exception as e:
-        return False, str(e)
-
-def handle_binary_download(session_id, remote_path, socketio_instance=None):
+def handle_binary_download(session_id, remote_path, socketio_instance=None,
+                           max_size=None):
     """
     Download file as binary data without base64 encoding.
 
@@ -110,8 +36,9 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
             except FileNotFoundError:
                 return None, "Remote file not found"
 
-            if file_size > config.MAX_DOWNLOAD_SIZE:
-                max_mb = config.MAX_DOWNLOAD_SIZE // (1024 * 1024)
+            limit = config.MAX_DOWNLOAD_SIZE if max_size is None else max_size
+            if file_size > limit:
+                max_mb = limit // (1024 * 1024)
                 return None, f"File too large for download ({file_size // (1024*1024)}MB). Maximum: {max_mb}MB"
 
             filename = os.path.basename(safe_path)
@@ -126,11 +53,24 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
                     if not chunk:
                         break
 
+                    observed_size = transferred + len(chunk)
+                    if observed_size > limit:
+                        max_mb = limit // (1024 * 1024)
+                        return None, (
+                            "File too large for download "
+                            f"({observed_size // (1024 * 1024)}MB). "
+                            f"Maximum: {max_mb}MB"
+                        )
+
                     binary_data.write(chunk)
-                    transferred += len(chunk)
+                    transferred = observed_size
 
                     if socketio_instance:
-                        percent = int((transferred / file_size) * 100)
+                        progress_total = max(file_size, transferred, 1)
+                        percent = min(
+                            100,
+                            int((transferred / progress_total) * 100),
+                        )
                         socketio_instance.emit('file_progress', {
                             'session_id': session_id,
                             'type': 'download',
@@ -150,23 +90,3 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None):
         return None, "Remote file not found"
     except Exception as e:
         return None, str(e)
-
-def validate_binary_data(binary_data, max_size_mb=1024):
-    """
-    Validate binary data before transfer.
-
-    Args:
-        binary_data (bytes): Binary data to validate
-        max_size_mb (int): Maximum allowed size in megabytes
-
-    Returns:
-        tuple: (valid: bool, error: str or None)
-    """
-    if not isinstance(binary_data, (bytes, bytearray)):
-        return False, "Data must be bytes or bytearray"
-
-    max_size_bytes = max_size_mb * 1024 * 1024
-    if len(binary_data) > max_size_bytes:
-        return False, f"File size exceeds maximum allowed size of {max_size_mb}MB"
-
-    return True, None

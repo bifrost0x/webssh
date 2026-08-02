@@ -1,0 +1,107 @@
+"""Visibility and authentication boundaries for security management UI."""
+
+
+def _create_user(app, username, *, is_admin=False):
+    from app.auth import register_user
+    from app.models import db
+
+    with app.app_context():
+        user, error = register_user(username, "password123")
+        assert error is None
+        user.is_admin = is_admin
+        db.session.commit()
+
+
+def _login(client, username):
+    response = client.post(
+        "/login",
+        data={"username": username, "password": "password123"},
+    )
+    assert response.status_code == 302
+
+
+def test_security_center_requires_login_and_exposes_management_controls(
+    app, client, monkeypatch
+):
+    import config
+
+    _create_user(app, "security_user")
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+
+    anonymous = client.get("/security")
+    _login(client, "security_user")
+    authenticated = client.get("/security")
+
+    assert anonymous.status_code == 302
+    assert authenticated.status_code == 200
+    for control in (
+        b'id="hostKeyList"',
+        b'id="recoveryGenerateBtn"',
+        b'id="passkeyList"',
+        b'id="passkeyUpgradeBtn"',
+    ):
+        assert control in authenticated.data
+    assert b'js/security-ui.js' in authenticated.data
+    assert b'non-discoverable passkey' in authenticated.data
+
+
+def test_login_shows_only_enabled_external_authentication(
+    app, client, monkeypatch
+):
+    import config
+
+    _create_user(app, "login_options_user")
+    disabled = client.get("/login")
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    enabled = client.get("/login")
+
+    assert b'id="passkeyLoginBtn"' not in disabled.data
+    assert b'id="oidcLoginBtn"' not in disabled.data
+    assert b'id="recoveryLoginBtn"' in disabled.data
+    assert b'id="recoveryLoginPanel"' in disabled.data
+    assert b'id="passkeyLoginBtn"' in enabled.data
+    assert b'id="oidcLoginBtn"' in enabled.data
+
+
+def test_admin_page_exposes_audit_and_global_host_key_controls(app, client):
+    _create_user(app, "security_admin", is_admin=True)
+    _login(client, "security_admin")
+
+    response = client.get("/admin")
+
+    assert response.status_code == 200
+    assert b'id="auditExportBtn"' in response.data
+    assert b'id="auditRetention"' in response.data
+    assert b'id="globalHostKeyList"' in response.data
+    assert b'id="securityActionModal"' in response.data
+    assert b'id="securityActionPassword"' in response.data
+    assert b'id="securityActionConfirmation"' in response.data
+    assert b'js/security-ui.js' in response.data
+
+
+def test_security_features_can_be_rolled_back_independently(
+    app, client, monkeypatch
+):
+    import config
+
+    _create_user(app, "rollback_user", is_admin=True)
+    _login(client, "rollback_user")
+    monkeypatch.setattr(config, "RECOVERY_CODES_ENABLED", False)
+    monkeypatch.setattr(config, "HOST_KEY_MANAGEMENT_ENABLED", False)
+    monkeypatch.setattr(config, "AUDIT_EXPORT_ENABLED", False)
+
+    security = client.get("/security")
+    admin = client.get("/admin")
+    client.post("/logout")
+    login = client.get("/login")
+
+    assert b'id="recoveryLoginBtn"' not in login.data
+    assert b'id="recoveryGenerateBtn"' not in security.data
+    assert b'id="hostKeyList"' not in security.data
+    assert b'id="auditExportBtn"' not in admin.data
+    assert b'id="globalHostKeyList"' not in admin.data
+    assert client.post("/login/recovery", json={}).status_code == 404
+    _login(client, "rollback_user")
+    assert client.get("/api/host-keys").status_code == 404
+    assert client.get("/admin/api/audit/export").status_code == 404

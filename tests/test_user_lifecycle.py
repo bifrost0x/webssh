@@ -3,11 +3,12 @@ from types import SimpleNamespace
 import pytest
 
 
-def _create_user(username, password='password123'):
+def _create_user(username, password='password123', *, is_admin=False):
     from app.auth import register_user
 
     user, error = register_user(username, password)
     assert error is None
+    user.is_admin = is_admin
     return user
 
 
@@ -77,6 +78,36 @@ class TestLockedUserRejection:
 
 
 class TestUserAccessRevocation:
+    def test_revocation_cancels_only_target_user_transfers(self, app):
+        with app.app_context():
+            from app.transfer_routes import transfer_manager
+            from app.user_lifecycle import revoke_user_access
+
+            target = _create_user('transfer_revoked')
+            other = _create_user('transfer_other')
+            target_record = transfer_manager.create(
+                user_id=target.id,
+                session_id='target-session',
+                direction='download',
+                metadata={},
+            )
+            other_record = transfer_manager.create(
+                user_id=other.id,
+                session_id='other-session',
+                direction='download',
+                metadata={},
+            )
+
+            try:
+                result = revoke_user_access(target.id)
+
+                assert target_record.cancel_event.is_set()
+                assert not other_record.cancel_event.is_set()
+                assert result['transfers'] == 1
+                assert result['errors'] == []
+            finally:
+                transfer_manager.cancel_all_for_user(other.id)
+
     def test_revocation_closes_only_target_user_resources(self, app, monkeypatch):
         with app.app_context():
             from app import ssh_manager
@@ -139,6 +170,7 @@ class TestUserAccessRevocation:
             assert SSHSession.query.filter_by(user_id=target.id).count() == 0
             assert SSHSession.query.filter_by(user_id=other.id).count() == 1
             assert result == {
+                'transfers': 0,
                 'sockets': 1,
                 'ssh_sessions': 1,
                 'pool_connections': 2,
@@ -149,7 +181,7 @@ class TestUserAccessRevocation:
 
     def test_admin_lock_revokes_user_access(self, app, client, monkeypatch):
         with app.app_context():
-            admin = _create_user('admin')
+            admin = _create_user('admin', is_admin=True)
             target = _create_user('locktarget')
             target_id = target.id
             assert admin.is_admin
@@ -196,7 +228,7 @@ class TestSafeUserDeletion:
         with app.app_context():
             from app.models import db
 
-            admin = _create_user('deleteadmin')
+            admin = _create_user('deleteadmin', is_admin=True)
             target = _create_user('deletetarget')
             target_id = target.id
             target_data_dir = target.get_data_dir()

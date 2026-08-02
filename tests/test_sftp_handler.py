@@ -80,3 +80,75 @@ class TestSanitizePath:
         # os.path on Windows would have split/converted this incorrectly.
         from app.sftp_handler import sanitize_path
         assert sanitize_path('folder\\file.txt') == 'folder\\file.txt'
+
+
+@pytest.mark.parametrize(
+    ('options', 'field'),
+    [
+        ({'max_bytes': -1}, 'max_bytes'),
+        ({'max_bytes': 0}, 'max_bytes'),
+        ({'max_bytes': True}, 'max_bytes'),
+        ({'max_bytes': '1024'}, 'max_bytes'),
+        ({'offset': -1}, 'offset'),
+        ({'offset': False}, 'offset'),
+        ({'tail_lines': 0}, 'tail_lines'),
+        ({'tail_lines': True}, 'tail_lines'),
+        ({'tail_lines': '10'}, 'tail_lines'),
+    ],
+)
+def test_preview_options_reject_invalid_client_limits(options, field):
+    """Malformed limits must fail before Paramiko can interpret them."""
+    from app.sftp_handler import normalize_file_preview_options
+
+    defaults = {'max_bytes': 512000, 'offset': 0, 'tail_lines': None}
+    defaults.update(options)
+
+    with pytest.raises(ValueError, match=field):
+        normalize_file_preview_options(**defaults)
+
+
+def test_preview_options_enforce_server_side_caps(monkeypatch):
+    """A client cannot raise preview memory, seek, or tail-line limits."""
+    import config
+    from app.sftp_handler import normalize_file_preview_options
+
+    monkeypatch.setattr(config, 'MAX_PREVIEW_SIZE', 4096)
+    monkeypatch.setattr(config, 'MAX_SUPPORTED_FILE_SIZE', 8192)
+    monkeypatch.setattr(config, 'MAX_PREVIEW_TAIL_LINES', 50)
+
+    assert normalize_file_preview_options(
+        max_bytes=10_000,
+        offset=8192,
+        tail_lines=50,
+    ) == (4096, 8192, 50)
+
+    with pytest.raises(ValueError, match='offset'):
+        normalize_file_preview_options(
+            max_bytes=1024,
+            offset=8193,
+            tail_lines=None,
+        )
+    with pytest.raises(ValueError, match='tail_lines'):
+        normalize_file_preview_options(
+            max_bytes=1024,
+            offset=0,
+            tail_lines=51,
+        )
+
+
+def test_preview_rejects_negative_read_before_opening_sftp(monkeypatch):
+    """A negative Paramiko read size can never reach the remote file."""
+    import app.sftp_handler as sftp_handler
+
+    monkeypatch.setattr(
+        sftp_handler,
+        'sftp_session',
+        lambda _session_id: pytest.fail('invalid options opened SFTP'),
+    )
+
+    result, error = sftp_handler.read_file_preview(
+        'session', '/large.log', max_bytes=-1
+    )
+
+    assert result is None
+    assert error == 'max_bytes must be a positive integer'

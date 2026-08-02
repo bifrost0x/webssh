@@ -1,8 +1,11 @@
 import threading
 
+import paramiko
 import pytest
 
 from app import ssh_manager
+from app.network_policy import ResolvedTarget
+from app.quota_manager import QuotaExceeded, QuotaKind, QuotaManager
 
 
 class FakeChannel:
@@ -12,6 +15,8 @@ class FakeChannel:
         self.command = None
         self.timeout = None
         self.events = []
+        self.pty = None
+        self.shell_invoked = False
 
     def settimeout(self, timeout):
         self.timeout = timeout
@@ -26,14 +31,21 @@ class FakeChannel:
     def recv(self, _size):
         return b''
 
+    def get_pty(self, term, width, height):
+        self.pty = (term, width, height)
+
+    def invoke_shell(self):
+        self.shell_invoked = True
+
     def close(self):
         self.closed = True
 
 
 class FakeTransport:
-    def __init__(self, kill_channel=None):
+    def __init__(self, kill_channel=None, shell_channel=None):
         self.keepalive = None
         self.kill_channel = kill_channel
+        self.shell_channel = shell_channel
         self.open_timeout = None
 
     def set_keepalive(self, seconds):
@@ -44,7 +56,7 @@ class FakeTransport:
 
     def open_session(self, timeout=None):
         self.open_timeout = timeout
-        return self.kill_channel
+        return self.kill_channel or self.shell_channel
 
     def _send_user_message(self, _message):
         pass
@@ -60,8 +72,9 @@ class FakeSSHClient:
         self.connect_release = connect_release
         self.close_started = close_started
         self.close_release = close_release
-        self.transport = transport or FakeTransport()
         self.channel = FakeChannel()
+        self.transport = transport or FakeTransport(shell_channel=self.channel)
+        self.host_keys = paramiko.HostKeys()
         self.closed = False
 
     def load_host_keys(self, _path):
@@ -69,6 +82,9 @@ class FakeSSHClient:
 
     def set_missing_host_key_policy(self, _policy):
         pass
+
+    def get_host_keys(self):
+        return self.host_keys
 
     def connect(self, **_kwargs):
         if self.connect_started:
@@ -90,15 +106,43 @@ class FakeSSHClient:
             assert self.close_release.wait(2)
 
 
+class FakeValidatedSocket:
+    def close(self):
+        pass
+
+
+class FailingReservation:
+    def release(self):
+        raise RuntimeError('release failed')
+
+
 @pytest.fixture(autouse=True)
-def clean_session_state():
+def clean_session_state(monkeypatch):
+    limits = {
+        kind: {'global': 100, 'per_user': 50}
+        for kind in QuotaKind
+    }
+    limits[QuotaKind.SSH_SESSION] = {'global': 2, 'per_user': 1}
+    monkeypatch.setattr(
+        ssh_manager, 'quota_manager', QuotaManager(limits)
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'resolve_allowed_target',
+        lambda host, port, allow_internal=False: ResolvedTarget(
+            host, port, '1.1.1.1', 2
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'open_validated_socket',
+        lambda target, timeout: FakeValidatedSocket(),
+    )
     with ssh_manager.sessions_lock:
         ssh_manager.sessions.clear()
-        ssh_manager._pending_connections = 0
     yield
     with ssh_manager.sessions_lock:
         ssh_manager.sessions.clear()
-        ssh_manager._pending_connections = 0
 
 
 def _connect(**overrides):
@@ -137,7 +181,6 @@ def test_pending_connection_reserves_capacity(monkeypatch):
         created_clients.append(client)
         return client
 
-    monkeypatch.setattr(ssh_manager.config, 'MAX_SESSIONS', 1)
     monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', client_factory)
     monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
 
@@ -153,7 +196,6 @@ def test_pending_connection_reserves_capacity(monkeypatch):
     assert second_error == 'Maximum number of sessions reached'
     assert len(created_clients) == 1
     with ssh_manager.sessions_lock:
-        assert ssh_manager._pending_connections == 1
         assert ssh_manager.sessions == {}
 
     connect_release.set()
@@ -162,7 +204,10 @@ def test_pending_connection_reserves_capacity(monkeypatch):
     assert first_result[0][1] is None
     assert first_result[0][0] in ssh_manager.sessions
     with ssh_manager.sessions_lock:
-        assert ssh_manager._pending_connections == 0
+        reservation = ssh_manager.sessions[first_result[0][0]][
+            'quota_reservation'
+        ]
+    assert reservation.released is False
 
 
 def test_failed_connection_releases_reserved_capacity(monkeypatch):
@@ -172,15 +217,128 @@ def test_failed_connection_releases_reserved_capacity(monkeypatch):
         raise ssh_manager.paramiko.SSHException('boom')
 
     client.connect = fail_connect
-    monkeypatch.setattr(ssh_manager.config, 'MAX_SESSIONS', 1)
     monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
 
     session_id, error = _connect()
 
     assert session_id is None
     assert error == 'SSH connection failed'
+    replacement = ssh_manager.quota_manager.reserve(
+        QuotaKind.SSH_SESSION, user_id=7
+    )
+    replacement.release()
+
+
+def test_ssh_reader_is_a_lifecycle_job_and_close_cancels_it(monkeypatch):
+    """A raw reader Thread cannot be cancelled or joined during session close."""
+    from app.runtime_lifecycle import RuntimeLifecycle
+
+    lifecycle = RuntimeLifecycle(max_workers=1)
+    reader_started = threading.Event()
+
+    class App:
+        extensions = {'runtime_lifecycle': lifecycle}
+
+    def reader(_session_id, _socketio, _app, cancel_event):
+        reader_started.set()
+        cancel_event.wait(1)
+
+    monkeypatch.setattr(ssh_manager, 'read_ssh_output', reader)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', FakeSSHClient)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+
+    try:
+        session_id, error = _connect(
+            socketio_instance=object(), app=App(),
+        )
+        assert error is None
+        assert reader_started.wait(1)
+        with ssh_manager.sessions_lock:
+            handle = ssh_manager.sessions[session_id]['reader_handle']
+
+        assert ssh_manager.close_session(session_id) is True
+        assert handle.cancel_event.is_set()
+        assert handle.join(1) is True
+    finally:
+        lifecycle.begin_shutdown(1)
+
+
+def test_reader_closing_its_own_session_never_joins_itself(monkeypatch):
+    """Joining the current reader from its final cleanup deadlocks the worker."""
+    from app.runtime_lifecycle import RuntimeLifecycle
+
+    lifecycle = RuntimeLifecycle(max_workers=1)
+    allow_close = threading.Event()
+    reader_finished = threading.Event()
+
+    class App:
+        extensions = {'runtime_lifecycle': lifecycle}
+
+    def reader(session_id, _socketio, _app, _cancel_event):
+        assert allow_close.wait(1)
+        ssh_manager.close_session(session_id)
+        reader_finished.set()
+
+    monkeypatch.setattr(ssh_manager, 'read_ssh_output', reader)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', FakeSSHClient)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _session_id: None)
+
+    try:
+        session_id, error = _connect(
+            socketio_instance=object(), app=App(),
+        )
+        assert error is None
+        allow_close.set()
+        assert reader_finished.wait(1)
+        with ssh_manager.sessions_lock:
+            assert session_id not in ssh_manager.sessions
+    finally:
+        lifecycle.begin_shutdown(1)
+
+
+def test_close_session_releases_quota_exactly_once(monkeypatch):
+    reservation = ssh_manager.quota_manager.reserve(
+        QuotaKind.SSH_SESSION, user_id=7
+    )
+    client = FakeSSHClient()
     with ssh_manager.sessions_lock:
-        assert ssh_manager._pending_connections == 0
+        ssh_manager.sessions['session-1'] = _session(
+            client, quota_reservation=reservation
+        )
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _session_id: None
+    )
+
+    assert ssh_manager.close_session('session-1') is True
+    assert ssh_manager.close_session('session-1') is False
+    assert reservation.released is True
+
+    replacement = ssh_manager.quota_manager.reserve(
+        QuotaKind.SSH_SESSION, user_id=7
+    )
+    replacement.release()
+
+
+def test_close_session_still_cleans_up_when_quota_release_fails(monkeypatch):
+    client = FakeSSHClient()
+    channel = FakeChannel()
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['session-1'] = _session(
+            client,
+            channel=channel,
+            quota_reservation=FailingReservation(),
+        )
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _session_id: None
+    )
+
+    assert ssh_manager.close_session('session-1') is True
+    assert channel.closed is True
+    assert client.closed is True
 
 
 def test_close_session_does_not_hold_registry_lock_during_io(monkeypatch):
@@ -188,8 +346,13 @@ def test_close_session_does_not_hold_registry_lock_during_io(monkeypatch):
     close_release = threading.Event()
     client = FakeSSHClient(
         close_started=close_started, close_release=close_release)
+    reservation = ssh_manager.quota_manager.reserve(
+        QuotaKind.SSH_SESSION, user_id=7
+    )
     with ssh_manager.sessions_lock:
-        ssh_manager.sessions['session-1'] = _session(client)
+        ssh_manager.sessions['session-1'] = _session(
+            client, quota_reservation=reservation
+        )
 
     monkeypatch.setattr(
         'app.sftp_handler.close_sftp_cache', lambda _session_id: None)
@@ -209,10 +372,19 @@ def test_close_session_does_not_hold_registry_lock_during_io(monkeypatch):
         if acquired:
             ssh_manager.sessions_lock.release()
 
+    with pytest.raises(QuotaExceeded):
+        ssh_manager.quota_manager.reserve(
+            QuotaKind.SSH_SESSION, user_id=7
+        )
+
     close_release.set()
     close_thread.join(2)
     assert not close_thread.is_alive()
     assert result == [True]
+    replacement = ssh_manager.quota_manager.reserve(
+        QuotaKind.SSH_SESSION, user_id=7
+    )
+    replacement.release()
 
 
 def test_close_session_removes_registry_entry_before_sftp_cleanup(monkeypatch):

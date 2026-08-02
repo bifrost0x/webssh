@@ -157,7 +157,8 @@ def test_backend_rejects_unauthorized_tailscale_connection(app, monkeypatch):
     _set_policy(monkeypatch)
     with app.app_context():
         admin, error = register_user('policyadmin', 'password-123')
-        assert error is None and admin.is_admin
+        assert error is None
+        admin.is_admin = True
         viewer, error = register_user('policyviewer', 'password-123')
         assert error is None and not viewer.is_admin
         register_socket_session(viewer.id, 'unauthorized-socket')
@@ -204,7 +205,10 @@ def test_tailscale_option_is_visible_only_to_authorized_users(app, client, monke
 
     with app.app_context():
         user, error = register_user('visibleadmin', 'password-123')
-        assert error is None and user.is_admin
+        assert error is None
+        user.is_admin = True
+        from app.models import db
+        db.session.commit()
 
     response = client.post('/login', data={
         'username': 'visibleadmin',
@@ -265,6 +269,7 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
     with app.app_context():
         user, error = register_user('tailscaleadmin', 'socket-password-123')
         assert error is None
+        user.is_admin = True
         user_id = user.id
         db.session.add(SSHSession(
             session_id='old-tailscale-session',
@@ -452,8 +457,9 @@ def test_socket_rejects_invalid_startup_commands_without_dns_lookup(app, monkeyp
         lambda event, payload=None, **kwargs: emitted.append((event, payload)),
     )
     monkeypatch.setattr(config, 'BLOCK_INTERNAL_SSH', True)
+    import app.network_policy as network_policy
     monkeypatch.setattr(
-        socket_events.socket,
+        network_policy.socket,
         'getaddrinfo',
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError('DNS must not be queried')

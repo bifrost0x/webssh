@@ -2,7 +2,10 @@
 
 import os
 import sys
+import threading
 import types
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 import pytest
 
@@ -92,6 +95,94 @@ class FlakyRedis:
         return True
 
 
+def test_in_memory_limiter_enforces_limit_under_concurrent_access():
+    """A non-atomic lookup/check/append sequence can admit both callers."""
+
+    lookup_barrier = threading.Barrier(2)
+
+    class CoordinatedLookupDict(dict):
+        def get(self, key, default=None):
+            value = super().get(key, default)
+            try:
+                lookup_barrier.wait(timeout=0.05)
+            except threading.BrokenBarrierError:
+                pass
+            return value
+
+    limiter = InMemoryRateLimiter()
+    limiter.events = CoordinatedLookupDict()
+    start = threading.Barrier(2)
+
+    def attempt():
+        start.wait(timeout=1)
+        return limiter.allow('login:parallel', 1, 60)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: attempt(), range(2)))
+
+    assert results.count(True) == 1
+    assert results.count(False) == 1
+    assert len(limiter.events['login:parallel']) == 1
+
+
+def test_in_memory_limiter_reclaims_expired_unused_buckets(monkeypatch):
+    """Buckets must expire without requiring the same key to be reused."""
+    clock = {'now': 1_000.0}
+
+    class FrozenDateTime:
+        @classmethod
+        def now(cls, _timezone):
+            return datetime.fromtimestamp(clock['now'], timezone.utc)
+
+    monkeypatch.setattr('app.rate_limiter.datetime', FrozenDateTime)
+    limiter = InMemoryRateLimiter()
+
+    for index in range(100):
+        assert limiter.allow(f'login:client-{index}', 1, 10) is True
+    assert len(limiter.events) == 100
+
+    clock['now'] += 11
+    assert limiter.allow('login:fresh-client', 1, 10) is True
+
+    assert set(limiter.events) == {'login:fresh-client'}
+
+
+def test_denied_in_memory_requests_do_not_allocate_buckets():
+    limiter = InMemoryRateLimiter()
+
+    for index in range(100):
+        assert limiter.allow(f'login:denied-{index}', 0, 60) is False
+
+    assert limiter.events == {}
+
+
+def test_in_memory_cleanup_index_stays_bounded_and_releases_expired_keys(
+    monkeypatch,
+):
+    clock = {'now': 2_000.0}
+
+    class FrozenDateTime:
+        @classmethod
+        def now(cls, _timezone):
+            return datetime.fromtimestamp(clock['now'], timezone.utc)
+
+    monkeypatch.setattr('app.rate_limiter.datetime', FrozenDateTime)
+    limiter = InMemoryRateLimiter()
+
+    for index in range(256):
+        assert limiter.allow(f'login:rotating-{index}', 1, 10) is True
+
+    assert len(limiter._cleanup_keys) <= limiter._CLEANUP_WORK_PER_REQUEST
+
+    clock['now'] += 11
+    assert limiter.allow('login:after-expiry', 1, 10) is True
+
+    assert set(limiter.events) == {'login:after-expiry'}
+    assert set(limiter._expiry_deadlines) == {'login:after-expiry'}
+    assert len(limiter._expiry_heap) == 1
+    assert list(limiter._cleanup_keys) == ['login:after-expiry']
+
+
 def test_denied_requests_do_not_grow_redis_bucket():
     client = StatefulRedis()
     limiter = RedisRateLimiter(client)
@@ -152,6 +243,27 @@ def test_invalid_redis_configuration_falls_back_to_memory(monkeypatch):
     limiter = create_rate_limiter('redis://invalid')
 
     assert isinstance(limiter, InMemoryRateLimiter)
+
+
+@pytest.mark.parametrize(
+    ('storage_url', 'connection_class'),
+    [
+        ('redis://localhost:6379/0', 'Connection'),
+        ('rediss://localhost:6380/0', 'SSLConnection'),
+    ],
+)
+def test_redis_url_scheme_preserves_transport_configuration(
+    monkeypatch, storage_url, connection_class
+):
+    """A scheme regression must not silently turn TLS Redis into memory-only."""
+    import redis
+
+    monkeypatch.setattr(redis.Redis, 'ping', lambda _client: True)
+
+    limiter = create_rate_limiter(storage_url)
+
+    assert isinstance(limiter, RedisRateLimiter)
+    assert limiter.redis.connection_pool.connection_class.__name__ == connection_class
 
 
 @pytest.mark.skipif(not os.environ.get('TEST_REDIS_URL'), reason='TEST_REDIS_URL is not configured')

@@ -1,13 +1,19 @@
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
+
+ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.source=https://github.com/bifrost0x/webssh
 LABEL org.opencontainers.image.description="Web SSH Terminal - A modern web-based SSH client with SFTP file manager"
 LABEL org.opencontainers.image.licenses=MIT
+LABEL org.opencontainers.image.revision=$VCS_REF
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \
     PORT=5000 \
+    GUNICORN_THREADS=64 \
+    MAX_SOCKET_CONNECTIONS=48 \
+    MAX_SOCKET_CONNECTIONS_PER_USER=8 \
     DATA_DIR=/app/data
 
 WORKDIR /app
@@ -15,7 +21,9 @@ WORKDIR /app
 RUN adduser --disabled-password --gecos "" appuser
 
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m pip check \
+    && python -m pip uninstall --yes setuptools
 
 COPY . /app
 
@@ -39,7 +47,7 @@ USER appuser
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import os, socket; s=socket.create_connection(('127.0.0.1', int(os.getenv('PORT','5000'))), 2); s.close()"
+  CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "start:app"]
+CMD ["sh", "-c", "exec gunicorn --worker-class gthread --workers 1 --threads \"${GUNICORN_THREADS}\" --bind 0.0.0.0:5000 start:app"]

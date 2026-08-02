@@ -8,9 +8,13 @@ from pathlib import Path
 
 import paramiko
 import pytest
+import config
 
 from app import ssh_manager
 from app.connection_pool import TemporaryConnectionPool
+from app.host_key_store import HostKeyStore
+from app.network_policy import proxy_jump_remote_dns_allowed
+from app.quota_manager import QuotaKind, quota_manager
 
 
 pytestmark = pytest.mark.skipif(
@@ -20,6 +24,13 @@ pytestmark = pytest.mark.skipif(
 
 TARGET_HOST = os.environ.get('PARAMIKO5_TARGET_HOST', 'target')
 TARGET_PORT = int(os.environ.get('PARAMIKO5_TARGET_PORT', '22'))
+PROXY_TARGET_HOST = os.environ.get(
+    'PARAMIKO5_PROXY_TARGET_HOST',
+    'target',
+)
+PROXY_TARGET_PORT = int(
+    os.environ.get('PARAMIKO5_PROXY_TARGET_PORT', '22')
+)
 BASTION_HOST = os.environ.get('PARAMIKO5_BASTION_HOST', 'bastion')
 BASTION_PORT = int(os.environ.get('PARAMIKO5_BASTION_PORT', '22'))
 CHANGED_HOST = os.environ.get(
@@ -38,8 +49,10 @@ def make_pool():
     pool = TemporaryConnectionPool.__new__(TemporaryConnectionPool)
     pool.connections = {}
     pool.cleanup_interval = 300
-    pool.max_connections_per_user = 3
     pool.lock = threading.Lock()
+    pool.quota_manager = quota_manager
+    pool.cleanup_handle = None
+    pool._cleanup_lifecycle = None
     return pool
 
 
@@ -68,9 +81,10 @@ def read_terminal_marker(session_id, marker):
 
 
 def connect_terminal(**overrides):
+    uses_proxy = 'proxy_jump_host' in overrides
     kwargs = {
-        'host': TARGET_HOST,
-        'port': TARGET_PORT,
+        'host': PROXY_TARGET_HOST if uses_proxy else TARGET_HOST,
+        'port': PROXY_TARGET_PORT if uses_proxy else TARGET_PORT,
         'username': USERNAME,
         'user_id': 1,
     }
@@ -81,17 +95,29 @@ def connect_terminal(**overrides):
     return session_id
 
 
+def assert_private_file_mode(path, os_name=os.name):
+    if os_name == 'posix':
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def host_key_lookup_name(host, port):
+    return host if port == 22 else f'[{host}]:{port}'
+
+
 @pytest.fixture(autouse=True)
-def isolated_known_hosts(tmp_path, monkeypatch):
+def isolated_host_key_store(tmp_path, monkeypatch):
     known_hosts = tmp_path / 'known_hosts'
+    users_root = tmp_path / 'users'
     monkeypatch.setattr(
         ssh_manager.config,
         'KNOWN_HOSTS_FILE',
         known_hosts,
     )
+    monkeypatch.setattr(ssh_manager.config, 'USERS_DIR', users_root)
+    store = HostKeyStore(1, known_hosts, users_root)
     with ssh_manager.sessions_lock:
         ssh_manager.sessions.clear()
-    yield known_hosts
+    yield store
     for session_id in list(ssh_manager.sessions):
         ssh_manager.close_session(session_id)
 
@@ -141,6 +167,9 @@ def test_quick_connect_sftp_roundtrip(auth):
     )
     assert error is None
     assert connection_id
+    reservation = pool.connections[connection_id]['quota_reservation']
+    assert reservation.kind is QuotaKind.QUICK_CONNECTION
+    assert reservation.released is False
 
     remote_path = f'/tmp/paramiko5-{auth}-{uuid.uuid4().hex}.bin'
     payload = os.urandom(4096)
@@ -156,10 +185,15 @@ def test_quick_connect_sftp_roundtrip(auth):
         finally:
             assert pool.close_connection(connection_id) is True
             assert pool.connections == {}
+            assert reservation.released is True
 
 
 @pytest.mark.parametrize('auth', ['password', 'rsa'])
 def test_proxy_jump_terminal_and_sftp_roundtrip(auth):
+    assert proxy_jump_remote_dns_allowed(
+        PROXY_TARGET_HOST,
+        config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST,
+    )
     if auth == 'password':
         target_auth = {'password': PASSWORD}
         jump_auth = {'proxy_jump_password': PASSWORD}
@@ -194,27 +228,29 @@ def test_proxy_jump_terminal_and_sftp_roundtrip(auth):
 
 
 def test_first_seen_host_key_is_persisted_with_mode_0600(
-        isolated_known_hosts):
+        isolated_host_key_store):
     session_id = connect_terminal(password=PASSWORD)
     assert ssh_manager.close_session(session_id) is True
 
-    assert isolated_known_hosts.exists()
-    assert stat.S_IMODE(isolated_known_hosts.stat().st_mode) == 0o600
-    host_keys = paramiko.HostKeys(str(isolated_known_hosts))
-    assert TARGET_HOST in host_keys
+    user_path = isolated_host_key_store.user_path
+    assert user_path.exists()
+    assert not isolated_host_key_store.global_path.exists()
+    assert_private_file_mode(user_path)
+    host_keys = paramiko.HostKeys(str(user_path))
+    assert host_key_lookup_name(TARGET_HOST, TARGET_PORT) in host_keys
 
     second_session = connect_terminal(password=PASSWORD)
     assert ssh_manager.close_session(second_session) is True
 
 
-def test_changed_host_key_is_rejected(isolated_known_hosts):
+def test_changed_host_key_is_rejected(isolated_host_key_store):
     session_id = connect_terminal(password=PASSWORD)
     assert ssh_manager.close_session(session_id) is True
 
     client = paramiko.SSHClient()
-    client.load_host_keys(str(isolated_known_hosts))
+    isolated_host_key_store.load_into(client)
     client.set_missing_host_key_policy(
-        ssh_manager.PersistentHostKeyPolicy(isolated_known_hosts)
+        isolated_host_key_store.missing_key_policy()
     )
     changed_socket = socket.create_connection(
         (CHANGED_HOST, CHANGED_PORT),

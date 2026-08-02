@@ -3258,7 +3258,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
     box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5);
     overflow-y: auto;
     max-height: 80vh;
-    min-width: 220px;
+    min-width: 270px;
     z-index: 10001;
     padding: 6px;
 }
@@ -3344,6 +3344,44 @@ body.keyboard-open.notepad-focused .notepad-panel {
     margin: 6px 4px;
 }
 
+.account-menu-group {
+    display: none;
+}
+
+.account-menu-group.show {
+    display: block;
+}
+
+.account-menu-group > .account-item {
+    padding-left: 36px;
+    font-size: 13px;
+}
+
+.account-scrollback {
+    cursor: default;
+}
+
+.account-scrollback:hover {
+    background: transparent;
+}
+
+.account-scrollback-input {
+    width: 58px;
+    margin-left: auto;
+    padding: 2px 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: right;
+}
+
+.account-unit {
+    font-size: 11px;
+    opacity: 0.6;
+}
+
 /* Theme/Language sub-menus rendered inline (accordion) inside the account menu */
 .account-dropdown-header .theme-dropdown-header,
 .account-dropdown-header .lang-dropdown-header {
@@ -3362,7 +3400,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .account-dropdown-header .theme-option,
 .account-dropdown-header .lang-option {
-    padding-left: 42px;
+    padding-left: 52px;
     font-size: 13px;
     border-radius: 6px;
 }

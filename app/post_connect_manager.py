@@ -1,6 +1,7 @@
 """Canonical validation and resolution for post-connect command modes."""
 
 from . import command_manager, command_set_manager
+from .storage_utils import storage_lock
 from .startup_commands import normalize_startup_commands
 
 
@@ -22,10 +23,14 @@ def infer_mode(payload):
     return 'none'
 
 
-def _command_index(user_id):
+def _command_index(user_id, lock_held=False):
     """Return commands visible to one user, keyed by their stable IDs."""
     try:
-        commands = command_manager.get_all_commands(user_id)
+        commands = (
+            command_manager._get_all_commands_with_lock_held(user_id)
+            if lock_held
+            else command_manager.get_all_commands(user_id)
+        )
     except (OSError, ValueError, TypeError):
         return None, 'Command library is unreadable'
 
@@ -40,10 +45,10 @@ def _command_index(user_id):
     return index, None
 
 
-def _get_owned_command(user_id, command_id):
+def _get_owned_command(user_id, command_id, lock_held=False):
     if not isinstance(command_id, str) or not command_id:
         return None, 'Command not found'
-    commands, error = _command_index(user_id)
+    commands, error = _command_index(user_id, lock_held=lock_held)
     if error:
         return None, error
     command = commands.get(command_id)
@@ -76,7 +81,7 @@ def _has_conflicting_references(mode, payload):
     return False
 
 
-def validate_configuration(user_id, payload):
+def validate_configuration(user_id, payload, dependent_lock_held=False):
     """Validate one mode and return only the fields safe to persist."""
     if not isinstance(payload, dict):
         return None, 'Invalid post-connect command configuration'
@@ -102,7 +107,11 @@ def validate_configuration(user_id, payload):
         }, None
 
     if mode == 'command':
-        command, error = _get_owned_command(user_id, payload.get('command_id'))
+        command, error = _get_owned_command(
+            user_id,
+            payload.get('command_id'),
+            lock_held=dependent_lock_held,
+        )
         if error:
             return None, error
         override_present = 'parameters_override' in payload
@@ -122,9 +131,16 @@ def validate_configuration(user_id, payload):
             result['parameters_override'] = override
         return result, None
 
-    command_set, error = command_set_manager.get_command_set(
-        user_id, payload.get('command_set_id')
-    )
+    if dependent_lock_held:
+        command_set, error = (
+            command_set_manager._get_command_set_with_lock_held(
+                user_id, payload.get('command_set_id')
+            )
+        )
+    else:
+        command_set, error = command_set_manager.get_command_set(
+            user_id, payload.get('command_set_id')
+        )
     if error:
         return None, error
     return {
@@ -133,8 +149,8 @@ def validate_configuration(user_id, payload):
     }, None
 
 
-def resolve_configuration(user_id, payload):
-    """Resolve validated configuration to the exact terminal command string."""
+def _resolve_configuration_with_coordinator_held(user_id, payload):
+    """Resolve configuration while the caller owns ``command-config``."""
     if not isinstance(payload, dict):
         return None, 'Invalid post-connect command configuration'
     mode = infer_mode(payload)
@@ -148,11 +164,14 @@ def resolve_configuration(user_id, payload):
     if mode == 'free_text':
         return normalize_startup_commands(payload.get('startup_commands', ''))
     if mode == 'command_set':
-        return command_set_manager.resolve_command_set(
+        return command_set_manager._resolve_command_set_with_coordinator_held(
             user_id, payload.get('command_set_id')
         )
 
-    command, error = _get_owned_command(user_id, payload.get('command_id'))
+    with storage_lock(f'commands:{user_id}'):
+        command, error = _get_owned_command(
+            user_id, payload.get('command_id'), lock_held=True
+        )
     if error:
         return None, error
     override_present = 'parameters_override' in payload
@@ -164,3 +183,9 @@ def resolve_configuration(user_id, payload):
         override,
         override_present=override_present,
     )
+
+
+def resolve_configuration(user_id, payload):
+    """Resolve configuration from coordinated store snapshots."""
+    with storage_lock(f'command-config:{user_id}'):
+        return _resolve_configuration_with_coordinator_held(user_id, payload)
