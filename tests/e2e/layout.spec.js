@@ -55,6 +55,28 @@ test('admin remains horizontally contained on a 390px viewport', async ({ page }
     expect(layout.mainRight).toBeLessThanOrEqual(layout.viewportWidth);
 });
 
+test('admin audit logs remain mouse-scrollable in a short desktop viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 320 });
+    await login(page);
+    await page.goto('/admin');
+    await page.locator('.admin-tab[data-tab="audit"]').click();
+    await expect(page.locator('#adminAuditBody tr')).not.toHaveCount(0);
+
+    const main = page.locator('.admin-main');
+    const layout = await main.evaluate(element => ({
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        overflowY: getComputedStyle(element).overflowY,
+    }));
+
+    expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);
+    expect(['auto', 'scroll']).toContain(layout.overflowY);
+
+    await main.hover();
+    await page.mouse.wheel(0, 600);
+    await expect.poll(() => main.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+});
+
 test('admin security actions and empty host trust use user-facing copy', async ({ page }) => {
     await login(page);
     await page.goto('/admin');
