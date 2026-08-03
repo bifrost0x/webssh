@@ -89,6 +89,7 @@
             rename: documentRef.getElementById('sessionFilesRenameBtn'),
             delete: documentRef.getElementById('sessionFilesDeleteBtn'),
             uploadInput: documentRef.getElementById('sessionFilesUploadInput'),
+            notepadPanel: documentRef.getElementById('notepadPanel'),
             insightsHost: documentRef.getElementById('sessionInsightsHost'),
             insightsState: documentRef.getElementById('sessionInsightsState'),
             cpuGauge: documentRef.getElementById('sessionCpuGauge'),
@@ -258,13 +259,28 @@
             if (root.confirm('Delete the selected remote item?')) filesController.deleteSelected();
         });
 
-        root.addEventListener('session-workspace-change', sync);
-        documentRef.addEventListener('visibilitychange', () => {
-            coordinator.setVisible(documentRef.visibilityState !== 'hidden');
-        });
         const desktopQuery = root.matchMedia('(min-width: 851px)');
-        desktopQuery.addEventListener?.('change', sync);
+        function syncInsightsVisibility() {
+            coordinator.setVisible(
+                documentRef.visibilityState !== 'hidden'
+                && desktopQuery.matches
+                && !elements.notepadPanel?.classList.contains('collapsed')
+            );
+        }
+        root.addEventListener('session-workspace-change', sync);
+        documentRef.addEventListener('visibilitychange', syncInsightsVisibility);
+        desktopQuery.addEventListener?.('change', () => {
+            syncInsightsVisibility();
+            sync();
+        });
+        if (elements.notepadPanel && root.MutationObserver) {
+            new MutationObserver(syncInsightsVisibility).observe(elements.notepadPanel, {
+                attributes: true,
+                attributeFilter: ['class'],
+            });
+        }
         root.addEventListener('themeChanged', () => drawCpuHistory(elements.cpuChart, []));
+        syncInsightsVisibility();
         sync();
         return coordinator;
     }

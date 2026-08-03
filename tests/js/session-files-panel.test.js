@@ -7,6 +7,7 @@ const filesPanel = require('../../static/js/session-files-panel.js');
 function runtime() {
     const emitted = [];
     const handlers = new Map();
+    const rawHandlers = new Map();
     const renders = [];
     const uploads = [];
     const downloads = [];
@@ -16,7 +17,11 @@ function runtime() {
             emitted.push({ event, payload });
         },
         on(event, handler) {
-            handlers.set(event, handler);
+            rawHandlers.set(event, handler);
+            handlers.set(event, payload => handler({
+                ...payload,
+                consumer: 'session-panel',
+            }));
         },
         off(event, handler) {
             if (handlers.get(event) === handler) handlers.delete(event);
@@ -40,7 +45,7 @@ function runtime() {
         },
     });
     return {
-        controller, socket, emitted, handlers, renders,
+        controller, socket, emitted, handlers, rawHandlers, renders,
         uploads, downloads, previews,
     };
 }
@@ -60,7 +65,7 @@ test('opens on the active session home and follows a replacement session', () =>
 
     assert.deepEqual(state.emitted, [{
         event: 'get_home_directory',
-        payload: { session_id: 'session-a' },
+        payload: { session_id: 'session-a', consumer: 'session-panel' },
     }]);
     assert.equal(state.renders.at(-1).status, 'loading');
     assert.equal(state.renders.at(-1).label, 'ops@edge.example');
@@ -71,7 +76,11 @@ test('opens on the active session home and follows a replacement session', () =>
     });
     assert.deepEqual(state.emitted.at(-1), {
         event: 'list_directory',
-        payload: { session_id: 'session-a', remote_path: '/home/ops' },
+        payload: {
+            session_id: 'session-a',
+            remote_path: '/home/ops',
+            consumer: 'session-panel',
+        },
     });
 
     state.controller.follow('session-b', { username: 'deploy', host: 'build.example' });
@@ -79,7 +88,7 @@ test('opens on the active session home and follows a replacement session', () =>
     assert.equal(state.renders.at(-1).selectedIndex, -1);
     assert.deepEqual(state.emitted.at(-1), {
         event: 'get_home_directory',
-        payload: { session_id: 'session-b' },
+        payload: { session_id: 'session-b', consumer: 'session-panel' },
     });
 });
 
@@ -131,7 +140,11 @@ test('opens folders inside the panel and files in the existing preview', () => {
     state.controller.activate(0);
     assert.deepEqual(state.emitted.at(-1), {
         event: 'list_directory',
-        payload: { session_id: 'session-a', remote_path: '/home/ops/logs' },
+        payload: {
+            session_id: 'session-a',
+            remote_path: '/home/ops/logs',
+            consumer: 'session-panel',
+        },
     });
     state.controller.navigate('/home/ops');
     state.handlers.get('directory_listing')({
@@ -196,7 +209,11 @@ test('uses existing mutation contracts and refreshes after completion', () => {
     assert.deepEqual(state.emitted.slice(-3), [
         {
             event: 'create_directory',
-            payload: { session_id: 'session-a', remote_path: '/home/ops/releases' },
+            payload: {
+                session_id: 'session-a',
+                remote_path: '/home/ops/releases',
+                consumer: 'session-panel',
+            },
         },
         {
             event: 'rename_file',
@@ -204,18 +221,30 @@ test('uses existing mutation contracts and refreshes after completion', () => {
                 session_id: 'session-a',
                 old_path: '/home/ops/old.txt',
                 new_path: '/home/ops/current.txt',
+                consumer: 'session-panel',
             },
         },
         {
             event: 'delete_item',
-            payload: { session_id: 'session-a', path: '/home/ops/old.txt' },
+            payload: {
+                session_id: 'session-a',
+                path: '/home/ops/old.txt',
+                consumer: 'session-panel',
+            },
         },
     ]);
 
-    state.handlers.get('directory_created')({ path: '/home/ops/releases' });
+    state.handlers.get('directory_created')({
+        session_id: 'session-a',
+        path: '/home/ops/releases',
+    });
     assert.deepEqual(state.emitted.at(-1), {
         event: 'list_directory',
-        payload: { session_id: 'session-a', remote_path: '/home/ops' },
+        payload: {
+            session_id: 'session-a',
+            remote_path: '/home/ops',
+            consumer: 'session-panel',
+        },
     });
 });
 
@@ -233,4 +262,35 @@ test('closes into an inert state and reports disconnects', () => {
         session_id: 'session-a', path: '/', files: [],
     });
     assert.equal(state.renders.length, count);
+});
+
+
+test('renders only correlated session panel errors', () => {
+    const state = runtime();
+    state.controller.open('session-a', { username: 'ops', host: 'edge.example' });
+
+    state.rawHandlers.get('error')({ error: 'Unrelated failure' });
+    assert.equal(state.renders.at(-1).status, 'loading');
+
+    state.handlers.get('error')({
+        session_id: 'session-a',
+        error: 'Failed to list directory',
+    });
+    assert.equal(state.renders.at(-1).status, 'error');
+    assert.equal(state.renders.at(-1).error, 'Failed to list directory');
+});
+
+
+test('ignores a delayed correlated error after following another session', () => {
+    const state = runtime();
+    state.controller.open('session-a', { username: 'ops', host: 'edge.example' });
+    state.controller.follow('session-b', { username: 'deploy', host: 'build.example' });
+
+    state.handlers.get('error')({
+        session_id: 'session-a',
+        error: 'Old session failed',
+    });
+
+    assert.equal(state.renders.at(-1).sessionId, 'session-b');
+    assert.equal(state.renders.at(-1).status, 'loading');
 });

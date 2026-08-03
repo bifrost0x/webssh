@@ -8,6 +8,7 @@
     }
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     'use strict';
+    const CONSUMER = 'session-panel';
 
     function normalizePath(value) {
         const raw = typeof value === 'string' ? value : '/';
@@ -89,7 +90,10 @@
             status = 'loading';
             error = null;
             renderState();
-            socket.emit('get_home_directory', { session_id: sessionId });
+            socket.emit('get_home_directory', {
+                session_id: sessionId,
+                consumer: CONSUMER,
+            });
         }
 
         function navigate(nextPath) {
@@ -103,6 +107,7 @@
             socket.emit('list_directory', {
                 session_id: sessionId,
                 remote_path: path,
+                consumer: CONSUMER,
             });
         }
 
@@ -111,13 +116,13 @@
         }
 
         function handleHome(data) {
-            if (!opened || data?.session_id !== sessionId) return;
+            if (!opened || data?.consumer !== CONSUMER || data?.session_id !== sessionId) return;
             homePath = normalizePath(data.path);
             navigate(homePath);
         }
 
         function handleListing(data) {
-            if (!opened || data?.session_id !== sessionId) return;
+            if (!opened || data?.consumer !== CONSUMER || data?.session_id !== sessionId) return;
             const responsePath = normalizePath(data.path);
             if (requestedPath !== responsePath) return;
             path = responsePath;
@@ -129,8 +134,21 @@
             renderState();
         }
 
-        function handleMutation() {
+        function handleMutation(data) {
+            if (data?.consumer !== CONSUMER || data?.session_id !== sessionId) return;
             refresh();
+        }
+
+        function handleError(data) {
+            if (
+                !opened
+                || data?.consumer !== CONSUMER
+                || data?.session_id !== sessionId
+            ) return;
+            status = 'error';
+            error = typeof data.error === 'string' ? data.error : 'SFTP unavailable';
+            requestedPath = null;
+            renderState();
         }
 
         const listeners = {
@@ -139,6 +157,7 @@
             directory_created: handleMutation,
             file_renamed: handleMutation,
             item_deleted: handleMutation,
+            error: handleError,
         };
         Object.entries(listeners).forEach(([event, handler]) => {
             socket.on(event, handler);
@@ -229,6 +248,7 @@
                 socket.emit('create_directory', {
                     session_id: sessionId,
                     remote_path: joinPath(path, name.trim()),
+                    consumer: CONSUMER,
                 });
                 return true;
             },
@@ -240,6 +260,7 @@
                     session_id: sessionId,
                     old_path: joinPath(path, item.name),
                     new_path: joinPath(path, name.trim()),
+                    consumer: CONSUMER,
                 });
                 return true;
             },
@@ -250,6 +271,7 @@
                 socket.emit('delete_item', {
                     session_id: sessionId,
                     path: joinPath(path, item.name),
+                    consumer: CONSUMER,
                 });
                 return true;
             },

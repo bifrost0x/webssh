@@ -31,6 +31,22 @@ import config
 STORAGE_ERROR_MESSAGE = (
     'Stored data is unreadable. Please restore or remove it.'
 )
+SESSION_FILES_CONSUMER = 'session-panel'
+
+
+def _with_sftp_consumer(data, payload):
+    """Correlate compact session-panel replies without changing legacy SFTP."""
+    if isinstance(data, dict) and data.get('consumer') == SESSION_FILES_CONSUMER:
+        correlated = {**payload, 'consumer': SESSION_FILES_CONSUMER}
+        session_id = data.get('session_id')
+        if isinstance(session_id, str) and session_id:
+            correlated.setdefault('session_id', session_id)
+        return correlated
+    return payload
+
+
+def _emit_sftp_error(data, message):
+    emit('error', _with_sftp_consumer(data, {'error': message}))
 
 
 class _CombinedCancellation:
@@ -911,7 +927,7 @@ def handle_list_directory(data, current_user=None):
         remote_path = data.get('remote_path', '.')
 
         if not session_id:
-            emit('error', {'error': 'Session ID required'})
+            _emit_sftp_error(data, 'Session ID required')
             return
 
         authorized = False
@@ -925,7 +941,7 @@ def handle_list_directory(data, current_user=None):
         _t1 = _time.time()
         if not authorized:
             log_warning(f"list_directory unauthorized", session_id=session_id, user=current_user.username)
-            emit('error', {'error': 'Unauthorized access to session'})
+            _emit_sftp_error(data, 'Unauthorized access to session')
             return
 
         files, error = sftp_handler.list_directory(session_id, remote_path)
@@ -934,19 +950,19 @@ def handle_list_directory(data, current_user=None):
         if error:
             log_warning(f"list_directory failed", path=remote_path, error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('error', {'error': f'Failed to list directory: {error}'})
+            _emit_sftp_error(data, f'Failed to list directory: {error}')
         else:
             log_info(f"list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('directory_listing', {
+            emit('directory_listing', _with_sftp_consumer(data, {
                 'session_id': session_id,
                 'path': remote_path,
                 'files': files
-            })
+            }))
 
     except Exception as e:
         log_error(f"list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
-        emit('error', {'error': 'Failed to list directory'})
+        _emit_sftp_error(data, 'Failed to list directory')
 
 @socketio.on('set_theme')
 @socket_login_required
@@ -1380,6 +1396,13 @@ def handle_request_session_insights(data, current_user=None):
         emit_unavailable()
         return
 
+    if check_socket_rate_limit(
+            current_user.id,
+            'session_insights',
+            session_insights.REQUEST_RATE_LIMIT):
+        emit_unavailable()
+        return
+
     if not verify_session_ownership(session_id, current_user.id):
         log_warning(
             'Unauthorized session insights request',
@@ -1625,25 +1648,27 @@ def handle_create_directory(data, current_user=None):
         remote_path = data.get('remote_path')
 
         if not all([session_id, remote_path]):
-            emit('error', {'error': 'Missing required fields'})
+            _emit_sftp_error(data, 'Missing required fields')
             return
 
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
+                _emit_sftp_error(data, 'Unauthorized access')
                 return
 
         success, error = sftp_handler.create_directory(session_id, remote_path)
 
         if error:
-            emit('error', {'error': f'Failed to create directory: {error}'})
+            _emit_sftp_error(data, f'Failed to create directory: {error}')
         else:
-            emit('directory_created', {'path': remote_path})
+            emit('directory_created', _with_sftp_consumer(
+                data, {'path': remote_path}
+            ))
 
     except Exception as e:
         log_error("Create directory failed", error=str(e))
-        emit('error', {'error': 'Failed to create directory'})
+        _emit_sftp_error(data, 'Failed to create directory')
 
 @socketio.on('rename_file')
 @socket_login_required
@@ -1655,26 +1680,29 @@ def handle_rename_file(data, current_user=None):
         new_path = data.get('new_path')
 
         if not all([session_id, old_path, new_path]):
-            emit('error', {'error': 'Missing required fields'})
+            _emit_sftp_error(data, 'Missing required fields')
             return
 
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
+                _emit_sftp_error(data, 'Unauthorized access')
                 return
 
         success, error = sftp_handler.rename_item(session_id, old_path, new_path)
 
         if error:
-            emit('error', {'error': f'Failed to rename: {error}'})
+            _emit_sftp_error(data, f'Failed to rename: {error}')
         else:
-            emit('file_renamed', {'old_path': old_path, 'new_path': new_path})
+            emit('file_renamed', _with_sftp_consumer(data, {
+                'old_path': old_path,
+                'new_path': new_path,
+            }))
             log_info(f"Renamed: {old_path} -> {new_path}", user=current_user.username)
 
     except Exception as e:
         log_error("Rename failed", error=str(e))
-        emit('error', {'error': 'Failed to rename'})
+        _emit_sftp_error(data, 'Failed to rename')
 
 @socketio.on('delete_item')
 @socket_login_required
@@ -1685,26 +1713,26 @@ def handle_delete_item(data, current_user=None):
         path = data.get('path')
 
         if not all([session_id, path]):
-            emit('error', {'error': 'Missing required fields'})
+            _emit_sftp_error(data, 'Missing required fields')
             return
 
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
+                _emit_sftp_error(data, 'Unauthorized access')
                 return
 
         success, error = sftp_handler.delete_directory_recursive(session_id, path)
 
         if error:
-            emit('error', {'error': f'Failed to delete: {error}'})
+            _emit_sftp_error(data, f'Failed to delete: {error}')
         else:
-            emit('item_deleted', {'path': path})
+            emit('item_deleted', _with_sftp_consumer(data, {'path': path}))
             log_info(f"Deleted: {path}", user=current_user.username)
 
     except Exception as e:
         log_error("Delete failed", error=str(e))
-        emit('error', {'error': 'Failed to delete'})
+        _emit_sftp_error(data, 'Failed to delete')
 
 @socketio.on('get_home_directory')
 @socket_login_required
@@ -1716,13 +1744,13 @@ def handle_get_home_directory(data, current_user=None):
         session_id = data.get('session_id')
 
         if not session_id:
-            emit('error', {'error': 'Session ID required'})
+            _emit_sftp_error(data, 'Session ID required')
             return
 
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
+                _emit_sftp_error(data, 'Unauthorized access')
                 return
 
         _t1 = _time.time()
@@ -1732,16 +1760,19 @@ def handle_get_home_directory(data, current_user=None):
         if error:
             log_warning(f"get_home_directory failed", error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('error', {'error': f'Failed to get home directory: {error}'})
+            _emit_sftp_error(data, f'Failed to get home directory: {error}')
         else:
             log_info(f"get_home_directory OK", path=home_path,
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('home_directory', {'session_id': session_id, 'path': home_path})
+            emit('home_directory', _with_sftp_consumer(data, {
+                'session_id': session_id,
+                'path': home_path,
+            }))
 
     except Exception as e:
         log_error(f"get_home_directory exception", error=str(e),
                  elapsed_ms=int((_time.time()-_t0)*1000))
-        emit('error', {'error': 'Failed to get home directory'})
+        _emit_sftp_error(data, 'Failed to get home directory')
 
 @socketio.on('check_exists')
 @socket_login_required

@@ -1,5 +1,5 @@
 import pytest
-from threading import Lock
+from threading import Event, Lock, Thread
 
 
 from app import session_insights
@@ -192,13 +192,59 @@ def test_collect_linux_stats_rejects_overlapping_collection(monkeypatch):
     held_lock = Lock()
     held_lock.acquire()
     monkeypatch.setitem(
-        session_insights._collector_locks, 'owned-session', held_lock
+        session_insights._collector_locks,
+        'owned-session',
+        {'lock': held_lock, 'references': 1},
     )
 
     stats, error = session_insights.collect_linux_stats('owned-session')
 
     assert stats is None
     assert error == 'busy'
+
+
+def test_session_collector_lock_survives_release_to_waiter_handoff(monkeypatch):
+    class ControlledLock:
+        def __init__(self):
+            self.inner = Lock()
+            self.acquire_calls = 0
+            self.waiter_ready = Event()
+            self.allow_waiter = Event()
+
+        def acquire(self, blocking=False):
+            self.acquire_calls += 1
+            if self.acquire_calls == 2:
+                self.waiter_ready.set()
+                assert self.allow_waiter.wait(timeout=1)
+            return self.inner.acquire(blocking=blocking)
+
+        def release(self):
+            self.inner.release()
+
+    controlled = ControlledLock()
+    monkeypatch.setitem(
+        session_insights._collector_locks,
+        'handoff-session',
+        {'lock': controlled, 'references': 0},
+    )
+    first = session_insights._acquire_session_lock('handoff-session')
+    waiter_result = []
+    waiter = Thread(
+        target=lambda: waiter_result.append(
+            session_insights._acquire_session_lock('handoff-session')
+        )
+    )
+    waiter.start()
+    assert controlled.waiter_ready.wait(timeout=1)
+
+    session_insights._release_session_lock('handoff-session', first)
+    controlled.allow_waiter.set()
+    waiter.join(timeout=1)
+
+    assert waiter_result == [controlled]
+    assert session_insights._acquire_session_lock('handoff-session') is None
+    session_insights._release_session_lock('handoff-session', controlled)
+    assert 'handoff-session' not in session_insights._collector_locks
 
 
 def test_collect_linux_stats_rejects_nonzero_remote_status(monkeypatch):

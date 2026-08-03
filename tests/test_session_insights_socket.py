@@ -5,7 +5,8 @@ import pytest
 from app import socket_events
 
 
-def invoke(monkeypatch, payload, *, owned=True, collector_result=None):
+def invoke(monkeypatch, payload, *, owned=True, collector_result=None,
+           rate_limited=False):
     emitted = []
     collector_calls = []
     monkeypatch.setattr(
@@ -17,6 +18,11 @@ def invoke(monkeypatch, payload, *, owned=True, collector_result=None):
         socket_events,
         'verify_session_ownership',
         lambda session_id, user_id: owned,
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'check_socket_rate_limit',
+        lambda user_id, endpoint, limit: rate_limited,
     )
 
     def collect(session_id):
@@ -86,6 +92,23 @@ def test_session_insights_socket_rejects_unowned_session_before_collection(
     })]
 
 
+def test_session_insights_socket_rate_limits_before_ownership_and_collection(
+        monkeypatch):
+    emitted, calls = invoke(
+        monkeypatch,
+        {'session_id': 'owned-session', 'request_id': 'sample-limited'},
+        rate_limited=True,
+    )
+
+    assert calls == []
+    assert emitted == [('session_insights', {
+        'success': False,
+        'session_id': 'owned-session',
+        'request_id': 'sample-limited',
+        'error': 'Session insights unavailable',
+    })]
+
+
 @pytest.mark.parametrize(
     'payload',
     [
@@ -124,4 +147,3 @@ def test_session_insights_socket_returns_generic_collector_failure(monkeypatch):
         'request_id': 'sample-3',
         'error': 'Session insights unavailable',
     })]
-

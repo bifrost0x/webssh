@@ -190,9 +190,79 @@ test('directory creation events do not refresh panes in the middle of an upload 
     assert.equal(notifications, 0);
 
     manager.uploadBatches.clear();
+    listeners.directory_created({
+        path: '/session-panel-folder',
+        consumer: 'session-panel',
+    });
+    assert.equal(refreshes, 0);
+    assert.equal(notifications, 0);
+
     listeners.directory_created({ path: '/manual-folder' });
     assert.equal(refreshes, 1);
     assert.equal(notifications, 1);
+});
+
+test('dual-pane listings ignore embedded session panel responses', () => {
+    const listeners = {};
+    let renders = 0;
+    let pathUpdates = 0;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        isOpen: true,
+        panes: {
+            left: {
+                type: 'ssh',
+                sessionId: 'shared-session',
+                connectionId: null,
+                path: '/dual-pane',
+                files: [{ name: 'original.txt' }],
+            },
+            right: { type: 'browser' },
+        },
+        updatePathInput() { pathUpdates += 1; },
+        renderPane() { renders += 1; },
+    });
+    manager.setupSocketListeners();
+
+    listeners.directory_listing({
+        session_id: 'shared-session',
+        path: '/embedded-panel',
+        files: [{ name: 'foreign.txt' }],
+        consumer: 'session-panel',
+    });
+
+    assert.equal(manager.panes.left.path, '/dual-pane');
+    assert.equal(manager.panes.left.files[0].name, 'original.txt');
+    assert.equal(pathUpdates, 0);
+    assert.equal(renders, 0);
+});
+
+test('dual-pane error handling ignores embedded session panel failures', () => {
+    const listeners = {};
+    let renders = 0;
+    let notifications = 0;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        panes: {
+            left: { type: 'ssh', loading: true, error: null },
+            right: { type: 'browser', loading: false },
+        },
+        renderPane() { renders += 1; },
+        showNotification() { notifications += 1; },
+    });
+    manager.setupSocketListeners();
+
+    listeners.error({
+        error: 'Embedded panel failed',
+        consumer: 'session-panel',
+    });
+
+    assert.equal(manager.panes.left.loading, true);
+    assert.equal(manager.panes.left.error, null);
+    assert.equal(renders, 0);
+    assert.equal(notifications, 0);
 });
 
 test('upload batch finishes on complete error and cancel then refreshes its session pane once', async () => {

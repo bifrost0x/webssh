@@ -71,6 +71,7 @@ async function seedLinuxSession(page) {
                     deliver('home_directory', {
                         session_id: payload.session_id,
                         path: '/srv/webssh/current',
+                        consumer: 'session-panel',
                     });
                     return window.socket;
                 }
@@ -79,6 +80,7 @@ async function seedLinuxSession(page) {
                         session_id: payload.session_id,
                         path: payload.remote_path,
                         files: fileRows,
+                        consumer: 'session-panel',
                     });
                     return window.socket;
                 }
@@ -165,6 +167,11 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
     });
     expect(pngSize(screenshotPath)).toEqual({ width: 2560, height: 1440 });
 
+    const samplesBeforeCollapse = await page.evaluate(() => window.__workspaceInsightSample);
+    await page.locator('#notepadToggle').click();
+    await page.waitForTimeout(4500);
+    expect(await page.evaluate(() => window.__workspaceInsightSample)).toBe(samplesBeforeCollapse);
+
     await page.evaluate(() => SessionManager.setSplitLayout(2));
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
     await expect(toggle).toBeDisabled();
@@ -172,5 +179,16 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
     await expect(toggle).toBeEnabled();
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
+    await assertNoExternalRequests(page);
+});
+
+test('mobile workspace does not poll hidden Linux telemetry', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await login(page);
+    await seedLinuxSession(page);
+    await page.waitForTimeout(500);
+
+    expect(await page.evaluate(() => window.__workspaceInsightSample || 0)).toBe(0);
+    await expect(page.locator('#sessionInsightsCard')).toBeHidden();
     await assertNoExternalRequests(page);
 });

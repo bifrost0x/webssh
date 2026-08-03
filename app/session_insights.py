@@ -9,6 +9,7 @@ from . import ssh_manager
 
 DEFAULT_MAX_BYTES = 16 * 1024
 DEFAULT_TIMEOUT = 2.0
+REQUEST_RATE_LIMIT = '30 per minute'
 
 _collector_locks = {}
 _collector_locks_guard = Lock()
@@ -121,16 +122,35 @@ def parse_linux_stats(text, *, max_bytes=DEFAULT_MAX_BYTES):
     }
 
 
-def _lock_for_session(session_id):
+def _acquire_session_lock(session_id):
     with _collector_locks_guard:
-        return _collector_locks.setdefault(session_id, Lock())
+        entry = _collector_locks.setdefault(
+            session_id,
+            {'lock': Lock(), 'references': 0},
+        )
+        entry['references'] += 1
+        collector_lock = entry['lock']
+
+    if collector_lock.acquire(blocking=False):
+        return collector_lock
+
+    with _collector_locks_guard:
+        entry = _collector_locks.get(session_id)
+        if entry and entry['lock'] is collector_lock:
+            entry['references'] -= 1
+            if entry['references'] == 0:
+                _collector_locks.pop(session_id, None)
+    return None
 
 
 def _release_session_lock(session_id, collector_lock):
-    collector_lock.release()
     with _collector_locks_guard:
-        if _collector_locks.get(session_id) is collector_lock:
-            _collector_locks.pop(session_id, None)
+        entry = _collector_locks.get(session_id)
+        collector_lock.release()
+        if entry and entry['lock'] is collector_lock:
+            entry['references'] -= 1
+            if entry['references'] == 0:
+                _collector_locks.pop(session_id, None)
 
 
 def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
@@ -139,8 +159,8 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
     if not isinstance(session_id, str) or not session_id:
         return None, 'unavailable'
 
-    collector_lock = _lock_for_session(session_id)
-    if not collector_lock.acquire(blocking=False):
+    collector_lock = _acquire_session_lock(session_id)
+    if collector_lock is None:
         return None, 'busy'
 
     channel = None

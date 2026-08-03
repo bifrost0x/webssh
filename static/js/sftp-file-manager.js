@@ -499,7 +499,7 @@ class SFTPFileManager {
         if (!this.socket) return;
 
         this.socket.on('directory_listing', (data) => {
-            if (!this.isOpen) return;
+            if (!this.isOpen || data?.consumer) return;
 
             ['left', 'right'].forEach(pane => {
                 const state = this.panes[pane];
@@ -520,6 +520,7 @@ class SFTPFileManager {
         });
 
         this.socket.on('home_directory', (data) => {
+            if (data?.consumer) return;
             ['left', 'right'].forEach(pane => {
                 const state = this.panes[pane];
                 if (state.type === 'ssh' &&
@@ -535,17 +536,20 @@ class SFTPFileManager {
         });
 
         this.socket.on('directory_created', (data) => {
+            if (data?.consumer) return;
             if (this.uploadBatches?.size > 0) return;
             this.showNotification(`${this.t('fm.folderCreated', 'Folder created')}: ${data.path}`, 'success');
             this.refreshBothPanes();
         });
 
         this.socket.on('file_renamed', (data) => {
+            if (data?.consumer) return;
             this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
             this.refreshBothPanes();
         });
 
         this.socket.on('item_deleted', (data) => {
+            if (data?.consumer) return;
             this.showNotification(`${this.t('fm.deleted', 'Deleted')}: ${data.path}`, 'success');
             this.refreshBothPanes();
         });
@@ -584,6 +588,7 @@ class SFTPFileManager {
         });
 
         this.socket.on('error', (data) => {
+            if (data?.consumer) return;
             const errorMsg = data.error || data.message || 'Unknown error';
             console.error('[FM] SFTP Error received:', errorMsg, data);
 
