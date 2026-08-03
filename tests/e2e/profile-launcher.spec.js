@@ -244,6 +244,36 @@ test('SSH key rename supports click, Enter, cancel, and Escape', async ({ page }
     await expect(keyList).toContainText('E2E usable key');
     await expect(keyList).not.toContainText('Escaped rename');
 
+    await page.evaluate(() => {
+        const originalEmit = window.socket.emit.bind(window.socket);
+        window.__keyRenameOriginalEmit = originalEmit;
+        window.socket.emit = function wrappedEmit(event, ...args) {
+            if (event !== 'rename_key') return originalEmit(event, ...args);
+            const acknowledgement = typeof args.at(-1) === 'function'
+                ? args.at(-1)
+                : null;
+            queueMicrotask(() => acknowledgement?.({
+                success: false,
+                error: 'E2E intercepted key rename',
+            }));
+            return window.socket;
+        };
+    });
+    keyItem = stableKeyItem();
+    await keyItem.locator('[data-key-action="rename"]').click();
+    await keyItem.locator('.key-rename-input').fill('Preserved failed rename');
+    await keyItem.locator('[data-key-action="save-rename"]').click();
+    await expect(keyItem.locator('.key-rename-input')).toHaveValue(
+        'Preserved failed rename',
+    );
+    await expect(keyItem.locator('.key-rename-input')).toBeFocused();
+    await expect(keyItem.locator('[data-key-action="save-rename"]')).toBeEnabled();
+    await page.evaluate(() => {
+        window.socket.emit = window.__keyRenameOriginalEmit;
+        delete window.__keyRenameOriginalEmit;
+    });
+    await keyItem.locator('[data-key-action="cancel-rename"]').click();
+
     keyItem = stableKeyItem();
     await keyItem.locator('[data-key-action="rename"]').click();
     await keyItem.locator('.key-rename-input').fill('Renamed E2E key');

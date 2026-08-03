@@ -48,6 +48,11 @@ def test_key_upload_and_rename_return_safe_acknowledgements(
     assert uploaded['success'] is True
     assert uploaded['key']['name'] == 'Initial'
     assert 'key_content' not in repr(uploaded)
+    assert rsa_private_key_pem not in repr(uploaded)
+    assert rsa_private_key_pem not in repr(emitted)
+    assert set(uploaded['key']) == {
+        'id', 'name', 'filename', 'key_type', 'encrypted', 'uploaded_at'
+    }
     assert any(event == 'keys_list' for event, _payload in emitted)
 
     renamed, emitted = call_socket_handler(
@@ -63,6 +68,8 @@ def test_key_upload_and_rename_return_safe_acknowledgements(
         'key': {**uploaded['key'], 'name': 'Renamed'},
     }
     assert any(event == 'key_renamed' for event, _payload in emitted)
+    assert rsa_private_key_pem not in repr(renamed)
+    assert rsa_private_key_pem not in repr(emitted)
     with app.app_context():
         assert key_manager.load_keys(user_id)[0]['name'] == 'Renamed'
 

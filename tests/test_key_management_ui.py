@@ -41,8 +41,21 @@ def test_key_mutations_use_acknowledgements_and_preserve_local_state():
     assert 'this.upsertKeySummary(acknowledgement.key)' in PROFILE_MANAGER
     assert 'profileEditorKeySelect' in PROFILE_MANAGER
     assert 'editingKeyId' in PROFILE_MANAGER
+    assert 'editingKeyName' in PROFILE_MANAGER
     assert 'keyRenamePending' in PROFILE_MANAGER
     assert 'inlineKeyUploadPending' in PROFILE_MANAGER
+
+
+def test_failed_key_rename_preserves_the_submitted_draft():
+    assert 'this.editingKeyName = name;' in PROFILE_MANAGER
+    assert 'input.value = this.editingKeyName ?? key.name;' in PROFILE_MANAGER
+    failure_branch = PROFILE_MANAGER[
+        PROFILE_MANAGER.index('if (!acknowledgement?.success'):
+        PROFILE_MANAGER.index('this.editingKeyId = null;', PROFILE_MANAGER.index(
+            'if (!acknowledgement?.success'
+        ))
+    ]
+    assert 'this.editingKeyName = null' not in failure_branch
 
 
 def test_key_list_uses_delegated_actions_and_safe_text_rendering():

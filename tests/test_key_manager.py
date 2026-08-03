@@ -33,11 +33,13 @@ def test_rename_key_changes_only_owned_metadata_name(
         encrypted_before = key_path.read_bytes()
         metadata_before = dict(key)
 
-        updated, error = key_manager.rename_key(
+        result, error = key_manager.rename_key(
             owner_id, key['id'], '  After  '
         )
 
         assert error is None
+        assert result['before'] == metadata_before
+        updated = result['key']
         assert updated == {**metadata_before, 'name': 'After'}
         assert key_path.read_bytes() == encrypted_before
         assert key_manager.load_keys(owner_id) == [updated]
@@ -63,11 +65,13 @@ def test_rename_key_allows_duplicate_display_names(
         )
         assert error is None
 
-        updated, error = key_manager.rename_key(
+        result, error = key_manager.rename_key(
             user_id, second['id'], 'Shared'
         )
 
         assert error is None
+        assert result['before'] == second
+        updated = result['key']
         assert updated['id'] == second['id']
         assert [
             key['name'] for key in key_manager.load_keys(user_id)
@@ -121,6 +125,44 @@ def test_rename_key_write_failure_preserves_metadata(
         assert updated is None
         assert error == 'Failed to rename key'
         assert metadata_path.read_bytes() == before
+
+
+def test_concurrent_key_renames_report_atomic_before_and_after_names(
+        app, rsa_private_key_pem):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from app import key_manager
+
+    user_id = create_user(app, 'rename-concurrent')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Original', rsa_private_key_pem
+        )
+        assert error is None
+
+    barrier = Barrier(2)
+
+    def rename(name):
+        with app.app_context():
+            barrier.wait()
+            return key_manager.rename_key(user_id, key['id'], name)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(rename, ('First', 'Second')))
+
+    assert all(error is None for _result, error in outcomes)
+    transitions = {
+        (result['before']['name'], result['key']['name'])
+        for result, _error in outcomes
+    }
+    assert len(transitions) == 2
+    assert sum(before == 'Original' for before, _after in transitions) == 1
+    first_after = next(
+        after for before, after in transitions if before == 'Original'
+    )
+    assert (first_after, {'First', 'Second'}.difference({first_after}).pop()) \
+        in transitions
 
 
 def test_rename_key_preserves_corrupt_metadata(app):

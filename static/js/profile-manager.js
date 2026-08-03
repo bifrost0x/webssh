@@ -5,6 +5,7 @@ const ProfileManager = {
     selectedLegacyStartupCommands: '',
     editingProfileId: null,
     editingKeyId: null,
+    editingKeyName: null,
     keyRenamePending: false,
     inlineKeyUploadPending: false,
 
@@ -89,6 +90,12 @@ const ProfileManager = {
                 event.preventDefault();
                 event.stopPropagation();
                 this.cancelKeyRename();
+            }
+        });
+        document.getElementById('keysList')?.addEventListener('input', event => {
+            const input = event.target.closest('.key-rename-input');
+            if (input?.dataset.keyId === this.editingKeyId) {
+                this.editingKeyName = input.value;
             }
         });
         window.addEventListener('languageChanged', () => {
@@ -311,7 +318,7 @@ const ProfileManager = {
                 input.type = 'text';
                 input.className = 'form-control key-rename-input';
                 input.dataset.keyId = key.id;
-                input.value = key.name;
+                input.value = this.editingKeyName ?? key.name;
                 input.maxLength = 128;
                 input.disabled = this.keyRenamePending;
                 renameEditor.appendChild(input);
@@ -856,17 +863,20 @@ const ProfileManager = {
     beginKeyRename(keyId) {
         if (this.keyRenamePending || !this.keys.some(key => key.id === keyId)) return;
         this.editingKeyId = keyId;
+        this.editingKeyName = this.keys.find(key => key.id === keyId).name;
         this.renderKeysList();
     },
 
     cancelKeyRename() {
         if (this.keyRenamePending) return;
         this.editingKeyId = null;
+        this.editingKeyName = null;
         this.renderKeysList();
     },
 
     submitKeyRename(keyId, name) {
         if (this.keyRenamePending || keyId !== this.editingKeyId || !window.socket) return;
+        this.editingKeyName = name;
         this.keyRenamePending = true;
         this.renderKeysList();
         window.socket.emit('rename_key', {
@@ -885,6 +895,7 @@ const ProfileManager = {
                 return;
             }
             this.editingKeyId = null;
+            this.editingKeyName = null;
             this.upsertKeySummary(acknowledgement.key);
         });
     },

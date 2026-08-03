@@ -306,12 +306,13 @@ def rename_key(user_id, key_id, new_name):
         for index, key in enumerate(keys):
             if key['id'] != key_id:
                 continue
+            before = dict(key)
             updated = {**key, 'name': name}
             replacement = [*keys]
             replacement[index] = updated
             if not save_keys(user_id, replacement):
                 return None, "Failed to rename key"
-            return updated, None
+            return {'before': before, 'key': updated}, None
     return None, "Key not found"
 
 

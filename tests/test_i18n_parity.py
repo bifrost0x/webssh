@@ -68,7 +68,11 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         'connection.newSSHConnection',
         'shortcuts.newConnection',
     }
-    saved_keys = {'connection.savedProfiles', 'profiles.manage'}
+    saved_keys = {
+        'connection.savedProfiles',
+        'profiles.manage',
+        'fm.qc.savedProfiles',
+    }
 
     for index, match in enumerate(locale_starts):
         end = (
@@ -85,6 +89,19 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         assert {values[key] for key in quick_keys} == {quick_connect}
         assert {values[key] for key in saved_keys} == {saved_connections}
         assert values['panes.newConnection'] == f'+ {quick_connect}'
+        assert values['fm.newConnection'] == f'+ {quick_connect}...'
+        assert quick_connect in values['connection.clickToStart']
+
+
+def test_new_tab_accessible_name_uses_quick_connect_translation():
+    source = Path('templates/index.html').read_text(encoding='utf-8')
+    new_tab = re.search(r'<button[^>]+id="newTabBtn"[^>]*>', source)
+
+    assert new_tab is not None
+    assert 'title="Quick Connect"' in new_tab.group(0)
+    assert 'aria-label="Quick Connect"' in new_tab.group(0)
+    assert 'data-i18n-title="connection.newConnection"' in new_tab.group(0)
+    assert 'data-i18n-aria-label="connection.newConnection"' in new_tab.group(0)
 
 
 def test_all_locales_preserve_translation_placeholders():

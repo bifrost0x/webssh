@@ -853,24 +853,21 @@ def handle_rename_key(data, current_user=None):
     """Rename one owned SSH key without exposing its encrypted contents."""
     try:
         data = data if isinstance(data, dict) else {}
-        existing = key_manager.get_key(current_user.id, data.get('key_id'))
-        updated, error = key_manager.rename_key(
+        result, error = key_manager.rename_key(
             current_user.id,
             data.get('key_id'),
             data.get('name'),
         )
         if error:
             return _key_mutation_error(error)
-        if existing is None:
-            return _key_mutation_error('Key not found')
 
         log_key_rename(
             current_user.username,
-            existing['name'],
-            updated['name'],
+            result['before']['name'],
+            result['key']['name'],
             request.remote_addr,
         )
-        payload = {'success': True, 'key': updated}
+        payload = {'success': True, 'key': result['key']}
         emit('key_renamed', payload)
         handle_list_keys(current_user=current_user)
         return payload
