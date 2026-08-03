@@ -53,7 +53,11 @@ test('projects all post-connect modes with exact parameter and stale-field seman
         const [{ payload }] = await sshAttempts(page);
         expect(payload).toMatchObject(expected);
         absent.forEach(field => expect(payload).not.toHaveProperty(field));
-        await page.locator('#cancelConnectionBtn').click();
+        await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+        await expect(page.locator('.profile-launcher-name').getByText(
+            name,
+            { exact: true },
+        )).toBeVisible();
         await installSshConnectTrap(page);
     }
 });
@@ -104,10 +108,14 @@ test('missing post-connect references stop before the guarded SSH network layer'
         ['Post missing command set', 'Command set not found'],
     ]) {
         await launchProfile(page, name);
+        await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
         await expect(page.locator('.notification-error').last()).toContainText(message);
         await expect(page.locator('.notification-error').last()).not.toContainText(
             'E2E network guard reached',
         );
-        await page.locator('#cancelConnectionBtn').click();
+        await expect(page.locator('.profile-launcher-name').getByText(
+            name,
+            { exact: true },
+        )).toBeVisible();
     }
 });

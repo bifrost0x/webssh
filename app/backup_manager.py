@@ -1,10 +1,12 @@
 """Verified backup and restore operations for the WebSSH data directory."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import sqlite3
 import stat
 import tempfile
 import zipfile
@@ -13,9 +15,14 @@ import config
 from .storage_utils import atomic_copy_file, fsync_parent_directory
 
 
-_FORMAT_VERSION = 1
+_FORMAT_VERSION = 2
+_LEGACY_FORMAT_VERSION = 1
+_CURRENT_DATA_SCHEMA_VERSION = 1
+_DATA_SCHEMA_MIGRATIONS = {0: 1}
+_PRODUCER = 'webssh'
 _MANIFEST_NAME = 'manifest.json'
 _DATA_PREFIX = 'data/'
+_DATABASE_PATH = 'app.db'
 _EXCLUDED_TOP_LEVEL_DIRECTORIES = {'logs', 'tmp'}
 
 
@@ -34,6 +41,18 @@ class BackupFile:
 class BackupManifest:
     format_version: int
     files: tuple[BackupFile, ...]
+    data_schema_version: int = 0
+    created_at: str | None = None
+    producer: str | None = None
+
+
+@dataclass(frozen=True)
+class BackupCompatibility:
+    compatible: bool
+    legacy: bool
+    data_schema_version: int
+    current_data_schema_version: int
+    reason: str
 
 
 def _safe_relative_path(value):
@@ -50,21 +69,38 @@ def _safe_relative_path(value):
 
 
 def _manifest_payload(manifest):
+    document = {
+        'files': [
+            {
+                'path': item.path,
+                'sha256': item.sha256,
+                'size': item.size,
+            }
+            for item in manifest.files
+        ],
+        'format_version': manifest.format_version,
+    }
+    if manifest.format_version == _FORMAT_VERSION:
+        document.update({
+            'created_at': manifest.created_at,
+            'data_schema_version': manifest.data_schema_version,
+            'producer': manifest.producer,
+        })
     return json.dumps(
-        {
-            'files': [
-                {
-                    'path': item.path,
-                    'sha256': item.sha256,
-                    'size': item.size,
-                }
-                for item in manifest.files
-            ],
-            'format_version': manifest.format_version,
-        },
+        document,
         sort_keys=True,
         separators=(',', ':'),
     ).encode('utf-8')
+
+
+def _valid_utc_timestamp(value):
+    if not isinstance(value, str) or not value.endswith('Z'):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + '+00:00')
+    except ValueError:
+        return False
+    return parsed.tzinfo == timezone.utc
 
 
 def _parse_manifest(payload):
@@ -72,12 +108,39 @@ def _parse_manifest(payload):
         document = json.loads(payload.decode('utf-8'))
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise BackupIntegrityError('backup manifest is invalid') from exc
+    if not isinstance(document, dict):
+        raise BackupIntegrityError('backup manifest is incompatible')
+    format_version = document.get('format_version')
+    if type(format_version) is not int:
+        raise BackupIntegrityError('backup manifest is incompatible')
+    if format_version == _LEGACY_FORMAT_VERSION:
+        expected_keys = {'files', 'format_version'}
+        data_schema_version = 0
+        created_at = None
+        producer = None
+    elif format_version == _FORMAT_VERSION:
+        expected_keys = {
+            'created_at',
+            'data_schema_version',
+            'files',
+            'format_version',
+            'producer',
+        }
+        data_schema_version = document.get('data_schema_version')
+        created_at = document.get('created_at')
+        producer = document.get('producer')
+        if (
+            type(data_schema_version) is not int
+            or data_schema_version < 0
+            or producer != _PRODUCER
+            or not _valid_utc_timestamp(created_at)
+        ):
+            raise BackupIntegrityError('backup manifest is incompatible')
+    else:
+        raise BackupIntegrityError('backup manifest is incompatible')
     if (
-        not isinstance(document, dict)
-        or set(document) != {'files', 'format_version'}
-        or type(document['format_version']) is not int
-        or document['format_version'] != _FORMAT_VERSION
-        or not isinstance(document['files'], list)
+        set(document) != expected_keys
+        or not isinstance(document.get('files'), list)
     ):
         raise BackupIntegrityError('backup manifest is incompatible')
 
@@ -105,7 +168,66 @@ def _parse_manifest(payload):
         raise BackupIntegrityError(
             'backup manifest paths must be unique and sorted'
         )
-    return BackupManifest(document['format_version'], tuple(files))
+    return BackupManifest(
+        format_version,
+        tuple(files),
+        data_schema_version,
+        created_at,
+        producer,
+    )
+
+
+def evaluate_backup_compatibility(manifest):
+    data_schema_version = manifest.data_schema_version
+    legacy = manifest.format_version == _LEGACY_FORMAT_VERSION
+    common = {
+        'legacy': legacy,
+        'data_schema_version': data_schema_version,
+        'current_data_schema_version': _CURRENT_DATA_SCHEMA_VERSION,
+    }
+    if data_schema_version > _CURRENT_DATA_SCHEMA_VERSION:
+        return BackupCompatibility(
+            compatible=False,
+            reason='backup data schema is newer than this WebSSH version',
+            **common,
+        )
+
+    cursor = data_schema_version
+    visited = set()
+    while cursor < _CURRENT_DATA_SCHEMA_VERSION:
+        if cursor in visited:
+            break
+        visited.add(cursor)
+        next_version = _DATA_SCHEMA_MIGRATIONS.get(cursor)
+        if (
+            type(next_version) is not int
+            or next_version <= cursor
+            or next_version > _CURRENT_DATA_SCHEMA_VERSION
+        ):
+            break
+        cursor = next_version
+    if cursor != _CURRENT_DATA_SCHEMA_VERSION:
+        return BackupCompatibility(
+            compatible=False,
+            reason='no complete migration path for backup data schema',
+            **common,
+        )
+    if legacy:
+        reason = 'legacy archive can be migrated'
+    elif data_schema_version < _CURRENT_DATA_SCHEMA_VERSION:
+        reason = 'backup data schema can be migrated'
+    else:
+        reason = 'backup data schema is current'
+    return BackupCompatibility(compatible=True, reason=reason, **common)
+
+
+def require_restore_compatible(manifest):
+    compatibility = evaluate_backup_compatibility(manifest)
+    if not compatibility.compatible:
+        raise BackupIntegrityError(
+            f'backup is not restore compatible: {compatibility.reason}'
+        )
+    return compatibility
 
 
 def _regular_zip_info(name):
@@ -161,7 +283,7 @@ def _copy_regular_file(source, destination):
     return digest.hexdigest(), size
 
 
-def _stage_source(data_dir, stage):
+def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
     files = []
     for current_root, directory_names, file_names in os.walk(
         data_dir,
@@ -183,14 +305,20 @@ def _stage_source(data_dir, stage):
         for file_name in file_names:
             source = current / file_name
             relative = source.relative_to(data_dir).as_posix()
+            if relative in excluded_relative_paths:
+                continue
             _safe_relative_path(relative)
             staged = stage / relative
             digest, size = _copy_regular_file(source, staged)
             files.append(BackupFile(relative, digest, size))
-    return BackupManifest(_FORMAT_VERSION, tuple(sorted(
-        files,
-        key=lambda item: item.path,
-    )))
+    created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return BackupManifest(
+        _FORMAT_VERSION,
+        tuple(sorted(files, key=lambda item: item.path)),
+        _CURRENT_DATA_SCHEMA_VERSION,
+        created_at,
+        _PRODUCER,
+    )
 
 
 def _write_archive(stage, archive, manifest):
@@ -334,6 +462,67 @@ def _read_manifest(backup, members):
     return _parse_manifest(payload)
 
 
+def _validate_webssh_database(path: Path) -> None:
+    connection = None
+    try:
+        uri = path.resolve(strict=True).as_uri() + '?mode=ro&immutable=1'
+        connection = sqlite3.connect(uri, uri=True)
+        connection.execute('PRAGMA query_only = ON')
+        connection.execute('PRAGMA trusted_schema = OFF')
+        if connection.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
+            raise BackupIntegrityError('backup database is invalid')
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_schema WHERE type = 'table'"
+            )
+        }
+        if 'users' not in tables:
+            raise BackupIntegrityError('backup database is not a WebSSH database')
+        user_columns = {
+            row[1] for row in connection.execute('PRAGMA table_info(users)')
+        }
+        if not {'id', 'username', 'password_hash'} <= user_columns:
+            raise BackupIntegrityError('backup database is not a WebSSH database')
+    except BackupIntegrityError:
+        raise
+    except (OSError, sqlite3.DatabaseError) as exc:
+        raise BackupIntegrityError('backup database is invalid') from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def _verify_database_member(backup, info, expected_size) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix='.webssh-backup-database-',
+        suffix='.db',
+    )
+    temporary = Path(temporary_name)
+    try:
+        size = 0
+        with os.fdopen(descriptor, 'wb') as destination:
+            descriptor = None
+            with backup.open(info, 'r') as source:
+                while chunk := source.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > expected_size:
+                        raise BackupIntegrityError(
+                            'backup database exceeds its declared size'
+                        )
+                    destination.write(chunk)
+            destination.flush()
+            os.fsync(destination.fileno())
+        os.chmod(temporary, 0o600)
+        if size != expected_size:
+            raise BackupIntegrityError('backup database size is invalid')
+        _validate_webssh_database(temporary)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+
+
 def verify_backup(archive):
     try:
         with zipfile.ZipFile(Path(archive), 'r') as backup:
@@ -347,6 +536,12 @@ def verify_backup(archive):
                 raise BackupIntegrityError(
                     'backup members do not match the manifest'
                 )
+            database = next(
+                (item for item in manifest.files if item.path == _DATABASE_PATH),
+                None,
+            )
+            if database is None:
+                raise BackupIntegrityError('backup database is missing')
             total_size = 0
             for item in manifest.files:
                 info = members[_DATA_PREFIX + item.path]
@@ -373,6 +568,11 @@ def verify_backup(archive):
                     raise BackupIntegrityError(
                         f'backup checksum mismatch for {item.path}'
                     )
+            _verify_database_member(
+                backup,
+                members[_DATA_PREFIX + _DATABASE_PATH],
+                database.size,
+            )
             return manifest
     except BackupIntegrityError:
         raise
@@ -547,6 +747,7 @@ def restore_backup(archive, data_dir):
         )
     data_dir = data_dir.resolve(strict=False)
     manifest = verify_backup(archive)
+    require_restore_compatible(manifest)
     _validate_restore_targets(data_dir, manifest)
     existing_paths = _existing_persistent_files(data_dir)
     manifest_paths = {

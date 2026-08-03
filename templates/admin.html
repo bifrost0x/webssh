@@ -32,6 +32,7 @@
             <button class="admin-tab" data-tab="audit" data-i18n="admin.auditLogs">Audit Logs</button>
             {% endif %}
             <button class="admin-tab" data-tab="settings" data-i18n="admin.settings">Settings</button>
+            <button class="admin-tab" data-tab="backup" data-i18n="backup.title">Backup &amp; Restore</button>
         </div>
 
         <section class="admin-panel" id="tab-users">
@@ -124,6 +125,54 @@
             </div>
             {% endif %}
         </section>
+
+        <section class="admin-panel hidden" id="tab-backup">
+            <div class="admin-backup-warning" role="alert">
+                <span class="material-icons" aria-hidden="true">warning</span>
+                <p data-i18n="backup.sensitiveWarning">Backup archives contain passwords, application secrets, SSH key metadata, and encrypted private keys. Store every downloaded archive encrypted and off-host.</p>
+            </div>
+
+            <div class="admin-backup-grid">
+                <div class="admin-setting-row">
+                    <h2 data-i18n="backup.create">Create backup</h2>
+                    <p class="admin-muted" data-i18n="backup.createHint">Create an online-consistent snapshot while WebSSH remains available.</p>
+                    <div class="admin-toolbar admin-backup-actions">
+                        <button type="button" class="btn btn-primary" id="backupCreateBtn" data-i18n="backup.create">Create backup</button>
+                        <button type="button" class="btn btn-secondary" id="backupDownloadBtn" disabled data-i18n="backup.download">Download backup</button>
+                    </div>
+                    <p id="backupCreateStatus" class="admin-backup-status" role="status" aria-live="polite" data-i18n="backup.statusIdle">No operation running.</p>
+                </div>
+
+                <div class="admin-setting-row">
+                    <h2 data-i18n="backup.upload">Upload and verify</h2>
+                    <p class="admin-muted" data-i18n="backup.uploadHint">Select a WebSSH ZIP backup. The archive is retained temporarily and can only be used by this administrator session.</p>
+                    <div class="form-group">
+                        <input type="file" id="backupUploadFile" class="form-control" accept=".zip,application/zip">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="backupUploadBtn" data-i18n="backup.verify">Upload and verify</button>
+                    <p id="backupUploadStatus" class="admin-backup-status" role="status" aria-live="polite" data-i18n="backup.statusIdle">No operation running.</p>
+                </div>
+
+                <div class="admin-setting-row admin-backup-summary" id="backupValidationPanel" hidden>
+                    <h2 data-i18n="backup.validation">Validation result</h2>
+                    <dl>
+                        <div><dt data-i18n="backup.formatVersion">Format version</dt><dd id="backupFormatVersion">-</dd></div>
+                        <div><dt data-i18n="backup.dataSchemaVersion">Backup data schema</dt><dd id="backupDataSchemaVersion">-</dd></div>
+                        <div><dt data-i18n="backup.currentDataSchemaVersion">Current data schema</dt><dd id="backupCurrentDataSchemaVersion">-</dd></div>
+                        <div><dt data-i18n="backup.createdAt">Created at</dt><dd id="backupCreatedAt">-</dd></div>
+                        <div><dt data-i18n="backup.legacy">Legacy archive</dt><dd id="backupLegacy">-</dd></div>
+                        <div><dt data-i18n="backup.files">Files</dt><dd id="backupFileCount">-</dd></div>
+                        <div><dt data-i18n="backup.totalSize">Uncompressed size</dt><dd id="backupTotalSize">-</dd></div>
+                        <div><dt data-i18n="backup.compatible">Compatible</dt><dd id="backupCompatible">-</dd></div>
+                        <div><dt data-i18n="backup.compatibilityReason">Compatibility</dt><dd id="backupCompatibilityReason">-</dd></div>
+                    </dl>
+                    <p class="admin-backup-destructive" data-i18n="backup.restoreWarning">Restore replaces the complete persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH.</p>
+                    <button type="button" class="btn btn-danger" id="backupRestoreBtn" disabled data-i18n="backup.restore">Restore verified backup</button>
+                </div>
+            </div>
+
+            <p id="restoreGlobalStatus" class="admin-backup-status" role="status" aria-live="polite"></p>
+        </section>
     </main>
 
     <div class="modal modal-small" id="addUserModal" role="dialog" aria-modal="true" aria-labelledby="addUserModalTitle" aria-hidden="true">
@@ -185,10 +234,58 @@
     </div>
     {% endif %}
 
+    <div class="modal modal-small" id="restoreFirstConfirmModal" role="dialog" aria-modal="true" aria-labelledby="restoreFirstConfirmTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="restoreFirstConfirmTitle" data-i18n="backup.firstConfirm">Confirm restore impact</h2>
+                <button type="button" class="close" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p data-i18n="backup.restoreWarning">Restore replaces the complete persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH.</p>
+                <label class="admin-checkbox">
+                    <input type="checkbox" id="restoreFirstAcknowledge">
+                    <span data-i18n="backup.firstAcknowledge">I understand that the current persistent state will be replaced.</span>
+                </label>
+                <div class="admin-toolbar admin-backup-actions">
+                    <button type="button" class="btn btn-secondary" id="restoreFirstCancelButton" data-i18n="backup.cancel">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="restoreFirstContinue" data-i18n="admin.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-small" id="restoreSecondConfirmModal" role="dialog" aria-modal="true" aria-labelledby="restoreSecondConfirmTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="restoreSecondConfirmTitle" data-i18n="backup.secondConfirm">Final destructive confirmation</h2>
+                <button type="button" class="close" id="restoreSecondCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="restorePhrase" data-i18n="backup.typeRestore">Type RESTORE</label>
+                    <input type="text" id="restorePhrase" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="restorePassword" data-i18n="backup.password">Administrator password</label>
+                    <input type="password" id="restorePassword" class="form-control" autocomplete="current-password">
+                </div>
+                <label class="admin-checkbox">
+                    <input type="checkbox" id="restoreFinalAcknowledge">
+                    <span data-i18n="backup.destructiveConfirm">Permanently replace the current persistent state now.</span>
+                </label>
+                <div class="admin-toolbar admin-backup-actions">
+                    <button type="button" class="btn btn-secondary" id="restoreSecondCancelButton" data-i18n="backup.cancel">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="restoreStartBtn" data-i18n="backup.startRestore">Start restore</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="notificationContainer" class="notification-container"></div>
 
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>
 </html>

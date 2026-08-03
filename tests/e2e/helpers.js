@@ -72,6 +72,58 @@ async function installSshConnectTrap(page) {
     });
 }
 
+async function observeConnectionModal(page) {
+    await page.evaluate(() => {
+        window.__connectionModalShows = 0;
+        window.__connectionModalObserver?.disconnect();
+        const modal = document.getElementById('connectionModal');
+        window.__connectionModalObserver = new MutationObserver(() => {
+            if (modal.classList.contains('show')) {
+                window.__connectionModalShows += 1;
+            }
+        });
+        window.__connectionModalObserver.observe(modal, {
+            attributes: true,
+            attributeFilter: ['class'],
+        });
+    });
+}
+
+async function installKeyUploadTrap(page) {
+    await page.evaluate(() => {
+        if (window.__keyUploadOriginalEmit) {
+            window.socket.emit = window.__keyUploadOriginalEmit;
+        }
+        const originalEmit = window.socket.emit.bind(window.socket);
+        window.__keyUploadOriginalEmit = originalEmit;
+        window.__keyUploadAttempts = [];
+        window.socket.emit = function wrappedEmit(event, ...args) {
+            if (event !== 'upload_key') {
+                return originalEmit(event, ...args);
+            }
+            const acknowledgement = typeof args.at(-1) === 'function'
+                ? args.pop()
+                : null;
+            const payload = structuredClone(args[0]);
+            window.__keyUploadAttempts.push(payload);
+            queueMicrotask(() => acknowledgement?.({
+                success: true,
+                key: {
+                    id: 'e2e-inline-key',
+                    name: payload.name,
+                    key_type: 'ED25519',
+                    uploaded_at: new Date().toISOString(),
+                },
+            }));
+            return window.socket;
+        };
+    });
+}
+
+async function keyUploadAttempts(page) {
+    return page.evaluate(() => window.__keyUploadAttempts || []);
+}
+
 async function sshAttempts(page) {
     return page.evaluate(() => window.__sshConnectAttempts || []);
 }
@@ -86,10 +138,27 @@ async function restoreSshConnect(page) {
     });
 }
 
+async function openResponsiveHeader(page, target) {
+    if (await target.isVisible()) return;
+    await page.locator('#mobileMenuBtn').click();
+    await expect(target).toBeVisible();
+}
+
 async function openProfileManagement(page) {
-    await page.locator('#manageProfilesBtn').click();
+    const trigger = page.locator('#manageProfilesBtn');
+    await openResponsiveHeader(page, trigger);
+    await trigger.click();
     await expect(page.locator('#profileManagementModal')).toHaveClass(/show/);
     await expect(page.locator('#profileManagementView')).not.toHaveClass(/hidden/);
+}
+
+async function openKeyManagement(page) {
+    const accountButton = page.locator('#accountBtnHeader');
+    await openResponsiveHeader(page, accountButton);
+    await accountButton.click();
+    await page.locator('#accountConnectionsToggle').click();
+    await page.locator('#manageKeysBtn').click();
+    await expect(page.locator('#keyManagementModal')).toHaveClass(/show/);
 }
 
 async function launchProfile(page, name) {
@@ -108,10 +177,14 @@ async function assertNoExternalRequests(page) {
 module.exports = {
     assertNoExternalRequests,
     installExternalRequestGuard,
+    installKeyUploadTrap,
     installSshConnectTrap,
+    keyUploadAttempts,
     launchProfile,
     login,
+    openKeyManagement,
     openProfileManagement,
+    observeConnectionModal,
     restoreSshConnect,
     sshAttempts,
 };

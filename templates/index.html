@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
@@ -29,12 +29,12 @@
                 <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu">☰</button>
             </div>
             <div class="header-buttons">
-                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">New Connection</span> ✨</button>
+                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">Quick Connect</span> ✨</button>
 
                 <div class="header-group" role="group" aria-label="Tools">
                     <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
                     <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
-                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Manage profiles" data-i18n-title="profiles.manage"><span data-i18n="profiles.manage">Profiles</span> 🗂️</button>
+                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Saved Connections" data-i18n-title="profiles.manage"><span data-i18n="profiles.manage">Saved Connections</span> 🗂️</button>
                 </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
@@ -120,7 +120,7 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><rect x="8" y="4" width="8" height="5"></rect><rect x="8" y="15" width="8" height="4" rx="1"></rect></svg>
                 </button>
                 <div class="tab-row-divider"></div>
-                <button class="btn-new-tab" id="newTabBtn" title="New Connection" aria-label="New Connection">+</button>
+                <button class="btn-new-tab" id="newTabBtn" title="Quick Connect" data-i18n-title="connection.newConnection" aria-label="Quick Connect" data-i18n-aria-label="connection.newConnection">+</button>
             </div>
         </div>
     </header>
@@ -193,7 +193,7 @@
     <div class="modal modal-wide" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">New SSH Connection</h2>
+                <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">Quick Connect</h2>
                 <span class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
@@ -205,10 +205,10 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="profileSelect" data-i18n="connection.loadProfile">Load Profile (Optional)</label>
+                        <label for="profileSelect" data-i18n="connection.loadProfile">Load Saved Connection (Optional)</label>
                         <div style="display: flex; gap: 10px;">
                             <select id="profileSelect" class="form-control" style="flex: 1;">
-                                <option value="" data-i18n="connection.selectProfile">-- Select Profile --</option>
+                                <option value="" data-i18n="connection.selectProfile">-- Select Saved Connection --</option>
                             </select>
                             <button type="button" id="deleteProfileBtn" class="btn btn-danger" style="display: none;"><span data-i18n="common.delete">Delete</span> 🗑️</button>
                         </div>
@@ -326,7 +326,7 @@
                         </div>
                         <pre id="connectionCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
                         <div id="legacyCommandsNotice" class="legacy-command-notice hidden">
-                            <span data-i18n="commandSets.legacyNotice">This profile still uses legacy free-text commands.</span>
+                            <span data-i18n="commandSets.legacyNotice">This saved connection still uses legacy free-text commands.</span>
                             <button type="button" id="convertLegacyCommandsBtn" class="btn btn-secondary btn-sm" data-i18n="commandSets.convert">Convert</button>
                         </div>
                         <div class="field-hint" data-i18n="connection.commandSetHint">Runs on the remote host after a successful connection, not in WebSSH. Not run again when reconnecting to an existing tmux session.</div>
@@ -357,14 +357,14 @@
     <div class="modal modal-large" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="profileManagementTitle" data-i18n="profiles.manage">Profiles</h2>
+                <h2 id="profileManagementTitle" data-i18n="profiles.manage">Saved Connections</h2>
                 <span class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
                 <section id="profileManagementView">
                     <div class="profile-management-toolbar">
                         <p data-i18n="profiles.manageHint">Save and update connection settings without connecting.</p>
-                        <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create profile</button>
+                        <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create saved connection</button>
                     </div>
                     <div id="profileManagementList" class="profile-management-list"></div>
                 </section>
@@ -373,7 +373,7 @@
                     <form id="profileEditorForm">
                         <input type="hidden" id="profileEditorId">
                         <div class="form-group">
-                            <label for="profileEditorName" data-i18n="connection.profileName">Profile Name *</label>
+                            <label for="profileEditorName" data-i18n="connection.profileName">Connection Name *</label>
                             <input type="text" id="profileEditorName" class="form-control" maxlength="128" required>
                         </div>
                         <div class="form-row">
@@ -401,6 +401,24 @@
                         <div class="form-group hidden" id="profileEditorKeyGroup">
                             <label for="profileEditorKeySelect" data-i18n="connection.sshKey">SSH Key</label>
                             <select id="profileEditorKeySelect" class="form-control"></select>
+                            <div class="profile-inline-key">
+                                <button type="button" id="profileEditorAddKeyBtn" class="btn btn-secondary btn-sm" data-i18n="keys.addNew" aria-controls="profileEditorAddKeyPanel" aria-expanded="false">Add new key</button>
+                                <div id="profileEditorAddKeyPanel" class="profile-inline-key-panel hidden">
+                                    <div class="form-group">
+                                        <label for="profileEditorNewKeyName" data-i18n="keys.keyName">Key Name</label>
+                                        <input type="text" id="profileEditorNewKeyName" class="form-control" maxlength="128" data-i18n-placeholder="keys.keyNamePlaceholder">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="profileEditorNewKeyContent" data-i18n="keys.privateKey">Private Key</label>
+                                        <textarea id="profileEditorNewKeyContent" class="form-control" rows="6" maxlength="65536" spellcheck="false"></textarea>
+                                    </div>
+                                    <div class="profile-inline-key-actions">
+                                        <button type="button" id="profileEditorCancelKeyBtn" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
+                                        <button type="button" id="profileEditorUploadKeyBtn" class="btn btn-primary" data-i18n="keys.add">Add key</button>
+                                    </div>
+                                </div>
+                                <p id="profileEditorKeyUploadStatus" class="profile-inline-key-status" role="status" aria-live="polite"></p>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
@@ -529,7 +547,7 @@
                 <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
                 <section id="commandSetManagementView">
                     <div class="command-set-management-toolbar">
-                        <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any connection profile.</p>
+                        <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p>
                         <button type="button" id="newCommandSetBtn" class="btn btn-primary" data-i18n="commandSets.create">Create command set</button>
                     </div>
                     <div id="commandSetManagementList" class="command-set-management-list"></div>
@@ -765,7 +783,7 @@
             </div>
             <div class="modal-body">
                 <div class="pane-assignment-info">
-                    <p data-i18n="panes.assignInfo">Select which sessions to display in each pane. You can assign existing sessions or create new connections.</p>
+                    <p data-i18n="panes.assignInfo">Select which sessions to display in each pane. Assign an existing session or use Quick Connect.</p>
                 </div>
                 <div id="paneAssignmentList" class="pane-assignment-list">
 
@@ -845,18 +863,19 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=2"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
@@ -864,7 +883,7 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=6"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {

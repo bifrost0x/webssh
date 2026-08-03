@@ -196,6 +196,7 @@ def backup_cli():
 @click.option('--confirm-offline', is_flag=True)
 def backup_create(destination, confirm_offline):
     """Create and verify a backup while WebSSH is stopped."""
+    from .backup_coordination import operation_lock
     from .backup_manager import create_backup
 
     _require_offline_confirmation(confirm_offline)
@@ -205,7 +206,8 @@ def backup_create(destination, confirm_offline):
             f'webssh-backup-{timestamp}.zip'
         )
     try:
-        manifest = create_backup(config.DATA_DIR, destination)
+        with operation_lock():
+            manifest = create_backup(config.DATA_DIR, destination)
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
     _audit_operation(
@@ -214,7 +216,8 @@ def backup_create(destination, confirm_offline):
     )
     click.echo(
         f'Backup created and verified: {destination} '
-        f'({len(manifest.files)} files)'
+        f'({len(manifest.files)} files, format v{manifest.format_version}, '
+        f'data schema {manifest.data_schema_version})'
     )
 
 
@@ -225,7 +228,7 @@ def backup_create(destination, confirm_offline):
 )
 def backup_verify(archive):
     """Verify archive structure and every recorded checksum."""
-    from .backup_manager import verify_backup
+    from .backup_manager import evaluate_backup_compatibility, verify_backup
 
     try:
         manifest = verify_backup(archive)
@@ -235,7 +238,21 @@ def backup_verify(archive):
         'BACKUP_VERIFY_SUCCESS',
         file_count=len(manifest.files),
     )
-    click.echo(f'Backup verified ({len(manifest.files)} files).')
+    compatibility = evaluate_backup_compatibility(manifest)
+    restore_status = (
+        'restore compatible (legacy)'
+        if compatibility.compatible and compatibility.legacy
+        else (
+            'restore compatible'
+            if compatibility.compatible
+            else 'restore incompatible'
+        )
+    )
+    click.echo(
+        f'Backup verified ({len(manifest.files)} files, '
+        f'format v{manifest.format_version}, '
+        f'data schema {manifest.data_schema_version}, {restore_status}).'
+    )
 
 
 @backup_cli.command('restore')
@@ -246,15 +263,19 @@ def backup_verify(archive):
 @click.option('--confirm-offline', is_flag=True)
 def backup_restore(archive, confirm_offline):
     """Restore a verified backup while WebSSH is stopped."""
+    from .backup_coordination import operation_lock
     from .backup_manager import restore_backup
 
     _require_offline_confirmation(confirm_offline)
-    db.session.remove()
-    db.engine.dispose()
     try:
-        restore_backup(archive, config.DATA_DIR)
+        with operation_lock():
+            db.session.remove()
+            db.engine.dispose()
+            restore_backup(archive, config.DATA_DIR)
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
+    from .maintenance_mode import clear_failed_status_after_cli_restore
+    clear_failed_status_after_cli_restore()
     _audit_operation('BACKUP_RESTORE_SUCCESS')
     click.echo('Backup restored and verified.')
 
