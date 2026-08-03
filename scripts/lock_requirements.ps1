@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$Check
+    [switch]$Check,
+    [string]$DiagnosticsDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -48,6 +49,11 @@ try {
         $committedLock = Join-Path $projectRoot (Split-Path $lock -Leaf)
         if ($Check) {
             if (-not (Test-ByteEqual -Expected $committedLock -Actual $lock)) {
+                if ($DiagnosticsDirectory) {
+                    $diagnosticsPath = Join-Path $projectRoot $DiagnosticsDirectory
+                    New-Item -ItemType Directory -Path $diagnosticsPath -Force | Out-Null
+                    Copy-Item -LiteralPath $lock -Destination (Join-Path $diagnosticsPath (Split-Path $lock -Leaf)) -Force
+                }
                 throw "$committedLock is out of date. Run pwsh -File scripts/lock_requirements.ps1 and commit the result."
             }
         }
