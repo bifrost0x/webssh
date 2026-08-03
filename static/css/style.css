@@ -2413,6 +2413,7 @@ textarea.form-control {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
 }
 
 .key-info strong {
@@ -2434,6 +2435,82 @@ textarea.form-control {
     border-radius: 4px;
     color: var(--accent-primary);
     font-weight: 600;
+}
+
+.profile-inline-key {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    margin-top: 10px;
+}
+
+.profile-inline-key-panel {
+    width: 100%;
+    padding: 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.profile-inline-key-panel textarea {
+    width: 100%;
+    resize: vertical;
+}
+
+.profile-inline-key-actions,
+.key-item-actions,
+.key-rename-editor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.profile-inline-key-actions {
+    justify-content: flex-end;
+}
+
+.key-rename-editor .form-control {
+    min-width: 0;
+}
+
+.profile-inline-key-status {
+    min-height: 1.25em;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.profile-inline-key-status.error {
+    color: var(--error-color, #e57373);
+}
+
+@media (max-width: 375px) {
+    .key-item {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 12px;
+        transform: none;
+    }
+
+    .key-item:hover {
+        transform: none;
+    }
+
+    .key-item-actions,
+    .profile-inline-key-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .key-item-actions .btn,
+    .profile-inline-key-actions .btn,
+    .profile-inline-key > .btn {
+        width: 100%;
+        min-height: 44px;
+    }
 }
 
 .no-items {

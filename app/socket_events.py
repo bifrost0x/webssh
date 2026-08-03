@@ -9,7 +9,7 @@ from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_ssh_connection, log_ssh_disconnect,
                               log_file_upload, log_file_download,
-                              log_key_upload, log_key_delete,
+                              log_key_upload, log_key_rename, log_key_delete,
                               log_tailscale_ssh_usage)
 from .tailscale_ssh import (
     profile_is_authorized_for_launch,
@@ -84,6 +84,12 @@ def _storage_error_payload(error, *, user_id, include_success=True, **extra):
 def _emit_storage_error(error, current_user):
     payload = _storage_error_payload(error, user_id=current_user.id)
     emit('error', payload)
+    return payload
+
+
+def _key_mutation_error(message):
+    payload = {'success': False, 'error': message}
+    emit('error', {'error': message})
     return payload
 
 
@@ -807,35 +813,68 @@ def handle_list_keys(current_user=None):
 def handle_upload_key(data, current_user=None):
     """Store a new SSH private key for this user."""
     try:
+        data = data if isinstance(data, dict) else {}
         name = data.get('name')
         key_content = data.get('key_content')
 
-        if not all([name, key_content]):
-            emit('error', {'error': 'Name and key content required'})
-            return
+        if (not isinstance(name, str) or not name
+                or not isinstance(key_content, str) or not key_content):
+            return _key_mutation_error('Name and key content required')
 
         # SSH private keys are a few KB at most; reject oversized input outright
         # so a client cannot force large writes to disk.
         if len(name) > 128:
-            emit('error', {'error': 'Key name too long (max 128 characters)'})
-            return
+            return _key_mutation_error(
+                'Key name too long (max 128 characters)'
+            )
         if len(key_content) > 64 * 1024:
-            emit('error', {'error': 'Key content too large (max 64KB)'})
-            return
+            return _key_mutation_error(
+                'Key content too large (max 64KB)'
+            )
 
         key_meta, error = key_manager.save_key(current_user.id, name, key_content)
         if error:
             log_key_upload(current_user.username, name, False, request.remote_addr)
-            emit('error', {'error': error})
-        else:
-            log_key_upload(current_user.username, name, True, request.remote_addr)
-            emit('key_uploaded', {'key': key_meta})
-            handle_list_keys(current_user=current_user)
+            return _key_mutation_error(error)
+        log_key_upload(current_user.username, name, True, request.remote_addr)
+        emit('key_uploaded', {'key': key_meta})
+        handle_list_keys(current_user=current_user)
+        return {'success': True, 'key': key_meta}
 
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception:
-        emit('error', {'error': 'Failed to upload key'})
+        return _key_mutation_error('Failed to upload key')
+
+
+@socketio.on('rename_key')
+@socket_login_required
+def handle_rename_key(data, current_user=None):
+    """Rename one owned SSH key without exposing its encrypted contents."""
+    try:
+        data = data if isinstance(data, dict) else {}
+        result, error = key_manager.rename_key(
+            current_user.id,
+            data.get('key_id'),
+            data.get('name'),
+        )
+        if error:
+            return _key_mutation_error(error)
+
+        log_key_rename(
+            current_user.username,
+            result['before']['name'],
+            result['key']['name'],
+            request.remote_addr,
+        )
+        payload = {'success': True, 'key': result['key']}
+        emit('key_renamed', payload)
+        handle_list_keys(current_user=current_user)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception:
+        return _key_mutation_error('Failed to rename key')
 
 @socketio.on('delete_key')
 @socket_login_required
