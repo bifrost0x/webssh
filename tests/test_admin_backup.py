@@ -122,6 +122,53 @@ def test_backup_endpoints_require_admin(app, client, isolated_operations):
     assert client.post('/admin/api/backups/upload', data=b'PK').status_code == 403
 
 
+@pytest.mark.parametrize(
+    'endpoint',
+    ('/admin/api/backups', '/admin/api/backups/upload'),
+)
+def test_busy_backup_response_does_not_expose_exception_details(
+    app, client, isolated_operations, monkeypatch, endpoint
+):
+    from app.backup_coordination import OperationBusyError
+
+    _create_user(app, 'busy_backup_admin', admin=True)
+    _login(client, 'busy_backup_admin')
+
+    def reject_operation(*_args, **_kwargs):
+        raise OperationBusyError('sensitive/server/path')
+
+    monkeypatch.setattr(isolated_operations, 'create', reject_operation)
+
+    response = client.post(endpoint, data=b'PK\x03\x04')
+
+    assert response.status_code == 409
+    assert response.json == {
+        'error': 'another backup or restore operation is active'
+    }
+    assert 'sensitive' not in response.get_data(as_text=True)
+
+
+def test_upload_limit_response_does_not_expose_exception_details(
+    app, client, isolated_operations, monkeypatch
+):
+    import app.admin_backup as admin_backup
+
+    _create_user(app, 'limited_upload_admin', admin=True)
+    _login(client, 'limited_upload_admin')
+
+    def reject_upload(_destination):
+        raise ValueError('sensitive/server/path')
+
+    monkeypatch.setattr(admin_backup, '_stream_upload', reject_upload)
+
+    response = client.post('/admin/api/backups/upload', data=b'PK\x03\x04')
+
+    assert response.status_code == 413
+    assert response.json == {'error': 'Backup upload is too large'}
+    assert 'sensitive' not in response.get_data(as_text=True)
+    assert not isolated_operations._records
+
+
 def test_admin_can_create_and_one_time_download_online_backup(
     app, client, isolated_operations
 ):

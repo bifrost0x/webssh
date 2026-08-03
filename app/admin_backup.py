@@ -33,6 +33,8 @@ from . import socketio
 
 admin_backup_blueprint = Blueprint('admin_backup', __name__)
 _UPLOAD_CHUNK_SIZE = 1024 * 1024
+_OPERATION_BUSY_MESSAGE = 'another backup or restore operation is active'
+_UPLOAD_TOO_LARGE_MESSAGE = 'Backup upload is too large'
 
 
 class _ArchiveDownloadStream:
@@ -155,8 +157,8 @@ def create_backup_operation():
         record = backup_operations.create(
             'created_backup', current_user.id, _admin_session_id()
         )
-    except OperationBusyError as error:
-        return jsonify({'error': str(error)}), 409
+    except OperationBusyError:
+        return jsonify({'error': _OPERATION_BUSY_MESSAGE}), 409
 
     username = current_user.username
     source_ip = request.remote_addr or 'unknown'
@@ -302,14 +304,14 @@ def upload_backup():
             _admin_session_id(),
             status='uploading',
         )
-    except OperationBusyError as error:
-        return jsonify({'error': str(error)}), 409
+    except OperationBusyError:
+        return jsonify({'error': _OPERATION_BUSY_MESSAGE}), 409
 
     try:
         size = _stream_upload(record.archive_path)
-    except ValueError as error:
+    except ValueError:
         backup_operations.remove(record.operation_id)
-        return jsonify({'error': str(error)}), 413
+        return jsonify({'error': _UPLOAD_TOO_LARGE_MESSAGE}), 413
     except Exception:
         backup_operations.remove(record.operation_id)
         return jsonify({'error': 'Backup upload failed'}), 400
