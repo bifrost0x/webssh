@@ -553,7 +553,7 @@ test('captures the current Quick Connect surface at Full HD scale without outbou
     await assertCaptureNetworkClean(page);
 });
 
-test('captures seeded command, key, and connection option surfaces at Full HD scale', async ({ page }, testInfo) => {
+test('captures seeded command and connection option surfaces at Full HD scale', async ({ page }, testInfo) => {
     await installCaptureNetworkGuard(page);
     await login(page);
     await installSshConnectTrap(page);
@@ -571,19 +571,6 @@ test('captures seeded command, key, and connection option surfaces at Full HD sc
     await captureDesktopStill(page, 'commandlibrary.png', testInfo);
 
     await page.locator('#closeCommandWorkspaceModal').click();
-    await openKeyManagement(page);
-    await expect.poll(() => page.evaluate(() => (
-        window.ProfileManager.keys[0]?.name || ''
-    ))).toBe('E2E usable key');
-    await sanitizeSeededCatalog(page);
-    await expect(page.locator('#keyManagementTitle')).toHaveText('Manage SSH Keys');
-    await expect(page.locator('#keysList')).toContainText('Operations Ed25519');
-    await expect(page.locator('#keyManagementModal')).not.toContainText('E2E');
-    await expect(page.locator('#keyContentInput')).toHaveValue('');
-    await expectCurrentCaptureTerminology(page);
-    await captureDesktopStill(page, 'keys.png', testInfo);
-
-    await page.locator('#closeKeyModal').click();
     await page.locator('#newConnectionBtn').click();
     await page.locator('#profileSelect').selectOption('post-command-set');
     await sanitizeSeededCatalog(page);
@@ -598,6 +585,29 @@ test('captures seeded command, key, and connection option surfaces at Full HD sc
     await expect(page.locator('#connectionModal')).not.toContainText('E2E');
     await expectCurrentCaptureTerminology(page);
     await captureDesktopStill(page, 'connection-options.png', testInfo);
+
+    await assertCaptureNetworkClean(page);
+});
+
+test('captures the seeded key management surface at Full HD scale', async ({ page }, testInfo) => {
+    await installCaptureNetworkGuard(page);
+    await login(page);
+    await sanitizeSeededCatalog(page);
+
+    expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
+
+    await openKeyManagement(page);
+    await expect.poll(() => page.evaluate(() => (
+        window.ProfileManager.keys[0]?.name || ''
+    ))).toBe('E2E usable key');
+    await sanitizeSeededCatalog(page);
+    await expect(page.locator('#keyManagementTitle')).toHaveText('Manage SSH Keys');
+    await expect(page.locator('#keysList')).toContainText('Operations Ed25519');
+    await expect(page.locator('#keyManagementModal')).not.toContainText('E2E');
+    await expect(page.locator('#keyManagementModal')).not.toContainText('.local');
+    await expect(page.locator('#keyContentInput')).toHaveValue('');
+    await expectCurrentCaptureTerminology(page);
+    await captureDesktopStill(page, 'keys.png', testInfo);
 
     await assertCaptureNetworkClean(page);
 });
