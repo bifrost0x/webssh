@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="WebSSH is a secure, self-hosted SSH and SFTP workspace for homelabs and teams.">
+  <meta name="theme-color" content="#0a1018">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+  <title>WebSSH - Secure, self-hosted SSH and SFTP</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="./" aria-label="WebSSH home">
+        <span class="brand-mark" aria-hidden="true">&gt;_</span><span>WebSSH</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-navigation" data-nav-toggle>
+        <span class="sr-only">Toggle navigation</span><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+      </button>
+      <nav class="site-nav" id="site-navigation" aria-label="Main navigation" data-navigation>
+        <a href="#capabilities">Capabilities</a>
+        <a href="#workspace">Workspace</a>
+        <a href="#security">Security</a>
+        <a href="#quick-start">Quick start</a>
+        <a href="code-graph/">Code graph</a>
+        <a class="nav-github" href="https://github.com/bifrost0x/webssh">View on GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-grid shell">
+        <div class="hero-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span> Self-hosted SSH + SFTP</p>
+          <h1 id="hero-title">Your servers.<br><span>Your browser.</span><br>Your control.</h1>
+          <p class="hero-lead">WebSSH brings terminal sessions, file transfers, saved connections, and team access into one secure workspace you run yourself.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#quick-start">Start with Docker</a>
+            <a class="button button-secondary" href="#workspace">See the workspace</a>
+          </div>
+          <ul class="hero-facts" aria-label="Core product qualities"><li>No telemetry</li><li>Local browser assets</li><li>MIT licensed</li></ul>
+        </div>
+
+        <div class="terminal-card" aria-label="Docker quick start preview">
+          <div class="terminal-bar">
+            <div class="window-controls" aria-hidden="true"><span></span><span></span><span></span></div>
+            <span>webssh / deploy</span><span class="status-dot">ready</span>
+          </div>
+          <div class="terminal-body" aria-hidden="true">
+            <p><span class="prompt">$</span> docker run -d <span class="muted">\</span></p>
+            <p class="indent">--name webssh <span class="muted">\</span></p>
+            <p class="indent">-p 5000:5000 <span class="muted">\</span></p>
+            <p class="indent">-v webssh_data:/app/data <span class="muted">\</span></p>
+            <p class="indent">ghcr.io/bifrost0x/webssh:latest</p>
+            <p class="terminal-success">Container started</p>
+            <p><span class="prompt">$</span> open http://localhost:5000<span class="cursor"></span></p>
+          </div>
+          <div class="terminal-meta"><span>One container</span><span>Persistent data</span><span>Local assets</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="trust-strip" aria-label="Product foundations">
+      <div class="shell trust-grid">
+        <div><strong>SSH + SFTP</strong><span>Terminal and file workflows</span></div>
+        <div><strong>Multi-user</strong><span>Separate accounts and data</span></div>
+        <div><strong>Encrypted</strong><span>Stored private keys</span></div>
+        <div><strong>Offline-ready</strong><span>No runtime CDN dependency</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="shell">
+        <div class="section-heading">
+          <p class="eyebrow">Current capabilities</p>
+          <h2 id="capabilities-title">The daily server workspace, in one tab.</h2>
+          <p>Connect, move files, organize repeat work, and give each user their own secure environment.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card feature-card-wide">
+            <span class="feature-index">01</span><h3>Saved Connections</h3>
+            <p>Keep hosts, usernames, authentication choices, jump hosts, and optional post-connect commands ready for the next session.</p>
+            <ul class="tag-list" aria-label="Saved connection features"><li>Jump hosts</li><li>Recent connections</li><li>Command sets</li></ul>
+          </article>
+          <article class="feature-card"><span class="feature-index">02</span><h3>Terminal workspace</h3><p>Work across tabs and split panes, search terminal output, broadcast input, and restore live sessions after refresh.</p></article>
+          <article class="feature-card"><span class="feature-index">03</span><h3>SFTP file manager</h3><p>Browse two locations side by side, transfer files, preview content, edit text, and move data directly between servers.</p></article>
+          <article class="feature-card"><span class="feature-index">04</span><h3>Identity options</h3><p>Use local accounts with bcrypt passwords, optional passkeys, recovery codes, or optional OpenID Connect with PKCE.</p></article>
+          <article class="feature-card"><span class="feature-index">05</span><h3>Operations built in</h3><p>Manage users, review structured audit events, control registration, and create or restore verified backups.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-workspace" id="workspace" aria-labelledby="workspace-title">
+      <div class="shell">
+        <div class="section-heading section-heading-split">
+          <div><p class="eyebrow">One workspace</p><h2 id="workspace-title">Terminal work and file work stay together.</h2></div>
+          <p>Open several SSH sessions, arrange panes for visibility, then switch to the SFTP workspace without leaving the browser.</p>
+        </div>
+        <div class="product-shot product-shot-large">
+          <div class="shot-bar"><span>Terminal workspace</span><span>Split panes and session tools</span></div>
+          <img src="assets/multi.png" width="1009" height="912" alt="WebSSH terminal workspace using a split-pane layout" loading="eager">
+        </div>
+        <div class="shot-grid">
+          <figure class="product-shot">
+            <div class="shot-bar"><span>SFTP</span><span>Dual-pane file manager</span></div>
+            <img src="assets/filemanager.png" width="1440" height="900" alt="WebSSH dual-pane SFTP file manager" loading="lazy">
+            <figcaption>Transfer between connected servers, inspect files, and track operations in one view.</figcaption>
+          </figure>
+          <figure class="product-shot">
+            <div class="shot-bar"><span>Key management</span><span>Per-user storage</span></div>
+            <img src="assets/keys.png" width="1009" height="912" alt="WebSSH SSH key management screen" loading="lazy">
+            <figcaption>Import and organize SSH keys that WebSSH encrypts at rest for the owning user.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section security-section" id="security" aria-labelledby="security-title">
+      <div class="shell security-grid">
+        <div class="security-copy">
+          <p class="eyebrow">Security by ownership</p>
+          <h2 id="security-title">Keep access close to the infrastructure it manages.</h2>
+          <p>WebSSH runs inside your environment. Accounts, connection data, keys, audit events, and backups remain on the storage you control.</p>
+          <a class="text-link" href="https://github.com/bifrost0x/webssh#security">Read the security documentation <span aria-hidden="true">-&gt;</span></a>
+        </div>
+        <div class="security-list">
+          <article><span aria-hidden="true">01</span><div><h3>Encrypted key storage</h3><p>Stored SSH private keys use per-user key derivation and authenticated encryption.</p></div></article>
+          <article><span aria-hidden="true">02</span><div><h3>Host trust and isolation</h3><p>Persistent host-key checks, session ownership guards, CSRF protection, rate limits, and security headers protect key boundaries.</p></div></article>
+          <article><span aria-hidden="true">03</span><div><h3>Local delivery</h3><p>Browser libraries are pinned and shipped with WebSSH. The product interface does not load a runtime CDN or send telemetry.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section architecture-section" aria-labelledby="architecture-title">
+      <div class="shell">
+        <div class="section-heading section-heading-split">
+          <div><p class="eyebrow">Architecture, honestly</p><h2 id="architecture-title">A focused gateway, not another control plane.</h2></div>
+          <p>WebSSH terminates browser sessions and opens SSH or SFTP connections to your targets. Live session and quota state is process-local, so the application must run with one worker.</p>
+        </div>
+        <ol class="architecture-flow">
+          <li><span>01</span><strong>Browser</strong><small>Vendored UI assets</small></li>
+          <li><span>02</span><strong>WebSSH</strong><small>Authentication and session boundary</small></li>
+          <li><span>03</span><strong>Your hosts</strong><small>SSH and SFTP targets</small></li>
+        </ol>
+        <p class="architecture-note"><strong>Scale boundary:</strong> run exactly one application worker. Horizontal scaling requires externalizing live session and quota state first.</p>
+      </div>
+    </section>
+
+    <section class="section quick-start-section" id="quick-start" aria-labelledby="quick-start-title">
+      <div class="shell quick-start-grid">
+        <div>
+          <p class="eyebrow">Quick start</p><h2 id="quick-start-title">From image to first login in one command.</h2>
+          <p>Run the published container with a persistent data volume, then create the first administrator at <code>http://localhost:5000</code>.</p>
+          <p class="callout">Do not expose a fresh, unclaimed instance to an untrusted network. Complete the first-account bootstrap before publishing it.</p>
+        </div>
+        <div class="code-card">
+          <div class="code-card-header"><span>Docker</span><button type="button" data-copy-command aria-describedby="copy-status">Copy command</button></div>
+          <pre><code data-command>docker run -d \
+  --name webssh \
+  -p 5000:5000 \
+  -e CORS_ORIGINS=http://localhost:5000 \
+  -v webssh_data:/app/data \
+  --restart unless-stopped \
+  ghcr.io/bifrost0x/webssh:latest</code></pre>
+          <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta" aria-labelledby="cta-title">
+      <div class="shell final-cta-inner">
+        <div><p class="eyebrow">Run it your way</p><h2 id="cta-title">A practical SSH workspace, under your control.</h2></div>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Get the container</a>
+          <a class="button button-secondary" href="https://github.com/bifrost0x/webssh">Browse the source</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-inner">
+      <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">&gt;_</span><span>WebSSH</span></a>
+      <p>Secure, self-hosted SSH and SFTP for homelabs and teams.</p>
+      <nav aria-label="Footer navigation">
+        <a href="https://github.com/bifrost0x/webssh">GitHub</a><a href="https://github.com/bifrost0x/webssh#quick-start">Documentation</a><a href="code-graph/">Code graph</a><a href="https://github.com/bifrost0x/webssh/blob/main/LICENSE">MIT License</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

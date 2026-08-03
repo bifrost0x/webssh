@@ -1,4 +1,4 @@
-name: Deploy Code Graph to GitHub Pages
+name: Deploy Product Site and Code Graph to GitHub Pages
 
 on:
   push:
@@ -35,7 +35,11 @@ jobs:
       - name: Prepare Pages artifact
         run: |
           mkdir -p _site
-          cp graphify-out/graph.html _site/index.html
+          cp -R site/. _site/
+          cp -R assets _site/assets
+          mkdir -p _site/code-graph
+          cp graphify-out/graph.html _site/code-graph/index.html
+          touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:

@@ -1,30 +1,31 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/banner.svg" alt="Web SSH Terminal" width="500">
+  <img src="assets/banner.svg" alt="WebSSH" width="500">
 </p>
 
 <p align="center">
-  <strong>A modern, feature-rich web-based SSH terminal with SFTP file manager</strong>
+  <strong>A secure, self-hosted SSH and SFTP workspace for homelabs and teams</strong>
 </p>
 
 <p align="center">
+  <a href="https://bifrost0x.github.io/webssh/">Product Site</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#configuration">Configuration</a> •
-  <a href="#themes">Themes</a> •
-  <a href="#security">Security</a>
+  <a href="#security">Security</a> •
+  <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container Image</a> •
+  <a href="https://bifrost0x.github.io/webssh/code-graph/">Code Graph</a>
 </p>
 
 <p align="center">
   <!-- Statische Badges -->
-  <a href="https://hub.docker.com/r/ghcr.io/bifrost0x/webssh"><img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
+  <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white" alt="WebSSH container image on GitHub Container Registry"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
   <a href="https://buymeacoffee.com/bifrost0x">
     <img src="https://img.shields.io/badge/Support%20WebSSH-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000" alt="Support WebSSH on Buy Me a Coffee">
   </a>
-  <a href="https://bifrost0x.github.io/webssh/"><img src="https://img.shields.io/badge/code%20graph-live-blueviolet" alt="Code Graph"></a>
+  <a href="https://bifrost0x.github.io/webssh/"><img src="https://img.shields.io/badge/product%20site-live-35BDDD" alt="WebSSH product site"></a>
+  <a href="https://bifrost0x.github.io/webssh/code-graph/"><img src="https://img.shields.io/badge/code%20graph-explore-blueviolet" alt="WebSSH code graph"></a>
   <br>
   <!-- GitHub Actions Workflows -->
   <a href="https://github.com/bifrost0x/webssh/actions/workflows/tests.yml">
@@ -52,7 +53,7 @@
 
 ## Overview
 
-Web SSH Terminal is a self-hosted web application that provides secure SSH access to your servers directly from your browser. Perfect for homelabs, server management, and teams that need browser-based terminal access. It is multi-user from the ground up, with individual accounts and per-user profiles, keys, and settings.
+WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operations in the browser. It is built for homelabs, server administration, and teams that want browser-based access without handing connection data to a hosted control plane. It is multi-user from the ground up, with separate accounts and per-user saved connections, keys, and settings. Browser dependencies are vendored locally, and WebSSH does not include telemetry.
 
 <p align="center">
   <img src="assets/webssh-demo.gif" alt="WebSSH tour showing saved profiles, live terminals, split panes, broadcast input, commands, and SFTP tools" width="1100">
@@ -72,7 +73,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 - **Session Restoration** - Restore live sessions after a page refresh without injecting terminal input
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
 - **Manual Reconnect** - Reconnect from a session tab; SSH-key and Tailscale sessions can reconnect directly, while password sessions reopen the pre-filled connection form
-- **Profile Launcher** - Empty terminal panes show saved profiles; key and Tailscale profiles connect immediately when no password is needed, while password-dependent profiles open pre-filled at the required field
+- **Saved Connection Launcher** - Empty terminal panes show saved connections; key and Tailscale connections start immediately when no password is needed, while password-dependent connections open pre-filled at the required field
 - **Post-Connect Command Sets** - Build named, ordered command sequences and assign one to a connection or saved profile
 - **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
 - **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar
@@ -131,7 +132,7 @@ Web SSH Terminal is a self-hosted web application that provides secure SSH acces
 ### Customization
 - **10 Themes** - Dark, light, and colorful options
 - **6 Languages** - English, Vietnamese, German, French, Spanish, Chinese
-- **Connection Profiles** - Save server configurations
+- **Saved Connections** - Save server configurations
 - **Jump Hosts / ProxyJump** - Reach targets through a bastion; save jump hosts once, pick them per connection, with a clear "via &lt;bastion&gt;" indicator on the session
 - **Command Library** - Store frequently used commands
 - **OS-Aware Command Library** - Filter commands by detected OS (Linux / macOS / BSD / Windows)
