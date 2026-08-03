@@ -341,6 +341,7 @@ const SessionManager = {
         } else {
             this.activeSessionId = null;
             this.updateSessionMeta(null);
+            this.notifyWorkspaceChange();
         }
     },
 
@@ -493,6 +494,7 @@ const SessionManager = {
         } else if (status === 'connected') {
             this.hideReconnectOverlay(sessionId);
         }
+        this.notifyWorkspaceChange();
     },
 
     createPendingConnection(requestId, host, username, port) {
@@ -710,6 +712,18 @@ const SessionManager = {
         return document.getElementById('terminalGrid');
     },
 
+    notifyWorkspaceChange() {
+        if (!window.dispatchEvent || !window.CustomEvent) {
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('session-workspace-change', {
+            detail: {
+                layout: this.layout,
+                sessionId: this.activeSessionId,
+            },
+        }));
+    },
+
     setSplitLayout(layout) {
         const grid = this.ensureTerminalGrid();
         if (!grid) {
@@ -757,6 +771,7 @@ const SessionManager = {
         }
         this.setActivePane(this.activePaneIndex);
         this.updateSplitControls();
+        this.notifyWorkspaceChange();
     },
 
     refreshEmptyPanes() {
@@ -890,6 +905,7 @@ const SessionManager = {
                 }
             }, 50);
         }
+        this.notifyWorkspaceChange();
     },
 
     focusActivePane() {

@@ -199,7 +199,7 @@ test('uses existing mutation contracts and refreshes after completion', () => {
             payload: { session_id: 'session-a', remote_path: '/home/ops/releases' },
         },
         {
-            event: 'rename_item',
+            event: 'rename_file',
             payload: {
                 session_id: 'session-a',
                 old_path: '/home/ops/old.txt',
@@ -234,4 +234,3 @@ test('closes into an inert state and reports disconnects', () => {
     });
     assert.equal(state.renders.length, count);
 });
-

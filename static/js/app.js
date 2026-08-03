@@ -2294,6 +2294,12 @@
         setupResizeHandle();
         TerminalSearch.init();
         FilePreview.init();
+        window.sessionWorkspace = window.SessionWorkspaceUI?.init({
+            socket: window.socket,
+            sessionManager: SessionManager,
+            terminalManager: TerminalManager,
+            document,
+        });
 
         shortcutsModal = setupShortcutsModal();
         openShortcuts = () => {

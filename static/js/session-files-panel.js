@@ -236,7 +236,7 @@
             renameSelected(name) {
                 const item = files[selectedIndex];
                 if (!item || !validName(name) || !sessionId) return false;
-                socket.emit('rename_item', {
+                socket.emit('rename_file', {
                     session_id: sessionId,
                     old_path: joinPath(path, item.name),
                     new_path: joinPath(path, name.trim()),
@@ -286,4 +286,3 @@
         createController,
     };
 }));
-

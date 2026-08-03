@@ -70,6 +70,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Broadcast Input** - Send a command to all open SSH sessions simultaneously (cluster-SSH style)
 - **Multi-Session Support** - Up to 10 concurrent SSH sessions with tabs
 - **Split Panes** - 1, 2, or 4-pane layouts for monitoring multiple servers
+- **Focused Session Workspace** - In single-pane mode, open the active server's SFTP browser beside its terminal while keeping live Linux CPU, RAM, disk, and uptime information next to the notepad
 - **Session Restoration** - Restore live sessions after a page refresh without injecting terminal input
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
 - **Manual Reconnect** - Reconnect from a session tab; SSH-key and Tailscale sessions can reconnect directly, while password sessions reopen the pre-filled connection form
@@ -86,10 +87,15 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Command Palette** - Fuzzy command launcher (Ctrl+K)
 
 <p align="center">
+  <img src="assets/session-workspace.png" alt="Single-session workspace with SSH terminal, embedded SFTP browser, live Linux server statistics, and notepad" width="1100">
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/multi.png" alt="Split Panes" width="700">
 </p>
 
 ### File Manager (SFTP)
+- **Active-Session Split** - In the single-terminal layout, open a compact SFTP browser that automatically follows the active SSH session
 - **Dual-Pane Browser** - Side-by-side file browsing
 - **Drag & Drop** - Transfer files between local and remote
 - **Server-to-Server** - Direct transfer between SSH hosts
