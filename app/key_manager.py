@@ -291,6 +291,30 @@ def save_keys(user_id, keys):
         return False
 
 
+def rename_key(user_id, key_id, new_name):
+    """Rename one owned key without changing its identity or encrypted data."""
+    if not isinstance(new_name, str) or not new_name.strip():
+        return None, "Invalid key name"
+    name = new_name.strip()
+    if len(name) > 128:
+        return None, "Key name too long (max 128 characters)"
+    if not isinstance(key_id, str) or not key_id:
+        return None, "Key not found"
+
+    with storage_lock(f'keys:{user_id}'):
+        keys = _load_keys_with_lock_held(user_id)
+        for index, key in enumerate(keys):
+            if key['id'] != key_id:
+                continue
+            updated = {**key, 'name': name}
+            replacement = [*keys]
+            replacement[index] = updated
+            if not save_keys(user_id, replacement):
+                return None, "Failed to rename key"
+            return updated, None
+    return None, "Key not found"
+
+
 def _remove_key_after_metadata_failure(user_id, key_id, key_path):
     """Best-effort rollback when the encrypted key has no metadata entry."""
     try:

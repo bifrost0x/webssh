@@ -18,6 +18,127 @@ def create_user(app, username='key-user'):
         return user.id
 
 
+def test_rename_key_changes_only_owned_metadata_name(
+        app, rsa_private_key_pem):
+    from app import key_manager
+
+    owner_id = create_user(app, 'rename-owner')
+    other_id = create_user(app, 'rename-other')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            owner_id, 'Before', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(owner_id, key['id']))
+        encrypted_before = key_path.read_bytes()
+        metadata_before = dict(key)
+
+        updated, error = key_manager.rename_key(
+            owner_id, key['id'], '  After  '
+        )
+
+        assert error is None
+        assert updated == {**metadata_before, 'name': 'After'}
+        assert key_path.read_bytes() == encrypted_before
+        assert key_manager.load_keys(owner_id) == [updated]
+        missing, error = key_manager.rename_key(
+            other_id, key['id'], 'Stolen'
+        )
+        assert missing is None
+        assert error == 'Key not found'
+
+
+def test_rename_key_allows_duplicate_display_names(
+        app, rsa_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, 'rename-duplicate')
+    with app.app_context():
+        first, error = key_manager.save_key(
+            user_id, 'Shared', rsa_private_key_pem
+        )
+        assert error is None
+        second, error = key_manager.save_key(
+            user_id, 'Other', rsa_private_key_pem
+        )
+        assert error is None
+
+        updated, error = key_manager.rename_key(
+            user_id, second['id'], 'Shared'
+        )
+
+        assert error is None
+        assert updated['id'] == second['id']
+        assert [
+            key['name'] for key in key_manager.load_keys(user_id)
+        ] == [first['name'], 'Shared']
+
+
+@pytest.mark.parametrize('value', [None, 7, '', '   ', 'x' * 129])
+def test_rename_key_rejects_invalid_names_without_writing(
+        app, rsa_private_key_pem, value):
+    from app import key_manager
+
+    user_id = create_user(app, 'invalid-rename')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Original', rsa_private_key_pem
+        )
+        assert error is None
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        before = metadata_path.read_bytes()
+
+        updated, error = key_manager.rename_key(
+            user_id, key['id'], value
+        )
+
+        assert updated is None
+        assert error in {
+            'Invalid key name',
+            'Key name too long (max 128 characters)',
+        }
+        assert metadata_path.read_bytes() == before
+
+
+def test_rename_key_write_failure_preserves_metadata(
+        app, monkeypatch, rsa_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, 'rename-write-failure')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Original', rsa_private_key_pem
+        )
+        assert error is None
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        before = metadata_path.read_bytes()
+        monkeypatch.setattr(key_manager, 'save_keys', lambda *_args: False)
+
+        updated, error = key_manager.rename_key(
+            user_id, key['id'], 'After'
+        )
+
+        assert updated is None
+        assert error == 'Failed to rename key'
+        assert metadata_path.read_bytes() == before
+
+
+def test_rename_key_preserves_corrupt_metadata(app):
+    from app import key_manager
+
+    user_id = create_user(app, 'rename-corrupt')
+    with app.app_context():
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path.write_text('{broken', encoding='utf-8')
+        before = metadata_path.read_bytes()
+
+        with pytest.raises(StorageCorruptionError):
+            key_manager.rename_key(user_id, 'missing', 'After')
+
+        assert metadata_path.read_bytes() == before
+
+
 @pytest.mark.parametrize(
     ('fixture_name', 'expected'),
     [
