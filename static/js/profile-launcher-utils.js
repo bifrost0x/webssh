@@ -55,6 +55,104 @@
         return needsTargetPassword ? 'password' : 'connect';
     }
 
+    function inferProfileStartupMode(profile) {
+        if (profile?.startup_mode) return profile.startup_mode;
+        if (profile?.command_set_id) return 'command_set';
+        if (profile?.command_id) return 'command';
+        if (profile?.startup_commands) return 'free_text';
+        return 'none';
+    }
+
+    function profilePostConnectPayload(profile) {
+        const mode = inferProfileStartupMode(profile);
+        if (mode === 'free_text') {
+            return {
+                startup_mode: 'free_text',
+                startup_commands: profile.startup_commands || '',
+            };
+        }
+        if (mode === 'command') {
+            if (!profile.command_id) return null;
+            const payload = {
+                startup_mode: 'command',
+                command_id: profile.command_id,
+            };
+            if (Object.prototype.hasOwnProperty.call(
+                profile,
+                'parameters_override',
+            )) {
+                payload.parameters_override = profile.parameters_override;
+            }
+            return payload;
+        }
+        if (mode === 'command_set') {
+            return profile.command_set_id ? {
+                startup_mode: 'command_set',
+                command_set_id: profile.command_set_id,
+            } : null;
+        }
+        return mode === 'none' ? { startup_mode: 'none' } : null;
+    }
+
+    function normalizedPort(value, defaultPort = 22) {
+        const candidate = value === undefined || value === null || value === ''
+            ? defaultPort
+            : Number(value);
+        return Number.isInteger(candidate)
+            && candidate >= 1
+            && candidate <= 65535
+            ? candidate
+            : null;
+    }
+
+    function buildDirectConnectionData(profile, context = {}) {
+        if (determineLaunchMode(profile, context) !== 'connect') return null;
+
+        const host = String(profile.host || '').trim();
+        const username = String(profile.username || '').trim();
+        const port = normalizedPort(profile.port);
+        if (!host || !username || port === null) return null;
+
+        const result = {
+            host,
+            port,
+            username,
+            auth_type: profile.auth_type,
+        };
+        if (profile.auth_type === 'key') result.key_id = profile.key_id;
+        if (profile.use_tmux === true) result.use_tmux = true;
+
+        const postConnect = profilePostConnectPayload(profile);
+        if (!postConnect) return null;
+        Object.assign(result, postConnect);
+
+        if (!profile.jump_host_id) return result;
+
+        const jumpHost = (
+            Array.isArray(context.jumpHosts) ? context.jumpHosts : []
+        ).find(item => item?.id === profile.jump_host_id);
+        if (!jumpHost) return null;
+
+        const jumpHostName = String(jumpHost.host || '').trim();
+        const jumpUsername = String(jumpHost.username || '').trim();
+        const jumpPort = normalizedPort(jumpHost.port);
+        if (!jumpHostName || !jumpUsername || jumpPort === null) return null;
+
+        const proxyJump = {
+            jump_host_id: jumpHost.id,
+            host: jumpHostName,
+            port: jumpPort,
+            username: jumpUsername,
+            auth_type: jumpHost.auth_type,
+        };
+        if (jumpHost.auth_type === 'key') {
+            if (!jumpHost.key_id) return null;
+            proxyJump.key_id = jumpHost.key_id;
+        }
+        result.proxy_jump = proxyJump;
+        return result;
+    }
+
     function formatEndpoint(profile) {
         const value = profile && typeof profile === 'object' ? profile : {};
         const username = String(value.username || '');
@@ -63,5 +161,9 @@
         return `${username}@${host}:${port}`;
     }
 
-    return { determineLaunchMode, formatEndpoint };
+    return {
+        buildDirectConnectionData,
+        determineLaunchMode,
+        formatEndpoint,
+    };
 }));
