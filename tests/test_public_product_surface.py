@@ -34,6 +34,19 @@ def test_pages_workflow_publishes_product_root_and_code_graph_subpath():
     assert "cp graphify-out/graph.html _site/code-graph/index.html" in workflow
 
 
+def test_readme_code_map_badge_targets_graph_subpath():
+    """The project-structure badge opens Graphify, not the product landing page."""
+    readme = README.read_text(encoding="utf-8")
+    badge = "Interaktive%20Code--Map"
+    badge_position = readme.index(badge)
+    link_position = readme.rfind("<a href=", 0, badge_position)
+
+    assert (
+        'href="https://bifrost0x.github.io/webssh/code-graph/"'
+        in readme[link_position:badge_position]
+    )
+
+
 def test_product_landing_page_uses_current_connection_terminology():
     """Public landing-page copy does not preserve labels replaced in the UI."""
     assert LANDING_PAGE.is_file(), "The public product landing page is missing."
