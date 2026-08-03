@@ -9,6 +9,13 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
     template = read('templates/index.html')
     assert 'id="noSessions"' not in template
     assert "filename='js/profile-launcher-utils.js'" in template
+    assert "filename='js/connection-launcher.js'" in template
+    assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
+        "filename='js/connection-launcher.js'"
+    )
+    assert template.index("filename='js/connection-launcher.js'") < template.index(
+        "filename='js/profile-manager.js'"
+    )
     assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
         "filename='js/profile-manager.js'"
     )
@@ -20,11 +27,13 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='css/style.css'": '?v=4',
         "filename='js/i18n.js'": '?v=1',
         "filename='js/command-workspace.js'": '?v=2',
-        "filename='js/profile-manager.js'": '?v=4',
+        "filename='js/profile-launcher-utils.js'": '?v=2',
+        "filename='js/connection-launcher.js'": '?v=1',
+        "filename='js/profile-manager.js'": '?v=5',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
-        "filename='js/app.js'": '?v=4',
+        "filename='js/app.js'": '?v=5',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
@@ -114,19 +123,18 @@ def test_profile_launcher_stylesheet_uses_current_cache_version():
     assert "filename='css/style.css') }}?v=4" in template
 
 
-def test_profile_launch_prefills_before_requesting_submit():
+def test_profile_launch_uses_shared_executor_and_review_callback():
     source = read('static/js/app.js')
-    start = source.index('function launchProfileForPane')
-    end = source.index('window.launchProfileForPane', start)
+    assert 'function startConnection(connectionData, paneIndex)' in source
+    assert 'ConnectionLauncher.createConnectionLauncher' in source
+    assert 'window.launchProfileForPane = (profileId, paneIndex = null)' in source
+    start = source.index('function openProfileForReview')
+    end = source.index('const savedConnectionLauncher', start)
     body = source[start:end]
     assert body.index('openConnectionModalForPane(paneIndex)') < body.index(
         'selectConnectionProfile(profileId)'
     )
-    assert body.index('selectConnectionProfile(profileId)') < body.index(
-        'form.requestSubmit()'
-    )
-    assert "mode === 'connect'" in body
-    assert 'isSelectedProfileReady(selected)' in body
+    assert 'form.requestSubmit()' not in body
 
 
 def test_auto_launch_has_no_coupled_save_profile_state():
@@ -139,22 +147,14 @@ def test_auto_launch_has_no_coupled_save_profile_state():
 
 def test_password_modes_focus_the_missing_runtime_secret():
     source = read('static/js/app.js')
-    start = source.index('function launchProfileForPane')
-    end = source.index('window.launchProfileForPane', start)
+    start = source.index('function openProfileForReview')
+    end = source.index('const savedConnectionLauncher', start)
     body = source[start:end]
     assert "mode === 'password'" in body
     assert "document.getElementById('passwordInput')" in body
     assert "mode === 'jump-host-password'" in body
     assert "document.getElementById('jumpHostPasswordInput')" in body
     assert '.focus()' in body
-
-
-def test_form_readiness_blocks_stale_auth_key_and_jump_host_state():
-    source = read('static/js/app.js')
-    assert 'function isSelectedProfileReady(profile)' in source
-    assert "authTypeSelect.value !== profile.auth_type" in source
-    assert "keySelect.value !== profile.key_id" in source
-    assert "jumpHostSelect.value !== (profile.jump_host_id || '')" in source
 
 
 def test_submit_keeps_target_pane_until_all_passwords_are_validated():
@@ -164,7 +164,7 @@ def test_submit_keeps_target_pane_until_all_passwords_are_validated():
     )
     end = source.index("document.getElementById('keyUploadForm')", start)
     body = source[start:end]
-    assert body.index('pendingPaneIndex = null') > body.index(
+    assert body.index('const started = startConnection') > body.index(
         "showNotification('Jump host password is required'"
     )
     assert "document.getElementById('passwordInput').focus()" in body
@@ -179,3 +179,9 @@ def test_dropdown_and_launcher_share_profile_selection_logic():
     )
     change_body = source[change_start:change_start + 350]
     assert 'selectConnectionProfile(e.target.value)' in change_body
+
+
+def test_profile_management_connect_uses_only_the_central_launcher():
+    source = read('static/js/profile-manager.js')
+    assert 'window.launchProfileForPane?.(profileId)' in source
+    assert 'openConnectionModalForProfile' not in source

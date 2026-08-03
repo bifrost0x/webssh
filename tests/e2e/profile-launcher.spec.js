@@ -72,14 +72,29 @@ test('only auto-connects profiles whose credentials and references are currently
     await expect.poll(() => sshAttempts(page)).toHaveLength(0);
     await page.locator('#cancelConnectionBtn').click();
 
+    await page.evaluate(() => {
+        window.__connectionModalShows = 0;
+        const modal = document.getElementById('connectionModal');
+        window.__connectionModalObserver = new MutationObserver(() => {
+            if (modal.classList.contains('show')) {
+                window.__connectionModalShows += 1;
+            }
+        });
+        window.__connectionModalObserver.observe(modal, {
+            attributes: true,
+            attributeFilter: ['class'],
+        });
+    });
     await launchProfile(page, 'Usable key');
     await expect.poll(() => sshAttempts(page)).toHaveLength(1);
+    await expect.poll(() => page.evaluate(
+        () => window.__connectionModalShows,
+    )).toBe(0);
     expect((await sshAttempts(page))[0].payload).toMatchObject({
         host: 'key.local',
         username: 'keyuser',
         auth_type: 'key',
     });
-    await page.locator('#cancelConnectionBtn').click();
 
     await expect(page.locator(
         '.profile-launcher-card[data-profile-id="missing-key"] .profile-launcher-action',
@@ -117,8 +132,14 @@ test('only auto-connects profiles whose credentials and references are currently
     await expect.poll(() => sshAttempts(page)).toHaveLength(1);
     await page.locator('#cancelConnectionBtn').click();
 
+    await page.evaluate(() => {
+        window.__connectionModalShows = 0;
+    });
     await launchProfile(page, 'Authorized Tailscale');
     await expect.poll(() => sshAttempts(page)).toHaveLength(2);
+    await expect.poll(() => page.evaluate(
+        () => window.__connectionModalShows,
+    )).toBe(0);
     expect((await sshAttempts(page))[1].payload).toMatchObject({
         host: 'tail-node',
         username: 'root',

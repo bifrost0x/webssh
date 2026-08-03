@@ -63,6 +63,6 @@ def test_all_session_manager_form_prefills_clear_command_set_state_first():
 def test_submit_does_not_clear_commands_before_validation_can_finish():
     source = _source('static/js/app.js')
     submit = source[source.index("getElementById('connectionForm').addEventListener('submit'"):]
-    before_emit = submit[:submit.index("socket.emit('ssh_connect'")]
+    before_start = submit[:submit.index('const started = startConnection')]
 
-    assert 'clearConnectionProfileState' not in before_emit
+    assert 'clearConnectionProfileState' not in before_start

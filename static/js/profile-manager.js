@@ -669,8 +669,7 @@ const ProfileManager = {
     },
 
     connect(profileId) {
-        window.ModalManager?.close(document.getElementById('profileManagementModal'));
-        window.openConnectionModalForProfile?.(profileId);
+        window.launchProfileForPane?.(profileId);
     },
 
     saveProfile(profileData) {

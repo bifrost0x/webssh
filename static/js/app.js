@@ -1036,6 +1036,50 @@
     let connectTimer = null;
     let connectSeconds = 0;
 
+    function closeProfileManagementModal() {
+        window.ModalManager?.close(
+            document.getElementById('profileManagementModal'),
+        );
+    }
+
+    function startConnection(connectionData, paneIndex) {
+        if (currentConnectRequestId) return false;
+
+        closeProfileManagementModal();
+        const requestId = (
+            `req_${Date.now().toString(36)}_`
+            + Math.random().toString(36).slice(2, 6)
+        );
+        const payload = {
+            ...connectionData,
+            client_request_id: requestId,
+        };
+        currentConnectRequestId = requestId;
+        pendingPaneIndex = null;
+        SessionManager.createPendingConnection(
+            requestId,
+            payload.host,
+            payload.username,
+            payload.port,
+        );
+        if (paneIndex !== null && paneIndex !== undefined) {
+            pendingRequestPaneMap.set(requestId, paneIndex);
+        }
+
+        Object.keys(SessionManager.sessions).forEach(sessionId => {
+            const session = SessionManager.sessions[sessionId];
+            if (session?.isPersistentCandidate
+                    && session.host === payload.host
+                    && session.port === Number(payload.port)
+                    && session.username === payload.username) {
+                SessionManager.removeSessionUI(sessionId);
+            }
+        });
+
+        socket.emit('ssh_connect', payload);
+        return true;
+    }
+
     function openConnectionModalForPane(paneIndex) {
         window.clearConnectionProfileState();
         pendingPaneIndex = paneIndex;
@@ -1098,47 +1142,11 @@
 
     window.selectConnectionProfile = selectConnectionProfile;
 
-    function isSelectedProfileReady(profile) {
-        const authTypeSelect = document.getElementById('authTypeSelect');
-        const keySelect = document.getElementById('keySelect');
-        const jumpHostSelect = document.getElementById('jumpHostSelect');
-        if (!profile || authTypeSelect.value !== profile.auth_type) {
-            return false;
-        }
-        if (profile.auth_type === 'key' && keySelect.value !== profile.key_id) {
-            return false;
-        }
-        if (jumpHostSelect.value !== (profile.jump_host_id || '')) {
-            return false;
-        }
-        return true;
-    }
-
-    function launchProfileForPane(profileId, paneIndex) {
-        const profile = ProfileManager.getProfile(profileId);
-        if (!profile) {
-            showNotification(
-                window.i18n
-                    ? i18n.t('connection.profileUnavailable')
-                    : 'This profile is no longer available.',
-                'warning',
-            );
-            ProfileManager.loadProfiles();
-            return;
-        }
-
+    function openProfileForReview(profileId, paneIndex, mode) {
+        closeProfileManagementModal();
         openConnectionModalForPane(paneIndex);
         const selected = selectConnectionProfile(profileId);
-        if (!selected) {
-            return;
-        }
-
-        const mode = ProfileManager.getLaunchMode(selected);
-        const form = document.getElementById('connectionForm');
-        if (mode === 'connect' && isSelectedProfileReady(selected)) {
-            form.requestSubmit();
-            return;
-        }
+        if (!selected) return;
 
         let focusTarget = document.getElementById('connectBtn');
         if (mode === 'password') {
@@ -1148,13 +1156,6 @@
         }
         window.requestAnimationFrame(() => focusTarget?.focus());
     }
-
-    window.launchProfileForPane = launchProfileForPane;
-
-    window.openConnectionModalForProfile = (profileId) => {
-        openConnectionModalForPane(getDefaultPaneIndex());
-        selectConnectionProfile(profileId);
-    };
 
     function queuePaneConnection(paneIndex) {
         if (paneIndex === null || paneIndex === undefined) {
@@ -1195,6 +1196,31 @@
         }
         return activeIndex !== null && activeIndex !== undefined ? activeIndex : 0;
     }
+
+    const savedConnectionLauncher = (
+        ConnectionLauncher.createConnectionLauncher({
+            getProfile: profileId => ProfileManager.getProfile(profileId),
+            getContext: () => ({
+                keys: ProfileManager.keys,
+                jumpHosts: window.JumpHostManager?.jumpHosts || [],
+            }),
+            getDefaultPaneIndex,
+            isBusy: () => Boolean(currentConnectRequestId),
+            startConnection,
+            openReview: openProfileForReview,
+            notify: (key, fallback, type) => {
+                const translated = window.i18n ? i18n.t(key) : key;
+                showNotification(
+                    translated && translated !== key ? translated : fallback,
+                    type,
+                );
+            },
+            refreshProfiles: () => ProfileManager.loadProfiles(),
+        })
+    );
+    window.launchProfileForPane = (profileId, paneIndex = null) => (
+        savedConnectionLauncher.launch(profileId, paneIndex)
+    );
 
     window.openConnectionModalForPane = openConnectionModalForPane;
 
@@ -1979,18 +2005,10 @@
                 }
             }
 
-            pendingPaneIndex = null;
-            currentConnectRequestId = `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-            SessionManager.createPendingConnection(currentConnectRequestId, host, username, port);
-            if (targetPane !== null && targetPane !== undefined) {
-                pendingRequestPaneMap.set(currentConnectRequestId, targetPane);
-            }
-
             const connectionData = {
                 host: host,
                 port: parseInt(port),
                 username: username,
-                client_request_id: currentConnectRequestId,
                 auth_type: authType
             };
             Object.assign(connectionData, ConnectionCommandManager.getPayload());
@@ -2011,17 +2029,19 @@
                 // Include tmux session name for reconnection to persistent sessions
                 if (SessionManager.pendingReconnectTmux) {
                     connectionData.reconnect_tmux_name = SessionManager.pendingReconnectTmux;
-                    SessionManager.pendingReconnectTmux = null;
                 }
                 // Include display name for reconnecting persistent sessions
                 if (SessionManager.pendingDisplayName) {
                     connectionData.display_name = SessionManager.pendingDisplayName;
-                    SessionManager.pendingDisplayName = null;
                 }
             }
 
+            const started = startConnection(connectionData, targetPane);
+            if (!started) return;
+
+            SessionManager.pendingReconnectTmux = null;
+            SessionManager.pendingDisplayName = null;
             const connectBtn = document.getElementById('connectBtn');
-            const originalText = connectBtn.textContent;
             connectSeconds = 0;
             connectBtn.textContent = 'Connecting... 0s';
             connectTimer = setInterval(() => {
@@ -2029,17 +2049,6 @@
                 connectBtn.textContent = `Connecting... ${connectSeconds}s`;
             }, 1000);
 
-            // Clean up any persistent candidate tab for the same host/port/user
-            // Use removeSessionUI to avoid emitting ssh_disconnect which would
-            // delete the DB record and lose the session display name.
-            Object.keys(SessionManager.sessions).forEach(sid => {
-                const s = SessionManager.sessions[sid];
-                if (s && s.isPersistentCandidate && s.host === host && s.port === parseInt(port) && s.username === username) {
-                    SessionManager.removeSessionUI(sid);
-                }
-            });
-
-            socket.emit('ssh_connect', connectionData);
             setConnectLoading(true);
 
             document.getElementById('passwordInput').value = '';
