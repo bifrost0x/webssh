@@ -64,7 +64,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 ### Terminal
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/connection-panel.png" alt="Connection Panel" width="800">
+  <img src="assets/connection-panel.png" alt="Connection Panel" width="800">
 </p>
 
 - **Broadcast Input** - Send a command to all open SSH sessions simultaneously (cluster-SSH style)
@@ -91,7 +91,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/multi.png" alt="Split Panes" width="700">
+  <img src="assets/multi.png" alt="Split Panes" width="700">
 </p>
 
 ### File Manager (SFTP)
@@ -110,7 +110,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Inline Editor** - Edit text files directly in the browser and save back over SFTP
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/filemanager.png" alt="File Manager" width="700">
+  <img src="assets/filemanager.png" alt="File Manager" width="700">
 </p>
 
 <p align="center">
@@ -151,10 +151,10 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
   <img src="assets/commandlibrary.png" alt="Unified Command Library and Command Sets workspace" width="900">
 </p>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/keys.png" alt="SSH Key Management" width="700">
+  <img src="assets/keys.png" alt="SSH Key Management" width="700">
 </p>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/mobile.png" alt="Mobile View" width="350">
+  <img src="assets/mobile.png" alt="Mobile View" width="350">
 </p>
 
 ### Administration
@@ -746,7 +746,7 @@ Web SSH Terminal includes 10 themes:
 | Emerald Matrix | Matrix Green | Obsidian | Pure Black |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bifrost0x/webssh/main/assets/themes.png" alt="Themes" width="700">
+  <img src="assets/themes.png" alt="Themes" width="700">
 </p>
 
 ## Security
