@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [switch]$Check,
-    [string]$DiagnosticsDirectory
+    [switch]$Check
 )
 
 Set-StrictMode -Version Latest
@@ -18,7 +17,7 @@ function New-LockFile {
     )
 
     $temporaryLock = Join-Path $temporaryDirectory $LockName
-    & uv pip compile $InputFile --universal --generate-hashes --no-header --output-file $temporaryLock | Out-Null
+    & uv pip compile $InputFile --universal --python-version 3.11 --generate-hashes --no-header --output-file $temporaryLock | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not compile $InputFile."
     }
@@ -49,11 +48,6 @@ try {
         $committedLock = Join-Path $projectRoot (Split-Path $lock -Leaf)
         if ($Check) {
             if (-not (Test-ByteEqual -Expected $committedLock -Actual $lock)) {
-                if ($DiagnosticsDirectory) {
-                    $diagnosticsPath = Join-Path $projectRoot $DiagnosticsDirectory
-                    New-Item -ItemType Directory -Path $diagnosticsPath -Force | Out-Null
-                    Copy-Item -LiteralPath $lock -Destination (Join-Path $diagnosticsPath (Split-Path $lock -Leaf)) -Force
-                }
                 throw "$committedLock is out of date. Run pwsh -File scripts/lock_requirements.ps1 and commit the result."
             }
         }
