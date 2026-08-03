@@ -63,7 +63,6 @@ test('calculates CPU percent from Linux counter deltas without counting idle tim
     );
 });
 
-
 test('formats KiB values and maps visual thresholds', () => {
     assert.equal(insights.formatKib(1024), '1.0 MB');
     assert.equal(insights.formatKib(5 * 1024 * 1024), '5.0 GB');
@@ -187,4 +186,3 @@ test('keeps at most fifteen CPU samples per session', () => {
 
     assert.equal(runtime.renders.at(-1).cpuHistory.length, 15);
 });
-
