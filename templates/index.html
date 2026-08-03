@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
@@ -401,6 +401,24 @@
                         <div class="form-group hidden" id="profileEditorKeyGroup">
                             <label for="profileEditorKeySelect" data-i18n="connection.sshKey">SSH Key</label>
                             <select id="profileEditorKeySelect" class="form-control"></select>
+                            <div class="profile-inline-key">
+                                <button type="button" id="profileEditorAddKeyBtn" class="btn btn-secondary btn-sm" data-i18n="keys.addNew" aria-controls="profileEditorAddKeyPanel" aria-expanded="false">Add new key</button>
+                                <div id="profileEditorAddKeyPanel" class="profile-inline-key-panel hidden">
+                                    <div class="form-group">
+                                        <label for="profileEditorNewKeyName" data-i18n="keys.keyName">Key Name</label>
+                                        <input type="text" id="profileEditorNewKeyName" class="form-control" maxlength="128" data-i18n-placeholder="keys.keyNamePlaceholder">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="profileEditorNewKeyContent" data-i18n="keys.privateKey">Private Key</label>
+                                        <textarea id="profileEditorNewKeyContent" class="form-control" rows="6" maxlength="65536" spellcheck="false"></textarea>
+                                    </div>
+                                    <div class="profile-inline-key-actions">
+                                        <button type="button" id="profileEditorCancelKeyBtn" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
+                                        <button type="button" id="profileEditorUploadKeyBtn" class="btn btn-primary" data-i18n="keys.add">Add key</button>
+                                    </div>
+                                </div>
+                                <p id="profileEditorKeyUploadStatus" class="profile-inline-key-status" role="status" aria-live="polite"></p>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
@@ -845,7 +863,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=2"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
@@ -857,7 +875,7 @@
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
@@ -865,7 +883,7 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=6"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {

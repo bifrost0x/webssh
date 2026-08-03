@@ -994,8 +994,13 @@
     });
 
     socket.on('key_uploaded', (data) => {
+        ProfileManager.upsertKeySummary(data.key);
         showNotification('SSH key uploaded successfully', 'success');
-        document.getElementById('keyUploadForm').reset();
+        document.getElementById('keyUploadForm')?.reset();
+    });
+
+    socket.on('key_renamed', (data) => {
+        ProfileManager.upsertKeySummary(data.key);
     });
 
     socket.on('key_deleted', (data) => {

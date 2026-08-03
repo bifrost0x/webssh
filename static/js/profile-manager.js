@@ -4,6 +4,9 @@ const ProfileManager = {
     profilesLoaded: false,
     selectedLegacyStartupCommands: '',
     editingProfileId: null,
+    editingKeyId: null,
+    keyRenamePending: false,
+    inlineKeyUploadPending: false,
 
     init() {
         document.getElementById('manageProfilesBtn')?.addEventListener('click', () => {
@@ -52,9 +55,44 @@ const ProfileManager = {
             if (button.dataset.profileAction === 'edit') this.openEditor(profileId);
             if (button.dataset.profileAction === 'delete') this.deleteProfile(profileId);
         });
+        document.getElementById('profileEditorAddKeyBtn')?.addEventListener('click', () => {
+            this.setInlineKeyPanelExpanded(true);
+            document.getElementById('profileEditorNewKeyName')?.focus();
+        });
+        document.getElementById('profileEditorCancelKeyBtn')?.addEventListener('click', () => {
+            this.setInlineKeyPanelExpanded(false);
+        });
+        document.getElementById('profileEditorUploadKeyBtn')?.addEventListener('click', () => {
+            this.submitInlineKeyUpload();
+        });
+        document.getElementById('keysList')?.addEventListener('click', event => {
+            const button = event.target.closest('[data-key-action]');
+            if (!button) return;
+            const keyId = button.dataset.keyId;
+            if (button.dataset.keyAction === 'rename') this.beginKeyRename(keyId);
+            if (button.dataset.keyAction === 'cancel-rename') this.cancelKeyRename();
+            if (button.dataset.keyAction === 'save-rename') {
+                const input = button.closest('.key-item')?.querySelector('.key-rename-input');
+                this.submitKeyRename(keyId, input?.value || '');
+            }
+            if (button.dataset.keyAction === 'delete') this.deleteKey(keyId);
+        });
+        document.getElementById('keysList')?.addEventListener('keydown', event => {
+            const input = event.target.closest('.key-rename-input');
+            if (!input) return;
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.submitKeyRename(input.dataset.keyId, input.value);
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.cancelKeyRename();
+            }
+        });
         window.addEventListener('languageChanged', () => {
             this.renderProfileSelect();
             this.renderManagementList();
+            this.renderKeysList();
         });
     },
 
@@ -84,6 +122,14 @@ const ProfileManager = {
         this.renderKeysList();
         this.renderEditorSelects();
         this.refreshEmptyPanes();
+    },
+
+    upsertKeySummary(summary) {
+        if (!summary || !summary.id) return;
+        const exists = this.keys.some(key => key.id === summary.id);
+        this.setKeys(exists
+            ? this.keys.map(key => key.id === summary.id ? summary : key)
+            : [...this.keys, summary]);
     },
 
     refreshEmptyPanes() {
@@ -248,7 +294,7 @@ const ProfileManager = {
             return;
         }
 
-        container.innerHTML = '';
+        container.replaceChildren();
         this.keys.forEach(key => {
             const keyItem = document.createElement('div');
             keyItem.className = 'key-item';
@@ -256,8 +302,23 @@ const ProfileManager = {
             const keyInfo = document.createElement('div');
             keyInfo.className = 'key-info';
 
-            const nameStrong = document.createElement('strong');
-            nameStrong.textContent = key.name;
+            if (this.editingKeyId === key.id) {
+                const renameEditor = document.createElement('div');
+                renameEditor.className = 'key-rename-editor';
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control key-rename-input';
+                input.dataset.keyId = key.id;
+                input.value = key.name;
+                input.maxLength = 128;
+                input.disabled = this.keyRenamePending;
+                renameEditor.appendChild(input);
+                keyInfo.appendChild(renameEditor);
+            } else {
+                const nameStrong = document.createElement('strong');
+                nameStrong.textContent = key.name;
+                keyInfo.appendChild(nameStrong);
+            }
 
             const typeSpan = document.createElement('span');
             typeSpan.className = 'key-type';
@@ -267,25 +328,58 @@ const ProfileManager = {
             dateSpan.className = 'key-date';
             dateSpan.textContent = `Uploaded: ${new Date(key.uploaded_at).toLocaleString()}`;
 
-            keyInfo.appendChild(nameStrong);
             keyInfo.appendChild(typeSpan);
             keyInfo.appendChild(dateSpan);
 
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn btn-danger btn-sm';
-            deleteBtn.dataset.keyId = key.id;
-            deleteBtn.textContent = 'Delete';
+            const actions = document.createElement('div');
+            actions.className = 'key-item-actions';
+            const addAction = (action, label, style) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `btn btn-sm ${style}`;
+                button.dataset.keyAction = action;
+                button.dataset.keyId = key.id;
+                button.textContent = label;
+                button.disabled = this.editingKeyId === key.id && this.keyRenamePending;
+                actions.appendChild(button);
+                return button;
+            };
+
+            if (this.editingKeyId === key.id) {
+                addAction(
+                    'save-rename',
+                    this.t('keys.saveName', 'Save name'),
+                    'btn-primary',
+                );
+                addAction(
+                    'cancel-rename',
+                    this.t('common.cancel', 'Cancel'),
+                    'btn-secondary',
+                );
+            } else {
+                const renameButton = addAction(
+                    'rename',
+                    this.t('keys.rename', 'Rename'),
+                    'btn-secondary',
+                );
+                renameButton.setAttribute(
+                    'aria-label',
+                    this.t('keys.renameNamed', 'Rename {name}').replace('{name}', key.name),
+                );
+                addAction('delete', this.t('common.delete', 'Delete'), 'btn-danger');
+            }
 
             keyItem.appendChild(keyInfo);
-            keyItem.appendChild(deleteBtn);
-
-            deleteBtn.addEventListener('click', (e) => {
-                const keyId = e.target.dataset.keyId;
-                this.deleteKey(keyId);
-            });
+            keyItem.appendChild(actions);
 
             container.appendChild(keyItem);
         });
+
+        if (this.editingKeyId && !this.keyRenamePending) {
+            container.querySelector(
+                `.key-rename-input[data-key-id="${CSS.escape(this.editingKeyId)}"]`
+            )?.focus();
+        }
     },
 
     selectProfile(profileId) {
@@ -513,6 +607,7 @@ const ProfileManager = {
         this.renderEditorSelects();
 
         document.getElementById('profileEditorForm')?.reset();
+        this.setInlineKeyPanelExpanded(false);
         document.getElementById('profileEditorId').value = profile?.id || '';
         document.getElementById('profileEditorName').value = profile?.name || '';
         document.getElementById('profileEditorHost').value = profile?.host || '';
@@ -686,13 +781,110 @@ const ProfileManager = {
         }
     },
 
-    uploadKey(name, keyContent) {
-        if (window.socket) {
-            window.socket.emit('upload_key', {
-                name: name,
-                key_content: keyContent
-            });
+    setInlineKeyPanelExpanded(expanded) {
+        const panel = document.getElementById('profileEditorAddKeyPanel');
+        const button = document.getElementById('profileEditorAddKeyBtn');
+        panel?.classList.toggle('hidden', !expanded);
+        button?.setAttribute('aria-expanded', String(expanded));
+        if (!expanded) {
+            const status = document.getElementById('profileEditorKeyUploadStatus');
+            if (status) {
+                status.textContent = '';
+                status.classList.remove('error');
+            }
         }
+    },
+
+    submitInlineKeyUpload() {
+        if (this.inlineKeyUploadPending) return;
+        const nameInput = document.getElementById('profileEditorNewKeyName');
+        const contentInput = document.getElementById('profileEditorNewKeyContent');
+        const submitButton = document.getElementById('profileEditorUploadKeyBtn');
+        const status = document.getElementById('profileEditorKeyUploadStatus');
+        const name = nameInput?.value.trim() || '';
+        const keyContent = contentInput?.value || '';
+        if (!name || !keyContent) {
+            if (status) {
+                status.textContent = 'Key name and content are required';
+                status.classList.add('error');
+            }
+            return;
+        }
+
+        this.inlineKeyUploadPending = true;
+        if (submitButton) submitButton.disabled = true;
+        if (status) {
+            status.textContent = `${this.t('keys.uploadKey', 'Upload Key')}…`;
+            status.classList.remove('error');
+        }
+        this.uploadKey(name, keyContent, acknowledgement => {
+            this.inlineKeyUploadPending = false;
+            if (submitButton) submitButton.disabled = false;
+            if (!acknowledgement?.success || !acknowledgement.key) {
+                if (status) {
+                    status.textContent = acknowledgement?.error || 'Failed to upload key';
+                    status.classList.add('error');
+                }
+                return;
+            }
+
+            this.upsertKeySummary(acknowledgement.key);
+            if (nameInput) nameInput.value = '';
+            if (contentInput) contentInput.value = '';
+            this.setInlineKeyPanelExpanded(false);
+            const select = document.getElementById('profileEditorKeySelect');
+            if (select) {
+                select.value = acknowledgement.key.id;
+                select.focus();
+            }
+        });
+    },
+
+    uploadKey(name, keyContent, callback = null) {
+        if (!window.socket) {
+            callback?.({success: false, error: 'Connection unavailable'});
+            return;
+        }
+        window.socket.emit('upload_key', {
+            name: name,
+            key_content: keyContent
+        }, acknowledgement => callback?.(acknowledgement));
+    },
+
+    beginKeyRename(keyId) {
+        if (this.keyRenamePending || !this.keys.some(key => key.id === keyId)) return;
+        this.editingKeyId = keyId;
+        this.renderKeysList();
+    },
+
+    cancelKeyRename() {
+        if (this.keyRenamePending) return;
+        this.editingKeyId = null;
+        this.renderKeysList();
+    },
+
+    submitKeyRename(keyId, name) {
+        if (this.keyRenamePending || keyId !== this.editingKeyId || !window.socket) return;
+        this.keyRenamePending = true;
+        this.renderKeysList();
+        window.socket.emit('rename_key', {
+            key_id: keyId,
+            name: name,
+        }, acknowledgement => {
+            this.keyRenamePending = false;
+            if (!acknowledgement?.success || !acknowledgement.key) {
+                window.showNotification?.(
+                    acknowledgement?.error || this.t(
+                        'keys.renameFailed', 'Failed to rename key'
+                    ),
+                    'error',
+                );
+                this.renderKeysList();
+                return;
+            }
+            this.editingKeyId = null;
+            this.upsertKeySummary(acknowledgement.key);
+        });
     },
 
     deleteKey(keyId) {

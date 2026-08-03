@@ -34,6 +34,18 @@ def test_all_locales_have_matching_translation_keys():
         } <= keys
         for keys in keys_by_locale.values()
     )
+    assert all(
+        {
+            'keys.addNew',
+            'keys.add',
+            'keys.rename',
+            'keys.renameNamed',
+            'keys.saveName',
+            'keys.renameFailed',
+            'connection.connectBusy',
+        } <= keys
+        for keys in keys_by_locale.values()
+    )
 
 
 def test_all_locales_preserve_translation_placeholders():
