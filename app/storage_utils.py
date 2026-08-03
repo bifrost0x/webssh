@@ -16,12 +16,51 @@ import threading
 from typing import Callable, TypeVar
 
 from .storage_errors import StorageCorruptionError
+from .backup_coordination import persistent_write
 
 
 T = TypeVar('T')
 
 _locks = {}
 _locks_guard = threading.Lock()
+
+
+class _CoordinatedStorageLock:
+    """Preserve the Lock API while coordinating its mutation cycles."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._write_context = None
+
+    def acquire(self, *args, **kwargs):
+        acquired = self._lock.acquire(*args, **kwargs)
+        if not acquired:
+            return False
+        context = persistent_write()
+        try:
+            context.__enter__()
+        except Exception:
+            self._lock.release()
+            raise
+        self._write_context = context
+        return True
+
+    def release(self):
+        context = self._write_context
+        self._write_context = None
+        if context is not None:
+            context.__exit__(None, None, None)
+        self._lock.release()
+
+    def locked(self):
+        return self._lock.locked()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.release()
 
 
 def safe_reference_name(value):
@@ -43,7 +82,7 @@ def storage_lock(key):
     with _locks_guard:
         lock = _locks.get(key)
         if lock is None:
-            lock = threading.Lock()
+            lock = _CoordinatedStorageLock()
             _locks[key] = lock
     return lock
 
@@ -125,30 +164,31 @@ def atomic_write_bytes(path: Path, payload: bytes, mode: int = 0o600) -> None:
     If the final directory fsync fails, the exception is surfaced even though
     ``os.replace`` has already made the new file active.
     """
-    path = Path(path)
-    temporary_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode='wb',
-            dir=path.parent,
-            prefix=f'.{path.name}.',
-            suffix='.tmp',
-            delete=False,
-        ) as handle:
-            temporary_path = Path(handle.name)
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary_path, mode)
-        os.replace(temporary_path, path)
+    with persistent_write():
+        path = Path(path)
         temporary_path = None
-        fsync_parent_directory(path)
-    finally:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink()
-            except FileNotFoundError:
-                pass
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='wb',
+                dir=path.parent,
+                prefix=f'.{path.name}.',
+                suffix='.tmp',
+                delete=False,
+            ) as handle:
+                temporary_path = Path(handle.name)
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temporary_path, mode)
+            os.replace(temporary_path, path)
+            temporary_path = None
+            fsync_parent_directory(path)
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink()
+                except FileNotFoundError:
+                    pass
 
 
 def atomic_copy_file(
@@ -157,6 +197,11 @@ def atomic_copy_file(
     mode: int = 0o600,
 ) -> None:
     """Durably stream a regular file into an atomic destination replace."""
+    with persistent_write():
+        _atomic_copy_file(source, destination, mode)
+
+
+def _atomic_copy_file(source: Path, destination: Path, mode: int) -> None:
     source = Path(source)
     destination = Path(destination)
     source_stat = source.lstat()

@@ -42,6 +42,8 @@ def _initialize_persistent_storage(app):
         return
 
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    from .session_epoch import current_epoch
+    current_epoch()
     from .audit_logger import initialize_file_logging
     initialize_file_logging(config.DATA_DIR)
     with app.app_context():
@@ -73,6 +75,10 @@ def create_app(
     app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
         max_workers=config.BACKGROUND_WORKERS
     )
+
+    from .maintenance_mode import is_active, recover_interrupted_restore
+    if initialize_storage:
+        recover_interrupted_restore()
 
     for warning in config.SECURITY_CONFIG_WARNINGS:
         log_warning('Deployment security warning', warning=warning)
@@ -135,6 +141,27 @@ def create_app(
         ):
             abort(404)
 
+    @app.before_request
+    def enforce_restore_maintenance_and_session_epoch():
+        if is_active() and request.path not in {
+            '/health',
+            '/ready',
+            '/admin/api/backups/restore/status',
+        }:
+            return jsonify({
+                'error': 'WebSSH is in restore maintenance mode',
+                'code': 'maintenance',
+            }), 503
+        if initialize_storage and current_user.is_authenticated:
+            from .session_epoch import current_epoch
+            epoch = current_epoch()
+            stored_epoch = session.get('_auth_epoch')
+            if stored_epoch is None:
+                session['_auth_epoch'] = epoch
+            elif stored_epoch != epoch:
+                logout_user()
+                session.clear()
+
     trusted_proxies = config.TRUSTED_PROXIES
     if trusted_proxies > 0:
         app.wsgi_app = ProxyFix(
@@ -160,6 +187,8 @@ def create_app(
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{config.DATA_DIR / "app.db"}'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
+    from .backup_coordination import install_sqlalchemy_coordination
+    install_sqlalchemy_coordination()
     init_auth(app)
     from .request_limits import init_request_limits
     from .webauthn_routes import webauthn_blueprint
@@ -167,6 +196,7 @@ def create_app(
     csrf.init_app(app)
     from .cli import register_cli
     from .audit_export import audit_export_blueprint
+    from .admin_backup import admin_backup_blueprint
     from .health import health_blueprint
     from .host_key_routes import host_key_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
@@ -176,6 +206,7 @@ def create_app(
     if initialize_oidc:
         init_oidc(app)
     app.register_blueprint(audit_export_blueprint)
+    app.register_blueprint(admin_backup_blueprint)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(host_key_blueprint)
     app.register_blueprint(oidc_blueprint)
@@ -185,6 +216,12 @@ def create_app(
     if initialize_storage:
         _initialize_persistent_storage(app)
     if start_runtime:
+        from .backup_operations import backup_operations
+        backup_operations.cleanup_orphans()
+        app.extensions['runtime_lifecycle'].start_job(
+            'backup-operation-cleanup',
+            backup_operations.cleanup_loop,
+        )
         transfer_runtime_binding = transfer_manager.bind_runtime()
         app.extensions['runtime_lifecycle'].register_shutdown_callback(
             'active_transfers',
@@ -237,6 +274,9 @@ def create_app(
         if not config.DEBUG:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
+        if initialize_storage and session.get('_user_id') is not None:
+            from .session_epoch import current_epoch
+            session['_auth_epoch'] = current_epoch()
         return response
 
     from . import socket_events, command_manager, connection_pool
