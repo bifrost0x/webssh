@@ -982,11 +982,11 @@
     });
 
     socket.on('profile_saved', (data) => {
-        showNotification('Profile saved successfully', 'success');
+        showNotification('Saved connection updated successfully', 'success');
     });
 
     socket.on('profile_deleted', (data) => {
-        showNotification('Profile deleted successfully', 'success');
+        showNotification('Saved connection deleted successfully', 'success');
     });
 
     socket.on('keys_list', (data) => {

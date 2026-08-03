@@ -120,7 +120,7 @@ class SFTPFileManager {
                                 <select class="fm-source-select form-control" id="fmLeftSource">
                                     <option value="" data-i18n="fm.selectSource">-- Select Source --</option>
                                     <optgroup data-i18n-label="fm.sshSessions" label="SSH Sessions" id="fmLeftSessions"></optgroup>
-                                    <option value="quick-connect" data-i18n="fm.newConnection">+ New Connection...</option>
+                                    <option value="quick-connect" data-i18n="fm.newConnection">+ Quick Connect...</option>
                                 </select>
                             </div>
                             <div class="fm-pane-nav">
@@ -158,7 +158,7 @@ class SFTPFileManager {
                                 <select class="fm-source-select form-control" id="fmRightSource">
                                     <option value="" data-i18n="fm.selectSource">-- Select Source --</option>
                                     <optgroup data-i18n-label="fm.sshSessions" label="SSH Sessions" id="fmRightSessions"></optgroup>
-                                    <option value="quick-connect" data-i18n="fm.newConnection">+ New Connection...</option>
+                                    <option value="quick-connect" data-i18n="fm.newConnection">+ Quick Connect...</option>
                                 </select>
                             </div>
                             <div class="fm-pane-nav">
@@ -271,7 +271,7 @@ class SFTPFileManager {
                     <form id="fmQcForm">
                         <!-- Profile Selector -->
                         <div class="form-group">
-                            <label for="fmQcProfile" data-i18n="fm.qc.savedProfiles">Saved Profiles</label>
+                            <label for="fmQcProfile" data-i18n="fm.qc.savedProfiles">Saved Connections</label>
                             <select id="fmQcProfile" class="form-control">
                                 <option value="" data-i18n="fm.qc.enterManually">-- Enter manually --</option>
                             </select>

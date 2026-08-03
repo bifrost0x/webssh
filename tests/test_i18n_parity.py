@@ -11,6 +11,30 @@ TERMINOLOGY = {
     'zh': ('快速连接', '已保存的连接'),
 }
 
+LEGACY_CONNECTION_TERMS = {
+    'en': r'\bprofiles?\b',
+    'vi': r'(?:hồ sơ|cấu hình)',
+    'de': r'\bprofil(?:e|en|s)?\b',
+    'fr': r'\bprofils?\b',
+    'es': r'\bperfiles?\b',
+    'zh': r'配置(?:文件)?',
+}
+
+SAVED_CONNECTION_COPY_KEYS = {
+    'connection.profileUnavailable',
+    'connection.loadProfile',
+    'connection.selectProfile',
+    'connection.saveAsProfile',
+    'connection.profileName',
+    'profiles.create',
+    'profiles.none',
+    'profiles.saveFailed',
+    'profiles.saved',
+    'commandSets.manageHint',
+    'commandModes.parametersTooltip',
+    'commandSets.legacyNotice',
+}
+
 
 def test_all_locales_have_matching_translation_keys():
     source = Path('static/js/i18n.js').read_text(encoding='utf-8')
@@ -91,6 +115,14 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
         assert values['panes.newConnection'] == f'+ {quick_connect}'
         assert values['fm.newConnection'] == f'+ {quick_connect}...'
         assert quick_connect in values['connection.clickToStart']
+        assert quick_connect in values['panes.selectSession']
+        assert quick_connect in values['panes.assignInfo']
+        for key in SAVED_CONNECTION_COPY_KEYS:
+            assert not re.search(
+                LEGACY_CONNECTION_TERMS[match.group(1)],
+                values[key],
+                re.IGNORECASE,
+            ), f'{match.group(1)}:{key} still uses legacy profile terminology'
 
 
 def test_new_tab_accessible_name_uses_quick_connect_translation():
@@ -102,6 +134,34 @@ def test_new_tab_accessible_name_uses_quick_connect_translation():
     assert 'aria-label="Quick Connect"' in new_tab.group(0)
     assert 'data-i18n-title="connection.newConnection"' in new_tab.group(0)
     assert 'data-i18n-aria-label="connection.newConnection"' in new_tab.group(0)
+
+
+def test_english_visible_fallbacks_avoid_legacy_connection_terms():
+    sources = '\n'.join(
+        Path(path).read_text(encoding='utf-8')
+        for path in (
+            'templates/index.html',
+            'static/js/app.js',
+            'static/js/profile-manager.js',
+            'static/js/sftp-file-manager.js',
+        )
+    )
+    for legacy_text in (
+        'Load Profile',
+        'Select Profile',
+        'Profile Name',
+        'Create profile',
+        'No profiles saved',
+        'Failed to save profile',
+        'Profile saved successfully',
+        'Profile deleted successfully',
+        'delete this profile',
+        '+ New Connection...',
+        'Saved Profiles',
+        'This profile still uses',
+        'connection profile',
+    ):
+        assert legacy_text not in sources
 
 
 def test_all_locales_preserve_translation_placeholders():

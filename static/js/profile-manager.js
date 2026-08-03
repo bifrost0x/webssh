@@ -253,7 +253,7 @@ const ProfileManager = {
         placeholder.value = '';
         placeholder.textContent = this.t(
             'connection.selectProfile',
-            '-- Select Profile --',
+            '-- Select Saved Connection --',
         );
         select.appendChild(placeholder);
 
@@ -502,7 +502,7 @@ const ProfileManager = {
         if (!this.profiles.length) {
             const empty = document.createElement('p');
             empty.className = 'no-items';
-            empty.textContent = this.t('profiles.none', 'No profiles saved.');
+            empty.textContent = this.t('profiles.none', 'No saved connections.');
             container.appendChild(empty);
             return;
         }
@@ -757,7 +757,7 @@ const ProfileManager = {
         window.socket.emit('save_profile', payload, acknowledgement => {
             if (!acknowledgement?.success) {
                 window.showNotification?.(
-                    acknowledgement?.error || this.t('profiles.saveFailed', 'Failed to save profile'),
+                    acknowledgement?.error || this.t('profiles.saveFailed', 'Failed to save connection'),
                     'error',
                 );
                 return;
@@ -783,7 +783,7 @@ const ProfileManager = {
     },
 
     deleteProfile(profileId) {
-        if (confirm('Are you sure you want to delete this profile?')) {
+        if (confirm('Are you sure you want to delete this saved connection?')) {
             if (window.socket) {
                 window.socket.emit('delete_profile', { profile_id: profileId });
             }
