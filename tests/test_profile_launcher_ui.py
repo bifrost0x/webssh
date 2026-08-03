@@ -24,16 +24,17 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=4',
-        "filename='js/i18n.js'": '?v=1',
+        "filename='css/style.css'": '?v=5',
+        "filename='js/i18n.js'": '?v=2',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/profile-launcher-utils.js'": '?v=2',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=5',
+        "filename='js/profile-manager.js'": '?v=6',
+        "filename='js/session-manager.js'": '?v=4',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
-        "filename='js/app.js'": '?v=5',
+        "filename='js/app.js'": '?v=6',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
@@ -120,7 +121,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=4" in template
+    assert "filename='css/style.css') }}?v=5" in template
 
 
 def test_profile_launch_uses_shared_executor_and_review_callback():
@@ -185,3 +186,23 @@ def test_profile_management_connect_uses_only_the_central_launcher():
     source = read('static/js/profile-manager.js')
     assert 'window.launchProfileForPane?.(profileId)' in source
     assert 'openConnectionModalForProfile' not in source
+
+
+def test_visible_connection_copy_uses_saved_connections_and_quick_connect():
+    template = read('templates/index.html')
+    profiles = read('static/js/profile-manager.js')
+    sessions = read('static/js/session-manager.js')
+    affected_source = '\n'.join((template, profiles, sessions))
+
+    for obsolete in (
+        'Saved Profiles',
+        'Choose a profile to connect',
+        'New SSH Connection',
+        '+ New Connection',
+    ):
+        assert obsolete not in affected_source
+
+    assert '>Quick Connect<' in template
+    assert '>Saved Connections<' in template
+    assert ": 'Quick Connect';" in profiles
+    assert ": '+ Quick Connect'," in sessions

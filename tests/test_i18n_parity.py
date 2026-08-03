@@ -2,6 +2,16 @@ import re
 from pathlib import Path
 
 
+TERMINOLOGY = {
+    'en': ('Quick Connect', 'Saved Connections'),
+    'vi': ('Kết nối nhanh', 'Kết nối đã lưu'),
+    'de': ('Schnellverbindung', 'Gespeicherte Verbindungen'),
+    'fr': ('Connexion rapide', 'Connexions enregistrées'),
+    'es': ('Conexión rápida', 'Conexiones guardadas'),
+    'zh': ('快速连接', '已保存的连接'),
+}
+
+
 def test_all_locales_have_matching_translation_keys():
     source = Path('static/js/i18n.js').read_text(encoding='utf-8')
     locale_starts = list(re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE))
@@ -46,6 +56,35 @@ def test_all_locales_have_matching_translation_keys():
         } <= keys
         for keys in keys_by_locale.values()
     )
+
+
+def test_saved_connection_and_quick_connect_terms_are_consistent():
+    source = Path('static/js/i18n.js').read_text(encoding='utf-8')
+    locale_starts = list(
+        re.finditer(r'^    (en|vi|de|fr|es|zh): \{$', source, re.MULTILINE)
+    )
+    quick_keys = {
+        'connection.newConnection',
+        'connection.newSSHConnection',
+        'shortcuts.newConnection',
+    }
+    saved_keys = {'connection.savedProfiles', 'profiles.manage'}
+
+    for index, match in enumerate(locale_starts):
+        end = (
+            locale_starts[index + 1].start()
+            if index + 1 < len(locale_starts)
+            else source.index('\n};', match.end())
+        )
+        values = dict(re.findall(
+            r"^        '([^']+)': '([^']*)',$",
+            source[match.end():end],
+            re.MULTILINE,
+        ))
+        quick_connect, saved_connections = TERMINOLOGY[match.group(1)]
+        assert {values[key] for key in quick_keys} == {quick_connect}
+        assert {values[key] for key in saved_keys} == {saved_connections}
+        assert values['panes.newConnection'] == f'+ {quick_connect}'
 
 
 def test_all_locales_preserve_translation_placeholders():

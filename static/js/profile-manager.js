@@ -163,14 +163,14 @@ const ProfileManager = {
         const title = document.createElement('div');
         title.className = 'profile-launcher-title';
         title.textContent = profiles.length
-            ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Saved Profiles')
+            ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Saved Connections')
             : (window.i18n ? i18n.t('panes.emptyPane') : 'Empty pane');
         empty.appendChild(title);
 
         const hint = document.createElement('div');
         hint.className = 'profile-launcher-hint';
         hint.textContent = profiles.length
-            ? (window.i18n ? i18n.t('connection.savedProfilesHint') : 'Choose a profile to connect')
+            ? (window.i18n ? i18n.t('connection.savedProfilesHint') : 'Choose a saved connection to connect')
             : (window.i18n ? i18n.t('panes.selectSession') : 'Select a session or open a connection');
         empty.appendChild(hint);
 
@@ -225,7 +225,7 @@ const ProfileManager = {
             : 'btn btn-primary profile-launcher-new';
         newConnection.textContent = window.i18n
             ? i18n.t('connection.newConnection')
-            : 'New Connection';
+            : 'Quick Connect';
         newConnection.addEventListener('click', event => {
             event.stopPropagation();
             window.openConnectionModalForPane?.(paneIndex);

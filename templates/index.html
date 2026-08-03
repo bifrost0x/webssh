@@ -29,12 +29,12 @@
                 <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu">☰</button>
             </div>
             <div class="header-buttons">
-                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">New Connection</span> ✨</button>
+                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">Quick Connect</span> ✨</button>
 
                 <div class="header-group" role="group" aria-label="Tools">
                     <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
                     <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
-                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Manage profiles" data-i18n-title="profiles.manage"><span data-i18n="profiles.manage">Profiles</span> 🗂️</button>
+                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Saved Connections" data-i18n-title="profiles.manage"><span data-i18n="profiles.manage">Saved Connections</span> 🗂️</button>
                 </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
@@ -193,7 +193,7 @@
     <div class="modal modal-wide" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">New SSH Connection</h2>
+                <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">Quick Connect</h2>
                 <span class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
@@ -357,7 +357,7 @@
     <div class="modal modal-large" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="profileManagementTitle" data-i18n="profiles.manage">Profiles</h2>
+                <h2 id="profileManagementTitle" data-i18n="profiles.manage">Saved Connections</h2>
                 <span class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
@@ -873,7 +873,7 @@
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
