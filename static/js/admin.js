@@ -62,11 +62,12 @@
                 document.querySelectorAll('.admin-tab').forEach(x => x.classList.remove('active'));
                 tab.classList.add('active');
                 const name = tab.dataset.tab;
-                ['users', 'audit', 'settings'].forEach(n => {
+                ['users', 'audit', 'settings', 'backup'].forEach(n => {
                     document.getElementById('tab-' + n)?.classList.toggle('hidden', n !== name);
                 });
                 if (name === 'audit') { loadAudit(); }
                 if (name === 'settings') { loadSettings(); }
+                if (name === 'backup') { loadRestoreStatus(); }
             });
         });
     }
@@ -520,6 +521,321 @@
         document.getElementById('globalHostKeyRefresh')?.addEventListener('click', loadGlobalHostKeys);
     }
 
+    // ---- Backup and restore ----
+    const backupState = {
+        createdOperationId: null,
+        uploadedOperationId: null,
+        confirmationToken: null,
+        createPollGeneration: 0,
+        uploadPollGeneration: 0
+    };
+    const restoreStatusFlow = window.WebSSHRestoreStatus.createRestoreStatusFlow({
+        storage: window.sessionStorage,
+        fetchStatus: () => api('/admin/api/backups/restore/status'),
+        checkReady: async () => {
+            const response = await fetch(`${APP_ROOT}/ready`, {
+                cache: 'no-store',
+                credentials: 'same-origin'
+            });
+            return response.ok;
+        },
+        present: status => {
+            const failed = ['failed', 'rollback_failed'].includes(status.state);
+            const message = status.message || status.state;
+            setBackupStatus('restoreGlobalStatus', message, failed);
+            if (status.state === 'succeeded') {
+                notify(message, 'success');
+            } else if (failed) {
+                notify(message, 'error');
+            }
+        },
+        presentRestarting: () => setBackupStatus(
+            'restoreGlobalStatus',
+            t('backup.restarting', 'WebSSH is restarting. Sign in again when the service is ready.')
+        ),
+        reload: () => window.location.reload()
+    });
+
+    function setBackupStatus(id, message, error) {
+        const target = document.getElementById(id);
+        if (!target) { return; }
+        target.textContent = message;
+        target.classList.toggle('error', !!error);
+    }
+
+    function formatBytes(value) {
+        const size = Number(value) || 0;
+        if (size < 1024) { return `${size} B`; }
+        if (size < 1024 * 1024) { return `${(size / 1024).toFixed(1)} KiB`; }
+        if (size < 1024 * 1024 * 1024) {
+            return `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+        }
+        return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
+    }
+
+    async function pollBackupOperation(operationId, generation, generationKey, onComplete) {
+        if (!operationId || generation !== backupState[generationKey]) { return; }
+        try {
+            const record = await api(`/admin/api/backups/${operationId}`);
+            if (generation !== backupState[generationKey]) { return; }
+            if (['ready', 'verified', 'failed'].includes(record.status)) {
+                onComplete(record);
+                return;
+            }
+            onComplete(record, true);
+            setTimeout(() => pollBackupOperation(
+                operationId, generation, generationKey, onComplete
+            ), 900);
+        } catch (error) {
+            onComplete({ status: 'failed', error: error.message });
+        }
+    }
+
+    async function createBackup() {
+        const button = document.getElementById('backupCreateBtn');
+        const download = document.getElementById('backupDownloadBtn');
+        button.disabled = true;
+        download.disabled = true;
+        backupState.createdOperationId = null;
+        setBackupStatus('backupCreateStatus', t('backup.creating', 'Creating and verifying backup...'));
+        try {
+            const record = await api('/admin/api/backups', { method: 'POST' });
+            backupState.createdOperationId = record.operation_id;
+            const generation = ++backupState.createPollGeneration;
+            pollBackupOperation(record.operation_id, generation, 'createPollGeneration', (update, pending) => {
+                if (pending) {
+                    setBackupStatus('backupCreateStatus', t('backup.creating', 'Creating and verifying backup...'));
+                    return;
+                }
+                button.disabled = false;
+                if (update.status === 'ready') {
+                    download.disabled = false;
+                    setBackupStatus(
+                        'backupCreateStatus',
+                        t('backup.ready', 'Backup verified and ready for one-time download.')
+                    );
+                    notify(t('backup.ready', 'Backup verified and ready for one-time download.'), 'success');
+                } else {
+                    setBackupStatus('backupCreateStatus', update.error || t('backup.failed', 'Backup operation failed.'), true);
+                }
+            });
+        } catch (error) {
+            button.disabled = false;
+            setBackupStatus('backupCreateStatus', error.message, true);
+            notify(error.message, 'error');
+        }
+    }
+
+    function downloadBackup() {
+        const operationId = backupState.createdOperationId;
+        const button = document.getElementById('backupDownloadBtn');
+        if (!operationId) { return; }
+        button.disabled = true;
+        const form = document.createElement('form');
+        const frame = document.createElement('iframe');
+        frame.name = `backup-download-${Date.now()}`;
+        frame.hidden = true;
+        form.method = 'POST';
+        form.action = `${APP_ROOT}/admin/api/backups/${operationId}/download`;
+        form.target = frame.name;
+        form.hidden = true;
+        const csrf = document.createElement('input');
+        csrf.type = 'hidden';
+        csrf.name = 'csrf_token';
+        csrf.value = CSRF;
+        form.appendChild(csrf);
+        document.body.appendChild(frame);
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
+        backupState.createdOperationId = null;
+        setBackupStatus('backupCreateStatus', t('backup.downloaded', 'Download started; the server copy is one-time use.'));
+    }
+
+    function renderBackupSummary(summary) {
+        const panel = document.getElementById('backupValidationPanel');
+        panel.hidden = false;
+        document.getElementById('backupFormatVersion').textContent = summary.format_version;
+        document.getElementById('backupDataSchemaVersion').textContent = summary.data_schema_version;
+        document.getElementById('backupCurrentDataSchemaVersion').textContent = summary.current_data_schema_version;
+        document.getElementById('backupCreatedAt').textContent = summary.created_at
+            ? fmtDate(summary.created_at)
+            : t('backup.notRecorded', 'Not recorded');
+        document.getElementById('backupLegacy').textContent = summary.legacy
+            ? t('common.yes', 'Yes')
+            : t('common.no', 'No');
+        document.getElementById('backupFileCount').textContent = summary.file_count;
+        document.getElementById('backupTotalSize').textContent = formatBytes(summary.total_uncompressed_size);
+        document.getElementById('backupCompatible').textContent = summary.compatible
+            ? t('common.yes', 'Yes')
+            : t('common.no', 'No');
+        const reasonKeys = {
+            'backup data schema is current': 'backup.compatibilityCurrent',
+            'legacy archive can be migrated': 'backup.compatibilityLegacy',
+            'backup data schema can be migrated': 'backup.compatibilityMigratable',
+            'backup data schema is newer than this WebSSH version': 'backup.compatibilityFuture',
+            'no complete migration path for backup data schema': 'backup.compatibilityNoMigration'
+        };
+        const reasonKey = reasonKeys[summary.compatibility_reason];
+        document.getElementById('backupCompatibilityReason').textContent = reasonKey
+            ? t(reasonKey, summary.compatibility_reason)
+            : summary.compatibility_reason;
+        document.getElementById('backupRestoreBtn').disabled = summary.compatible !== true;
+    }
+
+    async function uploadBackup() {
+        const input = document.getElementById('backupUploadFile');
+        const button = document.getElementById('backupUploadBtn');
+        const file = input.files?.[0];
+        if (!file) {
+            notify(t('backup.selectFile', 'Select a ZIP backup first.'), 'error');
+            return;
+        }
+        button.disabled = true;
+        document.getElementById('backupValidationPanel').hidden = true;
+        document.getElementById('backupRestoreBtn').disabled = true;
+        setBackupStatus('backupUploadStatus', t('backup.verifying', 'Uploading and verifying backup...'));
+        try {
+            const response = await fetch(`${APP_ROOT}/admin/api/backups/upload`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/zip',
+                    'X-CSRFToken': CSRF
+                },
+                body: file
+            });
+            const record = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(record.error || `Upload failed (${response.status})`);
+            }
+            backupState.uploadedOperationId = record.operation_id;
+            const generation = ++backupState.uploadPollGeneration;
+            pollBackupOperation(record.operation_id, generation, 'uploadPollGeneration', (update, pending) => {
+                if (pending) {
+                    setBackupStatus('backupUploadStatus', t('backup.verifying', 'Uploading and verifying backup...'));
+                    return;
+                }
+                button.disabled = false;
+                input.value = '';
+                if (update.status === 'verified') {
+                    renderBackupSummary(update.summary);
+                    setBackupStatus('backupUploadStatus', t('backup.verified', 'Backup verified successfully.'));
+                    notify(t('backup.verified', 'Backup verified successfully.'), 'success');
+                } else {
+                    backupState.uploadedOperationId = null;
+                    setBackupStatus('backupUploadStatus', update.error || t('backup.failed', 'Backup operation failed.'), true);
+                }
+            });
+        } catch (error) {
+            button.disabled = false;
+            setBackupStatus('backupUploadStatus', error.message, true);
+            notify(error.message, 'error');
+        }
+    }
+
+    function showModal(id, show) {
+        const modal = document.getElementById(id);
+        modal?.classList.toggle('show', show);
+        modal?.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function closeRestoreModals() {
+        showModal('restoreFirstConfirmModal', false);
+        showModal('restoreSecondConfirmModal', false);
+        document.getElementById('restoreFirstAcknowledge').checked = false;
+        document.getElementById('restoreFinalAcknowledge').checked = false;
+        document.getElementById('restorePhrase').value = '';
+        document.getElementById('restorePassword').value = '';
+        backupState.confirmationToken = null;
+    }
+
+    async function continueRestoreConfirmation() {
+        if (!document.getElementById('restoreFirstAcknowledge').checked) {
+            notify(t('backup.ackRequired', 'Acknowledge the restore impact first.'), 'error');
+            return;
+        }
+        try {
+            const result = await api(
+                `/admin/api/backups/${backupState.uploadedOperationId}/restore/prepare`,
+                {
+                    method: 'POST',
+                    body: { acknowledge_sensitive_restore: true }
+                }
+            );
+            backupState.confirmationToken = result.confirmation_token;
+            showModal('restoreFirstConfirmModal', false);
+            showModal('restoreSecondConfirmModal', true);
+            document.getElementById('restorePhrase').focus();
+        } catch (error) {
+            notify(error.message, 'error');
+        }
+    }
+
+    async function startRestore() {
+        const password = document.getElementById('restorePassword');
+        const body = {
+            confirmation_token: backupState.confirmationToken,
+            confirmation_phrase: document.getElementById('restorePhrase').value,
+            password: password.value,
+            confirm_destructive_restore: document.getElementById('restoreFinalAcknowledge').checked
+        };
+        try {
+            await api(
+                `/admin/api/backups/${backupState.uploadedOperationId}/restore`,
+                { method: 'POST', body }
+            );
+            restoreStatusFlow.markPending();
+            closeRestoreModals();
+            document.getElementById('backupRestoreBtn').disabled = true;
+            setBackupStatus(
+                'restoreGlobalStatus',
+                t('backup.restoreStarted', 'Restore started. WebSSH is entering maintenance mode and will restart.')
+            );
+            restoreStatusFlow.poll();
+        } catch (error) {
+            notify(error.message, 'error');
+        } finally {
+            password.value = '';
+            body.password = '';
+        }
+    }
+
+    async function loadRestoreStatus() {
+        try {
+            const status = await api('/admin/api/backups/restore/status');
+            if (status.state !== 'idle') {
+                setBackupStatus('restoreGlobalStatus', status.message || status.state,
+                    ['failed', 'rollback_failed'].includes(status.state));
+            }
+        } catch (error) {
+            if (!/401|log in/i.test(error.message)) {
+                setBackupStatus('restoreGlobalStatus', error.message, true);
+            }
+        }
+    }
+
+    function initBackupRestore() {
+        document.getElementById('backupCreateBtn')?.addEventListener('click', createBackup);
+        document.getElementById('backupDownloadBtn')?.addEventListener('click', downloadBackup);
+        document.getElementById('backupUploadBtn')?.addEventListener('click', uploadBackup);
+        document.getElementById('backupRestoreBtn')?.addEventListener('click', () => {
+            if (backupState.uploadedOperationId) {
+                showModal('restoreFirstConfirmModal', true);
+                document.getElementById('restoreFirstAcknowledge').focus();
+            }
+        });
+        document.getElementById('restoreFirstContinue')?.addEventListener('click', continueRestoreConfirmation);
+        document.getElementById('restoreStartBtn')?.addEventListener('click', startRestore);
+        ['restoreFirstCancel', 'restoreFirstCancelButton', 'restoreSecondCancel', 'restoreSecondCancelButton']
+            .forEach(id => document.getElementById(id)?.addEventListener('click', closeRestoreModals));
+        if (restoreStatusFlow.isPending()) {
+            restoreStatusFlow.resume();
+        } else {
+            loadRestoreStatus();
+        }
+    }
+
     async function loadGlobalHostKeys() {
         const body = document.getElementById('globalHostKeyList');
         if (!body) { return; }
@@ -574,6 +890,7 @@
         initUsers();
         initAudit();
         initSettings();
+        initBackupRestore();
         loadUsers();
         loadGlobalHostKeys();
     });

@@ -796,7 +796,81 @@ designed for a read-only snapshot and never migrates plaintext legacy keys.
 Its report omits key content, configured key names, filenames, paths, and the
 `SECRET_KEY`.
 
-### Backup, Restore, and Secret Rotation
+### Web Backup and Restore
+
+Administrators can create, download, verify, and restore backups from
+**Administration > Backup & Restore**. This native feature is always present;
+there are no feature flags that can silently disable backup or restore.
+
+Web backup uses SQLite's native backup API and briefly coordinates persistent
+file writers while it captures the database and file-based stores. WebSSH stays
+online during creation. The temporary snapshot is deleted immediately after the
+verified ZIP has been created. The verified archive is kept in a private
+directory outside `DATA_DIR` only until its one-time, session-bound download or
+until its TTL expires.
+
+The archive includes the SQLite database, application settings, user profiles,
+`known_hosts`, persisted application secret, SSH key metadata, encrypted private
+keys, and the other persistent files covered by the CLI format. Runtime `logs/`,
+`tmp/`, transient uploads, and incomplete transfer data remain excluded. New
+web and CLI archives use format version 2 and are mutually compatible. Format
+v2 records the WebSSH data-schema version, creation time, and producer in the
+manifest. Existing format-v1 CLI archives remain supported as legacy schema 0
+backups.
+
+Archive verification and restore compatibility are separate decisions. A safe,
+well-formed archive can be inspected even when it cannot be restored by the
+running version. The Admin validation result shows the archive format, backup
+and current data-schema versions, creation time, legacy status, and a
+compatibility reason. Backups with the current schema are accepted. Older
+schemas are accepted only when WebSSH has a complete registered migration path.
+Backups with a newer schema are blocked server-side before restore preparation
+and checked again before the destructive operation starts. Restoring a newer
+backup into an older WebSSH release is not supported.
+
+To restore, upload an archive in the same Admin tab. WebSSH verifies its
+manifest, checksums, sizes, members, compression limits, and format before it
+shows a non-sensitive summary. Restore then requires two explicit confirmations,
+the exact phrase `RESTORE`, and the current administrator password. The service
+enters maintenance mode, rejects new writes and SSH sessions, closes active
+runtime activity, creates an online-consistent emergency rollback archive, and
+replaces the persistent state. All browser sessions are invalidated.
+
+After a successful restore, the process terminates intentionally. Docker
+Compose and Portainer deployments using `restart: unless-stopped` restart the
+container automatically. The Admin page reports the operation while possible;
+a disconnect during the final step means the administrator should wait for
+`/ready` and sign in again. An interrupted restore is detected on startup and
+rolled back from the emergency archive. If both restore and rollback fail,
+maintenance mode remains active and the operator must use the CLI restore path.
+A successful confirmed CLI restore clears this recovery-only maintenance state;
+the following application start removes the retained temporary rollback files.
+
+Backup archives are highly sensitive. HTTPS protects transport only; it does
+not encrypt the downloaded ZIP at rest. Store downloads encrypted, off-host,
+with administrator-only access, and dispose of them according to a retention
+policy.
+
+Web restore is intentionally treated as a high-risk administrative operation,
+not as a routine user action. Keep the Admin interface behind HTTPS and trusted
+access controls, retain an encrypted off-host backup, and keep the offline CLI
+restore procedure available when the web process or its current data schema
+cannot start safely.
+
+Operational configuration:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `BACKUP_UPLOAD_MAX_SIZE` | `1073741824` | Maximum streamed web upload size in bytes |
+| `BACKUP_OPERATION_TIMEOUT` | `1800` | Operation and retained-status timeout in seconds |
+| `BACKUP_DOWNLOAD_TTL` | `600` | TTL for generated downloads and verified uploads in seconds |
+| `BACKUP_TEMP_DIR` | system temp + `webssh-backup-operations` | Private temporary base outside `DATA_DIR`; WebSSH creates an isolated namespace per resolved data directory |
+| `RATELIMIT_BACKUP_CREATE` | `3 per hour` | Per-admin/IP creation rate |
+| `RATELIMIT_BACKUP_UPLOAD` | `5 per hour` | Per-admin/IP upload rate |
+| `RATELIMIT_BACKUP_DOWNLOAD` | `10 per hour` | Per-admin/IP download rate |
+| `RATELIMIT_BACKUP_RESTORE` | `3 per hour` | Per-admin/IP restore-attempt rate |
+
+### CLI Backup, Restore, and Secret Rotation
 
 Run mutating maintenance commands only while every WebSSH application process
 that uses the data directory is stopped. Archives contain the database, user
@@ -957,9 +1031,10 @@ private, and reserved targets after DNS resolution.
 - Restrict and encrypt backups of `DATA_DIR`; they contain account metadata,
   encrypted private keys, and may include the Docker-generated `SECRET_KEY`.
   Runtime logs and incomplete transfers are excluded.
-- Stop all WebSSH processes before backup creation, restore, or secret rotation.
-  Verify archives before transferring or restoring them, and restart
-  immediately after a successful persisted-secret rotation.
+- Use the Admin workflow for an online-consistent backup. Stop all WebSSH
+  processes before CLI backup creation, CLI restore, or secret rotation. Verify
+  archives before transferring or restoring them, and restart immediately after
+  a successful persisted-secret rotation.
 - Define a retention and secure-disposal policy for `DATA_DIR/deleted_users`.
   Account deletion quarantines those files to prevent numeric user-id reuse
   from exposing them, but does not wipe them automatically.

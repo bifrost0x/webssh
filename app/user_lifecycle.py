@@ -7,6 +7,7 @@ import config
 from .audit_logger import log_error, log_info, log_warning
 from .models import db, SocketSession, SSHSession
 from . import connection_pool, ssh_manager
+from .backup_coordination import persistent_write
 
 
 def revoke_user_access(user_id, socketio_instance=None):
@@ -143,24 +144,25 @@ def restore_quarantined_user_data(original, quarantined):
 
 def delete_user_account(user, socketio_instance=None):
     """Revoke a user and delete their row without exposing retained files."""
-    user_id = int(user.id)
-    revoke_user_access(user_id, socketio_instance)
-    original = quarantined = None
+    with persistent_write():
+        user_id = int(user.id)
+        revoke_user_access(user_id, socketio_instance)
+        original = quarantined = None
 
-    try:
-        original, quarantined = quarantine_user_data(user_id)
-        db.session.delete(user)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
         try:
-            restore_quarantined_user_data(original, quarantined)
-        except Exception as restore_error:
-            log_error(
-                "Failed to restore quarantined user data",
-                user_id=user_id,
-                error=str(restore_error),
-            )
-        raise
+            original, quarantined = quarantine_user_data(user_id)
+            db.session.delete(user)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            try:
+                restore_quarantined_user_data(original, quarantined)
+            except Exception as restore_error:
+                log_error(
+                    "Failed to restore quarantined user data",
+                    user_id=user_id,
+                    error=str(restore_error),
+                )
+            raise
 
-    return quarantined
+        return quarantined

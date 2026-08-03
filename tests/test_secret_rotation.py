@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import sqlite3
 import uuid
 
 from cryptography.fernet import Fernet
@@ -42,7 +43,18 @@ def _rotation_data(tmp_path):
             }),
             encoding='utf-8',
         )
-    (data_dir / 'app.db').write_bytes(b'database')
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        database.execute(
+            'CREATE TABLE users ('
+            'id INTEGER PRIMARY KEY, '
+            'username TEXT NOT NULL, '
+            'password_hash TEXT NOT NULL'
+            ')'
+        )
+        database.commit()
+    finally:
+        database.close()
     return data_dir, old_secret, new_secret, plaintexts
 
 

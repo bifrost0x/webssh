@@ -2,12 +2,14 @@ import json
 import hashlib
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 import zipfile
 
 import pytest
 
+import app.backup_manager as backup_manager
 from app.backup_manager import (
     BackupIntegrityError,
     create_backup,
@@ -172,7 +174,6 @@ def test_backup_verify_missing_archive_does_not_initialize_storage(tmp_path):
 
 def _write_representative_data(data_dir):
     files = {
-        'app.db': b'SQLite format 3\x00representative database',
         'app_settings.json': b'{"registration_enabled": false}',
         'known_hosts': b'ssh.example ssh-ed25519 AAAA-test\n',
         'secret_key': b'persisted-secret\n',
@@ -186,7 +187,39 @@ def _write_representative_data(data_dir):
         path = data_dir / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
+    database_path = data_dir / 'app.db'
+    if not database_path.exists():
+        connection = sqlite3.connect(database_path)
+        try:
+            connection.execute(
+                'CREATE TABLE users ('
+                'id INTEGER PRIMARY KEY, '
+                'username TEXT NOT NULL, '
+                'password_hash TEXT NOT NULL'
+                ')'
+            )
+            connection.commit()
+        finally:
+            connection.close()
+    files['app.db'] = database_path.read_bytes()
     return files
+
+
+def _webssh_database_bytes(tmp_path):
+    database_path = tmp_path / 'valid-webssh.db'
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.execute(
+            'CREATE TABLE users ('
+            'id INTEGER PRIMARY KEY, '
+            'username TEXT NOT NULL, '
+            'password_hash TEXT NOT NULL'
+            ')'
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return database_path.read_bytes()
 
 
 def _snapshot(directory):
@@ -209,9 +242,17 @@ def _corrupt_archive_member(source, destination, member):
             destination_zip.writestr(name, payload)
 
 
-def _write_manifest_archive(archive, files):
+def _write_manifest_archive(
+    archive,
+    files,
+    *,
+    format_version=1,
+    data_schema_version=None,
+    created_at='2026-08-03T12:00:00Z',
+    producer='webssh',
+):
     manifest = {
-        'format_version': 1,
+        'format_version': format_version,
         'files': [
             {
                 'path': path,
@@ -221,6 +262,12 @@ def _write_manifest_archive(archive, files):
             for path, payload in sorted(files.items())
         ],
     }
+    if format_version == 2:
+        manifest.update({
+            'created_at': created_at,
+            'data_schema_version': data_schema_version,
+            'producer': producer,
+        })
     with zipfile.ZipFile(
         archive,
         'w',
@@ -234,6 +281,250 @@ def _write_manifest_archive(archive, files):
             backup.writestr(f'data/{path}', payload)
 
 
+def test_cli_verify_reports_legacy_restore_compatibility(tmp_path):
+    archive = tmp_path / 'legacy-v1.zip'
+    _write_manifest_archive(archive, {'app.db': _webssh_database_bytes(tmp_path)})
+
+    result = _maintenance_cli(
+        tmp_path / 'unused-data', 'backup', 'verify', str(archive)
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'format v1' in result.stdout
+    assert 'data schema 0' in result.stdout
+    assert 'restore compatible (legacy)' in result.stdout
+
+
+def test_cli_verify_reports_future_schema_without_accepting_restore(tmp_path):
+    archive = tmp_path / 'future-v2.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': _webssh_database_bytes(tmp_path)},
+        format_version=2,
+        data_schema_version=2,
+    )
+
+    result = _maintenance_cli(
+        tmp_path / 'unused-data', 'backup', 'verify', str(archive)
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'format v2' in result.stdout
+    assert 'data schema 2' in result.stdout
+    assert 'restore incompatible' in result.stdout
+
+
+def test_new_backup_records_v2_compatibility_metadata(tmp_path):
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _write_representative_data(data_dir)
+    archive = tmp_path / 'backup.zip'
+
+    manifest = create_backup(data_dir, archive)
+
+    assert manifest.format_version == 2
+    assert manifest.data_schema_version == 1
+    assert manifest.producer == 'webssh'
+    assert manifest.created_at.endswith('Z')
+
+
+def test_v1_backup_is_legacy_and_migratable(tmp_path):
+    archive = tmp_path / 'legacy-v1.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': _webssh_database_bytes(tmp_path)},
+        format_version=1,
+    )
+
+    manifest = verify_backup(archive)
+    compatibility = backup_manager.evaluate_backup_compatibility(manifest)
+
+    assert manifest.data_schema_version == 0
+    assert compatibility.compatible is True
+    assert compatibility.legacy is True
+    assert compatibility.reason == 'legacy archive can be migrated'
+
+
+def test_future_data_schema_verifies_but_is_not_restore_compatible(tmp_path):
+    archive = tmp_path / 'future-v2.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': _webssh_database_bytes(tmp_path)},
+        format_version=2,
+        data_schema_version=2,
+    )
+
+    manifest = verify_backup(archive)
+    compatibility = backup_manager.evaluate_backup_compatibility(manifest)
+
+    assert compatibility.compatible is False
+    assert compatibility.reason == 'backup data schema is newer than this WebSSH version'
+
+
+def test_future_data_schema_is_rejected_before_restore_mutates_data(tmp_path):
+    archive = tmp_path / 'future-v2.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': _webssh_database_bytes(tmp_path)},
+        format_version=2,
+        data_schema_version=2,
+    )
+    restore_dir = tmp_path / 'restore'
+    restore_dir.mkdir()
+    sentinel = restore_dir / 'keep.txt'
+    sentinel.write_bytes(b'keep-current-state')
+
+    with pytest.raises(BackupIntegrityError, match='newer'):
+        restore_backup(archive, restore_dir)
+
+    assert sentinel.read_bytes() == b'keep-current-state'
+    assert not (restore_dir / 'app.db').exists()
+
+
+@pytest.mark.parametrize(
+    'files',
+    (
+        {},
+        {'app.db': b'not-a-sqlite-database'},
+    ),
+)
+def test_restore_rejects_missing_or_invalid_database_before_mutation(
+    tmp_path, files
+):
+    archive = tmp_path / 'invalid-database.zip'
+    _write_manifest_archive(
+        archive,
+        files,
+        format_version=2,
+        data_schema_version=1,
+    )
+    restore_dir = tmp_path / 'restore'
+    restore_dir.mkdir()
+    sentinel = restore_dir / 'keep.txt'
+    sentinel.write_bytes(b'keep-current-state')
+
+    with pytest.raises(BackupIntegrityError, match='database'):
+        restore_backup(archive, restore_dir)
+
+    assert sentinel.read_bytes() == b'keep-current-state'
+    assert _snapshot(restore_dir) == {'keep.txt': b'keep-current-state'}
+
+
+def test_restore_rejects_non_webssh_sqlite_database_before_mutation(tmp_path):
+    unrelated_database = tmp_path / 'unrelated.db'
+    connection = sqlite3.connect(unrelated_database)
+    try:
+        connection.execute('CREATE TABLE notes (value TEXT)')
+        connection.commit()
+    finally:
+        connection.close()
+    archive = tmp_path / 'unrelated-database.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': unrelated_database.read_bytes()},
+        format_version=2,
+        data_schema_version=1,
+    )
+    restore_dir = tmp_path / 'restore'
+    restore_dir.mkdir()
+    sentinel = restore_dir / 'keep.txt'
+    sentinel.write_bytes(b'keep-current-state')
+
+    with pytest.raises(BackupIntegrityError, match='WebSSH database'):
+        restore_backup(archive, restore_dir)
+
+    assert _snapshot(restore_dir) == {'keep.txt': b'keep-current-state'}
+
+
+@pytest.mark.parametrize('command', ('create', 'restore'))
+def test_backup_cli_mutations_reject_a_cross_process_operation_lock(
+    app, tmp_path, monkeypatch, command
+):
+    import config
+    from app.backup_coordination import operation_lock
+
+    data_dir = Path(app.config['DATA_DIR'])
+    _write_representative_data(data_dir)
+    archive = tmp_path / 'locked-operation.zip'
+    create_backup(data_dir, archive)
+    destination = tmp_path / 'must-not-exist.zip'
+    monkeypatch.setattr(config, 'DATA_DIR', data_dir)
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', tmp_path / 'operations')
+    monkeypatch.setattr(config, 'BACKUP_OPERATION_TIMEOUT', 1)
+    arguments = (
+        ('backup', 'create', '--destination', str(destination), '--confirm-offline')
+        if command == 'create'
+        else ('backup', 'restore', str(archive), '--confirm-offline')
+    )
+
+    with operation_lock():
+        result = _maintenance_cli(
+            data_dir,
+            *arguments,
+            environment_overrides={
+                'BACKUP_TEMP_DIR': str(config.BACKUP_TEMP_DIR),
+                'BACKUP_OPERATION_TIMEOUT': '1',
+            },
+        )
+
+    assert result.returncode != 0
+    assert 'another backup or restore operation is active' in result.stderr
+    assert not destination.exists()
+
+
+def test_missing_data_migration_step_is_not_restore_compatible(monkeypatch):
+    monkeypatch.setattr(backup_manager, '_CURRENT_DATA_SCHEMA_VERSION', 3)
+    monkeypatch.setattr(backup_manager, '_DATA_SCHEMA_MIGRATIONS', {1: 2})
+    manifest = backup_manager.BackupManifest(
+        format_version=2,
+        files=(),
+        data_schema_version=1,
+        created_at='2026-08-03T12:00:00Z',
+        producer='webssh',
+    )
+
+    compatibility = backup_manager.evaluate_backup_compatibility(manifest)
+
+    assert compatibility.compatible is False
+    assert compatibility.reason == 'no complete migration path for backup data schema'
+
+
+@pytest.mark.parametrize(
+    ('producer', 'created_at'),
+    (
+        ('another-product', '2026-08-03T12:00:00Z'),
+        ('webssh', '2026-08-03T12:00:00'),
+    ),
+)
+def test_v2_manifest_rejects_untrusted_compatibility_metadata(
+    tmp_path, producer, created_at
+):
+    archive = tmp_path / 'untrusted-v2.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': b'data'},
+        format_version=2,
+        data_schema_version=1,
+        created_at=created_at,
+        producer=producer,
+    )
+
+    with pytest.raises(BackupIntegrityError, match='incompatible'):
+        verify_backup(archive)
+
+
+def test_unknown_manifest_format_is_rejected(tmp_path):
+    archive = tmp_path / 'unknown-format.zip'
+    _write_manifest_archive(
+        archive,
+        {'app.db': b'data'},
+        format_version=3,
+    )
+
+    with pytest.raises(BackupIntegrityError, match='incompatible'):
+        verify_backup(archive)
+
+
 def test_create_verify_and_restore_round_trip(tmp_path):
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -244,7 +535,8 @@ def test_create_verify_and_restore_round_trip(tmp_path):
     verified = verify_backup(archive)
 
     assert created == verified
-    assert created.format_version == 1
+    assert created.format_version == 2
+    assert backup_manager.evaluate_backup_compatibility(created).compatible
     assert tuple(item.path for item in created.files) == tuple(
         sorted(expected_files)
     )

@@ -1,5 +1,5 @@
 from functools import wraps
-from flask_socketio import disconnect
+from flask_socketio import disconnect, emit
 from flask import request, abort
 from flask_login import current_user
 import config
@@ -42,6 +42,15 @@ def socket_login_required(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        from .maintenance_mode import is_active
+        if is_active():
+            payload = {
+                'success': False,
+                'error': 'WebSSH is in restore maintenance mode',
+                'code': 'maintenance',
+            }
+            emit('error', payload)
+            return payload
         socket_sid = request.sid
         user = get_user_from_socket(socket_sid)
         if not user:
