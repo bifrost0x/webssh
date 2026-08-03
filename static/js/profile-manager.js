@@ -82,10 +82,12 @@ const ProfileManager = {
             if (!input) return;
             if (event.key === 'Enter') {
                 event.preventDefault();
+                event.stopPropagation();
                 this.submitKeyRename(input.dataset.keyId, input.value);
             }
             if (event.key === 'Escape') {
                 event.preventDefault();
+                event.stopPropagation();
                 this.cancelKeyRename();
             }
         });

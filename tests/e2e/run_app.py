@@ -28,7 +28,7 @@ def _profile(name, host, username, auth_type, **extra):
 
 
 def _seed_launcher_profiles(admin, user):
-    from app import key_manager, profile_manager
+    from app import jump_host_manager, key_manager, profile_manager
 
     private_key = ed25519.Ed25519PrivateKey.generate().private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -38,10 +38,29 @@ def _seed_launcher_profiles(admin, user):
     key, error = key_manager.save_key(admin.id, 'E2E usable key', private_key)
     if error:
         raise RuntimeError(error)
+    jump_host, error = jump_host_manager.add_jump_host(
+        admin.id,
+        'E2E key jump host',
+        'jump.local',
+        22,
+        'jumpuser',
+        'key',
+        key_id=key['id'],
+    )
+    if error:
+        raise RuntimeError(error)
 
     admin_profiles = [
         _profile('Password review', 'password.local', 'passworduser', 'password'),
         _profile('Usable key', 'key.local', 'keyuser', 'key', key_id=key['id']),
+        _profile(
+            'Key jump host',
+            'jump-target.local',
+            'keyuser',
+            'key',
+            key_id=key['id'],
+            jump_host_id=jump_host['id'],
+        ),
         _profile('Missing key', 'missing-key.local', 'keyuser', 'key', key_id='missing-key'),
         _profile(
             'Missing jump host',

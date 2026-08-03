@@ -1,10 +1,14 @@
 const { test, expect } = require('playwright/test');
 const {
     assertNoExternalRequests,
+    installKeyUploadTrap,
     installSshConnectTrap,
+    keyUploadAttempts,
     launchProfile,
     login,
+    openKeyManagement,
     openProfileManagement,
+    observeConnectionModal,
     sshAttempts,
 } = require('./helpers');
 
@@ -72,19 +76,7 @@ test('only auto-connects profiles whose credentials and references are currently
     await expect.poll(() => sshAttempts(page)).toHaveLength(0);
     await page.locator('#cancelConnectionBtn').click();
 
-    await page.evaluate(() => {
-        window.__connectionModalShows = 0;
-        const modal = document.getElementById('connectionModal');
-        window.__connectionModalObserver = new MutationObserver(() => {
-            if (modal.classList.contains('show')) {
-                window.__connectionModalShows += 1;
-            }
-        });
-        window.__connectionModalObserver.observe(modal, {
-            attributes: true,
-            attributeFilter: ['class'],
-        });
-    });
+    await observeConnectionModal(page);
     await launchProfile(page, 'Usable key');
     await expect.poll(() => sshAttempts(page)).toHaveLength(1);
     await expect.poll(() => page.evaluate(
@@ -168,6 +160,101 @@ test('an unauthorized Tailscale profile opens for review without an SSH attempt'
     await expect(page.locator('#passwordGroup')).toHaveClass(/hidden/);
     await expect(page.locator('#keyGroup')).toHaveClass(/hidden/);
     await expect(page.locator('#connectBtn')).toBeFocused();
+});
+
+test('key jump hosts and management actions launch directly without Quick Connect', async ({ page }) => {
+    await observeConnectionModal(page);
+    await launchProfile(page, 'Key jump host');
+    await expect.poll(() => sshAttempts(page)).toHaveLength(1);
+    await expect.poll(() => page.evaluate(() => window.__connectionModalShows)).toBe(0);
+    expect((await sshAttempts(page))[0].payload).toMatchObject({
+        host: 'jump-target.local',
+        auth_type: 'key',
+        proxy_jump: {
+            host: 'jump.local',
+            username: 'jumpuser',
+            auth_type: 'key',
+        },
+    });
+
+    await expect(page.locator('.profile-launcher-name', { hasText: 'Usable key' })).toBeVisible();
+    await openProfileManagement(page);
+    const usable = page.locator('.profile-management-item').filter({ hasText: 'Usable key' });
+    await usable.locator('[data-profile-action="connect"]').click();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(2);
+    await expect(page.locator('#profileManagementModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(() => window.__connectionModalShows)).toBe(0);
+    await expect(page.locator('.notification-error').last()).toContainText(
+        'E2E intercepted local SSH connect',
+    );
+    await expect(page.locator('.profile-launcher-name', { hasText: 'Usable key' })).toBeVisible();
+});
+
+test('inline key upload preserves the saved connection draft and focuses the new key', async ({ page }) => {
+    await installKeyUploadTrap(page);
+    await openProfileManagement(page);
+    const usable = page.locator('.profile-management-item').filter({ hasText: 'Usable key' });
+    await usable.locator('[data-profile-action="edit"]').click();
+    await page.locator('#profileEditorName').fill('Unsaved browser draft');
+    await page.locator('#profileEditorHost').fill('draft.local');
+    await page.locator('#profileEditorPort').fill('2202');
+    await page.locator('#profileEditorUsername').fill('draftuser');
+    await page.locator('#profileEditorAddKeyBtn').click();
+    await page.locator('#profileEditorNewKeyName').fill('Inline browser key');
+    await page.locator('#profileEditorNewKeyContent').fill('E2E private key text never sent');
+    await page.locator('#profileEditorUploadKeyBtn').click();
+
+    await expect.poll(() => keyUploadAttempts(page)).toHaveLength(1);
+    expect((await keyUploadAttempts(page))[0]).toEqual({
+        name: 'Inline browser key',
+        key_content: 'E2E private key text never sent',
+    });
+    await expect(page.locator('#profileEditorName')).toHaveValue('Unsaved browser draft');
+    await expect(page.locator('#profileEditorHost')).toHaveValue('draft.local');
+    await expect(page.locator('#profileEditorPort')).toHaveValue('2202');
+    await expect(page.locator('#profileEditorUsername')).toHaveValue('draftuser');
+    await expect(page.locator('#profileEditorKeySelect')).toHaveValue('e2e-inline-key');
+    await expect(page.locator('#profileEditorKeySelect')).toBeFocused();
+    await expect(page.locator('#profileEditorNewKeyName')).toHaveValue('');
+    await expect(page.locator('#profileEditorNewKeyContent')).toHaveValue('');
+    await expect(page.locator('#profileEditorAddKeyPanel')).toHaveClass(/hidden/);
+});
+
+test('SSH key rename supports click, Enter, cancel, and Escape', async ({ page }) => {
+    await openKeyManagement(page);
+    const keyList = page.locator('#keysList');
+    let keyItem = keyList.locator('.key-item').filter({ hasText: 'E2E usable key' });
+    await expect(keyItem).toHaveCount(1);
+    const keyId = await keyItem.locator('[data-key-id]').first().getAttribute('data-key-id');
+    const stableKeyItem = () => keyList.locator('.key-item').filter({
+        has: page.locator(`[data-key-id="${keyId}"]`),
+    });
+
+    await keyItem.locator('[data-key-action="rename"]').click();
+    keyItem = stableKeyItem();
+    await keyItem.locator('.key-rename-input').fill('Cancelled rename');
+    await keyItem.locator('[data-key-action="cancel-rename"]').click();
+    await expect(keyList).toContainText('E2E usable key');
+    await expect(keyList).not.toContainText('Cancelled rename');
+
+    keyItem = stableKeyItem();
+    await keyItem.locator('[data-key-action="rename"]').click();
+    await keyItem.locator('.key-rename-input').fill('Escaped rename');
+    await page.keyboard.press('Escape');
+    await expect(keyList).toContainText('E2E usable key');
+    await expect(keyList).not.toContainText('Escaped rename');
+
+    keyItem = stableKeyItem();
+    await keyItem.locator('[data-key-action="rename"]').click();
+    await keyItem.locator('.key-rename-input').fill('Renamed E2E key');
+    await page.keyboard.press('Enter');
+    await expect(keyList).toContainText('Renamed E2E key');
+
+    keyItem = stableKeyItem();
+    await keyItem.locator('[data-key-action="rename"]').click();
+    await keyItem.locator('.key-rename-input').fill('E2E usable key');
+    await keyItem.locator('[data-key-action="save-rename"]').click();
+    await expect(keyList).toContainText('E2E usable key');
 });
 
 test('referenced commands and command sets cannot be deleted', async ({ page }) => {
@@ -263,4 +350,50 @@ test('the profile launcher remains contained and readable at 375px', async ({ pa
     expect(layout.nameContained).toBe(true);
     expect(layout.endpointContained).toBe(true);
     expect(layout.actionBelowEndpoint).toBe(true);
+});
+
+test('inline key upload and rename actions stay touchable at 375px', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openProfileManagement(page);
+    await page.locator('#newProfileBtn').click();
+    await page.locator('#profileEditorAuthType').selectOption('key');
+    await page.locator('#profileEditorAddKeyBtn').click();
+
+    const inlineLayout = await page.locator('#profileEditorAddKeyPanel').evaluate(panel => {
+        const panelBounds = panel.getBoundingClientRect();
+        const modalBounds = panel.closest('.modal-content').getBoundingClientRect();
+        const actions = [...panel.querySelectorAll('.profile-inline-key-actions .btn')];
+        return {
+            contained: panelBounds.left >= modalBounds.left
+                && panelBounds.right <= modalBounds.right,
+            actionHeights: actions.map(action => action.getBoundingClientRect().height),
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+        };
+    });
+    expect(inlineLayout.contained).toBe(true);
+    expect(inlineLayout.actionHeights.every(height => height >= 44)).toBe(true);
+    expect(inlineLayout.documentWidth).toBeLessThanOrEqual(inlineLayout.viewportWidth);
+
+    await page.locator('#closeProfileManagementModal').click();
+    await openKeyManagement(page);
+    let keyItem = page.locator('#keysList .key-item').filter({ hasText: 'E2E usable key' });
+    const keyId = await keyItem.locator('[data-key-id]').first().getAttribute('data-key-id');
+    await keyItem.locator('[data-key-action="rename"]').click();
+    keyItem = page.locator('#keysList .key-item').filter({
+        has: page.locator(`[data-key-id="${keyId}"]`),
+    });
+    const renameLayout = await keyItem.evaluate(item => {
+        const bounds = item.getBoundingClientRect();
+        const actions = [...item.querySelectorAll('.key-item-actions .btn')];
+        return {
+            contained: actions.every(action => {
+                const actionBounds = action.getBoundingClientRect();
+                return actionBounds.left >= bounds.left && actionBounds.right <= bounds.right;
+            }),
+            actionHeights: actions.map(action => action.getBoundingClientRect().height),
+        };
+    });
+    expect(renameLayout.contained).toBe(true);
+    expect(renameLayout.actionHeights.every(height => height >= 44)).toBe(true);
 });
