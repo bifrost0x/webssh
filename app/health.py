@@ -46,6 +46,9 @@ def health():
 @health_blueprint.get('/ready')
 def ready():
     failed = []
+    from .maintenance_mode import is_active
+    if is_active():
+        failed.append('maintenance')
     lifecycle = current_app.extensions.get('runtime_lifecycle')
     if lifecycle is None or not lifecycle.accepting_work():
         failed.append('runtime')

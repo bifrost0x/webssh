@@ -339,6 +339,16 @@ def log_key_upload(username, key_name, success, ip_address):
         f"key={_sanitize_log_value(key_name)} | ip={_sanitize_log_value(ip_address)}"
     )
 
+
+def log_key_rename(username, old_name, new_name, ip_address):
+    audit_logger.info(
+        f"KEY_RENAME | user={_sanitize_log_value(username)} | "
+        f"old={_sanitize_log_value(old_name)} | "
+        f"new={_sanitize_log_value(new_name)} | "
+        f"ip={_sanitize_log_value(ip_address)}"
+    )
+
+
 def log_key_delete(username, key_name, ip_address):
     audit_logger.info(
         f"KEY_DELETE | user={_sanitize_log_value(username)} | "

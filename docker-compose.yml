@@ -90,6 +90,17 @@ services:
       # but remains off here because homelabs commonly connect to private IPs.
       # - BLOCK_INTERNAL_SSH=true
 
+      # === Native web backup and restore ===
+      # Always available to administrators. Restore always requires two
+      # confirmations plus the current administrator password. Temporary
+      # snapshots and uploaded archives use an instance-specific namespace
+      # outside /app/data and expire.
+      # Override operational limits only when the defaults do not fit.
+      # - BACKUP_UPLOAD_MAX_SIZE=1073741824
+      # - BACKUP_OPERATION_TIMEOUT=1800
+      # - BACKUP_DOWNLOAD_TTL=600
+      # - BACKUP_TEMP_DIR=/tmp/webssh-backup-operations
+
       # === Passkeys and OIDC (optional, disabled by default) ===
       # Passkeys require the exact public browser domain and origin.
       # - WEBAUTHN_ENABLED=true

@@ -16,7 +16,10 @@ _JSON_BLUEPRINTS = frozenset({
     "transfers",
     "webauthn",
 })
-_STREAMING_ENDPOINTS = frozenset({"transfers.upload_transfer"})
+_STREAMING_ENDPOINTS = frozenset({
+    "admin_backup.upload_backup",
+    "transfers.upload_transfer",
+})
 
 
 def _policy_for_request():
@@ -24,6 +27,8 @@ def _policy_for_request():
         limit = config.MAX_RECOVERY_JSON_SIZE
     elif request.blueprint == "webauthn":
         limit = config.MAX_WEBAUTHN_JSON_SIZE
+    elif request.endpoint == "admin_backup.upload_backup":
+        limit = config.BACKUP_UPLOAD_MAX_SIZE
     elif request.endpoint in _STREAMING_ENDPOINTS:
         limit = config.MAX_UPLOAD_SIZE
     else:

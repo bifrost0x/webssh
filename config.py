@@ -1,6 +1,7 @@
 import os
 import secrets
 import ipaddress
+import tempfile
 from pathlib import Path
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -146,6 +147,17 @@ BACKUP_MAX_COMPRESSION_RATIO = _positive_int_env(
 BACKUP_MAX_MANIFEST_SIZE = _positive_int_env(
     'BACKUP_MAX_MANIFEST_SIZE', 10 * 1024 * 1024
 )
+BACKUP_UPLOAD_MAX_SIZE = _positive_int_env(
+    'BACKUP_UPLOAD_MAX_SIZE', 1024 * 1024 * 1024
+)
+BACKUP_OPERATION_TIMEOUT = _positive_int_env(
+    'BACKUP_OPERATION_TIMEOUT', 1800
+)
+BACKUP_DOWNLOAD_TTL = _positive_int_env('BACKUP_DOWNLOAD_TTL', 600)
+BACKUP_TEMP_DIR = Path(os.environ.get(
+    'BACKUP_TEMP_DIR',
+    Path(tempfile.gettempdir()) / 'webssh-backup-operations',
+))
 
 
 # Atomic, in-process resource quotas. Per-user defaults remain below their
@@ -393,6 +405,18 @@ RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
 RATELIMIT_LOGIN_LIMIT = os.environ.get('RATELIMIT_LOGIN_LIMIT', '5 per minute')
 RATELIMIT_DEFAULT = os.environ.get('RATELIMIT_DEFAULT', '200 per hour')
 RATELIMIT_REAUTH = os.environ.get('RATELIMIT_REAUTH', '5 per minute')
+RATELIMIT_BACKUP_CREATE = os.environ.get(
+    'RATELIMIT_BACKUP_CREATE', '3 per hour'
+)
+RATELIMIT_BACKUP_UPLOAD = os.environ.get(
+    'RATELIMIT_BACKUP_UPLOAD', '5 per hour'
+)
+RATELIMIT_BACKUP_DOWNLOAD = os.environ.get(
+    'RATELIMIT_BACKUP_DOWNLOAD', '10 per hour'
+)
+RATELIMIT_BACKUP_RESTORE = os.environ.get(
+    'RATELIMIT_BACKUP_RESTORE', '3 per hour'
+)
 # Per-user limit on SSH connection attempts via WebSocket (ssh_connect /
 # quick_connect). Prevents an authenticated user from abusing the server as an
 # unthrottled SSH brute-force / port-scan proxy against third-party hosts.

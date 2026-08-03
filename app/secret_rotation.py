@@ -229,7 +229,7 @@ def _rollback_key_files(originals):
         raise RuntimeError('secret rotation rollback failed') from rollback_error
 
 
-def rotate_secret(old_secret, new_secret, data_dir):
+def _rotate_secret_locked(old_secret, new_secret, data_dir):
     _validate_secret(old_secret, 'old')
     _validate_secret(new_secret, 'new')
     if hmac.compare_digest(old_secret, new_secret):
@@ -333,3 +333,12 @@ def rotate_secret(old_secret, new_secret, data_dir):
                         ) from rollback_error
 
     return RotationReport(len(key_files), backup_path)
+
+
+def rotate_secret(old_secret, new_secret, data_dir):
+    """Rotate the persisted secret without racing backup or restore."""
+    from .backup_coordination import operation_lock, persistent_write
+
+    with operation_lock():
+        with persistent_write():
+            return _rotate_secret_locked(old_secret, new_secret, data_dir)

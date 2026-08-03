@@ -202,6 +202,75 @@
     line-height: 1.5;
 }
 
+.admin-backup-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border: 1px solid #f59e0b;
+    border-radius: 10px;
+    background: color-mix(in srgb, #f59e0b 12%, var(--bg-secondary));
+}
+
+.admin-backup-warning p,
+.admin-backup-destructive {
+    margin: 0;
+    line-height: 1.55;
+}
+
+.admin-backup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 16px;
+}
+
+.admin-backup-grid .admin-setting-row {
+    max-width: none;
+}
+
+.admin-backup-grid h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.admin-backup-actions {
+    margin: 16px 0 0;
+}
+
+.admin-backup-status {
+    min-height: 1.5em;
+    margin: 12px 0 0;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.admin-backup-status.error,
+.admin-backup-destructive {
+    color: #f43f5e;
+}
+
+.admin-backup-summary dl {
+    display: grid;
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.admin-backup-summary dl div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.admin-backup-summary dt {
+    color: var(--text-muted);
+}
+
+.admin-backup-summary dd {
+    margin: 0;
+    font-weight: 600;
+}
+
 .admin-oidc-list {
     display: grid;
     gap: 8px;

@@ -1230,8 +1230,8 @@ const SessionManager = {
             const newOption = this.createPaneOption(
                 paneIndex,
                 '__new__',
-                window.i18n ? window.i18n.t('panes.newConnection') : '+ New Connection',
-                window.i18n ? window.i18n.t('panes.newConnectionDesc') : 'Open connection dialog for this pane',
+                window.i18n ? window.i18n.t('panes.newConnection') : '+ Quick Connect',
+                window.i18n ? window.i18n.t('panes.newConnectionDesc') : 'Open Quick Connect for this pane',
                 false
             );
             optionsContainer.appendChild(newOption);
