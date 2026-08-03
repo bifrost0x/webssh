@@ -137,7 +137,9 @@ const ProfileManager = {
         if (!summary || !summary.id) return;
         const exists = this.keys.some(key => key.id === summary.id);
         this.setKeys(exists
-            ? this.keys.map(key => key.id === summary.id ? summary : key)
+            ? this.keys.map(key => key.id === summary.id
+                ? {...key, ...summary}
+                : key)
             : [...this.keys, summary]);
     },
 
