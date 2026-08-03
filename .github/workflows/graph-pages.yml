@@ -39,6 +39,33 @@ jobs:
           cp -R assets _site/assets
           mkdir -p _site/code-graph
           cp graphify-out/graph.html _site/code-graph/index.html
+          .venv/bin/python - <<'PY'
+          import re
+          from pathlib import Path
+
+          graph_page = Path("_site/code-graph/index.html")
+          vendor_asset = Path("_site/vendor/vis-network-9.1.6/vis-network.min.js")
+          cdn_url = "https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+          local_url = "../vendor/vis-network-9.1.6/vis-network.min.js"
+
+          if not vendor_asset.is_file():
+              raise SystemExit(f"Missing vendored graph dependency: {vendor_asset}")
+
+          graph_html = graph_page.read_text(encoding="utf-8")
+          if graph_html.count(cdn_url) != 1:
+              raise SystemExit("Graphify vis-network URL was missing or appeared more than once")
+
+          graph_html = graph_html.replace(cdn_url, local_url)
+          external_assets = re.findall(
+              r'<(?:script|link)\b[^>]*(?:src|href)=["\']https?://[^"\']+',
+              graph_html,
+              flags=re.IGNORECASE,
+          )
+          if external_assets:
+              raise SystemExit(f"External code-graph runtime assets remain: {external_assets}")
+
+          graph_page.write_text(graph_html, encoding="utf-8")
+          PY
           touch _site/.nojekyll
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
