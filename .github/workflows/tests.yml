@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Commit SHA that this manually dispatched run must test
+        required: true
+        type: string
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
@@ -13,7 +18,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dispatch-integrity:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Verify manually dispatched commit identity
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          fi
+
   dependency-locks:
+    needs: dispatch-integrity
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -37,6 +59,7 @@ jobs:
         run: ./scripts/lock_requirements.ps1 -Check
 
   pytest:
+    needs: dispatch-integrity
     name: ${{ matrix.check_name }}
     runs-on: ubuntu-24.04
     permissions:
@@ -84,6 +107,7 @@ jobs:
         run: pytest tests/ -v
 
   redis-rate-limiter:
+    needs: dispatch-integrity
     name: Redis rate limiter (${{ matrix.redis-version }})
     runs-on: ubuntu-24.04
     permissions:
@@ -130,6 +154,7 @@ jobs:
         run: pytest tests/test_rate_limiter.py -v
 
   ssh-integration:
+    needs: dispatch-integrity
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -156,6 +181,7 @@ jobs:
         run: python scripts/run_integration_tests.py
 
   browser-e2e:
+    needs: dispatch-integrity
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -209,6 +235,7 @@ jobs:
           retention-days: 7
 
   container-threading-smoke:
+    needs: dispatch-integrity
     runs-on: ubuntu-24.04
     permissions:
       contents: read

@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 
@@ -41,7 +42,7 @@ def _allowed_filename(filename):
     )
 
 
-def validate(event, pull_request, files):
+def validate(event, pull_request, files, jobs):
     run = event.get('workflow_run', {})
     repository = event.get('repository', {})
     repo_name = repository.get('full_name')
@@ -52,6 +53,7 @@ def validate(event, pull_request, files):
     _require(event.get('action') == 'completed', 'workflow run is not completed')
     _require(run.get('name') == 'Tests', 'unexpected workflow name')
     _require(run.get('event') == 'pull_request', 'workflow was not a pull request run')
+    _require(run.get('conclusion') == 'failure', 'workflow conclusion was not failure')
     _require(run.get('actor', {}).get('login') == DEPENDABOT, 'unexpected workflow actor')
     _require(isinstance(repo_name, str) and repo_name, 'missing repository identity')
     _require(
@@ -121,7 +123,52 @@ def validate(event, pull_request, files):
     _require(len(filenames) == len(set(filenames)), 'duplicate changed-file entries')
     _require('package-lock.json' in filenames, 'package-lock.json was not changed')
 
+    job_items = jobs.get('jobs')
+    _require(isinstance(job_items, list), 'workflow jobs have an invalid shape')
+    failed_vendor_check = any(
+        job.get('name') == 'browser-e2e'
+        and job.get('conclusion') == 'failure'
+        and any(
+            step.get('name') == 'Check vendored frontend assets'
+            and step.get('conclusion') == 'failure'
+            for step in job.get('steps', [])
+            if isinstance(step, dict)
+        )
+        for job in job_items
+        if isinstance(job, dict)
+    )
+    _require(failed_vendor_check, 'vendor check did not fail')
+
     return head_ref, head_sha, pr_number
+
+
+def stage_vendor(root):
+    root = Path(root).resolve()
+    _require((root / '.git').exists(), 'stage root is not a Git repository')
+    subprocess.run(
+        ['git', 'add', '--all', '--', 'static/vendor'],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = subprocess.run(
+        ['git', 'diff', '--cached', '--name-only', '-z'],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    staged = [name for name in result.stdout.split('\0') if name]
+    _require(
+        all(
+            name.startswith('static/vendor/')
+            and '..' not in name.split('/')
+            for name in staged
+        ),
+        'staged changes escaped static/vendor',
+    )
+    return bool(staged)
 
 
 def main(argv=None):
@@ -131,19 +178,35 @@ def main(argv=None):
     validate_parser.add_argument('--event', required=True)
     validate_parser.add_argument('--pull-request', required=True)
     validate_parser.add_argument('--files', required=True)
+    validate_parser.add_argument('--jobs', required=True)
     validate_parser.add_argument('--github-output', required=True)
+    stage_parser = subparsers.add_parser('stage')
+    stage_parser.add_argument('--root', required=True)
+    stage_parser.add_argument('--github-output', required=True)
     args = parser.parse_args(argv)
 
     try:
-        event = _load(args.event, dict)
-        pull_request = _load(args.pull_request, dict)
-        files = _load(args.files, list)
-        head_ref, head_sha, pr_number = validate(event, pull_request, files)
+        if args.command == 'validate':
+            event = _load(args.event, dict)
+            pull_request = _load(args.pull_request, dict)
+            files = _load(args.files, list)
+            jobs = _load(args.jobs, dict)
+            head_ref, head_sha, pr_number = validate(
+                event,
+                pull_request,
+                files,
+                jobs,
+            )
+            lines = [
+                f'head_ref={head_ref}',
+                f'head_sha={head_sha}',
+                f'pr_number={pr_number}',
+            ]
+        else:
+            lines = [f'changed={str(stage_vendor(args.root)).lower()}']
         with Path(args.github_output).open('a', encoding='utf-8', newline='\n') as output:
-            output.write(f'head_ref={head_ref}\n')
-            output.write(f'head_sha={head_sha}\n')
-            output.write(f'pr_number={pr_number}\n')
-    except ValueError as exc:
+            output.write('\n'.join(lines) + '\n')
+    except (ValueError, subprocess.CalledProcessError) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         return 1
     return 0

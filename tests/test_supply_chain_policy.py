@@ -277,11 +277,18 @@ def test_dependabot_vendor_refresh_uses_a_separate_validated_write_workflow():
     assert 'actions: write' in workflow
     assert 'pull_request_target' not in workflow
     assert 'scripts/dependabot_vendor.py validate' in workflow
+    assert '--jobs' in workflow
     assert 'npm ci --ignore-scripts' in workflow
     assert 'node scripts/vendor.js' in workflow
     assert '[dependabot skip]' in workflow
-    assert 'git diff --cached --name-only' in workflow
+    assert (
+        'cp scripts/dependabot_vendor.py "$RUNNER_TEMP/dependabot_vendor.py"'
+        in workflow
+    )
+    assert 'python "$RUNNER_TEMP/dependabot_vendor.py" stage' in workflow
     assert 'gh workflow run tests.yml' in workflow
+    assert '-f expected_sha="$EXPECTED_SHA"' in workflow
+    assert 'EXPECTED_SHA: ${{ inputs.expected_sha }}' in tests_workflow
     assert 'workflow_dispatch:' in tests_workflow
 
 
