@@ -1022,7 +1022,7 @@
     });
 
     socket.on('error', (data) => {
-        if (window.sftpFileManager && window.sftpFileManager.isOpen) return;
+        if (window.sftpFileManager?.handlesSocketError?.(data)) return;
         showNotification(`Error: ${data.error}`, 'error');
     });
 

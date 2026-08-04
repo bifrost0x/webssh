@@ -1,15 +1,6 @@
 (function (root) {
     'use strict';
 
-    function formatFileSize(bytes) {
-        const value = Number(bytes);
-        if (!Number.isFinite(value) || value < 0) return '';
-        if (value < 1024) return `${value} B`;
-        if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-        if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-        return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-    }
-
     function formatUptime(seconds) {
         const total = Number(seconds);
         if (!Number.isFinite(total) || total < 0) return 'Uptime --';
@@ -73,7 +64,8 @@
         const insightsModule = root.SessionInsightsModule;
         const filesModule = root.SessionFilesPanelModule;
         const workspaceModule = root.SessionWorkspaceModule;
-        if (!socket || !sessionManager || !insightsModule || !filesModule || !workspaceModule) {
+        const fileManager = root.getSFTPFileManager?.();
+        if (!socket || !sessionManager || !insightsModule || !filesModule || !workspaceModule || !fileManager) {
             return null;
         }
 
@@ -81,14 +73,7 @@
             mainSplit: documentRef.getElementById('sessionMainSplit'),
             filesPanel: documentRef.getElementById('sessionFilesPanel'),
             toggle: documentRef.getElementById('sessionSftpToggleBtn'),
-            filesHost: documentRef.getElementById('sessionFilesHost'),
-            filesPath: documentRef.getElementById('sessionFilesPath'),
-            filesStatus: documentRef.getElementById('sessionFilesStatus'),
-            filesList: documentRef.getElementById('sessionFilesList'),
-            download: documentRef.getElementById('sessionFilesDownloadBtn'),
-            rename: documentRef.getElementById('sessionFilesRenameBtn'),
-            delete: documentRef.getElementById('sessionFilesDeleteBtn'),
-            uploadInput: documentRef.getElementById('sessionFilesUploadInput'),
+            filesMount: documentRef.getElementById('sessionFilesMount'),
             notepadPanel: documentRef.getElementById('notepadPanel'),
             insightsHost: documentRef.getElementById('sessionInsightsHost'),
             insightsState: documentRef.getElementById('sessionInsightsState'),
@@ -104,56 +89,10 @@
             osValue: documentRef.getElementById('sessionOsValue'),
             uptimeValue: documentRef.getElementById('sessionUptimeValue'),
         };
-        if (!elements.mainSplit || !elements.toggle || !elements.filesPanel) return null;
+        if (!elements.mainSplit || !elements.toggle || !elements.filesPanel || !elements.filesMount) return null;
 
         let filesController = null;
         let coordinator = null;
-
-        function renderFiles(state) {
-            elements.filesPanel.classList.toggle('hidden', !state.open);
-            elements.filesHost.textContent = state.label || 'No active session';
-            elements.filesPath.textContent = state.path || '/';
-            const statusLabels = {
-                loading: 'Loading remote directory...',
-                ready: `${state.files.length} item${state.files.length === 1 ? '' : 's'}`,
-                disconnected: 'SSH session disconnected',
-                error: state.error || 'SFTP unavailable',
-                closed: '',
-            };
-            elements.filesStatus.textContent = statusLabels[state.status] || '';
-            elements.filesStatus.classList.toggle('error', state.status === 'error');
-            elements.filesList.replaceChildren();
-            state.files.forEach((item, index) => {
-                const row = documentRef.createElement('div');
-                row.className = 'session-file-row';
-                row.classList.toggle('selected', index === state.selectedIndex);
-                row.setAttribute('role', 'option');
-                row.setAttribute('aria-selected', String(index === state.selectedIndex));
-                row.tabIndex = 0;
-
-                const icon = documentRef.createElement('span');
-                icon.className = 'material-icons';
-                icon.setAttribute('aria-hidden', 'true');
-                icon.textContent = item.is_dir ? 'folder' : 'insert_drive_file';
-                const name = documentRef.createElement('span');
-                name.className = 'session-file-name';
-                name.textContent = item.name || '';
-                const size = documentRef.createElement('span');
-                size.className = 'session-file-size';
-                size.textContent = item.is_dir ? '' : formatFileSize(item.size);
-                row.append(icon, name, size);
-                row.addEventListener('click', () => filesController.select(index));
-                row.addEventListener('dblclick', () => filesController.activate(index));
-                row.addEventListener('keydown', event => {
-                    if (event.key === 'Enter') filesController.activate(index);
-                });
-                elements.filesList.appendChild(row);
-            });
-            const selected = state.files[state.selectedIndex];
-            elements.download.disabled = !selected || Boolean(selected.is_dir);
-            elements.rename.disabled = !selected;
-            elements.delete.disabled = !selected;
-        }
 
         function setResource(element, bar, value) {
             const severity = insightsModule.severityForPercent(value);
@@ -208,10 +147,8 @@
         }
 
         filesController = filesModule.createController({
-            socket,
-            render: renderFiles,
-            transferClient: root.BinaryTransferClient?.forSocket(socket),
-            filePreview: root.FilePreview,
+            manager: fileManager,
+            container: elements.filesMount,
         });
         const insightsController = insightsModule.createController({ socket, render: renderInsights });
         coordinator = workspaceModule.createCoordinator({
@@ -238,25 +175,8 @@
 
         elements.toggle.addEventListener('click', () => coordinator.toggleSftp());
         documentRef.getElementById('sessionFilesCloseBtn')?.addEventListener('click', () => coordinator.toggleSftp());
-        documentRef.getElementById('sessionFilesHomeBtn')?.addEventListener('click', () => filesController.goHome());
-        documentRef.getElementById('sessionFilesUpBtn')?.addEventListener('click', () => filesController.goParent());
-        documentRef.getElementById('sessionFilesRefreshBtn')?.addEventListener('click', () => filesController.refresh());
-        documentRef.getElementById('sessionFilesNewFolderBtn')?.addEventListener('click', () => {
-            const name = root.prompt('New folder name');
-            if (name) filesController.createFolder(name);
-        });
-        documentRef.getElementById('sessionFilesUploadBtn')?.addEventListener('click', () => elements.uploadInput.click());
-        elements.uploadInput.addEventListener('change', () => {
-            filesController.upload(elements.uploadInput.files);
-            elements.uploadInput.value = '';
-        });
-        elements.download.addEventListener('click', () => filesController.downloadSelected());
-        elements.rename.addEventListener('click', () => {
-            const name = root.prompt('Rename selected item');
-            if (name) filesController.renameSelected(name);
-        });
-        elements.delete.addEventListener('click', () => {
-            if (root.confirm('Delete the selected remote item?')) filesController.deleteSelected();
+        root.addEventListener('session-sftp-request-close', () => {
+            if (coordinator.getState().sftpOpen) coordinator.toggleSftp();
         });
 
         const desktopQuery = root.matchMedia('(min-width: 851px)');
@@ -285,5 +205,5 @@
         return coordinator;
     }
 
-    root.SessionWorkspaceUI = { init, formatFileSize, formatUptime };
+    root.SessionWorkspaceUI = { init, formatUptime };
 }(window));

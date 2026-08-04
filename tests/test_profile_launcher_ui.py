@@ -25,7 +25,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=5',
-        "filename='js/i18n.js'": '?v=2',
+        "filename='js/i18n.js'": '?v=3',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/profile-launcher-utils.js'": '?v=2',
         "filename='js/connection-launcher.js'": '?v=1',

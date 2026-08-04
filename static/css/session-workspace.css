@@ -92,152 +92,65 @@
     color: var(--text-primary);
 }
 
-.session-files-host {
-    padding: 0 16px 12px;
-    overflow: hidden;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.session-files-toolbar {
+.session-files-mount {
     display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 9px 12px;
-    border-top: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
-}
-
-.session-files-toolbar button,
-.session-files-actions button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    cursor: pointer;
-}
-
-.session-files-toolbar button {
-    width: 31px;
-    height: 31px;
-    padding: 0;
-}
-
-.session-files-toolbar button:hover,
-.session-files-actions button:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
-
-.session-files-toolbar .material-icons,
-.session-files-actions .material-icons {
-    font-size: 16px;
-}
-
-.session-files-toolbar-spacer {
     flex: 1;
-}
-
-.session-files-path {
-    margin: 10px 12px 0;
-    padding: 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.session-files-status {
-    min-height: 29px;
-    padding: 8px 13px 6px;
-    color: var(--text-muted);
-    font-size: 11px;
-}
-
-.session-files-status.error {
-    color: var(--danger-color, #f85149);
-}
-
-.session-files-list {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    border-top: 1px solid var(--border-color);
-}
-
-.session-file-row {
-    display: grid;
-    grid-template-columns: 25px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    min-height: 38px;
-    padding: 6px 13px;
-    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
-    color: var(--text-secondary);
-    cursor: default;
-    font-size: 12px;
-}
-
-.session-file-row:hover {
-    background: var(--bg-hover);
-}
-
-.session-file-row.selected {
-    background: var(--bg-active);
-    color: var(--text-primary);
-}
-
-.session-file-row .material-icons {
-    color: var(--accent-primary);
-    font-size: 18px;
-}
-
-.session-file-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.session-file-size {
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 10px;
-}
-
-.session-files-actions {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    padding: 10px 12px;
-    border-top: 1px solid var(--border-color);
-}
-
-.session-files-actions button {
     min-width: 0;
-    padding: 7px 5px;
-    font-size: 10px;
+    min-height: 0;
+    overflow: hidden;
 }
 
-.session-files-actions button:disabled {
-    cursor: not-allowed;
-    opacity: 0.42;
+.session-files-mount > .fm-embedded-mode {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 12px 12px;
+    overflow: hidden;
 }
 
-.session-files-actions .danger:not(:disabled) {
-    color: var(--danger-color, #f85149);
+.fm-embedded-mode .fm-panes {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.fm-embedded-mode #fmRightPane,
+.fm-embedded-mode #fmPaneTabs,
+.fm-embedded-mode #fmTransfer,
+.fm-embedded-mode #fmLeftPane > .fm-pane-header,
+.fm-embedded-mode #fmMobileUpload {
+    display: none !important;
+}
+
+.fm-embedded-mode #fmLeftPane {
+    display: flex !important;
+}
+
+.fm-embedded-mode .fm-toolbar-center {
+    display: none;
+}
+
+.fm-embedded-upload {
+    display: none !important;
+}
+
+.fm-embedded-mode .fm-embedded-upload {
+    display: inline-flex !important;
+}
+
+.fm-embedded-mode .fm-toolbar {
+    flex-wrap: wrap;
+    padding: 8px;
+}
+
+.fm-embedded-mode .fm-toolbar-left,
+.fm-embedded-mode .fm-toolbar-right {
+    flex: 1 1 auto;
+}
+
+.fm-embedded-mode .fm-toolbar-right {
+    justify-content: flex-end;
 }
 
 .notepad-panel {

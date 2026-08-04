@@ -20,6 +20,11 @@ function pngSize(filePath) {
 }
 
 async function seedLinuxSession(page) {
+    await expect.poll(() => page.evaluate(() => (
+        typeof Terminal === 'function'
+        && typeof SessionManager !== 'undefined'
+        && typeof SessionManager.createSession === 'function'
+    ))).toBe(true);
     await page.evaluate(() => {
         const originalEmit = window.socket.emit.bind(window.socket);
         let insightSample = 0;
@@ -71,7 +76,7 @@ async function seedLinuxSession(page) {
                     deliver('home_directory', {
                         session_id: payload.session_id,
                         path: '/srv/webssh/current',
-                        consumer: 'session-panel',
+                        request_id: payload.request_id,
                     });
                     return window.socket;
                 }
@@ -80,7 +85,7 @@ async function seedLinuxSession(page) {
                         session_id: payload.session_id,
                         path: payload.remote_path,
                         files: fileRows,
-                        consumer: 'session-panel',
+                        request_id: payload.request_id,
                     });
                     return window.socket;
                 }
@@ -128,8 +133,14 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
 
     await expect(page.locator('#sessionMainSplit')).toHaveClass(/sftp-open/);
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();
-    await expect(page.locator('#sessionFilesHost')).toHaveText('ops@edge-01.example');
-    await expect(page.locator('.session-file-row')).toHaveCount(4);
+    await expect(page.locator('#fmLeftBadge')).toHaveText('ops@edge-01.example');
+    await expect(page.locator('#fmLeftList .fm-file-item')).toHaveCount(5);
+    await expect(page.locator('#fmRightPane')).toBeHidden();
+    await expect(page.locator('#fmTransfer')).toBeHidden();
+    await expect(page.locator('#fmEmbeddedUpload')).toBeVisible();
+    await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await page.locator('#fmLeftList .fm-file-item[data-index="0"]').dblclick();
+    await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current/releases');
     await expect(page.locator('#sessionInsightsState')).toHaveText('Live');
     await expect(page.locator('#sessionRamValue')).toContainText('10.0 GB');
     await expect(page.locator('#sessionDiskValue')).toContainText('61.0 GB');

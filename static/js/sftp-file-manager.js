@@ -4,6 +4,8 @@ class SFTPFileManager {
         this.socket = window.socket;
         this.modal = null;
         this.isOpen = false;
+        this.displayMode = 'closed';
+        this.embeddedContainer = null;
 
         this.browserFS = new BrowserFileSystem();
 
@@ -31,6 +33,7 @@ class SFTPFileManager {
 
         this.draggedItems = [];
         this.dragSource = null;
+        this.requestSequence = 0;
 
         this.init();
     }
@@ -47,7 +50,12 @@ class SFTPFileManager {
             hostInfo: null,
             loading: false,
             loadingTimeout: null,
-            error: null
+            error: null,
+            homePath: null,
+            pendingHomeRequestId: null,
+            pendingDirectoryRequestId: null,
+            pendingDirectoryPath: null,
+            autoHomeEligible: false
         };
     }
 
@@ -90,6 +98,9 @@ class SFTPFileManager {
                             </button>
                         </div>
                         <div class="fm-toolbar-right">
+                            <button class="btn btn-secondary btn-sm fm-embedded-upload" id="fmEmbeddedUpload" data-i18n-title="fm.upload" aria-label="Upload" data-i18n-aria-label="fm.upload">
+                                <span class="material-icons" aria-hidden="true">upload</span>
+                            </button>
                             <button class="btn btn-secondary btn-sm" id="fmDownload" data-i18n-title="fm.download">
                                 <span class="material-icons">download</span>
                             </button>
@@ -247,6 +258,9 @@ class SFTPFileManager {
 
         document.body.appendChild(modal);
         this.modal = modal;
+        this.modalContent = modal.querySelector('.modal-content');
+        this.modalBody = modal.querySelector('.modal-body');
+        this.actionSheet = modal.querySelector('.fm-action-sheet');
 
         this.createQuickConnectModal();
 
@@ -438,9 +452,11 @@ class SFTPFileManager {
 
         const mobileUpload = document.getElementById('fmMobileUpload');
         const mobileUploadInput = document.getElementById('fmMobileUploadInput');
+        const embeddedUpload = document.getElementById('fmEmbeddedUpload');
         if (mobileUpload && mobileUploadInput) {
             mobileUpload.addEventListener('click', () => mobileUploadInput.click());
             mobileUploadInput.addEventListener('change', (e) => this.handleMobileUpload(e));
+            embeddedUpload?.addEventListener('click', () => mobileUploadInput.click());
         }
 
         document.querySelectorAll('.fm-action-sheet-item').forEach(item => {
@@ -499,12 +515,14 @@ class SFTPFileManager {
         if (!this.socket) return;
 
         this.socket.on('directory_listing', (data) => {
-            if (!this.isOpen || data?.consumer) return;
+            if (!this.isOpen) return;
 
             ['left', 'right'].forEach(pane => {
                 const state = this.panes[pane];
                 if (state.type === 'ssh' &&
-                    (state.sessionId === data.session_id || state.connectionId === data.session_id)) {
+                    (state.sessionId === data.session_id || state.connectionId === data.session_id) &&
+                    state.pendingDirectoryRequestId === data.request_id &&
+                    state.pendingDirectoryPath === data.path) {
                     if (state.loadingTimeout) {
                         clearTimeout(state.loadingTimeout);
                         state.loadingTimeout = null;
@@ -513,6 +531,8 @@ class SFTPFileManager {
                     state.path = data.path;
                     state.loading = false;
                     state.error = null;
+                    state.pendingDirectoryRequestId = null;
+                    state.pendingDirectoryPath = null;
                     this.updatePathInput(pane, data.path);
                     this.renderPane(pane);
                 }
@@ -520,36 +540,34 @@ class SFTPFileManager {
         });
 
         this.socket.on('home_directory', (data) => {
-            if (data?.consumer) return;
+            if (!this.isOpen) return;
             ['left', 'right'].forEach(pane => {
                 const state = this.panes[pane];
                 if (state.type === 'ssh' &&
-                    (state.sessionId === data.session_id || state.connectionId === data.session_id)) {
-                    if (!state.homePath) {
-                        state.homePath = data.path;
-                        if (state.path === '/') {
-                            this.navigatePaneTo(pane, data.path);
-                        }
+                    (state.sessionId === data.session_id || state.connectionId === data.session_id) &&
+                    state.pendingHomeRequestId === data.request_id) {
+                    state.pendingHomeRequestId = null;
+                    state.homePath = data.path;
+                    if (state.autoHomeEligible && state.path === '/') {
+                        state.autoHomeEligible = false;
+                        this.navigatePaneTo(pane, data.path);
                     }
                 }
             });
         });
 
         this.socket.on('directory_created', (data) => {
-            if (data?.consumer) return;
             if (this.uploadBatches?.size > 0) return;
             this.showNotification(`${this.t('fm.folderCreated', 'Folder created')}: ${data.path}`, 'success');
             this.refreshBothPanes();
         });
 
         this.socket.on('file_renamed', (data) => {
-            if (data?.consumer) return;
             this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
             this.refreshBothPanes();
         });
 
         this.socket.on('item_deleted', (data) => {
-            if (data?.consumer) return;
             this.showNotification(`${this.t('fm.deleted', 'Deleted')}: ${data.path}`, 'success');
             this.refreshBothPanes();
         });
@@ -588,24 +606,28 @@ class SFTPFileManager {
         });
 
         this.socket.on('error', (data) => {
-            if (data?.consumer) return;
+            if (!this.handlesSocketError(data)) return;
             const errorMsg = data.error || data.message || 'Unknown error';
             console.error('[FM] SFTP Error received:', errorMsg, data);
 
             ['left', 'right'].forEach(pane => {
                 const state = this.panes[pane];
-                if (state.loading && state.type === 'ssh') {
+                if (state.loading && state.type === 'ssh' &&
+                    (state.sessionId === data.session_id || state.connectionId === data.session_id) &&
+                    state.pendingDirectoryRequestId === data.request_id &&
+                    state.pendingDirectoryPath === data.path) {
                     if (state.loadingTimeout) {
                         clearTimeout(state.loadingTimeout);
                         state.loadingTimeout = null;
                     }
                     state.loading = false;
                     state.error = errorMsg;
+                    state.pendingDirectoryRequestId = null;
+                    state.pendingDirectoryPath = null;
                     this.renderPane(pane);
+                    this.showNotification(errorMsg, 'error');
                 }
             });
-
-            this.showNotification(errorMsg, 'error');
         });
 
         this.socket.on('file_exists_result', (data) => {
@@ -617,59 +639,87 @@ class SFTPFileManager {
     }
 
     setupKeyboardShortcuts() {
-        document.addEventListener('keydown', (e) => {
-            if (!this.isOpen) return;
+        document.addEventListener('keydown', e => this.handleKeyboardShortcut(e));
+    }
 
-            if (e.key === 'Escape') {
-                this.closeContextMenu();
-                if (!this.hasOpenDialogs()) {
-                    this.close();
-                }
-            }
-
-            if (e.key === 'Tab' && !e.target.matches('input, textarea, select')) {
-                e.preventDefault();
-                this.setActivePane(this.activePane === 'left' ? 'right' : 'left');
-            }
-
-            if (e.ctrlKey && e.key === 'a' && !e.target.matches('input, textarea')) {
-                e.preventDefault();
-                this.selectAll();
-            }
-
-            if (e.key === 'Delete' && !e.target.matches('input, textarea')) {
-                e.preventDefault();
-                this.deleteSelected();
-            }
-
-            if (e.key === 'F5') {
-                e.preventDefault();
-                this.executeTransfer();
-            }
-
-            if (e.key === 'F7') {
-                e.preventDefault();
-                this.createNewFolder();
-            }
-
-            if (e.key === 'F2') {
-                e.preventDefault();
-                this.renameSelected();
-            }
-
-            if (e.key === 'Enter' && !e.target.matches('input, textarea')) {
-                e.preventDefault();
-                const state = this.panes[this.activePane];
-                if (state.selected.size === 1) {
-                    const index = Array.from(state.selected)[0];
-                    this.handleItemDblClick(this.activePane, index);
-                }
-            }
+    handlesSocketError(data) {
+        if (!this.isOpen || data?.operation !== 'list_directory') return false;
+        return ['left', 'right'].some(pane => {
+            const state = this.panes[pane];
+            return state.type === 'ssh'
+                && (state.sessionId === data.session_id || state.connectionId === data.session_id)
+                && state.pendingDirectoryRequestId === data.request_id
+                && state.pendingDirectoryPath === data.path;
         });
     }
 
+    handleKeyboardShortcut(e) {
+        if (!this.isOpen) return;
+
+        if (e.key === 'Escape') {
+            this.closeContextMenu();
+            if (!this.hasOpenDialogs()) {
+                if (this.displayMode === 'embedded') {
+                    window.dispatchEvent?.(new CustomEvent('session-sftp-request-close'));
+                    if (this.displayMode === 'embedded') this.closeEmbedded();
+                } else {
+                    this.close();
+                }
+            }
+        }
+
+        if (
+            e.key === 'Tab'
+            && this.displayMode !== 'embedded'
+            && !e.target.matches('input, textarea, select')
+        ) {
+            e.preventDefault();
+            this.setActivePane(this.activePane === 'left' ? 'right' : 'left');
+        }
+
+        if (e.ctrlKey && e.key === 'a' && !e.target.matches('input, textarea')) {
+            e.preventDefault();
+            this.selectAll();
+        }
+
+        if (e.key === 'Delete' && !e.target.matches('input, textarea')) {
+            e.preventDefault();
+            this.deleteSelected();
+        }
+
+        if (e.key === 'F5') {
+            e.preventDefault();
+            if (this.displayMode === 'embedded') this.refreshPane(this.activePane);
+            else this.executeTransfer();
+        }
+
+        if (e.key === 'F7') {
+            e.preventDefault();
+            this.createNewFolder();
+        }
+
+        if (e.key === 'F2') {
+            e.preventDefault();
+            this.renameSelected();
+        }
+
+        if (e.key === 'Enter' && !e.target.matches('input, textarea')) {
+            e.preventDefault();
+            const state = this.panes[this.activePane];
+            if (state.selected.size === 1) {
+                const index = Array.from(state.selected)[0];
+                this.handleItemDblClick(this.activePane, index);
+            }
+        }
+    }
+
     open() {
+        if (this.displayMode === 'embedded') {
+            window.dispatchEvent?.(new CustomEvent('session-sftp-request-close'));
+            if (this.displayMode === 'embedded') this.closeEmbedded();
+        }
         this.isOpen = true;
+        this.displayMode = 'modal';
         if (window.ModalManager) {
             window.ModalManager.open(this.modal);
         } else {
@@ -711,7 +761,12 @@ class SFTPFileManager {
     }
 
     close() {
+        if (this.displayMode === 'embedded') {
+            this.closeEmbedded();
+            return;
+        }
         this.isOpen = false;
+        this.displayMode = 'closed';
         if (window.ModalManager) {
             window.ModalManager.close(this.modal);
         } else {
@@ -734,6 +789,70 @@ class SFTPFileManager {
         if (this.uploadProgressNotification) {
             this.uploadProgressNotification.remove();
             this.uploadProgressNotification = null;
+        }
+    }
+
+    async openEmbedded(container, sessionId, session = {}) {
+        if (!container || !sessionId) return false;
+        if (this.displayMode === 'modal') this.close();
+
+        this.isOpen = true;
+        this.displayMode = 'embedded';
+        this.embeddedContainer = container;
+        this.modalBody.classList.add('fm-embedded-mode');
+        this.applyTranslations();
+        container.replaceChildren(this.modalBody);
+        this.updateSessionLists();
+
+        const sessionRecord = {
+            ...session,
+            id: sessionId,
+            connected: session.connected !== false,
+        };
+        const index = this.availableSessions.findIndex(item => item.id === sessionId);
+        if (index >= 0) this.availableSessions[index] = sessionRecord;
+        else this.availableSessions.push(sessionRecord);
+
+        this.setActivePane('left');
+        await this.onSourceChange('left', `ssh:${sessionId}`);
+        return true;
+    }
+
+    async followEmbedded(sessionId, session = {}) {
+        if (this.displayMode !== 'embedded' || !sessionId) return false;
+        if (this.panes.left.sessionId === sessionId) {
+            this.panes.left.hostInfo = {
+                host: session.host,
+                username: session.username,
+                port: session.port,
+            };
+            this.updatePaneBadge('left');
+            return true;
+        }
+        return this.openEmbedded(this.embeddedContainer, sessionId, session);
+    }
+
+    closeEmbedded() {
+        if (this.displayMode !== 'embedded') return;
+        this.closeContextMenu();
+        this.resetPane('left');
+        this.modalBody.classList.remove('fm-embedded-mode');
+        this.modalContent.insertBefore(this.modalBody, this.actionSheet);
+        this.embeddedContainer = null;
+        this.displayMode = 'closed';
+        this.isOpen = false;
+    }
+
+    isEmbeddedOpen() {
+        return this.displayMode === 'embedded';
+    }
+
+    handleEmbeddedDisconnect(sessionId) {
+        if (
+            this.displayMode === 'embedded'
+            && this.panes.left.sessionId === sessionId
+        ) {
+            this.resetPane('left');
         }
     }
 
@@ -780,15 +899,22 @@ class SFTPFileManager {
     async onSourceChange(pane, value) {
         const state = this.panes[pane];
 
-        if (state.loadingTimeout) {
-            clearTimeout(state.loadingTimeout);
-            state.loadingTimeout = null;
+        if (value === 'quick-connect') {
+            this.pendingQuickConnectPane = pane;
+            this.openQuickConnect();
+            const select = document.getElementById(`fm${this.capitalize(pane)}Source`);
+            if (select) {
+                select.value = state.type === 'ssh' ? `ssh:${state.sessionId || state.connectionId}` : '';
+            }
+            return;
         }
 
-        state.files = [];
-        state.selected.clear();
+        if (state.loadingTimeout) {
+            clearTimeout(state.loadingTimeout);
+        }
+        Object.keys(state).forEach(key => delete state[key]);
+        Object.assign(state, this.createEmptyPaneState());
         state.loading = true;
-        state.error = null;
         this.renderPane(pane);
 
         if (!value) {
@@ -823,26 +949,20 @@ class SFTPFileManager {
             }
             this.updatePaneBadge(pane);
 
-        } else if (value === 'quick-connect') {
-            this.pendingQuickConnectPane = pane;
-            this.openQuickConnect();
-            const select = document.getElementById(`fm${this.capitalize(pane)}Source`);
-            select.value = state.type === 'ssh' ? `ssh:${state.sessionId || state.connectionId}` : '';
-            state.loading = false;
-
         } else if (value.startsWith('ssh:')) {
             const sessionId = value.substring(4);
             state.type = 'ssh';
             state.sessionId = sessionId;
             state.connectionId = null;
+            state.autoHomeEligible = true;
 
             const session = this.availableSessions.find(s => s.id === sessionId);
             if (session) {
                 state.hostInfo = { host: session.host, username: session.username, port: session.port };
             }
 
-            this.socket.emit('get_home_directory', { session_id: sessionId });
-            this.socket.emit('list_directory', { session_id: sessionId, remote_path: '/' });
+            this.requestHomeDirectory(pane, sessionId);
+            this.requestDirectory(pane, '/');
             this.updatePaneBadge(pane);
 
             this.setLoadingTimeout(pane);
@@ -854,17 +974,44 @@ class SFTPFileManager {
             state.type = 'ssh';
             state.sessionId = null;
             state.connectionId = connectionId;
+            state.autoHomeEligible = true;
 
             if (qc) {
                 state.hostInfo = { host: qc.host, username: qc.username, port: qc.port };
             }
 
-            this.socket.emit('get_home_directory', { session_id: connectionId });
-            this.socket.emit('list_directory', { session_id: connectionId, remote_path: '/' });
+            this.requestHomeDirectory(pane, connectionId);
+            this.requestDirectory(pane, '/');
             this.updatePaneBadge(pane);
 
             this.setLoadingTimeout(pane);
         }
+    }
+
+    nextRequestId(pane, operation) {
+        this.requestSequence = (this.requestSequence || 0) + 1;
+        return `${pane}:${operation}:${this.requestSequence}`;
+    }
+
+    requestHomeDirectory(pane, sessionId) {
+        const state = this.panes[pane];
+        const requestId = this.nextRequestId(pane, 'home');
+        state.pendingHomeRequestId = requestId;
+        this.socket.emit('get_home_directory', { session_id: sessionId, request_id: requestId });
+        return requestId;
+    }
+
+    requestDirectory(pane, path) {
+        const state = this.panes[pane];
+        const requestId = this.nextRequestId(pane, 'directory');
+        state.pendingDirectoryRequestId = requestId;
+        state.pendingDirectoryPath = path;
+        this.socket.emit('list_directory', {
+            session_id: state.sessionId || state.connectionId,
+            remote_path: path,
+            request_id: requestId,
+        });
+        return requestId;
     }
 
     setLoadingTimeout(pane, timeout = 10000) {
@@ -1043,14 +1190,15 @@ class SFTPFileManager {
             state.sessionId = null;
             state.connectionId = data.connection_id;
             state.hostInfo = { host: data.host, username: data.username, port: data.port };
+            state.autoHomeEligible = true;
 
             const select = document.getElementById(`fm${this.capitalize(pane)}Source`);
             select.value = `qc:${data.connection_id}`;
 
             state.loading = true;
             this.renderPane(pane);
-            this.socket.emit('get_home_directory', { session_id: data.connection_id });
-            this.socket.emit('list_directory', { session_id: data.connection_id, remote_path: '/' });
+            this.requestHomeDirectory(pane, data.connection_id);
+            this.requestDirectory(pane, '/');
             this.setLoadingTimeout(pane);
 
             this.updatePaneBadge(pane);
@@ -1067,6 +1215,7 @@ class SFTPFileManager {
             return;
         }
 
+        state.autoHomeEligible = false;
         state.selected.clear();
         state.loading = true;
         this.renderPane(pane);
@@ -1085,8 +1234,7 @@ class SFTPFileManager {
                 this.renderPane(pane);
             }
         } else if (state.type === 'ssh') {
-            const sessionId = state.sessionId || state.connectionId;
-            this.socket.emit('list_directory', { session_id: sessionId, remote_path: path });
+            this.requestDirectory(pane, path);
             this.setLoadingTimeout(pane);
         }
     }
@@ -1161,9 +1309,10 @@ class SFTPFileManager {
                 }
             }
 
+            state.autoHomeEligible = false;
             state.loading = true;
             this.renderPane(pane);
-            this.socket.emit('list_directory', { session_id: sessionId, remote_path: state.path });
+            this.requestDirectory(pane, state.path);
             this.setLoadingTimeout(pane);
         }
     }
@@ -1193,6 +1342,7 @@ class SFTPFileManager {
         if (state.loadingTimeout) {
             clearTimeout(state.loadingTimeout);
         }
+        Object.keys(state).forEach(key => delete state[key]);
         Object.assign(state, this.createEmptyPaneState());
         const select = document.getElementById(`fm${this.capitalize(pane)}Source`);
         if (select) select.value = '';
@@ -2369,34 +2519,7 @@ class SFTPFileManager {
         const menu = document.createElement('div');
         menu.className = 'fm-context-menu';
 
-        let items = [];
-
-        if (file) {
-            if (file.is_dir) {
-                items.push({ action: 'open', icon: '📂', text: this.t('fm.ctx.open', 'Open') });
-                if (state.type === 'ssh' || state.type === 'quick-connect') {
-                    items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
-                }
-            } else {
-                if (state.type === 'ssh' || state.type === 'quick-connect') {
-                    items.push({ action: 'preview', icon: '👁️', text: this.t('fm.ctx.preview', 'Preview') });
-                    items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
-                }
-            }
-            if (!this.isMobile()) {
-                items.push({ action: 'transfer', icon: '↔️', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
-            }
-            items.push({ divider: true });
-            items.push({ action: 'rename', icon: '✏️', text: this.t('fm.rename', 'Rename') });
-        }
-
-        items.push({ action: 'newfolder', icon: '📁', text: this.t('fm.newFolder', 'New Folder') });
-        items.push({ action: 'refresh', icon: '↻', text: this.t('fm.refresh', 'Refresh') });
-
-        if (file) {
-            items.push({ divider: true });
-            items.push({ action: 'delete', icon: '🗑️', text: this.t('fm.delete', 'Delete'), danger: true });
-        }
+        const items = this.getContextMenuItems(file, state);
 
         menu.innerHTML = items.map(item => {
             if (item.divider) {
@@ -2422,6 +2545,36 @@ class SFTPFileManager {
                 this.closeContextMenu();
             });
         });
+    }
+
+    getContextMenuItems(file, state) {
+        const items = [];
+
+        if (file) {
+            if (file.is_dir) {
+                items.push({ action: 'open', icon: '📂', text: this.t('fm.ctx.open', 'Open') });
+                if (state.type === 'ssh' || state.type === 'quick-connect') {
+                    items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
+                }
+            } else if (state.type === 'ssh' || state.type === 'quick-connect') {
+                items.push({ action: 'preview', icon: '👁️', text: this.t('fm.ctx.preview', 'Preview') });
+                items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
+            }
+            if (this.displayMode !== 'embedded' && !this.isMobile()) {
+                items.push({ action: 'transfer', icon: '↔️', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
+            }
+            items.push({ divider: true });
+            items.push({ action: 'rename', icon: '✏️', text: this.t('fm.rename', 'Rename') });
+        }
+
+        items.push({ action: 'newfolder', icon: '📁', text: this.t('fm.newFolder', 'New Folder') });
+        items.push({ action: 'refresh', icon: '↻', text: this.t('fm.refresh', 'Refresh') });
+
+        if (file) {
+            items.push({ divider: true });
+            items.push({ action: 'delete', icon: '🗑️', text: this.t('fm.delete', 'Delete'), danger: true });
+        }
+        return items;
     }
 
     handleContextAction(action, pane, index) {
@@ -2779,13 +2932,18 @@ class SFTPFileManager {
 
 let sftpFileManager = null;
 
-function openFileManager() {
+function getSFTPFileManager() {
     if (!sftpFileManager) {
         sftpFileManager = new SFTPFileManager();
         window.sftpFileManager = sftpFileManager;
     }
-    sftpFileManager.open();
+    return sftpFileManager;
+}
+
+function openFileManager() {
+    getSFTPFileManager().open();
 }
 
 window.SFTPFileManager = SFTPFileManager;
+window.getSFTPFileManager = getSFTPFileManager;
 window.openFileManager = openFileManager;
