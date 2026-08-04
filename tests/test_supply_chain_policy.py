@@ -264,6 +264,27 @@ def test_ci_rejects_stale_vendored_frontend_assets():
     )
 
 
+def test_dependabot_vendor_refresh_uses_a_separate_validated_write_workflow():
+    workflow = (WORKFLOWS / 'dependabot-vendor.yml').read_text(
+        encoding='utf-8'
+    )
+    tests_workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+
+    assert 'workflow_run:' in workflow
+    assert 'workflows: [Tests]' in workflow
+    assert 'contents: write' in workflow
+    assert 'pull-requests: read' in workflow
+    assert 'actions: write' in workflow
+    assert 'pull_request_target' not in workflow
+    assert 'scripts/dependabot_vendor.py validate' in workflow
+    assert 'npm ci --ignore-scripts' in workflow
+    assert 'node scripts/vendor.js' in workflow
+    assert '[dependabot skip]' in workflow
+    assert 'git diff --cached --name-only' in workflow
+    assert 'gh workflow run tests.yml' in workflow
+    assert 'workflow_dispatch:' in tests_workflow
+
+
 def test_readme_describes_current_transfer_and_log_rotation_contracts():
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
 

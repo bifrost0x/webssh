@@ -1,0 +1,109 @@
+name: Dependabot vendor refresh
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: write
+
+jobs:
+  refresh-vendor:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/npm_and_yarn/')
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout trusted default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Fetch and validate Dependabot context
+        id: context
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            > "$RUNNER_TEMP/pull-request.json"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            > "$RUNNER_TEMP/files.json"
+          python scripts/dependabot_vendor.py validate \
+            --event "$GITHUB_EVENT_PATH" \
+            --pull-request "$RUNNER_TEMP/pull-request.json" \
+            --files "$RUNNER_TEMP/files.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Generate vendor assets from locked dependencies
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.context.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          gh api -H "Accept: application/vnd.github.raw+json" \
+            "repos/${GITHUB_REPOSITORY}/contents/package.json?ref=${HEAD_SHA}" \
+            > package.json
+          gh api -H "Accept: application/vnd.github.raw+json" \
+            "repos/${GITHUB_REPOSITORY}/contents/package-lock.json?ref=${HEAD_SHA}" \
+            > package-lock.json
+          npm ci --ignore-scripts
+          node scripts/vendor.js
+          npm run vendor:check
+          cp -a static/vendor "$RUNNER_TEMP/vendor"
+
+      - name: Commit generated assets to the validated branch
+        id: commit
+        shell: bash
+        env:
+          HEAD_REF: ${{ steps.context.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.context.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${HEAD_REF}"
+          test "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA"
+          git checkout --detach FETCH_HEAD
+          rsync --archive --delete "$RUNNER_TEMP/vendor/" static/vendor/
+
+          if git diff --quiet -- static/vendor; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          while IFS= read -r changed_file; do
+            [[ "$changed_file" == static/vendor/* ]]
+          done < <(git diff --name-only)
+
+          git add -- static/vendor
+          while IFS= read -r staged_file; do
+            [[ "$staged_file" == static/vendor/* ]]
+          done < <(git diff --cached --name-only)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update vendored frontend assets [dependabot skip]"
+
+          test "$(git ls-remote origin "refs/heads/${HEAD_REF}" | cut -f1)" = "$HEAD_SHA"
+          git push origin "HEAD:refs/heads/${HEAD_REF}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests for the generated commit
+        if: steps.commit.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ steps.context.outputs.head_ref }}
+        run: gh workflow run tests.yml --ref "$HEAD_REF"
