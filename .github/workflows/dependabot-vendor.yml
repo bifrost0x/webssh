@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Checkout trusted default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -73,7 +75,7 @@ jobs:
           set -euo pipefail
           npm ci --ignore-scripts
           node scripts/vendor.js
-          npm run vendor:check
+          node scripts/vendor.js --check
           cp scripts/dependabot_vendor.py "$RUNNER_TEMP/dependabot_vendor.py"
           cp -a static/vendor "$RUNNER_TEMP/vendor"
 
@@ -81,6 +83,7 @@ jobs:
         id: commit
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ steps.context.outputs.head_ref }}
           HEAD_SHA: ${{ steps.context.outputs.head_sha }}
         run: |
@@ -103,6 +106,7 @@ jobs:
           generated_sha="$(git rev-parse HEAD)"
 
           test "$(git ls-remote origin "refs/heads/${HEAD_REF}" | cut -f1)" = "$HEAD_SHA"
+          gh auth setup-git
           git push origin "HEAD:refs/heads/${HEAD_REF}"
           echo "generated_sha=${generated_sha}" >> "$GITHUB_OUTPUT"
 

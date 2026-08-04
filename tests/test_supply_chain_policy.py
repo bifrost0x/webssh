@@ -280,6 +280,10 @@ def test_dependabot_vendor_refresh_uses_a_separate_validated_write_workflow():
     assert '--jobs' in workflow
     assert 'npm ci --ignore-scripts' in workflow
     assert 'node scripts/vendor.js' in workflow
+    assert 'node scripts/vendor.js --check' in workflow
+    assert 'npm run vendor:check' not in workflow
+    assert 'persist-credentials: false' in workflow
+    assert 'gh auth setup-git' in workflow
     assert '[dependabot skip]' in workflow
     assert (
         'cp scripts/dependabot_vendor.py "$RUNNER_TEMP/dependabot_vendor.py"'
