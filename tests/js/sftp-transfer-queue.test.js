@@ -6,6 +6,405 @@ global.document = { getElementById: () => null };
 require('../../static/js/sftp-file-manager.js');
 const SFTPFileManager = global.window.SFTPFileManager;
 
+function classList() {
+    const values = new Set();
+    return {
+        add(...names) { names.forEach(name => values.add(name)); },
+        remove(...names) { names.forEach(name => values.delete(name)); },
+        contains(name) { return values.has(name); },
+    };
+}
+
+test('embedded mode mounts the existing manager body as one remote pane', async () => {
+    const modalContent = {
+        children: [],
+        appendChild(node) { this.children.push(node); node.parentElement = this; },
+        insertBefore(node) { this.children.push(node); node.parentElement = this; },
+    };
+    const mount = {
+        children: [],
+        replaceChildren(node) { this.children = [node]; node.parentElement = this; },
+    };
+    const body = { classList: classList(), parentElement: modalContent };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        modalBody: body,
+        modalContent,
+        actionSheet: {},
+        displayMode: 'closed',
+        isOpen: false,
+        panes: { left: { sessionId: null }, right: { sessionId: null } },
+        updateSessionLists() {},
+        applyTranslations() {},
+        setActivePane(pane) { this.activePane = pane; },
+        availableSessions: [],
+        onSourceChange(pane, source) { this.sourceChange = { pane, source }; },
+    });
+
+    await manager.openEmbedded(mount, 'session-a', {
+        id: 'session-a', username: 'ops', host: 'edge.example', port: 22, connected: true,
+    });
+
+    assert.equal(manager.displayMode, 'embedded');
+    assert.equal(manager.isOpen, true);
+    assert.equal(manager.activePane, 'left');
+    assert.equal(body.classList.contains('fm-embedded-mode'), true);
+    assert.deepEqual(mount.children, [body]);
+    assert.deepEqual(manager.sourceChange, { pane: 'left', source: 'ssh:session-a' });
+});
+
+test('closing embedded mode restores the full manager body for modal use', () => {
+    let inserted;
+    const modalContent = {
+        insertBefore(node, before) { inserted = { node, before }; node.parentElement = this; },
+    };
+    const body = { classList: classList(), parentElement: {} };
+    body.classList.add('fm-embedded-mode');
+    const actionSheet = {};
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        modalBody: body,
+        modalContent,
+        actionSheet,
+        displayMode: 'embedded',
+        isOpen: true,
+        closeContextMenu() {},
+        resetPane(pane) { this.reset = pane; },
+    });
+
+    manager.closeEmbedded();
+
+    assert.deepEqual(inserted, { node: body, before: actionSheet });
+    assert.equal(body.classList.contains('fm-embedded-mode'), false);
+    assert.equal(manager.displayMode, 'closed');
+    assert.equal(manager.isOpen, false);
+    assert.equal(manager.reset, 'left');
+});
+
+test('embedded context menu keeps single-pane actions and omits transfer', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.displayMode = 'embedded';
+    manager.isMobile = () => false;
+    manager.t = (_key, fallback) => fallback;
+
+    const actions = manager.getContextMenuItems(
+        { name: 'config.yml', is_dir: false },
+        { type: 'ssh' },
+    ).filter(item => item.action).map(item => item.action);
+
+    assert.deepEqual(actions, [
+        'preview', 'download', 'rename', 'newfolder', 'refresh', 'delete',
+    ]);
+});
+
+test('F5 refreshes the embedded pane without starting a dual-pane transfer', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    let refreshed;
+    Object.assign(manager, {
+        isOpen: true,
+        displayMode: 'embedded',
+        activePane: 'left',
+        refreshPane(pane) { refreshed = pane; },
+        executeTransfer() { assert.fail('dual-pane transfer started'); },
+    });
+    let prevented = false;
+
+    manager.handleKeyboardShortcut({
+        key: 'F5', ctrlKey: false,
+        target: { matches: () => false },
+        preventDefault() { prevented = true; },
+    });
+
+    assert.equal(refreshed, 'left');
+    assert.equal(prevented, true);
+});
+
+test('Tab never activates the hidden second pane in embedded mode', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        isOpen: true,
+        displayMode: 'embedded',
+        activePane: 'left',
+        setActivePane() { assert.fail('hidden pane activated'); },
+    });
+
+    manager.handleKeyboardShortcut({
+        key: 'Tab', ctrlKey: false,
+        target: { matches: () => false },
+        preventDefault() { assert.fail('normal tab navigation was blocked'); },
+    });
+});
+
+test('resetPane clears the home directory and pending requests from the previous session', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.panes = {
+        left: {
+            ...manager.createEmptyPaneState(),
+            type: 'ssh',
+            sessionId: 'session-a',
+            homePath: '/home/user-a',
+            pendingDirectoryRequestId: 'left:4',
+            pendingDirectoryPath: '/srv/a',
+            pendingHomeRequestId: 'left:3',
+        },
+    };
+    Object.assign(manager, {
+        updatePathInput() {}, updatePaneBadge() {}, renderPane() {}, capitalize(value) { return value; },
+    });
+
+    manager.resetPane('left');
+
+    assert.equal(manager.panes.left.homePath, null);
+    assert.equal(manager.panes.left.pendingDirectoryRequestId, null);
+    assert.equal(manager.panes.left.pendingDirectoryPath, null);
+    assert.equal(manager.panes.left.pendingHomeRequestId, null);
+});
+
+test('stale directory and home responses cannot overwrite a newer request', () => {
+    const listeners = {};
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        isOpen: true,
+        panes: {
+            left: {
+                ...manager.createEmptyPaneState(),
+                type: 'ssh',
+                sessionId: 'session-a',
+                path: '/new',
+                files: [{ name: 'new.txt' }],
+                pendingDirectoryRequestId: 'left:2',
+                pendingDirectoryPath: '/new',
+                pendingHomeRequestId: 'left:home:2',
+            },
+            right: manager.createEmptyPaneState(),
+        },
+        updatePathInput() {}, renderPane() {}, navigatePaneTo() { assert.fail('stale home path used'); },
+    });
+    manager.setupSocketListeners();
+
+    listeners.directory_listing({
+        session_id: 'session-a', request_id: 'left:1', path: '/old', files: [{ name: 'old.txt' }],
+    });
+    listeners.home_directory({
+        session_id: 'session-a', request_id: 'left:home:1', path: '/home/old-user',
+    });
+
+    assert.equal(manager.panes.left.path, '/new');
+    assert.equal(manager.panes.left.files[0].name, 'new.txt');
+    assert.equal(manager.panes.left.homePath, null);
+});
+
+test('a valid late home response cannot replace a newer manual navigation', () => {
+    const listeners = {};
+    const manager = Object.create(SFTPFileManager.prototype);
+    let navigated = null;
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        isOpen: true,
+        panes: {
+            left: {
+                ...manager.createEmptyPaneState(),
+                type: 'ssh', sessionId: 'session-a', path: '/',
+                pendingHomeRequestId: 'left:home:1',
+                pendingDirectoryRequestId: 'left:directory:2',
+                pendingDirectoryPath: '/srv/manual',
+                autoHomeEligible: false,
+            },
+            right: manager.createEmptyPaneState(),
+        },
+        navigatePaneTo(_pane, path) { navigated = path; },
+    });
+    manager.setupSocketListeners();
+
+    listeners.home_directory({
+        session_id: 'session-a', request_id: 'left:home:1', path: '/home/operator',
+    });
+
+    assert.equal(manager.panes.left.homePath, '/home/operator');
+    assert.equal(navigated, null);
+    assert.equal(manager.panes.left.pendingDirectoryPath, '/srv/manual');
+});
+
+test('file manager claims only the exact correlated listing error', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        isOpen: true,
+        panes: {
+            left: {
+                ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-a',
+                pendingDirectoryRequestId: 'left:directory:9', pendingDirectoryPath: '/srv/current',
+            },
+            right: manager.createEmptyPaneState(),
+        },
+    });
+
+    assert.equal(manager.handlesSocketError({ error: 'generic' }), false);
+    assert.equal(manager.handlesSocketError({
+        operation: 'list_directory', session_id: 'session-a',
+        request_id: 'left:directory:8', path: '/srv/old',
+    }), false);
+    assert.equal(manager.handlesSocketError({
+        operation: 'list_directory', session_id: 'session-a',
+        request_id: 'left:directory:9', path: '/srv/current',
+    }), true);
+});
+
+test('only the correlated list-directory error changes a loading SFTP pane', () => {
+    const listeners = {};
+    let renders = 0;
+    let notifications = 0;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        isOpen: true,
+        panes: {
+            left: {
+                ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-a', loading: true,
+                pendingDirectoryRequestId: 'left:7', pendingDirectoryPath: '/srv/current',
+            },
+            right: manager.createEmptyPaneState(),
+        },
+        renderPane() { renders += 1; },
+        showNotification() { notifications += 1; },
+    });
+    manager.setupSocketListeners();
+
+    listeners.error({ error: 'Unrelated profile error' });
+    listeners.error({
+        error: 'Stale listing failed', operation: 'list_directory', session_id: 'session-a',
+        request_id: 'left:6', path: '/srv/old',
+    });
+    assert.equal(manager.panes.left.loading, true);
+    assert.equal(renders, 0);
+    assert.equal(notifications, 0);
+
+    listeners.error({
+        error: 'Listing failed', operation: 'list_directory', session_id: 'session-a',
+        request_id: 'left:7', path: '/srv/current',
+    });
+    assert.equal(manager.panes.left.loading, false);
+    assert.equal(manager.panes.left.error, 'Listing failed');
+    assert.equal(renders, 1);
+    assert.equal(notifications, 1);
+});
+
+test('embedded pane keeps the existing navigation and preview code paths', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const calls = [];
+    global.window.FilePreview = {
+        open(...args) { calls.push(['preview', ...args]); },
+    };
+    Object.assign(manager, {
+        displayMode: 'embedded',
+        panes: {
+            left: {
+                type: 'ssh', sessionId: 'session-a', connectionId: null, path: '/srv',
+                files: [{ name: 'releases', is_dir: true }, { name: 'README.md', is_dir: false }],
+            },
+        },
+        navigateIntoDir(pane, name) { calls.push(['directory', pane, name]); },
+        joinPath(base, name) { return `${base}/${name}`; },
+    });
+
+    manager.handleItemDblClick('left', 0);
+    manager.handleItemDblClick('left', 1);
+
+    assert.deepEqual(calls, [
+        ['directory', 'left', 'releases'],
+        ['preview', 'session-a', '/srv/README.md', 'README.md'],
+    ]);
+    delete global.window.FilePreview;
+});
+
+test('embedded pane keeps ctrl and shift selection plus folder download', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const downloads = [];
+    Object.assign(manager, {
+        displayMode: 'embedded',
+        activePane: 'left',
+        panes: {
+            left: {
+                type: 'ssh', sessionId: 'session-a', connectionId: null, path: '/srv',
+                files: [
+                    { name: 'one.txt', is_dir: false },
+                    { name: 'two.txt', is_dir: false },
+                    { name: 'archive', is_dir: true },
+                ],
+                selected: new Set(), lastSelected: -1,
+            },
+        },
+        setActivePane(pane) { this.activePane = pane; },
+        updateSelectionVisual() {},
+        showNotification() {},
+        t(_key, fallback) { return fallback; },
+        joinPath(base, name) { return `${base}/${name}`; },
+        downloadFileToBrowser(_session, path) { downloads.push(['file', path]); },
+        downloadFolderToBrowser(_session, path) { downloads.push(['folder', path]); },
+    });
+    const event = overrides => ({ stopPropagation() {}, ctrlKey: false, metaKey: false, shiftKey: false, ...overrides });
+
+    manager.handleItemClick(event({}), 'left', 0);
+    manager.handleItemClick(event({ ctrlKey: true }), 'left', 2);
+    manager.handleItemClick(event({ shiftKey: true }), 'left', 1);
+    manager.downloadSelected();
+
+    assert.deepEqual([...manager.panes.left.selected], [0, 2, 1]);
+    assert.deepEqual(downloads, [
+        ['file', '/srv/one.txt'],
+        ['folder', '/srv/archive'],
+        ['file', '/srv/two.txt'],
+    ]);
+});
+
+test('embedded drag and drop uses the existing directory upload path', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const folder = { isDirectory: true, isFile: false };
+    let uploaded;
+    Object.assign(manager, {
+        displayMode: 'embedded',
+        panes: {
+            left: { type: 'ssh', sessionId: 'session-a', connectionId: null, path: '/srv' },
+        },
+        draggedItems: [], dragSource: null,
+        uploadDesktopItemsToSSH(entries, target) { uploaded = { entries, target }; },
+    });
+
+    manager.handleDrop({
+        dataTransfer: {
+            files: [],
+            items: [{ kind: 'file', webkitGetAsEntry: () => folder }],
+        },
+    }, 'left');
+
+    assert.deepEqual(uploaded.entries, [folder]);
+    assert.equal(uploaded.target, manager.panes.left);
+});
+
+test('opening the full modal closes embedded mode before restoring dual-pane UI', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    let closed = 0;
+    let shown = 0;
+    Object.assign(manager, {
+        displayMode: 'embedded', isOpen: true, modal: { style: {}, classList: classList() },
+        closeEmbedded() { closed += 1; this.displayMode = 'closed'; this.isOpen = false; },
+        updateSessionLists() {}, restoreLastSources() {}, applyTranslations() {},
+        isMobile() { return false; }, setActivePane() {}, updateMobilePaneTabs() {},
+    });
+    global.window.ModalManager = { open() { shown += 1; } };
+    global.window.dispatchEvent = () => {};
+    const originalGetElementById = global.document.getElementById;
+    global.document.getElementById = () => ({ style: {}, classList: classList(), value: '' });
+
+    manager.open();
+
+    assert.equal(closed, 1);
+    assert.equal(shown, 1);
+    assert.equal(manager.displayMode, 'modal');
+    global.document.getElementById = originalGetElementById;
+    delete global.window.ModalManager;
+});
+
 test('generic transfer failures are localized before entering the queue', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     let finalized;

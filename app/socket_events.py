@@ -1,7 +1,8 @@
 from flask_socketio import emit, join_room, disconnect
 from flask import request, current_app, url_for
 from . import (socketio, ssh_manager, profile_manager, key_manager,
-               sftp_handler, jump_host_manager, post_connect_manager)
+               sftp_handler, jump_host_manager, post_connect_manager,
+               session_insights)
 from .decorators import socket_login_required
 from .auth import register_socket_session, get_user_from_socket, check_socket_rate_limit
 from .models import db, SSHSession, SocketSession
@@ -906,11 +907,19 @@ def handle_list_directory(data, current_user=None):
     import time as _time
     _t0 = _time.time()
     try:
-        session_id = data.get('session_id')
-        remote_path = data.get('remote_path', '.')
+        payload = data if isinstance(data, dict) else {}
+        session_id = payload.get('session_id')
+        remote_path = payload.get('remote_path', '.')
+        request_id = payload.get('request_id')
+        request_context = {
+            'operation': 'list_directory',
+            'session_id': session_id,
+            'path': remote_path,
+            'request_id': request_id,
+        }
 
         if not session_id:
-            emit('error', {'error': 'Session ID required'})
+            emit('error', {'error': 'Session ID required', **request_context})
             return
 
         authorized = False
@@ -924,7 +933,7 @@ def handle_list_directory(data, current_user=None):
         _t1 = _time.time()
         if not authorized:
             log_warning(f"list_directory unauthorized", session_id=session_id, user=current_user.username)
-            emit('error', {'error': 'Unauthorized access to session'})
+            emit('error', {'error': 'Unauthorized access to session', **request_context})
             return
 
         files, error = sftp_handler.list_directory(session_id, remote_path)
@@ -933,19 +942,26 @@ def handle_list_directory(data, current_user=None):
         if error:
             log_warning(f"list_directory failed", path=remote_path, error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('error', {'error': f'Failed to list directory: {error}'})
+            emit('error', {'error': f'Failed to list directory: {error}', **request_context})
         else:
             log_info(f"list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('directory_listing', {
                 'session_id': session_id,
                 'path': remote_path,
-                'files': files
+                'files': files,
+                'request_id': request_id,
             })
 
     except Exception as e:
         log_error(f"list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
-        emit('error', {'error': 'Failed to list directory'})
+        emit('error', {
+            'error': 'Failed to list directory',
+            'operation': 'list_directory',
+            'session_id': payload.get('session_id'),
+            'path': payload.get('remote_path', '.'),
+            'request_id': payload.get('request_id'),
+        })
 
 @socketio.on('set_theme')
 @socket_login_required
@@ -1351,6 +1367,73 @@ def verify_session_ownership(session_id, user_id):
     return False
 
 
+@socketio.on('request_session_insights')
+@socket_login_required
+def handle_request_session_insights(data, current_user=None):
+    """Return one bounded Linux sample for an owned active SSH session."""
+    session_id = data.get('session_id') if isinstance(data, dict) else None
+    request_id = data.get('request_id') if isinstance(data, dict) else None
+
+    valid_identifiers = (
+        isinstance(session_id, str)
+        and 0 < len(session_id) <= 128
+        and isinstance(request_id, str)
+        and 0 < len(request_id) <= 128
+    )
+    safe_session_id = session_id if valid_identifiers else ''
+    safe_request_id = request_id if valid_identifiers else ''
+
+    def emit_unavailable():
+        emit('session_insights', {
+            'success': False,
+            'session_id': safe_session_id,
+            'request_id': safe_request_id,
+            'error': 'Session insights unavailable',
+        })
+
+    if not valid_identifiers:
+        emit_unavailable()
+        return
+
+    if check_socket_rate_limit(
+            current_user.id,
+            'session_insights',
+            session_insights.REQUEST_RATE_LIMIT):
+        emit_unavailable()
+        return
+
+    if not verify_session_ownership(session_id, current_user.id):
+        log_warning(
+            'Unauthorized session insights request',
+            user_id=current_user.id,
+            session_id=session_id,
+        )
+        emit_unavailable()
+        return
+
+    try:
+        stats, error = session_insights.collect_linux_stats(session_id)
+    except Exception as exc:
+        log_warning(
+            'Session insights collection failed',
+            session_id=session_id,
+            error_type=type(exc).__name__,
+        )
+        emit_unavailable()
+        return
+
+    if error or stats is None:
+        emit_unavailable()
+        return
+
+    emit('session_insights', {
+        'success': True,
+        'session_id': session_id,
+        'request_id': request_id,
+        'stats': stats,
+    })
+
+
 @socketio.on('prepare_transfer')
 @socket_login_required
 def handle_prepare_transfer(data, current_user=None):
@@ -1652,16 +1735,23 @@ def handle_get_home_directory(data, current_user=None):
     import time as _time
     _t0 = _time.time()
     try:
-        session_id = data.get('session_id')
+        payload = data if isinstance(data, dict) else {}
+        session_id = payload.get('session_id')
+        request_id = payload.get('request_id')
+        request_context = {
+            'operation': 'get_home_directory',
+            'session_id': session_id,
+            'request_id': request_id,
+        }
 
         if not session_id:
-            emit('error', {'error': 'Session ID required'})
+            emit('error', {'error': 'Session ID required', **request_context})
             return
 
         if not verify_session_ownership(session_id, current_user.id):
             conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
             if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
+                emit('error', {'error': 'Unauthorized access', **request_context})
                 return
 
         _t1 = _time.time()
@@ -1671,16 +1761,25 @@ def handle_get_home_directory(data, current_user=None):
         if error:
             log_warning(f"get_home_directory failed", error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('error', {'error': f'Failed to get home directory: {error}'})
+            emit('error', {'error': f'Failed to get home directory: {error}', **request_context})
         else:
             log_info(f"get_home_directory OK", path=home_path,
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
-            emit('home_directory', {'session_id': session_id, 'path': home_path})
+            emit('home_directory', {
+                'session_id': session_id,
+                'path': home_path,
+                'request_id': request_id,
+            })
 
     except Exception as e:
         log_error(f"get_home_directory exception", error=str(e),
                  elapsed_ms=int((_time.time()-_t0)*1000))
-        emit('error', {'error': 'Failed to get home directory'})
+        emit('error', {
+            'error': 'Failed to get home directory',
+            'operation': 'get_home_directory',
+            'session_id': payload.get('session_id'),
+            'request_id': payload.get('request_id'),
+        })
 
 @socketio.on('check_exists')
 @socket_login_required

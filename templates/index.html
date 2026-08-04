@@ -19,6 +19,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=1">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
 
@@ -112,6 +113,9 @@
                     <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane">2</button>
                     <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane">4</button>
                 </div>
+                <button class="tab-row-icon-btn session-sftp-toggle" id="sessionSftpToggleBtn" type="button" aria-pressed="false" aria-label="Show SFTP beside terminal" title="Show SFTP beside terminal" disabled>
+                    <span class="material-icons" aria-hidden="true">folder_open</span>
+                </button>
                 <div class="tab-row-divider"></div>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span aria-hidden="true">📡</span>
@@ -155,7 +159,7 @@
         </div>
         <div class="workspace" id="workspace">
             <div class="terminal-area">
-
+                <div class="session-main-split" id="sessionMainSplit">
                 <div class="terminals-container" id="terminalsContainer">
                     <div class="terminal-grid split-1" id="terminalGrid"></div>
                     <div class="drop-overlay hidden" id="dropOverlay">
@@ -172,12 +176,51 @@
                         <button class="search-btn search-close" id="terminalSearchClose" title="Close (Escape)">✕</button>
                     </div>
                 </div>
+                <aside class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files">
+                    <div class="session-panel-header">
+                        <div>
+                            <div class="session-panel-eyebrow">Active session</div>
+                            <div class="session-panel-title"><span class="material-icons" aria-hidden="true">folder_open</span> SFTP</div>
+                        </div>
+                        <button class="session-panel-close" id="sessionFilesCloseBtn" type="button" aria-label="Close SFTP split" title="Close SFTP split">&times;</button>
+                    </div>
+                    <div class="session-files-mount" id="sessionFilesMount"></div>
+                </aside>
+                </div>
             </div>
             <div class="resize-handle" id="resizeHandle" title="Drag to resize">
                 <div class="resize-handle-line"></div>
                 <button id="notepadToggle" class="notepad-toggle-btn" aria-label="Toggle notepad" title="Toggle notepad">◀</button>
             </div>
             <aside class="notepad-panel" id="notepadPanel">
+                <section class="session-insights-card" id="sessionInsightsCard" aria-live="polite">
+                    <div class="session-insights-heading">
+                        <div>
+                            <div class="session-panel-eyebrow">Live Linux telemetry</div>
+                            <div class="session-insights-host" id="sessionInsightsHost">No active session</div>
+                        </div>
+                        <span class="session-insights-state" id="sessionInsightsState">Offline</span>
+                    </div>
+                    <div class="session-insights-grid">
+                        <div class="session-cpu-gauge" id="sessionCpuGauge" style="--value: 0">
+                            <div><strong id="sessionCpuValue">--</strong><span>CPU</span></div>
+                        </div>
+                        <canvas class="session-cpu-chart" id="sessionCpuChart" width="180" height="72" aria-label="Recent CPU activity"></canvas>
+                    </div>
+                    <div class="session-resource" id="sessionRamResource">
+                        <div><span>RAM</span><strong id="sessionRamValue">--</strong></div>
+                        <div class="session-resource-track"><span id="sessionRamBar"></span></div>
+                    </div>
+                    <div class="session-resource" id="sessionDiskResource">
+                        <div><span>Disk /</span><strong id="sessionDiskValue">--</strong></div>
+                        <div class="session-resource-track"><span id="sessionDiskBar"></span></div>
+                    </div>
+                    <div class="session-insights-meta">
+                        <span id="sessionOsValue">Linux only</span>
+                        <span id="sessionUptimeValue">Refreshes every 4s</span>
+                    </div>
+                </section>
+                <div class="notepad-section">
                 <div class="notepad-header">
                     <div class="notepad-title-row">
                         <div class="notepad-title">Notepad</div>
@@ -186,6 +229,7 @@
                     <div class="notepad-meta">Personal scratchpad</div>
                 </div>
                 <textarea id="sessionNotepad" class="notepad-input" placeholder="Write notes, commands, or snippets here..."></textarea>
+                </div>
             </aside>
         </div>
     </main>
@@ -863,16 +907,20 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=3"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
-    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=6"></script>
@@ -882,7 +930,7 @@
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=6"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};

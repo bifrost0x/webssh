@@ -297,6 +297,11 @@ const TerminalManager = {
     fitTerminal(sessionId) {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         terminalKeys.forEach(key => {
+            const terminal = this.terminals[key];
+            const wrapper = terminal?.element?.closest?.('.terminal-wrapper');
+            if (wrapper?.classList.contains('unassigned')) {
+                return;
+            }
             const fitAddon = this.fitAddons[key];
             if (fitAddon) {
                 try {
@@ -529,20 +534,12 @@ const TerminalManager = {
     },
 
     updateFontSize(newSize) {
-        Object.keys(this.terminals).forEach(key => {
-            const terminal = this.terminals[key];
+        Object.values(this.terminals).forEach(terminal => {
             if (terminal) {
                 terminal.options.fontSize = newSize;
-                const fitAddon = this.fitAddons[key];
-                if (fitAddon) {
-                    try {
-                        fitAddon.fit();
-                    } catch (e) {
-                        console.error('Error fitting terminal after font change:', e);
-                    }
-                }
             }
         });
+        this.fitAllTerminals();
     },
 
     handleOrientationChange() {

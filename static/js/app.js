@@ -1022,7 +1022,7 @@
     });
 
     socket.on('error', (data) => {
-        if (window.sftpFileManager && window.sftpFileManager.isOpen) return;
+        if (window.sftpFileManager?.handlesSocketError?.(data)) return;
         showNotification(`Error: ${data.error}`, 'error');
     });
 
@@ -2294,6 +2294,12 @@
         setupResizeHandle();
         TerminalSearch.init();
         FilePreview.init();
+        window.sessionWorkspace = window.SessionWorkspaceUI?.init({
+            socket: window.socket,
+            sessionManager: SessionManager,
+            terminalManager: TerminalManager,
+            document,
+        });
 
         shortcutsModal = setupShortcutsModal();
         openShortcuts = () => {
