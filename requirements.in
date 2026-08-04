@@ -5,8 +5,8 @@ Werkzeug==3.1.8
 Flask-SocketIO==5.6.1
 python-socketio==5.16.3
 paramiko==5.0.0
-# Compatibility: keep the reviewed Fernet, PBKDF2, and key-loading APIs within cryptography 49.
-cryptography>=49.0,<50
+# Compatibility: cryptography 50 fixes CVE-2026-69247 while retaining the reviewed Fernet, PBKDF2, and key-loading APIs.
+cryptography>=50.0,<51
 python-dotenv==1.2.2
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1

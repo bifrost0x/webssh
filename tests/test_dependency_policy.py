@@ -157,6 +157,37 @@ def test_lock_generator_compiles_universal_locks():
     script = Path("scripts/lock_requirements.ps1").read_text(encoding="utf-8")
     assert "uv pip compile" in script
     assert "--universal" in script
+    assert f"--python-version {MINIMUM_PYTHON}" in script
+
+
+def test_lock_generator_reuses_committed_pins_unless_upgrade_is_explicit():
+    script = Path("scripts/lock_requirements.ps1").read_text(encoding="utf-8")
+
+    assert "[switch]$Upgrade" in script
+    assert "Copy-Item -LiteralPath $committedLock -Destination $temporaryLock" in script
+    assert 'if ($Upgrade) { @("--upgrade") } else { @() }' in script
+
+
+def test_lock_generator_compares_text_independent_of_checkout_line_endings():
+    script = Path("scripts/lock_requirements.ps1").read_text(encoding="utf-8")
+
+    assert "function Test-TextEqual" in script
+    assert '.Replace("`r`n", "`n")' in script
+    assert "Test-ByteEqual" not in script
+
+
+@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
+def test_runtime_locks_exclude_vulnerable_cryptography_versions(path):
+    """CVE-2026-69247 affects cryptography 44 through 49."""
+    assert locked_version(path, "cryptography") >= Version("50.0.0")
+
+
+def test_frontend_lock_excludes_vulnerable_socket_io_parser_versions():
+    """CVE-2026-69185 affects socket.io-parser 4.0.0 through 4.2.6."""
+    package_lock = json.loads(Path("package-lock.json").read_text(encoding="utf-8"))
+    parser = package_lock["packages"]["node_modules/socket.io-parser"]
+
+    assert Version(parser["version"]) >= Version("4.2.7")
 
 
 def test_python_runtime_contract_stays_synchronized():

@@ -32,8 +32,22 @@ const files = [
   ['material-icons/iconfont/material-icons.woff', 'material-icons/material-icons.woff'],
 ];
 
-function contentsMatch(srcPath, destPath, dest) {
+function expectedContents(srcPath, dest) {
   const source = fs.readFileSync(srcPath);
+  if (dest !== 'socketio/socket.io.min.js') return source;
+
+  const vulnerableDecoder = 'if(o!=Number(o)||"-"!==t.charAt(i))throw new Error("Illegal attachments");r.attachments=Number(o)';
+  const patchedDecoder = 'if(o!=Number(o)||"-"!==t.charAt(i))throw new Error("Illegal attachments");var a=Number(o);if(!Number.isInteger(a)||a<1)throw new Error("Illegal attachments");if(a>10)throw new Error("too many attachments");r.attachments=a';
+  const bundle = source.toString('utf8');
+  const matches = bundle.split(vulnerableDecoder).length - 1;
+  if (matches !== 1) {
+    throw new Error('Socket.IO bundle decoder changed; review the CVE-2026-69185 patch.');
+  }
+  return Buffer.from(bundle.replace(vulnerableDecoder, patchedDecoder), 'utf8');
+}
+
+function contentsMatch(srcPath, destPath, dest) {
+  const source = expectedContents(srcPath, dest);
   const destination = fs.readFileSync(destPath);
   if (!/\.(?:css|js)$/.test(dest)) return source.equals(destination);
   const normalize = value => value.toString('utf8').replace(/\r\n/g, '\n');
@@ -56,7 +70,7 @@ for (const [src, dest] of files) {
     }
   } else {
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    fs.copyFileSync(srcPath, destPath);
+    fs.writeFileSync(destPath, expectedContents(srcPath, dest));
     console.log(`  ${src}  ->  static/vendor/${dest}`);
   }
   count++;
