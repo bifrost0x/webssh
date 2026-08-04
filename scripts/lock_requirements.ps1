@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$Check
+    [switch]$Check,
+    [switch]$Upgrade
 )
 
 Set-StrictMode -Version Latest
@@ -10,6 +11,10 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $temporaryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("webssh-lock-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
 
+if ($Check -and $Upgrade) {
+    throw "-Check and -Upgrade cannot be used together."
+}
+
 function New-LockFile {
     param(
         [Parameter(Mandatory)] [string]$InputFile,
@@ -17,7 +22,12 @@ function New-LockFile {
     )
 
     $temporaryLock = Join-Path $temporaryDirectory $LockName
-    & uv pip compile $InputFile --universal --generate-hashes --no-header --output-file $temporaryLock | Out-Null
+    $committedLock = Join-Path $projectRoot $LockName
+    if (Test-Path -LiteralPath $committedLock) {
+        Copy-Item -LiteralPath $committedLock -Destination $temporaryLock
+    }
+    $upgradeArguments = if ($Upgrade) { @("--upgrade") } else { @() }
+    & uv pip compile $InputFile --universal --python-version 3.11 --generate-hashes --no-header --output-file $temporaryLock @upgradeArguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not compile $InputFile."
     }
