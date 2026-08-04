@@ -37,15 +37,15 @@ function New-LockFile {
     return $temporaryLock
 }
 
-function Test-ByteEqual {
+function Test-TextEqual {
     param(
         [Parameter(Mandatory)] [string]$Expected,
         [Parameter(Mandatory)] [string]$Actual
     )
 
-    [byte[]]$expectedBytes = [System.IO.File]::ReadAllBytes($Expected)
-    [byte[]]$actualBytes = [System.IO.File]::ReadAllBytes($Actual)
-    return [System.Linq.Enumerable]::SequenceEqual($expectedBytes, $actualBytes)
+    $expectedText = [System.IO.File]::ReadAllText($Expected).Replace("`r`n", "`n")
+    $actualText = [System.IO.File]::ReadAllText($Actual).Replace("`r`n", "`n")
+    return $expectedText -ceq $actualText
 }
 
 try {
@@ -57,7 +57,7 @@ try {
     foreach ($lock in @($runtimeLock, $testLock, $graphLock)) {
         $committedLock = Join-Path $projectRoot (Split-Path $lock -Leaf)
         if ($Check) {
-            if (-not (Test-ByteEqual -Expected $committedLock -Actual $lock)) {
+            if (-not (Test-TextEqual -Expected $committedLock -Actual $lock)) {
                 throw "$committedLock is out of date. Run pwsh -File scripts/lock_requirements.ps1 and commit the result."
             }
         }
