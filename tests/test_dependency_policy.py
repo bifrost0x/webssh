@@ -168,6 +168,14 @@ def test_lock_generator_reuses_committed_pins_unless_upgrade_is_explicit():
     assert 'if ($Upgrade) { @("--upgrade") } else { @() }' in script
 
 
+def test_lock_generator_compares_text_independent_of_checkout_line_endings():
+    script = Path("scripts/lock_requirements.ps1").read_text(encoding="utf-8")
+
+    assert "function Test-TextEqual" in script
+    assert '.Replace("`r`n", "`n")' in script
+    assert "Test-ByteEqual" not in script
+
+
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
 def test_runtime_locks_exclude_vulnerable_cryptography_versions(path):
     """CVE-2026-69247 affects cryptography 44 through 49."""
