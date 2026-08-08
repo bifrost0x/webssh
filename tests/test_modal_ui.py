@@ -15,6 +15,7 @@ def test_all_primary_dialogs_use_centered_modal_size_classes():
         'profileManagementModal': 'modal-large',
         'keyManagementModal': 'modal-wide',
         'jumpHostManagementModal': 'modal-wide',
+        'settingsModal': 'modal-wide',
     }
 
     for modal_id, size_class in expected_sizes.items():

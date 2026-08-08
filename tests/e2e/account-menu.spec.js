@@ -1,68 +1,88 @@
 const { test, expect } = require('playwright/test');
-const { login } = require('./helpers');
+const { login, openProfileManagement } = require('./helpers');
 
-test('account menu keeps one accessible group open and preserves nested actions', async ({ page }) => {
+test('account menu exposes flat actions and persists close confirmation', async ({ page }) => {
     await login(page);
 
     await page.locator('#accountBtnHeader').click();
     const dropdown = page.locator('#accountDropdownHeader');
-    const preferencesToggle = page.locator('#accountPreferencesToggle');
-    const connectionsToggle = page.locator('#accountConnectionsToggle');
-    const securityToggle = page.locator('#accountSecurityToggle');
-    const preferencesGroup = page.locator('#accountPreferencesGroup');
-    const connectionsGroup = page.locator('#accountConnectionsGroup');
-    const securityGroup = page.locator('#accountSecurityGroup');
-
     await expect(dropdown).toBeVisible();
-    await expect(preferencesGroup).toBeHidden();
-    await expect(connectionsGroup).toBeHidden();
-    await expect(securityGroup).toBeHidden();
+    for (const selector of [
+        '#accountThemeBtn',
+        '#accountLanguageBtn',
+        '#accountSettingsBtn',
+        '#changePasswordBtn',
+        '#securityCenterBtn',
+        '#adminPanelBtn',
+        '#logoutBtn',
+    ]) {
+        await expect(page.locator(selector)).toBeVisible();
+    }
+    await expect(page.locator('#accountPreferencesToggle')).toHaveCount(0);
+    await expect(page.locator('#accountConnectionsToggle')).toHaveCount(0);
+    await expect(page.locator('#accountSecurityToggle')).toHaveCount(0);
 
-    await preferencesToggle.focus();
-    await preferencesToggle.press('Enter');
-    await expect(preferencesToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(preferencesGroup).toBeVisible();
-
-    await connectionsToggle.click();
-    await expect(preferencesToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(preferencesGroup).toBeHidden();
-    await expect(connectionsToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(connectionsGroup).toBeVisible();
-
-    await securityToggle.click();
-    await expect(connectionsToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(connectionsGroup).toBeHidden();
-    await expect(securityToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(securityGroup).toBeVisible();
-
-    await connectionsToggle.click();
-    await page.locator('#manageKeysBtn').click();
-    await expect(page.locator('#keyManagementModal')).toHaveClass(/show/);
+    await page.locator('#accountSettingsBtn').click();
+    const settingsModal = page.locator('#settingsModal');
+    const closeConfirmation = page.locator('#confirmSessionCloseInput');
+    await expect(settingsModal).toHaveClass(/show/);
     await expect(dropdown).toBeHidden();
+    await expect(page.locator('#settingsThemeSelect')).toHaveValue('glass');
+    await expect(page.locator('#settingsLanguageSelect')).not.toHaveValue('');
+    await expect(page.locator('#scrollbackInput')).toHaveValue('150');
+    await expect(closeConfirmation).toBeChecked();
 
-    await page.locator('#closeKeyModal').click();
+    await closeConfirmation.uncheck();
+    await expect(closeConfirmation).not.toBeDisabled();
+    await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'false');
+
+    await page.reload();
+    await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'false');
     await page.locator('#accountBtnHeader').click();
-    await expect(preferencesGroup).toBeHidden();
-    await expect(connectionsGroup).toBeHidden();
-    await expect(securityGroup).toBeHidden();
-    await expect(preferencesToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(connectionsToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(securityToggle).toHaveAttribute('aria-expanded', 'false');
+    await page.locator('#accountSettingsBtn').click();
+    await expect(closeConfirmation).not.toBeChecked();
+    await closeConfirmation.check();
+    await expect(closeConfirmation).not.toBeDisabled();
+    await page.locator('#closeSettingsModal').click();
+    await expect(page.locator('#accountBtnHeader')).toBeFocused();
 });
 
-test('account menu stays inside a mobile viewport', async ({ page }) => {
+test('hosts, jump hosts, and SSH keys switch through one asset navigation', async ({ page }) => {
+    await login(page);
+    await openProfileManagement(page);
+
+    await expect(page.locator('#profileManagementModal [aria-current="page"]'))
+        .toHaveAttribute('data-connection-asset', 'hosts');
+    await page.locator('#profileManagementModal [data-connection-asset="keys"]').click();
+    await expect(page.locator('#profileManagementModal')).not.toHaveClass(/show/);
+    await expect(page.locator('#keyManagementModal')).toHaveClass(/show/);
+
+    await page.locator('#keyManagementModal [data-connection-asset="jump-hosts"]').click();
+    await expect(page.locator('#keyManagementModal')).not.toHaveClass(/show/);
+    await expect(page.locator('#jumpHostManagementModal')).toHaveClass(/show/);
+
+    await page.locator('#jumpHostManagementModal [data-connection-asset="hosts"]').click();
+    await expect(page.locator('#jumpHostManagementModal')).not.toHaveClass(/show/);
+    await expect(page.locator('#profileManagementModal')).toHaveClass(/show/);
+});
+
+test('flat account menu and settings stay inside a mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
 
     await page.locator('#mobileMenuBtn').click();
     await page.locator('#accountBtnHeader').click();
-    await page.locator('#accountPreferencesToggle').click();
 
     const dropdown = page.locator('#accountDropdownHeader');
     const bounds = await dropdown.boundingBox();
     expect(bounds).not.toBeNull();
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
-    await expect(page.locator('#scrollbackInput')).toBeVisible();
+    await expect(page.locator('#accountSettingsBtn')).toBeVisible();
     await expect(page.locator('#logoutBtn')).toBeVisible();
+
+    await page.locator('#accountSettingsBtn').click();
+    await expect(page.locator('#settingsModal')).toHaveClass(/show/);
+    await expect(page.locator('#scrollbackInput')).toBeVisible();
+    await expect(page.locator('#confirmSessionCloseInput')).toBeVisible();
 });

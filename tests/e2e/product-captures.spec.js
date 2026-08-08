@@ -537,7 +537,7 @@ test('captures the current Quick Connect surface at Full HD scale without outbou
 
     expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
     await expect(page.locator('#manageProfilesBtn')).toContainText(
-        process.env.WEBSSH_CAPTURE_EXPECT_SAVED_CONNECTIONS || 'Saved Connections',
+        process.env.WEBSSH_CAPTURE_EXPECT_SAVED_CONNECTIONS || 'Hosts',
     );
     await page.locator('#newConnectionBtn').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
@@ -887,13 +887,12 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await captureDesktopStill(page, 'multi.png', testInfo);
 
     await page.locator('#accountBtnHeader').click();
-    await page.locator('#accountPreferencesToggle').click();
-    await page.locator('#accountThemeToggle').click();
-    await expect(page.locator('#themeDropdownHeader')).toHaveClass(/show/);
-    await expect(page.locator('#themeDropdownHeader .theme-option')).toHaveCount(10);
-    await expect(page.locator('#themeDropdownHeader')).toContainText('Glass Ops');
-    await expect(page.locator('#themeDropdownHeader')).toContainText('Obsidian');
-    const themeBounds = await page.locator('#themeDropdownHeader').boundingBox();
+    await page.locator('#accountThemeBtn').click();
+    await expect(page.locator('#settingsModal')).toHaveClass(/show/);
+    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
+    await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
+    await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
+    const themeBounds = await page.locator('#settingsModal .modal-content').boundingBox();
     expect(themeBounds).not.toBeNull();
     expect(themeBounds.x).toBeGreaterThanOrEqual(0);
     expect(themeBounds.y).toBeGreaterThanOrEqual(0);
@@ -911,7 +910,7 @@ test.describe('mobile product capture', () => {
         deviceScaleFactor: 3,
     });
 
-    test('captures the current Saved Connections start surface without overflow', async ({ page }, testInfo) => {
+    test('captures the current Hosts start surface without overflow', async ({ page }, testInfo) => {
         await installCaptureNetworkGuard(page);
         await login(page);
         await installSshConnectTrap(page);
@@ -919,7 +918,7 @@ test.describe('mobile product capture', () => {
 
         expect(page.viewportSize()).toEqual(MOBILE_VIEWPORT);
         const launcher = page.locator('.profile-launcher');
-        await expect(launcher.getByText('Saved Connections', { exact: true })).toBeVisible();
+        await expect(launcher.getByText('Hosts', { exact: true })).toBeVisible();
         await expect(launcher.getByText('Production gateway', { exact: true })).toBeVisible();
         await expect(launcher).not.toContainText('E2E');
         await expect(launcher).not.toContainText('.local');

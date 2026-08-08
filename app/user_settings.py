@@ -4,7 +4,8 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 DEFAULT_SETTINGS = {
     'theme': 'glass',
-    'notepad': ''
+    'notepad': '',
+    'confirm_session_close': True,
 }
 
 
@@ -16,6 +17,11 @@ def _valid_settings(value):
     if 'theme' in value and not isinstance(value['theme'], str):
         return False
     if 'notepad' in value and not isinstance(value['notepad'], str):
+        return False
+    if (
+        'confirm_session_close' in value
+        and not isinstance(value['confirm_session_close'], bool)
+    ):
         return False
     return True
 
@@ -30,6 +36,10 @@ def _valid_settings_update(value):
         and (
             'notepad' not in value
             or isinstance(value['notepad'], str)
+        )
+        and (
+            'confirm_session_close' not in value
+            or isinstance(value['confirm_session_close'], bool)
         )
     )
 

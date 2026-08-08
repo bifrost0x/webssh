@@ -17,11 +17,11 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=6">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=1">
 </head>
-<body data-theme="{{ theme|default('glass') }}">
+<body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}">
 
     <header class="header">
         <div class="header-content">
@@ -35,7 +35,7 @@
                 <div class="header-group" role="group" aria-label="Tools">
                     <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
                     <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
-                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Saved Connections" data-i18n-title="profiles.manage"><span data-i18n="profiles.manage">Saved Connections</span> 🗂️</button>
+                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts"><span data-i18n="connectionAssets.hosts">Hosts</span> 🗂️</button>
                 </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
@@ -47,56 +47,14 @@
                         <span class="account-caret" aria-hidden="true">▾</span>
                     </button>
                     <div class="account-dropdown-header" id="accountDropdownHeader">
-                        <button type="button" class="account-item account-expander account-group-toggle" id="accountPreferencesToggle" onclick="toggleAccountMenuGroup(event, 'accountPreferencesGroup')" aria-expanded="false" aria-controls="accountPreferencesGroup">
-                            <span class="account-item-icon" aria-hidden="true">🎛️</span>
-                            <span class="account-expander-label" data-i18n="account.preferences">Preferences</span>
-                            <span class="account-caret" aria-hidden="true">▾</span>
-                        </button>
-                        <div class="account-menu-group account-submenu" id="accountPreferencesGroup">
-                            <button type="button" class="account-item account-expander" id="accountThemeToggle" onclick="toggleThemeDropdownHeader(event)" aria-haspopup="true" aria-expanded="false" aria-controls="themeDropdownHeader">
-                                <span class="account-item-icon" aria-hidden="true">🎨</span>
-                                <span class="account-expander-label" data-i18n="account.theme">Theme</span>
-                                <span class="account-current" id="currentThemeLabel"></span>
-                                <span class="account-caret" aria-hidden="true">▾</span>
-                            </button>
-                            <div class="theme-dropdown-header account-submenu" id="themeDropdownHeader"></div>
+                        <button id="accountThemeBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎨</span> <span data-i18n="account.theme">Theme</span><span class="account-current" id="currentThemeLabel"></span></button>
+                        <button id="accountLanguageBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🌐</span> <span data-i18n="account.language">Language</span><span class="account-current account-current-flag" id="currentLangFlagHeader">🇬🇧</span></button>
+                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎛️</span> <span data-i18n="settings.title">Settings</span></button>
 
-                            <button type="button" class="account-item account-expander" id="accountLanguageToggle" onclick="toggleLangDropdownHeader(event)" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdownHeader">
-                                <span class="account-item-icon" aria-hidden="true">🌐</span>
-                                <span class="account-expander-label" data-i18n="account.language">Language</span>
-                                <span class="account-current account-current-flag" id="currentLangFlagHeader">🇬🇧</span>
-                                <span class="account-caret" aria-hidden="true">▾</span>
-                            </button>
-                            <div class="lang-dropdown-header account-submenu" id="langDropdownHeader"></div>
-
-                            <div class="account-item account-scrollback">
-                                <span class="account-item-icon" aria-hidden="true">📜</span>
-                                <span class="account-expander-label" data-i18n="account.scrollback">Scrollback</span>
-                                <input type="number" id="scrollbackInput" class="account-scrollback-input" min="50" max="10000" step="50" title="Terminal scrollback lines" data-i18n-title="account.scrollbackTitle">
-                                <span class="account-unit" data-i18n="account.lines">lines</span>
-                            </div>
-                        </div>
-
-                        <button type="button" class="account-item account-expander account-group-toggle" id="accountConnectionsToggle" onclick="toggleAccountMenuGroup(event, 'accountConnectionsGroup')" aria-expanded="false" aria-controls="accountConnectionsGroup">
-                            <span class="account-item-icon" aria-hidden="true">🔌</span>
-                            <span class="account-expander-label" data-i18n="account.connectionSetup">Connection Setup</span>
-                            <span class="account-caret" aria-hidden="true">▾</span>
-                        </button>
-                        <div class="account-menu-group account-submenu" id="accountConnectionsGroup">
-                            <button id="manageKeysBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔑</span> <span data-i18n="keys.manageKeys">SSH Keys</span></button>
-                            <button id="manageJumpHostsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🛰️</span> <span data-i18n="jumphosts.manage">Jump Hosts</span></button>
-                        </div>
-
-                        <button type="button" class="account-item account-expander account-group-toggle" id="accountSecurityToggle" onclick="toggleAccountMenuGroup(event, 'accountSecurityGroup')" aria-expanded="false" aria-controls="accountSecurityGroup">
-                            <span class="account-item-icon" aria-hidden="true">🛡️</span>
-                            <span class="account-expander-label" data-i18n="account.securityAccount">Security &amp; Account</span>
-                            <span class="account-caret" aria-hidden="true">▾</span>
-                        </button>
-                        <div class="account-menu-group account-submenu" id="accountSecurityGroup">
-                            <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span data-i18n="security.title">Security</span></a>
-                            {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
-                            <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
-                        </div>
+                        <div class="account-divider" role="separator"></div>
+                        <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
+                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span data-i18n="security.title">Security</span></a>
+                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
 
                         <div class="account-divider" role="separator"></div>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
@@ -398,13 +356,68 @@
         </div>
     </div>
 
+    <div class="modal modal-wide" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="settingsTitle" data-i18n="settings.title">Settings</h2>
+                <span class="close" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+            </div>
+            <div class="modal-body settings-modal-body">
+                <section class="settings-section" aria-labelledby="settingsAppearanceTitle">
+                    <h3 id="settingsAppearanceTitle" data-i18n="settings.appearance">Appearance</h3>
+                    <div class="settings-field">
+                        <label for="settingsThemeSelect" data-i18n="account.theme">Theme</label>
+                        <select id="settingsThemeSelect" class="form-control">
+                            <option value="glass">Glass Ops</option>
+                            <option value="retro">Retro Future</option>
+                            <option value="solar">Solar Drift</option>
+                            <option value="paper">Paper Ops</option>
+                            <option value="noir">Noir Terminal</option>
+                            <option value="arctic-ice">Arctic Ice</option>
+                            <option value="rose-gold">Rose Gold</option>
+                            <option value="cyberpunk-neon">Cyberpunk Neon</option>
+                            <option value="emerald-matrix">Emerald Matrix</option>
+                            <option value="obsidian">Obsidian</option>
+                        </select>
+                    </div>
+                    <div class="settings-field">
+                        <label for="settingsLanguageSelect" data-i18n="account.language">Language</label>
+                        <select id="settingsLanguageSelect" class="form-control"></select>
+                    </div>
+                </section>
+                <section class="settings-section" aria-labelledby="settingsTerminalTitle">
+                    <h3 id="settingsTerminalTitle" data-i18n="settings.terminal">Terminal</h3>
+                    <div class="settings-field">
+                        <label for="scrollbackInput" data-i18n="account.scrollback">Scrollback</label>
+                        <div class="settings-number-control">
+                            <input type="number" id="scrollbackInput" class="form-control" min="50" max="10000" step="50" title="Terminal scrollback lines" data-i18n-title="account.scrollbackTitle">
+                            <span data-i18n="account.lines">lines</span>
+                        </div>
+                    </div>
+                    <label class="settings-toggle" for="confirmSessionCloseInput">
+                        <input type="checkbox" id="confirmSessionCloseInput">
+                        <span>
+                            <strong data-i18n="settings.closeConfirmation">Ask before closing a session</strong>
+                            <small data-i18n="settings.closeConfirmationHint">Show a confirmation before closing an SSH tab.</small>
+                        </span>
+                    </label>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <div class="modal modal-large" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="profileManagementTitle" data-i18n="profiles.manage">Saved Connections</h2>
+                <h2 id="profileManagementTitle" data-i18n="connectionAssets.hosts">Hosts</h2>
                 <span class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
+                <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="hosts" aria-current="page" data-i18n="connectionAssets.hosts">Hosts</button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button>
+                </nav>
                 <section id="profileManagementView">
                     <div class="profile-management-toolbar">
                         <p data-i18n="profiles.manageHint">Save and update connection settings without connecting.</p>
@@ -520,6 +533,11 @@
                 <span class="close" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
+                <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="keys" aria-current="page" data-i18n="connectionAssets.keys">SSH Keys</button>
+                </nav>
 
                 <div class="key-upload-section">
                     <h3 data-i18n="keys.uploadNewKey">Upload New Key</h3>
@@ -656,6 +674,11 @@
                 <span class="close" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
+                <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button>
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="jump-hosts" aria-current="page" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button>
+                </nav>
                 <div class="key-upload-section">
                     <h3 data-i18n="jumphosts.addNew">Add Jump Host</h3>
                     <form id="jumpHostForm">
@@ -907,7 +930,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=4"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=1"></script>
@@ -921,9 +944,9 @@
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=4"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=7"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
@@ -931,7 +954,7 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=7"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {
@@ -944,20 +967,7 @@
     </script>
 
     <script>
-        function toggleThemeDropdownHeader(event) {
-            if (event) {
-                event.stopPropagation();
-            }
-            const languageDropdown = document.getElementById('langDropdownHeader');
-            languageDropdown?.classList.remove('show');
-            document.getElementById('accountLanguageToggle')?.setAttribute('aria-expanded', 'false');
-            const dropdown = document.getElementById('themeDropdownHeader');
-            const isOpen = dropdown.classList.toggle('show');
-            document.getElementById('accountThemeToggle')?.setAttribute('aria-expanded', String(isOpen));
-        }
-
         function initThemeSelectorHeader() {
-            const dropdown = document.getElementById('themeDropdownHeader');
             const themes = [
                 { id: 'glass', name: 'Glass Ops', color: '#58a6ff' },
                 { id: 'retro', name: 'Retro Future', color: '#ffb454' },
@@ -971,20 +981,18 @@
                 { id: 'obsidian', name: 'Obsidian', color: '#ffffff' }
             ];
             const currentTheme = document.body.getAttribute('data-theme') || 'glass';
+            const select = document.getElementById('settingsThemeSelect');
 
-            dropdown.innerHTML = '';
-            themes.forEach(theme => {
-                const option = document.createElement('div');
-                option.className = 'theme-option' + (theme.id === currentTheme ? ' active' : '');
-                option.innerHTML = `<span class="theme-color-dot" style="background:${theme.color};${theme.light ? 'border:1px solid #666;' : ''}"></span>${theme.name}`;
-                option.dataset.themeId = theme.id;
-                option.onclick = () => {
-                    applyTheme(theme.id);
-                    updateCurrentThemeLabel(theme.name, theme.color);
-                    toggleThemeDropdownHeader();
-                };
-                dropdown.appendChild(option);
-            });
+            if (select) {
+                select.value = currentTheme;
+                select.addEventListener('change', () => {
+                    const selected = themes.find(theme => theme.id === select.value);
+                    applyTheme(select.value);
+                    if (selected) {
+                        updateCurrentThemeLabel(selected.name, selected.color);
+                    }
+                });
+            }
 
             const current = themes.find(t => t.id === currentTheme);
             if (current) {
@@ -1006,45 +1014,31 @@
             if (window.socket) {
                 window.socket.emit('set_theme', { theme: themeId });
             }
-            const dropdown = document.getElementById('themeDropdownHeader');
-            if (dropdown) {
-                dropdown.querySelectorAll('.theme-option').forEach(option => {
-                    option.classList.toggle('active', option.dataset.themeId === themeId);
-                });
-            }
+            const select = document.getElementById('settingsThemeSelect');
+            if (select) select.value = themeId;
             if (window.TerminalManager && typeof TerminalManager.applyThemeToAll === 'function') {
                 TerminalManager.applyThemeToAll();
             }
         }
 
-        function toggleLangDropdownHeader(event) {
-            if (event) {
-                event.stopPropagation();
-            }
-            const themeDropdown = document.getElementById('themeDropdownHeader');
-            themeDropdown?.classList.remove('show');
-            document.getElementById('accountThemeToggle')?.setAttribute('aria-expanded', 'false');
-            const dropdown = document.getElementById('langDropdownHeader');
-            const isOpen = dropdown.classList.toggle('show');
-            document.getElementById('accountLanguageToggle')?.setAttribute('aria-expanded', String(isOpen));
-        }
-
         function initLanguageSelectorHeader() {
-            const dropdown = document.getElementById('langDropdownHeader');
+            const select = document.getElementById('settingsLanguageSelect');
             const languages = i18n.getLanguages();
             const currentLang = i18n.getLanguage();
 
-            dropdown.innerHTML = '';
+            if (!select) return;
+            select.replaceChildren();
             languages.forEach(lang => {
-                const option = document.createElement('div');
-                option.className = 'lang-option' + (lang.code === currentLang ? ' active' : '');
-                option.innerHTML = `${lang.flag} ${lang.name}`;
-                option.onclick = () => {
-                    i18n.setLanguage(lang.code);
-                    updateCurrentLangHeader(lang);
-                    toggleLangDropdownHeader();
-                };
-                dropdown.appendChild(option);
+                const option = document.createElement('option');
+                option.value = lang.code;
+                option.textContent = `${lang.flag} ${lang.name}`;
+                select.appendChild(option);
+            });
+            select.value = currentLang;
+            select.addEventListener('change', () => {
+                const selected = languages.find(lang => lang.code === select.value);
+                i18n.setLanguage(select.value);
+                if (selected) updateCurrentLangHeader(selected);
             });
 
             const current = languages.find(l => l.code === currentLang);
@@ -1057,38 +1051,18 @@
             document.getElementById('currentLangFlagHeader').textContent = lang.flag;
         }
 
-        function closeAccountMenuGroups() {
-            document.querySelectorAll('#accountDropdownHeader .account-menu-group').forEach(group => {
-                group.classList.remove('show');
-            });
-            document.querySelectorAll('#accountDropdownHeader .account-group-toggle').forEach(toggle => {
-                toggle.setAttribute('aria-expanded', 'false');
-            });
-            document.getElementById('themeDropdownHeader')?.classList.remove('show');
-            document.getElementById('langDropdownHeader')?.classList.remove('show');
-            document.getElementById('accountThemeToggle')?.setAttribute('aria-expanded', 'false');
-            document.getElementById('accountLanguageToggle')?.setAttribute('aria-expanded', 'false');
-        }
-
-        function toggleAccountMenuGroup(event, groupId) {
-            if (event) {
-                event.stopPropagation();
-            }
-            const group = document.getElementById(groupId);
-            const toggle = event?.currentTarget;
-            if (!group) {
-                return;
-            }
-            const shouldOpen = !group.classList.contains('show');
-            closeAccountMenuGroups();
-            if (shouldOpen) {
-                group.classList.add('show');
-                toggle?.setAttribute('aria-expanded', 'true');
+        function openSettingsModal(focusId) {
+            const modal = document.getElementById('settingsModal');
+            if (!modal) return;
+            closeAccountDropdownHeader();
+            document.getElementById('accountBtnHeader')?.focus();
+            window.ModalManager?.open(modal);
+            if (focusId) {
+                requestAnimationFrame(() => document.getElementById(focusId)?.focus());
             }
         }
 
         function closeAccountDropdownHeader() {
-            closeAccountMenuGroups();
             document.getElementById('accountDropdownHeader')?.classList.remove('show');
             document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'false');
         }
@@ -1105,7 +1079,6 @@
                 closeAccountDropdownHeader();
                 return;
             }
-            closeAccountMenuGroups();
             dropdown.classList.add('show');
             document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'true');
         }
@@ -1117,18 +1090,6 @@
         });
 
         window.addEventListener('click', (e) => {
-            if (!e.target.closest('.language-selector')) {
-                const dropdown = document.getElementById('langDropdownHeader');
-                if (dropdown) {
-                    dropdown.classList.remove('show');
-                }
-            }
-            if (!e.target.closest('.theme-selector')) {
-                const dropdown = document.getElementById('themeDropdownHeader');
-                if (dropdown) {
-                    dropdown.classList.remove('show');
-                }
-            }
             if (!e.target.closest('.account-selector')) {
                 closeAccountDropdownHeader();
             }
@@ -1137,6 +1098,18 @@
         document.addEventListener('DOMContentLoaded', () => {
             initThemeSelectorHeader();
             initLanguageSelectorHeader();
+            document.getElementById('accountThemeBtn')?.addEventListener('click', () => {
+                openSettingsModal('settingsThemeSelect');
+            });
+            document.getElementById('accountLanguageBtn')?.addEventListener('click', () => {
+                openSettingsModal('settingsLanguageSelect');
+            });
+            document.getElementById('accountSettingsBtn')?.addEventListener('click', () => {
+                openSettingsModal();
+            });
+            document.getElementById('closeSettingsModal')?.addEventListener('click', () => {
+                window.ModalManager?.close(document.getElementById('settingsModal'));
+            });
         });
     </script>
 </body>
