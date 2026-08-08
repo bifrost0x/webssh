@@ -887,7 +887,7 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await captureDesktopStill(page, 'multi.png', testInfo);
 
     await page.locator('#accountBtnHeader').click();
-    await page.locator('#accountThemeBtn').click();
+    await page.locator('#accountSettingsBtn').click();
     await expect(page.locator('#settingsModal')).toHaveClass(/show/);
     await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
     await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
