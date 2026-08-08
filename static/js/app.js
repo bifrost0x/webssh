@@ -1845,7 +1845,7 @@
             { labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
             { labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
-            { labelKey: 'auth.changePassword', hint: '', action: () => document.getElementById('changePasswordBtn').click() },
+            { labelKey: 'auth.changePassword', hint: '', action: () => { window.location.href = APP_ROOT + '/security#password'; } },
             { labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
             { labelKey: 'terminal.copySelection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
             { labelKey: 'terminal.pasteClipboard', hint: '', action: () => document.getElementById('pasteClipboardBtn').click() },
@@ -2170,13 +2170,6 @@
             }
         });
 
-        const changePasswordBtn = document.getElementById('changePasswordBtn');
-        if (changePasswordBtn) {
-            changePasswordBtn.addEventListener('click', () => {
-                window.location.href = APP_ROOT + '/change-password';
-            });
-        }
-
         // Scrollback lines setting
         const scrollbackInput = document.getElementById('scrollbackInput');
         if (scrollbackInput) {
@@ -2372,6 +2365,7 @@
                 window.ModalManager.open(shortcutsModal);
             }
         };
+        document.getElementById('accountShortcutsBtn')?.addEventListener('click', openShortcuts);
 
         openPalette = setupCommandPalette();
 

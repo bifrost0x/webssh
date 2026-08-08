@@ -1,23 +1,28 @@
 const { test, expect } = require('playwright/test');
 const { login, openProfileManagement } = require('./helpers');
 
-test('account menu exposes flat actions and persists close confirmation', async ({ page }) => {
+test('account menu exposes workspace pulse and persists close confirmation', async ({ page }) => {
     await login(page);
 
     await page.locator('#accountBtnHeader').click();
     const dropdown = page.locator('#accountDropdownHeader');
     await expect(dropdown).toBeVisible();
     for (const selector of [
-        '#accountThemeBtn',
-        '#accountLanguageBtn',
+        '#accountProfileCard',
+        '#accountWorkspacePulse',
         '#accountSettingsBtn',
-        '#changePasswordBtn',
         '#securityCenterBtn',
+        '#accountShortcutsBtn',
         '#adminPanelBtn',
         '#logoutBtn',
     ]) {
         await expect(page.locator(selector)).toBeVisible();
     }
+    await expect(page.locator('#accountPulseSessions')).toHaveText('0');
+    await expect(page.locator('#accountPulsePanes')).toHaveText('0');
+    await expect(page.locator('#accountThemeBtn')).toHaveCount(0);
+    await expect(page.locator('#accountLanguageBtn')).toHaveCount(0);
+    await expect(page.locator('#changePasswordBtn')).toHaveCount(0);
     await expect(page.locator('#accountPreferencesToggle')).toHaveCount(0);
     await expect(page.locator('#accountConnectionsToggle')).toHaveCount(0);
     await expect(page.locator('#accountSecurityToggle')).toHaveCount(0);
@@ -66,7 +71,7 @@ test('hosts, jump hosts, and SSH keys switch through one asset navigation', asyn
     await expect(page.locator('#profileManagementModal')).toHaveClass(/show/);
 });
 
-test('flat account menu and settings stay inside a mobile viewport', async ({ page }) => {
+test('account menu and settings stay inside a mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page);
 

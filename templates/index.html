@@ -47,13 +47,36 @@
                         <span class="account-caret" aria-hidden="true">▾</span>
                     </button>
                     <div class="account-dropdown-header" id="accountDropdownHeader">
-                        <button id="accountThemeBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎨</span> <span data-i18n="account.theme">Theme</span><span class="account-current" id="currentThemeLabel"></span></button>
-                        <button id="accountLanguageBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🌐</span> <span data-i18n="account.language">Language</span><span class="account-current account-current-flag" id="currentLangFlagHeader">🇬🇧</span></button>
-                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎛️</span> <span data-i18n="settings.title">Settings</span></button>
+                        <div class="account-profile-card" id="accountProfileCard">
+                            <span class="account-profile-avatar" aria-hidden="true">{{ current_user.username[:1]|upper }}</span>
+                            <span class="account-profile-copy">
+                                <strong>{{ current_user.username }}</strong>
+                                {% if current_user.is_admin %}<span data-i18n="account.roleAdmin">Administrator</span>{% else %}<span data-i18n="account.roleUser">User</span>{% endif %}
+                            </span>
+                        </div>
+
+                        <section class="account-workspace-pulse" id="accountWorkspacePulse" aria-labelledby="accountWorkspacePulseTitle">
+                            <div class="account-pulse-heading">
+                                <span id="accountWorkspacePulseTitle" data-i18n="account.workspacePulse">Workspace Pulse</span>
+                                <span class="account-pulse-live"><span aria-hidden="true"></span><span data-i18n="account.live">Live</span></span>
+                            </div>
+                            <div class="account-pulse-metrics">
+                                <span><strong id="accountPulseSessions">0</strong> <span data-i18n="account.sessions">Sessions</span></span>
+                                <span><strong id="accountPulsePanes">0</strong> <span data-i18n="account.panes">Panes</span></span>
+                            </div>
+                            <div class="account-pulse-current">
+                                <span class="account-pulse-status" id="accountPulseStatus" aria-hidden="true"></span>
+                                <span class="account-pulse-current-copy">
+                                    <span data-i18n="account.currentSession">Current session</span>
+                                    <strong id="accountPulseCurrent" data-i18n="account.noActiveSession">No active session</strong>
+                                </span>
+                            </div>
+                        </section>
 
                         <div class="account-divider" role="separator"></div>
-                        <button id="changePasswordBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🔐</span> <span data-i18n="auth.changePassword">Change Password</span></button>
+                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎛️</span> <span data-i18n="settings.title">Settings</span></button>
                         <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span data-i18n="security.title">Security</span></a>
+                        <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">⌨️</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
                         {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
 
                         <div class="account-divider" role="separator"></div>
@@ -945,6 +968,7 @@
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=7"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
@@ -986,26 +1010,8 @@
             if (select) {
                 select.value = currentTheme;
                 select.addEventListener('change', () => {
-                    const selected = themes.find(theme => theme.id === select.value);
                     applyTheme(select.value);
-                    if (selected) {
-                        updateCurrentThemeLabel(selected.name, selected.color);
-                    }
                 });
-            }
-
-            const current = themes.find(t => t.id === currentTheme);
-            if (current) {
-                updateCurrentThemeLabel(current.name, current.color);
-            }
-        }
-
-        function updateCurrentThemeLabel(name, color) {
-            const label = document.getElementById('currentThemeLabel');
-            if (color) {
-                label.innerHTML = `<span class="theme-color-dot" style="background:${color}"></span>${name}`;
-            } else {
-                label.textContent = name;
             }
         }
 
@@ -1036,19 +1042,8 @@
             });
             select.value = currentLang;
             select.addEventListener('change', () => {
-                const selected = languages.find(lang => lang.code === select.value);
                 i18n.setLanguage(select.value);
-                if (selected) updateCurrentLangHeader(selected);
             });
-
-            const current = languages.find(l => l.code === currentLang);
-            if (current) {
-                updateCurrentLangHeader(current);
-            }
-        }
-
-        function updateCurrentLangHeader(lang) {
-            document.getElementById('currentLangFlagHeader').textContent = lang.flag;
         }
 
         function openSettingsModal(focusId) {
@@ -1098,12 +1093,13 @@
         document.addEventListener('DOMContentLoaded', () => {
             initThemeSelectorHeader();
             initLanguageSelectorHeader();
-            document.getElementById('accountThemeBtn')?.addEventListener('click', () => {
-                openSettingsModal('settingsThemeSelect');
+            window.accountWorkspacePulse = window.AccountWorkspacePulseModule?.createAccountWorkspacePulse({
+                sessionManager: SessionManager,
+                document,
+                window,
+                translate: key => window.i18n ? i18n.t(key) : key,
             });
-            document.getElementById('accountLanguageBtn')?.addEventListener('click', () => {
-                openSettingsModal('settingsLanguageSelect');
-            });
+            window.accountWorkspacePulse?.init();
             document.getElementById('accountSettingsBtn')?.addEventListener('click', () => {
                 openSettingsModal();
             });

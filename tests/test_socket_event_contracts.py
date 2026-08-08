@@ -8,6 +8,7 @@ SOCKET_EVENTS = ROOT / 'app' / 'socket_events.py'
 LOGIN_TEMPLATE = ROOT / 'templates' / 'login.html'
 BINARY_TRANSFER_CLIENT = ROOT / 'static' / 'js' / 'binary-transfer-client.js'
 AUTHENTICATED_TEMPLATE = ROOT / 'templates' / 'index.html'
+SECURITY_TEMPLATE = ROOT / 'templates' / 'security.html'
 
 STALE_SERVER_EVENTS = {'detect_os', 'get_sessions'}
 RETAINED_SERVER_EVENTS = {
@@ -98,13 +99,14 @@ def test_transfer_control_contracts_have_client_and_server_halves():
 def test_login_template_has_no_unauthenticated_password_change_action():
     login_template = LOGIN_TEMPLATE.read_text(encoding='utf-8')
     authenticated_template = AUTHENTICATED_TEMPLATE.read_text(encoding='utf-8')
+    security_template = SECURITY_TEMPLATE.read_text(encoding='utf-8')
     route = _change_password_route()
 
     assert "url_for('change_password')" not in login_template
-    assert (
-        '<button id="changePasswordBtn" class="account-item account-action" '
-        'type="button">'
-    ) in authenticated_template
+    assert 'id="changePasswordBtn"' not in authenticated_template
+    assert 'id="password"' in security_template
+    assert 'id="securityChangePasswordBtn"' in security_template
+    assert "url_for('change_password')" in security_template
     assert any(
         isinstance(decorator, ast.Name) and decorator.id == 'login_required'
         for decorator in route.decorator_list
@@ -118,3 +120,10 @@ def test_login_template_has_no_unauthenticated_password_change_action():
         and decorator.args[0].value == '/change-password'
         for decorator in route.decorator_list
     )
+
+
+def test_password_actions_navigate_through_security_center():
+    app_source = (ROOT / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+
+    assert "APP_ROOT + '/security#password'" in app_source
+    assert "getElementById('changePasswordBtn')" not in app_source
