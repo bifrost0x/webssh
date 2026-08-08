@@ -3335,7 +3335,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
     box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5);
     overflow-y: auto;
     max-height: 80vh;
-    min-width: 270px;
+    min-width: 310px;
     z-index: 10001;
     padding: 6px;
 }
@@ -3343,6 +3343,108 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .account-dropdown-header.show {
     display: block;
     animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.account-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px;
+}
+
+.account-profile-avatar {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border-radius: 10px;
+    background: var(--accent-primary);
+    color: var(--accent-on-text);
+    font-weight: 800;
+}
+
+.account-profile-copy,
+.account-pulse-current-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.account-profile-copy strong,
+.account-pulse-current-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-profile-copy span,
+.account-pulse-current-copy span {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.account-workspace-pulse {
+    margin: 4px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+
+.account-pulse-heading,
+.account-pulse-metrics,
+.account-pulse-current {
+    display: flex;
+    align-items: center;
+}
+
+.account-pulse-heading {
+    justify-content: space-between;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.account-pulse-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+.account-pulse-live > span:first-child,
+.account-pulse-status {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+}
+
+.account-pulse-metrics {
+    gap: 18px;
+    margin: 12px 0;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.account-pulse-metrics strong {
+    margin-right: 3px;
+    color: var(--text-primary);
+    font-size: 17px;
+}
+
+.account-pulse-current {
+    gap: 9px;
+    min-width: 0;
+}
+
+.account-pulse-status.is-offline {
+    background: var(--text-muted);
 }
 
 .account-item {

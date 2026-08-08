@@ -231,7 +231,7 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
     assert "openConnectionAssetManager('keys')" in app_source
 
 
-def test_account_menu_is_flat_and_settings_preserve_existing_preferences():
+def test_account_menu_focuses_on_workspace_and_account_destinations():
     template = read('templates/index.html')
     account_menu = re.search(
         r'<div class="account-dropdown-header"[^>]*>(?P<body>.*?)'
@@ -243,14 +243,25 @@ def test_account_menu_is_flat_and_settings_preserve_existing_preferences():
     assert account_menu
     body = account_menu.group('body')
     for element_id in (
-        'accountThemeBtn',
-        'accountLanguageBtn',
+        'accountProfileCard',
+        'accountWorkspacePulse',
+        'accountPulseSessions',
+        'accountPulsePanes',
+        'accountPulseCurrent',
         'accountSettingsBtn',
-        'changePasswordBtn',
         'securityCenterBtn',
+        'accountShortcutsBtn',
         'adminPanelBtn',
     ):
         assert f'id="{element_id}"' in body
+    for nested_preference_id in (
+        'accountThemeBtn',
+        'accountLanguageBtn',
+        'changePasswordBtn',
+        'currentThemeLabel',
+        'currentLangFlagHeader',
+    ):
+        assert f'id="{nested_preference_id}"' not in body
     for obsolete_id in (
         'accountPreferencesToggle',
         'accountConnectionsToggle',
@@ -260,6 +271,11 @@ def test_account_menu_is_flat_and_settings_preserve_existing_preferences():
         'accountSecurityGroup',
     ):
         assert obsolete_id not in template
+
+
+def test_settings_keep_existing_preferences_after_account_menu_cleanup():
+    template = read('templates/index.html')
+
     for element_id in (
         'settingsModal',
         'settingsThemeSelect',

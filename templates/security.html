@@ -17,8 +17,17 @@
         </div>
     </header>
     <main class="admin-main">
+        <section class="admin-setting-row" id="password" style="max-width:none;">
+            <div class="admin-toolbar">
+                <div>
+                    <h2 data-i18n="security.password">Password</h2>
+                    <p class="admin-muted" data-i18n="security.passwordHint">Update the password used to sign in to your account.</p>
+                </div>
+                <a class="btn btn-primary" id="securityChangePasswordBtn" href="{{ url_for('change_password') }}" data-i18n="auth.changePassword">Change Password</a>
+            </div>
+        </section>
         {% if host_key_management_enabled %}
-        <section class="admin-setting-row" style="max-width:none;">
+        <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
                 <h2 data-i18n="security.sshHostTrust">SSH host trust</h2>
                 <button class="btn btn-secondary" id="hostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
