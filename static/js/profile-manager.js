@@ -11,7 +11,7 @@ const ProfileManager = {
 
     init() {
         document.getElementById('manageProfilesBtn')?.addEventListener('click', () => {
-            this.openManagement();
+            window.openConnectionAssetManager?.('hosts');
         });
         document.getElementById('closeProfileManagementModal')?.addEventListener('click', () => {
             window.ModalManager?.close(document.getElementById('profileManagementModal'));
@@ -174,7 +174,7 @@ const ProfileManager = {
         const title = document.createElement('div');
         title.className = 'profile-launcher-title';
         title.textContent = profiles.length
-            ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Saved Connections')
+            ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Hosts')
             : (window.i18n ? i18n.t('panes.emptyPane') : 'Empty pane');
         empty.appendChild(title);
 

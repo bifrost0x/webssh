@@ -988,6 +988,50 @@ def handle_set_theme(data, current_user=None):
         log_error("Failed to save theme", error=str(e))
         emit('error', {'error': 'Failed to save theme'})
 
+
+@socketio.on('set_confirm_session_close')
+@socket_login_required
+def handle_set_confirm_session_close(data, current_user=None):
+    """Persist the explicit session-close confirmation preference."""
+    try:
+        enabled = data.get('enabled') if isinstance(data, dict) else None
+        if not isinstance(enabled, bool):
+            payload = {
+                'success': False,
+                'error': 'Invalid close confirmation setting',
+            }
+            emit('error', payload)
+            return payload
+
+        if not save_user_settings(
+            current_user.id,
+            {'confirm_session_close': enabled},
+        ):
+            payload = {
+                'success': False,
+                'error': 'Failed to save close confirmation setting',
+            }
+            emit('error', payload)
+            return payload
+
+        return {
+            'success': True,
+            'confirm_session_close': enabled,
+        }
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error(
+            "Failed to save close confirmation setting",
+            error=str(error),
+        )
+        payload = {
+            'success': False,
+            'error': 'Failed to save close confirmation setting',
+        }
+        emit('error', payload)
+        return payload
+
 @socketio.on('get_notepad')
 @socket_login_required
 def handle_get_notepad(current_user=None):

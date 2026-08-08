@@ -3,12 +3,12 @@ from pathlib import Path
 
 
 TERMINOLOGY = {
-    'en': ('Quick Connect', 'Saved Connections'),
-    'vi': ('Kết nối nhanh', 'Kết nối đã lưu'),
-    'de': ('Schnellverbindung', 'Gespeicherte Verbindungen'),
-    'fr': ('Connexion rapide', 'Connexions enregistrées'),
-    'es': ('Conexión rápida', 'Conexiones guardadas'),
-    'zh': ('快速连接', '已保存的连接'),
+    'en': ('Quick Connect', 'Hosts'),
+    'vi': ('Kết nối nhanh', 'Máy chủ'),
+    'de': ('Schnellverbindung', 'Hosts'),
+    'fr': ('Connexion rapide', 'Hôtes'),
+    'es': ('Conexión rápida', 'Hosts'),
+    'zh': ('快速连接', '主机'),
 }
 
 LEGACY_CONNECTION_TERMS = {

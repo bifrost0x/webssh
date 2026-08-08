@@ -199,8 +199,9 @@ def test_command_set_editor_controls_sudo_defaults_and_payload():
     assert 'command-set-sudo-badge' in source
 
 
-def test_profiles_are_prominent_while_keys_and_jump_hosts_stay_in_account_menu():
+def test_hosts_are_prominent_and_connection_assets_share_navigation():
     template = read('templates/index.html')
+    app_source = read('static/js/app.js')
 
     header_group = re.search(
         r'<div class="header-group"[^>]*>(?P<body>.*?)</div>',
@@ -220,9 +221,61 @@ def test_profiles_are_prominent_while_keys_and_jump_hosts_stay_in_account_menu()
     assert header_tools.index('commandLibraryBtn') < header_tools.index(
         'manageProfilesBtn'
     )
+    assert 'data-i18n="connectionAssets.hosts">Hosts</span>' in header_tools
     assert 'manageProfilesBtn' not in account_menu.group('body')
-    for element_id in ('manageKeysBtn', 'manageJumpHostsBtn'):
-        assert f'id="{element_id}"' in account_menu.group('body')
+    assert 'manageKeysBtn' not in account_menu.group('body')
+    assert 'manageJumpHostsBtn' not in account_menu.group('body')
+    for asset in ('hosts', 'jump-hosts', 'keys'):
+        assert template.count(f'data-connection-asset="{asset}"') == 3
+    assert 'function openConnectionAssetManager(asset)' in app_source
+    assert "openConnectionAssetManager('keys')" in app_source
+
+
+def test_account_menu_is_flat_and_settings_preserve_existing_preferences():
+    template = read('templates/index.html')
+    account_menu = re.search(
+        r'<div class="account-dropdown-header"[^>]*>(?P<body>.*?)'
+        r'<button id="logoutBtn"',
+        template,
+        re.DOTALL,
+    )
+
+    assert account_menu
+    body = account_menu.group('body')
+    for element_id in (
+        'accountThemeBtn',
+        'accountLanguageBtn',
+        'accountSettingsBtn',
+        'changePasswordBtn',
+        'securityCenterBtn',
+        'adminPanelBtn',
+    ):
+        assert f'id="{element_id}"' in body
+    for obsolete_id in (
+        'accountPreferencesToggle',
+        'accountConnectionsToggle',
+        'accountSecurityToggle',
+        'accountPreferencesGroup',
+        'accountConnectionsGroup',
+        'accountSecurityGroup',
+    ):
+        assert obsolete_id not in template
+    for element_id in (
+        'settingsModal',
+        'settingsThemeSelect',
+        'settingsLanguageSelect',
+        'scrollbackInput',
+        'confirmSessionCloseInput',
+    ):
+        assert f'id="{element_id}"' in template
+
+
+def test_close_confirmation_preference_is_rendered_for_session_manager():
+    app_source = read('app/__init__.py')
+    template = read('templates/index.html')
+
+    assert "confirm_session_close=settings.get('confirm_session_close', True)" in app_source
+    assert 'data-confirm-session-close="{{ \'true\' if confirm_session_close else \'false\' }}"' in template
 
 
 def test_profile_management_is_independent_from_connect_submit():

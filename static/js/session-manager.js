@@ -5,6 +5,7 @@ const SessionManager = {
     layout: 1,
     paneAssignments: [],
     activePaneIndex: 0,
+    confirmSessionClose: document.body?.dataset.confirmSessionClose !== 'false',
 
     init() {
         if (window.socket) {
@@ -348,6 +349,11 @@ const SessionManager = {
     requestCloseSession(sessionId) {
         const session = this.sessions[sessionId];
         if (!session) {
+            return;
+        }
+
+        if (!this.confirmSessionClose) {
+            this.closeSession(sessionId);
             return;
         }
 

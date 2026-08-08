@@ -153,11 +153,8 @@ async function openProfileManagement(page) {
 }
 
 async function openKeyManagement(page) {
-    const accountButton = page.locator('#accountBtnHeader');
-    await openResponsiveHeader(page, accountButton);
-    await accountButton.click();
-    await page.locator('#accountConnectionsToggle').click();
-    await page.locator('#manageKeysBtn').click();
+    await openProfileManagement(page);
+    await page.locator('#profileManagementModal [data-connection-asset="keys"]').click();
     await expect(page.locator('#keyManagementModal')).toHaveClass(/show/);
 }
 

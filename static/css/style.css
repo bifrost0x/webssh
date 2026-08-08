@@ -3406,6 +3406,104 @@ body.keyboard-open.notepad-focused .notepad-panel {
     gap: 6px;
 }
 
+.account-item > .account-current {
+    margin-left: auto;
+}
+
+.connection-asset-nav {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+
+.connection-asset-nav-item {
+    flex: 1;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.connection-asset-nav-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.connection-asset-nav-item.active {
+    background: var(--accent-primary);
+    color: var(--accent-on-text);
+}
+
+.settings-modal-body {
+    display: grid;
+    gap: 24px;
+}
+
+.settings-section {
+    display: grid;
+    gap: 16px;
+}
+
+.settings-section h3 {
+    margin: 0;
+}
+
+.settings-field {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) minmax(180px, 2fr);
+    align-items: center;
+    gap: 16px;
+}
+
+.settings-number-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.settings-number-control input {
+    max-width: 140px;
+}
+
+.settings-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+}
+
+.settings-toggle input {
+    margin-top: 4px;
+}
+
+.settings-toggle span {
+    display: grid;
+    gap: 4px;
+}
+
+.settings-toggle small {
+    color: var(--text-muted);
+}
+
+@media (max-width: 600px) {
+    .connection-asset-nav {
+        flex-direction: column;
+    }
+
+    .settings-field {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+
 .account-current-flag {
     font-size: 16px;
     overflow: visible;

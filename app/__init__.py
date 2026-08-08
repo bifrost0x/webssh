@@ -323,8 +323,13 @@ def create_app(
     def index():
         settings = get_user_settings(current_user.id)
         theme = settings.get('theme', 'glass')
-        return render_template('index.html', username=current_user.username, theme=theme,
-                               max_editor_file_size=config.MAX_EDITOR_FILE_SIZE)
+        return render_template(
+            'index.html',
+            username=current_user.username,
+            theme=theme,
+            confirm_session_close=settings.get('confirm_session_close', True),
+            max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
+        )
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():

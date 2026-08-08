@@ -322,7 +322,9 @@ test('modals restore focus and close by Escape or overlay while containing scrol
     await trigger.click();
     const modal = page.locator('#profileManagementModal');
     await expect(modal).toHaveClass(/show/);
-    await expect(page.locator('#newProfileBtn')).toBeFocused();
+    await expect(
+        page.locator('#profileManagementModal [data-connection-asset="hosts"]'),
+    ).toBeFocused();
 
     const scrollState = await modal.evaluate(element => {
         const content = element.querySelector('.modal-content');

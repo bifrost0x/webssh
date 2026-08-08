@@ -89,6 +89,39 @@
         }
     };
 
+    function openConnectionAssetManager(asset) {
+        const modalByAsset = {
+            hosts: 'profileManagementModal',
+            'jump-hosts': 'jumpHostManagementModal',
+            keys: 'keyManagementModal',
+        };
+        const modalId = modalByAsset[asset];
+        if (!modalId) return;
+
+        const currentModal = document.querySelector(
+            '#profileManagementModal.show, #jumpHostManagementModal.show, #keyManagementModal.show',
+        );
+        const switchingFromHosts = currentModal?.id === 'profileManagementModal';
+        if (currentModal) {
+            window.ModalManager.close(currentModal);
+        }
+
+        if (asset === 'hosts') {
+            ProfileManager.openManagement();
+            return;
+        }
+
+        if (asset !== 'keys' || !switchingFromHosts) {
+            ProfileManager.loadKeys();
+        }
+        if (asset === 'jump-hosts') {
+            window.JumpHostManager?.load();
+            window.JumpHostManager?.renderList();
+        }
+        window.ModalManager.open(document.getElementById(modalId));
+    }
+    window.openConnectionAssetManager = openConnectionAssetManager;
+
     window.clearConnectionProfileState = () => {
         window.ConnectionCommandManager?.clear();
         ProfileManager.clearLegacyCommands();
@@ -1811,7 +1844,7 @@
             { labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => document.getElementById('newConnectionBtn').click() },
             { labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
-            { labelKey: 'keys.manageKeys', hint: '', action: () => document.getElementById('manageKeysBtn').click() },
+            { labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
             { labelKey: 'auth.changePassword', hint: '', action: () => document.getElementById('changePasswordBtn').click() },
             { labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
             { labelKey: 'terminal.copySelection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
@@ -2082,9 +2115,10 @@
             }
         });
 
-        document.getElementById('manageKeysBtn').addEventListener('click', () => {
-            window.ModalManager.open(document.getElementById('keyManagementModal'));
-            ProfileManager.loadKeys();
+        document.querySelectorAll('[data-connection-asset]').forEach(button => {
+            button.addEventListener('click', () => {
+                openConnectionAssetManager(button.dataset.connectionAsset);
+            });
         });
 
         document.getElementById('closeKeyModal').addEventListener('click', () => {
@@ -2103,15 +2137,6 @@
             }
 
             ProfileManager.uploadKey(name, keyContent);
-        });
-
-        document.getElementById('manageJumpHostsBtn')?.addEventListener('click', () => {
-            window.ModalManager.open(document.getElementById('jumpHostManagementModal'));
-            ProfileManager.loadKeys();
-            if (window.JumpHostManager) {
-                window.JumpHostManager.load();
-                window.JumpHostManager.renderList();
-            }
         });
 
         document.getElementById('closeJumpHostModal')?.addEventListener('click', () => {
@@ -2167,6 +2192,46 @@
                 Object.keys(TerminalManager.terminals).forEach(key => {
                     TerminalManager.terminals[key].options.scrollback = val;
                 });
+            });
+        }
+
+        const confirmSessionCloseInput = document.getElementById('confirmSessionCloseInput');
+        if (confirmSessionCloseInput) {
+            confirmSessionCloseInput.checked = SessionManager.confirmSessionClose;
+            confirmSessionCloseInput.addEventListener('change', () => {
+                const previousValue = SessionManager.confirmSessionClose;
+                const requestedValue = confirmSessionCloseInput.checked;
+                confirmSessionCloseInput.disabled = true;
+
+                if (!window.socket) {
+                    confirmSessionCloseInput.checked = previousValue;
+                    confirmSessionCloseInput.disabled = false;
+                    showNotification(
+                        window.i18n ? i18n.t('settings.saveFailed') : 'Failed to save setting',
+                        'error',
+                    );
+                    return;
+                }
+
+                window.socket.emit(
+                    'set_confirm_session_close',
+                    { enabled: requestedValue },
+                    response => {
+                        const savedValue = response?.confirm_session_close;
+                        if (response?.success && typeof savedValue === 'boolean') {
+                            SessionManager.confirmSessionClose = savedValue;
+                            document.body.dataset.confirmSessionClose = String(savedValue);
+                            confirmSessionCloseInput.checked = savedValue;
+                        } else {
+                            confirmSessionCloseInput.checked = previousValue;
+                            showNotification(
+                                window.i18n ? i18n.t('settings.saveFailed') : 'Failed to save setting',
+                                'error',
+                            );
+                        }
+                        confirmSessionCloseInput.disabled = false;
+                    },
+                );
             });
         }
 

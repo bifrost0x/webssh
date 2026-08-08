@@ -38,3 +38,72 @@ def test_missing_user_settings_store_keeps_defaults(app):
     user_id = _create_user(app)
     with app.app_context():
         assert user_settings.get_user_settings(user_id) == user_settings.DEFAULT_SETTINGS
+        assert user_settings.get_user_settings(user_id)['confirm_session_close'] is True
+
+
+@pytest.mark.parametrize('value', [False, True])
+def test_close_confirmation_setting_accepts_only_booleans(value):
+    from app import user_settings
+
+    assert user_settings._valid_settings_update({
+        'confirm_session_close': value,
+    }) is True
+
+
+@pytest.mark.parametrize('value', [None, 0, 1, 'false', [], {}])
+def test_close_confirmation_setting_rejects_non_booleans(value):
+    from app import user_settings
+
+    assert user_settings._valid_settings_update({
+        'confirm_session_close': value,
+    }) is False
+
+
+def test_close_confirmation_socket_event_returns_acknowledgement(monkeypatch):
+    from types import SimpleNamespace
+    from app import socket_events
+
+    saved = []
+    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        socket_events,
+        'save_user_settings',
+        lambda user_id, update: saved.append((user_id, update)) or True,
+    )
+
+    response = socket_events.handle_set_confirm_session_close.__wrapped__(
+        {'enabled': False},
+        current_user=SimpleNamespace(id=17),
+    )
+
+    assert response == {
+        'success': True,
+        'confirm_session_close': False,
+    }
+    assert saved == [(17, {'confirm_session_close': False})]
+
+
+@pytest.mark.parametrize('payload', [None, {}, {'enabled': 'false'}, {'enabled': 0}])
+def test_close_confirmation_socket_event_rejects_malformed_values(
+    payload,
+    monkeypatch,
+):
+    from types import SimpleNamespace
+    from app import socket_events
+
+    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        socket_events,
+        'save_user_settings',
+        lambda *_args, **_kwargs: pytest.fail('invalid values must not be saved'),
+    )
+
+    response = socket_events.handle_set_confirm_session_close.__wrapped__(
+        payload,
+        current_user=SimpleNamespace(id=17),
+    )
+
+    assert response == {
+        'success': False,
+        'error': 'Invalid close confirmation setting',
+    }
