@@ -151,10 +151,13 @@
             container: elements.filesMount,
         });
         const insightsController = insightsModule.createController({ socket, render: renderInsights });
+        const desktopQuery = root.matchMedia('(min-width: 851px)');
+        const wideDesktopQuery = root.matchMedia('(min-width: 1440px)');
         coordinator = workspaceModule.createCoordinator({
             filesPanel: filesController,
             insights: insightsController,
-            isDesktop: () => root.matchMedia('(min-width: 851px)').matches,
+            isDesktop: () => desktopQuery.matches,
+            isWideDesktop: () => wideDesktopQuery.matches,
             render(state) {
                 elements.toggle.disabled = !state.sftpEnabled;
                 elements.toggle.setAttribute('aria-pressed', String(state.sftpOpen));
@@ -170,6 +173,7 @@
                 layout: sessionManager.layout,
                 sessionId: activeId,
                 session: activeId ? sessionManager.getSession(activeId) : null,
+                sessionCount: sessionManager.getAllSessions().length,
             });
         }
 
@@ -179,7 +183,6 @@
             if (coordinator.getState().sftpOpen) coordinator.toggleSftp();
         });
 
-        const desktopQuery = root.matchMedia('(min-width: 851px)');
         function syncInsightsVisibility() {
             coordinator.setVisible(
                 documentRef.visibilityState !== 'hidden'
@@ -193,6 +196,7 @@
             syncInsightsVisibility();
             sync();
         });
+        wideDesktopQuery.addEventListener?.('change', sync);
         if (elements.notepadPanel && root.MutationObserver) {
             new MutationObserver(syncInsightsVisibility).observe(elements.notepadPanel, {
                 attributes: true,
