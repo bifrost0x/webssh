@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 const { createCoordinator } = require('../../static/js/session-workspace.js');
 
-function createHarness() {
+function createHarness(options = {}) {
     const calls = [];
     const filesPanel = {
         open(id, session) { calls.push(['files.open', id, session.host]); },
@@ -19,11 +19,74 @@ function createHarness() {
     const coordinator = createCoordinator({
         filesPanel,
         insights,
-        isDesktop: () => true,
+        isDesktop: options.isDesktop || (() => true),
+        isWideDesktop: options.isWideDesktop || (() => false),
         render: state => renders.push(state),
     });
     return { coordinator, calls, renders };
 }
+
+test('auto-opens embedded SFTP for the sole connected session on a wide desktop', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
+
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+    });
+
+    assert.deepEqual(calls.slice(-2), [
+        ['insights.session', 's1', true],
+        ['files.open', 's1', 'alpha'],
+    ]);
+    assert.equal(coordinator.getState().sftpOpen, true);
+});
+
+test('does not auto-open below the wide-desktop breakpoint but keeps manual SFTP available', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => false });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+    });
+
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.equal(coordinator.toggleSftp(), true);
+    assert.deepEqual(calls.slice(-1), [['files.open', 's1', 'alpha']]);
+});
+
+test('does not auto-open when more than one SSH session exists', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 2,
+    });
+
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.equal(calls.some(call => call[0] === 'files.open'), false);
+});
+
+test('manual close suppresses automatic reopening for the same session', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
+    const update = {
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+    };
+    coordinator.update(update);
+    assert.equal(coordinator.toggleSftp(), false);
+    calls.length = 0;
+
+    coordinator.update(update);
+
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.deepEqual(calls, []);
+});
 
 test('opens embedded SFTP only for a connected session in layout 1', () => {
     const { coordinator, calls } = createHarness();

@@ -14,12 +14,14 @@
         const insights = options.insights || {};
         const render = options.render || (() => {});
         const isDesktop = options.isDesktop || (() => true);
+        const isWideDesktop = options.isWideDesktop || (() => false);
 
         let layout = 1;
         let sessionId = null;
         let session = null;
         let sftpOpen = false;
         let visible = true;
+        const manuallyDismissedSessions = new Set();
 
         function canOpenSftp() {
             return Boolean(
@@ -51,6 +53,11 @@
             filesPanel?.close?.();
         }
 
+        function openSftp() {
+            sftpOpen = true;
+            filesPanel?.open?.(sessionId, session);
+        }
+
         return {
             update(next) {
                 const previousSessionId = sessionId;
@@ -60,6 +67,9 @@
                     ? next.sessionId
                     : null;
                 session = next?.session || null;
+                const sessionCount = Number.isInteger(next?.sessionCount)
+                    ? next.sessionCount
+                    : 0;
                 const connected = Boolean(sessionId && session?.connected);
                 const sessionChanged = sessionId !== previousSessionId;
                 const connectionChanged = connected !== wasConnected;
@@ -75,6 +85,13 @@
                     closeSftp();
                 } else if (sftpOpen && sessionChanged) {
                     filesPanel?.follow?.(sessionId, session);
+                } else if (
+                    !sftpOpen
+                    && isWideDesktop()
+                    && sessionCount === 1
+                    && !manuallyDismissedSessions.has(sessionId)
+                ) {
+                    openSftp();
                 }
 
                 renderState();
@@ -82,6 +99,7 @@
 
             toggleSftp() {
                 if (sftpOpen) {
+                    if (sessionId) manuallyDismissedSessions.add(sessionId);
                     closeSftp();
                     renderState();
                     return false;
@@ -90,8 +108,8 @@
                     renderState();
                     return false;
                 }
-                sftpOpen = true;
-                filesPanel?.open?.(sessionId, session);
+                manuallyDismissedSessions.delete(sessionId);
+                openSftp();
                 renderState();
                 return true;
             },

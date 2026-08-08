@@ -129,8 +129,7 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
 
     const toggle = page.locator('#sessionSftpToggleBtn');
     await expect(toggle).toBeEnabled();
-    await toggle.click();
-
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#sessionMainSplit')).toHaveClass(/sftp-open/);
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();
     await expect(page.locator('#fmLeftBadge')).toHaveText('ops@edge-01.example');
@@ -182,6 +181,12 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
     await page.locator('#notepadToggle').click();
     await page.waitForTimeout(4500);
     expect(await page.evaluate(() => window.__workspaceInsightSample)).toBe(samplesBeforeCollapse);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#sessionFilesPanel')).toBeHidden();
+    await page.evaluate(() => SessionManager.notifyWorkspaceChange());
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
     await page.evaluate(() => SessionManager.setSplitLayout(2));
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
