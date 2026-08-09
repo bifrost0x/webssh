@@ -151,6 +151,56 @@ def test_profile_update_rejects_foreign_or_missing_id(app, monkeypatch):
     assert result == {'success': False, 'error': 'Profile not found'}
 
 
+def test_profile_organization_socket_updates_current_users_profile(
+    app, monkeypatch,
+):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'profile_organization_socket')
+    created, _ = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_profile,
+        sid,
+        {
+            'name': 'Production',
+            'host': 'prod.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        },
+    )
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_update_profile_organization,
+        sid,
+        {'profile_id': created['profile']['id'], 'favorite': True},
+    )
+
+    assert result['success'] is True
+    assert result['profile']['favorite'] is True
+    assert ('profile_organization_updated', result) in emitted
+    assert any(event == 'profiles_list' for event, _payload in emitted)
+
+
+def test_profile_organization_socket_rejects_missing_profile_id(
+    app, monkeypatch,
+):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'profile_organization_missing')
+    result, _ = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_update_profile_organization,
+        sid,
+        {'favorite': True},
+    )
+
+    assert result == {'success': False, 'error': 'Profile ID required'}
+
+
 def test_update_user_command_rejects_unknown_id_without_writing(app, monkeypatch):
     from app import command_manager
 

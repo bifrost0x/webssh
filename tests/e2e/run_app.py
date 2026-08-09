@@ -51,8 +51,22 @@ def _seed_launcher_profiles(admin, user):
         raise RuntimeError(error)
 
     admin_profiles = [
-        _profile('Password review', 'password.local', 'passworduser', 'password'),
-        _profile('Usable key', 'key.local', 'keyuser', 'key', key_id=key['id']),
+        _profile(
+            'Password review',
+            'password.local',
+            'passworduser',
+            'password',
+            group='Customer systems',
+        ),
+        _profile(
+            'Usable key',
+            'key.local',
+            'keyuser',
+            'key',
+            key_id=key['id'],
+            group='Production',
+            favorite=True,
+        ),
         _profile(
             'Key jump host',
             'jump-target.local',

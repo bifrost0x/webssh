@@ -8,6 +8,8 @@ const ProfileManager = {
     editingKeyName: null,
     keyRenamePending: false,
     inlineKeyUploadPending: false,
+    profileSearchQuery: '',
+    organizationPending: new Set(),
 
     init() {
         document.getElementById('manageProfilesBtn')?.addEventListener('click', () => {
@@ -18,6 +20,10 @@ const ProfileManager = {
         });
         document.getElementById('newProfileBtn')?.addEventListener('click', () => {
             this.openEditor();
+        });
+        document.getElementById('profileSearchInput')?.addEventListener('input', event => {
+            this.profileSearchQuery = event.target.value;
+            this.renderManagementList();
         });
         document.getElementById('cancelProfileEditorBtn')?.addEventListener('click', () => {
             this.showManagementList();
@@ -53,6 +59,7 @@ const ProfileManager = {
             if (!button) return;
             const profileId = button.dataset.profileId;
             if (button.dataset.profileAction === 'connect') this.connect(profileId);
+            if (button.dataset.profileAction === 'favorite') this.toggleFavorite(profileId);
             if (button.dataset.profileAction === 'edit') this.openEditor(profileId);
             if (button.dataset.profileAction === 'delete') this.deleteProfile(profileId);
         });
@@ -123,6 +130,12 @@ const ProfileManager = {
         this.renderProfileSelect();
         this.renderManagementList();
         this.refreshEmptyPanes();
+        if (
+            typeof window.dispatchEvent === 'function'
+            && typeof window.CustomEvent === 'function'
+        ) {
+            window.dispatchEvent(new window.CustomEvent('profile-list-change'));
+        }
     },
 
     setKeys(keys) {
@@ -186,11 +199,21 @@ const ProfileManager = {
         empty.appendChild(hint);
 
         if (profiles.length) {
-            const list = document.createElement('div');
-            list.className = 'profile-launcher-list';
-            profiles.forEach(profile => {
-                if (!profile || !profile.id) return;
+            const search = document.createElement('input');
+            search.type = 'search';
+            search.className = 'form-control profile-launcher-search';
+            search.placeholder = this.t(
+                'profiles.searchPlaceholder',
+                'Search by name, host, user, or group',
+            );
+            search.setAttribute(
+                'aria-label',
+                this.t('profiles.search', 'Search saved connections'),
+            );
+            const sectionContainer = document.createElement('div');
+            sectionContainer.className = 'profile-launcher-sections';
 
+            const createProfileCard = profile => {
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'profile-launcher-card';
@@ -199,6 +222,14 @@ const ProfileManager = {
                 const name = document.createElement('span');
                 name.className = 'profile-launcher-name';
                 name.textContent = profile.name;
+                let favorite = null;
+                if (profile.favorite === true) {
+                    button.classList.add('is-favorite');
+                    favorite = document.createElement('span');
+                    favorite.className = 'material-icons profile-launcher-favorite';
+                    favorite.setAttribute('aria-hidden', 'true');
+                    favorite.textContent = 'star';
+                }
 
                 const endpoint = document.createElement('span');
                 endpoint.className = 'profile-launcher-endpoint';
@@ -218,15 +249,54 @@ const ProfileManager = {
                     `${String(profile.name || '')}, ${ProfileLauncherUtils.formatEndpoint(profile)}, ${action.textContent}`,
                 );
                 button.append(name, endpoint, action);
+                if (favorite) button.appendChild(favorite);
                 button.addEventListener('click', event => {
                     event.stopPropagation();
                     if (window.launchProfileForPane) {
                         window.launchProfileForPane(profile.id, paneIndex);
                     }
                 });
-                list.appendChild(button);
-            });
-            empty.appendChild(list);
+                return button;
+            };
+
+            const renderSections = () => {
+                sectionContainer.replaceChildren();
+                const sections = ProfileLauncherUtils.buildProfileSections(
+                    profiles,
+                    search.value,
+                    {
+                        favorites: this.t('profiles.favorites', 'Favorites'),
+                        ungrouped: this.t('profiles.ungrouped', 'Ungrouped'),
+                    },
+                );
+                if (!sections.length) {
+                    const noMatches = document.createElement('p');
+                    noMatches.className = 'no-items';
+                    noMatches.textContent = this.t(
+                        'profiles.noMatches',
+                        'No saved connections match this search.',
+                    );
+                    sectionContainer.appendChild(noMatches);
+                    return;
+                }
+                sections.forEach(section => {
+                    const sectionElement = document.createElement('section');
+                    sectionElement.className = 'profile-launcher-section';
+                    const heading = document.createElement('h3');
+                    heading.className = 'profile-launcher-section-title';
+                    heading.textContent = section.label;
+                    const list = document.createElement('div');
+                    list.className = 'profile-launcher-list';
+                    section.profiles.forEach(profile => {
+                        list.appendChild(createProfileCard(profile));
+                    });
+                    sectionElement.append(heading, list);
+                    sectionContainer.appendChild(sectionElement);
+                });
+            };
+            search.addEventListener('input', renderSections);
+            renderSections();
+            empty.append(search, sectionContainer);
         }
 
         const newConnection = document.createElement('button');
@@ -509,58 +579,116 @@ const ProfileManager = {
             return;
         }
 
-        this.profiles.forEach(profile => {
-            const card = document.createElement('article');
-            card.className = 'profile-management-item';
-            const info = document.createElement('div');
-            info.className = 'profile-management-info';
-            const name = document.createElement('strong');
-            name.textContent = profile.name;
-            const target = document.createElement('span');
-            target.textContent = `${profile.username}@${profile.host}:${profile.port}`;
-            const details = document.createElement('span');
-            const mode = this.inferPostConnectMode(profile);
-            const modeKey = {
-                none: 'commandModes.none',
-                command_set: 'commandModes.commandSet',
-                command: 'commandModes.command',
-                free_text: 'commandModes.freeText',
-            }[mode];
-            let modeLabel = this.t(
-                modeKey, mode.replace('_', ' ')
+        const sections = window.ProfileLauncherUtils?.buildProfileSections(
+            this.profiles,
+            this.profileSearchQuery,
+            {
+                favorites: this.t('profiles.favorites', 'Favorites'),
+                ungrouped: this.t('profiles.ungrouped', 'Ungrouped'),
+            },
+        ) || [];
+        if (!sections.length) {
+            const empty = document.createElement('p');
+            empty.className = 'no-items';
+            empty.textContent = this.t(
+                'profiles.noMatches',
+                'No saved connections match this search.',
             );
-            if (mode === 'command') {
-                const command = (window.CommandLibrary?.commands || []).find(
-                    item => item.id === profile.command_id
-                );
-                if (command) modeLabel += `: ${command.name}`;
-            }
-            if (mode === 'command_set') {
-                const commandSet = (window.CommandSetManager?.commandSets || []).find(
-                    item => item.id === profile.command_set_id
-                );
-                if (commandSet) modeLabel += `: ${commandSet.name}`;
-            }
-            details.textContent = `${profile.auth_type} · ${modeLabel}`;
-            info.append(name, target, details);
+            container.appendChild(empty);
+            return;
+        }
 
-            const actions = document.createElement('div');
-            actions.className = 'profile-management-actions';
-            [
-                ['connect', this.t('connection.connect', 'Connect'), 'btn-primary'],
-                ['edit', this.t('common.edit', 'Edit'), 'btn-secondary'],
-                ['delete', this.t('common.delete', 'Delete'), 'btn-danger'],
-            ].forEach(([action, label, style]) => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = `btn btn-sm ${style}`;
-                button.dataset.profileAction = action;
-                button.dataset.profileId = profile.id;
-                button.textContent = label;
-                actions.appendChild(button);
+        sections.forEach(section => {
+            const sectionElement = document.createElement('section');
+            sectionElement.className = 'profile-management-section';
+            const heading = document.createElement('h3');
+            heading.className = 'profile-management-section-title';
+            heading.textContent = section.label;
+            sectionElement.appendChild(heading);
+
+            section.profiles.forEach(profile => {
+                const card = document.createElement('article');
+                card.className = 'profile-management-item';
+                const info = document.createElement('div');
+                info.className = 'profile-management-info';
+                const name = document.createElement('strong');
+                name.textContent = profile.name;
+                if (profile.group) {
+                    const group = document.createElement('span');
+                    group.className = 'profile-group-badge';
+                    group.textContent = profile.group;
+                    info.append(name, group);
+                } else {
+                    info.appendChild(name);
+                }
+                const target = document.createElement('span');
+                target.textContent = `${profile.username}@${profile.host}:${profile.port}`;
+                const details = document.createElement('span');
+                const mode = this.inferPostConnectMode(profile);
+                const modeKey = {
+                    none: 'commandModes.none',
+                    command_set: 'commandModes.commandSet',
+                    command: 'commandModes.command',
+                    free_text: 'commandModes.freeText',
+                }[mode];
+                let modeLabel = this.t(
+                    modeKey, mode.replace('_', ' ')
+                );
+                if (mode === 'command') {
+                    const command = (window.CommandLibrary?.commands || []).find(
+                        item => item.id === profile.command_id
+                    );
+                    if (command) modeLabel += `: ${command.name}`;
+                }
+                if (mode === 'command_set') {
+                    const commandSet = (window.CommandSetManager?.commandSets || []).find(
+                        item => item.id === profile.command_set_id
+                    );
+                    if (commandSet) modeLabel += `: ${commandSet.name}`;
+                }
+                details.textContent = `${profile.auth_type} · ${modeLabel}`;
+                info.append(target, details);
+
+                const actions = document.createElement('div');
+                actions.className = 'profile-management-actions';
+                const favorite = document.createElement('button');
+                favorite.type = 'button';
+                favorite.className = 'profile-favorite-button';
+                favorite.dataset.profileAction = 'favorite';
+                favorite.dataset.profileId = profile.id;
+                favorite.disabled = this.organizationPending.has(profile.id);
+                favorite.setAttribute('aria-pressed', String(profile.favorite === true));
+                const favoriteLabel = this.t(
+                    profile.favorite === true ? 'profiles.unfavorite' : 'profiles.favorite',
+                    profile.favorite === true
+                        ? 'Remove {name} from favorites'
+                        : 'Add {name} to favorites',
+                ).replace('{name}', profile.name || '');
+                favorite.setAttribute('aria-label', favoriteLabel);
+                favorite.title = favoriteLabel;
+                const star = document.createElement('span');
+                star.className = 'material-icons';
+                star.setAttribute('aria-hidden', 'true');
+                star.textContent = profile.favorite === true ? 'star' : 'star_border';
+                favorite.appendChild(star);
+                actions.appendChild(favorite);
+                [
+                    ['connect', this.t('connection.connect', 'Connect'), 'btn-primary'],
+                    ['edit', this.t('common.edit', 'Edit'), 'btn-secondary'],
+                    ['delete', this.t('common.delete', 'Delete'), 'btn-danger'],
+                ].forEach(([action, label, style]) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = `btn btn-sm ${style}`;
+                    button.dataset.profileAction = action;
+                    button.dataset.profileId = profile.id;
+                    button.textContent = label;
+                    actions.appendChild(button);
+                });
+                card.append(info, actions);
+                sectionElement.appendChild(card);
             });
-            card.append(info, actions);
-            container.appendChild(card);
+            container.appendChild(sectionElement);
         });
     },
 
@@ -621,6 +749,7 @@ const ProfileManager = {
         this.setInlineKeyPanelExpanded(false);
         document.getElementById('profileEditorId').value = profile?.id || '';
         document.getElementById('profileEditorName').value = profile?.name || '';
+        document.getElementById('profileEditorGroup').value = profile?.group || '';
         document.getElementById('profileEditorHost').value = profile?.host || '';
         document.getElementById('profileEditorPort').value = profile?.port || 22;
         document.getElementById('profileEditorUsername').value = profile?.username || '';
@@ -728,6 +857,7 @@ const ProfileManager = {
         const mode = document.getElementById('profileEditorPostConnectMode').value;
         const payload = {
             name: document.getElementById('profileEditorName').value.trim(),
+            group: document.getElementById('profileEditorGroup').value.trim(),
             host: document.getElementById('profileEditorHost').value.trim(),
             port: Number(document.getElementById('profileEditorPort').value) || 22,
             username: document.getElementById('profileEditorUsername').value.trim(),
@@ -776,6 +906,43 @@ const ProfileManager = {
 
     connect(profileId) {
         window.launchProfileForPane?.(profileId);
+    },
+
+    toggleFavorite(profileId, emit = null) {
+        const profile = this.profiles.find(item => item.id === profileId);
+        if (!profile || this.organizationPending.has(profileId)) return;
+        this.organizationPending.add(profileId);
+        this.renderManagementList();
+        const send = emit || ((acknowledge) => window.socket?.emit(
+            'update_profile_organization',
+            {profile_id: profileId, favorite: profile.favorite !== true},
+            acknowledge,
+        ));
+        send(acknowledgement => {
+            this.organizationPending.delete(profileId);
+            if (!acknowledgement?.success || !acknowledgement.profile) {
+                window.showNotification?.(
+                    acknowledgement?.error || this.t(
+                        'profiles.saveFailed', 'Failed to save connection'
+                    ),
+                    'error',
+                );
+                this.renderManagementList();
+                return;
+            }
+            const transientAuthorization = profile.tailscale_authorized;
+            this.profiles = this.profiles.map(item => item.id === profileId
+                ? {
+                    ...acknowledgement.profile,
+                    ...(transientAuthorization === undefined
+                        ? {}
+                        : {tailscale_authorized: transientAuthorization}),
+                }
+                : item);
+            this.renderProfileSelect();
+            this.renderManagementList();
+            this.refreshEmptyPanes();
+        });
     },
 
     saveProfile(profileData) {
