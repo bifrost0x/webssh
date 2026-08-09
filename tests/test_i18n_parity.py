@@ -70,6 +70,20 @@ def test_all_locales_have_matching_translation_keys():
     )
     assert all(
         {
+            'profiles.search',
+            'profiles.searchPlaceholder',
+            'profiles.group',
+            'profiles.groupPlaceholder',
+            'profiles.favorites',
+            'profiles.ungrouped',
+            'profiles.favorite',
+            'profiles.unfavorite',
+            'profiles.noMatches',
+        } <= keys
+        for keys in keys_by_locale.values()
+    )
+    assert all(
+        {
             'keys.addNew',
             'keys.add',
             'keys.rename',

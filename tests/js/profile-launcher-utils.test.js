@@ -3,9 +3,69 @@ const assert = require('node:assert/strict');
 
 const {
     buildDirectConnectionData,
+    buildProfileSections,
     determineLaunchMode,
+    filterAndSortProfiles,
     formatEndpoint,
 } = require('../../static/js/profile-launcher-utils.js');
+
+test('filters profiles across name endpoint user and group', () => {
+    const profiles = [
+        {
+            id: 'a',
+            name: 'API',
+            host: 'api.example.com',
+            username: 'deploy',
+            group: 'Production',
+        },
+        {
+            id: 'b',
+            name: 'NAS',
+            host: 'nas.lan',
+            username: 'backup',
+            group: 'Homelab',
+        },
+    ];
+
+    assert.deepEqual(
+        filterAndSortProfiles(profiles, 'backup').map(item => item.id),
+        ['b'],
+    );
+    assert.deepEqual(
+        filterAndSortProfiles(profiles, 'production').map(item => item.id),
+        ['a'],
+    );
+    assert.deepEqual(
+        filterAndSortProfiles(profiles, 'API.EXAMPLE').map(item => item.id),
+        ['a'],
+    );
+});
+
+test('builds favorites first then named groups without duplicates', () => {
+    const sections = buildProfileSections([
+        { id: 'b', name: 'NAS', group: 'Homelab' },
+        { id: 'a', name: 'API', group: 'Production', favorite: true },
+        { id: 'c', name: 'Worker', group: 'production' },
+        { id: 'd', name: 'Loose host' },
+    ], '', { favorites: 'Favorites', ungrouped: 'Ungrouped' });
+
+    assert.deepEqual(
+        sections.map(section => [
+            section.label,
+            section.profiles.map(item => item.id),
+        ]),
+        [
+            ['Favorites', ['a']],
+            ['Homelab', ['b']],
+            ['Production', ['c']],
+            ['Ungrouped', ['d']],
+        ],
+    );
+    assert.deepEqual(
+        sections.flatMap(section => section.profiles).map(item => item.id),
+        ['a', 'b', 'c', 'd'],
+    );
+});
 
 const keys = [
     { id: 'target-key', usable: true },

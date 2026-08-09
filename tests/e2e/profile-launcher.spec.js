@@ -54,6 +54,33 @@ test('creates, edits, and deletes a profile through the management UI', async ({
     await expect(edited).toHaveCount(0);
 });
 
+test('searches grouped hosts and updates favorites without duplicates', async ({ page }) => {
+    const launcher = page.locator('.profile-launcher').first();
+    await expect(launcher.locator('.profile-launcher-section-title').first()).toHaveText(
+        'Favorites',
+    );
+    await expect(launcher.locator('.profile-launcher-name', { hasText: 'Usable key' })).toHaveCount(1);
+    await expect(launcher.locator('.profile-launcher-favorite')).toHaveCount(1);
+
+    await launcher.locator('.profile-launcher-search').fill('passworduser');
+    await expect(launcher.locator('.profile-launcher-card')).toHaveCount(1);
+    await expect(launcher.locator('.profile-launcher-section-title')).toHaveText(
+        'Customer systems',
+    );
+
+    await openProfileManagement(page);
+    await page.locator('#profileSearchInput').fill('key.local');
+    const usable = page.locator('.profile-management-item').filter({ hasText: 'Usable key' });
+    await expect(usable).toHaveCount(1);
+    await expect(usable).toContainText('Production');
+    const favorite = usable.locator('[data-profile-action="favorite"]');
+    await expect(favorite).toHaveAttribute('aria-pressed', 'true');
+    await favorite.click();
+    await expect(favorite).toHaveAttribute('aria-pressed', 'false');
+    await favorite.click();
+    await expect(favorite).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('only auto-connects profiles whose credentials and references are currently safe', async ({ page }) => {
     for (const name of [
         'Password review',

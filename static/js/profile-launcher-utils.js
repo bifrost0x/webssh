@@ -161,9 +161,96 @@
         return `${username}@${host}:${port}`;
     }
 
+    function normalizedGroup(profile) {
+        return String(profile?.group || '').trim();
+    }
+
+    function compareText(left, right) {
+        return String(left).localeCompare(String(right), undefined, {
+            numeric: true,
+            sensitivity: 'base',
+        });
+    }
+
+    function filterAndSortProfiles(profiles, query = '') {
+        const needle = String(query || '').trim().toLocaleLowerCase();
+        return (Array.isArray(profiles) ? profiles : [])
+            .filter(profile => profile && profile.id)
+            .filter(profile => (
+                !needle
+                || [
+                    profile.name,
+                    profile.host,
+                    profile.username,
+                    normalizedGroup(profile),
+                ].some(value => String(value || '')
+                    .toLocaleLowerCase()
+                    .includes(needle))
+            ))
+            .slice()
+            .sort((left, right) => (
+                Number(right.favorite === true)
+                - Number(left.favorite === true)
+                || compareText(normalizedGroup(left), normalizedGroup(right))
+                || compareText(left.name || '', right.name || '')
+                || compareText(left.host || '', right.host || '')
+            ));
+    }
+
+    function buildProfileSections(profiles, query = '', labels = {}) {
+        const sorted = filterAndSortProfiles(profiles, query);
+        const favorites = sorted.filter(profile => profile.favorite === true);
+        const groupLabels = new Map();
+        sorted.forEach(profile => {
+            const group = normalizedGroup(profile);
+            const key = group.toLocaleLowerCase();
+            if (group && !groupLabels.has(key)) groupLabels.set(key, group);
+        });
+        const grouped = new Map();
+        const ungrouped = [];
+
+        sorted.filter(profile => profile.favorite !== true).forEach(profile => {
+            const group = normalizedGroup(profile);
+            if (!group) {
+                ungrouped.push(profile);
+                return;
+            }
+            const key = group.toLocaleLowerCase();
+            if (!grouped.has(key)) {
+                grouped.set(key, {
+                    key: `group:${key}`,
+                    label: groupLabels.get(key) || group,
+                    profiles: [],
+                });
+            }
+            grouped.get(key).profiles.push(profile);
+        });
+
+        const sections = [];
+        if (favorites.length) {
+            sections.push({
+                key: 'favorites',
+                label: labels.favorites || 'Favorites',
+                profiles: favorites,
+            });
+        }
+        sections.push(...Array.from(grouped.values())
+            .sort((left, right) => compareText(left.label, right.label)));
+        if (ungrouped.length) {
+            sections.push({
+                key: 'ungrouped',
+                label: labels.ungrouped || 'Ungrouped',
+                profiles: ungrouped,
+            });
+        }
+        return sections;
+    }
+
     return {
+        buildProfileSections,
         buildDirectConnectionData,
         determineLaunchMode,
+        filterAndSortProfiles,
         formatEndpoint,
     };
 }));

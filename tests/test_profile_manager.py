@@ -55,6 +55,151 @@ def test_add_profile_leaves_startup_commands_absent_when_not_provided(app):
         assert profile_manager.load_profiles(user_id) == [profile]
 
 
+def test_profile_organization_fields_are_normalized_and_persisted(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'organized-profile')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Production API',
+            'host': 'api.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'group': '  Production  ',
+            'favorite': True,
+        })
+
+        assert error is None
+        assert profile['group'] == 'Production'
+        assert profile['favorite'] is True
+        assert profile_manager.load_profiles(user_id) == [profile]
+
+
+@pytest.mark.parametrize(('field', 'value', 'message'), [
+    ('group', {'not': 'a string'}, 'Invalid group'),
+    ('group', 'x' * 65, 'Group must not exceed 64 characters'),
+    ('favorite', 'true', 'favorite must be a boolean'),
+])
+def test_profile_organization_rejects_invalid_values(
+    app, field, value, message,
+):
+    from app import profile_manager
+
+    user_id = create_user(app, f'invalid-{field}-{len(str(value))}')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Host',
+            'host': 'host.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            field: value,
+        })
+
+        assert profile is None
+        assert error == message
+        assert profile_manager.load_profiles(user_id) == []
+
+
+def test_profile_edit_preserves_organization_when_fields_are_omitted(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'organization-preserved')
+    with app.app_context():
+        original, error = profile_manager.upsert_profile(user_id, {
+            'name': 'API',
+            'host': 'api.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'group': 'Production',
+            'favorite': True,
+        })
+        assert error is None
+
+        updated, error = profile_manager.upsert_profile(user_id, {
+            'id': original['id'],
+            'name': 'API renamed',
+            'host': 'api.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        })
+
+        assert error is None
+        assert updated['group'] == 'Production'
+        assert updated['favorite'] is True
+
+
+def test_update_profile_organization_changes_only_requested_fields(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'organization-patch')
+    with app.app_context():
+        original, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Database',
+            'host': 'db.example.com',
+            'port': 2222,
+            'username': 'dba',
+            'auth_type': 'password',
+            'startup_mode': 'free_text',
+            'startup_commands': 'uptime',
+        })
+        assert error is None
+
+        updated, error = profile_manager.update_profile_organization(
+            user_id,
+            original['id'],
+            {'group': 'Databases', 'favorite': True, 'host': 'evil.example'},
+        )
+
+        assert error is None
+        assert updated['group'] == 'Databases'
+        assert updated['favorite'] is True
+        assert updated['host'] == 'db.example.com'
+        assert updated['startup_commands'] == 'uptime'
+        assert updated['updated_at'] >= original['updated_at']
+        assert profile_manager.load_profiles(user_id) == [updated]
+
+
+def test_update_profile_organization_can_clear_optional_fields(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'organization-clear')
+    with app.app_context():
+        original, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Database',
+            'host': 'db.example.com',
+            'port': 22,
+            'username': 'dba',
+            'auth_type': 'password',
+            'group': 'Databases',
+            'favorite': True,
+        })
+        assert error is None
+
+        updated, error = profile_manager.update_profile_organization(
+            user_id, original['id'], {'group': '   ', 'favorite': False}
+        )
+
+        assert error is None
+        assert 'group' not in updated
+        assert 'favorite' not in updated
+
+
+def test_update_profile_organization_rejects_missing_profile(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'organization-missing')
+    with app.app_context():
+        updated, error = profile_manager.update_profile_organization(
+            user_id, 'foreign-or-missing', {'favorite': True}
+        )
+        assert updated is None
+        assert error == 'Profile not found'
+
+
 def test_load_profiles_preserves_legacy_profiles_without_startup_commands(app):
     from app import profile_manager
 

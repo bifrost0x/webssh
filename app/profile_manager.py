@@ -11,6 +11,21 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .startup_commands import normalize_startup_commands
 
 
+_MAX_PROFILE_GROUP_LENGTH = 64
+_UNSET = object()
+
+
+def _normalize_group(value):
+    if value is _UNSET:
+        return _UNSET, None
+    if not isinstance(value, str):
+        return None, 'Invalid group'
+    normalized = value.strip()
+    if len(normalized) > _MAX_PROFILE_GROUP_LENGTH:
+        return None, 'Group must not exceed 64 characters'
+    return normalized or None, None
+
+
 def _is_valid_host(host_str):
     """Validate host is a valid hostname or IP address."""
     if not host_str or not isinstance(host_str, str):
@@ -51,6 +66,7 @@ def _valid_profile(item):
     for field in (
         'host', 'username', 'startup_commands', 'command_id',
         'command_set_id', 'parameters_override', 'created_at', 'updated_at',
+        'group',
     ):
         if not _optional_string(item, field):
             return False
@@ -67,7 +83,7 @@ def _valid_profile(item):
         'none', 'free_text', 'command', 'command_set',
     }:
         return False
-    for field in ('use_tmux', 'tailscale_authorized'):
+    for field in ('use_tmux', 'tailscale_authorized', 'favorite'):
         if field in item and type(item[field]) is not bool:
             return False
     return True
@@ -86,7 +102,7 @@ _PROFILE_FIELDS = {
     'id', 'name', 'host', 'port', 'username', 'auth_type', 'key_id',
     'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
-    'tailscale_authorized', 'created_at', 'updated_at',
+    'tailscale_authorized', 'group', 'favorite', 'created_at', 'updated_at',
 }
 
 
@@ -167,6 +183,13 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     if auth_type not in {'password', 'key', 'tailscale'}:
         return None, 'Invalid auth_type'
 
+    group, error = _normalize_group(payload.get('group', _UNSET))
+    if error:
+        return None, error
+    favorite = payload.get('favorite', _UNSET)
+    if favorite is not _UNSET and type(favorite) is not bool:
+        return None, 'favorite must be a boolean'
+
     key_id = payload.get('key_id')
     if auth_type == 'key' and not key_id:
         return None, 'key_id required for key authentication'
@@ -188,6 +211,10 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         'key_id': key_id if auth_type == 'key' else None,
         **post_connect,
     }
+    if group is not _UNSET and group:
+        result['group'] = group
+    if favorite is True:
+        result['favorite'] = True
     jump_host_id = payload.get('jump_host_id')
     if jump_host_id:
         result['jump_host_id'] = str(jump_host_id)[:64]
@@ -258,6 +285,13 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                                 'created_at': existing.get('created_at', now),
                                 'updated_at': now,
                             }
+                            if 'group' not in payload and existing.get('group'):
+                                result['group'] = existing['group']
+                            if (
+                                'favorite' not in payload
+                                and existing.get('favorite') is True
+                            ):
+                                result['favorite'] = True
                             profiles[index] = result
                             break
                     else:
@@ -310,6 +344,56 @@ def get_profile(user_id, profile_id):
         if profile['id'] == profile_id:
             return profile
     return None
+
+
+def update_profile_organization(user_id, profile_id, patch):
+    """Update only grouping metadata for one user-owned profile."""
+    if not isinstance(patch, dict):
+        return None, 'No organization fields provided'
+    supplied = {'group', 'favorite'} & patch.keys()
+    if not supplied:
+        return None, 'No organization fields provided'
+
+    group, error = _normalize_group(patch.get('group', _UNSET))
+    if error:
+        return None, error
+    favorite = patch.get('favorite', _UNSET)
+    if favorite is not _UNSET and type(favorite) is not bool:
+        return None, 'favorite must be a boolean'
+
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return None, error
+                for profile in profiles:
+                    if profile.get('id') != profile_id:
+                        continue
+                    if group is not _UNSET:
+                        if group:
+                            profile['group'] = group
+                        else:
+                            profile.pop('group', None)
+                    if favorite is not _UNSET:
+                        if favorite:
+                            profile['favorite'] = True
+                        else:
+                            profile.pop('favorite', None)
+                    profile['updated_at'] = datetime.now(timezone.utc).isoformat()
+                    if not save_profiles(user_id, profiles):
+                        return None, 'Failed to save profile'
+                    return dict(profile), None
+                return None, 'Profile not found'
+    except StorageCorruptionError:
+        raise
+    except Exception as exc:
+        log_error(
+            'Error updating profile organization',
+            user_id=user_id,
+            error=str(exc),
+        )
+        return None, 'Failed to save profile'
 
 def delete_profile(user_id, profile_id):
     """Delete a profile by ID for a specific user."""

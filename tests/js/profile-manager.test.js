@@ -39,3 +39,33 @@ test('partial key mutation replies preserve transient usability', () => {
     assert.equal(manager.keys[0].name, 'Renamed key');
     assert.equal(manager.keys[0].usable, true);
 });
+
+test('favorite acknowledgement replaces cleared organization fields', () => {
+    const manager = loadProfileManager();
+    manager.profiles = [{
+        id: 'profile-1',
+        name: 'API',
+        favorite: true,
+        group: 'Production',
+        tailscale_authorized: true,
+    }];
+    manager.renderManagementList = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.renderProfileSelect = () => {};
+    manager.organizationPending = new Set();
+    manager.t = (_key, fallback) => fallback;
+    manager.profilesLoaded = true;
+    manager.keys = [];
+    manager.editingProfileId = null;
+    manager.inlineKeyUploadPending = false;
+    manager.keyRenamePending = false;
+    manager.toggleFavorite('profile-1', acknowledgement => {
+        acknowledgement({
+            success: true,
+            profile: {id: 'profile-1', name: 'API', group: 'Production'},
+        });
+    });
+
+    assert.equal(manager.profiles[0].favorite, undefined);
+    assert.equal(manager.profiles[0].tailscale_authorized, true);
+});

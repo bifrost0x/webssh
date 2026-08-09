@@ -24,12 +24,12 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=6',
-        "filename='js/i18n.js'": '?v=4',
+        "filename='css/style.css'": '?v=7',
+        "filename='js/i18n.js'": '?v=5',
         "filename='js/command-workspace.js'": '?v=2',
-        "filename='js/profile-launcher-utils.js'": '?v=2',
+        "filename='js/profile-launcher-utils.js'": '?v=3',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=7',
+        "filename='js/profile-manager.js'": '?v=8',
         "filename='js/session-manager.js'": '?v=5',
         "filename='js/terminal-manager.js'": '?v=4',
         "filename='js/jump-host-manager.js'": '?v=4',
@@ -52,6 +52,9 @@ def test_profile_manager_builds_safe_contextual_launcher_buttons():
     assert 'endpoint.textContent = ProfileLauncherUtils.formatEndpoint(profile)' in source
     assert 'window.launchProfileForPane(profile.id, paneIndex)' in source
     assert 'profile-launcher-card' in source
+    assert 'profile-launcher-search' in source
+    assert 'profile-launcher-section-title' in source
+    assert 'ProfileLauncherUtils.buildProfileSections' in source
     assert 'innerHTML = profile' not in source
 
 
@@ -88,6 +91,9 @@ def test_launcher_css_is_scrollable_responsive_and_keyboard_visible():
 def test_launcher_cards_keep_content_readable_with_many_profiles():
     source = read('static/css/style.css')
 
+    launcher_sections = source[source.index('.profile-launcher-sections {'):source.index(
+        '.profile-launcher-section +',
+    )]
     launcher_list = source[source.index('.profile-launcher-list {'):source.index(
         '.profile-launcher-card {',
     )]
@@ -95,7 +101,7 @@ def test_launcher_cards_keep_content_readable_with_many_profiles():
         '.profile-launcher-action {',
     )]
 
-    assert 'width: min(1120px, 100%);' in launcher_list
+    assert 'width: min(1120px, 100%);' in launcher_sections
     assert (
         'grid-template-columns: repeat(auto-fit, '
         'minmax(min(300px, 100%), 1fr));'
@@ -122,7 +128,19 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=6" in template
+    assert "filename='css/style.css') }}?v=7" in template
+
+
+def test_profile_management_exposes_search_group_and_favorite_controls():
+    template = read('templates/index.html')
+    source = read('static/js/profile-manager.js')
+
+    assert 'id="profileSearchInput"' in template
+    assert 'id="profileEditorGroup"' in template
+    assert 'maxlength="64"' in template
+    assert "dataset.profileAction = 'favorite'" in source
+    assert "'update_profile_organization'" in source
+    assert "setAttribute('aria-pressed'" in source
 
 
 def test_profile_launch_uses_shared_executor_and_review_callback():

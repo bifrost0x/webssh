@@ -735,6 +735,41 @@ def handle_delete_profile(data, current_user=None):
         log_error("Failed to delete profile", error=str(e))
         return _command_set_error('Failed to delete profile')
 
+
+@socketio.on('update_profile_organization')
+@socket_login_required
+def handle_update_profile_organization(data, current_user=None):
+    """Update grouping metadata without resubmitting connection secrets."""
+    try:
+        data = data if isinstance(data, dict) else {}
+        profile_id = data.get('profile_id')
+        if not isinstance(profile_id, str) or not profile_id:
+            return {'success': False, 'error': 'Profile ID required'}
+        patch = {
+            key: data[key]
+            for key in ('group', 'favorite')
+            if key in data
+        }
+        profile, error = profile_manager.update_profile_organization(
+            current_user.id,
+            profile_id,
+            patch,
+        )
+        if error:
+            return {'success': False, 'error': error}
+        payload = {'success': True, 'profile': profile}
+        emit('profile_organization_updated', payload)
+        handle_list_profiles(current_user=current_user)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as exc:
+        log_error('Failed to update profile organization', error=str(exc))
+        return {
+            'success': False,
+            'error': 'Failed to update profile organization',
+        }
+
 @socketio.on('list_jump_hosts')
 @socket_login_required
 def handle_list_jump_hosts(current_user=None):
