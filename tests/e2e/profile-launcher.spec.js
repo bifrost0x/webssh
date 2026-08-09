@@ -29,6 +29,103 @@ test.afterEach(async ({ page }) => {
     await assertNoExternalRequests(page);
 });
 
+test('command palette launches a safe key host through the central launcher', async ({ page }) => {
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('#commandPaletteModal')).toHaveClass(/show/);
+    await page.locator('#commandPaletteInput').fill('Usable key');
+    const result = page.locator('.palette-item[data-palette-kind="profile"]');
+    await expect(result).toHaveCount(1);
+    await expect(result).toContainText('keyuser@key.local:22');
+
+    await page.locator('#commandPaletteInput').press('Enter');
+
+    await expect.poll(() => sshAttempts(page)).toHaveLength(1);
+    expect((await sshAttempts(page))[0].payload).toMatchObject({
+        host: 'key.local',
+        username: 'keyuser',
+        auth_type: 'key',
+    });
+    await expect(page.locator('#commandPaletteModal')).not.toHaveClass(/show/);
+});
+
+test('command palette keeps password hosts on the existing review path', async ({ page }) => {
+    await page.keyboard.press('Control+k');
+    await page.locator('#commandPaletteInput').fill('Password review');
+    await page.locator('#commandPaletteInput').press('Enter');
+
+    await expectReviewDialogState(page, {
+        host: 'password.local',
+        port: '22',
+        username: 'passworduser',
+        authType: 'password',
+    });
+    await expect(page.locator('#passwordInput')).toBeFocused();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+});
+
+test('command palette refreshes late hosts and renders hostile names literally', async ({ page }) => {
+    await page.keyboard.press('Control+k');
+    await page.locator('#commandPaletteInput').fill('Late palette');
+    await expect(page.locator('.palette-empty')).toBeVisible();
+
+    await page.evaluate(() => {
+        window.__paletteXss = 0;
+        window.ProfileManager.setProfiles([
+            ...window.ProfileManager.profiles,
+            {
+                id: 'late-host',
+                name: '<img src=x onerror=window.__paletteXss=1> Late palette',
+                host: 'late.local',
+                port: 22,
+                username: 'literal',
+                group: 'Testing',
+                favorite: false,
+                auth_type: 'password',
+                key_id: null,
+                startup_mode: 'none',
+            },
+        ]);
+    });
+
+    const result = page.locator(
+        '.palette-item[data-palette-kind="profile"][data-palette-id="late-host"]',
+    );
+    await expect(result).toContainText('<img src=x onerror=window.__paletteXss=1>');
+    await expect(result.locator('img')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__paletteXss)).toBe(0);
+});
+
+test('command palette switches only a session in the current registry', async ({ page }) => {
+    await page.evaluate(() => {
+        SessionManager.sessions['palette-session'] = {
+            id: 'palette-session',
+            displayName: 'Palette live shell',
+            host: 'session.local',
+            port: 2202,
+            username: 'operator',
+            connected: true,
+            keyId: 'must-not-render',
+            authType: 'key',
+        };
+        window.__paletteSessionSwitches = [];
+        SessionManager.switchSession = sessionId => {
+            window.__paletteSessionSwitches.push(sessionId);
+        };
+    });
+
+    await page.keyboard.press('Control+k');
+    await page.locator('#commandPaletteInput').fill('Palette live shell');
+    const result = page.locator('.palette-item[data-palette-kind="session"]');
+    await expect(result).toContainText('operator@session.local:2202');
+    await expect(result).not.toContainText('must-not-render');
+    await page.locator('#commandPaletteInput').press('Enter');
+
+    await expect.poll(() => page.evaluate(
+        () => window.__paletteSessionSwitches,
+    )).toEqual(['palette-session']);
+    await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+});
+
 test('creates, edits, and deletes a profile through the management UI', async ({ page }) => {
     await openProfileManagement(page);
     await page.locator('#newProfileBtn').click();

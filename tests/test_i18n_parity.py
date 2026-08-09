@@ -84,6 +84,17 @@ def test_all_locales_have_matching_translation_keys():
     )
     assert all(
         {
+            'palette.actions',
+            'palette.hosts',
+            'palette.sessions',
+            'palette.savedHost',
+            'palette.activeSession',
+            'palette.searchPlaceholder',
+        } <= keys
+        for keys in keys_by_locale.values()
+    )
+    assert all(
+        {
             'keys.addNew',
             'keys.add',
             'keys.rename',

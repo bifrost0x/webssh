@@ -1841,70 +1841,163 @@
         }
 
         const actions = [
-            { labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => document.getElementById('newConnectionBtn').click() },
-            { labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
-            { labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
-            { labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
-            { labelKey: 'auth.changePassword', hint: '', action: () => { window.location.href = APP_ROOT + '/security#password'; } },
-            { labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
-            { labelKey: 'terminal.copySelection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
-            { labelKey: 'terminal.pasteClipboard', hint: '', action: () => document.getElementById('pasteClipboardBtn').click() },
-            { labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() }
+            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => document.getElementById('newConnectionBtn').click() },
+            { id: 'command-library', labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
+            { id: 'file-transfer', labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
+            { id: 'manage-keys', labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
+            { id: 'change-password', labelKey: 'auth.changePassword', hint: '', action: () => { window.location.href = APP_ROOT + '/security#password'; } },
+            { id: 'save-transcript', labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
+            { id: 'copy-selection', labelKey: 'terminal.copySelection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
+            { id: 'paste-clipboard', labelKey: 'terminal.pasteClipboard', hint: '', action: () => document.getElementById('pasteClipboardBtn').click() },
+            { id: 'keyboard-shortcuts', labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() }
         ];
+        const actionMap = new Map(actions.map(action => [action.id, action.action]));
 
-        let filtered = actions;
+        let filtered = [];
         let activeIndex = 0;
 
-        function render() {
-            list.innerHTML = '';
-            if (filtered.length === 0) {
-                const empty = document.createElement('div');
-                empty.className = 'palette-item';
-                empty.textContent = window.i18n ? i18n.t('palette.noMatches') : 'No matches';
-                list.appendChild(empty);
-                return;
-            }
-            filtered.forEach((item, index) => {
-                const el = document.createElement('div');
-                el.className = 'palette-item' + (index === activeIndex ? ' active' : '');
-                const label = window.i18n ? i18n.t(item.labelKey) : item.labelKey;
-                el.innerHTML = `${label}<span>${item.hint}</span>`;
-                el.addEventListener('click', () => {
-                    item.action();
-                    closePalette();
-                });
-                list.appendChild(el);
-            });
+        function translate(key, fallback) {
+            return window.i18n ? i18n.t(key) : fallback;
         }
 
-        function openPalette() {
-            input.value = '';
-            filtered = actions;
-            activeIndex = 0;
-            render();
-            window.ModalManager.open(modal);
-            setTimeout(() => input.focus(), 50);
+        function buildItems() {
+            const translatedActions = actions.map(action => ({
+                id: action.id,
+                label: translate(action.labelKey, action.labelKey),
+                description: '',
+                hint: action.hint,
+            }));
+            return CommandPaletteUtils.buildItems({
+                actions: translatedActions,
+                profiles: Array.isArray(ProfileManager.profiles)
+                    ? ProfileManager.profiles
+                    : [],
+                sessions: SessionManager.getAllSessions(),
+                query: input.value,
+                formatEndpoint: item => ProfileLauncherUtils.formatEndpoint(item),
+                sessionLabel: session => SessionManager.getDisplayLabel(
+                    session.id,
+                    session.username,
+                    session.host,
+                ),
+                labels: {
+                    activeSession: translate('palette.activeSession', 'Active session'),
+                    savedHost: translate('palette.savedHost', 'Saved host'),
+                },
+                limit: 50,
+            });
         }
 
         function closePalette() {
             window.ModalManager.close(modal);
         }
 
-        input.addEventListener('input', () => {
-            const query = input.value.trim().toLowerCase();
-            filtered = actions.filter(item => {
-                const label = window.i18n ? i18n.t(item.labelKey) : item.labelKey;
-                return label.toLowerCase().includes(query);
+        function activateItem(item) {
+            if (!item) return;
+            if (item.kind === 'action') {
+                const action = actionMap.get(item.id);
+                if (!action) return;
+                closePalette();
+                action();
+                return;
+            }
+            if (
+                item.kind === 'profile'
+                && ProfileManager.profiles.some(profile => profile.id === item.id)
+                && typeof window.launchProfileForPane === 'function'
+            ) {
+                closePalette();
+                window.launchProfileForPane(item.id);
+                return;
+            }
+            if (
+                item.kind === 'session'
+                && Object.prototype.hasOwnProperty.call(SessionManager.sessions, item.id)
+                && SessionManager.sessions[item.id]
+                && typeof SessionManager.switchSession === 'function'
+            ) {
+                closePalette();
+                SessionManager.switchSession(item.id);
+            }
+        }
+
+        function render() {
+            filtered = buildItems();
+            activeIndex = Math.max(0, Math.min(activeIndex, filtered.length - 1));
+            list.replaceChildren();
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'palette-empty';
+                empty.textContent = translate('palette.noMatches', 'No matches');
+                list.appendChild(empty);
+                return;
+            }
+            let previousKind = null;
+            const showSections = input.value.trim() === '';
+            filtered.forEach((item, index) => {
+                if (showSections && item.kind !== previousKind) {
+                    const section = document.createElement('div');
+                    section.className = 'palette-section-title';
+                    section.textContent = translate(
+                        `palette.${item.kind === 'profile' ? 'hosts' : `${item.kind}s`}`,
+                        item.kind,
+                    );
+                    list.appendChild(section);
+                    previousKind = item.kind;
+                }
+                const el = document.createElement('button');
+                el.type = 'button';
+                el.className = 'palette-item' + (index === activeIndex ? ' active' : '');
+                el.dataset.paletteKind = item.kind;
+                el.dataset.paletteId = item.id;
+                el.setAttribute('role', 'option');
+                el.setAttribute('aria-selected', index === activeIndex ? 'true' : 'false');
+
+                const copy = document.createElement('span');
+                copy.className = 'palette-item-copy';
+                const label = document.createElement('span');
+                label.className = 'palette-item-label';
+                label.textContent = item.label;
+                const description = document.createElement('span');
+                description.className = 'palette-item-description';
+                description.textContent = item.description;
+                copy.append(label, description);
+
+                const hint = document.createElement('span');
+                hint.className = 'palette-item-hint';
+                hint.textContent = item.hint;
+                el.append(copy, hint);
+                el.addEventListener('click', () => activateItem(item));
+                list.appendChild(el);
             });
+        }
+
+        function openPalette() {
+            input.value = '';
+            activeIndex = 0;
+            render();
+            window.ModalManager.open(modal);
+            setTimeout(() => input.focus(), 50);
+        }
+
+        input.addEventListener('input', () => {
             activeIndex = 0;
             render();
         });
 
         window.addEventListener('languageChanged', render);
+        window.addEventListener('profile-list-change', () => {
+            if (modal.classList.contains('show')) render();
+        });
+        window.addEventListener('session-workspace-change', () => {
+            if (modal.classList.contains('show')) render();
+        });
 
         input.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowDown') {
-                activeIndex = Math.min(activeIndex + 1, filtered.length - 1);
+                activeIndex = filtered.length > 0
+                    ? Math.min(activeIndex + 1, filtered.length - 1)
+                    : 0;
                 render();
                 e.preventDefault();
             } else if (e.key === 'ArrowUp') {
@@ -1912,11 +2005,7 @@
                 render();
                 e.preventDefault();
             } else if (e.key === 'Enter') {
-                const item = filtered[activeIndex];
-                if (item) {
-                    item.action();
-                    closePalette();
-                }
+                activateItem(filtered[activeIndex]);
             } else if (e.key === 'Escape') {
                 closePalette();
             }

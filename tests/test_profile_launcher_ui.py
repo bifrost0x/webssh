@@ -24,18 +24,19 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=7',
-        "filename='js/i18n.js'": '?v=5',
+        "filename='css/style.css'": '?v=8',
+        "filename='js/i18n.js'": '?v=6',
         "filename='js/command-workspace.js'": '?v=2',
+        "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=3',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=8',
+        "filename='js/profile-manager.js'": '?v=9',
         "filename='js/session-manager.js'": '?v=5',
         "filename='js/terminal-manager.js'": '?v=4',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
-        "filename='js/app.js'": '?v=7',
+        "filename='js/app.js'": '?v=8',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
@@ -128,7 +129,37 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=7" in template
+    assert "filename='css/style.css') }}?v=8" in template
+
+
+def test_command_palette_loads_safe_model_before_application_code():
+    template = read('templates/index.html')
+
+    utility = "filename='js/command-palette-utils.js'"
+    application = "filename='js/app.js'"
+    assert utility in template
+    assert template.index(utility) < template.index(application)
+    assert 'data-i18n-placeholder="palette.searchPlaceholder"' in template
+    assert 'id="commandPaletteList" role="listbox"' in template
+
+
+def test_command_palette_uses_safe_rendering_and_existing_activation_paths():
+    source = read('static/js/app.js')
+    start = source.index('function setupCommandPalette()')
+    end = source.index('\n    let openShortcuts', start)
+    body = source[start:end]
+
+    assert 'CommandPaletteUtils.buildItems' in body
+    assert 'label.textContent = item.label' in body
+    assert 'description.textContent = item.description' in body
+    assert 'hint.textContent = item.hint' in body
+    assert 'window.launchProfileForPane(item.id)' in body
+    assert 'SessionManager.switchSession(item.id)' in body
+    assert "ProfileManager.profiles.some(profile => profile.id === item.id)" in body
+    assert 'SessionManager.sessions[item.id]' in body
+    assert 'Object.prototype.hasOwnProperty.call(SessionManager.sessions, item.id)' in body
+    assert 'el.innerHTML' not in body
+    assert "socket.emit('ssh_connect'" not in body
 
 
 def test_profile_management_exposes_search_group_and_favorite_controls():

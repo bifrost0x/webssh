@@ -130,6 +130,12 @@ const ProfileManager = {
         this.renderProfileSelect();
         this.renderManagementList();
         this.refreshEmptyPanes();
+        if (
+            typeof window.dispatchEvent === 'function'
+            && typeof window.CustomEvent === 'function'
+        ) {
+            window.dispatchEvent(new window.CustomEvent('profile-list-change'));
+        }
     },
 
     setKeys(keys) {
