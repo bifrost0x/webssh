@@ -8,10 +8,10 @@ test.use({
     deviceScaleFactor: 4 / 3,
 });
 
-function capturePath(testInfo) {
+function capturePath(testInfo, filename) {
     return process.env.WEBSSH_CAPTURE_ASSETS === '1'
-        ? path.resolve(__dirname, '..', '..', 'assets', 'session-workspace.png')
-        : testInfo.outputPath('session-workspace-2560x1440.png');
+        ? path.resolve(__dirname, '..', '..', 'assets', filename)
+        : testInfo.outputPath(filename);
 }
 
 function pngSize(filePath) {
@@ -283,7 +283,7 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
     expect(geometry.files.right).toBeLessThanOrEqual(geometry.insights.left + 1);
     expect(geometry.files.bottom).toBeLessThanOrEqual(geometry.viewport.height);
 
-    const screenshotPath = capturePath(testInfo);
+    const screenshotPath = capturePath(testInfo, 'session-workspace.png');
     await page.screenshot({
         path: screenshotPath,
         animations: 'disabled',
@@ -324,7 +324,7 @@ test('mobile workspace shows dormant diagnostics without polling', async ({ page
     await assertNoExternalRequests(page);
 });
 
-test('diagnostics canvas renders correlated inventory and keeps controls clipboard-only', async ({ page }) => {
+test('diagnostics canvas renders correlated inventory and keeps controls clipboard-only', async ({ page }, testInfo) => {
     await login(page);
     await seedLinuxSession(page);
     await expect(page.locator('header')).toHaveCount(1);
@@ -366,6 +366,14 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await expect(page.locator('#sessionDiagnosticsDockerContainers tr')).toHaveCount(2);
     await expect(page.locator('#sessionDiagnosticsDockerContainers')).toContainText('webssh');
     await expect(page.locator('#sessionDiagnosticsDockerContainers')).toContainText('worker');
+
+    const screenshotPath = capturePath(testInfo, 'session-diagnostics.png');
+    await page.screenshot({
+        path: screenshotPath,
+        animations: 'disabled',
+        caret: 'hide',
+    });
+    expect(pngSize(screenshotPath)).toEqual({ width: 2560, height: 1440 });
 
     const services = page.locator('#sessionDiagnosticsSystemdServices tr');
     const search = page.locator('#sessionDiagnosticsSystemdSearch');

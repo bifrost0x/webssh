@@ -71,6 +71,9 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Multi-Session Support** - Up to 10 concurrent SSH sessions with tabs
 - **Split Panes** - 1, 2, or 4-pane layouts for monitoring multiple servers
 - **Focused Session Workspace** - In single-pane mode, open the active server's SFTP browser beside its terminal while keeping live Linux CPU, RAM, disk, and uptime information next to the notepad
+- **Active Session Monitoring** - Follow CPU, memory, disk, load, uptime, process counts, and network throughput for the currently selected Linux session
+- **Expanded Diagnostics** - Open an 80%-width diagnostics drawer with resource history, pressure and network charts, top CPU and memory processes, systemd services, and Docker containers
+- **Clipboard-Only Service Actions** - Start, stop, and restart controls generate an allowlisted systemd command and copy it with visible confirmation; WebSSH never executes the service action itself
 - **Session Restoration** - Restore live sessions after a page refresh without injecting terminal input
 - **Persistent tmux Sessions** - Keep remote shells and running commands alive across browser closes and WebSSH restarts, then reattach later
 - **Manual Reconnect** - Reconnect from a session tab; SSH-key and Tailscale sessions can reconnect directly, while password sessions reopen the pre-filled connection form
@@ -88,6 +91,10 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 
 <p align="center">
   <img src="assets/session-workspace.png" alt="Single-session workspace with SSH terminal, embedded SFTP browser, live Linux server statistics, and notepad" width="1100">
+</p>
+
+<p align="center">
+  <img src="assets/session-diagnostics.png" alt="Active Linux session diagnostics with resource history, processes, systemd services, and Docker containers" width="1100">
 </p>
 
 <p align="center">
