@@ -19,7 +19,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=8">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=2">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}">
 
@@ -200,6 +200,10 @@
                         <span id="sessionOsValue">Linux only</span>
                         <span id="sessionUptimeValue">Refreshes every 4s</span>
                     </div>
+                    <button class="session-diagnostics-toggle" id="sessionDiagnosticsToggle" type="button" aria-expanded="false" aria-controls="sessionDiagnosticsOverlay" disabled>
+                        <span class="material-icons" aria-hidden="true">monitor_heart</span>
+                        <span>Open diagnostics</span>
+                    </button>
                 </section>
                 <div class="notepad-section">
                 <div class="notepad-header">
@@ -214,6 +218,127 @@
             </aside>
         </div>
     </main>
+
+    <div class="session-diagnostics-overlay hidden" id="sessionDiagnosticsOverlay" aria-hidden="true">
+        <div class="session-diagnostics-backdrop" id="sessionDiagnosticsBackdrop"></div>
+        <section class="session-diagnostics-drawer" role="dialog" aria-modal="true" aria-labelledby="sessionDiagnosticsTitle">
+            <div class="session-diagnostics-header">
+                <div>
+                    <div class="session-panel-eyebrow">Active session</div>
+                    <h2 id="sessionDiagnosticsTitle">Server diagnostics</h2>
+                    <div class="session-diagnostics-hostline">
+                        <span id="sessionDiagnosticsHost">No active session</span>
+                        <span id="sessionDiagnosticsOs" hidden></span>
+                    </div>
+                </div>
+                <div class="session-diagnostics-header-actions">
+                    <span class="session-insights-state disconnected" id="sessionDiagnosticsState">Offline</span>
+                    <button class="session-diagnostics-close" id="sessionDiagnosticsClose" type="button" aria-label="Close server diagnostics" title="Close server diagnostics">&times;</button>
+                </div>
+            </div>
+
+            <div class="session-diagnostics-content">
+                <aside class="session-diagnostics-permissions" id="sessionDiagnosticsPermissions" aria-live="polite" hidden>
+                    <span class="material-icons" aria-hidden="true">lock</span>
+                    <div>
+                        <strong>Limited by permissions</strong>
+                        <ul id="sessionDiagnosticsPermissionList"></ul>
+                    </div>
+                </aside>
+
+                <div class="session-diagnostics-metrics">
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsCpuMetric" hidden>
+                        <span>CPU now</span>
+                        <strong id="sessionDiagnosticsCpuValue"></strong>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsLoadMetric" hidden>
+                        <span>Load 1m</span>
+                        <strong id="sessionDiagnosticsLoadValue"></strong>
+                        <small id="sessionDiagnosticsLoadDetail"></small>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsMemoryMetric" hidden>
+                        <span>Memory</span>
+                        <strong id="sessionDiagnosticsMemoryValue"></strong>
+                        <small id="sessionDiagnosticsMemoryDetail"></small>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsSwapMetric" hidden>
+                        <span>Swap</span>
+                        <strong id="sessionDiagnosticsSwapValue"></strong>
+                        <small id="sessionDiagnosticsSwapDetail"></small>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsDiskMetric" hidden>
+                        <span>Root disk</span>
+                        <strong id="sessionDiagnosticsDiskValue"></strong>
+                        <small id="sessionDiagnosticsDiskDetail"></small>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsNetworkMetric" hidden>
+                        <span>Network received</span>
+                        <strong id="sessionDiagnosticsNetworkValue"></strong>
+                        <small id="sessionDiagnosticsNetworkDetail"></small>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsProcessMetric" hidden>
+                        <span>Processes</span>
+                        <strong id="sessionDiagnosticsProcessValue"></strong>
+                        <small id="sessionDiagnosticsProcessDetail"></small>
+                    </article>
+                    <article class="session-diagnostics-metric" id="sessionDiagnosticsUptimeMetric" hidden>
+                        <span>Uptime</span>
+                        <strong id="sessionDiagnosticsUptimeValue"></strong>
+                    </article>
+                </div>
+
+                <section class="session-diagnostics-section" id="sessionDiagnosticsProcessesSection" hidden>
+                    <div class="session-diagnostics-section-heading">
+                        <div>
+                            <span class="material-icons" aria-hidden="true">memory</span>
+                            <h3>What is using this server?</h3>
+                        </div>
+                        <span>Top 5 per view</span>
+                    </div>
+                    <div class="session-process-grids">
+                        <div class="session-process-panel" id="sessionDiagnosticsCpuProcessesPanel">
+                            <h4>Top CPU</h4>
+                            <table>
+                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>CPU</th></tr></thead>
+                                <tbody id="sessionDiagnosticsCpuProcesses"></tbody>
+                            </table>
+                        </div>
+                        <div class="session-process-panel" id="sessionDiagnosticsMemoryProcessesPanel">
+                            <h4>Top memory</h4>
+                            <table>
+                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>RAM</th></tr></thead>
+                                <tbody id="sessionDiagnosticsMemoryProcesses"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="session-diagnostics-services">
+                    <section class="session-diagnostics-section" id="sessionDiagnosticsSystemdSection" hidden>
+                        <div class="session-diagnostics-section-heading">
+                            <div>
+                                <span class="material-icons" aria-hidden="true">settings_suggest</span>
+                                <h3>systemd</h3>
+                            </div>
+                            <span id="sessionDiagnosticsSystemdState"></span>
+                        </div>
+                        <strong id="sessionDiagnosticsSystemdCounts"></strong>
+                        <ul class="session-diagnostics-failures" id="sessionDiagnosticsSystemdFailures" hidden></ul>
+                    </section>
+                    <section class="session-diagnostics-section" id="sessionDiagnosticsDockerSection" hidden>
+                        <div class="session-diagnostics-section-heading">
+                            <div>
+                                <span class="material-icons" aria-hidden="true">view_in_ar</span>
+                                <h3 id="sessionDiagnosticsDockerVersion">Docker</h3>
+                            </div>
+                            <span id="sessionDiagnosticsDockerCounts"></span>
+                        </div>
+                        <ul class="session-diagnostics-containers" id="sessionDiagnosticsDockerContainers" hidden></ul>
+                    </section>
+                </div>
+            </div>
+        </section>
+    </div>
 
     <div class="modal modal-wide" id="connectionModal" role="dialog" aria-modal="true" aria-labelledby="connectionModalTitle" aria-hidden="true">
         <div class="modal-content">
@@ -962,10 +1087,11 @@
     <script src="{{ url_for('static', filename='js/i18n.js') }}?v=6"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>

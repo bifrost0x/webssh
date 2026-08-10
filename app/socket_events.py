@@ -1491,7 +1491,11 @@ def handle_request_session_insights(data, current_user=None):
         return
 
     try:
-        stats, error = session_insights.collect_linux_stats(session_id)
+        include_diagnostics = data.get('include_diagnostics') is True
+        stats, error = session_insights.collect_linux_stats(
+            session_id,
+            include_diagnostics=include_diagnostics,
+        )
     except Exception as exc:
         log_warning(
             'Session insights collection failed',

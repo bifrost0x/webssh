@@ -48,6 +48,33 @@
         return 'normal';
     }
 
+    function calculateNetworkRates(previous, current) {
+        if (!previous || !current) return null;
+        const elapsedSeconds = (
+            Number(current.sampled_at) - Number(previous.sampled_at)
+        ) / 1000;
+        const receivedDelta = (
+            Number(current.received_bytes) - Number(previous.received_bytes)
+        );
+        const transmittedDelta = (
+            Number(current.transmitted_bytes) - Number(previous.transmitted_bytes)
+        );
+        if (
+            !Number.isFinite(elapsedSeconds)
+            || !Number.isFinite(receivedDelta)
+            || !Number.isFinite(transmittedDelta)
+            || elapsedSeconds <= 0
+            || receivedDelta < 0
+            || transmittedDelta < 0
+        ) {
+            return null;
+        }
+        return {
+            received_bps: Math.round(receivedDelta / elapsedSeconds),
+            transmitted_bps: Math.round(transmittedDelta / elapsedSeconds),
+        };
+    }
+
     function createController(options) {
         const socket = options.socket;
         const render = options.render || (() => {});
@@ -55,10 +82,12 @@
         const clearIntervalFn = options.clearIntervalFn || clearInterval;
         const setTimeoutFn = options.setTimeoutFn || setTimeout;
         const clearTimeoutFn = options.clearTimeoutFn || clearTimeout;
+        const nowFn = options.nowFn || Date.now;
 
         let sessionId = null;
         let connected = false;
         let visible = true;
+        let diagnosticsVisible = false;
         let intervalId = null;
         let responseTimeoutId = null;
         let pendingRequest = null;
@@ -67,6 +96,7 @@
         let lastGood = null;
         const previousCpuBySession = new Map();
         const historyBySession = new Map();
+        const previousNetworkBySession = new Map();
 
         function currentState(status, extra = {}) {
             return {
@@ -103,11 +133,17 @@
             if (!visible || !connected || !sessionId || pendingRequest) return;
             requestCounter += 1;
             const requestId = `insights-${requestCounter}`;
-            pendingRequest = { sessionId, requestId };
-            socket.emit('request_session_insights', {
+            pendingRequest = {
+                sessionId,
+                requestId,
+                includeDiagnostics: diagnosticsVisible,
+            };
+            const payload = {
                 session_id: sessionId,
                 request_id: requestId,
-            });
+            };
+            if (diagnosticsVisible) payload.include_diagnostics = true;
+            socket.emit('request_session_insights', payload);
             responseTimeoutId = setTimeoutFn(() => {
                 if (!pendingRequest || pendingRequest.requestId !== requestId) return;
                 pendingRequest = null;
@@ -132,6 +168,7 @@
                 return;
             }
 
+            const responseRequest = pendingRequest;
             pendingRequest = null;
             clearResponseTimeout();
             if (!payload.success || !payload.stats) {
@@ -150,12 +187,36 @@
             while (history.length > HISTORY_LIMIT) history.shift();
             historyBySession.set(sessionId, history);
 
+            let networkRates = null;
+            if (stats.network) {
+                const networkSample = {
+                    received_bytes: Number(stats.network.received_bytes),
+                    transmitted_bytes: Number(stats.network.transmitted_bytes),
+                    sampled_at: Number(nowFn()),
+                };
+                networkRates = calculateNetworkRates(
+                    previousNetworkBySession.get(sessionId) || null,
+                    networkSample,
+                );
+                if (
+                    Number.isFinite(networkSample.received_bytes)
+                    && Number.isFinite(networkSample.transmitted_bytes)
+                    && Number.isFinite(networkSample.sampled_at)
+                ) {
+                    previousNetworkBySession.set(sessionId, networkSample);
+                }
+            }
+
             lastGood = {
                 stats,
                 cpuPercent,
                 cpuHistory: history.slice(),
+                networkRates,
             };
             render(currentState('ready', { ...lastGood }));
+            if (diagnosticsVisible && !responseRequest.includeDiagnostics) {
+                requestSample();
+            }
         }
 
         socket.on('session_insights', handleResponse);
@@ -184,6 +245,16 @@
                 }
             },
 
+            setDiagnosticsVisible(nextVisible) {
+                const normalized = Boolean(nextVisible);
+                if (diagnosticsVisible === normalized) return;
+                diagnosticsVisible = normalized;
+                if (diagnosticsVisible) {
+                    previousNetworkBySession.delete(sessionId);
+                    requestSample();
+                }
+            },
+
             destroy() {
                 clearPolling();
                 socket.off?.('session_insights', handleResponse);
@@ -197,6 +268,7 @@
         calculateCpuPercent,
         formatKib,
         severityForPercent,
+        calculateNetworkRates,
         createController,
     };
 }));
