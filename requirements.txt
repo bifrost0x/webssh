@@ -700,9 +700,9 @@ python-engineio==4.13.4 \
     --hash=sha256:272de73124e255d3d2bba6f86358c1a1ba618f938f337a0c868b60550fe38719 \
     --hash=sha256:413cb98d56c62f0f5ef29931592a360d437b82b3fa7ab415da3f6c7d3ebc0cb7
     # via python-socketio
-python-socketio==5.16.3 \
-    --hash=sha256:89b136f677ae65607a84cecda9b4d6c5377b40a97582c504c25df89af16d520e \
-    --hash=sha256:e7ad14202a5e6448824c7c2f86161d04e13dec05992257df5c709e6a2798c041
+python-socketio==5.16.4 \
+    --hash=sha256:0eb9c7687e7fbf59e60d714fd62afba77dfaf8ef8a06a0bff05a86c351accc2f \
+    --hash=sha256:f7fa4a43cc8e687930b5c6e44d6e2efc2071eca4bef49b8bb3dc0827f7f92235
     # via
     #   -r requirements.in
     #   flask-socketio
