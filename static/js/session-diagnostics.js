@@ -481,10 +481,13 @@
 
         function copyActionButton(action, service) {
             const button = documentRef.createElement('button');
+            const serviceContext = documentRef.createElement('span');
             button.type = 'button';
             button.dataset.action = action;
             button.textContent = action.charAt(0).toUpperCase() + action.slice(1);
-            button.setAttribute('aria-label', `Copy systemctl ${action} command`);
+            serviceContext.className = 'sr-only';
+            serviceContext.textContent = ` for ${service.unit}`;
+            button.appendChild(serviceContext);
             button.addEventListener('click', async () => {
                 try {
                     const command = await inventoryModule?.copySystemdCommand(action, service.unit, writeClipboard);
@@ -517,13 +520,14 @@
             elements.systemdServices.replaceChildren();
             model.rows.forEach(service => {
                 const tr = documentRef.createElement('tr');
-                const unit = documentRef.createElement('td');
+                const unit = documentRef.createElement('th');
                 const load = documentRef.createElement('td');
                 const state = documentRef.createElement('td');
                 const description = documentRef.createElement('td');
                 const actions = documentRef.createElement('td');
                 const stateChip = documentRef.createElement('span');
                 const buttons = documentRef.createElement('div');
+                unit.scope = 'row';
                 unit.textContent = service.unit;
                 load.textContent = service.load;
                 stateChip.className = `session-state-chip ${service.active === 'active' || service.active === 'failed' ? service.active : 'inactive'}`;

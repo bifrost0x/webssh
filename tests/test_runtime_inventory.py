@@ -1,3 +1,8 @@
+import os
+import shutil
+import subprocess
+import time
+
 import pytest
 
 
@@ -20,6 +25,42 @@ docker_returned=2
 docker_container=webssh|Up 3 hours (healthy)
 docker_container=worker|Exited (1) 2 hours ago
 """
+
+
+def _find_posix_shell():
+    candidates = [
+        shutil.which('sh'),
+        r'C:\Program Files\Git\usr\bin\sh.exe',
+        r'C:\Program Files\Git\bin\sh.exe',
+    ]
+    return next((candidate for candidate in candidates
+                 if candidate and os.path.isfile(candidate)), None)
+
+
+POSIX_SHELL = _find_posix_shell()
+
+
+def _run_inventory_shell(tmp_path, *, prelude='', suffix='', timeout=15):
+    if POSIX_SHELL is None:
+        pytest.skip('POSIX shell is required for the remote command contract test')
+    environment = os.environ.copy()
+    environment['TMPDIR'] = '.'
+    script = '\n'.join((
+        'setsid() { "$@"; }',
+        prelude,
+        runtime_inventory.RUNTIME_INVENTORY_COMMAND,
+        suffix,
+    ))
+    return subprocess.run(
+        [POSIX_SHELL],
+        cwd=tmp_path,
+        env=environment,
+        input=script,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
 
 
 def test_parse_runtime_inventory_returns_systemd_and_docker_rows():
@@ -170,6 +211,168 @@ def test_runtime_inventory_command_keeps_optional_tool_stderr_separate():
     assert 'systemctl list-units --type=service --all --no-legend --no-pager --plain 2>&1' not in command
     assert "docker version --format '{{.Server.Version}}' 2>&1" not in command
     assert "docker ps -a --format '{{.Names}}|{{.Status}}' 2>&1" not in command
+
+
+def test_runtime_inventory_shell_streams_large_docker_stdout_into_bounded_rows(
+        tmp_path):
+    completed = _run_inventory_shell(
+        tmp_path,
+        prelude=r'''
+docker() {
+  if [ "$1" = "version" ]; then
+    printf '27.5.1\n'
+    return 0
+  fi
+  if [ "$2" = "-q" ]; then
+    limit=800
+  elif [ "$2" = "-aq" ]; then
+    limit=1000
+  else
+    limit=1000
+  fi
+  index=1
+  long_status=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  while [ "$index" -le "$limit" ]; do
+    if [ "$2" = "-q" ] || [ "$2" = "-aq" ]; then
+      printf 'container-%s\n' "$index"
+    else
+      printf 'container-%s|Up %s\n' "$index" "$long_status"
+    fi
+    index=$((index + 1))
+  done
+}
+''',
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert len(completed.stdout.encode('utf-8')) <= runtime_inventory.DEFAULT_MAX_BYTES
+    result = parse_runtime_inventory(completed.stdout)
+    assert result['docker']['total'] == 1000
+    assert result['docker']['running'] == 800
+    assert 0 < result['docker']['returned'] <= runtime_inventory.MAX_DOCKER_CONTAINERS
+    assert all(
+        len(container['status']) <= 160
+        for container in result['docker']['containers']
+    )
+
+
+def test_runtime_inventory_shell_counts_all_systemd_rows_with_bounded_details(
+        tmp_path):
+    completed = _run_inventory_shell(
+        tmp_path,
+        suffix=r'''
+printf 'systemd_state=running\n'
+index=1
+long_description=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+while [ "$index" -le 1000 ]; do
+  printf 'service%s.service loaded active running %s\n' "$index" "$long_description"
+  index=$((index + 1))
+done | capture_inventory_stdout systemd_units
+''',
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert len(completed.stdout.encode('utf-8')) <= runtime_inventory.DEFAULT_MAX_BYTES
+    result = parse_runtime_inventory(completed.stdout)
+    assert result['systemd']['total'] == 1000
+    assert result['systemd']['active'] == 1000
+    assert 0 < result['systemd']['returned'] <= runtime_inventory.MAX_SYSTEMD_SERVICES
+    assert all(
+        len(service['description']) <= 240
+        for service in result['systemd']['services']
+    )
+
+
+def test_runtime_inventory_shell_bounds_newline_less_multi_megabyte_record(
+        tmp_path):
+    completed = _run_inventory_shell(
+        tmp_path,
+        suffix=r'''
+printf 'systemd_state=running\n'
+{
+  printf 'oversized.service loaded active running '
+  dd if=/dev/zero bs=1048576 count=2 2>/dev/null | tr '\000' x
+} | capture_inventory_stdout systemd_units
+''',
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert len(completed.stdout.encode('utf-8')) <= runtime_inventory.DEFAULT_MAX_BYTES
+    result = parse_runtime_inventory(completed.stdout)
+    assert result['systemd']['total'] == 1
+    assert result['systemd']['active'] == 1
+    assert result['systemd']['returned'] == 1
+    assert len(result['systemd']['services'][0]['description']) == 240
+
+
+def test_runtime_inventory_shell_caps_stderr_while_preserving_permission_scope(
+        tmp_path):
+    completed = _run_inventory_shell(
+        tmp_path,
+        prelude=r'''
+docker() {
+  if [ "$1" = "version" ]; then
+    index=1
+    while [ "$index" -le 10000 ]; do
+      printf 'permission denied: repeated diagnostic\n' >&2
+      index=$((index + 1))
+    done
+    if [ -n "${inventory_stderr_dir:-}" ]; then
+      stderr_path="$inventory_stderr_dir/docker_version"
+    else
+      stderr_path="$inventory_dir/docker_version.err"
+    fi
+    wc -c < "$stderr_path" > stderr-size.txt
+  else
+    printf 'permission denied\n' >&2
+  fi
+  return 1
+}
+''',
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert parse_runtime_inventory(completed.stdout) == {
+        'permission_denied': ['docker'],
+    }
+    assert int((tmp_path / 'stderr-size.txt').read_text().strip()) <= 4096
+
+
+def test_runtime_inventory_shell_trap_cleans_scratch_after_signal(tmp_path):
+    completed = _run_inventory_shell(
+        tmp_path,
+        prelude=r'''
+docker() {
+  if [ "$1" = "version" ]; then
+    printf 'interrupted diagnostic\n' >&2
+    kill -TERM "$$"
+  fi
+  return 1
+}
+''',
+    )
+
+    assert completed.returncode != 0
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_runtime_inventory_shell_watchdog_stops_silent_hanging_tool(tmp_path):
+    started = time.monotonic()
+    completed = _run_inventory_shell(
+        tmp_path,
+        prelude=r'''
+docker() {
+  while :; do
+    sleep 5
+  done
+}
+''',
+        timeout=5,
+    )
+
+    assert completed.returncode != 0
+    assert time.monotonic() - started < 3
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize(

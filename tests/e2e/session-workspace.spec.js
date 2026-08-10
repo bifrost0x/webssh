@@ -384,7 +384,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await expect(services).toHaveCount(3);
 
     const backupRow = services.filter({ hasText: 'backup.service' });
-    await backupRow.getByRole('button', { name: 'Copy systemctl restart command' }).click();
+    await backupRow.getByRole('button', { name: 'Restart for backup.service' }).click();
     await expect.poll(() => page.evaluate(() => window.__workspaceClipboard)).toBe(
         'sudo systemctl restart -- backup.service',
     );
