@@ -379,7 +379,7 @@ body.session-diagnostics-open {
 .session-diagnostics-drawer {
     position: relative;
     display: flex;
-    width: min(94vw, 1250px);
+    width: 80vw;
     height: 100%;
     flex-direction: column;
     border-left: 1px solid var(--border-color);
@@ -415,7 +415,7 @@ body.session-diagnostics-open {
     gap: 7px 12px;
     margin-top: 7px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .session-diagnostics-hostline span:first-child {
@@ -463,7 +463,7 @@ body.session-diagnostics-open {
     border-radius: 9px;
     background: color-mix(in srgb, var(--warning-color, #d29922) 8%, var(--bg-secondary));
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .session-diagnostics-permissions .material-icons {
@@ -509,7 +509,7 @@ body.session-diagnostics-open {
 .session-diagnostics-metric > span {
     margin-bottom: 9px;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -529,7 +529,7 @@ body.session-diagnostics-open {
     overflow: hidden;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -549,7 +549,7 @@ body.session-diagnostics-open {
     gap: 12px;
     margin-bottom: 14px;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-diagnostics-section-heading > div {
@@ -570,12 +570,12 @@ body.session-diagnostics-open {
 }
 
 .session-diagnostics-section h3 {
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .session-diagnostics-section h4 {
     margin-bottom: 8px;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .session-process-grids,
@@ -593,7 +593,7 @@ body.session-diagnostics-open {
 .session-process-panel table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-process-panel th,
@@ -606,7 +606,7 @@ body.session-diagnostics-open {
 
 .session-process-panel th {
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: 11px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
@@ -714,7 +714,7 @@ body.session-diagnostics-open {
     align-items: flex-end;
     gap: 4px;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
     white-space: nowrap;
 }
 
@@ -729,7 +729,7 @@ body.session-diagnostics-open {
     background: var(--bg-hover);
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 650;
 }
 
@@ -788,7 +788,7 @@ body.session-diagnostics-open {
     justify-content: space-between;
     gap: 10px;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -796,7 +796,7 @@ body.session-diagnostics-open {
 
 .session-severity-label {
     color: var(--session-metric-color);
-    font-size: 9px;
+    font-size: 11px;
     letter-spacing: 0.03em;
 }
 
@@ -815,7 +815,7 @@ body.session-diagnostics-open {
     overflow: hidden;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 12px;
     text-overflow: ellipsis;
 }
 
@@ -873,7 +873,7 @@ body.session-diagnostics-open {
     gap: 8px 16px;
     margin: -4px 0 12px;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-chart-legend span::before {
@@ -918,7 +918,7 @@ body.session-diagnostics-open {
 .session-diagnostics-secondary article > small {
     display: block;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-diagnostics-secondary article > strong {
@@ -979,7 +979,7 @@ body.session-diagnostics-open {
     outline: 0;
     background: transparent;
     color: var(--text-primary);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .session-inventory-filters {
@@ -996,7 +996,7 @@ body.session-diagnostics-open {
     background: var(--bg-hover);
     color: var(--text-secondary);
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-inventory-filters button[aria-pressed="true"] {
@@ -1013,7 +1013,7 @@ body.session-diagnostics-open {
     gap: 8px 16px;
     margin-bottom: 12px;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-inventory-summary strong {
@@ -1045,7 +1045,7 @@ body.session-diagnostics-open {
     width: 100%;
     min-width: 720px;
     border-collapse: collapse;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .session-inventory-table th,
@@ -1059,7 +1059,7 @@ body.session-diagnostics-open {
 
 .session-inventory-table th {
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: 11px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
@@ -1077,7 +1077,7 @@ body.session-diagnostics-open {
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--text-secondary);
-    font-size: 9px;
+    font-size: 11px;
     white-space: nowrap;
 }
 

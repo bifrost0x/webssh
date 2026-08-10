@@ -342,8 +342,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     const drawerWidth = await page.locator('.session-diagnostics-drawer').evaluate(
         element => element.getBoundingClientRect().width,
     );
-    expect(drawerWidth).toBeGreaterThanOrEqual(1200);
-    expect(drawerWidth).toBeLessThanOrEqual(1260);
+    expect(drawerWidth).toBeCloseTo(page.viewportSize().width * 0.8, 0);
     for (const selector of [
         '#sessionDiagnosticsCpuMetric',
         '#sessionDiagnosticsMemoryMetric',
@@ -391,6 +390,9 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await expect(page.locator('#sessionDiagnosticsClipboardFeedback')).toHaveText(
         'Command copied: restart backup.service',
     );
+    await expect(page.locator('.notification-success').filter({
+        hasText: 'Command copied to clipboard',
+    })).toBeVisible();
     expect(await page.evaluate(() => window.__workspaceEvents.filter(({ event }) => (
         event !== 'request_session_runtime_inventory'
         && /systemd|service.*(start|stop|restart)/i.test(event)
