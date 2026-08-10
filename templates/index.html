@@ -19,7 +19,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=8">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=3">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}">
 
@@ -232,7 +232,14 @@
                     </div>
                 </div>
                 <div class="session-diagnostics-header-actions">
-                    <span class="session-insights-state disconnected" id="sessionDiagnosticsState">Offline</span>
+                    <div class="session-diagnostics-refresh-meta">
+                        <span class="session-insights-state disconnected" id="sessionDiagnosticsState">Offline</span>
+                        <span id="sessionDiagnosticsLastUpdated">Inventory not loaded</span>
+                    </div>
+                    <button class="session-diagnostics-refresh" id="sessionDiagnosticsRefresh" type="button" aria-label="Refresh runtime inventory" title="Refresh runtime inventory">
+                        <span class="material-icons" aria-hidden="true">refresh</span>
+                        <span>Refresh</span>
+                    </button>
                     <button class="session-diagnostics-close" id="sessionDiagnosticsClose" type="button" aria-label="Close server diagnostics" title="Close server diagnostics">&times;</button>
                 </div>
             </div>
@@ -246,46 +253,69 @@
                     </div>
                 </aside>
 
-                <div class="session-diagnostics-metrics">
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsCpuMetric" hidden>
-                        <span>CPU now</span>
-                        <strong id="sessionDiagnosticsCpuValue"></strong>
+                <div class="session-diagnostics-primary-grid">
+                    <article class="session-diagnostics-primary-card" id="sessionDiagnosticsCpuMetric" hidden>
+                        <div class="session-diagnostics-card-heading"><span>CPU</span><span class="session-severity-label" id="sessionDiagnosticsCpuSeverity">Normal</span></div>
+                        <strong id="sessionDiagnosticsCpuValue">--</strong>
+                        <small id="sessionDiagnosticsCpuDetail">Current utilization</small>
+                        <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsCpuBar"></span></div>
+                        <canvas id="sessionDiagnosticsCpuSparkline" width="240" height="64" aria-label="Recent CPU utilization trend"></canvas>
                     </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsLoadMetric" hidden>
-                        <span>Load 1m</span>
-                        <strong id="sessionDiagnosticsLoadValue"></strong>
-                        <small id="sessionDiagnosticsLoadDetail"></small>
-                    </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsMemoryMetric" hidden>
-                        <span>Memory</span>
-                        <strong id="sessionDiagnosticsMemoryValue"></strong>
+                    <article class="session-diagnostics-primary-card" id="sessionDiagnosticsMemoryMetric" hidden>
+                        <div class="session-diagnostics-card-heading"><span>Memory</span><span class="session-severity-label" id="sessionDiagnosticsMemorySeverity">Normal</span></div>
+                        <strong id="sessionDiagnosticsMemoryValue">--</strong>
                         <small id="sessionDiagnosticsMemoryDetail"></small>
+                        <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsMemoryBar"></span></div>
+                        <canvas id="sessionDiagnosticsMemorySparkline" width="240" height="64" aria-label="Recent memory utilization trend"></canvas>
                     </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsSwapMetric" hidden>
-                        <span>Swap</span>
-                        <strong id="sessionDiagnosticsSwapValue"></strong>
-                        <small id="sessionDiagnosticsSwapDetail"></small>
-                    </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsDiskMetric" hidden>
-                        <span>Root disk</span>
-                        <strong id="sessionDiagnosticsDiskValue"></strong>
+                    <article class="session-diagnostics-primary-card" id="sessionDiagnosticsDiskMetric" hidden>
+                        <div class="session-diagnostics-card-heading"><span>Root disk</span><span class="session-severity-label" id="sessionDiagnosticsDiskSeverity">Normal</span></div>
+                        <strong id="sessionDiagnosticsDiskValue">--</strong>
                         <small id="sessionDiagnosticsDiskDetail"></small>
+                        <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsDiskBar"></span></div>
+                        <canvas id="sessionDiagnosticsDiskSparkline" width="240" height="64" aria-label="Recent root disk utilization trend"></canvas>
                     </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsNetworkMetric" hidden>
-                        <span>Network received</span>
-                        <strong id="sessionDiagnosticsNetworkValue"></strong>
-                        <small id="sessionDiagnosticsNetworkDetail"></small>
-                    </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsProcessMetric" hidden>
-                        <span>Processes</span>
-                        <strong id="sessionDiagnosticsProcessValue"></strong>
-                        <small id="sessionDiagnosticsProcessDetail"></small>
-                    </article>
-                    <article class="session-diagnostics-metric" id="sessionDiagnosticsUptimeMetric" hidden>
-                        <span>Uptime</span>
-                        <strong id="sessionDiagnosticsUptimeValue"></strong>
+                    <article class="session-diagnostics-primary-card" id="sessionDiagnosticsLoadMetric" hidden>
+                        <div class="session-diagnostics-card-heading"><span>Normalized load</span><span class="session-severity-label" id="sessionDiagnosticsLoadSeverity">Normal</span></div>
+                        <strong id="sessionDiagnosticsLoadValue">--</strong>
+                        <small id="sessionDiagnosticsLoadDetail"></small>
+                        <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsLoadBar"></span></div>
+                        <canvas id="sessionDiagnosticsLoadSparkline" width="240" height="64" aria-label="Recent normalized load trend"></canvas>
                     </article>
                 </div>
+
+                <div class="session-diagnostics-chart-grid">
+                    <section class="session-diagnostics-section session-diagnostics-chart-panel" id="sessionDiagnosticsPressureSection" hidden>
+                        <div class="session-diagnostics-section-heading">
+                            <div><span class="material-icons" aria-hidden="true">monitor_heart</span><h3>System pressure</h3></div>
+                            <span>Last 150 samples</span>
+                        </div>
+                        <div class="session-chart-legend" aria-hidden="true">
+                            <span class="cpu">CPU</span><span class="memory">Memory</span><span class="load">Normalized load</span>
+                        </div>
+                        <canvas id="sessionDiagnosticsPressureChart" width="560" height="220" aria-label="System pressure history for CPU, memory, and normalized load"></canvas>
+                    </section>
+                    <section class="session-diagnostics-section session-diagnostics-chart-panel" id="sessionDiagnosticsNetworkSection" hidden>
+                        <div class="session-diagnostics-section-heading">
+                            <div><span class="material-icons" aria-hidden="true">swap_vert</span><h3>Network throughput</h3></div>
+                            <span>Auto-scaled</span>
+                        </div>
+                        <div class="session-chart-legend">
+                            <span class="received">Received <strong id="sessionDiagnosticsNetworkReceived">--</strong></span>
+                            <span class="transmitted">Sent <strong id="sessionDiagnosticsNetworkTransmitted">--</strong></span>
+                        </div>
+                        <canvas id="sessionDiagnosticsNetworkChart" width="560" height="220" aria-label="Network throughput history for received and transmitted bytes per second"></canvas>
+                    </section>
+                </div>
+
+                <section class="session-diagnostics-secondary" aria-label="Secondary server facts">
+                    <article id="sessionDiagnosticsSwapMetric" hidden>
+                        <span>Swap</span><strong id="sessionDiagnosticsSwapValue">--</strong><small id="sessionDiagnosticsSwapDetail"></small>
+                        <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsSwapBar"></span></div>
+                    </article>
+                    <article id="sessionDiagnosticsUptimeMetric" hidden><span>Uptime</span><strong id="sessionDiagnosticsUptimeValue">--</strong></article>
+                    <article id="sessionDiagnosticsProcessMetric" hidden><span>Processes</span><strong id="sessionDiagnosticsProcessValue">--</strong><small id="sessionDiagnosticsProcessDetail"></small></article>
+                </section>
 
                 <section class="session-diagnostics-section" id="sessionDiagnosticsProcessesSection" hidden>
                     <div class="session-diagnostics-section-heading">
@@ -299,43 +329,78 @@
                         <div class="session-process-panel" id="sessionDiagnosticsCpuProcessesPanel">
                             <h4>Top CPU</h4>
                             <table>
-                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>CPU</th></tr></thead>
+                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>CPU usage</th></tr></thead>
                                 <tbody id="sessionDiagnosticsCpuProcesses"></tbody>
                             </table>
                         </div>
                         <div class="session-process-panel" id="sessionDiagnosticsMemoryProcessesPanel">
                             <h4>Top memory</h4>
                             <table>
-                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>RAM</th></tr></thead>
+                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>Memory usage</th></tr></thead>
                                 <tbody id="sessionDiagnosticsMemoryProcesses"></tbody>
                             </table>
                         </div>
                     </div>
                 </section>
 
-                <div class="session-diagnostics-services">
-                    <section class="session-diagnostics-section" id="sessionDiagnosticsSystemdSection" hidden>
-                        <div class="session-diagnostics-section-heading">
-                            <div>
-                                <span class="material-icons" aria-hidden="true">settings_suggest</span>
-                                <h3>systemd</h3>
-                            </div>
-                            <span id="sessionDiagnosticsSystemdState"></span>
+                <section class="session-diagnostics-section session-inventory-section" id="sessionDiagnosticsSystemdSection" hidden>
+                    <div class="session-diagnostics-section-heading">
+                        <div><span class="material-icons" aria-hidden="true">settings_suggest</span><h3>systemd services</h3></div>
+                        <span id="sessionDiagnosticsSystemdState"></span>
+                    </div>
+                    <div class="session-inventory-toolbar">
+                        <label class="session-inventory-search" for="sessionDiagnosticsSystemdSearch">
+                            <span class="material-icons" aria-hidden="true">search</span>
+                            <input id="sessionDiagnosticsSystemdSearch" type="search" placeholder="Search services" autocomplete="off">
+                        </label>
+                        <div class="session-inventory-filters" aria-label="Filter services by state">
+                            <button type="button" data-systemd-filter="all" aria-pressed="true">All</button>
+                            <button type="button" data-systemd-filter="active" aria-pressed="false">Active</button>
+                            <button type="button" data-systemd-filter="failed" aria-pressed="false">Failed</button>
+                            <button type="button" data-systemd-filter="inactive" aria-pressed="false">Inactive</button>
                         </div>
+                    </div>
+                    <div class="session-inventory-summary">
                         <strong id="sessionDiagnosticsSystemdCounts"></strong>
-                        <ul class="session-diagnostics-failures" id="sessionDiagnosticsSystemdFailures" hidden></ul>
-                    </section>
-                    <section class="session-diagnostics-section" id="sessionDiagnosticsDockerSection" hidden>
-                        <div class="session-diagnostics-section-heading">
-                            <div>
-                                <span class="material-icons" aria-hidden="true">view_in_ar</span>
-                                <h3 id="sessionDiagnosticsDockerVersion">Docker</h3>
-                            </div>
-                            <span id="sessionDiagnosticsDockerCounts"></span>
+                        <span id="sessionDiagnosticsSystemdTruncation"></span>
+                        <div class="session-inventory-distribution" id="sessionDiagnosticsSystemdDistribution" aria-label="systemd service state distribution">
+                            <span class="active"></span><span class="failed"></span><span class="inactive"></span>
                         </div>
-                        <ul class="session-diagnostics-containers" id="sessionDiagnosticsDockerContainers" hidden></ul>
-                    </section>
-                </div>
+                    </div>
+                    <div class="session-inventory-table-wrap">
+                        <table class="session-inventory-table">
+                            <thead><tr><th>Unit</th><th>Load</th><th>State / substate</th><th>Description</th><th>Copy command</th></tr></thead>
+                            <tbody id="sessionDiagnosticsSystemdServices"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="session-diagnostics-section session-inventory-section" id="sessionDiagnosticsDockerSection" hidden>
+                    <div class="session-diagnostics-section-heading">
+                        <div><span class="material-icons" aria-hidden="true">view_in_ar</span><h3 id="sessionDiagnosticsDockerVersion">Docker</h3></div>
+                        <span id="sessionDiagnosticsDockerCounts"></span>
+                    </div>
+                    <div class="session-inventory-toolbar">
+                        <label class="session-inventory-search" for="sessionDiagnosticsDockerSearch">
+                            <span class="material-icons" aria-hidden="true">search</span>
+                            <input id="sessionDiagnosticsDockerSearch" type="search" placeholder="Search containers" autocomplete="off">
+                        </label>
+                    </div>
+                    <div class="session-inventory-summary">
+                        <span id="sessionDiagnosticsDockerTruncation"></span>
+                        <div class="session-inventory-distribution" id="sessionDiagnosticsDockerDistribution" aria-label="Docker container state distribution">
+                            <span class="running"></span><span class="stopped"></span>
+                        </div>
+                    </div>
+                    <div class="session-inventory-table-wrap">
+                        <table class="session-inventory-table">
+                            <thead><tr><th>Container</th><th>Status</th></tr></thead>
+                            <tbody id="sessionDiagnosticsDockerContainers"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <p class="sr-only" id="sessionDiagnosticsClipboardFeedback" aria-live="polite"></p>
             </div>
         </section>
     </div>
@@ -1090,10 +1155,10 @@
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/session-runtime-inventory.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-diagnostics-charts.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>

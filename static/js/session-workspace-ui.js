@@ -63,10 +63,12 @@
         const documentRef = options.document || document;
         const insightsModule = root.SessionInsightsModule;
         const diagnosticsModule = root.SessionDiagnosticsModule;
+        const inventoryModule = root.SessionRuntimeInventoryModule;
+        const chartsModule = root.SessionDiagnosticsCharts;
         const filesModule = root.SessionFilesPanelModule;
         const workspaceModule = root.SessionWorkspaceModule;
         const fileManager = root.getSFTPFileManager?.();
-        if (!socket || !sessionManager || !insightsModule || !diagnosticsModule || !filesModule || !workspaceModule || !fileManager) {
+        if (!socket || !sessionManager || !insightsModule || !diagnosticsModule || !inventoryModule || !chartsModule || !filesModule || !workspaceModule || !fileManager) {
             return null;
         }
 
@@ -95,7 +97,12 @@
         let filesController = null;
         let coordinator = null;
         let insightsController = null;
+        let inventoryController = null;
         let diagnosticsController = null;
+        let lastInsightsState = { status: 'disconnected', sessionId: null };
+        let lastInventoryState = { status: 'disconnected', sessionId: null, inventory: null };
+        let inventorySessionId = null;
+        let inventoryConnected = false;
 
         function setResource(element, bar, value) {
             const severity = insightsModule.severityForPercent(value);
@@ -105,6 +112,7 @@
         }
 
         function renderInsights(state) {
+            lastInsightsState = state;
             const active = sessionManager.getSession(state.sessionId);
             elements.insightsHost.textContent = active
                 ? `${active.username}@${active.host}`
@@ -115,7 +123,7 @@
             };
             elements.insightsState.textContent = labels[state.status] || 'Offline';
             elements.insightsState.className = `session-insights-state ${state.status || ''}`;
-            diagnosticsController?.render(state, active);
+            diagnosticsController?.render(state, active, lastInventoryState);
             if (!state.stats) {
                 if (state.status === 'disconnected' || state.status === 'unavailable') {
                     elements.cpuValue.textContent = '--';
@@ -156,9 +164,24 @@
         });
         diagnosticsController = diagnosticsModule.createController({
             document: documentRef,
+            window: root,
+            inventoryModule,
+            chartModule: chartsModule,
+            onRefreshInventory() {
+                inventoryController?.refresh();
+            },
             onOpenChange(open) {
                 insightsController?.setDiagnosticsVisible(open);
+                inventoryController?.setOpen(open);
                 syncInsightsVisibility();
+            },
+        });
+        inventoryController = inventoryModule.createController({
+            socket,
+            render(state) {
+                lastInventoryState = state;
+                const active = sessionManager.getSession(lastInsightsState.sessionId);
+                diagnosticsController?.render(lastInsightsState, active, lastInventoryState);
             },
         });
         insightsController = insightsModule.createController({ socket, render: renderInsights });
@@ -180,12 +203,19 @@
 
         function sync() {
             const activeId = sessionManager.getActiveSession();
+            const activeSession = activeId ? sessionManager.getSession(activeId) : null;
+            const connected = Boolean(activeId && activeSession?.connected);
             coordinator.update({
                 layout: sessionManager.layout,
                 sessionId: activeId,
-                session: activeId ? sessionManager.getSession(activeId) : null,
+                session: activeSession,
                 sessionCount: sessionManager.getAllSessions().length,
             });
+            if (activeId !== inventorySessionId || connected !== inventoryConnected) {
+                inventorySessionId = activeId || null;
+                inventoryConnected = connected;
+                inventoryController.setSession(inventorySessionId, inventoryConnected);
+            }
         }
 
         elements.toggle.addEventListener('click', () => coordinator.toggleSftp());
@@ -207,6 +237,11 @@
             );
         }
         root.addEventListener('session-workspace-change', sync);
+        root.addEventListener('session-removed', event => {
+            const removedSessionId = event?.detail?.sessionId;
+            insightsController?.removeSession(removedSessionId);
+            inventoryController?.removeSession(removedSessionId);
+        });
         documentRef.addEventListener('visibilitychange', syncInsightsVisibility);
         desktopQuery.addEventListener?.('change', () => {
             syncInsightsVisibility();
@@ -219,7 +254,10 @@
                 attributeFilter: ['class'],
             });
         }
-        root.addEventListener('themeChanged', () => drawCpuHistory(elements.cpuChart, []));
+        root.addEventListener('themeChanged', () => {
+            drawCpuHistory(elements.cpuChart, lastInsightsState.cpuHistory || []);
+            diagnosticsController?.redraw();
+        });
         syncInsightsVisibility();
         sync();
         return coordinator;
