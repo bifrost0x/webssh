@@ -28,19 +28,101 @@ async function seedLinuxSession(page) {
     await page.evaluate(() => {
         const originalEmit = window.socket.emit.bind(window.socket);
         let insightSample = 0;
+        window.__workspaceEvents = [];
+        window.__workspaceInventoryRequests = 0;
+        window.__workspaceInventoryMode = 'full';
+        window.__workspaceClipboard = null;
+        window.__workspaceChartSamples = { pressure: 0, network: 0 };
         const fileRows = [
             { name: 'releases', is_dir: true, size: 0, permissions: 'drwxr-xr-x' },
             { name: 'compose.yaml', is_dir: false, size: 2841, permissions: '-rw-r--r--' },
             { name: 'healthcheck.sh', is_dir: false, size: 912, permissions: '-rwxr-xr-x' },
             { name: 'README.md', is_dir: false, size: 4876, permissions: '-rw-r--r--' },
         ];
+        const systemd = {
+            state: 'degraded',
+            total: 3,
+            active: 1,
+            failed: 1,
+            returned: 3,
+            truncated: false,
+            services: [
+                { unit: 'nginx.service', load: 'loaded', active: 'active', sub: 'running', description: 'A high performance web server' },
+                { unit: 'backup.service', load: 'loaded', active: 'failed', sub: 'failed', description: 'Nightly backup job' },
+                { unit: 'cleanup.service', load: 'loaded', active: 'inactive', sub: 'dead', description: 'Temporary file cleanup' },
+            ],
+        };
+        const docker = {
+            version: '27.5.1',
+            running: 1,
+            total: 2,
+            returned: 2,
+            truncated: false,
+            containers: [
+                { name: 'webssh', status: 'Up 3 hours (healthy)' },
+                { name: 'worker', status: 'Exited (1) 12 minutes ago' },
+            ],
+        };
+
+        const originalDrawLineChart = window.SessionDiagnosticsCharts.drawLineChart;
+        window.SessionDiagnosticsCharts.drawLineChart = function recordChartSamples(canvas, series, options) {
+            const sampleCount = Math.max(0, ...series.map(item => item.values?.length || 0));
+            if (canvas.id === 'sessionDiagnosticsPressureChart') {
+                window.__workspaceChartSamples.pressure = sampleCount;
+            } else if (canvas.id === 'sessionDiagnosticsNetworkChart') {
+                window.__workspaceChartSamples.network = sampleCount;
+            }
+            return originalDrawLineChart.call(this, canvas, series, options);
+        };
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: {
+                writeText(text) {
+                    window.__workspaceClipboard = text;
+                    return Promise.resolve();
+                },
+            },
+        });
 
         function deliver(event, payload) {
             queueMicrotask(() => window.socket.listeners(event).forEach(listener => listener(payload)));
         }
 
         window.socket.emit = function workspaceTestEmit(event, payload, ...rest) {
+            let recordedPayload = payload;
+            try {
+                recordedPayload = structuredClone(payload);
+            } catch (_error) {
+                // Socket callbacks are not part of the observability requests under test.
+            }
+            window.__workspaceEvents.push({ event, payload: recordedPayload });
             if (payload?.session_id === 'workspace-linux') {
+                if (event === 'request_session_runtime_inventory') {
+                    window.__workspaceInventoryRequests += 1;
+                    const response = {
+                        success: true,
+                        session_id: payload.session_id,
+                        request_id: payload.request_id,
+                        sampled_at: 1786350000 + window.__workspaceInventoryRequests,
+                        docker,
+                    };
+                    if (window.__workspaceInventoryMode === 'generic') {
+                        deliver('session_runtime_inventory', {
+                            success: false,
+                            session_id: payload.session_id,
+                            request_id: payload.request_id,
+                            error: 'Runtime inventory unavailable',
+                        });
+                    } else if (window.__workspaceInventoryMode === 'permission') {
+                        deliver('session_runtime_inventory', {
+                            ...response,
+                            permission_denied: ['systemd'],
+                        });
+                    } else {
+                        deliver('session_runtime_inventory', { ...response, systemd });
+                    }
+                    return window.socket;
+                }
                 if (event === 'request_session_insights') {
                     insightSample += 1;
                     window.__workspaceInsightSample = insightSample;
@@ -91,27 +173,7 @@ async function seedLinuxSession(page) {
                                     { pid: 177, user: 'redis', command: 'redis-server', cpu_percent: 3.5, memory_percent: 12.4 },
                                 ],
                             },
-                            systemd: {
-                                state: 'degraded',
-                                running: 41,
-                                failed: 1,
-                                failed_units: ['backup.service'],
-                            },
                         });
-                        const diagnosticsMode = window.__workspaceDiagnosticsMode || 'full';
-                        if (diagnosticsMode === 'full') {
-                            stats.docker = {
-                                version: '27.5.1',
-                                running: 2,
-                                total: 3,
-                                containers: [
-                                    { name: 'webssh', status: 'Up 3 hours (healthy)' },
-                                    { name: 'redis', status: 'Up 3 hours' },
-                                ],
-                            };
-                        } else if (diagnosticsMode === 'permission') {
-                            stats.permission_denied = ['docker'];
-                        }
                     }
                     deliver('session_insights', {
                         success: true,
@@ -143,14 +205,17 @@ async function seedLinuxSession(page) {
             return originalEmit(event, payload, ...rest);
         };
 
-        SessionManager.createSession({
-            session_id: 'workspace-linux',
-            host: 'edge-01.example',
-            port: 22,
-            username: 'ops',
-            display_name: 'Production Edge',
-        });
-        SessionManager.assignSessionToPane('workspace-linux', 0);
+        window.__createWorkspaceSession = function createWorkspaceSession() {
+            SessionManager.createSession({
+                session_id: 'workspace-linux',
+                host: 'edge-01.example',
+                port: 22,
+                username: 'ops',
+                display_name: 'Production Edge',
+            });
+            SessionManager.assignSessionToPane('workspace-linux', 0);
+        };
+        window.__createWorkspaceSession();
         document.querySelector('.account-name').textContent = 'operator';
         setTimeout(() => {
             TerminalManager.writeOutput('workspace-linux', [
@@ -247,18 +312,19 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
     await assertNoExternalRequests(page);
 });
 
-test('mobile workspace does not poll hidden Linux telemetry', async ({ page }) => {
+test('mobile workspace shows dormant diagnostics without polling', async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 900 });
     await login(page);
     await seedLinuxSession(page);
     await page.waitForTimeout(500);
 
     expect(await page.evaluate(() => window.__workspaceInsightSample || 0)).toBe(0);
-    await expect(page.locator('#sessionInsightsCard')).toBeHidden();
+    await expect(page.locator('#sessionInsightsCard')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsToggle')).toBeDisabled();
     await assertNoExternalRequests(page);
 });
 
-test('diagnostics overlay requests and renders optional details only while open', async ({ page }) => {
+test('diagnostics canvas renders correlated inventory and keeps controls clipboard-only', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
     await expect(page.locator('header')).toHaveCount(1);
@@ -272,42 +338,108 @@ test('diagnostics overlay requests and renders optional details only while open'
 
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+
+    const drawerWidth = await page.locator('.session-diagnostics-drawer').evaluate(
+        element => element.getBoundingClientRect().width,
+    );
+    expect(drawerWidth).toBeGreaterThanOrEqual(1200);
+    expect(drawerWidth).toBeLessThanOrEqual(1260);
+    for (const selector of [
+        '#sessionDiagnosticsCpuMetric',
+        '#sessionDiagnosticsMemoryMetric',
+        '#sessionDiagnosticsDiskMetric',
+        '#sessionDiagnosticsLoadMetric',
+    ]) {
+        await expect(page.locator(selector)).toBeVisible();
+    }
+    await expect(page.locator('#sessionDiagnosticsPressureChart')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsNetworkChart')).toBeVisible({ timeout: 6000 });
     await expect(page.locator('#sessionDiagnosticsProcessesSection')).toBeVisible();
     await expect(page.locator('#sessionDiagnosticsCpuProcesses')).toContainText('postgres');
     await expect(page.locator('#sessionDiagnosticsMemoryProcesses')).toContainText('redis-server');
+    await expect(page.locator('.session-process-percent .session-diagnostics-bar > span')).toHaveCount(3);
     await expect(page.locator('#sessionDiagnosticsSystemdSection')).toBeVisible();
-    await expect(page.locator('#sessionDiagnosticsSystemdCounts')).toHaveText('41 active - 1 failed');
-    await expect(page.locator('#sessionDiagnosticsSystemdFailures')).toContainText('backup.service');
+    await expect(page.locator('#sessionDiagnosticsSystemdServices tr')).toHaveCount(3);
+    await expect(page.locator('#sessionDiagnosticsSystemdServices')).toContainText('nginx.service');
+    await expect(page.locator('#sessionDiagnosticsSystemdServices')).toContainText('backup.service');
+    await expect(page.locator('#sessionDiagnosticsSystemdServices')).toContainText('cleanup.service');
     await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsDockerContainers tr')).toHaveCount(2);
     await expect(page.locator('#sessionDiagnosticsDockerContainers')).toContainText('webssh');
-    await expect(page.locator('#sessionDiagnosticsNetworkMetric')).toBeVisible({ timeout: 6000 });
-    await expect(page.locator('#sessionDiagnosticsNetworkValue')).toContainText('KB/s');
+    await expect(page.locator('#sessionDiagnosticsDockerContainers')).toContainText('worker');
 
-    const beforePermission = await page.evaluate(() => window.__workspaceExpandedRequests);
-    await page.evaluate(() => { window.__workspaceDiagnosticsMode = 'permission'; });
-    await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests), {
-        timeout: 6000,
-    }).toBeGreaterThan(beforePermission);
-    await expect(page.locator('#sessionDiagnosticsPermissions')).toBeVisible();
-    await expect(page.locator('#sessionDiagnosticsPermissionList')).toContainText(
-        'cannot access the Docker daemon',
+    const services = page.locator('#sessionDiagnosticsSystemdServices tr');
+    const search = page.locator('#sessionDiagnosticsSystemdSearch');
+    await search.fill('backup');
+    await expect(services).toHaveCount(1);
+    await expect(services).toContainText('backup.service');
+    await search.fill('');
+    await page.locator('[data-systemd-filter="failed"]').click();
+    await expect(services).toHaveCount(1);
+    await expect(services).toContainText('backup.service');
+    await page.locator('[data-systemd-filter="inactive"]').click();
+    await expect(services).toHaveCount(1);
+    await expect(services).toContainText('cleanup.service');
+    await page.locator('[data-systemd-filter="all"]').click();
+    await expect(services).toHaveCount(3);
+
+    const backupRow = services.filter({ hasText: 'backup.service' });
+    await backupRow.getByRole('button', { name: 'Copy systemctl restart command' }).click();
+    await expect.poll(() => page.evaluate(() => window.__workspaceClipboard)).toBe(
+        'sudo systemctl restart -- backup.service',
     );
-    await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsClipboardFeedback')).toHaveText(
+        'Command copied: restart backup.service',
+    );
+    expect(await page.evaluate(() => window.__workspaceEvents.filter(({ event }) => (
+        event !== 'request_session_runtime_inventory'
+        && /systemd|service.*(start|stop|restart)/i.test(event)
+    )))).toEqual([]);
 
-    const beforeGenericOmission = await page.evaluate(() => window.__workspaceExpandedRequests);
-    await page.evaluate(() => { window.__workspaceDiagnosticsMode = 'generic'; });
-    await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests), {
+    await expect.poll(() => page.evaluate(() => window.__workspaceChartSamples?.pressure || 0), {
         timeout: 6000,
-    }).toBeGreaterThan(beforeGenericOmission);
-    await expect(page.locator('#sessionDiagnosticsPermissions')).toBeHidden();
-    await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeHidden();
-
-    await page.keyboard.press('Escape');
+    }).toBeGreaterThan(2);
+    const preservedHistory = await page.evaluate(() => window.__workspaceChartSamples.pressure);
+    await page.locator('#sessionDiagnosticsClose').click();
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeHidden();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    const expandedAfterClose = await page.evaluate(() => window.__workspaceExpandedRequests);
-    await page.waitForTimeout(4500);
-    expect(await page.evaluate(() => window.__workspaceExpandedRequests)).toBe(expandedAfterClose);
+    await toggle.click();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__workspaceChartSamples?.pressure || 0)).toBeGreaterThanOrEqual(
+        preservedHistory,
+    );
+
+    const beforeRefresh = await page.evaluate(() => window.__workspaceInventoryRequests);
+    await page.evaluate(() => { window.__workspaceInventoryMode = 'generic'; });
+    await page.locator('#sessionDiagnosticsRefresh').click();
+    await expect.poll(() => page.evaluate(() => window.__workspaceInventoryRequests)).toBe(beforeRefresh + 1);
+    await expect(page.locator('#sessionDiagnosticsState')).toHaveText('Live');
+    await expect(page.locator('#sessionDiagnosticsLastUpdated')).toContainText('Inventory stale');
+    await expect(page.locator('#sessionDiagnosticsSystemdServices tr')).toHaveCount(3);
+    await expect(page.locator('#sessionDiagnosticsDockerContainers tr')).toHaveCount(2);
+
+    await page.evaluate(() => { window.__workspaceInventoryMode = 'permission'; });
+    await page.locator('#sessionDiagnosticsRefresh').click();
+    await expect(page.locator('#sessionDiagnosticsPermissions')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsPermissionList')).toContainText(
+        'systemd service details are restricted',
+    );
+    await expect(page.locator('#sessionDiagnosticsSystemdSection')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeVisible();
+
+    await page.evaluate(() => SessionManager.removeSessionUI('workspace-linux'));
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeHidden();
+    await page.evaluate(() => {
+        window.__workspaceInventoryMode = 'full';
+        window.__createWorkspaceSession();
+    });
+    await expect(page.locator('#sessionDiagnosticsToggle')).toBeEnabled();
+    await page.locator('#sessionDiagnosticsToggle').click();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect.poll(() => page.evaluate(limit => {
+        const samples = window.__workspaceChartSamples?.pressure;
+        return Number.isInteger(samples) && samples > 0 && samples < limit;
+    }, preservedHistory)).toBe(true);
     await assertNoExternalRequests(page);
 });
 
