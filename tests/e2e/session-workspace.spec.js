@@ -390,9 +390,18 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await expect(page.locator('#sessionDiagnosticsClipboardFeedback')).toHaveText(
         'Command copied: restart backup.service',
     );
-    await expect(page.locator('.notification-success').filter({
+    const clipboardNotification = page.locator('.notification-success').filter({
         hasText: 'Command copied to clipboard',
-    })).toBeVisible();
+    });
+    await expect(clipboardNotification).toBeVisible();
+    await expect.poll(() => clipboardNotification.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const topmost = document.elementFromPoint(
+            bounds.left + (bounds.width / 2),
+            bounds.top + (bounds.height / 2),
+        );
+        return topmost === element || element.contains(topmost);
+    }), { timeout: 1500 }).toBe(true);
     expect(await page.evaluate(() => window.__workspaceEvents.filter(({ event }) => (
         event !== 'request_session_runtime_inventory'
         && /systemd|service.*(start|stop|restart)/i.test(event)

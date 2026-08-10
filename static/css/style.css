@@ -2668,7 +2668,7 @@ textarea.form-control {
     position: fixed; 
     top: 24px;
     right: 24px;
-    z-index: 11000; 
+    z-index: 17000;
     display: flex;
     flex-direction: column;
     gap: 12px;
