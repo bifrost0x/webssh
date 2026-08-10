@@ -329,6 +329,9 @@ const SessionManager = {
             this.renderPane(paneIndex);
         }
 
+        window.dispatchEvent(new CustomEvent('session-removed', {
+            detail: { sessionId },
+        }));
         delete this.sessions[sessionId];
 
         const remainingSessions = Object.keys(this.sessions);

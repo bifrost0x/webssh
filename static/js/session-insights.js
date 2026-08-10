@@ -11,7 +11,7 @@
 
     const POLL_INTERVAL_MS = 4000;
     const RESPONSE_TIMEOUT_MS = 3500;
-    const HISTORY_LIMIT = 15;
+    const HISTORY_LIMIT = 150;
 
     function calculateCpuPercent(previous, current) {
         if (!Array.isArray(previous) || !Array.isArray(current)) return null;
@@ -75,6 +75,47 @@
         };
     }
 
+    function percent(used, total) {
+        const numerator = nonNegativeNumber(used);
+        const denominator = nonNegativeNumber(total);
+        if (numerator === null || denominator === null || denominator <= 0) return null;
+        return Math.min(100, Math.round((numerator / denominator) * 100));
+    }
+
+    function nonNegativeNumber(value) {
+        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+            return null;
+        }
+        const number = Number(value);
+        return Number.isFinite(number) && number >= 0 ? number : null;
+    }
+
+    function boundedPercent(value) {
+        const number = nonNegativeNumber(value);
+        return number !== null && number <= 100
+            ? Math.round(number)
+            : null;
+    }
+
+    function buildMetricSample(stats, sampledAt, cpuPercent, networkRates) {
+        const loadOne = nonNegativeNumber(stats.load?.one);
+        return Object.freeze({
+            sampledAt: Number.isFinite(Number(sampledAt)) ? Number(sampledAt) : null,
+            cpuPercent: boundedPercent(cpuPercent),
+            memoryPercent: percent(stats.memory?.used_kib, stats.memory?.total_kib),
+            swapPercent: percent(stats.swap?.used_kib, stats.swap?.total_kib),
+            diskPercent: boundedPercent(stats.disk?.percent),
+            loadOne,
+            normalizedLoadPercent: loadOne === null
+                ? null
+                : percent(loadOne, stats.load?.cpu_count),
+            receivedBps: nonNegativeNumber(networkRates?.received_bps),
+            transmittedBps: nonNegativeNumber(networkRates?.transmitted_bps),
+            processTotal: nonNegativeNumber(stats.processes?.total),
+            processZombies: nonNegativeNumber(stats.processes?.zombies),
+        });
+    }
+
     function createController(options) {
         const socket = options.socket;
         const render = options.render || (() => {});
@@ -95,8 +136,9 @@
         let failureCount = 0;
         let lastGood = null;
         const previousCpuBySession = new Map();
-        const historyBySession = new Map();
+        const metricHistoryBySession = new Map();
         const previousNetworkBySession = new Map();
+        const lastGoodBySession = new Map();
 
         function currentState(status, extra = {}) {
             return {
@@ -182,17 +224,13 @@
             const cpuPercent = calculateCpuPercent(previousCpu, stats.cpu);
             previousCpuBySession.set(sessionId, Array.isArray(stats.cpu) ? stats.cpu.slice() : null);
 
-            const history = historyBySession.get(sessionId) || [];
-            if (cpuPercent !== null) history.push(cpuPercent);
-            while (history.length > HISTORY_LIMIT) history.shift();
-            historyBySession.set(sessionId, history);
-
             let networkRates = null;
+            const sampledAt = nowFn();
             if (stats.network) {
                 const networkSample = {
                     received_bytes: Number(stats.network.received_bytes),
                     transmitted_bytes: Number(stats.network.transmitted_bytes),
-                    sampled_at: Number(nowFn()),
+                    sampled_at: Number(sampledAt),
                 };
                 networkRates = calculateNetworkRates(
                     previousNetworkBySession.get(sessionId) || null,
@@ -207,12 +245,22 @@
                 }
             }
 
+            const metricHistory = metricHistoryBySession.get(sessionId) || [];
+            metricHistory.push(buildMetricSample(stats, sampledAt, cpuPercent, networkRates));
+            while (metricHistory.length > HISTORY_LIMIT) metricHistory.shift();
+            metricHistoryBySession.set(sessionId, metricHistory);
+            const cpuHistory = metricHistory
+                .map(sample => sample.cpuPercent)
+                .filter(value => value !== null);
+
             lastGood = {
                 stats,
                 cpuPercent,
-                cpuHistory: history.slice(),
+                cpuHistory,
+                metricHistory: metricHistory.slice(),
                 networkRates,
             };
+            lastGoodBySession.set(sessionId, lastGood);
             render(currentState('ready', { ...lastGood }));
             if (diagnosticsVisible && !responseRequest.includeDiagnostics) {
                 requestSample();
@@ -229,8 +277,11 @@
                     : null;
                 connected = Boolean(isConnected && sessionId);
                 failureCount = 0;
-                lastGood = null;
-                render(currentState(connected ? 'loading' : 'disconnected'));
+                lastGood = sessionId ? lastGoodBySession.get(sessionId) || null : null;
+                render(currentState(
+                    connected ? 'loading' : 'disconnected',
+                    lastGood ? { ...lastGood } : { metricHistory: [] },
+                ));
                 startPolling();
             },
 
@@ -240,7 +291,10 @@
                 visible = normalized;
                 clearPolling();
                 if (visible) {
-                    render(currentState(connected ? 'loading' : 'disconnected'));
+                    render(currentState(
+                        connected ? 'loading' : 'disconnected',
+                        lastGood ? { ...lastGood } : {},
+                    ));
                     startPolling();
                 }
             },
@@ -253,6 +307,21 @@
                     previousNetworkBySession.delete(sessionId);
                     requestSample();
                 }
+            },
+
+            removeSession(removedSessionId) {
+                if (typeof removedSessionId !== 'string' || !removedSessionId) return;
+                previousCpuBySession.delete(removedSessionId);
+                previousNetworkBySession.delete(removedSessionId);
+                metricHistoryBySession.delete(removedSessionId);
+                lastGoodBySession.delete(removedSessionId);
+                if (sessionId !== removedSessionId) return;
+                clearPolling();
+                sessionId = null;
+                connected = false;
+                failureCount = 0;
+                lastGood = null;
+                render(currentState('disconnected'));
             },
 
             destroy() {
@@ -269,6 +338,7 @@
         formatKib,
         severityForPercent,
         calculateNetworkRates,
+        percent,
         createController,
     };
 }));

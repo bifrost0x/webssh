@@ -17,8 +17,28 @@ function loadSessionManager(confirmSessionClose = true) {
                     confirmSessionClose: String(confirmSessionClose),
                 },
             },
+            getElementById() {
+                return null;
+            },
         },
-        window: {},
+        TerminalManager: { destroyTerminal() {} },
+        CustomEvent: class CustomEvent {
+            constructor(type, options) {
+                this.type = type;
+                this.detail = options?.detail;
+            }
+        },
+        window: {
+            dispatchEvent(event) {
+                const listeners = this.listeners?.get(event.type) || [];
+                listeners.forEach(listener => listener(event));
+                return true;
+            },
+            addEventListener(type, listener) {
+                this.listeners = this.listeners || new Map();
+                this.listeners.set(type, [...(this.listeners.get(type) || []), listener]);
+            },
+        },
     };
     context.window.window = context.window;
     vm.createContext(context);
@@ -65,4 +85,19 @@ test('disabled close confirmation closes directly without calling confirm', () =
 
     assert.equal(confirmCalls, 0);
     assert.equal(closeCalls, 1);
+});
+
+test('emits a session-removed event exactly once for each actual UI removal', () => {
+    const { manager, context } = loadSessionManager();
+    prepareSession(manager);
+    manager.paneAssignments = [];
+    manager.updateSessionMeta = () => {};
+    manager.notifyWorkspaceChange = () => {};
+    const removedIds = [];
+    context.window.addEventListener('session-removed', event => removedIds.push(event.detail.sessionId));
+
+    manager.removeSessionUI('sessionA');
+    assert.deepEqual(removedIds, ['sessionA']);
+    manager.removeSessionUI('missing-session');
+    assert.deepEqual(removedIds, ['sessionA']);
 });

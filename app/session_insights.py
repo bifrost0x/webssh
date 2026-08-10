@@ -1,7 +1,6 @@
 """Bounded, agentless Linux diagnostics for an active SSH session."""
 
 import math
-import re
 import socket
 import time
 from threading import Lock
@@ -90,48 +89,6 @@ elif printf '%s' "$process_probe" | grep -Eqi \
   printf 'permission_denied=processes\n'
 fi
 
-if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-  systemd_state=$(systemctl show --property=SystemState --value 2>&1)
-  systemd_state_status=$?
-  systemd_units=$(systemctl list-units --type=service --all --no-legend --no-pager 2>&1)
-  systemd_units_status=$?
-  if [ "$systemd_state_status" -eq 0 ] && [ "$systemd_units_status" -eq 0 ]; then
-    printf 'systemd_state=%s\n' "$systemd_state"
-    printf '%s\n' "$systemd_units" | awk '
-      $3 == "active" { running++ }
-      $3 == "failed" { failed++ }
-      END {
-        print "systemd_running=" running + 0
-        print "systemd_failed=" failed + 0
-      }'
-    printf '%s\n' "$systemd_units" | awk '$3 == "failed" && count < 5 {
-      print "systemd_failed_unit=" $1
-      count++
-    }'
-  elif printf '%s\n%s' "$systemd_state" "$systemd_units" | grep -Eqi \
-      'permission denied|access denied|not authorized|authorization denied|authentication is required'; then
-    printf 'permission_denied=systemd\n'
-  fi
-fi
-
-if command -v docker >/dev/null 2>&1; then
-  docker_version=$(DOCKER_CLIENT_TIMEOUT=1 docker version --format '{{.Server.Version}}' 2>&1)
-  docker_status=$?
-  if [ "$docker_status" -eq 0 ] && [ -n "$docker_version" ]; then
-    printf 'docker_version=%s\n' "$docker_version"
-    docker ps -q 2>/dev/null | awk 'NF { count++ } END {
-      print "docker_running=" count + 0
-    }'
-    docker ps -aq 2>/dev/null | awk 'NF { count++ } END {
-      print "docker_total=" count + 0
-    }'
-    docker ps --format '{{.Names}}|{{.Status}}' 2>/dev/null | head -n 5 \
-      | sed 's/^/docker_container=/'
-  elif printf '%s' "$docker_version" | grep -Eqi \
-      'permission denied|access denied|not authorized|authorization denied|got permission denied'; then
-    printf 'permission_denied=docker\n'
-  fi
-fi
 """
 
 
@@ -143,16 +100,11 @@ _SINGLE_KEYS = {
     'swap_total_kib', 'swap_free_kib',
     'network_received_bytes', 'network_transmitted_bytes',
     'process_total', 'process_zombies',
-    'systemd_state', 'systemd_running', 'systemd_failed',
-    'docker_version', 'docker_running', 'docker_total',
 }
 _MULTI_KEYS = {
-    'process_cpu', 'process_memory', 'systemd_failed_unit',
-    'docker_container', 'permission_denied',
+    'process_cpu', 'process_memory', 'permission_denied',
 }
-_PERMISSION_SCOPES = ('processes', 'systemd', 'docker')
-_UNIT_NAME = re.compile(r'^[A-Za-z0-9@_.:-]{1,200}$')
-_CONTAINER_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
+_PERMISSION_SCOPES = ('processes',)
 
 
 def _non_negative_int(values, key):
@@ -339,49 +291,6 @@ def parse_linux_stats(text, *, max_bytes=DEFAULT_MAX_BYTES):
             'zombies': process_zombies,
             'top_cpu': top_cpu,
             'top_memory': top_memory,
-        }
-
-    systemd_state = _safe_text(values.get('systemd_state'), maximum=32)
-    systemd_running = _optional_int(values, 'systemd_running', maximum=10_000_000)
-    systemd_failed = _optional_int(values, 'systemd_failed', maximum=10_000_000)
-    failed_units = [
-        unit for unit in repeated['systemd_failed_unit'][:5]
-        if _UNIT_NAME.fullmatch(unit)
-    ]
-    if (
-        systemd_state is not None
-        and re.fullmatch(r'[a-z-]+', systemd_state)
-        and systemd_running is not None
-        and systemd_failed is not None
-        and (systemd_failed == 0 or failed_units)
-    ):
-        result['systemd'] = {
-            'state': systemd_state,
-            'running': systemd_running,
-            'failed': systemd_failed,
-            'failed_units': failed_units,
-        }
-
-    docker_version = _safe_text(values.get('docker_version'), maximum=64)
-    docker_running = _optional_int(values, 'docker_running', maximum=10_000_000)
-    docker_total = _optional_int(values, 'docker_total', maximum=10_000_000)
-    containers = []
-    for row in repeated['docker_container'][:5]:
-        name, separator, status = row.partition('|')
-        status = _safe_text(status, maximum=160)
-        if separator and _CONTAINER_NAME.fullmatch(name) and status is not None:
-            containers.append({'name': name, 'status': status})
-    if (
-        docker_version is not None
-        and docker_running is not None
-        and docker_total is not None
-        and docker_running <= docker_total
-    ):
-        result['docker'] = {
-            'version': docker_version,
-            'running': docker_running,
-            'total': docker_total,
-            'containers': containers,
         }
 
     permissions = []

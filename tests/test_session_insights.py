@@ -32,15 +32,6 @@ process_zombies=2
 process_cpu=812|postgres|postgres|32.5|4.1
 process_cpu=924|deploy|python3|18.0|2.5
 process_memory=177|redis|redis-server|3.5|12.4
-systemd_state=degraded
-systemd_running=41
-systemd_failed=1
-systemd_failed_unit=backup.service
-docker_version=27.5.1
-docker_running=3
-docker_total=5
-docker_container=webssh|Up 3 hours (healthy)
-docker_container=redis|Up 3 hours
 """
 
 
@@ -144,21 +135,6 @@ def test_parse_linux_stats_normalizes_optional_diagnostics():
             },
         ],
     }
-    assert result['systemd'] == {
-        'state': 'degraded',
-        'running': 41,
-        'failed': 1,
-        'failed_units': ['backup.service'],
-    }
-    assert result['docker'] == {
-        'version': '27.5.1',
-        'running': 3,
-        'total': 5,
-        'containers': [
-            {'name': 'webssh', 'status': 'Up 3 hours (healthy)'},
-            {'name': 'redis', 'status': 'Up 3 hours'},
-        ],
-    }
     assert 'permission_denied' not in result
 
 
@@ -169,36 +145,32 @@ def test_parse_linux_stats_omits_malformed_optional_sections_but_keeps_core():
         + 'swap_total_kib=100\nswap_free_kib=200\n'
         + 'process_total=-1\nprocess_zombies=0\n'
         + 'process_cpu=not-a-row\n'
-        + 'systemd_state=running\nsystemd_running=2\nsystemd_failed=1\n'
-        + 'systemd_failed_unit=../../secret\n'
-        + 'docker_version=27\ndocker_running=5\ndocker_total=2\n'
-        + 'docker_container=invalid name|Up\n'
     )
 
     assert result['os_name'] == 'Ubuntu 24.04.2 LTS'
-    for key in ('load', 'swap', 'processes', 'systemd', 'docker'):
+    for key in ('load', 'swap', 'processes'):
         assert key not in result
 
 
 def test_parse_linux_stats_exposes_only_deduplicated_known_permission_scopes():
     result = session_insights.parse_linux_stats(
         VALID_PAYLOAD
-        + 'permission_denied=docker\n'
-        + 'permission_denied=systemd\n'
-        + 'permission_denied=docker\n'
+        + 'permission_denied=processes\n'
+        + 'permission_denied=processes\n'
         + 'permission_denied=unknown\n'
     )
 
-    assert result['permission_denied'] == ['docker', 'systemd']
+    assert result['permission_denied'] == ['processes']
 
 
 def test_remote_diagnostics_use_a_fixed_safe_environment_without_elevation():
     assert session_insights.LINUX_STATS_COMMAND.startswith(
         'LC_ALL=C\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\nexport LC_ALL PATH\n'
     )
-    assert 'DOCKER_CLIENT_TIMEOUT=1 docker version' in (
-        session_insights.LINUX_DIAGNOSTICS_COMMAND
-    )
+    assert 'systemctl ' not in session_insights.LINUX_DIAGNOSTICS_COMMAND
+    assert 'docker ' not in session_insights.LINUX_DIAGNOSTICS_COMMAND
+    assert 'ps -e ' in session_insights.LINUX_DIAGNOSTICS_COMMAND
+    assert '/proc/net/dev' in session_insights.LINUX_DIAGNOSTICS_COMMAND
     for forbidden in ('sudo ', 'su ', 'doas ', 'curl ', 'wget ', ' /proc/*/environ'):
         assert forbidden not in session_insights.LINUX_DIAGNOSTICS_COMMAND
     assert 'comm=' in session_insights.LINUX_DIAGNOSTICS_COMMAND
@@ -312,7 +284,7 @@ def test_collect_linux_stats_uses_expanded_fixed_command_only_when_requested(
     )
 
     assert error is None
-    assert stats['docker']['running'] == 3
+    assert stats['processes']['total'] == 215
     assert observed == {
         'transport': transport,
         'command': session_insights.LINUX_DIAGNOSTICS_COMMAND,
