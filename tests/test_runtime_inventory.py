@@ -46,11 +46,11 @@ def test_parse_runtime_inventory_caps_systemd_and_docker_rows():
     systemd_rows = ''.join(
         'systemd_service=service{0}.service|loaded|active|running|Service {0}\n'
         .format(number)
-        for number in range(1, 202)
+        for number in range(1, 201)
     )
     docker_rows = ''.join(
         'docker_container=container{0}|Up {0} minutes\n'.format(number)
-        for number in range(1, 52)
+        for number in range(1, 51)
     )
 
     result = parse_runtime_inventory(
@@ -58,12 +58,12 @@ def test_parse_runtime_inventory_caps_systemd_and_docker_rows():
         'systemd_total=201\n'
         'systemd_active=201\n'
         'systemd_failed=0\n'
-        'systemd_returned=201\n'
+        'systemd_returned=200\n'
         + systemd_rows
         + 'docker_version=27.5.1\n'
         'docker_total=51\n'
         'docker_running=51\n'
-        'docker_returned=51\n'
+        'docker_returned=50\n'
         + docker_rows
     )
 
@@ -71,6 +71,22 @@ def test_parse_runtime_inventory_caps_systemd_and_docker_rows():
     assert result['systemd']['services'][-1]['unit'] == 'service200.service'
     assert len(result['docker']['containers']) == 50
     assert result['docker']['containers'][-1]['name'] == 'container50'
+
+
+def test_parse_runtime_inventory_omits_sections_with_extra_unreported_rows():
+    assert parse_runtime_inventory(
+        'systemd_state=running\n'
+        'systemd_total=1\n'
+        'systemd_active=1\n'
+        'systemd_failed=0\n'
+        'systemd_returned=0\n'
+        'systemd_service=unexpected.service|loaded|active|running|Unexpected\n'
+        'docker_version=27.5.1\n'
+        'docker_total=1\n'
+        'docker_running=1\n'
+        'docker_returned=0\n'
+        'docker_container=unexpected|Up 1 minute\n'
+    ) == {}
 
 
 def test_parse_runtime_inventory_marks_sections_truncated_when_total_exceeds_rows():
@@ -96,23 +112,25 @@ def test_parse_runtime_inventory_marks_sections_truncated_when_total_exceeds_row
 def test_parse_runtime_inventory_omits_hostile_or_malformed_rows_and_normalizes_returned():
     result = parse_runtime_inventory(
         'systemd_state=running\n'
-        'systemd_total=4\n'
-        'systemd_active=4\n'
+        'systemd_total=6\n'
+        'systemd_active=6\n'
         'systemd_failed=0\n'
-        'systemd_returned=4\n'
+        'systemd_returned=6\n'
         'systemd_service=good.service|loaded|active|running|Good service\n'
         'systemd_service=bad unit|loaded|active|running|Invalid unit\n'
         'systemd_service=control.service|loaded|active|running|Bad\x1f description\n'
         'systemd_service=long.service|loaded|active|running|' + ('x' * 241) + '\n'
         'systemd_service=malformed\n'
+        'systemd_service=edge.service|loaded|active|running|Edge description\t\n'
         'docker_version=27.5.1\n'
-        'docker_total=4\n'
+        'docker_total=5\n'
         'docker_running=1\n'
-        'docker_returned=4\n'
+        'docker_returned=5\n'
         'docker_container=good|Up 3 hours\n'
         'docker_container=bad name|Up 3 hours\n'
         'docker_container=control|Bad\x1f status\n'
         'docker_container=malformed\n'
+        'docker_container=edge|Up 3 hours\t\n'
     )
 
     assert result['systemd']['returned'] == 1
@@ -126,6 +144,32 @@ def test_parse_runtime_inventory_omits_hostile_or_malformed_rows_and_normalizes_
     assert result['docker']['containers'] == [
         {'name': 'good', 'status': 'Up 3 hours'},
     ]
+
+
+def test_parse_runtime_inventory_accepts_docker_status_at_160_not_161_characters():
+    result = parse_runtime_inventory(
+        'docker_version=27.5.1\n'
+        'docker_total=2\n'
+        'docker_running=2\n'
+        'docker_returned=2\n'
+        'docker_container=accepted|' + ('a' * 160) + '\n'
+        'docker_container=rejected|' + ('b' * 161) + '\n'
+    )
+
+    assert result['docker']['containers'] == [
+        {'name': 'accepted', 'status': 'a' * 160},
+    ]
+    assert result['docker']['returned'] == 1
+    assert result['docker']['truncated'] is True
+
+
+def test_runtime_inventory_command_keeps_optional_tool_stderr_separate():
+    command = runtime_inventory.RUNTIME_INVENTORY_COMMAND
+
+    assert 'systemctl show --property=SystemState --value 2>&1' not in command
+    assert 'systemctl list-units --type=service --all --no-legend --no-pager --plain 2>&1' not in command
+    assert "docker version --format '{{.Server.Version}}' 2>&1" not in command
+    assert "docker ps -a --format '{{.Names}}|{{.Status}}' 2>&1" not in command
 
 
 @pytest.mark.parametrize(
@@ -159,8 +203,9 @@ def test_parse_runtime_inventory_rejects_payload_above_default_bound():
 
 class FakeChannel:
     def __init__(self, payload=VALID_INVENTORY.encode(), *, status=0,
-                 recv_error=None, exit_ready=None):
+                 recv_error=None, exit_ready=None, stderr_payload=b''):
         self.payload = bytearray(payload)
+        self.stderr_payload = bytearray(stderr_payload)
         self.status = status
         self.recv_error = recv_error
         self.exit_ready = exit_ready
@@ -176,10 +221,18 @@ class FakeChannel:
         del self.payload[:size]
         return chunk
 
+    def recv_stderr_ready(self):
+        return bool(self.stderr_payload)
+
+    def recv_stderr(self, size):
+        chunk = bytes(self.stderr_payload[:size])
+        del self.stderr_payload[:size]
+        return chunk
+
     def exit_status_ready(self):
         if self.exit_ready is not None:
             return self.exit_ready
-        return not self.payload
+        return not self.payload and not self.stderr_payload
 
     def recv_exit_status(self):
         return self.status
@@ -232,6 +285,28 @@ def test_collect_runtime_inventory_uses_separate_bounded_exec_channel(monkeypatc
     assert error is None
     assert inventory['systemd']['services'][0]['unit'] == 'nginx.service'
     assert opened_commands == [(runtime_inventory.RUNTIME_INVENTORY_COMMAND, 2.0)]
+    assert channel.closed is True
+    assert 'owned-session' not in runtime_inventory._collector_locks
+
+
+def test_collect_runtime_inventory_enforces_one_budget_across_stdout_and_stderr(
+        monkeypatch):
+    install_session(monkeypatch)
+    channel = FakeChannel(
+        payload=b'x' * 64, stderr_payload=b'x' * 65, exit_ready=True,
+    )
+    monkeypatch.setattr(
+        runtime_inventory.ssh_manager,
+        '_open_exec_channel',
+        lambda *_args, **_kwargs: channel,
+    )
+
+    inventory, error = runtime_inventory.collect_runtime_inventory(
+        'owned-session', max_bytes=128,
+    )
+
+    assert inventory is None
+    assert error == 'unavailable'
     assert channel.closed is True
     assert 'owned-session' not in runtime_inventory._collector_locks
 

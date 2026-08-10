@@ -2,7 +2,7 @@ from flask_socketio import emit, join_room, disconnect
 from flask import request, current_app, url_for
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
-               session_insights)
+               session_insights, runtime_inventory)
 from .decorators import socket_login_required
 from .auth import register_socket_session, get_user_from_socket, check_socket_rate_limit
 from .models import db, SSHSession, SocketSession
@@ -1514,6 +1514,68 @@ def handle_request_session_insights(data, current_user=None):
         'session_id': session_id,
         'request_id': request_id,
         'stats': stats,
+    })
+
+
+@socketio.on('request_session_runtime_inventory')
+@socket_login_required
+def handle_request_session_runtime_inventory(data, current_user=None):
+    """Return one bounded runtime inventory for an owned SSH session."""
+    session_id = data.get('session_id') if isinstance(data, dict) else None
+    request_id = data.get('request_id') if isinstance(data, dict) else None
+    valid_identifiers = (
+        isinstance(session_id, str)
+        and 0 < len(session_id) <= 128
+        and isinstance(request_id, str)
+        and 0 < len(request_id) <= 128
+    )
+    safe_session_id = session_id if valid_identifiers else ''
+    safe_request_id = request_id if valid_identifiers else ''
+
+    def emit_unavailable():
+        emit('session_runtime_inventory', {
+            'success': False,
+            'session_id': safe_session_id,
+            'request_id': safe_request_id,
+            'error': 'Runtime inventory unavailable',
+        })
+
+    if not valid_identifiers:
+        emit_unavailable()
+        return
+    if check_socket_rate_limit(
+            current_user.id,
+            'session_runtime_inventory',
+            runtime_inventory.REQUEST_RATE_LIMIT):
+        emit_unavailable()
+        return
+    if not verify_session_ownership(session_id, current_user.id):
+        log_warning(
+            'Unauthorized runtime inventory request',
+            user_id=current_user.id,
+            session_id=session_id,
+        )
+        emit_unavailable()
+        return
+    try:
+        inventory, error = runtime_inventory.collect_runtime_inventory(session_id)
+    except Exception as exc:
+        log_warning(
+            'Runtime inventory collection failed',
+            session_id=session_id,
+            error_type=type(exc).__name__,
+        )
+        emit_unavailable()
+        return
+    if error or inventory is None:
+        emit_unavailable()
+        return
+    emit('session_runtime_inventory', {
+        'success': True,
+        'session_id': session_id,
+        'request_id': request_id,
+        'sampled_at': int(time.time()),
+        **inventory,
     })
 
 

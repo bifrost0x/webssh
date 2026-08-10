@@ -36,74 +36,96 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export LC_ALL PATH
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-  systemd_state=$(systemctl show --property=SystemState --value 2>&1)
-  systemd_state_status=$?
-  systemd_units=$(systemctl list-units --type=service --all --no-legend --no-pager --plain 2>&1)
-  systemd_units_status=$?
-  if [ "$systemd_state_status" -eq 0 ] && [ "$systemd_units_status" -eq 0 ]; then
-    printf 'systemd_state=%s\n' "$systemd_state"
-    printf '%s\n' "$systemd_units" | awk '
-      NF {
-        total++
-        if ($3 == "active") active++
-        if ($3 == "failed") failed++
-        if (NF >= 4 && returned < 200) {
-          unit[returned] = $1
-          load[returned] = $2
-          active_state[returned] = $3
-          sub_state[returned] = $4
-          description = $0
-          sub(/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]*/, "", description)
-          details[returned] = description
-          returned++
+  inventory_stderr_dir=$(mktemp -d 2>/dev/null)
+  if [ -n "$inventory_stderr_dir" ]; then
+    systemd_state=$(systemctl show --property=SystemState --value \
+      2>"$inventory_stderr_dir/systemd_state")
+    systemd_state_status=$?
+    systemd_state_stderr=$(cat "$inventory_stderr_dir/systemd_state" 2>/dev/null)
+    systemd_units=$(systemctl list-units --type=service --all --no-legend --no-pager --plain \
+      2>"$inventory_stderr_dir/systemd_units")
+    systemd_units_status=$?
+    systemd_units_stderr=$(cat "$inventory_stderr_dir/systemd_units" 2>/dev/null)
+    if [ "$systemd_state_status" -eq 0 ] && [ "$systemd_units_status" -eq 0 ]; then
+      printf 'systemd_state=%s\n' "$systemd_state"
+      printf '%s\n' "$systemd_units" | awk '
+        NF {
+          total++
+          if ($3 == "active") active++
+          if ($3 == "failed") failed++
+          if (NF >= 4 && returned < 200) {
+            unit[returned] = $1
+            load[returned] = $2
+            active_state[returned] = $3
+            sub_state[returned] = $4
+            description = $0
+            sub(/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]*/, "", description)
+            details[returned] = description
+            returned++
+          }
         }
-      }
-      END {
-        print "systemd_total=" total + 0
-        print "systemd_active=" active + 0
-        print "systemd_failed=" failed + 0
-        print "systemd_returned=" returned + 0
-        for (index = 0; index < returned; index++) {
-          printf "systemd_service=%s|%s|%s|%s|%s\n", unit[index], load[index], active_state[index], sub_state[index], details[index]
-        }
-      }'
-  elif printf '%s\n%s' "$systemd_state" "$systemd_units" | grep -Eqi \
-      'permission denied|access denied|not authorized|authorization denied|authentication is required'; then
-    printf 'permission_denied=systemd\n'
+        END {
+          print "systemd_total=" total + 0
+          print "systemd_active=" active + 0
+          print "systemd_failed=" failed + 0
+          print "systemd_returned=" returned + 0
+          for (index = 0; index < returned; index++) {
+            printf "systemd_service=%s|%s|%s|%s|%s\n", unit[index], load[index], active_state[index], sub_state[index], details[index]
+          }
+        }' 2>/dev/null
+    elif printf '%s\n%s' "$systemd_state_stderr" "$systemd_units_stderr" | grep -Eqi \
+        'permission denied|access denied|not authorized|authorization denied|authentication is required'; then
+      printf 'permission_denied=systemd\n'
+    fi
+    rm -rf "$inventory_stderr_dir" 2>/dev/null
   fi
 fi
 
 if command -v docker >/dev/null 2>&1; then
-  docker_version=$(DOCKER_CLIENT_TIMEOUT=1 docker version --format '{{.Server.Version}}' 2>&1)
-  docker_version_status=$?
-  docker_running=$(DOCKER_CLIENT_TIMEOUT=1 docker ps -q 2>&1)
-  docker_running_status=$?
-  docker_total=$(DOCKER_CLIENT_TIMEOUT=1 docker ps -aq 2>&1)
-  docker_total_status=$?
-  docker_containers=$(DOCKER_CLIENT_TIMEOUT=1 docker ps -a --format '{{.Names}}|{{.Status}}' 2>&1)
-  docker_containers_status=$?
-  if [ "$docker_version_status" -eq 0 ] \
-      && [ "$docker_running_status" -eq 0 ] \
-      && [ "$docker_total_status" -eq 0 ] \
-      && [ "$docker_containers_status" -eq 0 ] \
-      && [ -n "$docker_version" ]; then
-    printf 'docker_version=%s\n' "$docker_version"
-    printf '%s\n' "$docker_total" | awk 'NF { count++ } END { print "docker_total=" count + 0 }'
-    printf '%s\n' "$docker_running" | awk 'NF { count++ } END { print "docker_running=" count + 0 }'
-    printf '%s\n' "$docker_containers" | awk 'NF && count < 50 { print "docker_container=" $0; count++ } END { print "docker_returned=" count + 0 }'
-  elif printf '%s\n%s\n%s\n%s' "$docker_version" "$docker_running" "$docker_total" "$docker_containers" | grep -Eqi \
-      'permission denied|access denied|not authorized|authorization denied|authentication is required|got permission denied'; then
-    printf 'permission_denied=docker\n'
+  inventory_stderr_dir=$(mktemp -d 2>/dev/null)
+  if [ -n "$inventory_stderr_dir" ]; then
+    docker_version=$(DOCKER_CLIENT_TIMEOUT=1 docker version --format '{{.Server.Version}}' \
+      2>"$inventory_stderr_dir/docker_version")
+    docker_version_status=$?
+    docker_version_stderr=$(cat "$inventory_stderr_dir/docker_version" 2>/dev/null)
+    docker_running=$(DOCKER_CLIENT_TIMEOUT=1 docker ps -q \
+      2>"$inventory_stderr_dir/docker_running")
+    docker_running_status=$?
+    docker_running_stderr=$(cat "$inventory_stderr_dir/docker_running" 2>/dev/null)
+    docker_total=$(DOCKER_CLIENT_TIMEOUT=1 docker ps -aq \
+      2>"$inventory_stderr_dir/docker_total")
+    docker_total_status=$?
+    docker_total_stderr=$(cat "$inventory_stderr_dir/docker_total" 2>/dev/null)
+    docker_containers=$(DOCKER_CLIENT_TIMEOUT=1 docker ps -a --format '{{.Names}}|{{.Status}}' \
+      2>"$inventory_stderr_dir/docker_containers")
+    docker_containers_status=$?
+    docker_containers_stderr=$(cat "$inventory_stderr_dir/docker_containers" 2>/dev/null)
+    if [ "$docker_version_status" -eq 0 ] \
+        && [ "$docker_running_status" -eq 0 ] \
+        && [ "$docker_total_status" -eq 0 ] \
+        && [ "$docker_containers_status" -eq 0 ] \
+        && [ -n "$docker_version" ]; then
+      printf 'docker_version=%s\n' "$docker_version"
+      printf '%s\n' "$docker_total" | awk 'NF { count++ } END { print "docker_total=" count + 0 }' 2>/dev/null
+      printf '%s\n' "$docker_running" | awk 'NF { count++ } END { print "docker_running=" count + 0 }' 2>/dev/null
+      printf '%s\n' "$docker_containers" | awk 'NF && count < 50 { print "docker_container=" $0; count++ } END { print "docker_returned=" count + 0 }' 2>/dev/null
+    elif printf '%s\n%s\n%s\n%s' "$docker_version_stderr" "$docker_running_stderr" "$docker_total_stderr" "$docker_containers_stderr" | grep -Eqi \
+        'permission denied|access denied|not authorized|authorization denied|authentication is required|got permission denied'; then
+      printf 'permission_denied=docker\n'
+    fi
+    rm -rf "$inventory_stderr_dir" 2>/dev/null
   fi
 fi
 """
 
 
 def _safe_text(value, *, maximum):
+    if not isinstance(value, str):
+        return None
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        return None
     normalized = value.strip()
     if not normalized or len(normalized) > maximum:
-        return None
-    if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
         return None
     return normalized
 
@@ -129,12 +151,13 @@ def _parse_systemd(values, rows):
         or failed > total
         or active + failed > total
         or reported_returned > total
-        or len(rows) < min(reported_returned, MAX_SYSTEMD_SERVICES)
+        or reported_returned > MAX_SYSTEMD_SERVICES
+        or len(rows) != reported_returned
     ):
         return None
 
     services = []
-    for row in rows[:MAX_SYSTEMD_SERVICES]:
+    for row in rows:
         parts = row.split('|', 4)
         if len(parts) != 5:
             continue
@@ -179,14 +202,15 @@ def _parse_docker(values, rows):
         or None in (total, running, reported_returned)
         or running > total
         or reported_returned > total
-        or len(rows) < min(reported_returned, MAX_DOCKER_CONTAINERS)
+        or reported_returned > MAX_DOCKER_CONTAINERS
+        or len(rows) != reported_returned
     ):
         return None
 
     containers = []
-    for row in rows[:MAX_DOCKER_CONTAINERS]:
+    for row in rows:
         name, separator, status = row.partition('|')
-        status = _safe_text(status, maximum=240)
+        status = _safe_text(status, maximum=160)
         if not separator or not _CONTAINER_NAME.fullmatch(name) or status is None:
             continue
         containers.append({'name': name, 'status': status})
@@ -223,11 +247,11 @@ def parse_runtime_inventory(text, *, max_bytes=DEFAULT_MAX_BYTES):
         if not separator:
             continue
         if key in single_keys:
-            values[key] = value.strip()
+            values[key] = value
         elif key == 'systemd_service':
-            service_rows.append(value.strip())
+            service_rows.append(value)
         elif key == 'docker_container':
-            container_rows.append(value.strip())
+            container_rows.append(value)
         elif key == 'permission_denied':
             scope = value.strip()
             if scope in _PERMISSION_SCOPES and scope not in permissions:
@@ -276,6 +300,28 @@ def _release_session_lock(session_id, collector_lock):
                 _collector_locks.pop(session_id, None)
 
 
+def _drain_ready_output(channel, output, stderr_output, max_bytes):
+    """Drain both Paramiko streams fairly under one combined size limit."""
+    received = False
+    for ready, receive, destination in (
+        (channel.recv_ready, channel.recv, output),
+        (channel.recv_stderr_ready, channel.recv_stderr, stderr_output),
+    ):
+        if not ready():
+            continue
+        remaining = max_bytes + 1 - len(output) - len(stderr_output)
+        if remaining <= 0:
+            return received, True
+        chunk = receive(min(4096, remaining))
+        if not chunk:
+            continue
+        destination.extend(chunk)
+        received = True
+        if len(output) + len(stderr_output) > max_bytes:
+            return received, True
+    return received, False
+
+
 def collect_runtime_inventory(session_id, *, timeout=DEFAULT_TIMEOUT,
                               max_bytes=DEFAULT_MAX_BYTES):
     """Collect a bounded runtime inventory without touching the interactive PTY."""
@@ -303,15 +349,15 @@ def collect_runtime_inventory(session_id, *, timeout=DEFAULT_TIMEOUT,
         )
         deadline = time.monotonic() + timeout
         output = bytearray()
+        stderr_output = bytearray()
 
         while True:
-            if channel.recv_ready():
-                chunk = channel.recv(min(4096, max_bytes + 1 - len(output)))
-                if not chunk:
-                    break
-                output.extend(chunk)
-                if len(output) > max_bytes:
-                    return None, 'unavailable'
+            received, too_large = _drain_ready_output(
+                channel, output, stderr_output, max_bytes,
+            )
+            if too_large:
+                return None, 'unavailable'
+            if received:
                 continue
             if channel.exit_status_ready():
                 break
@@ -319,15 +365,18 @@ def collect_runtime_inventory(session_id, *, timeout=DEFAULT_TIMEOUT,
                 return None, 'unavailable'
             time.sleep(0.02)
 
-        while channel.recv_ready():
-            chunk = channel.recv(min(4096, max_bytes + 1 - len(output)))
-            if not chunk:
-                break
-            output.extend(chunk)
-            if len(output) > max_bytes:
+        while True:
+            received, too_large = _drain_ready_output(
+                channel, output, stderr_output, max_bytes,
+            )
+            if too_large:
                 return None, 'unavailable'
+            if not received:
+                break
 
         if channel.recv_exit_status() != 0:
+            return None, 'unavailable'
+        if stderr_output:
             return None, 'unavailable'
         return parse_runtime_inventory(
             output.decode('utf-8', errors='strict'), max_bytes=max_bytes,
