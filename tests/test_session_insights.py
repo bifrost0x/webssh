@@ -192,6 +192,19 @@ def test_parse_linux_stats_exposes_only_deduplicated_known_permission_scopes():
     assert result['permission_denied'] == ['docker', 'systemd']
 
 
+def test_remote_diagnostics_use_a_fixed_safe_environment_without_elevation():
+    assert session_insights.LINUX_STATS_COMMAND.startswith(
+        'LC_ALL=C\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\nexport LC_ALL PATH\n'
+    )
+    assert 'DOCKER_CLIENT_TIMEOUT=1 docker version' in (
+        session_insights.LINUX_DIAGNOSTICS_COMMAND
+    )
+    for forbidden in ('sudo ', 'su ', 'doas ', 'curl ', 'wget ', ' /proc/*/environ'):
+        assert forbidden not in session_insights.LINUX_DIAGNOSTICS_COMMAND
+    assert 'comm=' in session_insights.LINUX_DIAGNOSTICS_COMMAND
+    assert 'args=' not in session_insights.LINUX_DIAGNOSTICS_COMMAND
+
+
 class FakeChannel:
     def __init__(self, payload=VALID_PAYLOAD.encode(), *, status=0,
                  recv_error=None):

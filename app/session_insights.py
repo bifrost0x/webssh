@@ -18,6 +18,8 @@ _collector_locks_guard = Lock()
 
 
 LINUX_STATS_COMMAND = r"""LC_ALL=C
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+export LC_ALL PATH
 awk 'NR == 1 { $1=""; sub(/^ /, ""); print "cpu=" $0; exit }' /proc/stat
 awk '
   /^MemTotal:/ { print "mem_total_kib=" $2 }
@@ -113,7 +115,7 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
 fi
 
 if command -v docker >/dev/null 2>&1; then
-  docker_version=$(docker version --format '{{.Server.Version}}' 2>&1)
+  docker_version=$(DOCKER_CLIENT_TIMEOUT=1 docker version --format '{{.Server.Version}}' 2>&1)
   docker_status=$?
   if [ "$docker_status" -eq 0 ] && [ -n "$docker_version" ]; then
     printf 'docker_version=%s\n' "$docker_version"
