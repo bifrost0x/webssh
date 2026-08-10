@@ -261,6 +261,7 @@ test('mobile workspace does not poll hidden Linux telemetry', async ({ page }) =
 test('diagnostics overlay requests and renders optional details only while open', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
+    await expect(page.locator('header')).toHaveCount(1);
     await expect(page.locator('#sessionInsightsState')).toHaveText('Live');
     await page.waitForTimeout(500);
 
