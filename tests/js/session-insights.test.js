@@ -285,11 +285,12 @@ test('marks one failed update stale and three consecutive failures unavailable',
 });
 
 
-test('keeps at most fifteen CPU samples per session', () => {
-    const runtime = fakeRuntime();
+test('keeps the newest 150 structured samples per session', () => {
+    let now = 0;
+    const runtime = fakeRuntime({ nowFn: () => now });
     runtime.controller.setSession('session-a', true);
 
-    for (let index = 0; index < 18; index += 1) {
+    for (let index = 0; index < 151; index += 1) {
         const request = runtime.emitted.at(-1).payload;
         runtime.handlers.get('session_insights')({
             success: true,
@@ -303,8 +304,129 @@ test('keeps at most fifteen CPU samples per session', () => {
                 os_name: 'Linux',
             },
         });
+        now += 1;
         [...runtime.intervals.values()][0].callback();
     }
 
-    assert.equal(runtime.renders.at(-1).cpuHistory.length, 15);
+    const state = runtime.renders.at(-1);
+    assert.equal(state.metricHistory.length, 150);
+    assert.equal(state.cpuHistory.length, 150);
+    assert.equal(state.metricHistory[0].sampledAt, 1);
+    assert.equal(state.metricHistory.at(-1).sampledAt, 150);
+});
+
+test('stores immutable, normalized metric samples including null gaps', () => {
+    let now = 1000;
+    const runtime = fakeRuntime({ nowFn: () => now });
+    runtime.controller.setSession('session-a', true);
+
+    function respond(stats) {
+        const request = runtime.emitted.at(-1).payload;
+        runtime.handlers.get('session_insights')({
+            success: true,
+            session_id: 'session-a',
+            request_id: request.request_id,
+            stats,
+        });
+    }
+
+    respond({
+        cpu: [100, 0, 50, 850],
+        network: { received_bytes: 0, transmitted_bytes: 0 },
+    });
+    now = 5000;
+    [...runtime.intervals.values()][0].callback();
+    respond({
+        cpu: [110, 0, 60, 880],
+        memory: { used_kib: 600, total_kib: 1000 },
+        swap: { used_kib: 25, total_kib: 100 },
+        disk: { percent: 61 },
+        load: { one: 1.25, cpu_count: 8 },
+        network: { received_bytes: 8192, transmitted_bytes: 4096 },
+        processes: { total: 215, zombies: 1 },
+    });
+
+    assert.deepEqual(runtime.renders.at(-1).metricHistory.at(-1), {
+        sampledAt: 5000,
+        cpuPercent: 40,
+        memoryPercent: 60,
+        swapPercent: 25,
+        diskPercent: 61,
+        loadOne: 1.25,
+        normalizedLoadPercent: 16,
+        receivedBps: 2048,
+        transmittedBps: 1024,
+        processTotal: 215,
+        processZombies: 1,
+    });
+
+    now = 9000;
+    [...runtime.intervals.values()][0].callback();
+    respond({
+        cpu: [120, 0, 70, 910],
+        memory: { used_kib: 'bad', total_kib: 0 },
+        swap: { used_kib: -1, total_kib: 100 },
+        disk: { percent: 'bad' },
+        load: { one: 'bad', cpu_count: 0 },
+        network: { received_bytes: 1, transmitted_bytes: 1 },
+        processes: { total: 'bad', zombies: -1 },
+    });
+
+    assert.deepEqual(runtime.renders.at(-1).metricHistory.at(-1), {
+        sampledAt: 9000,
+        cpuPercent: 40,
+        memoryPercent: null,
+        swapPercent: null,
+        diskPercent: null,
+        loadOne: null,
+        normalizedLoadPercent: null,
+        receivedBps: null,
+        transmittedBps: null,
+        processTotal: null,
+        processZombies: null,
+    });
+});
+
+test('restores isolated session history and removes only the closed session state', () => {
+    let now = 1000;
+    const runtime = fakeRuntime({ nowFn: () => now });
+
+    function respond(sessionId, stats) {
+        const request = runtime.emitted.at(-1).payload;
+        runtime.handlers.get('session_insights')({
+            success: true,
+            session_id: sessionId,
+            request_id: request.request_id,
+            stats,
+        });
+    }
+
+    runtime.controller.setSession('session-a', true);
+    respond('session-a', {
+        cpu: [100, 0, 50, 850],
+        network: { received_bytes: 0, transmitted_bytes: 0 },
+    });
+    now = 5000;
+    [...runtime.intervals.values()][0].callback();
+    respond('session-a', {
+        cpu: [110, 0, 60, 880],
+        network: { received_bytes: 8192, transmitted_bytes: 4096 },
+    });
+    const aHistory = runtime.renders.at(-1).metricHistory;
+
+    runtime.controller.setSession('session-b', true);
+    respond('session-b', { cpu: [10, 0, 5, 85] });
+    assert.equal(runtime.renders.at(-1).metricHistory.length, 1);
+
+    runtime.controller.setSession('session-a', true);
+    assert.deepEqual(runtime.renders.at(-1).metricHistory, aHistory);
+    runtime.controller.setDiagnosticsVisible(false);
+    runtime.controller.setDiagnosticsVisible(true);
+    assert.deepEqual(runtime.renders.at(-1).metricHistory, aHistory);
+
+    runtime.controller.removeSession('session-a');
+    runtime.controller.setSession('session-a', true);
+    assert.equal(runtime.renders.at(-1).metricHistory.length, 0);
+    runtime.controller.setSession('session-b', true);
+    assert.equal(runtime.renders.at(-1).metricHistory.length, 1);
 });
