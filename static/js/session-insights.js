@@ -76,20 +76,23 @@
     }
 
     function percent(used, total) {
-        const numerator = Number(used);
-        const denominator = Number(total);
-        if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return null;
-        return Math.max(0, Math.min(100, Math.round((numerator / denominator) * 100)));
+        const numerator = nonNegativeNumber(used);
+        const denominator = nonNegativeNumber(total);
+        if (numerator === null || denominator === null || denominator <= 0) return null;
+        return Math.min(100, Math.round((numerator / denominator) * 100));
     }
 
     function nonNegativeNumber(value) {
+        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+            return null;
+        }
         const number = Number(value);
         return Number.isFinite(number) && number >= 0 ? number : null;
     }
 
     function boundedPercent(value) {
-        const number = Number(value);
-        return Number.isFinite(number) && number >= 0 && number <= 100
+        const number = nonNegativeNumber(value);
+        return number !== null && number <= 100
             ? Math.round(number)
             : null;
     }
@@ -277,7 +280,7 @@
                 lastGood = sessionId ? lastGoodBySession.get(sessionId) || null : null;
                 render(currentState(
                     connected ? 'loading' : 'disconnected',
-                    lastGood ? { ...lastGood } : {},
+                    lastGood ? { ...lastGood } : { metricHistory: [] },
                 ));
                 startPolling();
             },

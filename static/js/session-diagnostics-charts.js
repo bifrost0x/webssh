@@ -1,15 +1,18 @@
 (function (root, factory) {
-    const api = factory();
+    const api = factory(root);
     if (typeof module === 'object' && module.exports) {
         module.exports = api;
     }
     if (root && root.document) {
         root.SessionDiagnosticsCharts = api;
     }
-}(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+}(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
     'use strict';
 
     function finite(value) {
+        if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+            return null;
+        }
         const number = Number(value);
         return Number.isFinite(number) ? number : null;
     }
