@@ -310,3 +310,23 @@ test('diagnostics overlay requests and renders optional details only while open'
     expect(await page.evaluate(() => window.__workspaceExpandedRequests)).toBe(expandedAfterClose);
     await assertNoExternalRequests(page);
 });
+
+test('open diagnostics keep polling across the mobile breakpoint', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await expect(page.locator('#sessionDiagnosticsToggle')).toBeEnabled();
+    await page.locator('#sessionDiagnosticsToggle').click();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests || 0), {
+        timeout: 6000,
+    }).toBeGreaterThan(0);
+
+    const beforeResize = await page.evaluate(() => window.__workspaceExpandedRequests);
+    await page.setViewportSize({ width: 800, height: 900 });
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests), {
+        timeout: 6000,
+    }).toBeGreaterThan(beforeResize);
+    await expect(page.locator('#sessionDiagnosticsState')).toHaveText('Live');
+    await assertNoExternalRequests(page);
+});

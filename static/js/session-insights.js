@@ -249,7 +249,10 @@
                 const normalized = Boolean(nextVisible);
                 if (diagnosticsVisible === normalized) return;
                 diagnosticsVisible = normalized;
-                if (diagnosticsVisible) requestSample();
+                if (diagnosticsVisible) {
+                    previousNetworkBySession.delete(sessionId);
+                    requestSample();
+                }
             },
 
             destroy() {

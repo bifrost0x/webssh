@@ -197,10 +197,12 @@
         function syncInsightsVisibility() {
             coordinator.setVisible(
                 documentRef.visibilityState !== 'hidden'
-                && desktopQuery.matches
                 && (
-                    !elements.notepadPanel?.classList.contains('collapsed')
-                    || diagnosticsController?.isOpen()
+                    diagnosticsController?.isOpen()
+                    || (
+                        desktopQuery.matches
+                        && !elements.notepadPanel?.classList.contains('collapsed')
+                    )
                 )
             );
         }

@@ -189,6 +189,42 @@ test('derives network throughput and discards counter resets', () => {
 });
 
 
+test('starts a fresh network baseline whenever diagnostics is reopened', () => {
+    let now = 1000;
+    const runtime = fakeRuntime({ nowFn: () => now });
+    runtime.controller.setSession('session-a', true);
+    runtime.controller.setDiagnosticsVisible(true);
+
+    function respond(stats) {
+        const request = runtime.emitted.at(-1).payload;
+        runtime.handlers.get('session_insights')({
+            success: true,
+            session_id: 'session-a',
+            request_id: request.request_id,
+            stats: {
+                cpu: [100, 0, 50, 850],
+                memory: { total_kib: 1000, available_kib: 400, used_kib: 600 },
+                disk: { total_kib: 2000, available_kib: 1500, used_kib: 500, percent: 25 },
+                uptime_seconds: 3600,
+                os_name: 'Linux',
+                ...stats,
+            },
+        });
+    }
+
+    respond({});
+    respond({ network: { received_bytes: 10000, transmitted_bytes: 5000 } });
+    assert.equal(runtime.renders.at(-1).networkRates, null);
+
+    runtime.controller.setDiagnosticsVisible(false);
+    now = 61000;
+    runtime.controller.setDiagnosticsVisible(true);
+    respond({ network: { received_bytes: 70000, transmitted_bytes: 35000 } });
+
+    assert.equal(runtime.renders.at(-1).networkRates, null);
+});
+
+
 test('never overlaps a pending request and ignores late responses', () => {
     const runtime = fakeRuntime();
     runtime.controller.setSession('session-a', true);
