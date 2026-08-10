@@ -49,26 +49,75 @@ async function seedLinuxSession(page) {
                         [260, 0, 180, 1060],
                         [400, 0, 260, 1120],
                     ];
+                    const stats = {
+                        cpu: cpuSamples[Math.min(insightSample - 1, cpuSamples.length - 1)],
+                        memory: {
+                            total_kib: 16 * 1024 * 1024,
+                            available_kib: 6 * 1024 * 1024,
+                            used_kib: 10 * 1024 * 1024,
+                        },
+                        disk: {
+                            total_kib: 100 * 1024 * 1024,
+                            available_kib: 39 * 1024 * 1024,
+                            used_kib: 61 * 1024 * 1024,
+                            percent: 61,
+                        },
+                        uptime_seconds: 93784,
+                        os_name: 'Ubuntu 24.04.2 LTS',
+                    };
+                    if (payload.include_diagnostics === true) {
+                        window.__workspaceExpandedRequests = (
+                            window.__workspaceExpandedRequests || 0
+                        ) + 1;
+                        Object.assign(stats, {
+                            load: { one: 1.25, five: 0.75, fifteen: 0.5, cpu_count: 8 },
+                            swap: {
+                                total_kib: 2 * 1024 * 1024,
+                                available_kib: 1536 * 1024,
+                                used_kib: 512 * 1024,
+                            },
+                            network: {
+                                received_bytes: 1000000 + insightSample * 8192,
+                                transmitted_bytes: 500000 + insightSample * 4096,
+                            },
+                            processes: {
+                                total: 215,
+                                zombies: 1,
+                                top_cpu: [
+                                    { pid: 812, user: 'postgres', command: 'postgres', cpu_percent: 32.5, memory_percent: 4.1 },
+                                    { pid: 924, user: 'deploy', command: 'python3', cpu_percent: 18, memory_percent: 2.5 },
+                                ],
+                                top_memory: [
+                                    { pid: 177, user: 'redis', command: 'redis-server', cpu_percent: 3.5, memory_percent: 12.4 },
+                                ],
+                            },
+                            systemd: {
+                                state: 'degraded',
+                                running: 41,
+                                failed: 1,
+                                failed_units: ['backup.service'],
+                            },
+                        });
+                        const diagnosticsMode = window.__workspaceDiagnosticsMode || 'full';
+                        if (diagnosticsMode === 'full') {
+                            stats.docker = {
+                                version: '27.5.1',
+                                running: 2,
+                                total: 3,
+                                containers: [
+                                    { name: 'webssh', status: 'Up 3 hours (healthy)' },
+                                    { name: 'redis', status: 'Up 3 hours' },
+                                ],
+                            };
+                        } else if (diagnosticsMode === 'permission') {
+                            stats.permission_denied = ['docker'];
+                        }
+                    }
                     deliver('session_insights', {
                         success: true,
                         session_id: payload.session_id,
                         request_id: payload.request_id,
-                        stats: {
-                            cpu: cpuSamples[Math.min(insightSample - 1, cpuSamples.length - 1)],
-                            memory: {
-                                total_kib: 16 * 1024 * 1024,
-                                available_kib: 6 * 1024 * 1024,
-                                used_kib: 10 * 1024 * 1024,
-                            },
-                            disk: {
-                                total_kib: 100 * 1024 * 1024,
-                                available_kib: 39 * 1024 * 1024,
-                                used_kib: 61 * 1024 * 1024,
-                                percent: 61,
-                            },
-                            uptime_seconds: 93784,
-                            os_name: 'Ubuntu 24.04.2 LTS',
-                        },
+                        stats,
                     });
                     return window.socket;
                 }
@@ -206,5 +255,57 @@ test('mobile workspace does not poll hidden Linux telemetry', async ({ page }) =
 
     expect(await page.evaluate(() => window.__workspaceInsightSample || 0)).toBe(0);
     await expect(page.locator('#sessionInsightsCard')).toBeHidden();
+    await assertNoExternalRequests(page);
+});
+
+test('diagnostics overlay requests and renders optional details only while open', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await expect(page.locator('#sessionInsightsState')).toHaveText('Live');
+    await page.waitForTimeout(500);
+
+    expect(await page.evaluate(() => window.__workspaceExpandedRequests || 0)).toBe(0);
+    const toggle = page.locator('#sessionDiagnosticsToggle');
+    await expect(toggle).toBeEnabled();
+    await toggle.click();
+
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsProcessesSection')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsCpuProcesses')).toContainText('postgres');
+    await expect(page.locator('#sessionDiagnosticsMemoryProcesses')).toContainText('redis-server');
+    await expect(page.locator('#sessionDiagnosticsSystemdSection')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsSystemdCounts')).toHaveText('41 active - 1 failed');
+    await expect(page.locator('#sessionDiagnosticsSystemdFailures')).toContainText('backup.service');
+    await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsDockerContainers')).toContainText('webssh');
+    await expect(page.locator('#sessionDiagnosticsNetworkMetric')).toBeVisible({ timeout: 6000 });
+    await expect(page.locator('#sessionDiagnosticsNetworkValue')).toContainText('KB/s');
+
+    const beforePermission = await page.evaluate(() => window.__workspaceExpandedRequests);
+    await page.evaluate(() => { window.__workspaceDiagnosticsMode = 'permission'; });
+    await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests), {
+        timeout: 6000,
+    }).toBeGreaterThan(beforePermission);
+    await expect(page.locator('#sessionDiagnosticsPermissions')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsPermissionList')).toContainText(
+        'cannot access the Docker daemon',
+    );
+    await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeHidden();
+
+    const beforeGenericOmission = await page.evaluate(() => window.__workspaceExpandedRequests);
+    await page.evaluate(() => { window.__workspaceDiagnosticsMode = 'generic'; });
+    await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests), {
+        timeout: 6000,
+    }).toBeGreaterThan(beforeGenericOmission);
+    await expect(page.locator('#sessionDiagnosticsPermissions')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeHidden();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeHidden();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const expandedAfterClose = await page.evaluate(() => window.__workspaceExpandedRequests);
+    await page.waitForTimeout(4500);
+    expect(await page.evaluate(() => window.__workspaceExpandedRequests)).toBe(expandedAfterClose);
     await assertNoExternalRequests(page);
 });

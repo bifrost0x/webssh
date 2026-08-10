@@ -62,10 +62,11 @@
         const terminalManager = options.terminalManager;
         const documentRef = options.document || document;
         const insightsModule = root.SessionInsightsModule;
+        const diagnosticsModule = root.SessionDiagnosticsModule;
         const filesModule = root.SessionFilesPanelModule;
         const workspaceModule = root.SessionWorkspaceModule;
         const fileManager = root.getSFTPFileManager?.();
-        if (!socket || !sessionManager || !insightsModule || !filesModule || !workspaceModule || !fileManager) {
+        if (!socket || !sessionManager || !insightsModule || !diagnosticsModule || !filesModule || !workspaceModule || !fileManager) {
             return null;
         }
 
@@ -93,6 +94,8 @@
 
         let filesController = null;
         let coordinator = null;
+        let insightsController = null;
+        let diagnosticsController = null;
 
         function setResource(element, bar, value) {
             const severity = insightsModule.severityForPercent(value);
@@ -112,6 +115,7 @@
             };
             elements.insightsState.textContent = labels[state.status] || 'Offline';
             elements.insightsState.className = `session-insights-state ${state.status || ''}`;
+            diagnosticsController?.render(state, active);
             if (!state.stats) {
                 if (state.status === 'disconnected' || state.status === 'unavailable') {
                     elements.cpuValue.textContent = '--';
@@ -150,7 +154,14 @@
             manager: fileManager,
             container: elements.filesMount,
         });
-        const insightsController = insightsModule.createController({ socket, render: renderInsights });
+        diagnosticsController = diagnosticsModule.createController({
+            document: documentRef,
+            onOpenChange(open) {
+                insightsController?.setDiagnosticsVisible(open);
+                syncInsightsVisibility();
+            },
+        });
+        insightsController = insightsModule.createController({ socket, render: renderInsights });
         const desktopQuery = root.matchMedia('(min-width: 851px)');
         const wideDesktopQuery = root.matchMedia('(min-width: 1440px)');
         coordinator = workspaceModule.createCoordinator({
@@ -187,7 +198,10 @@
             coordinator.setVisible(
                 documentRef.visibilityState !== 'hidden'
                 && desktopQuery.matches
-                && !elements.notepadPanel?.classList.contains('collapsed')
+                && (
+                    !elements.notepadPanel?.classList.contains('collapsed')
+                    || diagnosticsController?.isOpen()
+                )
             );
         }
         root.addEventListener('session-workspace-change', sync);
