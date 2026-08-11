@@ -40,7 +40,7 @@
         }
         const res = await fetch(APP_ROOT + path, opts);
         let data = null;
-        try { data = await res.json(); } catch (e) { /* ignore */ }
+        try { data = await res.json(); } catch { /* ignore */ }
         if (!res.ok) {
             const msg = (data && data.error) ? data.error : ('Request failed (' + res.status + ')');
             throw new Error(msg);

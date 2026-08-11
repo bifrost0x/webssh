@@ -66,6 +66,7 @@ node_modules/
 # AI assistant files
 CLAUDE.md
 .claude/
+.superpowers/
 plans/
 
 # Knowledge graph

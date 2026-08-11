@@ -260,7 +260,7 @@ class BinaryTransferClient {
         } catch (error) {
             try {
                 await writable?.abort?.();
-            } catch (_abortError) {
+            } catch {
                 // pipeTo() may already have aborted the destination.
             }
             if (transfer.terminalized) {
@@ -299,7 +299,7 @@ class BinaryTransferClient {
                 { transfer_id: transfer.transferId },
                 () => this.releaseSlot(transfer),
             );
-        } catch (_error) {
+        } catch {
             this.releaseSlot(transfer);
         }
     }
@@ -421,8 +421,8 @@ class BinaryTransferClient {
         for (const callback of this.eventListeners.get(event) || []) {
             try {
                 callback(data);
-            } catch (error) {
-                console.error(`Transfer listener failed: ${error.message}`);
+            } catch {
+                console.error('Transfer listener failed');
             }
         }
     }

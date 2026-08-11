@@ -129,13 +129,13 @@ const TerminalManager = {
         const key = terminalKey || sessionId;
         const terminal = this.terminals[key];
         if (!terminal) {
-            console.error('Terminal not found:', sessionId);
+            console.error('Terminal not found');
             return false;
         }
 
         const container = document.getElementById(containerId);
         if (!container) {
-            console.error('Container not found:', containerId);
+            console.error('Terminal container not found');
             return false;
         }
 
@@ -173,16 +173,16 @@ const TerminalManager = {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         this.appendTranscript(sessionId, data);
         if (terminalKeys.length === 0) {
-            console.error('Terminal not found for writeOutput:', sessionId);
+            console.error('Terminal not found for output');
             return;
         }
 
         terminalKeys.forEach(key => {
-            this.writeOutputToTerminal(key, data, sessionId);
+            this.writeOutputToTerminal(key, data);
         });
     },
 
-    writeOutputToTerminal(terminalKey, data, sessionId) {
+    writeOutputToTerminal(terminalKey, data) {
         const terminal = this.terminals[terminalKey];
         if (!terminal) {
             return;
@@ -200,7 +200,6 @@ const TerminalManager = {
                 this.pendingOutput[terminalKey] = [];
             }
             this.pendingOutput[terminalKey].push(data);
-            console.log(`Buffering output for ${sessionId} (terminal not ready yet)`);
         }
     },
 
@@ -306,8 +305,8 @@ const TerminalManager = {
             if (fitAddon) {
                 try {
                     fitAddon.fit();
-                } catch (e) {
-                    console.error('Error fitting terminal:', e);
+                } catch {
+                    console.error('Error fitting terminal');
                 }
             }
         });

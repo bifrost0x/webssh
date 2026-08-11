@@ -137,7 +137,7 @@ def handle_connect():
 
     user_id = flask_session.get('_user_id')
     if not user_id:
-        log_warning(f"Unauthenticated connection attempt", sid=request.sid)
+        log_warning("Unauthenticated connection attempt", sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
         disconnect()
         return False
@@ -151,7 +151,7 @@ def handle_connect():
     from .models import User
     user = db.session.get(User, int(user_id))
     if not user or user.is_locked:
-        log_warning(f"User not found during connect", user_id=user_id, sid=request.sid)
+        log_warning("User not found during connect", user_id=user_id, sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
         disconnect()
         return False
@@ -287,7 +287,7 @@ def restore_user_sessions(user_id):
                 'tmux_session_name': db_session.tmux_session_name,
                 'display_name': db_session.display_name
             }, room=room)
-            log_info(f"Persistent tmux session available for reconnect",
+            log_info("Persistent tmux session available for reconnect",
                      host=db_session.host, tmux_session=db_session.tmux_session_name)
 
 @socketio.on('ssh_connect')
@@ -498,7 +498,7 @@ def handle_ssh_connect(data, current_user=None):
                     ).first()
                     if old_session:
                         db.session.delete(old_session)
-                        log_info(f"Cleaned up old persistent session",
+                        log_info("Cleaned up old persistent session",
                                 user=current_user.username, host=host,
                                 tmux_session=reconnect_tmux_name)
 
@@ -518,7 +518,7 @@ def handle_ssh_connect(data, current_user=None):
                 db.session.commit()
             except Exception as db_err:
                 db.session.rollback()
-                log_error(f"Failed to record SSH session in database",
+                log_error("Failed to record SSH session in database",
                           error=str(db_err), session_id=session_id)
 
             emit('ssh_connected', {
@@ -544,7 +544,7 @@ def handle_ssh_connect(data, current_user=None):
             client_request_id=client_request_id,
         ))
     except Exception as e:
-        log_error(f"SSH connection failed", error=str(e), user=current_user.username)
+        log_error("SSH connection failed", error=str(e), user=current_user.username)
         emit('ssh_error', {'error': 'Connection failed'})
     finally:
         password = None
@@ -575,7 +575,7 @@ def handle_ssh_input(data, current_user=None):
             emit('ssh_error', {'error': error, 'session_id': session_id})
 
     except Exception as e:
-        log_error(f"SSH input error", error=str(e))
+        log_error("SSH input error", error=str(e))
         emit('ssh_error', {'error': 'Input error'})
 
 @socketio.on('keep_alive')
@@ -642,7 +642,7 @@ def handle_ssh_disconnect(data, current_user=None):
                 db.session.commit()
             except Exception as db_err:
                 db.session.rollback()
-                log_error(f"Failed to update SSH session in database",
+                log_error("Failed to update SSH session in database",
                           error=str(db_err), session_id=session_id)
 
         success = ssh_manager.close_session(session_id, kill_tmux=True)
@@ -967,7 +967,7 @@ def handle_list_directory(data, current_user=None):
 
         _t1 = _time.time()
         if not authorized:
-            log_warning(f"list_directory unauthorized", session_id=session_id, user=current_user.username)
+            log_warning("list_directory unauthorized", session_id=session_id, user=current_user.username)
             emit('error', {'error': 'Unauthorized access to session', **request_context})
             return
 
@@ -975,11 +975,11 @@ def handle_list_directory(data, current_user=None):
         _t2 = _time.time()
 
         if error:
-            log_warning(f"list_directory failed", path=remote_path, error=error,
+            log_warning("list_directory failed", path=remote_path, error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('error', {'error': f'Failed to list directory: {error}', **request_context})
         else:
-            log_info(f"list_directory OK", path=remote_path, files=len(files),
+            log_info("list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('directory_listing', {
                 'session_id': session_id,
@@ -989,7 +989,7 @@ def handle_list_directory(data, current_user=None):
             })
 
     except Exception as e:
-        log_error(f"list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
+        log_error("list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {
             'error': 'Failed to list directory',
             'operation': 'list_directory',
@@ -1904,11 +1904,11 @@ def handle_get_home_directory(data, current_user=None):
         _t2 = _time.time()
 
         if error:
-            log_warning(f"get_home_directory failed", error=error,
+            log_warning("get_home_directory failed", error=error,
                        auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('error', {'error': f'Failed to get home directory: {error}', **request_context})
         else:
-            log_info(f"get_home_directory OK", path=home_path,
+            log_info("get_home_directory OK", path=home_path,
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('home_directory', {
                 'session_id': session_id,
@@ -1917,7 +1917,7 @@ def handle_get_home_directory(data, current_user=None):
             })
 
     except Exception as e:
-        log_error(f"get_home_directory exception", error=str(e),
+        log_error("get_home_directory exception", error=str(e),
                  elapsed_ms=int((_time.time()-_t0)*1000))
         emit('error', {
             'error': 'Failed to get home directory',

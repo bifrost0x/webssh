@@ -562,7 +562,7 @@ class SFTPFileManager {
             this.refreshBothPanes();
         });
 
-        this.socket.on('file_renamed', (data) => {
+        this.socket.on('file_renamed', () => {
             this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
             this.refreshBothPanes();
         });
@@ -572,7 +572,7 @@ class SFTPFileManager {
             this.refreshBothPanes();
         });
 
-        this.socket.on('s2s_transfer_started', (data) => {
+        this.socket.on('s2s_transfer_started', () => {
             this.showNotification(this.t('fm.transferStarted', 'Server-to-server transfer started'), 'info');
         });
 
@@ -608,8 +608,6 @@ class SFTPFileManager {
         this.socket.on('error', (data) => {
             if (!this.handlesSocketError(data)) return;
             const errorMsg = data.error || data.message || 'Unknown error';
-            console.error('[FM] SFTP Error received:', errorMsg, data);
-
             ['left', 'right'].forEach(pane => {
                 const state = this.panes[pane];
                 if (state.loading && state.type === 'ssh' &&
@@ -732,8 +730,6 @@ class SFTPFileManager {
         const currentSession = typeof SessionManager !== 'undefined' ? SessionManager.getActiveSession() : null;
 
         const isMobileNow = this.isMobile();
-        console.log('[FM] Opening file manager, isMobile:', isMobileNow, 'innerWidth:', window.innerWidth);
-
         if (isMobileNow) {
             this.modal.classList.add('fm-mobile-mode');
             document.getElementById('fmLeftPane').style.display = 'none';
@@ -1228,7 +1224,7 @@ class SFTPFileManager {
                 state.loading = false;
                 this.updatePathInput(pane, state.path);
                 this.renderPane(pane);
-            } catch (e) {
+            } catch {
                 this.showNotification(`${this.t('fm.cannotNavigate', 'Cannot navigate to')} ${path}`, 'error');
                 state.loading = false;
                 this.renderPane(pane);
@@ -1278,7 +1274,7 @@ class SFTPFileManager {
             try {
                 await this.browserFS.navigateInto(dirName);
                 await this.refreshBrowserPane(pane);
-            } catch (e) {
+            } catch {
                 this.showNotification(`${this.t('fm.cannotOpen', 'Cannot open')} ${dirName}`, 'error');
             }
         } else if (state.type === 'ssh') {
@@ -1325,7 +1321,7 @@ class SFTPFileManager {
             state.loading = false;
             this.updatePathInput(pane, state.path);
             this.renderPane(pane);
-        } catch (e) {
+        } catch {
             this.showNotification(this.t('fm.errorReadingDir', 'Error reading directory'), 'error');
             state.loading = false;
             this.renderPane(pane);
@@ -1504,8 +1500,6 @@ class SFTPFileManager {
 
     handleItemDblClick(pane, index) {
         const state = this.panes[pane];
-        console.log('[SFTP] handleItemDblClick called:', { pane, index, type: state.type, sessionId: state.sessionId, connectionId: state.connectionId });
-
         if (index === -1) {
             this.navigatePaneUp(pane);
             return;
@@ -1513,11 +1507,8 @@ class SFTPFileManager {
 
         const file = state.files[index];
         if (!file) {
-            console.log('[SFTP] No file at index:', index);
             return;
         }
-
-        console.log('[SFTP] File info:', { name: file.name, is_dir: file.is_dir });
 
         if (file.is_dir) {
             this.navigateIntoDir(pane, file.name);
@@ -1525,7 +1516,6 @@ class SFTPFileManager {
             if (state.type === 'ssh') {
                 const sessionId = state.sessionId || state.connectionId;
                 const filePath = this.joinPath(state.path, file.name);
-                console.log('[SFTP] Opening preview:', { sessionId, filePath, hasFilePreview: !!window.FilePreview });
                 if (window.FilePreview) {
                     window.FilePreview.open(sessionId, filePath, file.name);
                 } else {
@@ -1533,8 +1523,6 @@ class SFTPFileManager {
                 }
             } else if (state.type === 'browser-local') {
                 this.showNotification('Local file preview not yet supported', 'info');
-            } else {
-                console.log('[SFTP] Unknown state type for preview:', state.type);
             }
         }
     }
@@ -1665,13 +1653,6 @@ class SFTPFileManager {
         if (!files || files.length === 0) return;
 
         const state = this.panes[this.activePane];
-        console.log('[FM] Mobile upload - activePane:', this.activePane, 'state:', {
-            type: state.type,
-            sessionId: state.sessionId,
-            connectionId: state.connectionId,
-            path: state.path
-        });
-
         if (!state.type) {
             this.showNotification(this.t('fm.selectConnectionFirst', 'Please select a connection first'), 'warning');
             return;
@@ -1684,7 +1665,6 @@ class SFTPFileManager {
                 return;
             }
 
-            console.log('[FM] Starting upload of', files.length, 'files to', state.path, 'via session', sessionId);
             this.showNotification(`${this.t('fm.uploading', 'Uploading')} ${files.length} ${this.t('fm.files', 'file(s)')}...`, 'info');
             const batch = this.startUploadBatch(files.length, sessionId);
 
@@ -1921,8 +1901,8 @@ class SFTPFileManager {
                         sessionId: sessionId,
                         batchId: batchId
                     });
-                } catch (e) {
-                    console.error('Failed to upload:', entry.name, e);
+                } catch {
+                    console.error('Failed to upload file');
                 }
             }
         }
@@ -1955,7 +1935,7 @@ class SFTPFileManager {
             if (await transfer.done) {
                 await this.refreshBrowserPane(targetPane);
             }
-        } catch (_error) {
+        } catch {
             // BinaryTransferClient reports the bounded transfer error to the queue.
         }
     }
@@ -2206,8 +2186,8 @@ class SFTPFileManager {
             this.uploadRefreshes.delete(key);
             if (this.getPaneForSession(sessionId) !== pane) return;
             return this.refreshPane(pane);
-        }).catch(error => {
-            console.error('[FM] Failed to refresh upload destination:', error);
+        }).catch(() => {
+            console.error('[FM] Failed to refresh upload destination');
         });
         this.uploadRefreshes.set(key, scheduled);
     }
@@ -2924,8 +2904,6 @@ class SFTPFileManager {
     showNotification(message, type = 'info') {
         if (window.showNotification) {
             window.showNotification(message, type);
-        } else {
-            console.log(`[${type}] ${message}`);
         }
     }
 }

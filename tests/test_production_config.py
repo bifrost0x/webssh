@@ -259,10 +259,54 @@ def test_oidc_rejects_cleartext_issuer():
     result = _load_config(_production_env(
         OIDC_ENABLED='true',
         OIDC_ISSUER='http://issuer.example',
+        OIDC_REDIRECT_URI='https://ssh.example.com/oidc/callback',
     ))
 
     assert result.returncode != 0
     assert 'OIDC_ISSUER' in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    'redirect_uri',
+    (
+        '',
+        'http://ssh.example.com/oidc/callback',
+        'https://user@ssh.example.com/oidc/callback',
+        'https://ssh.example.com/oidc/callback?next=/admin',
+        'https://ssh.example.com/not-the-callback',
+    ),
+)
+def test_oidc_rejects_unsafe_or_mismatched_redirect_uri(redirect_uri):
+    result = _load_config(_production_env(
+        OIDC_ENABLED='true',
+        OIDC_ISSUER='https://issuer.example',
+        OIDC_REDIRECT_URI=redirect_uri,
+    ))
+
+    assert result.returncode != 0
+    assert 'OIDC_REDIRECT_URI' in result.stdout + result.stderr
+
+
+def test_oidc_accepts_explicit_production_callback():
+    result = _load_config(_production_env(
+        OIDC_ENABLED='true',
+        OIDC_ISSUER='https://issuer.example',
+        OIDC_REDIRECT_URI='https://ssh.example.com/oidc/callback',
+    ))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_oidc_callback_must_include_application_root():
+    result = _load_config(_production_env(
+        APPLICATION_ROOT='/webssh',
+        OIDC_ENABLED='true',
+        OIDC_ISSUER='https://issuer.example',
+        OIDC_REDIRECT_URI='https://ssh.example.com/oidc/callback',
+    ))
+
+    assert result.returncode != 0
+    assert 'OIDC_REDIRECT_URI' in result.stdout + result.stderr
 
 
 def test_homelab_profile_reports_unsafe_compatibility_warnings():

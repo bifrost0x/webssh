@@ -806,7 +806,7 @@ def test_folder_download_streams_remote_zip_and_cleans_it(
     assert response.data == payload
     assert max(sftp.remote.read_sizes) <= app.config['CHUNK_SIZE']
     assert len(sftp.removed) == 1
-    assert sftp.removed[0].startswith('/tmp/reports_')
+    assert sftp.removed[0].startswith('/tmp/webssh_')
     assert manager._records == {}
 
 
@@ -1004,6 +1004,8 @@ def test_remote_zip_command_uses_private_permissions():
     assert result[1] == 10
     assert commands[0].startswith('umask 077 && ')
     assert 'chmod 600 ' in commands[0]
+    assert '/tmp/webssh_' in result[0]
+    assert 'reports_' not in result[0]
     assert client.transport.open_timeout == transfer_routes.config.SSH_CONNECT_TIMEOUT
 
 

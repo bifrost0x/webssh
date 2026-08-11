@@ -18,10 +18,10 @@ const checkOnly = process.argv.includes('--check');
 
 // [ source (relative to node_modules), destination (relative to static/vendor) ]
 const files = [
-  ['xterm/css/xterm.css', 'xterm/xterm.css'],
-  ['xterm/lib/xterm.js', 'xterm/xterm.js'],
-  ['xterm-addon-fit/lib/xterm-addon-fit.js', 'xterm/xterm-addon-fit.js'],
-  ['xterm-addon-search/lib/xterm-addon-search.js', 'xterm/xterm-addon-search.js'],
+  ['@xterm/xterm/css/xterm.css', 'xterm/xterm.css'],
+  ['@xterm/xterm/lib/xterm.js', 'xterm/xterm.js'],
+  ['@xterm/addon-fit/lib/addon-fit.js', 'xterm/xterm-addon-fit.js'],
+  ['@xterm/addon-search/lib/addon-search.js', 'xterm/xterm-addon-search.js'],
   ['@highlightjs/cdn-assets/highlight.min.js', 'highlight/highlight.min.js'],
   ['@highlightjs/cdn-assets/styles/github-dark.min.css', 'highlight/github-dark.min.css'],
   ['socket.io-client/dist/socket.io.min.js', 'socketio/socket.io.min.js'],

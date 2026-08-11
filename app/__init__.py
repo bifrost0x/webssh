@@ -6,7 +6,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import os
 from .models import db
-from .auth import (login_manager, init_auth, authenticate_user, register_user,
+from .auth import (init_auth, authenticate_user, register_user,
                    check_rate_limit, is_bootstrap_registration_available,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
@@ -14,7 +14,6 @@ from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_e
 from .user_settings import get_user_settings
 from .app_settings import is_registration_enabled, set_registration_enabled
 from .storage_errors import StorageCorruptionError
-from . import sftp_handler
 from .tailscale_ssh import user_can_use_tailscale_ssh
 from .runtime_lifecycle import RuntimeLifecycle
 
@@ -279,7 +278,8 @@ def create_app(
             session['_auth_epoch'] = current_epoch()
         return response
 
-    from . import socket_events, command_manager, connection_pool
+    from . import socket_events as _socket_events  # noqa: F401
+    from . import connection_pool
 
     def setup_background_tasks():
         """Setup background tasks like session cleanup."""
@@ -295,14 +295,14 @@ def create_app(
                         if deleted > 0:
                             log_info(f"Cleaned up {deleted} inactive sessions")
                 except Exception as e:
-                    log_error(f"Session cleanup error", error=str(e))
+                    log_error("Session cleanup error", error=str(e))
 
         def ssh_cleanup_task(cancel_event):
             while not cancel_event.wait(60):
                 try:
                     cleanup_idle_sessions()
                 except Exception as e:
-                    log_error(f"SSH cleanup error", error=str(e))
+                    log_error("SSH cleanup error", error=str(e))
 
         try:
             lifecycle.start_job(

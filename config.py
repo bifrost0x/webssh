@@ -64,6 +64,7 @@ OIDC_CLIENT_SECRET_FILE = os.environ.get(
     'OIDC_CLIENT_SECRET_FILE',
     '',
 ).strip()
+OIDC_REDIRECT_URI = os.environ.get('OIDC_REDIRECT_URI', '').strip()
 OIDC_ALLOWED_SUBJECTS = {
     value.strip()
     for value in os.environ.get('OIDC_ALLOWED_SUBJECTS', '').split(',')
@@ -534,6 +535,35 @@ def validate_security_config():
         ):
             raise RuntimeError(
                 'SECURITY ERROR: OIDC_ISSUER must be an exact HTTPS issuer URL'
+            )
+        parsed_oidc_redirect = urlsplit(OIDC_REDIRECT_URI)
+        redirect_host = (parsed_oidc_redirect.hostname or '').lower()
+        redirect_is_local_http = (
+            parsed_oidc_redirect.scheme == 'http'
+            and redirect_host in {'localhost', '127.0.0.1', '::1'}
+            and DEPLOYMENT_PROFILE == 'homelab'
+        )
+        application_root = os.environ.get(
+            'APPLICATION_ROOT', ''
+        ).rstrip('/')
+        expected_callback_path = f'{application_root}/oidc/callback'
+        redirect_is_valid = (
+            bool(redirect_host)
+            and parsed_oidc_redirect.username is None
+            and parsed_oidc_redirect.password is None
+            and parsed_oidc_redirect.path == expected_callback_path
+            and not parsed_oidc_redirect.query
+            and not parsed_oidc_redirect.fragment
+            and (
+                parsed_oidc_redirect.scheme == 'https'
+                or redirect_is_local_http
+            )
+        )
+        if not redirect_is_valid:
+            raise RuntimeError(
+                'SECURITY ERROR: OIDC_REDIRECT_URI must be the exact HTTPS '
+                'callback URL for /oidc/callback (HTTP is allowed only for '
+                'loopback hosts in homelab)'
             )
 
     if DEPLOYMENT_PROFILE == 'production':

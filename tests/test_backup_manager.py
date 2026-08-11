@@ -70,6 +70,7 @@ def test_backup_help_does_not_require_oidc_secret(tmp_path):
             'OIDC_ISSUER': 'https://issuer.example',
             'OIDC_CLIENT_ID': 'maintenance-client',
             'OIDC_CLIENT_SECRET_FILE': str(missing_oidc_secret),
+            'OIDC_REDIRECT_URI': 'https://ssh.example/oidc/callback',
         },
     )
 
@@ -90,6 +91,7 @@ def test_server_option_value_named_backup_still_initializes_oidc(tmp_path):
         'OIDC_ISSUER': 'https://issuer.example',
         'OIDC_CLIENT_ID': 'server-client',
         'OIDC_CLIENT_SECRET_FILE': str(missing_oidc_secret),
+        'OIDC_REDIRECT_URI': 'https://ssh.example/oidc/callback',
     })
 
     result = subprocess.run(
@@ -127,6 +129,7 @@ def test_flask_env_file_value_named_backup_still_initializes_oidc(tmp_path):
         'OIDC_ISSUER': 'https://issuer.example',
         'OIDC_CLIENT_ID': 'server-client',
         'OIDC_CLIENT_SECRET_FILE': str(missing_oidc_secret),
+        'OIDC_REDIRECT_URI': 'https://ssh.example/oidc/callback',
     })
     environment['PYTHONPATH'] = os.pathsep.join(filter(None, (
         str(PROJECT_ROOT),

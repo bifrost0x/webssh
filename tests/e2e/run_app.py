@@ -254,6 +254,11 @@ def main():
             'OIDC_ISSUER': 'https://issuer.example',
             'OIDC_CLIENT_ID': 'webssh-e2e',
             'OIDC_CLIENT_SECRET_FILE': str(oidc_secret),
+            'OIDC_REDIRECT_URI': (
+                'http://127.0.0.1:'
+                + os.environ.get('WEBSSH_E2E_PORT', '4173')
+                + '/oidc/callback'
+            ),
             'TAILSCALE_SSH_ENABLED': 'true',
             'TAILSCALE_SSH_ALLOWED_TARGETS': 'tail-node',
             'TAILSCALE_SSH_ALLOWED_REMOTE_USERS': 'root',

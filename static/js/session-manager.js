@@ -1,3 +1,4 @@
+/* exported SessionManager */
 const SessionManager = {
     sessions: {},
     activeSessionId: null,
@@ -31,10 +32,7 @@ const SessionManager = {
     restoreSession(data) {
         const sessionId = data.session_id;
 
-        console.log(`[RESTORE] Restoring SSH session: ${sessionId}`, data);
-
         if (this.sessions[sessionId]) {
-            console.log(`[RESTORE] Session ${sessionId} already exists, skipping restore`);
             return;
         }
 
@@ -49,7 +47,6 @@ const SessionManager = {
         };
 
         const restoredId = this.createSession(sessionData);
-        console.log(`[RESTORE] Session UI created for ${sessionId}`);
 
         const emptyIndex = this.getFirstEmptyPaneIndex();
         const targetPane = emptyIndex !== -1 ? emptyIndex : this.activePaneIndex;
@@ -62,7 +59,6 @@ const SessionManager = {
             }, 200);
         }
 
-        console.log(`[RESTORE] Session ${sessionId} fully restored - waiting for output`);
     },
 
     showPersistentSessionTab(data) {
@@ -110,17 +106,16 @@ const SessionManager = {
                 const hostKey = `${host}:${port}:${username}`;
                 stored[hostKey] = display_name;
                 localStorage.setItem('sessionDisplayNames', JSON.stringify(stored));
-            } catch (e) {}
+            } catch {}
         }
 
-        this.createSessionTab(session_id, host, username);
+        this.createSessionTab(session_id);
         this.updateSessionStatus(session_id, 'disconnected');
 
         const emptyIndex = this.getFirstEmptyPaneIndex();
         const targetPane = emptyIndex !== -1 ? emptyIndex : this.activePaneIndex;
         this.assignSessionToPane(session_id, targetPane);
 
-        console.log(`[PERSISTENT] Showing persistent tmux session tab: ${host}:${port} (${session_id})`);
     },
 
     createSession(sessionData) {
@@ -156,7 +151,6 @@ const SessionManager = {
         const fallbackKey = `${host}:${port}:${username}`;
         const fallbackName = this.pendingDisplayNames ? this.pendingDisplayNames[fallbackKey] : null;
         const storedName = display_name || this.pendingDisplayName || fallbackName || this.getStoredDisplayName(session_id, host, port, username);
-        console.log(`[CREATE] createSession: display_name="${display_name}", pendingDisplayName="${this.pendingDisplayName}", fallbackName="${fallbackName}", storedName="${storedName}"`);
         this.pendingDisplayName = null;
         if (this.pendingDisplayNames) {
             delete this.pendingDisplayNames[fallbackKey];
@@ -177,7 +171,7 @@ const SessionManager = {
             authType: sessionData.auth_type || 'password'
         };
 
-        this.createSessionTab(session_id, host, username);
+        this.createSessionTab(session_id);
         this.updateSessionStatus(session_id, 'connected');
 
         this.hideReconnectOverlay(session_id);
@@ -185,7 +179,7 @@ const SessionManager = {
         return session_id;
     },
 
-    createSessionTab(sessionId, host, username) {
+    createSessionTab(sessionId) {
         const tab = document.createElement('div');
         tab.className = 'session-tab';
         tab.id = `tab-${sessionId}`;
@@ -271,7 +265,7 @@ const SessionManager = {
 
     switchSession(sessionId) {
         if (!this.sessions[sessionId]) {
-            console.error('Session not found:', sessionId);
+            console.error('Session not found');
             return;
         }
 
@@ -660,8 +654,8 @@ const SessionManager = {
                 }
             }
             localStorage.setItem('sessionDisplayNames', JSON.stringify(stored));
-        } catch (e) {
-            console.error('Failed to save session display name:', e);
+        } catch {
+            console.error('Failed to save session display name');
         }
         // Save to server DB
         if (window.socket) {
@@ -683,7 +677,7 @@ const SessionManager = {
                 if (stored[hostKey]) return stored[hostKey];
             }
             return null;
-        } catch (e) {
+        } catch {
             return null;
         }
     },
@@ -1129,7 +1123,6 @@ const SessionManager = {
         const tmuxSessionName = session.tmuxSessionName;
         const displayName = session.displayName;
 
-        console.log(`[RECONNECT] directReconnect: displayName="${displayName}", host=${host}, tmux=${tmuxSessionName}`);
 
         // Store display name BEFORE removing UI so it survives the reconnect
         this.pendingDisplayName = displayName;

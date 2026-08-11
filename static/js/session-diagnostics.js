@@ -499,7 +499,7 @@
                     } else {
                         windowRef?.showNotification?.('Failed to copy command', 'error');
                     }
-                } catch (_error) {
+                } catch {
                     elements.clipboardFeedback.textContent = 'Copy failed';
                     windowRef?.showNotification?.('Failed to copy command', 'error');
                 }

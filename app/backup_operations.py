@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-import os
 import secrets
 import shutil
 import stat

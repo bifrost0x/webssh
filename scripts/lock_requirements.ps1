@@ -26,8 +26,18 @@ function New-LockFile {
     if (Test-Path -LiteralPath $committedLock) {
         Copy-Item -LiteralPath $committedLock -Destination $temporaryLock
     }
-    $upgradeArguments = if ($Upgrade) { @("--upgrade") } else { @() }
-    & uv pip compile $InputFile --universal --python-version 3.11 --generate-hashes --no-header --output-file $temporaryLock @upgradeArguments | Out-Null
+    $compileArguments = @(
+        "pip", "compile", $InputFile,
+        "--universal",
+        "--python-version", "3.11",
+        "--generate-hashes",
+        "--no-header",
+        "--output-file", $temporaryLock
+    )
+    if ($Upgrade) {
+        $compileArguments += "--upgrade"
+    }
+    & uv @compileArguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not compile $InputFile."
     }

@@ -113,6 +113,7 @@ services:
       # - OIDC_ISSUER=https://idp.example.com
       # - OIDC_CLIENT_ID=webssh
       # - OIDC_CLIENT_SECRET_FILE=/run/secrets/webssh_oidc_client_secret
+      # - OIDC_REDIRECT_URI=https://ssh.example.com/oidc/callback
       # - OIDC_ALLOWED_SUBJECTS=
       # - OIDC_ALLOWED_DOMAINS=example.com
       # - OIDC_LOGIN_RATE_LIMIT=10 per minute

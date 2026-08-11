@@ -148,7 +148,7 @@ def save_profiles(user_id, profiles):
         atomic_write_json(profiles_file, document)
         return True
     except Exception as e:
-        log_error(f"Error saving profiles", user_id=user_id, error=str(e))
+        log_error("Error saving profiles", user_id=user_id, error=str(e))
         return False
 
 def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
@@ -413,7 +413,7 @@ def delete_profile(user_id, profile_id):
     except StorageCorruptionError:
         raise
     except Exception as e:
-        log_error(f"Error deleting profile", user_id=user_id, error=str(e))
+        log_error("Error deleting profile", user_id=user_id, error=str(e))
         return False, 'Failed to delete profile'
 
 

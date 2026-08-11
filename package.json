@@ -6,6 +6,7 @@
   "scripts": {
     "vendor": "node scripts/vendor.js",
     "vendor:check": "node scripts/vendor.js --check",
+    "lint:js": "eslint static/js",
     "test:js": "node --test tests/js/*.test.js",
     "test:e2e": "playwright test --forbid-only"
   },
@@ -13,11 +14,12 @@
     "@highlightjs/cdn-assets": "11.11.1",
     "material-icons": "1.13.14",
     "socket.io-client": "4.8.3",
-    "xterm": "5.3.0",
-    "xterm-addon-fit": "0.8.0",
-    "xterm-addon-search": "0.13.0"
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-search": "0.16.0",
+    "@xterm/xterm": "6.0.0"
   },
   "devDependencies": {
+    "eslint": "10.8.1",
     "playwright": "^1.62.1"
   }
 }

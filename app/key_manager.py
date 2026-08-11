@@ -2,10 +2,10 @@ import uuid
 import os
 import paramiko
 import stat
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-import config
-from .audit_logger import log_info, log_warning, log_error, log_debug
+from cryptography.fernet import InvalidToken
+from .audit_logger import log_info, log_warning, log_error
 from . import key_encryption
 from .ssh_key_loader import identify_private_key, UnsupportedPrivateKeyError
 from .storage_errors import StorageCorruptionError
@@ -287,7 +287,7 @@ def save_keys(user_id, keys):
         atomic_write_json(keys_file, document)
         return True
     except OSError as e:
-        log_error(f"Error saving keys", user_id=user_id, error=str(e))
+        log_error("Error saving keys", user_id=user_id, error=str(e))
         return False
 
 
@@ -355,7 +355,9 @@ def save_key(user_id, name, key_content):
             'filename': filename,
             'key_type': key_type,
             'encrypted': True,
-            'uploaded_at': datetime.utcnow().isoformat()
+            'uploaded_at': datetime.now(timezone.utc).replace(
+                tzinfo=None
+            ).isoformat()
         }
         with storage_lock(f'keys:{user_id}'):
             keys = _load_keys_with_lock_held(user_id)
@@ -382,7 +384,7 @@ def save_key(user_id, name, key_content):
                 return None, "Failed to save key metadata"
 
             if metadata_saved:
-                log_info(f"SSH key saved (encrypted)", user_id=user_id, key_name=name)
+                log_info("SSH key saved (encrypted)", user_id=user_id, key_name=name)
                 return key_meta, None
             _remove_key_after_metadata_failure(user_id, key_id, key_path)
             return None, "Failed to save key metadata"
@@ -492,7 +494,7 @@ def load_key_summaries(user_id):
         except (
             OSError,
             UnicodeDecodeError,
-            key_encryption.InvalidToken,
+            InvalidToken,
             paramiko.PasswordRequiredException,
             paramiko.SSHException,
             UnsupportedPrivateKeyError,
@@ -561,7 +563,7 @@ def delete_key(user_id, key_id):
     except StorageCorruptionError:
         raise
     except Exception as e:
-        log_error(f"Error deleting key", user_id=user_id, error=str(e))
+        log_error("Error deleting key", user_id=user_id, error=str(e))
         return False
 
 def detect_key_type(key_content):

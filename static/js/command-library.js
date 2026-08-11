@@ -16,15 +16,15 @@ const CommandLibrary = {
                 this.setCommands(data.commands);
             });
 
-            window.socket.on('command_added', (data) => {
+            window.socket.on('command_added', () => {
                 window.showNotification('Command added successfully', 'success');
             });
 
-            window.socket.on('command_updated', (data) => {
+            window.socket.on('command_updated', () => {
                 window.showNotification('Command updated successfully', 'success');
             });
 
-            window.socket.on('command_deleted', (data) => {
+            window.socket.on('command_deleted', () => {
                 window.showNotification('Command deleted successfully', 'success');
             });
 

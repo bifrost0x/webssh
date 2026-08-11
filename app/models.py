@@ -2,7 +2,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, timezone
 import bcrypt
-from pathlib import Path
 
 db = SQLAlchemy()
 

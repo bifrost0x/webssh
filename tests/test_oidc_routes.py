@@ -330,7 +330,8 @@ def test_oidc_login_rate_limit_can_be_disabled(app, client, monkeypatch):
 
     class FakeClient:
         @staticmethod
-        def authorize_redirect(*_args, **_kwargs):
+        def authorize_redirect(callback, **_kwargs):
+            assert callback == "https://localhost/oidc/callback"
             return "redirected", 200
 
     monkeypatch.setattr(config, "OIDC_ENABLED", True)
@@ -382,8 +383,9 @@ def test_linked_oidc_callback_is_single_use_and_normalizes_issuer(
         browser_session["oidc_binding"] = "browser-oidc-binding"
 
     class FakeProvider:
-        def authorize_access_token(self, *, code_verifier):
+        def authorize_access_token(self, *, code_verifier, redirect_uri):
             assert code_verifier == "callback-pkce-verifier"
+            assert redirect_uri == "https://localhost/oidc/callback"
             return {
                 "userinfo": {
                     "iss": "https://issuer.example/",

@@ -69,10 +69,11 @@ def init_oidc(app):
         config.OIDC_ISSUER
         and config.OIDC_CLIENT_ID
         and config.OIDC_CLIENT_SECRET_FILE
+        and config.OIDC_REDIRECT_URI
     ):
         raise RuntimeError(
-            "OIDC_ENABLED requires OIDC_ISSUER, OIDC_CLIENT_ID, and "
-            "OIDC_CLIENT_SECRET_FILE"
+            "OIDC_ENABLED requires OIDC_ISSUER, OIDC_CLIENT_ID, "
+            "OIDC_CLIENT_SECRET_FILE, and OIDC_REDIRECT_URI"
         )
     secret_path = Path(config.OIDC_CLIENT_SECRET_FILE)
     secret = secret_path.read_text(encoding="utf-8").strip()
@@ -112,13 +113,12 @@ def oidc_login():
         session_binding=_binding(),
         code_verifier=verifier,
     )
-    callback = url_for("oidc.oidc_callback", _external=True)
     challenge = base64.urlsafe_b64encode(
         hashlib.sha256(verifier.encode("ascii")).digest()
     ).decode("ascii").rstrip("=")
     try:
         return _client().authorize_redirect(
-            callback,
+            config.OIDC_REDIRECT_URI,
             state=state,
             nonce=nonce,
             code_challenge=challenge,
@@ -150,7 +150,10 @@ def oidc_callback():
             session_binding=_binding(),
         )
         client = _client()
-        token = client.authorize_access_token(code_verifier=verifier)
+        token = client.authorize_access_token(
+            code_verifier=verifier,
+            redirect_uri=config.OIDC_REDIRECT_URI,
+        )
         claims = token.get("userinfo")
         if claims is None:
             claims = client.parse_id_token(token, nonce=nonce)
