@@ -29,9 +29,11 @@ def test_app_exposes_a_complete_connection_profile_reset_helper():
 
 def test_new_connection_and_history_target_selection_clear_command_set_state():
     source = _source('static/js/app.js')
+    assert 'pendingPaneQueue' not in source
+    assert 'queuePaneConnection' not in source
 
     modal = source[source.index('function openConnectionModalForPane'):source.index(
-        'function queuePaneConnection'
+        'function getDefaultPaneIndex'
     )]
     history_click = source[source.index("option.addEventListener('click'"):source.index(
         'container.appendChild(option)', source.index("option.addEventListener('click'")

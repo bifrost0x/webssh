@@ -26,7 +26,7 @@
         function isPending() {
             try {
                 return memoryPending || storage.getItem(storageKey) === '1';
-            } catch (_error) {
+            } catch {
                 return memoryPending;
             }
         }
@@ -35,7 +35,7 @@
             memoryPending = true;
             try {
                 storage.setItem(storageKey, '1');
-            } catch (_error) {
+            } catch {
                 // Continue polling in memory when browser storage is blocked.
             }
         }
@@ -44,7 +44,7 @@
             memoryPending = false;
             try {
                 storage.removeItem(storageKey);
-            } catch (_error) {
+            } catch {
                 // A storage failure must not hide the server result.
             }
         }
@@ -63,7 +63,7 @@
                     options.reload();
                     return;
                 }
-            } catch (_error) {
+            } catch {
                 // The process is expected to be unavailable during restart.
             }
             scheduleReadyCheck();
@@ -76,7 +76,7 @@
                 if (!status || typeof status.state !== 'string') {
                     throw new TypeError('invalid restore status response');
                 }
-            } catch (_error) {
+            } catch {
                 options.presentRestarting();
                 scheduleReadyCheck();
                 return;

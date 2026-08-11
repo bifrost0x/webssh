@@ -489,6 +489,7 @@ docker build -t webssh:local .
 | `OIDC_ISSUER` | With OIDC | - | Exact OpenID Provider issuer URL |
 | `OIDC_CLIENT_ID` | With OIDC | - | Registered client identifier |
 | `OIDC_CLIENT_SECRET_FILE` | With OIDC | - | Path to a private file containing the client secret; the secret is not accepted inline |
+| `OIDC_REDIRECT_URI` | With OIDC | - | Exact registered HTTPS callback URL ending in `/oidc/callback`; loopback HTTP is accepted only in the homelab profile |
 | `OIDC_ALLOWED_SUBJECTS` | No | - | Optional comma-separated subject allowlist |
 | `OIDC_ALLOWED_DOMAINS` | No | - | Optional comma-separated email-domain policy; identity linking still uses issuer and subject only |
 | `OIDC_LOGIN_RATE_LIMIT` | No | `10 per minute` | Per-IP rate limit for starting OIDC login |

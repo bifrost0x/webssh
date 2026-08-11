@@ -333,7 +333,7 @@ class TemporaryConnectionPool:
                 try:
                     self.cleanup_expired()
                 except Exception as e:
-                    log_error(f"Error in cleanup loop", error=str(e))
+                    log_error("Error in cleanup loop", error=str(e))
         finally:
             self.close_all_connections()
 

@@ -10,6 +10,7 @@ README = ROOT / "README.md"
 PAGES_WORKFLOW = ROOT / ".github" / "workflows" / "graph-pages.yml"
 LANDING_PAGE = ROOT / "site" / "index.html"
 SESSION_WORKSPACE_IMAGE = ROOT / "assets" / "session-workspace.png"
+SESSION_DIAGNOSTICS_IMAGE = ROOT / "assets" / "session-diagnostics.png"
 
 
 @pytest.mark.parametrize(
@@ -68,3 +69,20 @@ def test_public_surfaces_use_the_large_real_session_workspace_capture():
     height = int.from_bytes(png[20:24], "big")
     assert width >= 1920
     assert height >= 1080
+
+
+def test_readme_documents_session_diagnostics_with_a_large_capture():
+    """Monitoring, diagnostics, and safe service actions stay public."""
+    readme = README.read_text(encoding="utf-8")
+    for feature in (
+        "Active Session Monitoring",
+        "Expanded Diagnostics",
+        "Clipboard-Only Service Actions",
+    ):
+        assert feature in readme
+
+    assert "assets/session-diagnostics.png" in readme
+    png = SESSION_DIAGNOSTICS_IMAGE.read_bytes()
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert int.from_bytes(png[16:20], "big") >= 1920
+    assert int.from_bytes(png[20:24], "big") >= 1080

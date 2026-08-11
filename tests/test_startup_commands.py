@@ -1,6 +1,5 @@
 """Tests for post-connect command normalization and terminal input."""
 
-import re
 from pathlib import Path
 
 import paramiko

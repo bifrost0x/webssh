@@ -155,9 +155,9 @@ def test_every_direct_version_range_has_an_adjacent_compatibility_reason():
 
 def test_lock_generator_compiles_universal_locks():
     script = Path("scripts/lock_requirements.ps1").read_text(encoding="utf-8")
-    assert "uv pip compile" in script
-    assert "--universal" in script
-    assert f"--python-version {MINIMUM_PYTHON}" in script
+    assert '"pip", "compile", $InputFile' in script
+    assert '"--universal"' in script
+    assert f'"--python-version", "{MINIMUM_PYTHON}"' in script
 
 
 def test_lock_generator_reuses_committed_pins_unless_upgrade_is_explicit():
@@ -165,7 +165,8 @@ def test_lock_generator_reuses_committed_pins_unless_upgrade_is_explicit():
 
     assert "[switch]$Upgrade" in script
     assert "Copy-Item -LiteralPath $committedLock -Destination $temporaryLock" in script
-    assert 'if ($Upgrade) { @("--upgrade") } else { @() }' in script
+    assert 'if ($Upgrade)' in script
+    assert '$compileArguments += "--upgrade"' in script
 
 
 def test_lock_generator_compares_text_independent_of_checkout_line_endings():
@@ -239,9 +240,9 @@ def test_graph_dependencies_are_hash_locked_and_generated_with_other_locks():
         encoding='utf-8'
     )
 
-    assert 'graphifyy==0.9.35' in graph_input
+    assert 'graphifyy==0.9.39' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.35' in graph_lock
+    assert 'graphifyy==0.9.39' in graph_lock
     assert 'requirements-graph.in' in lock_script
     assert 'requirements-graph.txt' in lock_script
 

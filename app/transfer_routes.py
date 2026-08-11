@@ -281,7 +281,10 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
         return None
     folder_name = posixpath.basename(remote_path.rstrip('/')) or 'download'
     zip_member = f'./{folder_name}' if folder_name.startswith('-') else folder_name
-    archive_path = f'/tmp/{folder_name}_{secrets.token_hex(8)}.zip'
+    # The remote target is random and created under umask 077, then mode 0600.
+    archive_path = (
+        f'/tmp/webssh_{secrets.token_hex(16)}.zip'  # nosec B108
+    )
     parent = posixpath.dirname(remote_path.rstrip('/')) or '/'
     command = (
         f'umask 077 && cd {shlex.quote(parent)} && '

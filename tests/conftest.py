@@ -5,6 +5,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, rsa
 
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-unit-tests-only')
+os.environ.setdefault(
+    'OIDC_REDIRECT_URI',
+    'https://localhost/oidc/callback',
+)
 os.environ['DEBUG'] = 'True'
 
 

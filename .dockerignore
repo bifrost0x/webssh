@@ -40,9 +40,10 @@ Thumbs.db
 # User data directory - contains sensitive data
 data/
 
-# AI assistant files & internal docs (must never end up in the public image)
+# Local planning files and internal docs (must never enter the public image)
 CLAUDE.md
 .claude/
+.superpowers/
 plans/
 
 # Knowledge graph (dev artifact; the public Pages graph is rebuilt in CI)
@@ -57,6 +58,7 @@ logs/
 node_modules/
 package*.json
 playwright.config.js
+eslint.config.js
 
 # Repository-only build, test, and release inputs. requirements.txt remains
 # available because it is the reviewed runtime lock installed by Dockerfile.

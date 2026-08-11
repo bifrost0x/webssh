@@ -178,7 +178,7 @@ class DragDropManager {
     const session = this.getActiveSession();
 
     if (!session) {
-      this.showQuickConnectDialog(items || files);
+      this.showQuickConnectDialog();
       return;
     }
 
@@ -293,7 +293,7 @@ class DragDropManager {
     return '/';
   }
 
-  showQuickConnectDialog(filesOrItems) {
+  showQuickConnectDialog() {
     if (window.showNotification) {
       window.showNotification('Please connect to a server first, then try uploading again.', 'warning');
     }

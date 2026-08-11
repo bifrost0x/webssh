@@ -6,7 +6,6 @@ import sqlite3
 import stat
 import tempfile
 
-import config
 
 from .backup_coordination import (
     ensure_backup_temp_dir,

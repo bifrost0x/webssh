@@ -79,7 +79,7 @@ class BrowserFileSystem {
                 files.push(fileInfo);
             }
         } catch (e) {
-            console.error('Error listing directory:', e);
+            console.error('Error listing directory');
             throw e;
         }
 
@@ -102,7 +102,7 @@ class BrowserFileSystem {
             this.currentHandle = subHandle;
             this.pathStack.push(dirName);
         } catch (e) {
-            console.error('Error navigating into directory:', e);
+            console.error('Error navigating into directory');
             throw e;
         }
     }
@@ -169,7 +169,7 @@ class BrowserFileSystem {
             await writable.write(data);
             await writable.close();
         } catch (e) {
-            console.error('Error writing file:', e);
+            console.error('Error writing file');
             throw e;
         }
     }
@@ -193,7 +193,7 @@ class BrowserFileSystem {
         try {
             return await this.currentHandle.getDirectoryHandle(name, { create: true });
         } catch (e) {
-            console.error('Error creating directory:', e);
+            console.error('Error creating directory');
             throw e;
         }
     }
@@ -206,7 +206,7 @@ class BrowserFileSystem {
         try {
             await this.currentHandle.removeEntry(name, { recursive });
         } catch (e) {
-            console.error('Error deleting entry:', e);
+            console.error('Error deleting entry');
             throw e;
         }
     }
@@ -236,7 +236,7 @@ class BrowserFileSystem {
 
             await this.deleteEntry(oldName);
         } catch (e) {
-            console.error('Error renaming entry:', e);
+            console.error('Error renaming entry');
             throw e;
         }
     }

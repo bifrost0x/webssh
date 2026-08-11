@@ -1,6 +1,5 @@
 import sqlite3
 import threading
-import time
 import zipfile
 
 import pytest

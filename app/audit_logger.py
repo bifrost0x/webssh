@@ -4,7 +4,7 @@ import sys
 from threading import RLock
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import config
 
 LOGS_DIR = config.DATA_DIR / 'logs'
@@ -15,7 +15,9 @@ class StructuredFormatter(logging.Formatter):
 
     def format(self, record):
         log_data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat().replace(
+                '+00:00', 'Z'
+            ),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),

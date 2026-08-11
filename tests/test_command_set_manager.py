@@ -1,5 +1,4 @@
 """Tests for named post-connect command sets."""
-import json
 import shutil
 import subprocess
 import threading

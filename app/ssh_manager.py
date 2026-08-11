@@ -46,7 +46,7 @@ def _configure_host_key_trust(client, store):
 
 
 def _open_exec_channel(transport, command, *, timeout, pty=None):
-    """Open an exec channel and bound every Paramiko request handshake."""
+    """Open a bounded exec channel for a reviewed, fully quoted command."""
     channel = transport.open_session(timeout=timeout)
     channel.settimeout(timeout)
     timeout_guard = Timer(timeout, channel.close)
@@ -55,7 +55,8 @@ def _open_exec_channel(transport, command, *, timeout, pty=None):
     try:
         if pty is not None:
             channel.get_pty(*pty)
-        channel.exec_command(command)
+        # Intentional SSH command boundary; callers provide reviewed quoting.
+        channel.exec_command(command)  # nosec B601
     except Exception:
         channel.close()
         raise
@@ -260,7 +261,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     f'{shlex.quote(tmux_session_name)}'
                 )
 
-            log_info(f"Using tmux persistent session", tmux_session=tmux_session_name, host=f"{host}:{port}")
+            log_info("Using tmux persistent session", tmux_session=tmux_session_name, host=f"{host}:{port}")
 
             # Probe for tmux on a separate exec channel before opening the
             # real session. This avoids locale-dependent error string matching
@@ -285,7 +286,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 probe_channel.close()
 
             if not tmux_available:
-                log_warning(f"tmux not found on target host, falling back to regular shell",
+                log_warning("tmux not found on target host, falling back to regular shell",
                            host=f"{host}:{port}")
                 tmux_session_name = None
                 use_tmux = False
@@ -455,7 +456,7 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
                 cached_room = f'user_{db_session.user_id}'
 
             if not cached_room:
-                log_error(f"No DB session found for output reader", session_id=session_id)
+                log_error("No DB session found for output reader", session_id=session_id)
                 return
 
             while cancel_event is None or not cancel_event.is_set():
@@ -513,14 +514,14 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
                 except EOFError:
                     break
                 except Exception as e:
-                    log_error(f"Error reading from channel", error=str(e), exc_info=True)
+                    log_error("Error reading from channel", error=str(e), exc_info=True)
                     break
 
                 if channel.closed or channel.exit_status_ready():
                     break
 
     except Exception as e:
-        log_error(f"Error in output reader thread", error=str(e), exc_info=True)
+        log_error("Error in output reader thread", error=str(e), exc_info=True)
     finally:
         with app.app_context():
             from .models import SSHSession, db
@@ -619,7 +620,7 @@ def close_session(session_id, kill_tmux=False):
             from .sftp_handler import close_sftp_cache
             close_sftp_cache(session_id)
         except Exception as e:
-            log_debug(f"Error closing SFTP cache", session_id=session_id, error=str(e))
+            log_debug("Error closing SFTP cache", session_id=session_id, error=str(e))
 
         if kill_tmux and session.get('use_tmux') and session.get('tmux_session_name') and session['client']:
             kill_channel = None
@@ -637,7 +638,7 @@ def close_session(session_id, kill_tmux=False):
                     except Exception:
                         pass
             except Exception as e:
-                log_debug(f"Error killing tmux session", session_id=session_id, error=str(e))
+                log_debug("Error killing tmux session", session_id=session_id, error=str(e))
             finally:
                 if kill_channel is not None:
                     try:
@@ -649,26 +650,26 @@ def close_session(session_id, kill_tmux=False):
             try:
                 session['channel'].close()
             except Exception as e:
-                log_debug(f"Error closing channel", session_id=session_id, error=str(e))
+                log_debug("Error closing channel", session_id=session_id, error=str(e))
 
         if session['client']:
             try:
                 session['client'].close()
             except Exception as e:
-                log_debug(f"Error closing SSH client", session_id=session_id, error=str(e))
+                log_debug("Error closing SSH client", session_id=session_id, error=str(e))
 
         if session.get('bastion_client'):
             try:
                 session['bastion_client'].close()
             except Exception as e:
-                log_debug(f"Error closing jump host client", session_id=session_id, error=str(e))
+                log_debug("Error closing jump host client", session_id=session_id, error=str(e))
 
         if reader_handle is not None:
             reader_handle.join(1.0)
 
         return True
     except Exception as e:
-        log_error(f"Error closing session", session_id=session_id, error=str(e))
+        log_error("Error closing session", session_id=session_id, error=str(e))
         return False
     finally:
         release_reservation(reservation)
@@ -736,7 +737,7 @@ def cleanup_idle_sessions():
             log_info(f"Closed idle session: {session_id}")
 
     except Exception as e:
-        log_error(f"Error cleaning up idle sessions", error=str(e))
+        log_error("Error cleaning up idle sessions", error=str(e))
 
 import atexit
 

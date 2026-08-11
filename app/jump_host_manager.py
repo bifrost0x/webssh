@@ -7,7 +7,7 @@ a password, consistent with connection profiles.
 import re
 import uuid
 import ipaddress
-from datetime import datetime
+from datetime import datetime, timezone
 from .audit_logger import log_error, log_info
 from .storage_errors import StorageCorruptionError
 from .storage_utils import (
@@ -169,7 +169,9 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
             'username': username,
             'auth_type': auth_type,
             'key_id': key_id if auth_type == 'key' else None,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).replace(
+                tzinfo=None
+            ).isoformat()
         }
         with storage_lock(f'jump_hosts:{user_id}'):
             jump_hosts = _load_jump_hosts_with_lock_held(user_id)

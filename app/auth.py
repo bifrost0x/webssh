@@ -1,7 +1,6 @@
 import bcrypt
 import config
 from threading import Lock
-from flask import request
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
 from .models import db, User, SocketSession
@@ -279,7 +278,6 @@ def get_user_from_socket(socket_sid):
         user = socket_session.user
         if user is None or user.is_locked:
             return None
-        import time as _time
         now = datetime.now(timezone.utc)
         last = socket_session.last_activity
         needs_update = not last

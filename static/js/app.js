@@ -1,13 +1,13 @@
 (function() {
     'use strict';
 
-    window.addEventListener('unhandledrejection', (e) => {
-        console.error('[WebSSH] Unhandled promise rejection:', e.reason);
+    window.addEventListener('unhandledrejection', () => {
+        console.error('[WebSSH] Unhandled promise rejection');
     });
 
     window.addEventListener('error', (e) => {
         if (e.filename && e.filename.includes('socket.io')) return;
-        console.error('[WebSSH] Uncaught error:', e.message, e.filename, e.lineno);
+        console.error('[WebSSH] Uncaught browser error');
     });
 
     const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || '';
@@ -155,7 +155,7 @@
                     localStorage.setItem(this.storageKey, JSON.stringify(filtered));
                 }
                 return filtered;
-            } catch (e) {
+            } catch {
                 return [];
             }
         },
@@ -174,8 +174,8 @@
 
             try {
                 localStorage.setItem(this.storageKey, JSON.stringify(trimmed));
-            } catch (e) {
-                console.error('Failed to save connection history:', e);
+            } catch {
+                console.error('Failed to save connection history');
             }
         },
 
@@ -368,7 +368,6 @@
                 console.error('[FilePreview] Modal not found: filePreviewModal');
                 return;
             }
-            console.log('[FilePreview] Initialized successfully');
 
             const sizeMeta = document.querySelector('meta[name="max-editor-file-size"]');
             const parsedSize = sizeMeta ? parseInt(sizeMeta.content, 10) : NaN;
@@ -459,7 +458,6 @@
         },
 
         open(sessionId, path, filename) {
-            console.log('[FilePreview] open called:', { sessionId, path, filename });
             this.currentSessionId = sessionId;
             this.currentPath = path;
             this.currentFilename = filename;
@@ -474,7 +472,6 @@
             this.showPreviewActions();
 
             const fileType = this.getFileType(filename);
-            console.log('[FilePreview] File type:', fileType);
 
             this.showLoading();
             window.ModalManager.open(this.modal);
@@ -483,7 +480,6 @@
             document.getElementById('previewSize').textContent = '';
 
             if (fileType === 'image') {
-                console.log('[FilePreview] Loading image...');
                 this.loadImage(sessionId, path, filename);
             } else {
                 const options = { session_id: sessionId, path: path };
@@ -492,7 +488,6 @@
                     options.tail_lines = 1000;
                 }
 
-                console.log('[FilePreview] Emitting preview_file:', options);
                 socket.emit('preview_file', options);
             }
         },
@@ -626,7 +621,7 @@
             }
 
             imageElement.onload = () => {};
-            imageElement.onerror = (e) => {
+            imageElement.onerror = () => {
                 imageContainer?.classList.add('hidden');
                 this.showError('Failed to load image');
             };
@@ -856,7 +851,6 @@
     window.FilePreview = FilePreview;
 
     socket.on('connect', () => {
-        console.log('Connected to server');
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar && reconnectBar.style.display !== 'none') {
             reconnectBar.style.display = 'none';
@@ -903,7 +897,6 @@
     });
 
     socket.on('disconnect', () => {
-        console.log('Disconnected from server');
         showNotification(
             window.i18n
                 ? i18n.t('connection.disconnectedFromServer')
@@ -921,8 +914,6 @@
     });
 
     socket.on('ssh_connected', (data) => {
-        console.log('SSH connected:', data);
-
         if (data.client_request_id) {
             SessionManager.clearPendingConnection(data.client_request_id);
         }
@@ -953,8 +944,6 @@
         SessionManager.assignSessionToPane(sessionId, targetPane);
 
         window.ModalManager.close(document.getElementById('connectionModal'));
-        processPaneQueue();
-
         const connMsg = data.via_jump
             ? `Connected to ${data.username}@${data.host} via ${data.via_jump}`
             : `Connected to ${data.username}@${data.host}`;
@@ -965,13 +954,11 @@
     });
 
     socket.on('ssh_output', (data) => {
-        console.log(`[SSH_OUTPUT] Received for session ${data.session_id}, length: ${data.data.length}`);
         TerminalManager.writeOutput(data.session_id, data.data);
 
     });
 
     socket.on('ssh_error', (data) => {
-        console.error('SSH error:', data);
         showNotification(`SSH Error: ${data.error}`, 'error');
 
         if (connectTimer) {
@@ -997,7 +984,6 @@
     });
 
     socket.on('ssh_disconnected', (data) => {
-        console.log('SSH disconnected:', data);
         showNotification(`Session disconnected: ${data.reason}`, 'warning');
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
 
@@ -1014,11 +1000,11 @@
         ProfileManager.setProfiles(data.profiles);
     });
 
-    socket.on('profile_saved', (data) => {
+    socket.on('profile_saved', () => {
         showNotification('Saved connection updated successfully', 'success');
     });
 
-    socket.on('profile_deleted', (data) => {
+    socket.on('profile_deleted', () => {
         showNotification('Saved connection deleted successfully', 'success');
     });
 
@@ -1036,7 +1022,7 @@
         ProfileManager.upsertKeySummary(data.key);
     });
 
-    socket.on('key_deleted', (data) => {
+    socket.on('key_deleted', () => {
         showNotification('SSH key deleted successfully', 'success');
     });
 
@@ -1044,13 +1030,13 @@
         if (window.JumpHostManager) window.JumpHostManager.setJumpHosts(data.jump_hosts);
     });
 
-    socket.on('jump_host_saved', (data) => {
+    socket.on('jump_host_saved', () => {
         showNotification(window.i18n ? i18n.t('jumphosts.savedOk') : 'Jump host saved', 'success');
         document.getElementById('jumpHostForm')?.reset();
         document.getElementById('jhKeyGroup')?.classList.add('hidden');
     });
 
-    socket.on('jump_host_deleted', (data) => {
+    socket.on('jump_host_deleted', () => {
         showNotification(window.i18n ? i18n.t('jumphosts.deleted') : 'Jump host deleted', 'success');
     });
 
@@ -1069,7 +1055,6 @@
 
     let currentConnectRequestId = null;
     let pendingPaneIndex = null;
-    const pendingPaneQueue = [];
     const pendingRequestPaneMap = new Map();
     let connectTimer = null;
     let connectSeconds = 0;
@@ -1195,30 +1180,7 @@
         window.requestAnimationFrame(() => focusTarget?.focus());
     }
 
-    function queuePaneConnection(paneIndex) {
-        if (paneIndex === null || paneIndex === undefined) {
-            return;
-        }
-        if (pendingPaneQueue.includes(paneIndex)) {
-            return;
-        }
-        pendingPaneQueue.push(paneIndex);
-        processPaneQueue();
-    }
-
-    function processPaneQueue() {
-        if (currentConnectRequestId || pendingPaneIndex !== null) {
-            return;
-        }
-        if (pendingPaneQueue.length === 0) {
-            return;
-        }
-        const nextPane = pendingPaneQueue.shift();
-        openConnectionModalForPane(nextPane);
-    }
-
-    function clearPaneQueue() {
-        pendingPaneQueue.length = 0;
+    function clearPendingPane() {
         pendingPaneIndex = null;
     }
 
@@ -2064,7 +2026,7 @@
             window.ModalManager.close(document.getElementById('connectionModal'));
             setConnectLoading(false);
             currentConnectRequestId = null;
-            clearPaneQueue();
+            clearPendingPane();
             if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
         });
 
@@ -2072,7 +2034,7 @@
             window.ModalManager.close(document.getElementById('connectionModal'));
             setConnectLoading(false);
             currentConnectRequestId = null;
-            clearPaneQueue();
+            clearPendingPane();
             if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
         });
 
@@ -2340,7 +2302,7 @@
             if (e.target.classList.contains('modal')) {
                 window.ModalManager.close(e.target);
                 if (e.target.id === 'connectionModal') {
-                    clearPaneQueue();
+                    clearPendingPane();
                     if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
                 }
             }
@@ -2474,6 +2436,5 @@
             }
         });
 
-        console.log('Web SSH Terminal initialized');
     });
 })();

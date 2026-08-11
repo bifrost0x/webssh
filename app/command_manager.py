@@ -4,7 +4,7 @@ Handles system and user-specific command storage and retrieval.
 """
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import config
 from .audit_logger import log_error
 from .storage_utils import atomic_write_json, load_json_strict, storage_lock
@@ -190,7 +190,9 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
         'category': category or 'custom',
         'isSystem': False,
         'userId': user_id,
-        'createdAt': datetime.utcnow().isoformat()
+        'createdAt': datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ).isoformat()
     }
 
     with storage_lock(f'command-config:{user_id}'):
