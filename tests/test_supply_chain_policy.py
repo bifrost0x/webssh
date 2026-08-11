@@ -226,6 +226,13 @@ def test_runtime_image_excludes_repository_only_tooling():
     } <= ignored
 
 
+def test_runtime_image_removes_python_packaging_tooling():
+    dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
+
+    assert 'python -m pip uninstall --yes pip' in dockerfile
+    assert 'rm -rf /usr/local/lib/python*/ensurepip' in dockerfile
+
+
 def test_docker_exec_cli_examples_load_the_persisted_secret():
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
     exec_lines = [

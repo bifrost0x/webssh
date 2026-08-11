@@ -23,7 +23,8 @@ RUN adduser --disabled-password --gecos "" appuser
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt \
     && python -m pip check \
-    && python -m pip uninstall --yes setuptools
+    && python -m pip uninstall --yes pip \
+    && rm -rf /usr/local/lib/python*/ensurepip
 
 COPY . /app
 

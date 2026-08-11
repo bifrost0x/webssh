@@ -40,7 +40,7 @@ Thumbs.db
 # User data directory - contains sensitive data
 data/
 
-# AI assistant files & internal docs (must never end up in the public image)
+# Local planning files and internal docs (must never enter the public image)
 CLAUDE.md
 .claude/
 .superpowers/
