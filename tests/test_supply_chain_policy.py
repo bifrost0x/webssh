@@ -44,8 +44,8 @@ PINNED_ACTIONS = {
         'v0.36.0',
     ),
     'astral-sh/setup-uv': (
-        '37802adc94f370d6bfd71619e3f0bf239e1f3b78',
-        'v7',
+        'c771a70e6277c0a99b617c7a806ffedaca235ff9',
+        'v9.0.0',
     ),
     'docker/build-push-action': (
         '53b7df96c91f9c12dcc8a07bcb9ccacbed38856a',
@@ -102,6 +102,17 @@ def test_remote_actions_are_immutable_and_keep_version_comments():
             )
             remote_actions.append(reference)
     assert remote_actions
+
+
+def test_node_workflows_use_current_lts():
+    node_workflows = (
+        WORKFLOWS / 'tests.yml',
+        WORKFLOWS / 'dependabot-vendor.yml',
+    )
+    for workflow in node_workflows:
+        text = workflow.read_text(encoding='utf-8')
+        assert "node-version: '24'" in text, workflow
+        assert "node-version: '22'" not in text, workflow
 
 
 def test_container_build_inputs_and_ci_services_are_digest_pinned():
