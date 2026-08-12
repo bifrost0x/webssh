@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const launcher = require('../../static/js/session-command-launcher.js');
 
@@ -103,4 +105,91 @@ test('refuses stale, disconnected, and multiline targets', () => {
     assert.equal(controller.insert('offline', 'command', 'cmd-1').ok, false);
     assert.equal(controller.insert('offline', 'command', 'cmd-multiline').ok, false);
     assert.deepEqual(emissions, []);
+});
+
+test('mounts with the real top-level const manager pattern', () => {
+    class FakeElement {
+        constructor(tagName) {
+            this.tagName = tagName;
+            this.children = [];
+            this.dataset = {};
+            this.attributes = {};
+            this.className = '';
+        }
+
+        addEventListener() {}
+
+        append(...children) {
+            children.forEach(child => this.appendChild(child));
+        }
+
+        appendChild(child) {
+            child.parentElement = this;
+            this.children.push(child);
+            return child;
+        }
+
+        remove() {
+            if (!this.parentElement) return;
+            this.parentElement.children = this.parentElement.children.filter(
+                child => child !== this
+            );
+        }
+
+        setAttribute(name, value) {
+            this.attributes[name] = String(value);
+        }
+    }
+
+    const pane = new FakeElement('div');
+    pane.dataset.paneIndex = '0';
+    const document = {
+        addEventListener() {},
+        createElement: tagName => new FakeElement(tagName),
+        querySelector: selector => (
+            selector === '.terminal-pane[data-pane-index="0"]' ? pane : null
+        ),
+        querySelectorAll: () => [],
+    };
+    const context = vm.createContext({
+        document,
+        addEventListener() {},
+        setTimeout: callback => callback(),
+    });
+    context.window = context;
+    vm.runInContext(`
+        const SessionManager = {
+            paneAssignments: ['real-session'],
+            getActivePaneIndex: () => 0,
+            getSession: id => id === 'real-session'
+                ? { connected: true, displayName: 'Production Edge' }
+                : null,
+        };
+        const CommandLibrary = {
+            commands: [{
+                id: 'status',
+                name: 'Status',
+                command: 'systemctl status webssh',
+                parameters: '',
+                description: 'Service status',
+            }],
+        };
+        const TerminalManager = { terminals: {} };
+        window.CommandSetManager = { commandSets: [] };
+    `, context);
+    const source = fs.readFileSync(
+        'static/js/session-command-launcher.js',
+        'utf8'
+    );
+
+    vm.runInContext(source, context);
+    context.SessionCommandLauncher.init();
+
+    assert.equal(
+        pane.children.some(child => child.className === 'session-command-launcher'),
+        true
+    );
+    const entries = context.SessionCommandLauncher.controller.entries();
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].id, 'status');
 });
