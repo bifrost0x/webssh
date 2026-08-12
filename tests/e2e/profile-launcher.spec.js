@@ -20,6 +20,18 @@ async function expectReviewDialogState(page, expected) {
     await expect(page.locator('#authTypeSelect')).toHaveValue(expected.authType);
 }
 
+async function dragProfileTo(page, handle, target) {
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    try {
+        await handle.dispatchEvent('dragstart', {dataTransfer});
+        await target.dispatchEvent('dragover', {dataTransfer});
+        await target.dispatchEvent('drop', {dataTransfer});
+        await handle.dispatchEvent('dragend', {dataTransfer});
+    } finally {
+        await dataTransfer.dispose();
+    }
+}
+
 test.beforeEach(async ({ page }) => {
     await login(page);
     await installSshConnectTrap(page);
@@ -202,9 +214,12 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     });
     const operationNames = operations.locator('.profile-management-info strong');
     await expect(operationNames).toHaveText(['Ops first', 'Ops second']);
-    await operations.locator('.profile-management-item').filter({
+    const firstOperationsHandle = operations.locator('.profile-management-item').filter({
         hasText: 'Ops first',
-    }).locator('[data-profile-drag-handle]').dragTo(
+    }).locator('[data-profile-drag-handle]');
+    await dragProfileTo(
+        page,
+        firstOperationsHandle,
         operations.locator('[data-profile-drop-index="2"]'),
     );
     await expect(operationNames).toHaveText(['Ops second', 'Ops first']);
@@ -247,12 +262,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     }).locator('[data-profile-drag-handle]');
     const dragSoloAfterApplication = async () => {
         const targetSlot = applications.locator('[data-profile-drop-index="1"]');
-        const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-        await soloHandle.dispatchEvent('dragstart', {dataTransfer});
-        await targetSlot.dispatchEvent('dragover', {dataTransfer});
-        await targetSlot.dispatchEvent('drop', {dataTransfer});
-        await soloHandle.dispatchEvent('dragend', {dataTransfer});
-        await dataTransfer.dispose();
+        await dragProfileTo(page, soloHandle, targetSlot);
     };
 
     await dragSoloAfterApplication();
