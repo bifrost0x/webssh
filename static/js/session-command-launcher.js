@@ -13,6 +13,24 @@
         return /[\r\n]/.test(value);
     }
 
+    function getSessionManager() {
+        return typeof SessionManager !== 'undefined'
+            ? SessionManager
+            : root.SessionManager;
+    }
+
+    function getCommandLibrary() {
+        return typeof CommandLibrary !== 'undefined'
+            ? CommandLibrary
+            : root.CommandLibrary;
+    }
+
+    function getTerminalManager() {
+        return typeof TerminalManager !== 'undefined'
+            ? TerminalManager
+            : root.TerminalManager;
+    }
+
     function commandEntry(command) {
         const base = typeof command?.command === 'string' ? command.command : '';
         const parameters = typeof command?.parameters === 'string' ? command.parameters : '';
@@ -127,15 +145,15 @@
             if (!document || this.initialized) return;
             this.initialized = true;
             this.controller = createSessionCommandController({
-                getSession: sessionId => root.SessionManager?.getSession(sessionId),
-                getCommands: () => root.CommandLibrary?.commands || [],
+                getSession: sessionId => getSessionManager()?.getSession(sessionId),
+                getCommands: () => getCommandLibrary()?.commands || [],
                 getCommandSets: () => root.CommandSetManager?.commandSets || [],
                 emitInput: (sessionId, data) => root.socket?.emit('ssh_input', {
                     session_id: sessionId,
                     data,
                 }),
                 close: () => this.close(),
-                focusSession: sessionId => root.TerminalManager?.terminals?.[sessionId]?.focus(),
+                focusSession: sessionId => getTerminalManager()?.terminals?.[sessionId]?.focus(),
                 notify: (message, type) => root.showNotification?.(message, type),
                 insertedMessage: label => this.t(
                     'sessionCommands.inserted',
@@ -171,7 +189,7 @@
             this.close(false);
             document.querySelectorAll('.session-command-launcher').forEach(node => node.remove());
 
-            const sessionManager = root.SessionManager;
+            const sessionManager = getSessionManager();
             const paneIndex = sessionManager?.getActivePaneIndex?.();
             const sessionId = sessionManager?.paneAssignments?.[paneIndex];
             const session = sessionId ? sessionManager.getSession(sessionId) : null;
@@ -213,7 +231,7 @@
         },
 
         open(sessionId, container, trigger) {
-            const session = root.SessionManager?.getSession(sessionId);
+            const session = getSessionManager()?.getSession(sessionId);
             if (!session?.connected) return;
             this.sessionId = sessionId;
             this.searchQuery = '';
@@ -245,7 +263,7 @@
             if (!this.popup || !this.sessionId) return;
             const document = root.document;
             const popup = this.popup;
-            const session = root.SessionManager?.getSession(this.sessionId);
+            const session = getSessionManager()?.getSession(this.sessionId);
             if (!session?.connected) {
                 this.close(false);
                 return;
