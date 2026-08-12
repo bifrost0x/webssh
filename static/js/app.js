@@ -2002,6 +2002,7 @@
         CommandLibrary.init();
         window.CommandSetManager?.init();
         window.ConnectionCommandManager?.init();
+        window.SessionCommandLauncher?.init();
         ProfileManager.init();
 
         ProfileManager.loadProfiles();

@@ -24,8 +24,8 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=9',
-        "filename='js/i18n.js'": '?v=6',
+        "filename='css/style.css'": '?v=10',
+        "filename='js/i18n.js'": '?v=7',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=3',
@@ -36,7 +36,8 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
-        "filename='js/app.js'": '?v=9',
+        "filename='js/session-command-launcher.js'": '?v=1',
+        "filename='js/app.js'": '?v=10',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
@@ -129,7 +130,17 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=9" in template
+    assert "filename='css/style.css') }}?v=10" in template
+
+
+def test_active_session_command_launcher_is_loaded_after_command_data_managers():
+    template = read('templates/index.html')
+    launcher = "filename='js/session-command-launcher.js'"
+
+    assert launcher in template
+    assert template.index("filename='js/command-library.js'") < template.index(launcher)
+    assert template.index("filename='js/command-set-manager.js'") < template.index(launcher)
+    assert template.index(launcher) < template.index("filename='js/app.js'")
 
 
 def test_command_palette_loads_safe_model_before_application_code():
