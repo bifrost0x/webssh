@@ -132,3 +132,133 @@ test('favorite acknowledgement replaces cleared organization fields', () => {
     assert.equal(manager.profiles[0].favorite, undefined);
     assert.equal(manager.profiles[0].tailscale_authorized, true);
 });
+
+test('collapsed group state toggles for the session but search keeps matches visible', () => {
+    const manager = loadProfileManager();
+    manager.collapsedGroups = new Set();
+    manager.profileSearchQuery = '';
+    manager.renderManagementList = () => {};
+
+    assert.equal(manager.isGroupCollapsed('group:production'), false);
+    manager.toggleGroupCollapsed('group:production');
+    assert.equal(manager.isGroupCollapsed('group:production'), true);
+
+    manager.profileSearchQuery = 'api';
+    assert.equal(manager.isGroupCollapsed('group:production'), false);
+
+    manager.profileSearchQuery = '';
+    manager.toggleGroupCollapsed('group:production');
+    assert.equal(manager.isGroupCollapsed('group:production'), false);
+});
+
+test('moving a profile applies only the authoritative successful response', () => {
+    const manager = loadProfileManager();
+    manager.profiles = [{
+        id: 'profile-1',
+        name: 'API',
+        group: 'Production',
+        tailscale_authorized: true,
+    }];
+    manager.organizationPending = new Set();
+    manager.renderManagementList = () => {};
+    manager.renderProfileSelect = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.t = (_key, fallback) => fallback;
+
+    const move = {
+        profileId: 'profile-1',
+        expectedSourceGroup: 'Production',
+        targetGroup: 'Homelab',
+        targetIndex: 0,
+    };
+    const started = manager.requestProfileMove(move, (payload, acknowledge) => {
+        assert.equal(manager.profiles[0].group, 'Production');
+        assert.deepEqual(JSON.parse(JSON.stringify(payload)), {
+            profile_id: 'profile-1',
+            expected_source_group: 'Production',
+            target_group: 'Homelab',
+            target_index: 0,
+            confirm_source_group_removal: false,
+        });
+        acknowledge({
+            success: true,
+            profiles: [{id: 'profile-1', name: 'API', group: 'Homelab', sort_order: 0}],
+        });
+    });
+
+    assert.equal(started, true);
+    assert.equal(manager.profiles[0].group, 'Homelab');
+    assert.equal(manager.profiles[0].tailscale_authorized, true);
+    assert.equal(manager.organizationPending.has('profile-1'), false);
+});
+
+test('move failure keeps the original state and adopts authoritative stale state', () => {
+    const manager = loadProfileManager();
+    manager.profiles = [{id: 'profile-1', name: 'API', group: 'Production'}];
+    manager.organizationPending = new Set();
+    manager.renderManagementList = () => {};
+    manager.renderProfileSelect = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.t = (_key, fallback) => fallback;
+
+    assert.equal(manager.requestProfileMove({
+        profileId: 'profile-1',
+        expectedSourceGroup: 'Production',
+        targetGroup: '',
+        targetIndex: 0,
+    }, (_payload, acknowledge) => {
+        acknowledge({
+            success: false,
+            error: 'Profile group changed; retry move',
+            profiles: [{id: 'profile-1', name: 'API', group: 'Current'}],
+        });
+    }), true);
+    assert.equal(manager.profiles[0].group, 'Current');
+    assert.equal(manager.organizationPending.has('profile-1'), false);
+});
+
+test('group removal acknowledgement opens confirmation and retries explicitly', () => {
+    const manager = loadProfileManager();
+    manager.profiles = [{id: 'profile-1', name: 'DB', group: 'Databases'}];
+    manager.organizationPending = new Set();
+    manager.renderManagementList = () => {};
+    manager.renderProfileSelect = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.openProfileMoveConfirmation = () => {};
+    manager.closeProfileMoveConfirmation = () => {};
+    manager.t = (_key, fallback) => fallback;
+
+    const payloads = [];
+    const emit = (payload, acknowledge) => {
+        payloads.push(payload);
+        if (payloads.length === 1) {
+            acknowledge({
+                success: false,
+                requires_confirmation: true,
+                profile_name: 'DB',
+                source_group: 'Databases',
+                profiles: manager.profiles,
+            });
+            return;
+        }
+        acknowledge({
+            success: true,
+            requires_confirmation: false,
+            profiles: [{id: 'profile-1', name: 'DB', group: 'Apps', sort_order: 0}],
+        });
+    };
+    const move = {
+        profileId: 'profile-1',
+        expectedSourceGroup: 'Databases',
+        targetGroup: 'Apps',
+        targetIndex: 0,
+    };
+
+    assert.equal(manager.requestProfileMove(move, emit), true);
+    assert.equal(manager.pendingProfileMove.move, move);
+    assert.equal(manager.organizationPending.has('profile-1'), false);
+    assert.equal(manager.confirmPendingProfileMove(), true);
+    assert.equal(payloads[1].confirm_source_group_removal, true);
+    assert.equal(manager.profiles[0].group, 'Apps');
+    assert.equal(manager.pendingProfileMove, null);
+});

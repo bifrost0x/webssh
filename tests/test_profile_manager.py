@@ -76,6 +76,226 @@ def test_profile_organization_fields_are_normalized_and_persisted(app):
         assert profile_manager.load_profiles(user_id) == [profile]
 
 
+@pytest.mark.parametrize('sort_order', [True, -1, '1', 1.5])
+def test_profile_document_rejects_invalid_sort_order(app, sort_order):
+    from app import profile_manager
+
+    user_id = create_user(app, f'invalid-sort-{str(sort_order).replace(".", "-")}')
+    profile = {
+        'id': 'profile-1',
+        'name': 'API',
+        'sort_order': sort_order,
+    }
+
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, [profile]) is False
+
+
+def test_new_profiles_append_to_their_group_and_edits_preserve_position(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-sort-append')
+    with app.app_context():
+        first, error = profile_manager.upsert_profile(user_id, {
+            'name': 'First', 'host': 'first.example.com', 'port': 22,
+            'username': 'deploy', 'auth_type': 'password', 'group': 'Production',
+        })
+        assert error is None
+        second, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Second', 'host': 'second.example.com', 'port': 22,
+            'username': 'deploy', 'auth_type': 'password', 'group': 'Production',
+        })
+        assert error is None
+        other, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Other', 'host': 'other.example.com', 'port': 22,
+            'username': 'deploy', 'auth_type': 'password', 'group': 'Homelab',
+        })
+        assert error is None
+
+        assert (first['sort_order'], second['sort_order'], other['sort_order']) == (0, 1, 0)
+
+        edited, error = profile_manager.upsert_profile(user_id, {
+            'id': first['id'], 'name': 'First renamed', 'host': 'first.example.com',
+            'port': 22, 'username': 'deploy', 'auth_type': 'password',
+            'group': 'Production',
+        })
+
+        assert error is None
+        assert edited['sort_order'] == 0
+
+
+def test_profile_edit_group_change_appends_to_target_group(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-sort-group-edit')
+    with app.app_context():
+        source, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Source', 'host': 'source.example.com', 'port': 22,
+            'username': 'deploy', 'auth_type': 'password', 'group': 'Source',
+        })
+        assert error is None
+        target, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Target', 'host': 'target.example.com', 'port': 22,
+            'username': 'deploy', 'auth_type': 'password', 'group': 'Target',
+        })
+        assert error is None
+
+        moved, error = profile_manager.upsert_profile(user_id, {
+            'id': source['id'], 'name': 'Source', 'host': 'source.example.com',
+            'port': 22, 'username': 'deploy', 'auth_type': 'password',
+            'group': 'Target',
+        })
+
+        assert error is None
+        assert target['sort_order'] == 0
+        assert moved['sort_order'] == 1
+
+
+def test_move_profile_reorders_within_group_and_persists_compact_positions(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-sort-within')
+    profiles = [
+        {'id': 'one', 'name': 'One', 'group': 'Production', 'sort_order': 0},
+        {'id': 'two', 'name': 'Two', 'group': 'Production', 'sort_order': 1},
+        {'id': 'three', 'name': 'Three', 'group': 'Production', 'sort_order': 2},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+        result, error = profile_manager.move_profile(
+            user_id, 'three', 'Production', 'Production', 0,
+        )
+
+        assert error is None
+        ordered = sorted(result['profiles'], key=lambda item: item['sort_order'])
+        assert [item['id'] for item in ordered] == ['three', 'one', 'two']
+        assert [item['sort_order'] for item in ordered] == [0, 1, 2]
+        assert profile_manager.load_profiles(user_id) == result['profiles']
+
+
+def test_move_profile_preserves_incomplete_legacy_group_order_before_normalizing(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-sort-legacy-normalize')
+    profiles = [
+        {'id': 'legacy-first', 'name': 'Legacy first', 'group': 'Target'},
+        {'id': 'ordered-second', 'name': 'Ordered second', 'group': 'Target',
+         'sort_order': 1},
+        {'id': 'legacy-third', 'name': 'Legacy third', 'group': 'Target'},
+        {'id': 'move', 'name': 'Move', 'group': 'Source', 'sort_order': 0},
+        {'id': 'keep', 'name': 'Keep', 'group': 'Source', 'sort_order': 1},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+        result, error = profile_manager.move_profile(
+            user_id, 'move', 'Source', 'Target', 3,
+        )
+
+        assert error is None
+        target = sorted(
+            (
+                item for item in result['profiles']
+                if item.get('group') == 'Target'
+            ),
+            key=lambda item: item['sort_order'],
+        )
+        assert [item['id'] for item in target] == [
+            'legacy-first', 'ordered-second', 'legacy-third', 'move',
+        ]
+        assert [item['sort_order'] for item in target] == [0, 1, 2, 3]
+
+
+def test_move_profile_requires_confirmation_before_removing_last_group_member(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-sort-confirm')
+    profiles = [
+        {'id': 'source', 'name': 'Critical DB', 'group': 'Databases', 'sort_order': 0},
+        {'id': 'target', 'name': 'Worker', 'group': 'Production', 'sort_order': 0},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+        result, error = profile_manager.move_profile(
+            user_id, 'source', 'Databases', 'Production', 1,
+        )
+
+        assert error is None
+        assert result == {
+            'profiles': profiles,
+            'requires_confirmation': True,
+            'profile_id': 'source',
+            'profile_name': 'Critical DB',
+            'source_group': 'Databases',
+        }
+        assert profile_manager.load_profiles(user_id) == profiles
+
+        result, error = profile_manager.move_profile(
+            user_id, 'source', 'Databases', 'Production', 1,
+            confirm_source_group_removal=True,
+        )
+
+        assert error is None
+        assert result['requires_confirmation'] is False
+        production = sorted(
+            result['profiles'], key=lambda item: item.get('sort_order', 0)
+        )
+        assert [item['id'] for item in production] == ['target', 'source']
+        assert all(item.get('group') == 'Production' for item in production)
+
+
+def test_move_profile_supports_ungrouped_clamps_index_and_rejects_stale_source(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-sort-stale')
+    profiles = [
+        {'id': 'move', 'name': 'Move', 'group': 'Production', 'sort_order': 0},
+        {'id': 'loose', 'name': 'Loose', 'sort_order': 0},
+        {'id': 'keep', 'name': 'Keep', 'group': 'Production', 'sort_order': 1},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+        stale, error = profile_manager.move_profile(
+            user_id, 'move', 'Homelab', '', 99,
+        )
+        assert error == 'Profile group changed; retry move'
+        assert stale['profiles'] == profiles
+        assert profile_manager.load_profiles(user_id) == profiles
+
+        result, error = profile_manager.move_profile(
+            user_id, 'move', 'Production', '', 99,
+        )
+
+        assert error is None
+        ungrouped = sorted(
+            [item for item in result['profiles'] if not item.get('group')],
+            key=lambda item: item['sort_order'],
+        )
+        assert [item['id'] for item in ungrouped] == ['loose', 'move']
+        assert [item['sort_order'] for item in ungrouped] == [0, 1]
+
+
+@pytest.mark.parametrize('target_index', [True, -1, '1', 1.5])
+def test_move_profile_rejects_invalid_target_index(app, target_index):
+    from app import profile_manager
+
+    user_id = create_user(app, f'profile-sort-index-{str(target_index).replace(".", "-")}')
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, [
+            {'id': 'profile', 'name': 'Profile'},
+        ]) is True
+
+        result, error = profile_manager.move_profile(
+            user_id, 'profile', '', '', target_index,
+        )
+
+        assert result is None
+        assert error == 'Invalid target index'
+
+
 @pytest.mark.parametrize(('field', 'value', 'message'), [
     ('group', {'not': 'a string'}, 'Invalid group'),
     ('group', 'x' * 65, 'Group must not exceed 64 characters'),

@@ -4732,6 +4732,31 @@ body.keyboard-open.notepad-focused .notepad-panel {
     color: var(--accent-primary);
 }
 
+.connection-advanced-settings {
+    margin-bottom: 18px;
+    padding: 0 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+}
+
+.connection-advanced-settings > summary {
+    padding: 13px 0;
+    color: var(--text-primary);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.connection-advanced-settings > summary:hover,
+.connection-advanced-settings > summary:focus-visible {
+    color: var(--accent-primary);
+}
+
+.connection-advanced-settings[open] > summary {
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
 /* Reusable post-connect command sets */
 .post-connect-config {
     display: flex;
@@ -4852,15 +4877,13 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .profile-management-toolbar,
-.profile-management-item,
 .profile-management-actions {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.profile-management-toolbar,
-.profile-management-item {
+.profile-management-toolbar {
     justify-content: space-between;
 }
 
@@ -4884,13 +4907,67 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .profile-management-list {
     display: grid;
-    gap: 10px;
-    margin-top: 16px;
+    gap: 12px;
+    margin-top: 18px;
 }
 
 .profile-management-section {
     display: grid;
-    gap: 10px;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+}
+
+.profile-management-section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    min-height: 34px;
+    padding: 5px 7px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+}
+
+.profile-management-section-toggle:hover,
+.profile-management-section-toggle:focus-visible {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.profile-management-section-toggle .material-icons {
+    font-size: 18px;
+}
+
+.profile-management-section-count {
+    min-width: 24px;
+    margin-left: auto;
+    padding: 2px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-align: center;
+}
+
+.profile-management-section-items {
+    display: grid;
+    gap: 0;
+}
+
+.profile-management-section-items[hidden] {
+    display: none;
 }
 
 .profile-management-section + .profile-management-section {
@@ -4898,10 +4975,136 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .profile-management-item {
-    padding: 13px;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 72px;
+    padding: 12px 14px 12px 8px;
     border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+    box-shadow: 0 1px 2px color-mix(in srgb, black 9%, transparent);
+    transition: border-color 140ms ease, box-shadow 140ms ease,
+        opacity 140ms ease, transform 140ms ease;
+}
+
+.profile-management-item:hover {
+    border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
+    box-shadow: 0 5px 18px color-mix(in srgb, black 12%, transparent);
+}
+
+.profile-management-item.is-derived-favorite {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-left: 14px;
+}
+
+.profile-management-item.is-dragging {
+    opacity: 0.36;
+    transform: scale(0.995);
+}
+
+.profile-management-item.is-pending {
+    opacity: 0.68;
+    pointer-events: none;
+}
+
+.profile-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: grab;
+    touch-action: none;
+}
+
+.profile-drag-handle:hover:not(:disabled),
+.profile-drag-handle:focus-visible {
+    background: var(--bg-hover);
+    color: var(--accent-primary);
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+}
+
+.profile-drag-handle:active:not(:disabled) {
+    cursor: grabbing;
+}
+
+.profile-drag-handle:disabled {
+    color: color-mix(in srgb, var(--text-secondary) 42%, transparent);
+    cursor: not-allowed;
+}
+
+.profile-drag-handle .material-icons {
+    font-size: 21px;
+}
+
+.profile-drop-slot {
+    position: relative;
+    height: 10px;
+    margin: 0 8px;
+}
+
+.profile-drop-slot::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    left: 6px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 18%, transparent),
+        0 0 12px var(--accent-primary-glow);
+    opacity: 0;
+    transform: scaleX(0.96);
+    transition: opacity 100ms ease, transform 100ms ease;
+}
+
+.profile-drop-slot::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 4px);
+    left: 2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    opacity: 0;
+    transition: opacity 100ms ease;
+}
+
+.profile-drop-slot.is-active::before,
+.profile-drop-slot.is-active::after {
+    opacity: 1;
+}
+
+.profile-drop-slot.is-active::before {
+    transform: scaleX(1);
+}
+
+.profile-sort-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
     border-radius: 9px;
-    background: var(--bg-secondary);
+    background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-primary));
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.profile-sort-notice .material-icons {
+    color: var(--accent-primary);
+    font-size: 18px;
 }
 
 .profile-management-info {
@@ -4941,6 +5144,82 @@ body.keyboard-open.notepad-focused .notepad-panel {
     background: var(--bg-hover);
     outline: 2px solid var(--accent-primary);
     outline-offset: 1px;
+}
+
+.profile-move-confirmation-content .modal-header {
+    align-items: center;
+}
+
+.profile-confirmation-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profile-confirmation-heading > .material-icons {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--warning-color) 14%, transparent);
+    color: var(--warning-color);
+    font-size: 21px;
+}
+
+.profile-confirmation-close {
+    border: 0;
+    background: transparent;
+}
+
+.profile-confirmation-lead {
+    margin: 0 0 16px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.profile-confirmation-summary {
+    display: grid;
+    gap: 1px;
+    margin: 0 0 16px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--border-color);
+}
+
+.profile-confirmation-summary > div {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+}
+
+.profile-confirmation-summary dt {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.profile-confirmation-summary dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.profile-confirmation-hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.profile-confirmation-actions {
+    margin-top: 22px;
 }
 
 .command-set-selector-row {
@@ -5272,14 +5551,26 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
     .command-set-management-item,
     .command-set-management-toolbar,
-    .profile-management-item,
     .profile-management-toolbar {
         align-items: stretch;
         flex-direction: column;
     }
 
+    .profile-management-item {
+        grid-template-columns: 38px minmax(0, 1fr);
+    }
+
+    .profile-management-item.is-derived-favorite {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .profile-management-actions {
+        grid-column: 2;
         flex-wrap: wrap;
+    }
+
+    .profile-management-item.is-derived-favorite .profile-management-actions {
+        grid-column: 1;
     }
 }
 

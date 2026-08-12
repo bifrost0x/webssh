@@ -771,6 +771,63 @@ def handle_update_profile_organization(data, current_user=None):
             'error': 'Failed to update profile organization',
         }
 
+
+@socketio.on('move_profile')
+@socket_login_required
+def handle_move_profile(data, current_user=None):
+    """Move one profile atomically within the user's flat group structure."""
+    try:
+        data = data if isinstance(data, dict) else {}
+        profile_id = data.get('profile_id')
+        if not isinstance(profile_id, str) or not profile_id:
+            return {'success': False, 'error': 'Profile ID required'}
+
+        source_group = data.get('expected_source_group')
+        if not isinstance(source_group, str):
+            return {'success': False, 'error': 'Invalid source group'}
+        target_group = data.get('target_group')
+        if not isinstance(target_group, str):
+            return {'success': False, 'error': 'Invalid target group'}
+        if len(source_group.strip()) > 64 or len(target_group.strip()) > 64:
+            return {
+                'success': False,
+                'error': 'Group must not exceed 64 characters',
+            }
+
+        target_index = data.get('target_index')
+        if type(target_index) is not int or target_index < 0:
+            return {'success': False, 'error': 'Invalid target index'}
+        confirmed = data.get('confirm_source_group_removal', False)
+        if type(confirmed) is not bool:
+            return {'success': False, 'error': 'Invalid confirmation value'}
+
+        result, error = profile_manager.move_profile(
+            current_user.id,
+            profile_id,
+            source_group,
+            target_group,
+            target_index,
+            confirm_source_group_removal=confirmed,
+        )
+        if error:
+            return {
+                'success': False,
+                'error': error,
+                **(result or {}),
+            }
+        if result.get('requires_confirmation'):
+            return {'success': False, **result}
+
+        payload = {'success': True, **result}
+        emit('profile_organization_updated', payload)
+        handle_list_profiles(current_user=current_user)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as exc:
+        log_error('Failed to move profile', error=str(exc))
+        return {'success': False, 'error': 'Failed to move profile'}
+
 @socketio.on('list_jump_hosts')
 @socket_login_required
 def handle_list_jump_hosts(current_user=None):

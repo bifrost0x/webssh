@@ -121,9 +121,18 @@
     }
     window.openConnectionAssetManager = openConnectionAssetManager;
 
+    window.setConnectionAdvancedExpanded = expanded => {
+        const advanced = document.getElementById('connectionAdvancedSettings');
+        if (advanced) advanced.open = expanded === true;
+    };
+
     window.clearConnectionProfileState = () => {
         window.ConnectionCommandManager?.clear();
         ProfileManager.clearLegacyCommands();
+        window.setConnectionAdvancedExpanded(false);
+
+        const useTmuxCheck = document.getElementById('useTmuxCheck');
+        if (useTmuxCheck) useTmuxCheck.checked = useTmuxCheck.defaultChecked;
 
         const profileSelect = document.getElementById('profileSelect');
         if (profileSelect) {
@@ -1152,6 +1161,7 @@
         if (!profileId) {
             ProfileManager.clearLegacyCommands();
             ConnectionCommandManager.clear();
+            window.setConnectionAdvancedExpanded(false);
             deleteBtn.style.display = 'none';
             delete deleteBtn.dataset.profileId;
             return null;

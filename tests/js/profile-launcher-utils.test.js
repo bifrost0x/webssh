@@ -7,7 +7,19 @@ const {
     determineLaunchMode,
     filterAndSortProfiles,
     formatEndpoint,
+    resolveProfileDrop,
+    usesAdvancedConnectionSettings,
 } = require('../../static/js/profile-launcher-utils.js');
+
+test('detects only saved settings that belong in the advanced connection section', () => {
+    assert.equal(usesAdvancedConnectionSettings({}), false);
+    assert.equal(usesAdvancedConnectionSettings({startup_mode: 'none'}), false);
+    assert.equal(usesAdvancedConnectionSettings({jump_host_id: 'jump-1'}), true);
+    assert.equal(usesAdvancedConnectionSettings({startup_mode: 'command_set'}), true);
+    assert.equal(usesAdvancedConnectionSettings({command_id: 'command-1'}), true);
+    assert.equal(usesAdvancedConnectionSettings({startup_commands: 'uptime'}), true);
+    assert.equal(usesAdvancedConnectionSettings({use_tmux: true}), true);
+});
 
 test('filters profiles across name endpoint user and group', () => {
     const profiles = [
@@ -65,6 +77,88 @@ test('builds favorites first then named groups without duplicates', () => {
         sections.flatMap(section => section.profiles).map(item => item.id),
         ['a', 'b', 'c', 'd'],
     );
+});
+
+test('uses persisted order only after a whole group has positions', () => {
+    const sections = buildProfileSections([
+        { id: 'legacy-2', name: 'Legacy second', group: 'Ops' },
+        { id: 'ordered-2', name: 'Ordered second', group: 'Ops', sort_order: 1 },
+        { id: 'legacy-1', name: 'Legacy first', group: 'Ops' },
+        { id: 'ordered-1', name: 'Ordered first', group: 'Ops', sort_order: 0 },
+    ]);
+
+    assert.deepEqual(
+        sections[0].profiles.map(item => item.id),
+        ['legacy-2', 'ordered-2', 'legacy-1', 'ordered-1'],
+    );
+});
+
+test('resolves same-group insertion boundaries after removing the dragged item', () => {
+    const profiles = [
+        { id: 'a', group: 'Ops', sort_order: 0 },
+        { id: 'b', group: 'Ops', sort_order: 1 },
+        { id: 'c', group: 'Ops', sort_order: 2 },
+    ];
+
+    assert.deepEqual(resolveProfileDrop(profiles, 'a', 'Ops', 2), {
+        profileId: 'a',
+        expectedSourceGroup: 'Ops',
+        targetGroup: 'Ops',
+        targetIndex: 1,
+    });
+    assert.equal(resolveProfileDrop(profiles, 'b', 'Ops', 2), null);
+    assert.deepEqual(resolveProfileDrop(profiles, 'c', 'Ops', 0), {
+        profileId: 'c',
+        expectedSourceGroup: 'Ops',
+        targetGroup: 'Ops',
+        targetIndex: 0,
+    });
+});
+
+test('resolves cross-group and ungrouped drops with clamped target positions', () => {
+    const profiles = [
+        { id: 'a', group: 'Ops', sort_order: 0 },
+        { id: 'b', group: 'Apps', sort_order: 0 },
+        { id: 'c', group: 'Apps', sort_order: 1 },
+    ];
+
+    assert.deepEqual(resolveProfileDrop(profiles, 'a', 'Apps', 99), {
+        profileId: 'a',
+        expectedSourceGroup: 'Ops',
+        targetGroup: 'Apps',
+        targetIndex: 2,
+    });
+    assert.deepEqual(resolveProfileDrop(profiles, 'b', '', 0), {
+        profileId: 'b',
+        expectedSourceGroup: 'Apps',
+        targetGroup: '',
+        targetIndex: 0,
+    });
+    assert.equal(resolveProfileDrop(profiles, 'missing', 'Apps', 0), null);
+    assert.equal(resolveProfileDrop(profiles, 'a', 'Apps', -1), null);
+});
+
+test('maps visible drop boundaries around derived favorites to full group order', () => {
+    const profiles = [
+        { id: 'favorite', group: 'Ops', favorite: true, sort_order: 0 },
+        { id: 'a', group: 'Ops', sort_order: 1 },
+        { id: 'b', group: 'Ops', sort_order: 2 },
+        { id: 'target-favorite', group: 'Apps', favorite: true, sort_order: 0 },
+        { id: 'target', group: 'Apps', sort_order: 1 },
+    ];
+
+    assert.deepEqual(resolveProfileDrop(profiles, 'a', 'Ops', 2), {
+        profileId: 'a',
+        expectedSourceGroup: 'Ops',
+        targetGroup: 'Ops',
+        targetIndex: 2,
+    });
+    assert.deepEqual(resolveProfileDrop(profiles, 'b', 'Apps', 0), {
+        profileId: 'b',
+        expectedSourceGroup: 'Ops',
+        targetGroup: 'Apps',
+        targetIndex: 1,
+    });
 });
 
 const keys = [

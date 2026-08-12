@@ -166,8 +166,24 @@ test('searches grouped hosts and updates favorites without duplicates', async ({
     );
 
     await openProfileManagement(page);
+    await page.locator('#profileSearchInput').fill('');
+    const customerSystemsToggle = page.locator(
+        '[data-profile-group-toggle="group:customer systems"]',
+    );
+    await customerSystemsToggle.click();
+    await expect(customerSystemsToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(customerSystemsToggle.locator('xpath=../..').locator(
+        '.profile-management-section-items',
+    )).toBeHidden();
+    await page.locator('#profileSearchInput').fill('passworduser');
+    await expect(customerSystemsToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.profile-management-item').filter({
+        hasText: 'Password review',
+    })).toBeVisible();
     await page.locator('#profileSearchInput').fill('key.local');
-    const usable = page.locator('.profile-management-item').filter({ hasText: 'Usable key' });
+    const usable = page.locator('.profile-management-item').filter({
+        hasText: 'Usable key',
+    });
     await expect(usable).toHaveCount(1);
     await expect(usable).toContainText('Production');
     const favorite = usable.locator('[data-profile-action="favorite"]');
@@ -176,6 +192,85 @@ test('searches grouped hosts and updates favorites without duplicates', async ({
     await expect(favorite).toHaveAttribute('aria-pressed', 'false');
     await favorite.click();
     await expect(favorite).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('reorders hosts precisely, persists launcher order, and confirms group removal', async ({ page }) => {
+    await openProfileManagement(page);
+
+    const operations = page.locator('.profile-management-section').filter({
+        has: page.locator('[data-profile-group-toggle="group:operations"]'),
+    });
+    const operationNames = operations.locator('.profile-management-info strong');
+    await expect(operationNames).toHaveText(['Ops first', 'Ops second']);
+    await operations.locator('.profile-management-item').filter({
+        hasText: 'Ops first',
+    }).locator('[data-profile-drag-handle]').dragTo(
+        operations.locator('[data-profile-drop-index="2"]'),
+    );
+    await expect(operationNames).toHaveText(['Ops second', 'Ops first']);
+
+    await page.locator('#closeProfileManagementModal').click();
+    const launcherOperations = page.locator('.profile-launcher-section').filter({
+        has: page.locator('.profile-launcher-section-title', {hasText: 'Operations'}),
+    });
+    await expect(launcherOperations.locator('.profile-launcher-name')).toHaveText([
+        'Ops second',
+        'Ops first',
+    ]);
+
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => (
+        window.ProfileManager?.profilesLoaded === true
+    ))).toBe(true);
+    await openProfileManagement(page);
+    const persistedOperations = page.locator('.profile-management-section').filter({
+        has: page.locator('[data-profile-group-toggle="group:operations"]'),
+    });
+    await expect(
+        persistedOperations.locator('.profile-management-info strong'),
+    ).toHaveText(['Ops second', 'Ops first']);
+
+    await page.locator('#profileSearchInput').fill('Ops');
+    await expect(page.locator('.profile-sort-notice')).toBeVisible();
+    await expect(page.locator('.profile-drop-slot')).toHaveCount(0);
+    await expect(page.locator('[data-profile-drag-handle]').first()).toBeDisabled();
+    await page.locator('#profileSearchInput').fill('');
+
+    const databases = page.locator('.profile-management-section').filter({
+        has: page.locator('[data-profile-group-toggle="group:databases"]'),
+    });
+    const applications = page.locator('.profile-management-section').filter({
+        has: page.locator('[data-profile-group-toggle="group:applications"]'),
+    });
+    const soloHandle = databases.locator('.profile-management-item').filter({
+        hasText: 'Solo database',
+    }).locator('[data-profile-drag-handle]');
+    const dragSoloAfterApplication = async () => {
+        const targetSlot = applications.locator('[data-profile-drop-index="1"]');
+        const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+        await soloHandle.dispatchEvent('dragstart', {dataTransfer});
+        await targetSlot.dispatchEvent('dragover', {dataTransfer});
+        await targetSlot.dispatchEvent('drop', {dataTransfer});
+        await soloHandle.dispatchEvent('dragend', {dataTransfer});
+        await dataTransfer.dispose();
+    };
+
+    await dragSoloAfterApplication();
+    await expect(page.locator('#profileMoveConfirmationModal')).toHaveClass(/show/);
+    await expect(page.locator('#profileMoveProfileName')).toHaveText('Solo database');
+    await expect(page.locator('#profileMoveSourceGroup')).toHaveText('Databases');
+    await page.locator('#cancelProfileMoveBtn').click();
+    await expect(page.locator('#profileMoveConfirmationModal')).not.toHaveClass(/show/);
+    await expect(databases).toHaveCount(1);
+
+    await dragSoloAfterApplication();
+    await page.locator('#confirmProfileMoveBtn').click();
+    await expect(page.locator('#profileMoveConfirmationModal')).not.toHaveClass(/show/);
+    await expect(page.locator('[data-profile-group-toggle="group:databases"]')).toHaveCount(0);
+    await expect(applications.locator('.profile-management-info strong')).toHaveText([
+        'Application target',
+        'Solo database',
+    ]);
 });
 
 test('only auto-connects profiles whose credentials and references are currently safe', async ({ page }) => {
@@ -239,6 +334,7 @@ test('only auto-connects profiles whose credentials and references are currently
         username: 'keyuser',
         authType: 'key',
     });
+    await expect(page.locator('#connectionAdvancedSettings')).toHaveJSProperty('open', true);
     await expect(page.locator('#keySelect option:checked')).toContainText('E2E usable key');
     await expect(page.locator('#jumpHostSelect')).toHaveValue('');
     await expect(page.locator(

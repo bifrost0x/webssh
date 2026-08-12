@@ -201,6 +201,152 @@ def test_profile_organization_socket_rejects_missing_profile_id(
     assert result == {'success': False, 'error': 'Profile ID required'}
 
 
+@pytest.mark.parametrize(('field', 'value', 'message'), [
+    ('profile_id', None, 'Profile ID required'),
+    ('expected_source_group', None, 'Invalid source group'),
+    ('target_group', None, 'Invalid target group'),
+    ('target_group', 'x' * 65, 'Group must not exceed 64 characters'),
+    ('target_index', True, 'Invalid target index'),
+    ('target_index', -1, 'Invalid target index'),
+    ('target_index', '1', 'Invalid target index'),
+    ('confirm_source_group_removal', 'true', 'Invalid confirmation value'),
+])
+def test_move_profile_socket_rejects_invalid_payload(
+    app, monkeypatch, field, value, message,
+):
+    import app.socket_events as socket_events
+
+    username = f'move_{field[:8]}_{len(str(value))}'
+    _user_id, sid = create_socket_user(app, username)
+    payload = {
+        'profile_id': 'profile-1',
+        'expected_source_group': 'Production',
+        'target_group': 'Homelab',
+        'target_index': 0,
+        'confirm_source_group_removal': False,
+    }
+    payload[field] = value
+
+    result, emitted = call_socket_handler(
+        app, monkeypatch, socket_events.handle_move_profile, sid, payload
+    )
+
+    assert result == {'success': False, 'error': message}
+    assert emitted == []
+
+
+def test_move_profile_socket_requests_confirmation_without_writing_or_broadcast(
+    app, monkeypatch,
+):
+    from app import profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'profile_move_confirm')
+    profiles = [
+        {'id': 'critical', 'name': 'Critical DB', 'group': 'Databases', 'sort_order': 0},
+        {'id': 'worker', 'name': 'Worker', 'group': 'Production', 'sort_order': 0},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_move_profile,
+        sid,
+        {
+            'profile_id': 'critical',
+            'expected_source_group': 'Databases',
+            'target_group': 'Production',
+            'target_index': 1,
+            'confirm_source_group_removal': False,
+        },
+    )
+
+    assert result == {
+        'success': False,
+        'profiles': profiles,
+        'requires_confirmation': True,
+        'profile_id': 'critical',
+        'profile_name': 'Critical DB',
+        'source_group': 'Databases',
+    }
+    assert emitted == []
+    with app.app_context():
+        assert profile_manager.load_profiles(user_id) == profiles
+
+
+def test_move_profile_socket_returns_authoritative_profiles_after_confirmed_write(
+    app, monkeypatch,
+):
+    from app import profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'profile_move_success')
+    profiles = [
+        {'id': 'critical', 'name': 'Critical DB', 'group': 'Databases', 'sort_order': 0},
+        {'id': 'worker', 'name': 'Worker', 'group': 'Production', 'sort_order': 0},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_move_profile,
+        sid,
+        {
+            'profile_id': 'critical',
+            'expected_source_group': 'Databases',
+            'target_group': 'Production',
+            'target_index': 1,
+            'confirm_source_group_removal': True,
+        },
+    )
+
+    assert result['success'] is True
+    assert result['requires_confirmation'] is False
+    ordered = sorted(result['profiles'], key=lambda item: item['sort_order'])
+    assert [item['id'] for item in ordered] == ['worker', 'critical']
+    assert ('profile_organization_updated', result) in emitted
+    assert any(event == 'profiles_list' for event, _payload in emitted)
+
+
+def test_move_profile_socket_returns_authoritative_state_when_source_is_stale(
+    app, monkeypatch,
+):
+    from app import profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'profile_move_stale')
+    profiles = [
+        {'id': 'api', 'name': 'API', 'group': 'Production', 'sort_order': 0},
+    ]
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_move_profile,
+        sid,
+        {
+            'profile_id': 'api',
+            'expected_source_group': 'Homelab',
+            'target_group': '',
+            'target_index': 0,
+        },
+    )
+
+    assert result == {
+        'success': False,
+        'error': 'Profile group changed; retry move',
+        'profiles': profiles,
+        'requires_confirmation': False,
+    }
+    assert emitted == []
+
+
 def test_update_user_command_rejects_unknown_id_without_writing(app, monkeypatch):
     from app import command_manager
 
