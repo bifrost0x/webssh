@@ -36,7 +36,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
-        "filename='js/app.js'": '?v=8',
+        "filename='js/app.js'": '?v=9',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
