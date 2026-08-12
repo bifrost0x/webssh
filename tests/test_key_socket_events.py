@@ -177,3 +177,150 @@ def test_key_rename_audit_sanitizes_names(monkeypatch):
     assert messages[0].startswith('KEY_RENAME | ')
     assert '\n' not in messages[0]
     assert '\r' not in messages[0]
+
+
+def test_key_replace_returns_safe_acknowledgement_event_and_audit(
+        app, monkeypatch, rsa_private_key_pem,
+        rsa_openssh_private_key_pem):
+    from app import key_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'key_replace_owner')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Rotating key', rsa_private_key_pem
+        )
+        assert error is None
+
+    audits = []
+    monkeypatch.setattr(
+        socket_events,
+        'log_key_replace',
+        lambda *args: audits.append(args),
+    )
+    acknowledgement, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_replace_key,
+        sid,
+        {
+            'key_id': key['id'],
+            'key_content': rsa_openssh_private_key_pem,
+        },
+    )
+
+    assert acknowledgement == {
+        'success': True,
+        'key': {**key, 'usable': True},
+    }
+    assert ('key_replaced', acknowledgement) in emitted
+    assert any(event == 'keys_list' for event, _payload in emitted)
+    assert rsa_openssh_private_key_pem not in repr(acknowledgement)
+    assert rsa_openssh_private_key_pem not in repr(emitted)
+    assert rsa_openssh_private_key_pem not in repr(audits)
+    assert audits == [(
+        'key_replace_owner',
+        'Rotating key',
+        True,
+        None,
+    )]
+    with app.app_context():
+        content, error = key_manager.read_key_content(user_id, key['id'])
+        assert error is None
+        assert content == rsa_openssh_private_key_pem
+
+
+def test_key_replace_rejects_missing_and_oversized_content_without_secret_echo(
+        app, monkeypatch, rsa_private_key_pem):
+    from app import key_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'key_replace_rejected')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Original', rsa_private_key_pem
+        )
+        assert error is None
+
+    cases = (
+        ({'key_id': key['id']}, 'Key ID and key content required'),
+        (
+            {'key_id': key['id'], 'key_content': 's' * (64 * 1024 + 1)},
+            'Key content too large (max 64KB)',
+        ),
+    )
+    for payload, expected_error in cases:
+        acknowledgement, emitted = call_socket_handler(
+            app,
+            monkeypatch,
+            socket_events.handle_replace_key,
+            sid,
+            payload,
+        )
+        assert acknowledgement == {
+            'success': False,
+            'error': expected_error,
+        }
+        if payload.get('key_content'):
+            assert payload['key_content'] not in repr(acknowledgement)
+        assert all(event != 'key_replaced' for event, _payload in emitted)
+
+
+def test_key_replace_manager_error_is_audited_without_private_input(
+        app, monkeypatch):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'key_replace_failed')
+    private_input = 'private-replacement-sentinel'
+    monkeypatch.setattr(
+        socket_events.key_manager,
+        'replace_key',
+        lambda *_args: (None, 'Replacement rejected'),
+    )
+    audits = []
+    monkeypatch.setattr(
+        socket_events,
+        'log_key_replace',
+        lambda *args: audits.append(args),
+    )
+
+    acknowledgement, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_replace_key,
+        sid,
+        {'key_id': 'owned-key', 'key_content': private_input},
+    )
+
+    assert acknowledgement == {
+        'success': False,
+        'error': 'Replacement rejected',
+    }
+    assert private_input not in repr(acknowledgement)
+    assert private_input not in repr(emitted)
+    assert private_input not in repr(audits)
+    assert audits == [(
+        'key_replace_failed',
+        'owned-key',
+        False,
+        None,
+    )]
+
+
+def test_key_replace_audit_sanitizes_values(monkeypatch):
+    from app import audit_logger
+
+    messages = []
+    monkeypatch.setattr(audit_logger.audit_logger, 'info', messages.append)
+
+    audit_logger.log_key_replace(
+        'admin\nforged',
+        'key\rsecret',
+        False,
+        '127.0.0.1\nforged',
+    )
+
+    assert len(messages) == 1
+    assert messages[0].startswith('KEY_REPLACE_FAILED | ')
+    assert '\n' not in messages[0]
+    assert '\r' not in messages[0]

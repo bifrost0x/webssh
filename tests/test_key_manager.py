@@ -181,6 +181,176 @@ def test_rename_key_preserves_corrupt_metadata(app):
         assert metadata_path.read_bytes() == before
 
 
+def test_replace_key_preserves_identity_metadata_and_references(
+        app, rsa_private_key_pem, rsa_openssh_private_key_pem):
+    from app import key_encryption, key_manager, profile_manager
+
+    user_id = create_user(app, 'replace-owner')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Rotating key', rsa_private_key_pem
+        )
+        assert error is None
+        profile, error = profile_manager.add_profile(
+            user_id,
+            'Production',
+            'prod.example.com',
+            22,
+            'operator',
+            'key',
+            key_id=key['id'],
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        metadata_path = key_manager.get_user_keys_file(user_id)
+        encrypted_before = key_path.read_bytes()
+        metadata_before = metadata_path.read_bytes()
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], rsa_openssh_private_key_pem
+        )
+
+        assert error is None
+        assert replaced == {**key, 'usable': True}
+        assert metadata_path.read_bytes() == metadata_before
+        assert key_path.read_bytes() != encrypted_before
+        assert key_encryption.is_encrypted(key_path.read_bytes()) is True
+        content, read_error = key_manager.read_key_content(
+            user_id, key['id']
+        )
+        assert read_error is None
+        assert content == rsa_openssh_private_key_pem
+        assert profile_manager.load_profiles(user_id)[0]['id'] == profile['id']
+        assert profile_manager.load_profiles(user_id)[0]['key_id'] == key['id']
+
+
+def test_replace_key_rejects_unknown_and_cross_user_ids(
+        app, rsa_private_key_pem, rsa_openssh_private_key_pem):
+    from app import key_manager
+
+    owner_id = create_user(app, 'replace-real-owner')
+    other_id = create_user(app, 'replace-other-user')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            owner_id, 'Owned key', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(owner_id, key['id']))
+        before = key_path.read_bytes()
+
+        for user_id, key_id in (
+            (owner_id, 'missing-key'),
+            (other_id, key['id']),
+        ):
+            replaced, error = key_manager.replace_key(
+                user_id, key_id, rsa_openssh_private_key_pem
+            )
+            assert replaced is None
+            assert error == 'Key not found'
+
+        assert key_path.read_bytes() == before
+
+
+@pytest.mark.parametrize('replacement', [None, 7, '', 'not a private key'])
+def test_replace_key_rejects_invalid_content_without_writing(
+        app, rsa_private_key_pem, replacement):
+    from app import key_manager
+
+    user_id = create_user(app, 'replace-invalid')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Original', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        before = key_path.read_bytes()
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], replacement
+        )
+
+        assert replaced is None
+        assert error in {
+            'Invalid key content',
+            'Unsupported or invalid private key format',
+        }
+        assert key_path.read_bytes() == before
+
+
+def test_replace_key_rejects_different_key_type_without_writing(
+        app, rsa_private_key_pem, ed25519_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, 'replace-wrong-type')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'RSA key', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        before = key_path.read_bytes()
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], ed25519_private_key_pem
+        )
+
+        assert replaced is None
+        assert error == 'Replacement key must use the same key type (RSA)'
+        assert key_path.read_bytes() == before
+
+
+def test_replace_key_rejects_inconsistent_legacy_type_metadata(
+        app, ed25519_private_key_pem, rsa_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, 'replace-stale-key-type')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Legacy metadata', ed25519_private_key_pem
+        )
+        assert error is None
+        stale_key = {**key, 'key_type': 'RSA'}
+        assert key_manager.save_keys(user_id, [stale_key]) is True
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        before = key_path.read_bytes()
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], rsa_private_key_pem
+        )
+
+        assert replaced is None
+        assert error == 'Stored key metadata does not match key content'
+        assert key_path.read_bytes() == before
+
+
+def test_replace_key_write_failure_preserves_active_key(
+        app, monkeypatch, rsa_private_key_pem,
+        rsa_openssh_private_key_pem):
+    from app import key_manager
+
+    user_id = create_user(app, 'replace-write-failure')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Original', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        before = key_path.read_bytes()
+        monkeypatch.setattr(
+            key_manager.key_encryption,
+            'replace_key_content',
+            lambda *_args, **_kwargs: False,
+        )
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], rsa_openssh_private_key_pem
+        )
+
+        assert replaced is None
+        assert error == 'Failed to replace key'
+        assert key_path.read_bytes() == before
+
+
 @pytest.mark.parametrize(
     ('fixture_name', 'expected'),
     [

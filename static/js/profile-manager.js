@@ -7,6 +7,10 @@ const ProfileManager = {
     editingKeyId: null,
     editingKeyName: null,
     keyRenamePending: false,
+    replacingKeyId: null,
+    replacementKeyContent: '',
+    keyReplacePending: false,
+    keyReplaceError: null,
     inlineKeyUploadPending: false,
     profileSearchQuery: '',
     organizationPending: new Set(),
@@ -83,9 +87,32 @@ const ProfileManager = {
                 const input = button.closest('.key-item')?.querySelector('.key-rename-input');
                 this.submitKeyRename(keyId, input?.value || '');
             }
+            if (button.dataset.keyAction === 'replace') this.beginKeyReplacement(keyId);
+            if (button.dataset.keyAction === 'cancel-replace') this.cancelKeyReplacement();
+            if (button.dataset.keyAction === 'confirm-replace') {
+                const input = button.closest('.key-item')?.querySelector('.key-replace-input');
+                this.submitKeyReplacement(keyId, input?.value || '');
+            }
             if (button.dataset.keyAction === 'delete') this.deleteKey(keyId);
         });
         document.getElementById('keysList')?.addEventListener('keydown', event => {
+            const replacementInput = event.target.closest('.key-replace-input');
+            if (replacementInput) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.cancelKeyReplacement();
+                }
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.submitKeyReplacement(
+                        replacementInput.dataset.keyId,
+                        replacementInput.value,
+                    );
+                }
+                return;
+            }
             const input = event.target.closest('.key-rename-input');
             if (!input) return;
             if (event.key === 'Enter') {
@@ -100,6 +127,12 @@ const ProfileManager = {
             }
         });
         document.getElementById('keysList')?.addEventListener('input', event => {
+            const replacementInput = event.target.closest('.key-replace-input');
+            if (replacementInput?.dataset.keyId === this.replacingKeyId) {
+                this.replacementKeyContent = replacementInput.value;
+                this.keyReplaceError = null;
+                return;
+            }
             const input = event.target.closest('.key-rename-input');
             if (input?.dataset.keyId === this.editingKeyId) {
                 this.editingKeyName = input.value;
@@ -376,9 +409,11 @@ const ProfileManager = {
         }
 
         container.replaceChildren();
-        this.keys.forEach(key => {
+        this.keys.forEach((key, index) => {
             const keyItem = document.createElement('div');
             keyItem.className = 'key-item';
+            const replacing = this.replacingKeyId === key.id;
+            keyItem.classList.toggle('replacing', replacing);
 
             const keyInfo = document.createElement('div');
             keyInfo.className = 'key-info';
@@ -421,7 +456,9 @@ const ProfileManager = {
                 button.dataset.keyAction = action;
                 button.dataset.keyId = key.id;
                 button.textContent = label;
-                button.disabled = this.editingKeyId === key.id && this.keyRenamePending;
+                button.disabled = (
+                    this.editingKeyId === key.id && this.keyRenamePending
+                ) || (replacing && this.keyReplacePending);
                 actions.appendChild(button);
                 return button;
             };
@@ -437,6 +474,17 @@ const ProfileManager = {
                     this.t('common.cancel', 'Cancel'),
                     'btn-secondary',
                 );
+            } else if (replacing) {
+                addAction(
+                    'confirm-replace',
+                    this.t('keys.replaceConfirm', 'Replace stored key'),
+                    'btn-danger',
+                );
+                addAction(
+                    'cancel-replace',
+                    this.t('common.cancel', 'Cancel'),
+                    'btn-secondary',
+                );
             } else {
                 const renameButton = addAction(
                     'rename',
@@ -447,11 +495,66 @@ const ProfileManager = {
                     'aria-label',
                     this.t('keys.renameNamed', 'Rename {name}').replace('{name}', key.name),
                 );
+                const replaceButton = addAction(
+                    'replace',
+                    this.t('keys.replace', 'Replace'),
+                    'btn-secondary',
+                );
+                replaceButton.setAttribute(
+                    'aria-label',
+                    this.t('keys.replaceNamed', 'Replace {name}').replace('{name}', key.name),
+                );
                 addAction('delete', this.t('common.delete', 'Delete'), 'btn-danger');
             }
 
             keyItem.appendChild(keyInfo);
             keyItem.appendChild(actions);
+
+            if (replacing) {
+                const replacementEditor = document.createElement('div');
+                replacementEditor.className = 'key-replace-editor';
+                const inputId = `key-replacement-${index}`;
+                const warningId = `key-replacement-warning-${index}`;
+                const statusId = `key-replacement-status-${index}`;
+
+                const warning = document.createElement('p');
+                warning.id = warningId;
+                warning.className = 'key-replace-warning';
+                warning.textContent = this.t(
+                    'keys.replaceWarning',
+                    'Install the matching public key on every target first. The replacement must be another {type} private key. Future connections using this key will switch immediately; active sessions stay connected.',
+                ).replace('{type}', key.key_type);
+
+                const label = document.createElement('label');
+                label.htmlFor = inputId;
+                label.textContent = this.t(
+                    'keys.replacementPrivateKey',
+                    'Replacement private key',
+                );
+
+                const textarea = document.createElement('textarea');
+                textarea.id = inputId;
+                textarea.className = 'form-control key-replace-input';
+                textarea.dataset.keyId = key.id;
+                textarea.rows = 7;
+                textarea.maxLength = 64 * 1024;
+                textarea.value = this.replacementKeyContent;
+                textarea.disabled = this.keyReplacePending;
+                textarea.setAttribute('aria-describedby', `${warningId} ${statusId}`);
+
+                const status = document.createElement('div');
+                status.id = statusId;
+                status.className = 'key-replace-status';
+                status.setAttribute('role', 'status');
+                status.setAttribute('aria-live', 'polite');
+                status.classList.toggle('error', Boolean(this.keyReplaceError));
+                status.textContent = this.keyReplacePending
+                    ? this.t('keys.replacing', 'Replacing key...')
+                    : (this.keyReplaceError || '');
+
+                replacementEditor.append(warning, label, textarea, status);
+                keyItem.appendChild(replacementEditor);
+            }
 
             container.appendChild(keyItem);
         });
@@ -459,6 +562,11 @@ const ProfileManager = {
         if (this.editingKeyId && !this.keyRenamePending) {
             container.querySelector(
                 `.key-rename-input[data-key-id="${CSS.escape(this.editingKeyId)}"]`
+            )?.focus();
+        }
+        if (this.replacingKeyId && !this.keyReplacePending) {
+            container.querySelector(
+                `.key-replace-input[data-key-id="${CSS.escape(this.replacingKeyId)}"]`
             )?.focus();
         }
     },
@@ -1030,7 +1138,11 @@ const ProfileManager = {
     },
 
     beginKeyRename(keyId) {
-        if (this.keyRenamePending || !this.keys.some(key => key.id === keyId)) return;
+        if (
+            this.keyRenamePending
+            || this.replacingKeyId
+            || !this.keys.some(key => key.id === keyId)
+        ) return;
         this.editingKeyId = keyId;
         this.editingKeyName = this.keys.find(key => key.id === keyId).name;
         this.renderKeysList();
@@ -1065,6 +1177,64 @@ const ProfileManager = {
             }
             this.editingKeyId = null;
             this.editingKeyName = null;
+            this.upsertKeySummary(acknowledgement.key);
+        });
+    },
+
+    beginKeyReplacement(keyId) {
+        if (
+            this.keyReplacePending
+            || this.editingKeyId
+            || !this.keys.some(key => key.id === keyId)
+        ) return;
+        this.replacingKeyId = keyId;
+        this.replacementKeyContent = '';
+        this.keyReplaceError = null;
+        this.renderKeysList();
+    },
+
+    cancelKeyReplacement() {
+        if (this.keyReplacePending) return;
+        this.replacingKeyId = null;
+        this.replacementKeyContent = '';
+        this.keyReplaceError = null;
+        this.renderKeysList();
+    },
+
+    submitKeyReplacement(keyId, keyContent) {
+        if (
+            this.keyReplacePending
+            || keyId !== this.replacingKeyId
+            || !window.socket
+        ) return;
+        this.replacementKeyContent = keyContent;
+        if (!keyContent.trim()) {
+            this.keyReplaceError = this.t(
+                'keys.replacementRequired',
+                'Enter the replacement private key.',
+            );
+            this.renderKeysList();
+            return;
+        }
+
+        this.keyReplacePending = true;
+        this.keyReplaceError = null;
+        this.renderKeysList();
+        window.socket.emit('replace_key', {
+            key_id: keyId,
+            key_content: keyContent,
+        }, acknowledgement => {
+            this.keyReplacePending = false;
+            if (!acknowledgement?.success || !acknowledgement.key) {
+                this.keyReplaceError = acknowledgement?.error || this.t(
+                    'keys.replaceFailed', 'Failed to replace key'
+                );
+                this.renderKeysList();
+                return;
+            }
+            this.replacingKeyId = null;
+            this.replacementKeyContent = '';
+            this.keyReplaceError = null;
             this.upsertKeySummary(acknowledgement.key);
         });
     },

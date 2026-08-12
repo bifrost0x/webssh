@@ -316,6 +316,69 @@ def rename_key(user_id, key_id, new_name):
     return None, "Key not found"
 
 
+def replace_key(user_id, key_id, key_content):
+    """Atomically replace one owned key while preserving its stable identity."""
+    if not isinstance(key_id, str) or not key_id:
+        return None, "Key not found"
+    if not isinstance(key_content, str) or not key_content:
+        return None, "Invalid key content"
+
+    try:
+        with storage_lock(f'keys:{user_id}'):
+            keys = _load_keys_with_lock_held(user_id)
+            key = next((item for item in keys if item['id'] == key_id), None)
+            if key is None:
+                return None, "Key not found"
+
+            try:
+                replacement_type = identify_private_key(key_content)
+            except paramiko.PasswordRequiredException:
+                return None, "Passphrase-encrypted private keys are not supported"
+            except UnsupportedPrivateKeyError as exc:
+                return None, str(exc)
+            except paramiko.SSHException:
+                return None, "Invalid key format"
+
+            keys_dir = get_user_keys_dir(user_id)
+            if not keys_dir:
+                return None, "Key not found"
+            key_path = _safe_key_path(keys_dir, key['filename'])
+            if not _path_entry_exists(key_path):
+                return None, "Key file not found"
+            stored_content = key_encryption.read_key_content(
+                str(user_id),
+                str(key_path),
+                migrate_legacy=False,
+                allowed_root=keys_dir,
+            )
+            stored_type = identify_private_key(stored_content)
+            if stored_type != key['key_type']:
+                return None, "Stored key metadata does not match key content"
+            if replacement_type != stored_type:
+                return None, (
+                    "Replacement key must use the same key type "
+                    f"({stored_type})"
+                )
+            if not key_encryption.replace_key_content(
+                str(user_id),
+                str(key_path),
+                key_content,
+                allowed_root=keys_dir,
+            ):
+                return None, "Failed to replace key"
+            return {**key, 'usable': True}, None
+    except StorageCorruptionError:
+        raise
+    except Exception as exc:
+        log_error(
+            "Error replacing key",
+            user_id=user_id,
+            key_id=key_id,
+            exception_type=type(exc).__name__,
+        )
+        return None, "Failed to replace key"
+
+
 def _remove_key_after_metadata_failure(user_id, key_id, key_path):
     """Best-effort rollback when the encrypted key has no metadata entry."""
     try:

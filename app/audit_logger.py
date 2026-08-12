@@ -351,6 +351,15 @@ def log_key_rename(username, old_name, new_name, ip_address):
     )
 
 
+def log_key_replace(username, key_name, success, ip_address):
+    status = "SUCCESS" if success else "FAILED"
+    audit_logger.info(
+        f"KEY_REPLACE_{status} | user={_sanitize_log_value(username)} | "
+        f"key={_sanitize_log_value(key_name)} | "
+        f"ip={_sanitize_log_value(ip_address)}"
+    )
+
+
 def log_key_delete(username, key_name, ip_address):
     audit_logger.info(
         f"KEY_DELETE | user={_sanitize_log_value(username)} | "

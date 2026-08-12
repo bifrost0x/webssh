@@ -388,3 +388,50 @@ def write_key_content(
             error_type=type(e).__name__,
         )
         return False
+
+
+@_serialized_key_operation
+def replace_key_content(
+        user_id: str, key_path: str, key_content: str, *,
+        allowed_root: Path = None) -> bool:
+    """Replace an existing encrypted key and restore its bytes on failure."""
+    path = Path(key_path)
+    try:
+        encrypted = encrypt_key_content(str(user_id), key_content)
+        with _key_file_lock(
+                path, allowed_root=allowed_root) as operation_path:
+            original = operation_path.read_bytes()
+            try:
+                atomic_write_bytes(operation_path, encrypted, mode=0o600)
+                stored = operation_path.read_bytes()
+                verified = decrypt_key_content(
+                    str(user_id), stored
+                ).encode('utf-8')
+                if not hmac.compare_digest(
+                    verified,
+                    key_content.encode('utf-8'),
+                ):
+                    raise ValueError('SSH key replacement verification failed')
+            except Exception as exc:
+                try:
+                    _restore_plaintext(operation_path, original)
+                except Exception as rollback_error:
+                    raise RuntimeError(
+                        'SSH key replacement rollback failed'
+                    ) from rollback_error
+                log_error(
+                    "Failed to replace encrypted key",
+                    user_id=user_id,
+                    error_type=type(exc).__name__,
+                )
+                return False
+        return True
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        log_error(
+            "Failed to replace encrypted key",
+            user_id=user_id,
+            error_type=type(exc).__name__,
+        )
+        return False

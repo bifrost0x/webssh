@@ -2733,6 +2733,10 @@ textarea.form-control {
     box-shadow: var(--shadow-sm);
 }
 
+.key-item.replacing {
+    flex-wrap: wrap;
+}
+
 .key-info {
     display: flex;
     flex-direction: column;
@@ -2801,6 +2805,38 @@ textarea.form-control {
     min-width: 0;
 }
 
+.key-replace-editor {
+    display: flex;
+    flex: 1 0 100%;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+}
+
+.key-replace-editor textarea {
+    width: 100%;
+    resize: vertical;
+    font-family: var(--font-mono, monospace);
+}
+
+.key-replace-warning {
+    margin: 0;
+    color: var(--warning-color, #f3c969);
+    line-height: 1.5;
+}
+
+.key-replace-status {
+    min-height: 1.25em;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.key-replace-status.error {
+    color: var(--error-color, #e57373);
+}
+
 .profile-inline-key-status {
     min-height: 1.25em;
     color: var(--text-secondary);
@@ -2827,6 +2863,10 @@ textarea.form-control {
     .profile-inline-key-actions {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .key-replace-editor {
+        width: 100%;
     }
 
     .key-item-actions .btn,

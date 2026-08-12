@@ -307,6 +307,51 @@ class TestKeyFileOperations:
             assert open(key_path, 'rb').read() == original
             assert sorted(os.listdir(tmpdir)) == ['legacy.pem']
 
+    def test_key_replacement_post_replace_failure_restores_ciphertext(
+            self, monkeypatch, rsa_private_key_pem,
+            rsa_openssh_private_key_pem):
+        from app import key_encryption
+        from app.storage_utils import atomic_write_bytes as real_atomic_write
+
+        user_id = 'replacement-rollback'
+        original = key_encryption.encrypt_key_content(
+            user_id, rsa_private_key_pem
+        )
+        errors = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key_path = Path(tmpdir) / 'stored.pem'
+            key_path.write_bytes(original)
+
+            def replace_then_fail(path, payload, mode=0o600):
+                real_atomic_write(path, payload, mode)
+                raise OSError('private post-replace failure detail')
+
+            monkeypatch.setattr(
+                key_encryption, 'atomic_write_bytes', replace_then_fail
+            )
+            monkeypatch.setattr(
+                key_encryption,
+                'log_error',
+                lambda message, **fields: errors.append((message, fields)),
+            )
+
+            replaced = key_encryption.replace_key_content(
+                user_id,
+                str(key_path),
+                rsa_openssh_private_key_pem,
+                allowed_root=Path(tmpdir),
+            )
+
+            assert replaced is False
+            assert key_path.read_bytes() == original
+            assert sorted(os.listdir(tmpdir)) == ['stored.pem']
+            assert errors == [(
+                'Failed to replace encrypted key',
+                {'user_id': user_id, 'error_type': 'OSError'},
+            )]
+            assert 'private post-replace failure detail' not in repr(errors)
+
     def test_failed_readback_verification_restores_plaintext(
             self, monkeypatch, ecdsa_private_key_pem):
         from app import key_encryption

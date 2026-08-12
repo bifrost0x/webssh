@@ -411,6 +411,46 @@ test('SSH key rename supports click, Enter, cancel, and Escape', async ({ page }
     await expect(keyList).toContainText('E2E usable key');
 });
 
+test('SSH key replacement warns and preserves a failed draft', async ({ page }) => {
+    await openKeyManagement(page);
+    const keyList = page.locator('#keysList');
+    let keyItem = keyList.locator('.key-item').filter({ hasText: 'E2E usable key' });
+    await keyItem.locator('[data-key-action="replace"]').click();
+    keyItem = keyList.locator('.key-item').filter({ hasText: 'E2E usable key' });
+
+    await expect(keyItem.locator('.key-replace-warning')).toBeVisible();
+    await expect(keyItem.locator('.key-replace-warning')).toContainText(
+        'public key',
+    );
+    await page.evaluate(() => {
+        const originalEmit = window.socket.emit.bind(window.socket);
+        window.__keyReplaceOriginalEmit = originalEmit;
+        window.socket.emit = function wrappedEmit(event, ...args) {
+            if (event !== 'replace_key') return originalEmit(event, ...args);
+            const acknowledgement = typeof args.at(-1) === 'function'
+                ? args.at(-1)
+                : null;
+            queueMicrotask(() => acknowledgement?.({
+                success: false,
+                error: 'E2E intercepted key replacement',
+            }));
+            return window.socket;
+        };
+    });
+    await keyItem.locator('.key-replace-input').fill('Preserved replacement draft');
+    await keyItem.locator('[data-key-action="confirm-replace"]').click();
+    await expect(keyItem.locator('.key-replace-input')).toHaveValue(
+        'Preserved replacement draft',
+    );
+    await expect(keyItem.locator('[data-key-action="confirm-replace"]')).toBeEnabled();
+    await page.evaluate(() => {
+        window.socket.emit = window.__keyReplaceOriginalEmit;
+        delete window.__keyReplaceOriginalEmit;
+    });
+    await keyItem.locator('[data-key-action="cancel-replace"]').click();
+    await expect(keyItem.locator('.key-replace-input')).toHaveCount(0);
+});
+
 test('referenced commands and command sets cannot be deleted', async ({ page }) => {
     await page.locator('#commandLibraryBtn').click();
     await expect(page.locator('#commandWorkspaceModal')).toHaveClass(/show/);
