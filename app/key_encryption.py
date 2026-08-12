@@ -139,7 +139,7 @@ def is_encrypted(data: bytes) -> bool:
             return True
 
         return False
-    except:
+    except Exception:
         return False
 
 def _canonical_key_path(path: Path) -> str:
