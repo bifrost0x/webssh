@@ -165,6 +165,18 @@
         return String(profile?.group || '').trim();
     }
 
+    function usesAdvancedConnectionSettings(profile) {
+        const value = profile && typeof profile === 'object' ? profile : {};
+        const startupMode = String(value.startup_mode || '').trim();
+        const hasPostConnect = (
+            (startupMode && startupMode !== 'none')
+            || Boolean(value.command_id)
+            || Boolean(value.command_set_id)
+            || Boolean(String(value.startup_commands || '').trim())
+        );
+        return Boolean(value.jump_host_id || value.use_tmux === true || hasPostConnect);
+    }
+
     function compareText(left, right) {
         return String(left).localeCompare(String(right), undefined, {
             numeric: true,
@@ -172,9 +184,46 @@
         });
     }
 
+    function validSortOrder(profile) {
+        return Number.isInteger(profile?.sort_order)
+            && profile.sort_order >= 0;
+    }
+
+    function compareProfileOrder(
+        left,
+        right,
+        fallbackIndexes = new Map(),
+        usePersistedOrder = true,
+    ) {
+        if (usePersistedOrder && left.sort_order !== right.sort_order) {
+            return left.sort_order - right.sort_order;
+        }
+
+        const leftIndex = fallbackIndexes.get(left);
+        const rightIndex = fallbackIndexes.get(right);
+        if (Number.isInteger(leftIndex) && Number.isInteger(rightIndex)) {
+            return leftIndex - rightIndex;
+        }
+        return compareText(left?.name || '', right?.name || '')
+            || compareText(left?.host || '', right?.host || '')
+            || compareText(left?.id || '', right?.id || '');
+    }
+
     function filterAndSortProfiles(profiles, query = '') {
         const needle = String(query || '').trim().toLocaleLowerCase();
-        return (Array.isArray(profiles) ? profiles : [])
+        const source = Array.isArray(profiles) ? profiles : [];
+        const fallbackIndexes = new Map(source.map((profile, index) => (
+            [profile, index]
+        )));
+        const completeOrderGroups = new Map();
+        source.forEach(profile => {
+            const key = normalizedGroup(profile).toLocaleLowerCase();
+            completeOrderGroups.set(
+                key,
+                (completeOrderGroups.get(key) ?? true) && validSortOrder(profile),
+            );
+        });
+        return source
             .filter(profile => profile && profile.id)
             .filter(profile => (
                 !needle
@@ -192,9 +241,99 @@
                 Number(right.favorite === true)
                 - Number(left.favorite === true)
                 || compareText(normalizedGroup(left), normalizedGroup(right))
-                || compareText(left.name || '', right.name || '')
-                || compareText(left.host || '', right.host || '')
+                || compareProfileOrder(
+                    left,
+                    right,
+                    fallbackIndexes,
+                    completeOrderGroups.get(
+                        normalizedGroup(left).toLocaleLowerCase(),
+                    ) === true,
+                )
             ));
+    }
+
+    function resolveProfileDrop(
+        profiles,
+        profileId,
+        targetGroup,
+        targetBoundaryIndex,
+    ) {
+        const source = (Array.isArray(profiles) ? profiles : [])
+            .filter(profile => profile && profile.id);
+        const movedProfile = source.find(profile => profile.id === profileId);
+        if (!movedProfile || !Number.isInteger(targetBoundaryIndex)
+                || targetBoundaryIndex < 0) {
+            return null;
+        }
+
+        const normalizedTarget = String(targetGroup || '').trim();
+        const expectedSourceGroup = normalizedGroup(movedProfile);
+        const fallbackIndexes = new Map(source.map((profile, index) => (
+            [profile, index]
+        )));
+        const targetProfiles = source
+            .filter(profile => (
+                normalizedGroup(profile).toLocaleLowerCase()
+                === normalizedTarget.toLocaleLowerCase()
+            ));
+        const targetHasCompleteOrder = targetProfiles.every(validSortOrder);
+        targetProfiles
+            .sort((left, right) => (
+                compareProfileOrder(
+                    left,
+                    right,
+                    fallbackIndexes,
+                    targetHasCompleteOrder,
+                )
+            ));
+        const visibleTargets = targetProfiles.filter(profile => (
+            profile.favorite !== true
+        ));
+        let visibleBoundary = Math.min(
+            targetBoundaryIndex,
+            visibleTargets.length,
+        );
+
+        if (expectedSourceGroup.toLocaleLowerCase()
+                === normalizedTarget.toLocaleLowerCase()) {
+            const sourceIndex = visibleTargets.findIndex(profile => (
+                profile.id === profileId
+            ));
+            if (sourceIndex < 0) return null;
+            if (sourceIndex < visibleBoundary) visibleBoundary -= 1;
+            if (sourceIndex === visibleBoundary) return null;
+        }
+
+        const remainingTargets = targetProfiles.filter(profile => (
+            profile.id !== profileId
+        ));
+        const remainingVisibleTargets = remainingTargets.filter(profile => (
+            profile.favorite !== true
+        ));
+        visibleBoundary = Math.min(
+            visibleBoundary,
+            remainingVisibleTargets.length,
+        );
+        let targetIndex = remainingTargets.length;
+        if (remainingVisibleTargets.length && visibleBoundary === 0) {
+            targetIndex = remainingTargets.indexOf(remainingVisibleTargets[0]);
+        } else if (remainingVisibleTargets.length
+                && visibleBoundary < remainingVisibleTargets.length) {
+            targetIndex = remainingTargets.indexOf(
+                remainingVisibleTargets[visibleBoundary],
+            );
+        } else if (remainingVisibleTargets.length) {
+            targetIndex = remainingTargets.indexOf(
+                remainingVisibleTargets.at(-1),
+            ) + 1;
+        }
+
+        return {
+            profileId,
+            expectedSourceGroup,
+            targetGroup: normalizedTarget,
+            targetIndex,
+        };
     }
 
     function buildProfileSections(profiles, query = '', labels = {}) {
@@ -252,5 +391,7 @@
         determineLaunchMode,
         filterAndSortProfiles,
         formatEndpoint,
+        resolveProfileDrop,
+        usesAdvancedConnectionSettings,
     };
 }));

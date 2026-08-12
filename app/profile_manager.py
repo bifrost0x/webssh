@@ -26,6 +26,44 @@ def _normalize_group(value):
     return normalized or None, None
 
 
+def _group_key(value):
+    return str(value or '').strip().casefold()
+
+
+def _valid_sort_order(value):
+    return type(value) is int and value >= 0
+
+
+def _ordered_group(profiles, group, exclude_id=None):
+    """Return one real group in its persisted order with stable legacy fallbacks."""
+    key = _group_key(group)
+    indexed = [
+        (index, profile)
+        for index, profile in enumerate(profiles)
+        if _group_key(profile.get('group')) == key
+        and profile.get('id') != exclude_id
+    ]
+    if not all(_valid_sort_order(profile.get('sort_order')) for _, profile in indexed):
+        return [profile for _, profile in indexed]
+    return [
+        profile
+        for _, profile in sorted(
+            indexed,
+            key=lambda item: (
+                item[1]['sort_order'],
+                item[0],
+                str(item[1].get('name', '')).casefold(),
+                str(item[1].get('host', '')).casefold(),
+                str(item[1].get('id', '')),
+            ),
+        )
+    ]
+
+
+def _next_sort_order(profiles, group, exclude_id=None):
+    return len(_ordered_group(profiles, group, exclude_id=exclude_id))
+
+
 def _is_valid_host(host_str):
     """Validate host is a valid hostname or IP address."""
     if not host_str or not isinstance(host_str, str):
@@ -86,6 +124,8 @@ def _valid_profile(item):
     for field in ('use_tmux', 'tailscale_authorized', 'favorite'):
         if field in item and type(item[field]) is not bool:
             return False
+    if 'sort_order' in item and not _valid_sort_order(item['sort_order']):
+        return False
     return True
 
 
@@ -103,6 +143,7 @@ _PROFILE_FIELDS = {
     'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
     'tailscale_authorized', 'group', 'favorite', 'created_at', 'updated_at',
+    'sort_order',
 }
 
 
@@ -273,6 +314,12 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                 if profile_id:
                     for index, existing in enumerate(profiles):
                         if existing.get('id') == profile_id:
+                            existing_group = existing.get('group')
+                            target_group = (
+                                validated.get('group')
+                                if 'group' in payload
+                                else existing_group
+                            )
                             unknown = {
                                 key: value
                                 for key, value in existing.items()
@@ -292,6 +339,17 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                                 and existing.get('favorite') is True
                             ):
                                 result['favorite'] = True
+                            if _group_key(existing_group) == _group_key(target_group):
+                                result['sort_order'] = (
+                                    existing['sort_order']
+                                    if _valid_sort_order(existing.get('sort_order'))
+                                    else _ordered_group(profiles, existing_group)
+                                    .index(existing)
+                                )
+                            else:
+                                result['sort_order'] = _next_sort_order(
+                                    profiles, target_group, exclude_id=profile_id
+                                )
                             profiles[index] = result
                             break
                     else:
@@ -300,6 +358,9 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                     result = {
                         **validated,
                         'id': str(uuid.uuid4()),
+                        'sort_order': _next_sort_order(
+                            profiles, validated.get('group')
+                        ),
                         'created_at': now,
                         'updated_at': now,
                     }
@@ -394,6 +455,105 @@ def update_profile_organization(user_id, profile_id, patch):
             error=str(exc),
         )
         return None, 'Failed to save profile'
+
+
+def move_profile(
+    user_id,
+    profile_id,
+    expected_source_group,
+    target_group,
+    target_index,
+    confirm_source_group_removal=False,
+):
+    """Atomically move one profile to an exact position in a flat group."""
+    if not isinstance(profile_id, str) or not profile_id:
+        return None, 'Profile ID required'
+    expected_source_group, error = _normalize_group(expected_source_group)
+    if error:
+        return None, error
+    target_group, error = _normalize_group(target_group)
+    if error:
+        return None, error
+    if type(target_index) is not int or target_index < 0:
+        return None, 'Invalid target index'
+    if type(confirm_source_group_removal) is not bool:
+        return None, 'Invalid confirmation value'
+
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profiles_for_write(user_id)
+                if error:
+                    return None, error
+                profile = next(
+                    (item for item in profiles if item.get('id') == profile_id),
+                    None,
+                )
+                if profile is None:
+                    return None, 'Profile not found'
+
+                source_group = profile.get('group')
+                if _group_key(source_group) != _group_key(expected_source_group):
+                    return {
+                        'profiles': profiles,
+                        'requires_confirmation': False,
+                    }, 'Profile group changed; retry move'
+
+                source_members = _ordered_group(profiles, source_group)
+                changes_group = _group_key(source_group) != _group_key(target_group)
+                removes_source_group = (
+                    bool(_group_key(source_group))
+                    and changes_group
+                    and len(source_members) == 1
+                )
+                if removes_source_group and not confirm_source_group_removal:
+                    return {
+                        'profiles': profiles,
+                        'requires_confirmation': True,
+                        'profile_id': profile_id,
+                        'profile_name': profile.get('name', ''),
+                        'source_group': source_group,
+                    }, None
+
+                target_members = _ordered_group(
+                    profiles,
+                    target_group,
+                    exclude_id=profile_id,
+                )
+                insert_at = min(target_index, len(target_members))
+                target_members.insert(insert_at, profile)
+
+                if changes_group:
+                    if target_group:
+                        profile['group'] = target_group
+                    else:
+                        profile.pop('group', None)
+                    for index, member in enumerate(
+                        _ordered_group(profiles, source_group, exclude_id=profile_id)
+                    ):
+                        member['sort_order'] = index
+
+                now = datetime.now(timezone.utc).isoformat()
+                for index, member in enumerate(target_members):
+                    member['sort_order'] = index
+                    if member.get('id') == profile_id:
+                        member['updated_at'] = now
+
+                if not save_profiles(user_id, profiles):
+                    return None, 'Failed to save profile'
+                return {
+                    'profiles': profiles,
+                    'requires_confirmation': False,
+                }, None
+    except StorageCorruptionError:
+        raise
+    except Exception as exc:
+        log_error(
+            'Error moving profile',
+            user_id=user_id,
+            error=str(exc),
+        )
+        return None, 'Failed to move profile'
 
 def delete_profile(user_id, profile_id):
     """Delete a profile by ID for a specific user."""

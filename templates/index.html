@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=11">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=4">
 </head>
@@ -476,6 +476,9 @@
                         <div class="field-hint" id="keyHint"></div>
                     </div>
 
+                    <details id="connectionAdvancedSettings" class="connection-advanced-settings">
+                        <summary data-i18n="connection.advancedSettings">Advanced settings</summary>
+
                     <div class="form-group">
                         <label for="jumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                         <select id="jumpHostSelect" class="form-control">
@@ -556,6 +559,8 @@
                         <div class="field-hint" data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
                     </div>
                     {% endif %}
+
+                    </details>
 
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelConnectionBtn" data-i18n="common.cancel">Cancel</button>
@@ -741,6 +746,36 @@
                         </div>
                     </form>
                 </section>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-small" id="profileMoveConfirmationModal" role="alertdialog" aria-modal="true" aria-labelledby="profileMoveConfirmationTitle" aria-describedby="profileMoveConfirmationDescription" aria-hidden="true">
+        <div class="modal-content profile-move-confirmation-content">
+            <div class="modal-header">
+                <div class="profile-confirmation-heading">
+                    <span class="material-icons" aria-hidden="true">folder_off</span>
+                    <h2 id="profileMoveConfirmationTitle" data-i18n="profiles.groupRemovalTitle">Remove empty group?</h2>
+                </div>
+                <button type="button" class="close profile-confirmation-close" id="closeProfileMoveConfirmation" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="profileMoveConfirmationDescription" class="profile-confirmation-lead" data-i18n="profiles.groupRemovalLead">This is the last connection in the group.</p>
+                <dl class="profile-confirmation-summary">
+                    <div>
+                        <dt data-i18n="profiles.connectionLabel">Connection</dt>
+                        <dd id="profileMoveProfileName"></dd>
+                    </div>
+                    <div>
+                        <dt data-i18n="profiles.group">Group</dt>
+                        <dd id="profileMoveSourceGroup"></dd>
+                    </div>
+                </dl>
+                <p class="profile-confirmation-hint" data-i18n="profiles.groupRemovalHint">Moving it will remove the empty group. The connection itself is not deleted.</p>
+                <div class="form-actions profile-confirmation-actions">
+                    <button type="button" id="cancelProfileMoveBtn" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
+                    <button type="button" id="confirmProfileMoveBtn" class="btn btn-primary" data-i18n="profiles.moveAndRemoveGroup">Move connection</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1149,7 +1184,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=9"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=4"></script>
@@ -1162,7 +1197,7 @@
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
@@ -1170,7 +1205,7 @@
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=11"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>

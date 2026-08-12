@@ -14,6 +14,10 @@ const ProfileManager = {
     inlineKeyUploadPending: false,
     profileSearchQuery: '',
     organizationPending: new Set(),
+    collapsedGroups: new Set(),
+    activeProfileDragId: null,
+    activeProfileDropSlot: null,
+    pendingProfileMove: null,
 
     init() {
         document.getElementById('manageProfilesBtn')?.addEventListener('click', () => {
@@ -59,6 +63,11 @@ const ProfileManager = {
             });
         });
         document.getElementById('profileManagementList')?.addEventListener('click', event => {
+            const groupToggle = event.target.closest('[data-profile-group-toggle]');
+            if (groupToggle) {
+                this.toggleGroupCollapsed(groupToggle.dataset.profileGroupToggle);
+                return;
+            }
             const button = event.target.closest('[data-profile-action]');
             if (!button) return;
             const profileId = button.dataset.profileId;
@@ -67,6 +76,72 @@ const ProfileManager = {
             if (button.dataset.profileAction === 'edit') this.openEditor(profileId);
             if (button.dataset.profileAction === 'delete') this.deleteProfile(profileId);
         });
+        document.getElementById('profileManagementList')?.addEventListener('dragstart', event => {
+            const handle = event.target.closest('[data-profile-drag-handle]');
+            const card = handle?.closest('[data-profile-card-id]');
+            const profileId = card?.dataset.profileCardId;
+            if (!handle || !card || !profileId || !this.isProfileSortingEnabled()
+                    || this.organizationPending.has(profileId)) {
+                event.preventDefault();
+                return;
+            }
+            this.activeProfileDragId = profileId;
+            event.dataTransfer?.setData('application/x-webssh-profile-id', profileId);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+            card.classList.add('is-dragging');
+        });
+        document.getElementById('profileManagementList')?.addEventListener('dragover', event => {
+            const target = this.profileDropSlotForEvent(event);
+            if (!target || !this.activeProfileDragId) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            if (this.activeProfileDropSlot !== target) {
+                this.activeProfileDropSlot?.classList.remove('is-active');
+                this.activeProfileDropSlot = target;
+                target.classList.add('is-active');
+            }
+        });
+        document.getElementById('profileManagementList')?.addEventListener('drop', event => {
+            const target = this.profileDropSlotForEvent(event)
+                || this.activeProfileDropSlot;
+            if (!target || !this.activeProfileDragId) return;
+            event.preventDefault();
+            const profileId = event.dataTransfer?.getData(
+                'application/x-webssh-profile-id'
+            ) || this.activeProfileDragId;
+            const move = window.ProfileLauncherUtils?.resolveProfileDrop(
+                this.profiles,
+                profileId,
+                target.dataset.profileDropGroup,
+                Number(target.dataset.profileDropIndex),
+            );
+            this.clearProfileDragState(event.currentTarget);
+            if (move) this.requestProfileMove(move);
+        });
+        document.getElementById('profileManagementList')?.addEventListener('dragend', event => {
+            this.clearProfileDragState(event.currentTarget);
+        });
+        document.getElementById('cancelProfileMoveBtn')?.addEventListener('click', () => {
+            this.cancelPendingProfileMove();
+        });
+        document.getElementById('confirmProfileMoveBtn')?.addEventListener('click', () => {
+            this.confirmPendingProfileMove();
+        });
+        document.getElementById('closeProfileMoveConfirmation')?.addEventListener('click', () => {
+            this.cancelPendingProfileMove();
+        });
+        document.getElementById('profileMoveConfirmationModal')?.addEventListener('click', event => {
+            if (event.target !== event.currentTarget) return;
+            event.stopPropagation();
+            this.cancelPendingProfileMove();
+        });
+        document.addEventListener('keydown', event => {
+            const modal = document.getElementById('profileMoveConfirmationModal');
+            if (event.key !== 'Escape' || !modal?.classList.contains('show')) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            this.cancelPendingProfileMove();
+        }, true);
         document.getElementById('profileEditorAddKeyBtn')?.addEventListener('click', () => {
             this.setInlineKeyPanelExpanded(true);
             document.getElementById('profileEditorNewKeyName')?.focus();
@@ -612,6 +687,11 @@ const ProfileManager = {
                 window.JumpHostManager.updatePasswordVisibility();
             }
         }
+        const useTmuxCheck = document.getElementById('useTmuxCheck');
+        if (useTmuxCheck) useTmuxCheck.checked = profile.use_tmux === true;
+        window.setConnectionAdvancedExpanded?.(
+            ProfileLauncherUtils.usesAdvancedConnectionSettings(profile)
+        );
     },
 
     getLegacyStartupCommands() {
@@ -675,6 +755,47 @@ const ProfileManager = {
         this.renderManagementList();
     },
 
+    isGroupCollapsed(sectionKey) {
+        if (String(this.profileSearchQuery || '').trim()) return false;
+        return this.collapsedGroups.has(sectionKey);
+    },
+
+    toggleGroupCollapsed(sectionKey) {
+        if (!sectionKey) return;
+        if (this.collapsedGroups.has(sectionKey)) {
+            this.collapsedGroups.delete(sectionKey);
+        } else {
+            this.collapsedGroups.add(sectionKey);
+        }
+        this.renderManagementList();
+    },
+
+    isProfileSortingEnabled() {
+        return !String(this.profileSearchQuery || '').trim();
+    },
+
+    profileDropSlotForEvent(event) {
+        const explicit = event.target.closest?.('[data-profile-drop-index]');
+        if (explicit) return explicit;
+
+        const card = event.target.closest?.('[data-profile-position]');
+        if (!card) return null;
+        const bounds = card.getBoundingClientRect();
+        const after = Number(event.clientY) >= bounds.top + (bounds.height / 2);
+        const index = Number(card.dataset.profilePosition) + Number(after);
+        return card.parentElement?.querySelector(
+            `[data-profile-drop-index="${index}"]`,
+        ) || null;
+    },
+
+    clearProfileDragState(container) {
+        container?.querySelectorAll('.is-dragging, .profile-drop-slot.is-active').forEach(element => {
+            element.classList.remove('is-dragging', 'is-active');
+        });
+        this.activeProfileDragId = null;
+        this.activeProfileDropSlot = null;
+    },
+
     renderManagementList() {
         const container = document.getElementById('profileManagementList');
         if (!container) return;
@@ -706,17 +827,111 @@ const ProfileManager = {
             return;
         }
 
+        if (!this.isProfileSortingEnabled()) {
+            const notice = document.createElement('p');
+            notice.className = 'profile-sort-notice';
+            const noticeIcon = document.createElement('span');
+            noticeIcon.className = 'material-icons';
+            noticeIcon.setAttribute('aria-hidden', 'true');
+            noticeIcon.textContent = 'info';
+            const noticeText = document.createElement('span');
+            noticeText.textContent = this.t(
+                'profiles.sortSearchDisabled',
+                'Clear the search to reorder connections.',
+            );
+            notice.append(noticeIcon, noticeText);
+            container.appendChild(notice);
+        }
+
         sections.forEach(section => {
             const sectionElement = document.createElement('section');
             sectionElement.className = 'profile-management-section';
+            const targetGroup = section.key === 'ungrouped' ? '' : section.label;
+            const acceptsDrop = (
+                section.key !== 'favorites'
+                && this.isProfileSortingEnabled()
+            );
+            const collapsed = this.isGroupCollapsed(section.key);
             const heading = document.createElement('h3');
             heading.className = 'profile-management-section-title';
-            heading.textContent = section.label;
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'profile-management-section-toggle';
+            toggle.dataset.profileGroupToggle = section.key;
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            const icon = document.createElement('span');
+            icon.className = 'material-icons';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = collapsed ? 'chevron_right' : 'expand_more';
+            const label = document.createElement('span');
+            label.textContent = section.label;
+            const count = document.createElement('span');
+            count.className = 'profile-management-section-count';
+            count.textContent = String(section.profiles.length);
+            toggle.append(icon, label, count);
+            heading.appendChild(toggle);
             sectionElement.appendChild(heading);
+            const items = document.createElement('div');
+            items.className = 'profile-management-section-items';
+            items.hidden = collapsed;
+            sectionElement.appendChild(items);
 
-            section.profiles.forEach(profile => {
+            const appendDropSlot = index => {
+                if (!acceptsDrop) return;
+                const slot = document.createElement('div');
+                slot.className = 'profile-drop-slot';
+                slot.dataset.profileDropGroup = targetGroup;
+                slot.dataset.profileDropIndex = String(index);
+                slot.setAttribute('aria-hidden', 'true');
+                items.appendChild(slot);
+            };
+
+            section.profiles.forEach((profile, profileIndex) => {
+                appendDropSlot(profileIndex);
                 const card = document.createElement('article');
                 card.className = 'profile-management-item';
+                if (this.organizationPending.has(profile.id)) {
+                    card.classList.add('is-pending');
+                }
+                const canDrag = (
+                    section.key !== 'favorites'
+                    && profile.favorite !== true
+                    && this.isProfileSortingEnabled()
+                    && !this.organizationPending.has(profile.id)
+                );
+                if (section.key !== 'favorites') {
+                    card.dataset.profileCardId = profile.id;
+                    card.dataset.profilePosition = String(profileIndex);
+                }
+                const dragHandle = document.createElement('button');
+                dragHandle.type = 'button';
+                dragHandle.className = 'profile-drag-handle';
+                dragHandle.dataset.profileDragHandle = '';
+                dragHandle.draggable = canDrag;
+                dragHandle.disabled = !canDrag;
+                const dragLabel = canDrag
+                    ? this.t('profiles.reorder', 'Reorder {name}')
+                    : this.organizationPending.has(profile.id)
+                        ? this.t('profiles.updatePending', 'Update in progress')
+                    : profile.favorite === true
+                        ? this.t(
+                            'profiles.favoriteReorderHint',
+                            'Remove from favorites to reorder {name}',
+                        )
+                        : this.t(
+                            'profiles.sortSearchDisabled',
+                            'Clear the search to reorder connections.',
+                        );
+                dragHandle.setAttribute(
+                    'aria-label',
+                    dragLabel.replace('{name}', profile.name || ''),
+                );
+                dragHandle.title = dragHandle.getAttribute('aria-label');
+                const dragIcon = document.createElement('span');
+                dragIcon.className = 'material-icons';
+                dragIcon.setAttribute('aria-hidden', 'true');
+                dragIcon.textContent = 'drag_indicator';
+                dragHandle.appendChild(dragIcon);
                 const info = document.createElement('div');
                 info.className = 'profile-management-info';
                 const name = document.createElement('strong');
@@ -793,9 +1008,15 @@ const ProfileManager = {
                     button.textContent = label;
                     actions.appendChild(button);
                 });
-                card.append(info, actions);
-                sectionElement.appendChild(card);
+                if (section.key === 'favorites') {
+                    card.classList.add('is-derived-favorite');
+                    card.append(info, actions);
+                } else {
+                    card.append(dragHandle, info, actions);
+                }
+                items.appendChild(card);
             });
+            appendDropSlot(section.profiles.length);
             container.appendChild(sectionElement);
         });
     },
@@ -1051,6 +1272,115 @@ const ProfileManager = {
             this.renderManagementList();
             this.refreshEmptyPanes();
         });
+    },
+
+    adoptAuthoritativeProfiles(profiles) {
+        if (!Array.isArray(profiles)) return false;
+        const transientAuthorization = new Map(this.profiles.map(profile => (
+            [profile.id, profile.tailscale_authorized]
+        )));
+        this.profiles = profiles.map(profile => {
+            const authorization = transientAuthorization.get(profile.id);
+            return {
+                ...profile,
+                ...(authorization === undefined
+                    ? {}
+                    : {tailscale_authorized: authorization}),
+            };
+        });
+        return true;
+    },
+
+    requestProfileMove(move, emit = null, confirmed = false) {
+        const profile = this.profiles.find(item => item.id === move?.profileId);
+        if (!profile || this.organizationPending.has(profile.id)) return false;
+        if (!Number.isInteger(move.targetIndex) || move.targetIndex < 0) return false;
+        if (!emit && !window.socket) return false;
+
+        const payload = {
+            profile_id: profile.id,
+            expected_source_group: String(move.expectedSourceGroup || '').trim(),
+            target_group: String(move.targetGroup || '').trim(),
+            target_index: move.targetIndex,
+            confirm_source_group_removal: confirmed === true,
+        };
+        const send = emit || ((data, acknowledge) => window.socket.emit(
+            'move_profile',
+            data,
+            acknowledge,
+        ));
+
+        this.organizationPending.add(profile.id);
+        this.renderManagementList();
+        send(payload, acknowledgement => {
+            this.organizationPending.delete(profile.id);
+            if (Array.isArray(acknowledgement?.profiles)) {
+                this.adoptAuthoritativeProfiles(acknowledgement.profiles);
+            }
+            if (acknowledgement?.requires_confirmation === true) {
+                this.pendingProfileMove = {
+                    move,
+                    emit,
+                    profileName: acknowledgement.profile_name || profile.name || '',
+                    sourceGroup: acknowledgement.source_group
+                        || move.expectedSourceGroup,
+                };
+                this.renderManagementList();
+                this.openProfileMoveConfirmation();
+                return;
+            }
+            if (!acknowledgement?.success || !Array.isArray(acknowledgement.profiles)) {
+                window.showNotification?.(
+                    acknowledgement?.error || this.t(
+                        'profiles.saveFailed', 'Failed to save connection'
+                    ),
+                    'error',
+                );
+                this.renderManagementList();
+                return;
+            }
+            this.renderProfileSelect();
+            this.renderManagementList();
+            this.refreshEmptyPanes();
+        });
+        return true;
+    },
+
+    openProfileMoveConfirmation() {
+        if (!this.pendingProfileMove) return;
+        const name = document.getElementById('profileMoveProfileName');
+        const group = document.getElementById('profileMoveSourceGroup');
+        if (name) name.textContent = this.pendingProfileMove.profileName;
+        if (group) group.textContent = this.pendingProfileMove.sourceGroup;
+        window.ModalManager?.open(
+            document.getElementById('profileMoveConfirmationModal'),
+        );
+    },
+
+    closeProfileMoveConfirmation() {
+        window.ModalManager?.close(
+            document.getElementById('profileMoveConfirmationModal'),
+        );
+        const managementModal = document.getElementById('profileManagementModal');
+        if (managementModal?.classList.contains('show') && window.ModalManager) {
+            window.ModalManager.activeModal = managementModal;
+        }
+    },
+
+    cancelPendingProfileMove() {
+        if (!this.pendingProfileMove) return false;
+        this.pendingProfileMove = null;
+        this.closeProfileMoveConfirmation();
+        this.renderManagementList();
+        return true;
+    },
+
+    confirmPendingProfileMove() {
+        const pending = this.pendingProfileMove;
+        if (!pending) return false;
+        this.pendingProfileMove = null;
+        this.closeProfileMoveConfirmation();
+        return this.requestProfileMove(pending.move, pending.emit, true);
     },
 
     saveProfile(profileData) {

@@ -24,13 +24,13 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=11',
-        "filename='js/i18n.js'": '?v=8',
+        "filename='css/style.css'": '?v=12',
+        "filename='js/i18n.js'": '?v=9',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
-        "filename='js/profile-launcher-utils.js'": '?v=3',
+        "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=10',
+        "filename='js/profile-manager.js'": '?v=11',
         "filename='js/session-manager.js'": '?v=6',
         "filename='js/terminal-manager.js'": '?v=4',
         "filename='js/jump-host-manager.js'": '?v=4',
@@ -130,7 +130,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=11" in template
+    assert "filename='css/style.css') }}?v=12" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():
@@ -183,6 +183,27 @@ def test_profile_management_exposes_search_group_and_favorite_controls():
     assert "dataset.profileAction = 'favorite'" in source
     assert "'update_profile_organization'" in source
     assert "setAttribute('aria-pressed'" in source
+
+
+def test_profile_management_uses_precise_ordering_and_custom_group_confirmation():
+    template = read('templates/index.html')
+    source = read('static/js/profile-manager.js')
+    styles = read('static/css/style.css')
+
+    for element_id in (
+        'profileMoveConfirmationModal',
+        'profileMoveProfileName',
+        'profileMoveSourceGroup',
+        'cancelProfileMoveBtn',
+        'confirmProfileMoveBtn',
+    ):
+        assert f'id="{element_id}"' in template
+    assert "'move_profile'" in source
+    assert 'ProfileLauncherUtils?.resolveProfileDrop' in source
+    assert "dataset.profileDropIndex" in source
+    assert 'confirm_source_group_removal' in source
+    assert '.profile-drag-handle' in styles
+    assert '.profile-drop-slot.is-active::before' in styles
 
 
 def test_profile_launch_uses_shared_executor_and_review_callback():
@@ -267,3 +288,73 @@ def test_visible_connection_copy_uses_hosts_and_quick_connect():
     assert '>Hosts<' in template
     assert ": 'Quick Connect';" in profiles
     assert ": '+ Quick Connect'," in sessions
+
+
+def test_quick_connect_hides_optional_connection_features_in_native_details():
+    template = read('templates/index.html')
+    start = template.index('id="connectionAdvancedSettings"')
+    end = template.index('</details>', start)
+    advanced = template[start:end]
+
+    assert '<summary' in advanced
+    assert 'data-i18n="connection.advancedSettings"' in advanced
+    assert 'id="jumpHostSelect"' in advanced
+    assert 'class="form-group post-connect-config"' in advanced
+    assert 'id="useTmuxCheck"' in advanced
+    assert 'id="connectionAdvancedSettings" open' not in template
+
+
+def test_quick_connect_resets_advanced_state_and_expands_saved_advanced_profiles():
+    application = read('static/js/app.js')
+    profiles = read('static/js/profile-manager.js')
+
+    assert 'window.setConnectionAdvancedExpanded = expanded =>' in application
+    assert 'window.setConnectionAdvancedExpanded(false)' in application
+    assert 'ProfileLauncherUtils.usesAdvancedConnectionSettings(profile)' in profiles
+    assert 'window.setConnectionAdvancedExpanded?.(' in profiles
+    assert 'useTmuxCheck.checked = profile.use_tmux === true' in profiles
+
+
+def test_profile_groups_render_as_accessible_session_collapsibles():
+    source = read('static/js/profile-manager.js')
+
+    assert 'collapsedGroups: new Set()' in source
+    assert "dataset.profileGroupToggle = section.key" in source
+    assert "setAttribute('aria-expanded', String(!collapsed))" in source
+    assert 'items.hidden = collapsed' in source
+    assert "event.target.closest('[data-profile-group-toggle]')" in source
+    assert 'this.toggleGroupCollapsed(groupToggle.dataset.profileGroupToggle)' in source
+
+
+def test_profile_groups_support_precise_handle_drag_without_favorite_targets():
+    source = read('static/js/profile-manager.js')
+
+    assert "'application/x-webssh-profile-id'" in source
+    assert "addEventListener('dragstart'" in source
+    assert "addEventListener('dragover'" in source
+    assert "addEventListener('drop'" in source
+    assert "section.key !== 'favorites'" in source
+    assert "dragHandle.dataset.profileDragHandle = ''" in source
+    assert 'dragHandle.draggable = canDrag' in source
+    assert 'slot.dataset.profileDropGroup = targetGroup' in source
+    assert 'slot.dataset.profileDropIndex = String(index)' in source
+    assert "'move_profile'" in source
+    assert 'confirm_source_group_removal: confirmed === true' in source
+    assert "profile.favorite !== true" in source
+    assert "this.isProfileSortingEnabled()" in source
+
+
+def test_advanced_connection_and_group_interactions_have_visible_focus_styles():
+    source = read('static/css/style.css')
+
+    assert '.connection-advanced-settings {' in source
+    assert '.connection-advanced-settings > summary {' in source
+    assert '.connection-advanced-settings > summary:focus-visible' in source
+    assert '.profile-management-section-toggle:focus-visible' in source
+    assert '.profile-drag-handle:focus-visible' in source
+    assert '.profile-drop-slot.is-active::before' in source
+    affected_start = source.index('.connection-advanced-settings {')
+    affected_end = source.index('.profile-management-section +', affected_start)
+    affected = source[affected_start:affected_end]
+    assert 'var(--accent-color)' not in affected
+    assert 'var(--accent-primary)' in affected
