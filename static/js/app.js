@@ -1021,6 +1021,16 @@
         ProfileManager.upsertKeySummary(data.key);
     });
 
+    socket.on('key_replaced', (data) => {
+        ProfileManager.upsertKeySummary(data.key);
+        showNotification(
+            window.i18n
+                ? i18n.t('keys.replacedSuccess')
+                : 'SSH key replaced successfully',
+            'success',
+        );
+    });
+
     socket.on('key_deleted', () => {
         showNotification('SSH key deleted successfully', 'success');
     });

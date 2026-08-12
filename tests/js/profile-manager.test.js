@@ -15,6 +15,7 @@ function loadProfileManager() {
     vm.runInContext(source, context);
 
     const manager = context.window.ProfileManager;
+    manager.__testWindow = context.window;
     manager.setKeys = function setKeys(keys) {
         this.keys = keys;
     };
@@ -37,6 +38,68 @@ test('partial key mutation replies preserve transient usability', () => {
     });
 
     assert.equal(manager.keys[0].name, 'Renamed key');
+    assert.equal(manager.keys[0].usable, true);
+});
+
+test('failed key replacement preserves private-key draft for retry', () => {
+    const manager = loadProfileManager();
+    manager.keys = [{
+        id: 'key-1',
+        name: 'Production key',
+        key_type: 'Ed25519',
+        usable: true,
+    }];
+    manager.replacingKeyId = 'key-1';
+    manager.renderKeysList = () => {};
+    manager.t = (_key, fallback) => fallback;
+    let emitted = null;
+    manager.__testWindow.socket = {
+        emit(event, payload, acknowledgement) {
+            emitted = {event, payload};
+            acknowledgement({success: false, error: 'Replacement rejected'});
+        },
+    };
+
+    manager.submitKeyReplacement('key-1', 'private-key-draft');
+
+    assert.equal(emitted.event, 'replace_key');
+    assert.equal(emitted.payload.key_id, 'key-1');
+    assert.equal(emitted.payload.key_content, 'private-key-draft');
+    assert.equal(manager.replacingKeyId, 'key-1');
+    assert.equal(manager.replacementKeyContent, 'private-key-draft');
+    assert.equal(manager.keyReplacePending, false);
+});
+
+test('successful key replacement clears draft and merges safe summary', () => {
+    const manager = loadProfileManager();
+    manager.keys = [{
+        id: 'key-1',
+        name: 'Production key',
+        key_type: 'Ed25519',
+        usable: true,
+    }];
+    manager.replacingKeyId = 'key-1';
+    manager.renderKeysList = () => {};
+    manager.t = (_key, fallback) => fallback;
+    manager.__testWindow.socket = {
+        emit(_event, _payload, acknowledgement) {
+            acknowledgement({
+                success: true,
+                key: {
+                    id: 'key-1',
+                    name: 'Production key',
+                    key_type: 'Ed25519',
+                    usable: true,
+                },
+            });
+        },
+    };
+
+    manager.submitKeyReplacement('key-1', 'replacement-private-key');
+
+    assert.equal(manager.replacingKeyId, null);
+    assert.equal(manager.replacementKeyContent, '');
+    assert.equal(manager.keyReplacePending, false);
     assert.equal(manager.keys[0].usable, true);
 });
 

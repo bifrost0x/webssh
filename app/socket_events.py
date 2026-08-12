@@ -10,7 +10,8 @@ from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_ssh_connection, log_ssh_disconnect,
                               log_file_upload, log_file_download,
-                              log_key_upload, log_key_rename, log_key_delete,
+                              log_key_upload, log_key_rename, log_key_replace,
+                              log_key_delete,
                               log_tailscale_ssh_usage)
 from .tailscale_ssh import (
     profile_is_authorized_for_launch,
@@ -911,6 +912,56 @@ def handle_rename_key(data, current_user=None):
         return _emit_storage_error(error, current_user)
     except Exception:
         return _key_mutation_error('Failed to rename key')
+
+
+@socketio.on('replace_key')
+@socket_login_required
+def handle_replace_key(data, current_user=None):
+    """Replace one owned SSH key without changing its stable identity."""
+    try:
+        data = data if isinstance(data, dict) else {}
+        key_id = data.get('key_id')
+        key_content = data.get('key_content')
+        if (
+            not isinstance(key_id, str)
+            or not key_id
+            or not isinstance(key_content, str)
+            or not key_content
+        ):
+            return _key_mutation_error('Key ID and key content required')
+        if len(key_content) > 64 * 1024:
+            return _key_mutation_error(
+                'Key content too large (max 64KB)'
+            )
+
+        key, error = key_manager.replace_key(
+            current_user.id,
+            key_id,
+            key_content,
+        )
+        if error:
+            log_key_replace(
+                current_user.username,
+                key_id,
+                False,
+                request.remote_addr,
+            )
+            return _key_mutation_error(error)
+
+        log_key_replace(
+            current_user.username,
+            key['name'],
+            True,
+            request.remote_addr,
+        )
+        payload = {'success': True, 'key': key}
+        emit('key_replaced', payload)
+        handle_list_keys(current_user=current_user)
+        return payload
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception:
+        return _key_mutation_error('Failed to replace key')
 
 @socketio.on('delete_key')
 @socket_login_required
