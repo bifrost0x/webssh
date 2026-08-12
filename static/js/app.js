@@ -5,8 +5,7 @@
         console.error('[WebSSH] Unhandled promise rejection');
     });
 
-    window.addEventListener('error', (e) => {
-        if (e.filename && e.filename.includes('socket.io')) return;
+    window.addEventListener('error', () => {
         console.error('[WebSSH] Uncaught browser error');
     });
 
@@ -2003,6 +2002,7 @@
         CommandLibrary.init();
         window.CommandSetManager?.init();
         window.ConnectionCommandManager?.init();
+        window.SessionCommandLauncher?.init();
         ProfileManager.init();
 
         ProfileManager.loadProfiles();
