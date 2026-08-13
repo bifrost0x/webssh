@@ -31,11 +31,16 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background:
+    background-image:
         radial-gradient(circle at 20% 20%, var(--accent-primary-glow) 0%, transparent 50%),
         radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--accent-secondary) 6%, transparent) 0%, transparent 50%),
-        linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%);
+        linear-gradient(135deg, color-mix(in srgb, var(--bg-primary) 72%, transparent) 0%, color-mix(in srgb, var(--bg-secondary) 68%, transparent) 50%, color-mix(in srgb, var(--bg-primary) 72%, transparent) 100%),
+        var(--theme-background-image);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
     z-index: 0;
+    opacity: 1;
 }
 
 body::after {
@@ -109,7 +114,13 @@ body::after {
 }
 
 .auth-card {
-    background: var(--bg-modal);
+    background-color: var(--bg-modal);
+    background-image:
+        linear-gradient(var(--theme-surface-modal), var(--theme-surface-modal)),
+        var(--theme-background-image);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: auto, cover;
     backdrop-filter: blur(20px);
     border-radius: 16px;
     padding: 48px 40px;
