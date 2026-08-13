@@ -1728,6 +1728,12 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 
 .terminal-pane .xterm {
     flex: 1;
+    padding: 0;
+    background-color: var(--term-background);
+}
+
+.terminal-pane .xterm-viewport {
+    background-color: var(--term-background);
 }
 
 .terminal-pane.active {

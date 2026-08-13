@@ -330,11 +330,6 @@
     margin-left: 8px;
 }
 
-.fm-host-badge.browser-local {
-    background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
-    color: var(--accent-primary);
-}
-
 .fm-host-badge.ssh {
     background: color-mix(in srgb, var(--success-color) 15%, transparent);
     color: var(--success-color);
@@ -583,6 +578,10 @@
     max-height: 44px;
 }
 
+.fm-queue.collapsed .fm-queue-list {
+    display: none;
+}
+
 .fm-queue-header {
     display: flex;
     justify-content: space-between;
@@ -591,6 +590,13 @@
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
+    width: 100%;
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
 }
 
 .fm-queue-header:hover {
@@ -1515,4 +1521,1108 @@
 .fm-file-list::-webkit-scrollbar-thumb:hover,
 .fm-queue-list::-webkit-scrollbar-thumb:hover {
     background: var(--border-hover);
+}
+
+/* Full-screen source workspace. The embedded session SFTP view keeps the rules
+   in session-workspace.css and does not use this mode. */
+#sftpFileManager.fm-workspace-mode {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+    background:
+        radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent-primary) 10%, transparent), transparent 38%),
+        var(--bg-primary);
+    backdrop-filter: none;
+}
+
+#sftpFileManager.fm-workspace-mode .modal-content {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--bg-primary);
+    box-shadow: none;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-workspace-header {
+    position: relative;
+    min-height: 70px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--bg-primary) 94%, #000);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.fm-workspace-header h2,
+.fm-workspace-controls,
+.fm-layout-switch {
+    display: flex;
+    align-items: center;
+}
+
+.fm-workspace-header h2 {
+    gap: 11px;
+    margin: 0;
+    font-size: 17px;
+}
+
+.fm-workspace-brand {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.fm-workspace-title-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 38%, var(--border-color));
+    border-radius: 10px;
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-secondary));
+}
+
+.fm-workspace-title-icon .material-icons {
+    font-size: 21px;
+}
+
+.fm-workspace-title-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    line-height: 1.05;
+}
+
+.fm-workspace-controls {
+    position: absolute;
+    left: 50%;
+    gap: 12px;
+    margin: 0;
+    transform: translateX(-50%);
+}
+
+.fm-layout-switch {
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--bg-secondary);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.fm-layout-btn,
+.fm-workspace-close,
+.fm-source-tab-add,
+.fm-source-launcher-close,
+.fm-transfer-direction {
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.fm-layout-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 38px;
+    padding: 0 14px;
+    border-right: 1px solid var(--border-color);
+}
+
+.fm-layout-btn:last-child {
+    border-right: 0;
+}
+
+.fm-layout-btn.active {
+    color: var(--accent-on-text, #fff);
+    background: color-mix(in srgb, var(--accent-primary) 88%, #fff 12%);
+}
+
+.fm-layout-btn .material-icons,
+.fm-workspace-close .material-icons {
+    font-size: 19px;
+}
+
+.fm-workspace-close {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    margin-left: auto;
+    border-radius: 9px;
+}
+
+.fm-workspace-close:hover,
+.fm-source-tab-add:hover,
+.fm-source-launcher-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+#sftpFileManager.fm-workspace-mode .modal-body {
+    min-height: 0;
+    padding: 14px 16px 12px;
+    gap: 12px;
+}
+
+#sftpFileManager.fm-workspace-mode .modal-body > .fm-toolbar,
+#sftpFileManager.fm-workspace-mode .modal-body > .fm-pane-tabs,
+#sftpFileManager.fm-workspace-mode .modal-body > .fm-mobile-upload {
+    display: none !important;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-panes {
+    grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+    gap: 0;
+}
+
+#sftpFileManager.fm-workspace-single .fm-transfer-rail,
+#sftpFileManager.fm-workspace-single #fmRightPane {
+    display: none;
+}
+
+#sftpFileManager.fm-workspace-single .fm-panes {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+#sftpFileManager.fm-workspace-single.fm-single-right #fmLeftPane {
+    display: none;
+}
+
+#sftpFileManager.fm-workspace-single.fm-single-right #fmRightPane {
+    display: flex;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-pane {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-pane.active {
+    border-color: color-mix(in srgb, var(--accent-primary) 62%, var(--border-color));
+    box-shadow:
+        0 14px 34px rgba(0, 0, 0, 0.2),
+        0 0 0 1px color-mix(in srgb, var(--accent-primary) 12%, transparent);
+}
+
+.fm-pane-header {
+    min-height: 38px;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-pane-header {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border-color);
+    min-height: 44px;
+    background: color-mix(in srgb, var(--bg-secondary) 94%, #000);
+}
+
+.fm-legacy-source-select {
+    display: none !important;
+}
+
+.fm-source-tabs {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: stretch;
+}
+
+.fm-source-tab {
+    display: flex;
+    min-width: 168px;
+    max-width: 260px;
+    border-right: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    background: transparent;
+}
+
+.fm-source-tab.active {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+    box-shadow: inset 0 -2px var(--accent-primary);
+}
+
+.fm-source-tab-activate,
+.fm-source-tab-close {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.fm-source-tab-activate {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 0 5px 0 12px;
+}
+
+.fm-source-tab-close {
+    display: grid;
+    width: 32px;
+    place-items: center;
+    opacity: 0.55;
+}
+
+.fm-source-tab-close:hover {
+    opacity: 1;
+}
+
+.fm-source-tab-close .material-icons {
+    font-size: 16px;
+}
+
+.fm-source-tab-label {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-source-tab-protocol,
+.fm-protocol-badge {
+    padding: 2px 5px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 65%, var(--border-color));
+    border-radius: 3px;
+    color: var(--accent-primary);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.06em;
+}
+
+.fm-connection-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 50%;
+    background: var(--success-color);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--success-color) 45%, transparent);
+}
+
+.fm-source-tab-add {
+    display: grid;
+    width: 46px;
+    flex: 0 0 46px;
+    place-items: center;
+    border-left: 1px solid var(--border-color);
+}
+
+.fm-source-identity {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 13px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.fm-pane-label {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.fm-source-identity-empty {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.fm-source-identity-name {
+    color: var(--text-primary);
+    font-weight: 650;
+}
+
+.fm-source-identity-endpoint {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-source-identity-security {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    color: var(--success-color);
+    white-space: nowrap;
+}
+
+.fm-source-identity-security .material-icons {
+    font-size: 15px;
+}
+
+.fm-empty-source-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--accent-primary);
+    cursor: pointer;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-pane-nav {
+    min-height: 46px;
+    padding: 7px 11px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-path-input {
+    min-height: 30px;
+    border-color: var(--border-color);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--bg-primary) 88%, #000);
+    font-family: var(--font-mono, monospace);
+}
+
+.fm-pane-toolbar {
+    display: flex;
+    min-height: 46px;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fm-pane-toolbar button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 9px;
+    border: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.fm-pane-toolbar button:nth-child(2) {
+    margin-right: 7px;
+}
+
+.fm-pane-toolbar button:nth-child(3) {
+    margin-left: 2px;
+}
+
+.fm-pane-toolbar button:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+}
+
+.fm-pane-toolbar button:disabled {
+    opacity: 0.46;
+    cursor: not-allowed;
+}
+
+.fm-pane-toolbar button.is-danger:not(:disabled) {
+    color: var(--error-color);
+}
+
+.fm-pane-toolbar .material-icons {
+    font-size: 17px;
+}
+
+.fm-file-list-header,
+#sftpFileManager.fm-workspace-mode .fm-file-item {
+    display: grid;
+    grid-template-columns: 26px 22px minmax(140px, 1fr) 90px 138px 112px;
+    align-items: center;
+    column-gap: 8px;
+}
+
+.fm-file-list-header {
+    min-height: 38px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.fm-file-list-header input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent-primary);
+}
+
+.fm-file-list-header span:nth-of-type(1) {
+    grid-column: 3;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-list {
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 98%, #000), color-mix(in srgb, var(--bg-primary) 96%, #000));
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-item {
+    min-height: 42px;
+    padding: 0 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+    border-radius: 0;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-item:hover {
+    background: var(--bg-hover);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-item.selected {
+    background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+    box-shadow: inset 2px 0 var(--accent-primary);
+}
+
+.fm-file-checkbox {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 17px !important;
+}
+
+.fm-file-checkbox:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
+}
+
+.fm-file-item.selected .fm-file-checkbox {
+    color: var(--accent-primary);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-icon {
+    font-size: 18px;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-info {
+    min-width: 0;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-name {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-file-size,
+.fm-file-modified,
+.fm-file-permissions {
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+}
+
+.fm-transfer-rail {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    color: var(--text-muted);
+}
+
+.fm-transfer-rail::before {
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    left: 50%;
+    width: 1px;
+    background: linear-gradient(transparent, var(--border-color) 18%, var(--border-color) 82%, transparent);
+    content: '';
+    transform: translateX(-50%);
+}
+
+.fm-transfer-hint {
+    z-index: 1;
+    max-width: 66px;
+    padding: 5px 4px;
+    border-radius: 5px;
+    background: var(--bg-primary);
+    font-size: 9px;
+    font-weight: 650;
+    line-height: 1.3;
+    text-align: center;
+}
+
+.fm-transfer-direction {
+    z-index: 1;
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--bg-secondary);
+}
+
+.fm-transfer-direction:not(:disabled):hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-on-text, #fff);
+    background: var(--accent-primary);
+}
+
+.fm-transfer-direction:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-pane-footer {
+    min-height: 38px;
+    padding: 0 12px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-queue {
+    flex: 0 0 auto;
+    max-height: min(320px, 35vh);
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-queue.collapsed {
+    max-height: 44px;
+}
+
+.fm-source-empty-state {
+    max-width: 360px;
+    margin: auto;
+    padding: 34px 26px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    text-align: center;
+}
+
+.fm-empty-icon-shell {
+    display: grid;
+    width: 54px;
+    height: 54px;
+    place-items: center;
+    margin: 0 auto 14px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 34%, var(--border-color));
+    border-radius: 14px;
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 9%, var(--bg-tertiary));
+}
+
+.fm-source-empty-state .fm-empty-icon {
+    margin: 0;
+    color: inherit;
+    font-size: 28px;
+}
+
+.fm-source-empty-state strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.fm-source-empty-state p {
+    max-width: 290px;
+    margin: 7px auto 17px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.fm-empty-source-cta {
+    min-height: 38px;
+    padding-inline: 16px;
+}
+
+.fm-source-launcher {
+    position: absolute;
+    inset: 70px 0 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 4vw;
+    background: color-mix(in srgb, var(--bg-primary) 48%, transparent);
+    backdrop-filter: blur(5px);
+}
+
+.fm-source-launcher.show {
+    display: flex;
+}
+
+.fm-source-launcher-panel {
+    display: flex;
+    width: min(760px, 94vw);
+    max-height: calc(100vh - 140px);
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-hover);
+    border-radius: 13px;
+    background: var(--bg-secondary);
+    box-shadow: 0 26px 70px rgba(0, 0, 0, 0.56);
+}
+
+.fm-source-launcher-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 21px 24px 12px;
+}
+
+.fm-source-launcher-header h3 {
+    margin: 0 0 4px;
+    font-size: 19px;
+}
+
+.fm-source-launcher-header h3 span {
+    color: var(--accent-primary);
+}
+
+.fm-source-launcher-header p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.fm-source-launcher-close {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 5px;
+}
+
+.fm-source-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 24px 13px;
+    padding: 0 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+}
+
+.fm-source-search .material-icons {
+    color: var(--text-muted);
+    font-size: 19px;
+}
+
+.fm-source-search input {
+    width: 100%;
+    min-height: 42px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-primary);
+}
+
+.fm-source-groups {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    padding: 0 24px 14px;
+    overflow: hidden;
+}
+
+.fm-source-primary-groups {
+    min-height: 0;
+    flex: 1;
+    padding-right: 4px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.fm-source-primary-groups:empty {
+    display: none;
+}
+
+.fm-source-group h4 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 12px 2px 6px;
+    color: var(--text-muted);
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.fm-source-group-count {
+    display: inline-grid;
+    min-width: 20px;
+    height: 20px;
+    place-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    font-size: 9px;
+    letter-spacing: 0;
+}
+
+#fm-source-group-saved + .fm-source-group-items {
+    max-height: none;
+    overflow: visible;
+}
+
+.fm-source-row {
+    display: grid;
+    width: 100%;
+    min-height: 52px;
+    grid-template-columns: 28px minmax(160px, 1fr) 58px minmax(160px, 0.76fr);
+    align-items: center;
+    gap: 9px;
+    padding: 7px 12px;
+    border: 1px solid var(--border-color);
+    border-bottom: 0;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.fm-source-row:first-of-type {
+    border-radius: 8px 8px 0 0;
+}
+
+.fm-source-row:last-child {
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0 0 8px 8px;
+}
+
+.fm-source-row:hover:not(:disabled) {
+    position: relative;
+    z-index: 1;
+    border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-hover));
+    background: color-mix(in srgb, var(--accent-primary) 7%, var(--bg-hover));
+}
+
+.fm-layout-btn:focus-visible,
+.fm-workspace-close:focus-visible,
+.fm-source-tab-activate:focus-visible,
+.fm-source-tab-close:focus-visible,
+.fm-source-tab-add:focus-visible,
+.fm-source-row:focus-visible,
+.fm-transfer-direction:focus-visible,
+.fm-empty-source-cta:focus-visible,
+.fm-pane-tab:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.fm-source-row.is-disabled {
+    opacity: 0.68;
+    cursor: not-allowed;
+}
+
+.fm-source-row-icon {
+    color: var(--success-color);
+    font-size: 20px;
+}
+
+.fm-source-row-main,
+.fm-source-row-status {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fm-source-row-main strong,
+.fm-source-row-status strong {
+    overflow: hidden;
+    font-size: 12.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-source-row-main small,
+.fm-source-row-status small {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-source-row-status strong {
+    color: var(--success-color);
+}
+
+.fm-source-row-status .material-icons {
+    font-size: 13px;
+}
+
+.fm-source-launcher-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 14px 24px 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.fm-source-launcher-actions .btn {
+    min-height: 52px;
+    justify-content: center;
+    border-radius: 8px;
+}
+
+.fm-source-launcher-actions .btn > span:last-child {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.2;
+}
+
+.fm-source-launcher-actions .btn small {
+    color: var(--text-muted);
+    font-size: 9px;
+}
+
+.fm-source-no-results {
+    padding: 28px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.fm-source-no-sources {
+    display: flex;
+    min-height: 150px;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin: 12px 4px 0;
+    padding: 28px;
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 34%, var(--border-color));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-hover) 45%, transparent);
+    text-align: center;
+}
+
+.fm-source-no-sources > .material-icons {
+    display: inline-grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, var(--border-color));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-primary) 9%, transparent);
+    color: var(--accent-primary);
+    font-size: 20px;
+}
+
+.fm-source-no-sources strong {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.fm-source-no-sources > span:last-child {
+    max-width: 380px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+@media (max-width: 1050px) {
+    .fm-file-list-header,
+    #sftpFileManager.fm-workspace-mode .fm-file-item {
+        grid-template-columns: 26px 22px minmax(120px, 1fr) 82px 112px;
+    }
+
+    .fm-file-list-header span:last-child,
+    .fm-file-permissions {
+        display: none;
+    }
+
+    .fm-pane-toolbar button span:not(.material-icons) {
+        display: none;
+    }
+}
+
+@media (max-width: 767px) {
+    #sftpFileManager.fm-workspace-mode .fm-workspace-header {
+        min-height: 62px;
+        padding: 9px 10px;
+    }
+
+    .fm-workspace-header h2 .fm-workspace-brand,
+    .fm-layout-btn span:not(.material-icons) {
+        display: none;
+    }
+
+    .fm-workspace-title-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+    }
+
+    .fm-workspace-title-copy {
+        font-size: 15px;
+    }
+
+    .fm-workspace-controls {
+        position: static;
+        gap: 6px;
+        margin-left: auto;
+        transform: none;
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-panes {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #sftpFileManager.fm-workspace-mode.fm-workspace-split .modal-body > .fm-pane-tabs {
+        display: flex !important;
+        min-height: 42px;
+        flex: 0 0 42px;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--border-color);
+        border-radius: 9px;
+        background: var(--bg-secondary);
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane-tab {
+        display: inline-flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        border: 0;
+        border-radius: 6px;
+        color: var(--text-secondary);
+        background: transparent;
+        font-size: 12px;
+        font-weight: 650;
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane-tab.active {
+        color: var(--text-primary);
+        background: color-mix(in srgb, var(--accent-primary) 13%, var(--bg-tertiary));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane-tab .material-icons {
+        font-size: 16px;
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-transfer-rail,
+    #sftpFileManager.fm-workspace-mode .fm-pane:not(.active) {
+        display: none !important;
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane.active {
+        display: flex !important;
+    }
+
+    .fm-source-launcher {
+        inset: 62px 0 0;
+        align-items: stretch;
+        padding: 8px;
+    }
+
+    .fm-source-launcher-panel {
+        width: 100%;
+        max-height: 100%;
+        border-radius: 11px;
+    }
+
+    .fm-source-row {
+        grid-template-columns: 22px minmax(100px, 1fr) 46px;
+    }
+
+    .fm-source-row-status {
+        display: none;
+    }
+
+    .fm-source-row.is-disabled .fm-source-row-status {
+        display: flex;
+        grid-column: 2 / 4;
+        align-items: flex-start;
+    }
+
+    .fm-source-launcher-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fm-source-empty-state {
+        width: 100%;
+        max-width: none;
+        padding: 10px;
+        border: 0;
+        background: transparent;
+    }
+
+    .fm-source-empty-state .fm-empty-icon-shell {
+        display: none;
+    }
+
+    .fm-source-empty-state strong,
+    .fm-source-empty-state p {
+        display: none;
+    }
+
+    .fm-source-empty-state .fm-empty-source-cta {
+        min-height: 32px;
+        padding: 0 12px;
+        font-size: 11px;
+    }
+
+    .fm-file-list-header,
+    #sftpFileManager.fm-workspace-mode .fm-file-item {
+        grid-template-columns: 24px 22px minmax(120px, 1fr) 74px;
+    }
+
+    .fm-file-list-header span:nth-last-child(-n+2),
+    .fm-file-modified,
+    .fm-file-permissions {
+        display: none;
+    }
 }

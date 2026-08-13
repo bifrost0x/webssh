@@ -16,6 +16,14 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
     assert template.index("filename='js/connection-launcher.js'") < template.index(
         "filename='js/profile-manager.js'"
     )
+
+
+def test_saved_connection_context_precedes_authentication_method():
+    template = read('templates/index.html')
+    context = template.index('id="connectionProfileContext"')
+    auth_method = template.index('id="authTypeSelect"')
+    host = template.index('id="hostInput"')
+    assert context < auth_method < host
     assert template.index("filename='js/profile-launcher-utils.js'") < template.index(
         "filename='js/profile-manager.js'"
     )
@@ -25,7 +33,8 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=16',
-        "filename='js/i18n.js'": '?v=11',
+        "filename='css/sftp-file-manager.css'": '?v=9',
+        "filename='js/i18n.js'": '?v=15',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
@@ -33,6 +42,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/profile-manager.js'": '?v=12',
         "filename='js/session-manager.js'": '?v=6',
         "filename='js/terminal-manager.js'": '?v=4',
+        "filename='js/sftp-file-manager.js'": '?v=13',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',

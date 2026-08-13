@@ -18,8 +18,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=16">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=6">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-connection-history-scope="{{ connection_history_scope }}">
 
@@ -425,6 +425,22 @@
                             </div>
 
                             <div class="quick-connect-details-content">
+                                <div id="connectionProfileContext" class="connection-profile-context hidden" role="status">
+                                    <span class="material-icons" aria-hidden="true">bookmark</span>
+                                    <div>
+                                        <small data-i18n="connection.savedContext">Saved connection</small>
+                                        <strong id="connectionProfileContextName"></strong>
+                                        <span data-i18n="connection.reviewBeforeConnect">Review the settings and provide any required credentials.</span>
+                                        <div id="connectionProfileJumpResolution" class="connection-profile-jump-resolution hidden">
+                                            <span data-i18n="connection.jumpHostUnavailable">The saved jump host is unavailable. Choose a replacement below or confirm a direct connection.</span>
+                                            <label for="connectionProfileDirectConfirm" class="checkbox-label">
+                                                <input type="checkbox" id="connectionProfileDirectConfirm">
+                                                <span data-i18n="connection.connectDirectlyInstead">Connect directly instead</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="form-group quick-connect-auth-method">
                                     <label for="authTypeSelect" data-i18n="connection.authMethod">Authentication Method</label>
                                     <select id="authTypeSelect" class="form-control">
@@ -437,22 +453,6 @@
                                 </div>
 
                                 <div class="quick-connect-core-fields">
-                            <div id="connectionProfileContext" class="connection-profile-context hidden" role="status">
-                                <span class="material-icons" aria-hidden="true">bookmark</span>
-                                <div>
-                                    <small data-i18n="connection.savedContext">Saved connection</small>
-                                    <strong id="connectionProfileContextName"></strong>
-                                    <span data-i18n="connection.reviewBeforeConnect">Review the settings and provide any required credentials.</span>
-                                    <div id="connectionProfileJumpResolution" class="connection-profile-jump-resolution hidden">
-                                        <span data-i18n="connection.jumpHostUnavailable">The saved jump host is unavailable. Choose a replacement below or confirm a direct connection.</span>
-                                        <label for="connectionProfileDirectConfirm" class="checkbox-label">
-                                            <input type="checkbox" id="connectionProfileDirectConfirm">
-                                            <span data-i18n="connection.connectDirectlyInstead">Connect directly instead</span>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
                     <div class="form-row">
                         <div class="form-group flex-2">
                             <label for="hostInput" data-i18n="connection.host">Host *</label>
@@ -1274,7 +1274,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=11"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=15"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=4"></script>
@@ -1302,8 +1302,8 @@
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=13"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=13"></script>
     <script>

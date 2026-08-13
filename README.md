@@ -56,7 +56,7 @@
 WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operations in the browser. It is built for homelabs, server administration, and teams that want browser-based access without handing connection data to a hosted control plane. It is multi-user from the ground up, with separate accounts and per-user saved connections, keys, and settings. Browser dependencies are vendored locally, and WebSSH does not include telemetry.
 
 <p align="center">
-  <img src="assets/webssh-demo.gif" alt="WebSSH tour showing saved profiles, live terminals, split panes, broadcast input, commands, and SFTP tools" width="1100">
+  <img src="assets/webssh-demo.gif" alt="WebSSH tour showing Quick Connect, live terminals, split panes, commands, and the source-first SFTP workspace" width="1100">
 </p>
 
 ## Features
@@ -82,7 +82,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Persistent Session Names** - Custom tab names are retained for persistent sessions across browsers
 - **Configurable Scrollback** - Set 50 to 10,000 terminal lines and navigate them with the custom scrollbar
 - **Copy/Paste** - `Ctrl+C` copies selected terminal text but still sends an interrupt when nothing is selected; `Ctrl+V` pastes (`Cmd+C` / `Cmd+V` on macOS)
-- **Keyboard Shortcuts** - Ctrl+K command palette, Ctrl+F search, Ctrl+1–9 tab switching
+- **Keyboard Shortcuts** - Ctrl+K command palette, Ctrl+F search, Ctrl+1-9 tab switching
 - **Terminal Search** - Regex or plain-text in-terminal search (Ctrl+F)
 - **Save Transcript** - Download the session output as a text file
 - **Recent Connections** - Quick reconnect from your connection history
@@ -103,21 +103,23 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 
 ### File Manager (SFTP)
 - **Active-Session Split** - In the single-terminal layout, open a compact SFTP browser that automatically follows the active SSH session
-- **Dual-Pane Browser** - Side-by-side file browsing
-- **Drag & Drop** - Transfer files between local and remote
+- **Source-First Workspace** - Open active SSH sessions, saved SSH hosts, or a new SFTP quick connection from one consistent source launcher
+- **One or Two File Areas** - Use the full workspace for one source or switch to a side-by-side layout for remote-to-remote work
+- **Independent Source Tabs** - Keep multiple remote locations open without duplicating a source from the right side on the left
+- **Drag & Drop Uploads** - Upload browser files and folders directly into the selected remote directory
 - **Server-to-Server** - Direct transfer between SSH hosts
-- **Batch Operations** - Multi-select for bulk actions
+- **Batch Operations** - Select individual items or all visible items for bulk download, transfer, and delete actions
 - **Context Menu** - Right-click for quick actions
 - **File Preview** - Inline preview for images and code (syntax-highlighted), with log tail mode
 - **Folder Download as ZIP** - Download entire directories as a ZIP archive
-- **Quick Connect** - Browse files over SFTP without opening a terminal session
-- **Local Filesystem Source** - Use your browser's local files as a transfer source
+- **Saved Hosts and Quick Connect** - Reuse saved profiles or browse over SFTP without opening a terminal session
+- **SMB Integration Path** - The source launcher reserves a disabled, clearly labeled `Coming soon` action for creating an SMB share; SMB connections are not active yet
 - **Transfer Queue** - Progress tracking with conflict resolution (skip / overwrite / apply to all)
 - **Efficient Binary Transfer** - Raw binary streaming (~33% smaller than base64)
 - **Inline Editor** - Edit text files directly in the browser and save back over SFTP
 
 <p align="center">
-  <img src="assets/filemanager.png" alt="File Manager" width="700">
+  <img src="assets/filemanager.png" alt="Source-first SFTP File Manager with independent tabs and two remote file areas" width="1100">
 </p>
 
 <p align="center">
