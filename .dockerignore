@@ -10,6 +10,8 @@ ENV/
 .venv*/
 .uv-cache*/
 .task*/
+.test-run.tmp/
+.worktrees/
 
 # Python cache
 __pycache__/

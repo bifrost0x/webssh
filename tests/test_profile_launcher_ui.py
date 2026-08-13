@@ -24,8 +24,9 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=12',
-        "filename='js/i18n.js'": '?v=10',
+        "filename='css/style.css'": '?v=13',
+        "filename='css/sftp-file-manager.css'": '?v=7',
+        "filename='js/i18n.js'": '?v=13',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
@@ -33,6 +34,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/profile-manager.js'": '?v=11',
         "filename='js/session-manager.js'": '?v=6',
         "filename='js/terminal-manager.js'": '?v=4',
+        "filename='js/sftp-file-manager.js'": '?v=10',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
@@ -130,7 +132,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=12" in template
+    assert "filename='css/style.css') }}?v=13" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():

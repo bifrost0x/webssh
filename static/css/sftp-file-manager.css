@@ -330,11 +330,6 @@
     margin-left: 8px;
 }
 
-.fm-host-badge.browser-local {
-    background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
-    color: var(--accent-primary);
-}
-
 .fm-host-badge.ssh {
     background: color-mix(in srgb, var(--success-color) 15%, transparent);
     color: var(--success-color);
@@ -1523,7 +1518,9 @@
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
-    background: var(--bg-primary);
+    background:
+        radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent-primary) 10%, transparent), transparent 38%),
+        var(--bg-primary);
     backdrop-filter: none;
 }
 
@@ -1541,10 +1538,11 @@
 
 #sftpFileManager.fm-workspace-mode .fm-workspace-header {
     position: relative;
-    min-height: 60px;
-    padding: 10px 18px;
+    min-height: 70px;
+    padding: 12px 22px;
     border-bottom: 1px solid var(--border-color);
-    background: color-mix(in srgb, var(--bg-primary) 92%, #000);
+    background: color-mix(in srgb, var(--bg-primary) 94%, #000);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
 
 .fm-workspace-header h2,
@@ -1555,20 +1553,40 @@
 }
 
 .fm-workspace-header h2 {
-    gap: 12px;
+    gap: 11px;
     margin: 0;
     font-size: 17px;
 }
 
 .fm-workspace-brand {
-    font-weight: 750;
-    letter-spacing: 0.01em;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
 }
 
-.fm-workspace-divider {
-    width: 1px;
-    height: 24px;
-    background: var(--border-color);
+.fm-workspace-title-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 38%, var(--border-color));
+    border-radius: 10px;
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-secondary));
+}
+
+.fm-workspace-title-icon .material-icons {
+    font-size: 21px;
+}
+
+.fm-workspace-title-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    line-height: 1.05;
 }
 
 .fm-workspace-controls {
@@ -1582,8 +1600,9 @@
 .fm-layout-switch {
     overflow: hidden;
     border: 1px solid var(--border-color);
-    border-radius: 7px;
+    border-radius: 9px;
     background: var(--bg-secondary);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 4%, transparent);
 }
 
 .fm-layout-btn,
@@ -1601,8 +1620,8 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    min-height: 36px;
-    padding: 0 13px;
+    min-height: 38px;
+    padding: 0 14px;
     border-right: 1px solid var(--border-color);
 }
 
@@ -1612,7 +1631,7 @@
 
 .fm-layout-btn.active {
     color: var(--accent-on-text, #fff);
-    background: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 88%, #fff 12%);
 }
 
 .fm-layout-btn .material-icons,
@@ -1626,7 +1645,7 @@
     height: 36px;
     place-items: center;
     margin-left: auto;
-    border-radius: 6px;
+    border-radius: 9px;
 }
 
 .fm-workspace-close:hover,
@@ -1637,8 +1656,9 @@
 }
 
 #sftpFileManager.fm-workspace-mode .modal-body {
-    padding: 10px;
-    gap: 10px;
+    min-height: 0;
+    padding: 14px 16px 12px;
+    gap: 12px;
 }
 
 #sftpFileManager.fm-workspace-mode .modal-body > .fm-toolbar,
@@ -1648,7 +1668,7 @@
 }
 
 #sftpFileManager.fm-workspace-mode .fm-panes {
-    grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
     gap: 0;
 }
 
@@ -1671,14 +1691,17 @@
 
 #sftpFileManager.fm-workspace-mode .fm-pane {
     border: 1px solid var(--border-color);
-    border-radius: 7px;
+    border-radius: 12px;
     background: var(--bg-secondary);
-    box-shadow: none;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+    transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 #sftpFileManager.fm-workspace-mode .fm-pane.active {
-    border-color: color-mix(in srgb, var(--accent-primary) 75%, var(--border-color));
-    box-shadow: inset 0 2px 0 var(--accent-primary);
+    border-color: color-mix(in srgb, var(--accent-primary) 62%, var(--border-color));
+    box-shadow:
+        0 14px 34px rgba(0, 0, 0, 0.2),
+        0 0 0 1px color-mix(in srgb, var(--accent-primary) 12%, transparent);
 }
 
 .fm-pane-header {
@@ -1691,7 +1714,8 @@
     padding: 0;
     overflow-x: auto;
     border-bottom: 1px solid var(--border-color);
-    background: color-mix(in srgb, var(--bg-secondary) 92%, #000);
+    min-height: 44px;
+    background: color-mix(in srgb, var(--bg-secondary) 94%, #000);
 }
 
 .fm-legacy-source-select {
@@ -1707,7 +1731,7 @@
 
 .fm-source-tab {
     display: flex;
-    min-width: 150px;
+    min-width: 168px;
     max-width: 260px;
     border-right: 1px solid var(--border-color);
     color: var(--text-secondary);
@@ -1716,7 +1740,8 @@
 
 .fm-source-tab.active {
     color: var(--text-primary);
-    background: var(--bg-tertiary);
+    background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-tertiary));
+    box-shadow: inset 0 -2px var(--accent-primary);
 }
 
 .fm-source-tab-activate,
@@ -1782,21 +1807,39 @@
 
 .fm-source-tab-add {
     display: grid;
-    width: 42px;
-    flex: 0 0 42px;
+    width: 46px;
+    flex: 0 0 46px;
     place-items: center;
     border-left: 1px solid var(--border-color);
 }
 
 .fm-source-identity {
     display: flex;
-    min-height: 39px;
+    min-height: 44px;
     align-items: center;
     gap: 10px;
-    padding: 7px 14px;
+    padding: 7px 13px;
     border-bottom: 1px solid var(--border-color);
     color: var(--text-secondary);
     font-size: 12px;
+}
+
+.fm-pane-label {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.fm-source-identity-empty {
+    color: var(--text-muted);
+    font-size: 11px;
 }
 
 .fm-source-identity-name {
@@ -1835,8 +1878,8 @@
 }
 
 #sftpFileManager.fm-workspace-mode .fm-pane-nav {
-    min-height: 45px;
-    padding: 7px 12px;
+    min-height: 46px;
+    padding: 7px 11px;
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-primary);
 }
@@ -1851,10 +1894,10 @@
 
 .fm-pane-toolbar {
     display: flex;
-    min-height: 45px;
+    min-height: 46px;
     align-items: center;
     gap: 2px;
-    padding: 6px 12px;
+    padding: 6px 10px;
     overflow-x: auto;
     border-bottom: 1px solid var(--border-color);
 }
@@ -1866,7 +1909,8 @@
     gap: 6px;
     padding: 0 9px;
     border: 0;
-    border-right: 1px solid var(--border-color);
+    border: 1px solid transparent;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
@@ -1874,17 +1918,22 @@
     cursor: pointer;
 }
 
-.fm-pane-toolbar button:last-child {
-    border-right: 0;
+.fm-pane-toolbar button:nth-child(2) {
+    margin-right: 7px;
+}
+
+.fm-pane-toolbar button:nth-child(3) {
+    margin-left: 2px;
 }
 
 .fm-pane-toolbar button:hover:not(:disabled) {
     color: var(--text-primary);
+    border-color: var(--border-color);
     background: var(--bg-hover);
 }
 
 .fm-pane-toolbar button:disabled {
-    opacity: 0.35;
+    opacity: 0.46;
     cursor: not-allowed;
 }
 
@@ -1905,7 +1954,7 @@
 }
 
 .fm-file-list-header {
-    min-height: 35px;
+    min-height: 38px;
     padding: 0 12px;
     border-bottom: 1px solid var(--border-color);
     color: var(--text-muted);
@@ -1925,11 +1974,12 @@
 }
 
 #sftpFileManager.fm-workspace-mode .fm-file-list {
-    background: color-mix(in srgb, var(--bg-secondary) 96%, #000);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 98%, #000), color-mix(in srgb, var(--bg-primary) 96%, #000));
 }
 
 #sftpFileManager.fm-workspace-mode .fm-file-item {
-    min-height: 38px;
+    min-height: 42px;
     padding: 0 12px;
     border-bottom: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
     border-radius: 0;
@@ -1945,8 +1995,22 @@
 }
 
 .fm-file-checkbox {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
     color: var(--text-muted);
+    cursor: pointer;
     font-size: 17px !important;
+}
+
+.fm-file-checkbox:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 1px;
 }
 
 .fm-file-item.selected .fm-file-checkbox {
@@ -1978,28 +2042,46 @@
 }
 
 .fm-transfer-rail {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 9px;
     color: var(--text-muted);
 }
 
+.fm-transfer-rail::before {
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    left: 50%;
+    width: 1px;
+    background: linear-gradient(transparent, var(--border-color) 18%, var(--border-color) 82%, transparent);
+    content: '';
+    transform: translateX(-50%);
+}
+
 .fm-transfer-hint {
-    max-width: 48px;
+    z-index: 1;
+    max-width: 66px;
+    padding: 5px 4px;
+    border-radius: 5px;
+    background: var(--bg-primary);
     font-size: 9px;
+    font-weight: 650;
     line-height: 1.3;
     text-align: center;
 }
 
 .fm-transfer-direction {
+    z-index: 1;
     display: grid;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     place-items: center;
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 9px;
     background: var(--bg-secondary);
 }
 
@@ -2010,12 +2092,12 @@
 }
 
 .fm-transfer-direction:disabled {
-    opacity: 0.35;
+    opacity: 0.55;
     cursor: not-allowed;
 }
 
 #sftpFileManager.fm-workspace-mode .fm-pane-footer {
-    min-height: 36px;
+    min-height: 38px;
     padding: 0 12px;
     border-top: 1px solid var(--border-color);
     background: var(--bg-secondary);
@@ -2024,19 +2106,67 @@
 #sftpFileManager.fm-workspace-mode .fm-queue {
     flex: 0 0 auto;
     max-height: 205px;
-    border-radius: 6px;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.fm-source-empty-state {
+    max-width: 360px;
+    margin: auto;
+    padding: 34px 26px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    text-align: center;
+}
+
+.fm-empty-icon-shell {
+    display: grid;
+    width: 54px;
+    height: 54px;
+    place-items: center;
+    margin: 0 auto 14px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 34%, var(--border-color));
+    border-radius: 14px;
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 9%, var(--bg-tertiary));
+}
+
+.fm-source-empty-state .fm-empty-icon {
+    margin: 0;
+    color: inherit;
+    font-size: 28px;
+}
+
+.fm-source-empty-state strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.fm-source-empty-state p {
+    max-width: 290px;
+    margin: 7px auto 17px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.fm-empty-source-cta {
+    min-height: 38px;
+    padding-inline: 16px;
 }
 
 .fm-source-launcher {
     position: absolute;
-    inset: 60px 0 0;
+    inset: 70px 0 0;
     z-index: 40;
     display: none;
-    align-items: flex-start;
-    justify-content: flex-end;
-    padding: 78px 5vw 24px;
-    background: color-mix(in srgb, var(--bg-primary) 35%, transparent);
-    backdrop-filter: blur(2px);
+    align-items: center;
+    justify-content: center;
+    padding: 24px 4vw;
+    background: color-mix(in srgb, var(--bg-primary) 48%, transparent);
+    backdrop-filter: blur(5px);
 }
 
 .fm-source-launcher.show {
@@ -2045,14 +2175,14 @@
 
 .fm-source-launcher-panel {
     display: flex;
-    width: min(650px, 92vw);
-    max-height: calc(100vh - 180px);
+    width: min(760px, 94vw);
+    max-height: calc(100vh - 140px);
     flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--border-hover);
-    border-radius: 8px;
+    border-radius: 13px;
     background: var(--bg-secondary);
-    box-shadow: 0 18px 55px rgba(0, 0, 0, 0.48);
+    box-shadow: 0 26px 70px rgba(0, 0, 0, 0.56);
 }
 
 .fm-source-launcher-header {
@@ -2060,12 +2190,12 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    padding: 18px 20px 10px;
+    padding: 21px 24px 12px;
 }
 
 .fm-source-launcher-header h3 {
     margin: 0 0 4px;
-    font-size: 18px;
+    font-size: 19px;
 }
 
 .fm-source-launcher-header h3 span {
@@ -2091,10 +2221,10 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 0 20px 12px;
-    padding: 0 11px;
+    margin: 0 24px 13px;
+    padding: 0 12px;
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 8px;
     background: var(--bg-primary);
 }
 
@@ -2107,7 +2237,7 @@
 .fm-source-search input,
 .fm-source-search-row input {
     width: 100%;
-    min-height: 36px;
+    min-height: 42px;
     border: 0;
     outline: 0;
     background: transparent;
@@ -2123,32 +2253,63 @@
 }
 
 .fm-source-groups {
-    padding: 0 20px 12px;
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    padding: 0 24px 14px;
+    overflow: hidden;
+}
+
+.fm-source-primary-groups {
+    min-height: 0;
+    flex: 1;
+    padding-right: 4px;
     overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.fm-source-primary-groups:empty {
+    display: none;
 }
 
 .fm-source-group h4 {
-    margin: 10px 2px 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 12px 2px 6px;
     color: var(--text-muted);
     font-size: 10px;
     letter-spacing: 0.07em;
     text-transform: uppercase;
 }
 
+.fm-source-group-count {
+    display: inline-grid;
+    min-width: 20px;
+    height: 20px;
+    place-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    font-size: 9px;
+    letter-spacing: 0;
+}
+
 #fm-source-group-saved + .fm-source-group-items {
-    max-height: 184px;
-    overflow-y: auto;
-    scrollbar-width: thin;
+    max-height: none;
+    overflow: visible;
 }
 
 .fm-source-row {
     display: grid;
     width: 100%;
-    min-height: 45px;
-    grid-template-columns: 24px minmax(130px, 1fr) 52px minmax(145px, 0.8fr);
+    min-height: 52px;
+    grid-template-columns: 28px minmax(160px, 1fr) 58px minmax(160px, 0.76fr);
     align-items: center;
     gap: 9px;
-    padding: 6px 10px;
+    padding: 7px 12px;
     border: 1px solid var(--border-color);
     border-bottom: 0;
     background: var(--bg-tertiary);
@@ -2158,27 +2319,42 @@
 }
 
 .fm-source-row:first-of-type {
-    border-radius: 6px 6px 0 0;
+    border-radius: 8px 8px 0 0;
 }
 
 .fm-source-row:last-child {
     border-bottom: 1px solid var(--border-color);
-    border-radius: 0 0 6px 6px;
+    border-radius: 0 0 8px 8px;
 }
 
 .fm-source-row:hover:not(:disabled) {
-    border-color: var(--border-hover);
-    background: var(--bg-hover);
+    position: relative;
+    z-index: 1;
+    border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-hover));
+    background: color-mix(in srgb, var(--accent-primary) 7%, var(--bg-hover));
+}
+
+.fm-layout-btn:focus-visible,
+.fm-workspace-close:focus-visible,
+.fm-source-tab-activate:focus-visible,
+.fm-source-tab-close:focus-visible,
+.fm-source-tab-add:focus-visible,
+.fm-source-row:focus-visible,
+.fm-transfer-direction:focus-visible,
+.fm-empty-source-cta:focus-visible,
+.fm-pane-tab:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
 }
 
 .fm-source-row.is-disabled {
-    opacity: 0.56;
+    opacity: 0.68;
     cursor: not-allowed;
 }
 
 .fm-source-row-icon {
     color: var(--success-color);
-    font-size: 18px;
+    font-size: 20px;
 }
 
 .fm-source-row-main,
@@ -2192,7 +2368,7 @@
 .fm-source-row-main strong,
 .fm-source-row-status strong {
     overflow: hidden;
-    font-size: 12px;
+    font-size: 12.5px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -2232,12 +2408,14 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    padding: 12px 20px 18px;
+    padding: 14px 24px 20px;
     border-top: 1px solid var(--border-color);
 }
 
 .fm-source-launcher-actions .btn {
+    min-height: 52px;
     justify-content: center;
+    border-radius: 8px;
 }
 
 .fm-source-launcher-actions .btn > span:last-child {
@@ -2258,6 +2436,46 @@
     text-align: center;
 }
 
+.fm-source-no-sources {
+    display: flex;
+    min-height: 150px;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin: 12px 4px 0;
+    padding: 28px;
+    border: 1px dashed color-mix(in srgb, var(--text-muted) 34%, var(--border-color));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-hover) 45%, transparent);
+    text-align: center;
+}
+
+.fm-source-no-sources > .material-icons {
+    display: inline-grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, var(--border-color));
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-primary) 9%, transparent);
+    color: var(--accent-primary);
+    font-size: 20px;
+}
+
+.fm-source-no-sources strong {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.fm-source-no-sources > span:last-child {
+    max-width: 380px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
 @media (max-width: 1050px) {
     .fm-file-list-header,
     #sftpFileManager.fm-workspace-mode .fm-file-item {
@@ -2276,15 +2494,24 @@
 
 @media (max-width: 767px) {
     #sftpFileManager.fm-workspace-mode .fm-workspace-header {
-        min-height: 54px;
-        padding: 8px 10px;
+        min-height: 62px;
+        padding: 9px 10px;
     }
 
     .fm-workspace-header h2 .fm-workspace-brand,
-    .fm-workspace-header h2 .fm-workspace-divider,
     .fm-layout-btn span:not(.material-icons),
     #fmOpenSource span:not(.material-icons) {
         display: none;
+    }
+
+    .fm-workspace-title-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+    }
+
+    .fm-workspace-title-copy {
+        font-size: 15px;
     }
 
     .fm-workspace-controls {
@@ -2299,6 +2526,41 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
+    #sftpFileManager.fm-workspace-mode.fm-workspace-split .modal-body > .fm-pane-tabs {
+        display: flex !important;
+        min-height: 42px;
+        flex: 0 0 42px;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--border-color);
+        border-radius: 9px;
+        background: var(--bg-secondary);
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane-tab {
+        display: inline-flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        border: 0;
+        border-radius: 6px;
+        color: var(--text-secondary);
+        background: transparent;
+        font-size: 12px;
+        font-weight: 650;
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane-tab.active {
+        color: var(--text-primary);
+        background: color-mix(in srgb, var(--accent-primary) 13%, var(--bg-tertiary));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    }
+
+    #sftpFileManager.fm-workspace-mode .fm-pane-tab .material-icons {
+        font-size: 16px;
+    }
+
     #sftpFileManager.fm-workspace-mode .fm-transfer-rail,
     #sftpFileManager.fm-workspace-mode .fm-pane:not(.active) {
         display: none !important;
@@ -2309,7 +2571,7 @@
     }
 
     .fm-source-launcher {
-        inset: 54px 0 0;
+        inset: 62px 0 0;
         align-items: stretch;
         padding: 8px;
     }
@@ -2317,6 +2579,7 @@
     .fm-source-launcher-panel {
         width: 100%;
         max-height: 100%;
+        border-radius: 11px;
     }
 
     .fm-source-row {
@@ -2335,6 +2598,29 @@
 
     .fm-source-launcher-actions {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fm-source-empty-state {
+        width: 100%;
+        max-width: none;
+        padding: 10px;
+        border: 0;
+        background: transparent;
+    }
+
+    .fm-source-empty-state .fm-empty-icon-shell {
+        display: none;
+    }
+
+    .fm-source-empty-state strong,
+    .fm-source-empty-state p {
+        display: none;
+    }
+
+    .fm-source-empty-state .fm-empty-source-cta {
+        min-height: 32px;
+        padding: 0 12px;
+        font-size: 11px;
     }
 
     .fm-file-list-header,

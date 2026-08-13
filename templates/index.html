@@ -17,9 +17,9 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=2">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=6">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}">
 
@@ -1184,7 +1184,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=13"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=4"></script>
@@ -1212,9 +1212,8 @@
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=10"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=11"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};

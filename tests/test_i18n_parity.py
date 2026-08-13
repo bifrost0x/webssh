@@ -246,7 +246,6 @@ def test_all_popup_translation_references_exist_in_every_locale():
         Path('static/js/admin.js'),
         Path('static/js/app.js'),
         Path('static/js/binary-transfer-client.js'),
-        Path('static/js/browser-filesystem.js'),
         Path('static/js/command-library.js'),
         Path('static/js/drag-drop-manager.js'),
         Path('static/js/file-transfer.js'),

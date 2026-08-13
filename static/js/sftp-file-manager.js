@@ -7,8 +7,6 @@ class SFTPFileManager {
         this.displayMode = 'closed';
         this.embeddedContainer = null;
 
-        this.browserFS = this.createBrowserFileSystem();
-
         this.initializeWorkspaceState();
 
         this.availableSessions = [];
@@ -51,22 +49,8 @@ class SFTPFileManager {
             pendingHomeRequestId: null,
             pendingDirectoryRequestId: null,
             pendingDirectoryPath: null,
-            autoHomeEligible: false,
-            browserFS: null
+            autoHomeEligible: false
         };
-    }
-
-    createBrowserFileSystem() {
-        return new BrowserFileSystem();
-    }
-
-    getBrowserFileSystem(state) {
-        if (!state.browserFS) {
-            state.browserFS = typeof BrowserFileSystem === 'undefined' && this.browserFS
-                ? this.browserFS
-                : this.createBrowserFileSystem();
-        }
-        return state.browserFS;
     }
 
     initializeWorkspaceState() {
@@ -112,9 +96,27 @@ class SFTPFileManager {
     }
 
     setWorkspaceLayout(layout) {
+        const previousLayout = this.workspace.layout;
         this.workspace.setLayout(layout);
-        if (layout === 'split' && !this.workspace.getActiveTab('right') && this.displayMode === 'modal') {
-            this.openSourceLauncher('right');
+        if (layout === 'split' && previousLayout === 'single' && this.displayMode === 'modal') {
+            const sourcePane = this.workspace.activePane;
+            const targetPane = sourcePane === 'left' ? 'right' : 'left';
+            const sourceTabs = this.workspace.getTabs(sourcePane);
+            if (!this.workspace.getActiveTab(targetPane) && sourceTabs.length > 1) {
+                const activeTab = this.workspace.getActiveTab(sourcePane);
+                this.workspace.moveTab(sourcePane, targetPane, activeTab.id);
+                this.syncPaneFromWorkspace(sourcePane);
+                this.syncPaneFromWorkspace(targetPane);
+                this.updatePathInput(sourcePane, this.panes[sourcePane].path || '/');
+                this.updatePathInput(targetPane, this.panes[targetPane].path || '/');
+                this.updatePaneBadge(sourcePane);
+                this.updatePaneBadge(targetPane);
+                this.renderPane(sourcePane);
+                this.renderPane(targetPane);
+                this.setActivePane(targetPane);
+            } else if (!this.workspace.getActiveTab(targetPane)) {
+                this.openSourceLauncher(targetPane);
+            }
         }
         this.renderWorkspaceChrome();
         return layout;
@@ -153,46 +155,23 @@ class SFTPFileManager {
             security: this.t('fm.workspace.hostKeyTrusted', 'SSH host key trusted'),
             connectionId: connection.connectionId,
         }));
-        const browser = [{
-            key: 'browser-local',
-            type: 'browser-local',
-            label: this.t('fm.workspace.localFiles', 'Local files'),
-            endpoint: this.t('fm.workspace.thisBrowser', 'This browser'),
-            protocol: 'LOCAL',
-            status: this.browserFS?.isSupported
-                ? this.t('fm.workspace.available', 'Available')
-                : this.t('fm.workspace.unavailable', 'Unavailable'),
-            security: this.t('fm.workspace.browserPermission', 'Browser permission required'),
-            disabled: !this.browserFS?.isSupported,
-        }];
-        const smb = [{
-            key: 'smb:coming-soon',
-            type: 'smb',
-            label: this.t('fm.workspace.smbShare', 'SMB share'),
-            endpoint: 'SMB 3',
-            protocol: 'SMB',
-            status: this.t('fm.workspace.comingSoon', 'Coming soon'),
-            security: this.t('fm.workspace.encryptionRequired', 'Encryption required'),
-            disabled: true,
-        }];
         return [
             { id: 'active', label: this.t('fm.workspace.activeSessions', 'Active SSH sessions'), items: active },
             { id: 'saved', label: this.t('fm.workspace.savedHosts', 'Saved SSH hosts'), items: saved },
             { id: 'quick', label: this.t('fm.workspace.quickConnections', 'SFTP quick connections'), items: quick },
-            { id: 'smb', label: this.t('fm.workspace.smbShares', 'SMB shares'), items: smb },
-            { id: 'browser', label: this.t('fm.workspace.browser', 'This browser'), items: browser },
         ];
     }
 
     async openWorkspaceSource(pane, source) {
-        if (!source || source.disabled || source.type === 'smb') return null;
+        if (!source || source.disabled) return null;
         if (source.type === 'profile') {
             this.pendingQuickConnectPane = pane;
             this.openQuickConnect(source.profileId);
             return null;
         }
 
-        const tab = this.workspace.openTab(pane, source, this.createEmptyPaneState());
+        const paneState = this.createEmptyPaneState();
+        const tab = this.workspace.openTab(pane, source, paneState);
         this.syncPaneFromWorkspace(pane);
         this.workspace.setActivePane(pane);
         this.setActivePane(pane);
@@ -225,10 +204,18 @@ class SFTPFileManager {
         const launcher = document.getElementById('fmSourceLauncher');
         launcher.classList.add('show');
         launcher.setAttribute('aria-hidden', 'false');
+        const single = this.workspace.layout === 'single';
+        const actionLabel = document.getElementById('fmSourceLauncherAction');
         const paneLabel = document.getElementById('fmSourceLauncherPane');
-        paneLabel.textContent = pane === 'left'
-            ? this.t('fm.workspace.leftPane', 'Left pane')
-            : this.t('fm.workspace.rightPane', 'Right pane');
+        actionLabel.textContent = single
+            ? this.t('fm.workspace.openSource', 'Open source')
+            : this.t('fm.workspace.openSourceIn', 'Open source in');
+        paneLabel.hidden = single;
+        paneLabel.textContent = single
+            ? ''
+            : pane === 'left'
+                ? this.t('fm.workspace.leftPane', 'Left side')
+                : this.t('fm.workspace.rightPane', 'Right side');
         const search = document.getElementById('fmSourceSearch');
         search.value = '';
         search.focus();
@@ -250,24 +237,19 @@ class SFTPFileManager {
         if (!container) return;
         const normalizedQuery = query.trim().toLocaleLowerCase();
         const groups = this.buildSourceCatalog();
+        const hasAvailableSources = groups.some(group => group.items.length > 0);
         this.sourceCatalogByKey = new Map();
-        const html = groups.map(group => {
+        const renderedGroups = groups.map(group => {
             const items = group.items.filter(source => {
                 this.sourceCatalogByKey.set(source.key, source);
                 if (!normalizedQuery) return true;
                 return [source.label, source.endpoint, source.protocol, source.status, source.security]
                     .some(value => String(value || '').toLocaleLowerCase().includes(normalizedQuery));
             });
-            if (items.length === 0) return '';
+            if (items.length === 0) return null;
             const rows = items.map(source => {
-                const icon = source.type === 'browser-local' ? 'computer'
-                    : source.type === 'smb' ? 'dns'
-                        : source.type === 'profile' ? 'bookmark'
-                            : 'terminal';
+                const icon = source.type === 'profile' ? 'bookmark' : 'terminal';
                 const disabled = source.disabled ? ' disabled aria-disabled="true"' : '';
-                const comingSoon = source.type === 'smb'
-                    ? `<span class="fm-coming-soon">${this.escapeHtml(this.t('fm.workspace.comingSoon', 'Coming soon'))}</span>`
-                    : '';
                 return `
                     <button type="button" class="fm-source-row${source.disabled ? ' is-disabled' : ''}" data-source-key="${this.escapeHtml(source.key)}"${disabled}>
                         <span class="material-icons fm-source-row-icon" aria-hidden="true">${icon}</span>
@@ -277,17 +259,25 @@ class SFTPFileManager {
                         </span>
                         <span class="fm-protocol-badge">${this.escapeHtml(source.protocol || '')}</span>
                         <span class="fm-source-row-status">
-                            <strong>${source.type === 'smb' ? comingSoon : this.escapeHtml(source.status || '')}</strong>
-                            <small><span class="material-icons" aria-hidden="true">${source.type === 'smb' ? 'lock' : 'verified_user'}</span>${this.escapeHtml(source.security || '')}</small>
+                            <strong>${this.escapeHtml(source.status || '')}</strong>
+                            <small><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(source.security || '')}</small>
                         </span>
                     </button>`;
             }).join('');
-            return `<section class="fm-source-group" aria-labelledby="fm-source-group-${group.id}">
-                <h4 id="fm-source-group-${group.id}">${this.escapeHtml(group.label)}</h4>
+            return { id: group.id, html: `<section class="fm-source-group" aria-labelledby="fm-source-group-${group.id}">
+                <h4 id="fm-source-group-${group.id}"><span>${this.escapeHtml(group.label)}</span><span class="fm-source-group-count">${items.length}</span></h4>
                 <div class="fm-source-group-items">${rows}</div>
-            </section>`;
-        }).join('');
-        container.innerHTML = html || `<div class="fm-source-no-results">${this.escapeHtml(this.t('fm.workspace.noSources', 'No matching sources'))}</div>`;
+            </section>` };
+        }).filter(Boolean);
+        container.innerHTML = renderedGroups.length > 0
+            ? `<div class="fm-source-primary-groups">${renderedGroups.map(group => group.html).join('')}</div>`
+            : hasAvailableSources
+                ? `<div class="fm-source-no-results">${this.escapeHtml(this.t('fm.workspace.noSources', 'No matching sources'))}</div>`
+                : `<div class="fm-source-no-sources">
+                    <span class="material-icons" aria-hidden="true">link_off</span>
+                    <strong>${this.escapeHtml(this.t('fm.workspace.noAvailableSources', 'No sources available'))}</strong>
+                    <span>${this.escapeHtml(this.t('fm.workspace.noAvailableSourcesHint', 'Open an SSH session or create a new SFTP connection below.'))}</span>
+                </div>`;
     }
 
     renderWorkspaceChrome() {
@@ -305,6 +295,16 @@ class SFTPFileManager {
         ['left', 'right'].forEach(pane => {
             this.renderSourceTabs(pane);
             this.renderSourceIdentity(pane);
+            const sideLabel = pane === 'left'
+                ? this.t('fm.workspace.leftPane', 'Left side')
+                : this.t('fm.workspace.rightPane', 'Right side');
+            const sourceButton = document.querySelector(`[data-source-target="${pane}"]`);
+            sourceButton?.setAttribute(
+                'aria-label',
+                single
+                    ? this.t('fm.workspace.openSource', 'Open source')
+                    : `${this.t('fm.workspace.openSource', 'Open source')}: ${sideLabel}`,
+            );
             const activeTab = this.workspace.getActiveTab(pane);
             const legacySelect = document.getElementById(`fm${this.capitalize(pane)}Source`);
             if (legacySelect) legacySelect.value = activeTab?.source.key || '';
@@ -333,15 +333,20 @@ class SFTPFileManager {
         const container = document.getElementById(`fm${this.capitalize(pane)}Identity`);
         if (!container) return;
         const tab = this.workspace.getActiveTab(pane);
+        const paneLabel = pane === 'left'
+            ? this.t('fm.workspace.leftPane', 'Left side')
+            : this.t('fm.workspace.rightPane', 'Right side');
+        const paneBadge = this.workspace.layout === 'split'
+            ? `<span class="fm-pane-label">${this.escapeHtml(paneLabel)}</span>`
+            : '';
         if (!tab) {
-            container.innerHTML = `<button type="button" class="fm-empty-source-button" data-source-target="${pane}">
-                <span class="material-icons" aria-hidden="true">add_link</span>
-                <span>${this.escapeHtml(this.t('fm.workspace.chooseSource', 'Choose source'))}</span>
-            </button>`;
-            container.querySelector('button')?.addEventListener('click', () => this.openSourceLauncher(pane));
+            container.innerHTML = `
+                ${paneBadge}
+                <span class="fm-source-identity-empty">${this.escapeHtml(this.t('fm.selectSourceAbove', 'Select a source above'))}</span>`;
             return;
         }
         container.innerHTML = `
+            ${paneBadge}
             <span class="fm-source-identity-name">${this.escapeHtml(tab.source.label || '')}</span>
             <span class="fm-protocol-badge">${this.escapeHtml(tab.source.protocol || '')}</span>
             <span class="fm-source-identity-endpoint">${this.escapeHtml(tab.source.endpoint || '')}</span>
@@ -363,6 +368,7 @@ class SFTPFileManager {
     closeSourceTab(pane, tabId) {
         const result = this.workspace.closeTab(pane, tabId);
         if (!result.closed) return null;
+        this.releaseQuickConnectionIfUnused(result.closed.source);
         this.syncPaneFromWorkspace(pane);
         this.updatePathInput(pane, this.panes[pane].path || '/');
         this.updatePaneBadge(pane);
@@ -370,6 +376,23 @@ class SFTPFileManager {
         this.renderWorkspaceChrome();
         if (!result.active && this.workspace.layout === 'single') this.openSourceLauncher(pane);
         return result.closed;
+    }
+
+    releaseQuickConnectionIfUnused(source) {
+        const connectionId = source?.connectionId;
+        if (!connectionId) return false;
+
+        const stillInUse = ['left', 'right'].some(pane => (
+            this.workspace.getTabs(pane).some(tab => tab.source.connectionId === connectionId)
+        ));
+        if (stillInUse) return false;
+
+        this.quickConnections = (this.quickConnections || []).filter(
+            connection => connection.connectionId !== connectionId
+        );
+        this.socket.emit('quick_disconnect', { connection_id: connectionId });
+        this.updateSessionLists();
+        return true;
     }
 
     previewSelected() {
@@ -382,14 +405,37 @@ class SFTPFileManager {
         return true;
     }
 
+    canTransferBetweenPanes(sourcePane, targetPane) {
+        if (!this.workspace || this.workspace.layout !== 'split') return false;
+        if (!this.workspace.getActiveTab(sourcePane) || !this.workspace.getActiveTab(targetPane)) return false;
+
+        const source = this.panes[sourcePane];
+        const target = this.panes[targetPane];
+        const sourceId = source?.sessionId || source?.connectionId;
+        const targetId = target?.sessionId || target?.connectionId;
+        return source?.type === 'ssh'
+            && target?.type === 'ssh'
+            && !source.loading
+            && !target.loading
+            && !source.autoHomeEligible
+            && !target.autoHomeEligible
+            && !source.error
+            && !target.error
+            && Boolean(sourceId)
+            && Boolean(targetId)
+            && sourceId !== targetId
+            && typeof source.path === 'string'
+            && typeof target.path === 'string';
+    }
+
     updateWorkspaceActions() {
         if (this.displayMode !== 'modal' || !this.workspace) return;
         const state = this.panes[this.activePane];
         const selectedCount = state?.selected?.size || 0;
         const selectedFile = selectedCount === 1 ? state.files[Array.from(state.selected)[0]] : null;
         const hasSource = Boolean(state?.type);
-        const bothSources = Boolean(this.workspace.getActiveTab('left') && this.workspace.getActiveTab('right'));
-        const transferAvailable = this.workspace.layout === 'split' && bothSources && selectedCount > 0;
+        const targetPane = this.activePane === 'left' ? 'right' : 'left';
+        const transferAvailable = this.canTransferBetweenPanes(this.activePane, targetPane) && selectedCount > 0;
         const setDisabled = (id, disabled) => {
             const element = document.getElementById(id);
             if (element) element.disabled = disabled;
@@ -401,8 +447,8 @@ class SFTPFileManager {
         setDisabled('fmRename', selectedCount !== 1);
         setDisabled('fmDelete', selectedCount === 0);
         setDisabled('fmTransfer', !transferAvailable);
-        setDisabled('fmTransferRight', !(this.workspace.layout === 'split' && bothSources && this.panes.left.selected.size > 0));
-        setDisabled('fmTransferLeft', !(this.workspace.layout === 'split' && bothSources && this.panes.right.selected.size > 0));
+        setDisabled('fmTransferRight', !(this.canTransferBetweenPanes('left', 'right') && this.panes.left.selected.size > 0));
+        setDisabled('fmTransferLeft', !(this.canTransferBetweenPanes('right', 'left') && this.panes.right.selected.size > 0));
         ['left', 'right'].forEach(pane => {
             const paneState = this.panes[pane];
             const paneSelection = paneState?.selected?.size || 0;
@@ -430,10 +476,14 @@ class SFTPFileManager {
         });
         const hint = document.getElementById('fmTransferHint');
         if (hint) {
-            hint.textContent = transferAvailable
-                ? (this.activePane === 'left'
-                    ? this.t('fm.workspace.leftToRight', 'Move selected left to right')
-                    : this.t('fm.workspace.rightToLeft', 'Move selected right to left'))
+            const transferSelection = (
+                this.canTransferBetweenPanes('left', 'right')
+                || this.canTransferBetweenPanes('right', 'left')
+            )
+                ? Math.max(this.panes.left.selected.size, this.panes.right.selected.size)
+                : 0;
+            hint.textContent = transferSelection > 0
+                ? `${transferSelection} ${this.t('fm.selected', 'selected')}`
                 : this.t('fm.workspace.selectFiles', 'Select files');
         }
     }
@@ -456,23 +506,24 @@ class SFTPFileManager {
             <div class="modal-content fm-modal-fullwidth">
                 <div class="modal-header fm-workspace-header">
                     <h2 id="fmModalTitle">
-                        <span class="fm-workspace-brand">WebSSH</span>
-                        <span class="fm-workspace-divider" aria-hidden="true"></span>
-                        <span class="material-icons" aria-hidden="true">folder_open</span>
-                        <span data-i18n="fm.title">File Manager</span>
+                        <span class="fm-workspace-title-icon"><span class="material-icons" aria-hidden="true">folder_open</span></span>
+                        <span class="fm-workspace-title-copy">
+                            <span class="fm-workspace-brand">WebSSH</span>
+                            <span data-i18n="fm.title">File Manager</span>
+                        </span>
                     </h2>
                     <div class="fm-workspace-controls">
                         <div class="fm-layout-switch" role="group" aria-label="File Manager layout" data-i18n-aria-label="fm.workspace.layout">
-                            <button type="button" class="fm-layout-btn active" id="fmLayoutSingle" data-layout="single" aria-pressed="true">
+                            <button type="button" class="fm-layout-btn active" id="fmLayoutSingle" data-layout="single" aria-pressed="true" aria-label="1 pane" data-i18n-aria-label="fm.workspace.onePane">
                                 <span class="material-icons" aria-hidden="true">crop_7_5</span>
                                 <span data-i18n="fm.workspace.onePane">1 pane</span>
                             </button>
-                            <button type="button" class="fm-layout-btn" id="fmLayoutSplit" data-layout="split" aria-pressed="false">
+                            <button type="button" class="fm-layout-btn" id="fmLayoutSplit" data-layout="split" aria-pressed="false" aria-label="2 panes" data-i18n-aria-label="fm.workspace.twoPanes">
                                 <span class="material-icons" aria-hidden="true">view_column</span>
                                 <span data-i18n="fm.workspace.twoPanes">2 panes</span>
                             </button>
                         </div>
-                        <button type="button" class="btn btn-primary btn-sm" id="fmOpenSource">
+                        <button type="button" class="btn btn-primary btn-sm" id="fmOpenSource" aria-label="Open source" data-i18n-aria-label="fm.workspace.openSource">
                             <span class="material-icons" aria-hidden="true">add_link</span>
                             <span data-i18n="fm.workspace.openSource">Open source</span>
                         </button>
@@ -524,12 +575,14 @@ class SFTPFileManager {
                     </div>
 
                     <!-- Mobile Pane Tabs -->
-                    <div class="fm-pane-tabs" id="fmPaneTabs">
-                        <button class="fm-pane-tab active" data-pane="left">
-                            <span class="material-icons">folder</span> Left
+                    <div class="fm-pane-tabs" id="fmPaneTabs" role="tablist" aria-label="File Manager panes" data-i18n-aria-label="fm.workspace.layout">
+                        <button class="fm-pane-tab active" data-pane="left" role="tab" aria-selected="true">
+                            <span class="material-icons" aria-hidden="true">vertical_split</span>
+                            <span data-i18n="fm.workspace.leftPane">Left side</span>
                         </button>
-                        <button class="fm-pane-tab" data-pane="right">
-                            <span class="material-icons">folder</span> Right
+                        <button class="fm-pane-tab" data-pane="right" role="tab" aria-selected="false">
+                            <span class="material-icons" aria-hidden="true">vertical_split</span>
+                            <span data-i18n="fm.workspace.rightPane">Right side</span>
                         </button>
                     </div>
 
@@ -538,8 +591,8 @@ class SFTPFileManager {
                         <!-- Left Pane -->
                         <div class="fm-pane active" id="fmLeftPane" data-pane="left">
                             <div class="fm-pane-header">
-                                <div class="fm-source-tabs" id="fmLeftTabs" role="tablist" aria-label="Left pane sources"></div>
-                                <button type="button" class="fm-source-tab-add" data-source-target="left" aria-label="Open source in left pane" title="Open source">
+                                <div class="fm-source-tabs" id="fmLeftTabs" role="tablist" aria-label="Left side sources"></div>
+                                <button type="button" class="fm-source-tab-add" data-source-target="left" aria-label="Open source" title="Open source">
                                     <span class="material-icons" aria-hidden="true">add</span>
                                 </button>
                                 <select class="fm-source-select form-control fm-legacy-source-select" id="fmLeftSource" tabindex="-1" aria-hidden="true">
@@ -606,8 +659,8 @@ class SFTPFileManager {
                         <!-- Right Pane -->
                         <div class="fm-pane" id="fmRightPane" data-pane="right">
                             <div class="fm-pane-header">
-                                <div class="fm-source-tabs" id="fmRightTabs" role="tablist" aria-label="Right pane sources"></div>
-                                <button type="button" class="fm-source-tab-add" data-source-target="right" aria-label="Open source in right pane" title="Open source">
+                                <div class="fm-source-tabs" id="fmRightTabs" role="tablist" aria-label="Right side sources"></div>
+                                <button type="button" class="fm-source-tab-add" data-source-target="right" aria-label="Open source" title="Open source">
                                     <span class="material-icons" aria-hidden="true">add</span>
                                 </button>
                                 <select class="fm-source-select form-control fm-legacy-source-select" id="fmRightSource" tabindex="-1" aria-hidden="true">
@@ -686,8 +739,8 @@ class SFTPFileManager {
                     <div class="fm-source-launcher-panel">
                         <div class="fm-source-launcher-header">
                             <div>
-                                <h3 id="fmSourceLauncherTitle"><span data-i18n="fm.workspace.openSourceIn">Open source in</span> <span id="fmSourceLauncherPane">Left pane</span></h3>
-                                <p data-i18n="fm.workspace.sourceHint">Choose an active SSH session, a saved host, or local browser files.</p>
+                                <h3 id="fmSourceLauncherTitle"><span id="fmSourceLauncherAction" data-i18n="fm.workspace.openSourceIn">Open source in</span> <span id="fmSourceLauncherPane">Left side</span></h3>
+                                <p data-i18n="fm.workspace.sourceHint">Choose an active SSH session or a saved host.</p>
                             </div>
                             <button type="button" class="fm-source-launcher-close" id="fmSourceLauncherClose" aria-label="Close" data-i18n-aria-label="common.close">
                                 <span class="material-icons" aria-hidden="true">close</span>
@@ -925,14 +978,11 @@ class SFTPFileManager {
             actions[actionButton.dataset.paneAction]?.();
         });
         document.querySelectorAll('[data-pane-select-all]').forEach(checkbox => {
+            checkbox.addEventListener('click', event => event.stopPropagation());
             checkbox.addEventListener('change', () => {
                 const pane = checkbox.dataset.paneSelectAll;
-                this.setActivePane(pane);
-                if (checkbox.checked) this.selectAll();
-                else {
-                    this.panes[pane].selected.clear();
-                    this.updateSelectionVisual(pane);
-                }
+                const checked = checkbox.checked;
+                this.setPaneSelection(pane, checked);
             });
         });
 
@@ -1249,6 +1299,11 @@ class SFTPFileManager {
             }
         }
 
+        const interactiveTarget = e.target?.closest?.(
+            'input, textarea, select, button, a[href], [contenteditable="true"], [role="button"], [role="checkbox"]',
+        );
+        if (interactiveTarget) return;
+
         if (
             e.key === 'Tab'
             && this.displayMode !== 'embedded'
@@ -1522,30 +1577,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (value === 'browser-local') {
-            const browserFS = this.getBrowserFileSystem(state);
-            if (!browserFS.isSupported) {
-                this.showNotification(this.t('fm.fsaNotSupported', 'File System Access API not supported. Use drag & drop instead.'), 'warning');
-                state.loading = false;
-                this.renderPane(pane);
-                return;
-            }
-
-            const granted = await browserFS.requestAccess();
-            if (granted) {
-                state.type = 'browser-local';
-                state.sessionId = null;
-                state.connectionId = null;
-                state.path = browserFS.getCurrentPath();
-                state.hostInfo = { host: this.t('fm.yourComputer', 'Your Computer'), username: '', port: '' };
-                await this.refreshBrowserPane(pane);
-            } else {
-                state.loading = false;
-                this.renderPane(pane);
-            }
-            this.updatePaneBadge(pane);
-
-        } else if (value.startsWith('ssh:')) {
+        if (value.startsWith('ssh:')) {
             const sessionId = value.substring(4);
             state.type = 'ssh';
             state.sessionId = sessionId;
@@ -1644,10 +1676,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'browser-local') {
-            badge.textContent = this.t('fm.yourComputer', 'Your Computer');
-            badge.className = 'fm-host-badge browser';
-        } else if (state.hostInfo) {
+        if (state.hostInfo) {
             badge.textContent = `${state.hostInfo.username}@${state.hostInfo.host}`;
             badge.className = 'fm-host-badge ssh';
         }
@@ -1822,21 +1851,7 @@ class SFTPFileManager {
         state.loading = true;
         this.renderPane(pane);
 
-        if (state.type === 'browser-local') {
-            const browserFS = this.getBrowserFileSystem(state);
-            try {
-                await browserFS.navigateTo(path);
-                state.path = browserFS.getCurrentPath();
-                state.files = await browserFS.listDirectory();
-                state.loading = false;
-                this.updatePathInput(pane, state.path);
-                this.renderPane(pane);
-            } catch {
-                this.showNotification(`${this.t('fm.cannotNavigate', 'Cannot navigate to')} ${path}`, 'error');
-                state.loading = false;
-                this.renderPane(pane);
-            }
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             this.requestDirectory(pane, path);
             this.setLoadingTimeout(pane);
         }
@@ -1847,12 +1862,7 @@ class SFTPFileManager {
 
         if (!state.type) return;
 
-        if (state.type === 'browser-local') {
-            const navigated = await this.getBrowserFileSystem(state).navigateUp();
-            if (navigated) {
-                await this.refreshBrowserPane(pane);
-            }
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             if (state.path === '/') return;
             const parentPath = state.path.split('/').slice(0, -1).join('/') || '/';
             this.navigatePaneTo(pane, parentPath);
@@ -1864,12 +1874,7 @@ class SFTPFileManager {
 
         if (!state.type) return;
 
-        if (state.type === 'browser-local') {
-            const browserFS = this.getBrowserFileSystem(state);
-            browserFS.currentHandle = browserFS.rootHandle;
-            browserFS.pathStack = [browserFS.rootHandle.name];
-            this.refreshBrowserPane(pane);
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             const homePath = state.homePath || '/';
             this.navigatePaneTo(pane, homePath);
         }
@@ -1878,14 +1883,7 @@ class SFTPFileManager {
     async navigateIntoDir(pane, dirName) {
         const state = this.panes[pane];
 
-        if (state.type === 'browser-local') {
-            try {
-                await this.getBrowserFileSystem(state).navigateInto(dirName);
-                await this.refreshBrowserPane(pane);
-            } catch {
-                this.showNotification(`${this.t('fm.cannotOpen', 'Cannot open')} ${dirName}`, 'error');
-            }
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             const newPath = state.path === '/' ? '/' + dirName : state.path + '/' + dirName;
             this.navigatePaneTo(pane, newPath);
         }
@@ -1896,11 +1894,7 @@ class SFTPFileManager {
 
         if (!state.type) return;
 
-        if (state.type === 'browser-local') {
-            state.loading = true;
-            this.renderPane(pane);
-            await this.refreshBrowserPane(pane);
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             const sessionId = state.sessionId || state.connectionId;
             if (!sessionId) return;
 
@@ -1918,22 +1912,6 @@ class SFTPFileManager {
             this.renderPane(pane);
             this.requestDirectory(pane, state.path);
             this.setLoadingTimeout(pane);
-        }
-    }
-
-    async refreshBrowserPane(pane) {
-        const state = this.panes[pane];
-        const browserFS = this.getBrowserFileSystem(state);
-        try {
-            state.files = await browserFS.listDirectory();
-            state.path = browserFS.getCurrentPath();
-            state.loading = false;
-            this.updatePathInput(pane, state.path);
-            this.renderPane(pane);
-        } catch {
-            this.showNotification(this.t('fm.errorReadingDir', 'Error reading directory'), 'error');
-            state.loading = false;
-            this.renderPane(pane);
         }
     }
 
@@ -1995,12 +1973,25 @@ class SFTPFileManager {
         }
 
         if (!state.type) {
+            const paneLabel = pane === 'left'
+                ? this.t('fm.workspace.leftPane', 'Left side')
+                : this.t('fm.workspace.rightPane', 'Right side');
+            const openSourceLabel = this.t('fm.workspace.openSource', 'Open source');
+            const chooseLabel = this.workspace.layout === 'split'
+                ? `${openSourceLabel}: ${paneLabel}`
+                : openSourceLabel;
             container.innerHTML = `
-                <div class="fm-empty">
-                    <span class="material-icons fm-empty-icon">folder_open</span>
-                    <div class="fm-empty-text">${this.t('fm.selectSourceAbove', 'Select a source above')}</div>
+                <div class="fm-empty fm-source-empty-state">
+                    <span class="fm-empty-icon-shell"><span class="material-icons fm-empty-icon" aria-hidden="true">folder_open</span></span>
+                    <strong>${this.escapeHtml(this.t('fm.selectSourceAbove', 'Select a source above'))}</strong>
+                    <p>${this.escapeHtml(this.t('fm.workspace.sourceHint', 'Choose an active SSH session or a saved host.'))}</p>
+                    <button type="button" class="btn btn-primary fm-empty-source-cta" aria-label="${this.escapeHtml(chooseLabel)}">
+                        <span class="material-icons" aria-hidden="true">add_link</span>
+                        <span>${this.escapeHtml(openSourceLabel)}</span>
+                    </button>
                 </div>
             `;
+            container.querySelector('.fm-empty-source-cta')?.addEventListener('click', () => this.openSourceLauncher(pane));
             this.updatePaneStatus(pane);
             return;
         }
@@ -2030,7 +2021,7 @@ class SFTPFileManager {
 
         let html = '';
 
-        if (state.path !== '/' && !(state.type === 'browser-local' && this.getBrowserFileSystem(state).pathStack.length <= 1)) {
+        if (state.path !== '/') {
             html += `
                 <div class="fm-file-item directory" data-index="-1" data-type="parent">
                     <span class="fm-file-checkbox" aria-hidden="true"></span>
@@ -2053,7 +2044,9 @@ class SFTPFileManager {
                      data-index="${originalIndex}"
                      data-type="${file.is_dir ? 'directory' : 'file'}"
                      draggable="true">
-                    <span class="fm-file-checkbox material-icons" aria-hidden="true">${state.selected.has(originalIndex) ? 'check_box' : 'check_box_outline_blank'}</span>
+                    <button type="button" class="fm-file-checkbox material-icons" role="checkbox"
+                            aria-checked="${state.selected.has(originalIndex)}"
+                            aria-label="${this.escapeHtml(this.t('fm.workspace.selectItem', 'Select'))}: ${this.escapeHtml(file.name)}">${state.selected.has(originalIndex) ? 'check_box' : 'check_box_outline_blank'}</button>
                     <span class="material-icons fm-file-icon ${file.is_dir ? 'folder' : 'file'}">${icon}</span>
                     <div class="fm-file-info">
                         <div class="fm-file-name">${this.escapeHtml(file.name)}</div>
@@ -2070,11 +2063,7 @@ class SFTPFileManager {
         container.querySelectorAll('.fm-file-item').forEach(item => {
             const index = parseInt(item.dataset.index);
             item.addEventListener('click', (e) => this.handleItemClick(e, pane, index));
-            item.addEventListener('dblclick', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.handleItemDblClick(pane, index);
-            });
+            item.addEventListener('dblclick', (e) => this.handleItemDoubleClickEvent(e, pane, index));
             item.addEventListener('contextmenu', (e) => this.showContextMenu(e, pane, index));
             item.addEventListener('dragstart', (e) => this.handleDragStart(e, pane, index));
         });
@@ -2090,7 +2079,8 @@ class SFTPFileManager {
 
         const state = this.panes[pane];
 
-        if (e.ctrlKey || e.metaKey) {
+        const checkboxClicked = Boolean(e.target?.closest?.('.fm-file-checkbox'));
+        if (checkboxClicked || e.ctrlKey || e.metaKey) {
             if (state.selected.has(index)) {
                 state.selected.delete(index);
             } else {
@@ -2109,6 +2099,13 @@ class SFTPFileManager {
 
         state.lastSelected = index;
         this.updateSelectionVisual(pane);
+    }
+
+    handleItemDoubleClickEvent(e, pane, index) {
+        if (e.target?.closest?.('.fm-file-checkbox')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleItemDblClick(pane, index);
     }
 
     handleItemDblClick(pane, index) {
@@ -2134,8 +2131,6 @@ class SFTPFileManager {
                 } else {
                     console.error('[SFTP] FilePreview not available');
                 }
-            } else if (state.type === 'browser-local') {
-                this.showNotification('Local file preview not yet supported', 'info');
             }
         }
     }
@@ -2150,7 +2145,10 @@ class SFTPFileManager {
                 const isSelected = state.selected.has(idx);
                 item.classList.toggle('selected', isSelected);
                 const checkbox = item.querySelector('.fm-file-checkbox.material-icons');
-                if (checkbox) checkbox.textContent = isSelected ? 'check_box' : 'check_box_outline_blank';
+                if (checkbox) {
+                    checkbox.textContent = isSelected ? 'check_box' : 'check_box_outline_blank';
+                    checkbox.setAttribute('aria-checked', String(isSelected));
+                }
             }
         });
 
@@ -2174,7 +2172,9 @@ class SFTPFileManager {
 
     updateMobilePaneTabs(pane) {
         document.querySelectorAll('.fm-pane-tab').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.pane === pane);
+            const active = tab.dataset.pane === pane;
+            tab.classList.toggle('active', active);
+            tab.setAttribute('aria-selected', String(active));
         });
     }
 
@@ -2238,10 +2238,7 @@ class SFTPFileManager {
                 const state = this.panes[this.activePane];
                 if (state.selected.size === 1) {
                     const index = Array.from(state.selected)[0];
-                    const file = state.files[index];
-                    if (file && file.is_dir) {
-                        this.navigateToFile(this.activePane, file);
-                    }
+                    this.handleItemDblClick(this.activePane, index);
                 }
                 break;
             case 'download':
@@ -2305,9 +2302,18 @@ class SFTPFileManager {
     }
 
     selectAll() {
-        const state = this.panes[this.activePane];
-        state.files.forEach((_, index) => state.selected.add(index));
-        this.updateSelectionVisual(this.activePane);
+        this.setPaneSelection(this.activePane, true);
+    }
+
+    setPaneSelection(pane, selected) {
+        this.setActivePane(pane);
+        const state = this.panes[pane];
+        if (selected) {
+            state.files.forEach((_, index) => state.selected.add(index));
+        } else {
+            state.selected.clear();
+        }
+        this.updateSelectionVisual(pane);
     }
 
     createNewFolder() {
@@ -2326,14 +2332,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'browser-local') {
-            this.getBrowserFileSystem(state).createDirectory(name)
-                .then(() => {
-                    this.showNotification(`${this.t('fm.folderCreated', 'Folder created')}: ${name}`, 'success');
-                    this.refreshBrowserPane(this.activePane);
-                })
-                .catch(e => this.showNotification(`${this.t('common.error', 'Error')}: ${e.message}`, 'error'));
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             const path = state.path === '/' ? '/' + name : state.path + '/' + name;
             const sessionId = state.sessionId || state.connectionId;
             this.socket.emit('create_directory', { session_id: sessionId, remote_path: path });
@@ -2355,15 +2354,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'browser-local') {
-            Promise.all(items.map(item => this.getBrowserFileSystem(state).deleteEntry(item.name)))
-                .then(() => {
-                    this.showNotification(this.t('fm.itemsDeleted', 'Items deleted'), 'success');
-                    state.selected.clear();
-                    this.refreshBrowserPane(this.activePane);
-                })
-                .catch(e => this.showNotification(`${this.t('common.error', 'Error')}: ${e.message}`, 'error'));
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             const sessionId = state.sessionId || state.connectionId;
             items.forEach(item => {
                 const path = state.path === '/' ? '/' + item.name : state.path + '/' + item.name;
@@ -2393,14 +2384,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'browser-local') {
-            this.getBrowserFileSystem(state).rename(file.name, newName)
-                .then(() => {
-                    this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
-                    this.refreshBrowserPane(this.activePane);
-                })
-                .catch(e => this.showNotification(`${this.t('common.error', 'Error')}: ${e.message}`, 'error'));
-        } else if (state.type === 'ssh') {
+        if (state.type === 'ssh') {
             const sessionId = state.sessionId || state.connectionId;
             const oldPath = state.path === '/' ? '/' + file.name : state.path + '/' + file.name;
             const newPath = state.path === '/' ? '/' + newName : state.path + '/' + newName;
@@ -2415,6 +2399,16 @@ class SFTPFileManager {
 
         const source = this.panes[sourcePane];
         const target = this.panes[targetPane];
+
+        if (!this.canTransferBetweenPanes(sourcePane, targetPane)) {
+            const sourceId = source?.sessionId || source?.connectionId;
+            const targetId = target?.sessionId || target?.connectionId;
+            const message = sourceId && sourceId === targetId
+                ? this.t('fm.cannotTransferSameHost', 'Cannot transfer to same host. Use rename instead.')
+                : this.t('fm.bothPanesRequired', 'Both panes must have a source selected');
+            this.showNotification(message, 'warning');
+            return;
+        }
 
         if (!source.type || !target.type) {
             this.showNotification(this.t('fm.bothPanesRequired', 'Both panes must have a source selected'), 'warning');
@@ -2445,19 +2439,6 @@ class SFTPFileManager {
                 const targetPath = target.path === '/' ? '/' + item.name : target.path + '/' + item.name;
 
                 switch (transferType) {
-                    case 'browser-local-to-ssh':
-                        await this.transferBrowserToSSH(item, targetPath, target);
-                        break;
-
-                    case 'ssh-to-browser-local':
-                        await this.transferSSHToBrowser(
-                            sourcePath,
-                            source,
-                            item.name,
-                            targetPane,
-                        );
-                        break;
-
                     case 'ssh-to-ssh':
                         await this.transferSSHtoSSH(sourcePath, source, targetPath, target, item);
                         break;
@@ -2468,92 +2449,6 @@ class SFTPFileManager {
             }
         } finally {
             this.transferExecutionInProgress = false;
-        }
-    }
-
-    async transferBrowserToSSH(item, targetPath, targetPane) {
-        const sessionId = targetPane.sessionId || targetPane.connectionId;
-
-        if (item.is_dir) {
-            await this.uploadBrowserFolderToSSH(item.handle, targetPath, sessionId);
-        } else {
-            try {
-                const file = await item.handle.getFile();
-                const transferId = this.getTransferClient().uploadFile(file, targetPath, sessionId);
-                this.queueTransfer({
-                    id: transferId,
-                    type: 'upload',
-                    filename: item.name,
-                    targetPath: targetPath,
-                    size: file.size,
-                    sessionId: sessionId,
-                    batchId: null
-                });
-            } catch (e) {
-                this.showNotification(`${this.t('fm.failedToRead', 'Failed to read')} ${item.name}: ${e.message}`, 'error');
-            }
-        }
-    }
-
-    async uploadBrowserFolderToSSH(dirHandle, remotePath, sessionId, batchId = null) {
-        this.socket.emit('create_directory', { session_id: sessionId, remote_path: remotePath });
-        await new Promise(r => setTimeout(r, 100));
-
-        for await (const entry of dirHandle.values()) {
-            const entryPath = remotePath + '/' + entry.name;
-
-            if (entry.kind === 'directory') {
-                await this.uploadBrowserFolderToSSH(entry, entryPath, sessionId, batchId);
-            } else {
-                try {
-                    const file = await entry.getFile();
-                    const transferId = this.getTransferClient().uploadFile(file, entryPath, sessionId);
-                    this.queueTransfer({
-                        id: transferId,
-                        type: 'upload',
-                        filename: entry.name,
-                        targetPath: entryPath,
-                        size: file.size,
-                        sessionId: sessionId,
-                        batchId: batchId
-                    });
-                } catch {
-                    console.error('Failed to upload file');
-                }
-            }
-        }
-    }
-
-    async transferSSHToBrowser(
-        sourcePath,
-        sourcePane,
-        filename,
-        targetPane,
-    ) {
-        const sessionId = sourcePane.sessionId || sourcePane.connectionId;
-        const browserFS = this.getBrowserFileSystem(this.panes[targetPane]);
-        const targetDirectory = browserFS.currentHandle;
-        const transfer = this.getTransferClient().downloadFileToWritable(
-            sourcePath,
-            sessionId,
-            () => browserFS.createWritableSink(
-                filename,
-                targetDirectory,
-            ),
-        );
-
-        this.queueTransfer({
-            id: transfer.id,
-            type: 'download',
-            filename: filename,
-            sourcePath: sourcePath
-        });
-        try {
-            if (await transfer.done) {
-                await this.refreshBrowserPane(targetPane);
-            }
-        } catch {
-            // BinaryTransferClient reports the bounded transfer error to the queue.
         }
     }
 
@@ -2636,8 +2531,6 @@ class SFTPFileManager {
             } else if (files && files.length > 0) {
                 this.uploadDesktopFilesToSSH(Array.from(files), target);
             }
-        } else if (target.type === 'browser-local') {
-            this.showNotification(this.t('fm.useFilesystemForLocal', 'Use your file system to add files to your local folder'), 'info');
         } else {
             this.showNotification(this.t('fm.selectSourceFirst', 'Please select a source first'), 'warning');
         }
@@ -3116,7 +3009,7 @@ class SFTPFileManager {
         const menu = document.createElement('div');
         menu.className = 'fm-context-menu';
 
-        const items = this.getContextMenuItems(file, state);
+        const items = this.getContextMenuItems(file, state, pane);
 
         menu.innerHTML = items.map(item => {
             if (item.divider) {
@@ -3144,7 +3037,7 @@ class SFTPFileManager {
         });
     }
 
-    getContextMenuItems(file, state) {
+    getContextMenuItems(file, state, pane = this.activePane) {
         const items = [];
 
         if (file) {
@@ -3157,7 +3050,11 @@ class SFTPFileManager {
                 items.push({ action: 'preview', icon: '👁️', text: this.t('fm.ctx.preview', 'Preview') });
                 items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
             }
-            if (this.displayMode !== 'embedded' && !this.isMobile()) {
+            const otherPane = pane === 'left' ? 'right' : 'left';
+            const canTransfer = this.displayMode === 'modal'
+                && !this.isMobile()
+                && this.canTransferBetweenPanes(pane, otherPane);
+            if (canTransfer) {
                 items.push({ action: 'transfer', icon: '↔️', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
             }
             items.push({ divider: true });

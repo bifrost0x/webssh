@@ -252,6 +252,40 @@ test('single-session workspace combines terminal, SFTP, live Linux stats, and no
     await expect(page.locator('#fmTransfer')).toBeHidden();
     await expect(page.locator('#fmEmbeddedUpload')).toBeVisible();
     await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+
+    const embeddedFileLayout = await page.evaluate(() => {
+        const bounds = element => element.getBoundingClientRect();
+        const toolbar = document.querySelector('.fm-embedded-mode .fm-toolbar-right');
+        const toolbarBounds = bounds(toolbar);
+        const fileRows = Array.from(document.querySelectorAll(
+            '.fm-embedded-mode #fmLeftList .fm-file-item',
+        ));
+        const xterm = document.querySelector('.terminal-pane.active .xterm');
+        const viewport = document.querySelector('.terminal-pane.active .xterm-viewport');
+        const themeProbe = document.createElement('span');
+        themeProbe.style.color = getComputedStyle(document.body).getPropertyValue('--term-background');
+        document.body.appendChild(themeProbe);
+        const terminalBackground = getComputedStyle(themeProbe).color;
+        themeProbe.remove();
+        return {
+            maxRowHeight: Math.max(...fileRows.map(row => bounds(row).height)),
+            toolbarOverflow: toolbar.scrollWidth - toolbar.clientWidth,
+            toolbarButtonsInside: Array.from(toolbar.querySelectorAll('button')).every(button => {
+                const buttonBounds = bounds(button);
+                return buttonBounds.left >= toolbarBounds.left
+                    && buttonBounds.right <= toolbarBounds.right + 1;
+            }),
+            xtermPadding: getComputedStyle(xterm).padding,
+            viewportBackground: getComputedStyle(viewport).backgroundColor,
+            terminalBackground,
+        };
+    });
+    expect(embeddedFileLayout.maxRowHeight).toBeLessThanOrEqual(46);
+    expect(embeddedFileLayout.toolbarOverflow).toBeLessThanOrEqual(1);
+    expect(embeddedFileLayout.toolbarButtonsInside).toBe(true);
+    expect(embeddedFileLayout.xtermPadding).toBe('0px');
+    expect(embeddedFileLayout.viewportBackground).toBe(embeddedFileLayout.terminalBackground);
+
     await page.locator('#fmLeftList .fm-file-item[data-index="0"]').dblclick();
     await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current/releases');
     await expect(page.locator('#sessionInsightsState')).toHaveText('Live');

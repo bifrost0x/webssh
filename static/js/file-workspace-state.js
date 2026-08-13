@@ -90,6 +90,19 @@
             return { closed, active: this.getActiveTab(pane) };
         }
 
+        moveTab(fromPane, toPane, tabId) {
+            this.assertPane(fromPane);
+            this.assertPane(toPane);
+            if (fromPane === toPane) return this.activateTab(fromPane, tabId);
+
+            const result = this.closeTab(fromPane, tabId);
+            if (!result.closed) return null;
+            this.panes[toPane].tabs.push(result.closed);
+            this.panes[toPane].activeTabId = result.closed.id;
+            this.activePane = toPane;
+            return result.closed;
+        }
+
         setLayout(layout) {
             if (!LAYOUTS.has(layout)) {
                 throw new TypeError(`Unsupported workspace layout: ${layout}`);
