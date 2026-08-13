@@ -599,19 +599,22 @@ test('modals restore focus and close by Escape or overlay while containing scrol
     const scrollState = await modal.evaluate(element => {
         const content = element.querySelector('.modal-content');
         const body = element.querySelector('.modal-body');
-        body.scrollTop = body.scrollHeight;
+        const scrollRegion = element.querySelector('#profileManagementView:not(.hidden)');
+        scrollRegion.scrollTop = scrollRegion.scrollHeight;
         const header = element.querySelector('.modal-header');
         return {
             contentOverflow: getComputedStyle(content).overflow,
             bodyOverflowY: getComputedStyle(body).overflowY,
-            scrolls: body.scrollHeight > body.clientHeight,
+            scrollRegionOverflowY: getComputedStyle(scrollRegion).overflowY,
+            scrolls: scrollRegion.scrollHeight > scrollRegion.clientHeight,
             headerTop: header.getBoundingClientRect().top,
             contentTop: content.getBoundingClientRect().top,
         };
     });
     expect(scrollState).toMatchObject({
         contentOverflow: 'hidden',
-        bodyOverflowY: 'auto',
+        bodyOverflowY: 'hidden',
+        scrollRegionOverflowY: 'auto',
         scrolls: true,
     });
     expect(scrollState.headerTop).toBeGreaterThanOrEqual(scrollState.contentTop);

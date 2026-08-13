@@ -30,7 +30,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=11',
+        "filename='js/profile-manager.js'": '?v=12',
         "filename='js/session-manager.js'": '?v=6',
         "filename='js/terminal-manager.js'": '?v=4',
         "filename='js/jump-host-manager.js'": '?v=4',
@@ -38,7 +38,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/command-set-manager.js'": '?v=2',
         "filename='js/session-command-launcher.js'": '?v=2',
         "filename='js/connection-history.js'": '?v=2',
-        "filename='js/app.js'": '?v=12',
+        "filename='js/app.js'": '?v=13',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
