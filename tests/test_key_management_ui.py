@@ -104,7 +104,7 @@ def test_key_replacement_event_updates_ui_and_asset_version():
     assert "filename='js/profile-manager.js') }}?v=12" in TEMPLATE
     assert "filename='js/i18n.js') }}?v=15" in TEMPLATE
     assert "filename='js/app.js') }}?v=13" in TEMPLATE
-    assert "filename='css/style.css') }}?v=16" in TEMPLATE
+    assert "filename='css/style.css') }}?v=20" in TEMPLATE
 
 
 def test_socket_events_refresh_key_ui_without_resetting_profile_editor():

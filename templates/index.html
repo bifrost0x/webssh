@@ -17,11 +17,12 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=16">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=6">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-connection-history-scope="{{ connection_history_scope }}">
+    <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
 
     <header class="header">
         <div class="header-content">
@@ -634,16 +635,20 @@
                     <div class="settings-field">
                         <label for="settingsThemeSelect" data-i18n="account.theme">Theme</label>
                         <select id="settingsThemeSelect" class="form-control">
-                            <option value="glass">Glass Ops</option>
-                            <option value="retro">Retro Future</option>
-                            <option value="solar">Solar Drift</option>
-                            <option value="paper">Paper Ops</option>
-                            <option value="noir">Noir Terminal</option>
-                            <option value="arctic-ice">Arctic Ice</option>
-                            <option value="rose-gold">Rose Gold</option>
-                            <option value="cyberpunk-neon">Cyberpunk Neon</option>
-                            <option value="emerald-matrix">Emerald Matrix</option>
-                            <option value="obsidian">Obsidian</option>
+                            <optgroup label="Professional Themes">
+                                <option value="glass">Glass Ops</option>
+                                <option value="solar">Solar Drift</option>
+                                <option value="paper">Paper Ops</option>
+                                <option value="noir">Noir Terminal</option>
+                                <option value="arctic-ice">Arctic Ice</option>
+                                <option value="rose-gold">Rose Gold</option>
+                                <option value="obsidian">Obsidian</option>
+                            </optgroup>
+                            <optgroup label="Fun Themes">
+                                <option value="retro">Retro Future</option>
+                                <option value="cyberpunk-neon">Cyberpunk Neon</option>
+                                <option value="emerald-matrix">Emerald Matrix</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div class="settings-field">
@@ -1332,6 +1337,7 @@
                 { id: 'obsidian', name: 'Obsidian', color: '#ffffff' }
             ];
             const currentTheme = document.body.getAttribute('data-theme') || 'glass';
+            window.ThemePreference?.store(currentTheme);
             const select = document.getElementById('settingsThemeSelect');
 
             if (select) {
@@ -1343,7 +1349,11 @@
         }
 
         function applyTheme(themeId) {
+            if (!window.ThemePreference?.isValid(themeId)) {
+                return;
+            }
             document.body.setAttribute('data-theme', themeId);
+            window.ThemePreference.store(themeId);
             if (window.socket) {
                 window.socket.emit('set_theme', { theme: themeId });
             }
