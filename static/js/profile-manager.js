@@ -746,7 +746,9 @@ const ProfileManager = {
         this.loadProfiles();
         this.loadKeys();
         window.JumpHostManager?.load();
-        window.ModalManager?.open(document.getElementById('profileManagementModal'));
+        const modal = document.getElementById('profileManagementModal');
+        window.ModalManager?.open(modal);
+        modal?.querySelector('[data-connection-asset="hosts"]')?.focus();
     },
 
     showManagementList() {

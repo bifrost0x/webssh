@@ -1965,6 +1965,7 @@
                 render();
                 e.preventDefault();
             } else if (e.key === 'Enter') {
+                e.preventDefault();
                 activateItem(filtered[activeIndex]);
             } else if (e.key === 'Escape') {
                 closePalette();

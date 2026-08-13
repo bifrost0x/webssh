@@ -2475,7 +2475,15 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 }
 
 .close {
+    display: inline-grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 0;
+    background: transparent;
     font-size: 28px;
+    font-family: inherit;
     color: var(--text-secondary);
     cursor: pointer;
     line-height: 1;
@@ -2489,6 +2497,11 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     color: var(--error-color);
     background: rgba(248, 81, 73, 0.1);
     transform: rotate(90deg);
+}
+
+.close:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
 }
 
 .modal-body {
@@ -2729,6 +2742,61 @@ textarea.form-control {
     margin-bottom: 32px;
 }
 
+.manager-card {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.manager-card-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.manager-card-header > .material-icons {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    color: var(--accent-primary);
+    font-size: 20px;
+}
+
+.manager-card-header :is(h3, p) {
+    margin: 0;
+}
+
+.manager-card-header p {
+    margin-top: 3px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.connection-asset-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+    align-items: start;
+    gap: 18px;
+}
+
+.connection-asset-layout .manager-card {
+    margin-bottom: 0;
+}
+
+.connection-asset-layout .keys-list {
+    max-height: 440px;
+}
+
 .key-upload-section h3,
 .keys-list-section h3,
 .transfer-section h3 {
@@ -2738,6 +2806,12 @@ textarea.form-control {
     color: var(--text-primary);
     padding-left: 12px;
     border-left: 3px solid var(--accent-primary);
+}
+
+.manager-card .manager-card-header h3 {
+    margin: 0;
+    padding-left: 0;
+    border-left: 0;
 }
 
 .keys-list {
@@ -5048,6 +5122,16 @@ body.keyboard-open.notepad-focused .notepad-panel {
     }
 }
 
+@media (max-width: 820px) {
+    .connection-asset-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .manager-card {
+        padding: 16px;
+    }
+}
+
 @media (max-width: 480px) {
     .quick-connect-scroll-region {
         padding: 16px;
@@ -5205,6 +5289,69 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .info-tooltip-trigger:focus-visible + .info-tooltip {
     opacity: 1;
     transform: translateY(0);
+}
+
+.profile-management-modal-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.profile-management-modal-body > .connection-asset-nav {
+    flex: 0 0 auto;
+}
+
+#profileManagementView:not(.hidden) {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+#profileEditorView:not(.hidden) {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.profile-editor-form {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    width: 100%;
+    min-height: 0;
+}
+
+.profile-editor-scroll-region {
+    min-height: 0;
+    padding-right: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.profile-editor-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+    align-items: start;
+    gap: 18px;
+}
+
+.profile-editor-actions {
+    margin-top: 18px;
+    padding-top: 18px;
+    background: var(--bg-modal);
+}
+
+@media (max-width: 820px) {
+    .profile-editor-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .profile-editor-scroll-region {
+        padding-right: 6px;
+    }
 }
 
 .profile-management-toolbar,
