@@ -578,6 +578,10 @@
     max-height: 44px;
 }
 
+.fm-queue.collapsed .fm-queue-list {
+    display: none;
+}
+
 .fm-queue-header {
     display: flex;
     justify-content: space-between;
@@ -586,6 +590,13 @@
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
+    width: 100%;
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
 }
 
 .fm-queue-header:hover {
@@ -2105,9 +2116,13 @@
 
 #sftpFileManager.fm-workspace-mode .fm-queue {
     flex: 0 0 auto;
-    max-height: 205px;
+    max-height: min(320px, 35vh);
     border-radius: 10px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-queue.collapsed {
+    max-height: 44px;
 }
 
 .fm-source-empty-state {
@@ -2477,8 +2492,7 @@
     }
 
     .fm-workspace-header h2 .fm-workspace-brand,
-    .fm-layout-btn span:not(.material-icons),
-    #fmOpenSource span:not(.material-icons) {
+    .fm-layout-btn span:not(.material-icons) {
         display: none;
     }
 

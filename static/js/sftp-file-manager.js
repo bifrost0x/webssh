@@ -553,10 +553,6 @@ class SFTPFileManager {
                                 <span data-i18n="fm.workspace.twoPanes">2 panes</span>
                             </button>
                         </div>
-                        <button type="button" class="btn btn-primary btn-sm" id="fmOpenSource" aria-label="Open source" data-i18n-aria-label="fm.workspace.openSource">
-                            <span class="material-icons" aria-hidden="true">add_link</span>
-                            <span data-i18n="fm.workspace.openSource">Open source</span>
-                        </button>
                     </div>
                     <button type="button" class="fm-workspace-close" id="fmClose" aria-label="Close" data-i18n-aria-label="common.close">
                         <span class="material-icons" aria-hidden="true">close</span>
@@ -746,14 +742,14 @@ class SFTPFileManager {
                     </div>
 
                     <!-- Transfer Queue -->
-                    <div class="fm-queue" id="fmQueue">
-                        <div class="fm-queue-header" id="fmQueueHeader">
-                            <div class="fm-queue-title">
+                    <div class="fm-queue collapsed" id="fmQueue">
+                        <button type="button" class="fm-queue-header" id="fmQueueHeader" aria-expanded="false" aria-controls="fmQueueList">
+                            <span class="fm-queue-title">
                                 <span class="material-icons">sync</span>
                                 <span data-i18n="fm.transfers">Transfers</span> <span class="fm-queue-badge" id="fmQueueBadge">0</span>
-                            </div>
+                            </span>
                             <span class="fm-queue-toggle material-icons" id="fmQueueToggle">expand_more</span>
-                        </div>
+                        </button>
                         <div class="fm-queue-list" id="fmQueueList"></div>
                     </div>
 
@@ -979,7 +975,6 @@ class SFTPFileManager {
         document.getElementById('fmDelete').addEventListener('click', () => this.deleteSelected());
         document.getElementById('fmLayoutSingle').addEventListener('click', () => this.setWorkspaceLayout('single'));
         document.getElementById('fmLayoutSplit').addEventListener('click', () => this.setWorkspaceLayout('split'));
-        document.getElementById('fmOpenSource').addEventListener('click', () => this.openSourceLauncher(this.workspace.activePane));
         document.querySelectorAll('[data-source-target]').forEach(button => {
             button.addEventListener('click', () => this.openSourceLauncher(button.dataset.sourceTarget));
         });
@@ -2033,7 +2028,7 @@ class SFTPFileManager {
                     <strong>${this.escapeHtml(this.t('fm.selectSourceAbove', 'Select a source above'))}</strong>
                     <p>${this.escapeHtml(this.t('fm.workspace.sourceHint', 'Choose an active SSH session or a saved host.'))}</p>
                     <button type="button" class="btn btn-primary fm-empty-source-cta" aria-label="${this.escapeHtml(chooseLabel)}">
-                        <span class="material-icons" aria-hidden="true">add_link</span>
+                        <span class="material-icons" aria-hidden="true">folder_open</span>
                         <span>${this.escapeHtml(openSourceLabel)}</span>
                     </button>
                 </div>
@@ -3057,9 +3052,10 @@ class SFTPFileManager {
     }
 
     toggleQueue() {
-        document.getElementById('fmQueue').classList.toggle('collapsed');
+        const collapsed = document.getElementById('fmQueue').classList.toggle('collapsed');
         const toggle = document.getElementById('fmQueueToggle');
-        toggle.textContent = toggle.textContent === '▼' ? '▲' : '▼';
+        toggle.textContent = collapsed ? 'expand_more' : 'expand_less';
+        document.getElementById('fmQueueHeader').setAttribute('aria-expanded', String(!collapsed));
     }
 
     showContextMenu(e, pane, index) {

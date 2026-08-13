@@ -33,6 +33,35 @@ test('standalone workspace starts in one pane with independent empty states', ()
     assert.equal(manager.workspace.getActiveTab('right'), null);
 });
 
+test('transfer queue toggle keeps icon and accessibility state in sync', () => {
+    const queueClasses = classList();
+    queueClasses.add('collapsed');
+    const queue = { classList: queueClasses };
+    const toggle = { textContent: 'expand_more' };
+    const header = {
+        attributes: { 'aria-expanded': 'false' },
+        setAttribute(name, value) { this.attributes[name] = value; },
+    };
+    const originalGetElementById = global.document.getElementById;
+    global.document.getElementById = id => ({
+        fmQueue: queue,
+        fmQueueToggle: toggle,
+        fmQueueHeader: header,
+    }[id] || null);
+    const manager = Object.create(SFTPFileManager.prototype);
+
+    manager.toggleQueue();
+    assert.equal(queue.classList.contains('collapsed'), false);
+    assert.equal(toggle.textContent, 'expand_less');
+    assert.equal(header.attributes['aria-expanded'], 'true');
+
+    manager.toggleQueue();
+    assert.equal(queue.classList.contains('collapsed'), true);
+    assert.equal(toggle.textContent, 'expand_more');
+    assert.equal(header.attributes['aria-expanded'], 'false');
+    global.document.getElementById = originalGetElementById;
+});
+
 test('embedded pane state cannot overwrite standalone workspace tabs', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();

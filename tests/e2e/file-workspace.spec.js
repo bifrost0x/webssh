@@ -34,6 +34,10 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await openWorkspaceWithSources(page);
 
     await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-mode/);
+    await expect(page.locator('#fmOpenSource')).toHaveCount(0);
+    await expect(page.locator('#fmQueue')).toHaveClass(/collapsed/);
+    await expect(page.locator('#fmQueueHeader')).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#fmQueueList')).toBeHidden();
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await expect(page.locator('#fmSourceLauncherTitle')).toHaveText('Open source');
     await expect(page.locator('[data-source-target="left"]')).toHaveAttribute('aria-label', 'Open source');
@@ -96,6 +100,15 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect(page.locator('#fmRightTabs')).toContainText('release archive');
     await expect(page.locator('[data-source-target="left"]')).toHaveAttribute('aria-label', 'Open source: Left side');
     await expect(page.locator('[data-source-target="right"]')).toHaveAttribute('aria-label', 'Open source: Right side');
+
+    await page.locator('#fmQueueHeader').click();
+    await expect(page.locator('#fmQueue')).not.toHaveClass(/collapsed/);
+    await expect(page.locator('#fmQueueHeader')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#fmQueueToggle')).toHaveText('expand_less');
+    await expect(page.locator('#fmQueueList')).toBeVisible();
+    await page.locator('#fmQueueHeader').click();
+    await expect(page.locator('#fmQueue')).toHaveClass(/collapsed/);
+    await expect(page.locator('#fmQueueHeader')).toHaveAttribute('aria-expanded', 'false');
 
     await page.evaluate(() => {
         const manager = window.sftpFileManager;
@@ -276,7 +289,7 @@ test('splitting two single-view tabs distributes them across both file areas', a
     await openWorkspaceWithSources(page);
 
     await page.locator('[data-source-key="ssh:workspace-source"]').click();
-    await page.locator('#fmOpenSource').click();
+    await page.locator('[data-source-target="left"]').click();
     await page.locator('[data-source-key="ssh:workspace-target"]').click();
     await expect(page.locator('#fmLeftTabs .fm-source-tab')).toHaveCount(2);
 
