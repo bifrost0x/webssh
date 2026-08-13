@@ -16,6 +16,7 @@ from .app_settings import is_registration_enabled, set_registration_enabled
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
 from .runtime_lifecycle import RuntimeLifecycle
+from .browser_identity import connection_history_scope
 
 socketio = SocketIO(
     async_mode=config.SOCKETIO_ASYNC_MODE,
@@ -327,6 +328,10 @@ def create_app(
             'index.html',
             username=current_user.username,
             theme=theme,
+            connection_history_scope=connection_history_scope(
+                current_user,
+                app.config['SECRET_KEY'],
+            ),
             confirm_session_close=settings.get('confirm_session_close', True),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
         )

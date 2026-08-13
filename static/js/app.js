@@ -126,7 +126,21 @@
         if (advanced) advanced.open = expanded === true;
     };
 
+    let selectedConnectionProfileState = null;
+
+    function refreshConnectionProfileJumpResolution() {
+        const resolution = document.getElementById('connectionProfileJumpResolution');
+        const directConfirm = document.getElementById('connectionProfileDirectConfirm');
+        const selectedJumpHostId = document.getElementById('jumpHostSelect')?.value || '';
+        const needsDecision = selectedConnectionProfileState?.missingJumpHost === true
+            && !selectedJumpHostId;
+        resolution?.classList.toggle('hidden', !needsDecision);
+        if (!needsDecision && directConfirm) directConfirm.checked = false;
+        return needsDecision && directConfirm?.checked !== true;
+    }
+
     window.clearConnectionProfileState = () => {
+        selectedConnectionProfileState = null;
         window.ConnectionCommandManager?.clear();
         ProfileManager.clearLegacyCommands();
         window.setConnectionAdvancedExpanded(false);
@@ -134,80 +148,52 @@
         const useTmuxCheck = document.getElementById('useTmuxCheck');
         if (useTmuxCheck) useTmuxCheck.checked = useTmuxCheck.defaultChecked;
 
-        const profileSelect = document.getElementById('profileSelect');
-        if (profileSelect) {
-            profileSelect.value = '';
-        }
-
-        const deleteProfileBtn = document.getElementById('deleteProfileBtn');
-        if (deleteProfileBtn) {
-            deleteProfileBtn.style.display = 'none';
-            delete deleteProfileBtn.dataset.profileId;
-        }
+        const profileContext = document.getElementById('connectionProfileContext');
+        profileContext?.classList.add('hidden');
+        const profileContextName = document.getElementById('connectionProfileContextName');
+        if (profileContextName) profileContextName.textContent = '';
+        const directConfirm = document.getElementById('connectionProfileDirectConfirm');
+        if (directConfirm) directConfirm.checked = false;
+        document.getElementById('connectionProfileJumpResolution')?.classList.add('hidden');
     };
 
+    let connectionHistoryStorage = null;
+    try {
+        connectionHistoryStorage = window.localStorage;
+    } catch {
+        // Some privacy modes deny storage access entirely.
+    }
+    const connectionHistoryStore = window.ConnectionHistoryFactory?.createConnectionHistory({
+        storage: connectionHistoryStorage,
+        scope: document.body.dataset.connectionHistoryScope,
+    }) || { getHistory: () => [], addConnection: () => {} };
+
     const ConnectionHistory = {
-        maxItems: 10,
-        storageKey: 'recentConnections',
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-
-        getHistory() {
-            try {
-                const history = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
-                const now = Date.now();
-                const filtered = history.filter(entry => {
-                    if (!entry.timestamp) return true;
-                    return (now - entry.timestamp) < this.maxAge;
-                });
-                if (filtered.length !== history.length) {
-                    localStorage.setItem(this.storageKey, JSON.stringify(filtered));
-                }
-                return filtered;
-            } catch {
-                return [];
-            }
-        },
-
-        addConnection(host, port, username) {
-            const history = this.getHistory();
-            const entry = { host, port: parseInt(port), username, timestamp: Date.now() };
-
-            const filtered = history.filter(h =>
-                !(h.host === host && h.port === parseInt(port) && h.username === username)
-            );
-
-            filtered.unshift(entry);
-
-            const trimmed = filtered.slice(0, this.maxItems);
-
-            try {
-                localStorage.setItem(this.storageKey, JSON.stringify(trimmed));
-            } catch {
-                console.error('Failed to save connection history');
-            }
-        },
+        ...connectionHistoryStore,
 
         renderHistoryDropdown() {
             const container = document.getElementById('recentConnectionsList');
             if (!container) return;
 
             const history = this.getHistory();
-            container.innerHTML = '';
-
-            if (history.length === 0) {
-                container.style.display = 'none';
-                return;
-            }
-
-            container.style.display = 'block';
+            container.replaceChildren();
+            container.classList.toggle('hidden', history.length === 0);
+            document.getElementById('recentConnectionsEmpty')
+                ?.classList.toggle('hidden', history.length > 0);
 
             history.forEach(conn => {
-                const option = document.createElement('div');
+                const option = document.createElement('button');
+                option.type = 'button';
                 option.className = 'recent-connection-item';
-                option.innerHTML = `
-                    <span class="recent-conn-label">${escapeHtml(conn.username)}@${escapeHtml(conn.host)}:${escapeHtml(String(conn.port))}</span>
-                    <span class="recent-conn-time">${escapeHtml(this.formatTime(conn.timestamp))}</span>
-                `;
+                option.setAttribute('aria-label', `${conn.username}@${conn.host}:${conn.port}`);
+
+                const label = document.createElement('span');
+                label.className = 'recent-conn-label';
+                label.textContent = `${conn.username}@${conn.host}:${conn.port}`;
+                const time = document.createElement('span');
+                time.className = 'recent-conn-time';
+                time.textContent = this.formatTime(conn.timestamp);
+                option.append(label, time);
                 option.addEventListener('click', () => {
                     window.clearConnectionProfileState();
                     document.getElementById('hostInput').value = conn.host;
@@ -1137,10 +1123,6 @@
         }
 
         ConnectionHistory.renderHistoryDropdown();
-        const historyGroup = document.getElementById('recentConnectionsGroup');
-        if (historyGroup) {
-            historyGroup.style.display = ConnectionHistory.getHistory().length > 0 ? 'block' : 'none';
-        }
 
         const modal = document.getElementById('connectionModal');
         if (window.ModalManager) {
@@ -1152,33 +1134,30 @@
     }
 
     function selectConnectionProfile(profileId) {
-        const profileSelect = document.getElementById('profileSelect');
-        const deleteBtn = document.getElementById('deleteProfileBtn');
-        if (profileSelect) {
-            profileSelect.value = profileId || '';
-        }
-
         if (!profileId) {
-            ProfileManager.clearLegacyCommands();
-            ConnectionCommandManager.clear();
-            window.setConnectionAdvancedExpanded(false);
-            deleteBtn.style.display = 'none';
-            delete deleteBtn.dataset.profileId;
+            window.clearConnectionProfileState();
             return null;
         }
 
         const profile = ProfileManager.getProfile(profileId);
         if (!profile) {
-            if (profileSelect) {
-                profileSelect.value = '';
-            }
-            deleteBtn.style.display = 'none';
-            delete deleteBtn.dataset.profileId;
+            window.clearConnectionProfileState();
             return null;
         }
         ProfileManager.selectProfile(profileId);
-        deleteBtn.style.display = 'block';
-        deleteBtn.dataset.profileId = profileId;
+        const requiredJumpHostId = profile.jump_host_id || '';
+        selectedConnectionProfileState = {
+            profileId,
+            missingJumpHost: Boolean(
+                requiredJumpHostId
+                && !window.JumpHostManager?.getById(requiredJumpHostId)
+            ),
+        };
+        const profileContext = document.getElementById('connectionProfileContext');
+        profileContext?.classList.remove('hidden');
+        const profileContextName = document.getElementById('connectionProfileContextName');
+        if (profileContextName) profileContextName.textContent = profile.name || profile.host;
+        refreshConnectionProfileJumpResolution();
         return profile;
     }
 
@@ -2085,6 +2064,18 @@
                 return;
             }
 
+            if (refreshConnectionProfileJumpResolution()) {
+                showNotification(
+                    window.i18n?.t(
+                        'connection.resolveJumpHost',
+                        'Choose a jump host or confirm a direct connection.',
+                    ) || 'Choose a jump host or confirm a direct connection.',
+                    'error',
+                );
+                document.getElementById('connectionProfileDirectConfirm')?.focus();
+                return;
+            }
+
             // Optional jump host (bastion) — chosen from the saved list
             const jumpHostId = document.getElementById('jumpHostSelect').value;
             let proxyJump = null;
@@ -2164,18 +2155,6 @@
             document.getElementById('jumpHostPasswordInput').value = '';
         });
 
-        document.getElementById('profileSelect').addEventListener('change', (e) => {
-            selectConnectionProfile(e.target.value);
-        });
-
-        document.getElementById('deleteProfileBtn').addEventListener('click', (e) => {
-            const profileId = e.target.dataset.profileId;
-            if (profileId) {
-                ProfileManager.deleteProfile(profileId);
-                window.clearConnectionProfileState();
-            }
-        });
-
         document.getElementById('authTypeSelect').addEventListener('change', (e) => {
             ProfileManager.handleAuthTypeChange(e.target.value);
         });
@@ -2184,6 +2163,7 @@
             if (window.JumpHostManager) {
                 window.JumpHostManager.updatePasswordVisibility();
             }
+            refreshConnectionProfileJumpResolution();
         });
 
         document.querySelectorAll('[data-connection-asset]').forEach(button => {
