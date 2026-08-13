@@ -19,6 +19,8 @@ class SFTPFileManager {
         this.uploadRefreshes = new Map();
         this.s2sTerminalWaiters = new Map();
         this.s2sEarlyTerminals = new Map();
+        this.transferConnectionHolds = new Map();
+        this.pendingQuickDisconnects = new Set();
 
         this.conflictAction = null;
         this.applyToAll = false;
@@ -195,7 +197,6 @@ class SFTPFileManager {
 
     openSourceLauncher(pane = this.workspace.activePane) {
         if (this.displayMode === 'embedded') return false;
-        this.workspace.setActivePane(pane);
         this.sourceLauncherPane = pane;
         this.sourceLauncherReturnFocus = document.activeElement;
         this.loadWorkspaceProfiles();
@@ -417,12 +418,57 @@ class SFTPFileManager {
         ));
         if (stillInUse) return false;
 
+        if (this.hasOutstandingTransferForConnection(connectionId)) {
+            if (!this.pendingQuickDisconnects) this.pendingQuickDisconnects = new Set();
+            this.pendingQuickDisconnects.add(connectionId);
+            return false;
+        }
+
+        this.pendingQuickDisconnects?.delete(connectionId);
         this.quickConnections = (this.quickConnections || []).filter(
             connection => connection.connectionId !== connectionId
         );
         this.socket.emit('quick_disconnect', { connection_id: connectionId });
         this.updateSessionLists();
         return true;
+    }
+
+    getTransferConnectionIds(transfer = {}) {
+        const ids = Array.isArray(transfer.connectionIds)
+            ? transfer.connectionIds
+            : [transfer.sessionId, transfer.sourceSessionId, transfer.targetSessionId];
+        return [...new Set(ids.filter(Boolean))];
+    }
+
+    retainTransferConnections(connectionIds) {
+        if (!this.transferConnectionHolds) this.transferConnectionHolds = new Map();
+        [...new Set((connectionIds || []).filter(Boolean))].forEach(connectionId => {
+            const current = this.transferConnectionHolds.get(connectionId) || 0;
+            this.transferConnectionHolds.set(connectionId, current + 1);
+        });
+    }
+
+    releaseTransferConnections(connectionIds) {
+        if (!this.transferConnectionHolds) return;
+        [...new Set((connectionIds || []).filter(Boolean))].forEach(connectionId => {
+            const remaining = (this.transferConnectionHolds.get(connectionId) || 0) - 1;
+            if (remaining > 0) this.transferConnectionHolds.set(connectionId, remaining);
+            else this.transferConnectionHolds.delete(connectionId);
+        });
+    }
+
+    hasOutstandingTransferForConnection(connectionId) {
+        if ((this.transferConnectionHolds?.get(connectionId) || 0) > 0) return true;
+        return (this.transferQueue || []).some(transfer => (
+            ['pending', 'active'].includes(transfer.status)
+            && this.getTransferConnectionIds(transfer).includes(connectionId)
+        ));
+    }
+
+    flushPendingQuickDisconnects() {
+        Array.from(this.pendingQuickDisconnects || []).forEach(connectionId => {
+            this.releaseQuickConnectionIfUnused({ connectionId: connectionId });
+        });
     }
 
     previewSelected() {
@@ -2497,11 +2543,14 @@ class SFTPFileManager {
     async transferSSHtoSSH(sourcePath, sourcePane, targetPath, targetPane, item) {
         const sourceSessionId = sourcePane.sessionId || sourcePane.connectionId;
         const targetSessionId = targetPane.sessionId || targetPane.connectionId;
+        const connectionIds = [sourceSessionId, targetSessionId];
 
         if (sourceSessionId === targetSessionId) {
             this.showNotification(this.t('fm.cannotTransferSameHost', 'Cannot transfer to same host. Use rename instead.'), 'warning');
             return;
         }
+
+        this.retainTransferConnections(connectionIds);
 
         const acknowledgement = await new Promise(resolve => {
             this.socket.emit('transfer_server_to_server', {
@@ -2513,6 +2562,8 @@ class SFTPFileManager {
             }, response => resolve(response));
         });
         if (!acknowledgement || !acknowledgement.success) {
+            this.releaseTransferConnections(connectionIds);
+            this.flushPendingQuickDisconnects();
             this.showNotification(this.t('fm.transferFailed', 'Transfer failed'), 'error');
             return;
         }
@@ -2525,7 +2576,9 @@ class SFTPFileManager {
             filename: item.name,
             sourcePath: sourcePath,
             targetPath: targetPath,
-            size: item.size || 0
+            size: item.size || 0,
+            connectionIds: connectionIds,
+            connectionsRetained: true
         });
         const earlyTerminal = this.s2sEarlyTerminals?.get(transferId);
         if (earlyTerminal) {
@@ -2795,6 +2848,10 @@ class SFTPFileManager {
             if (!Object.hasOwn(transfer, 'sessionId')) transfer.sessionId = null;
             if (!Object.hasOwn(transfer, 'batchId')) transfer.batchId = null;
         }
+        const connectionsRetained = transfer.connectionsRetained === true;
+        delete transfer.connectionsRetained;
+        transfer.connectionIds = this.getTransferConnectionIds(transfer);
+        if (!connectionsRetained) this.retainTransferConnections(transfer.connectionIds);
         transfer.status = 'pending';
         transfer.progress = 0;
         this.transferQueue.push(transfer);
@@ -2922,6 +2979,7 @@ class SFTPFileManager {
         }
         this.activeTransfers.delete(transfer.id);
         this.recordUploadTerminal(transfer, status);
+        this.releaseTransferConnections(this.getTransferConnectionIds(transfer));
         if (transfer.type === 's2s') {
             this.resolveS2STerminal(transfer.id, status);
         }
@@ -2930,6 +2988,7 @@ class SFTPFileManager {
             setTimeout(() => this.processTransferQueue(), 100);
         }
         this.renderTransferQueue();
+        this.flushPendingQuickDisconnects();
     }
 
     downloadSelected() {
@@ -2969,7 +3028,8 @@ class SFTPFileManager {
             type: 'download',
             filename: filename,
             sourcePath: remotePath,
-            size: 0
+            size: 0,
+            sessionId: sessionId
         });
 
     }
@@ -2983,7 +3043,8 @@ class SFTPFileManager {
             type: 'download',
             filename: `${folderName}.zip`,
             sourcePath: remotePath,
-            size: 0
+            size: 0,
+            sessionId: sessionId
         });
     }
 

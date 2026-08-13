@@ -105,6 +105,52 @@ test('split layout preserves tabs and requests a source only for an empty pane',
     assert.deepEqual(launcherTargets, ['right']);
 });
 
+test('cancelling the empty-side launcher keeps the populated side active', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.workspace.openTab('left', {
+        key: 'ssh:left', type: 'ssh', label: 'Left', sessionId: 'left',
+    }, manager.createEmptyPaneState());
+    manager.syncPaneFromWorkspace('left');
+    const previousDocument = global.document;
+    const launcher = {
+        classList: classList(),
+        setAttribute() {},
+    };
+    const actionLabel = { textContent: '' };
+    const paneLabel = { hidden: true, textContent: '' };
+    const search = { value: '', focus() {} };
+    global.document = {
+        activeElement: null,
+        getElementById(id) {
+            return {
+                fmSourceLauncher: launcher,
+                fmSourceLauncherAction: actionLabel,
+                fmSourceLauncherPane: paneLabel,
+                fmSourceSearch: search,
+            }[id] || null;
+        },
+    };
+    Object.assign(manager, {
+        displayMode: 'modal',
+        loadWorkspaceProfiles() {},
+        renderSourceLauncher() {},
+        renderWorkspaceChrome() {},
+        t(_key, fallback) { return fallback; },
+    });
+
+    try {
+        manager.setWorkspaceLayout('split');
+        assert.equal(manager.sourceLauncherPane, 'right');
+        assert.equal(manager.workspace.activePane, 'left');
+        manager.closeSourceLauncher();
+        manager.setWorkspaceLayout('single');
+        assert.equal(manager.workspace.activePane, 'left');
+    } finally {
+        global.document = previousDocument;
+    }
+});
+
 test('split layout moves the active second tab into the empty right side', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
@@ -244,6 +290,80 @@ test('closing the final tab for a quick connection disconnects and removes that 
     manager.closeSourceTab('right', rightTab.id);
     assert.deepEqual(emitted, [['quick_disconnect', { connection_id: 'quick-a' }]]);
     assert.deepEqual(manager.quickConnections, []);
+});
+
+test('closing the final quick source defers disconnect until its transfer is terminal', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const emitted = [];
+    const source = {
+        key: 'quick:quick-a', type: 'ssh', label: 'deploy@stage.example',
+        connectionId: 'quick-a',
+    };
+    const tab = manager.workspace.openTab('left', source, manager.createEmptyPaneState());
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        quickConnections: [{ connectionId: 'quick-a', username: 'deploy', host: 'stage.example' }],
+        transferQueue: [{
+            id: 'upload-a', type: 'upload', status: 'pending', sessionId: 'quick-a',
+        }],
+        activeTransfers: new Map(),
+        socket: { emit(event, payload) { emitted.push([event, payload]); } },
+        updatePathInput() {}, updatePaneBadge() {}, renderPane() {}, renderWorkspaceChrome() {},
+        openSourceLauncher() {}, updateSessionLists() {}, renderTransferQueue() {},
+        recordUploadTerminal() {},
+    });
+
+    manager.closeSourceTab('left', tab.id);
+    assert.deepEqual(emitted, []);
+    assert.equal(manager.quickConnections.length, 1);
+
+    manager.finalizeTransferById('upload-a', 'complete');
+    assert.deepEqual(emitted, [['quick_disconnect', { connection_id: 'quick-a' }]]);
+    assert.deepEqual(manager.quickConnections, []);
+});
+
+test('server copy retains a quick connection while its acknowledgement is pending', async () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const emitted = [];
+    let acknowledgeTransfer;
+    const source = {
+        key: 'quick:quick-a', type: 'ssh', label: 'deploy@stage.example',
+        connectionId: 'quick-a',
+    };
+    const tab = manager.workspace.openTab('left', source, manager.createEmptyPaneState());
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        quickConnections: [{ connectionId: 'quick-a', username: 'deploy', host: 'stage.example' }],
+        transferQueue: [],
+        activeTransfers: new Map(),
+        socket: { emit(event, payload, acknowledgement) {
+            if (event === 'transfer_server_to_server') {
+                acknowledgeTransfer = acknowledgement;
+                return;
+            }
+            emitted.push([event, payload]);
+        } },
+        updatePathInput() {}, updatePaneBadge() {}, renderPane() {}, renderWorkspaceChrome() {},
+        openSourceLauncher() {}, updateSessionLists() {}, renderTransferQueue() {},
+        showNotification() {},
+        t(_key, fallback) { return fallback; },
+    });
+
+    const transfer = manager.transferSSHtoSSH(
+        '/source/file.bin', { connectionId: 'quick-a' },
+        '/target/file.bin', { sessionId: 'target-session' },
+        { name: 'file.bin', is_dir: false, size: 10 },
+    );
+    manager.closeSourceTab('left', tab.id);
+    assert.deepEqual(emitted, []);
+
+    acknowledgeTransfer({ success: false });
+    await transfer;
+    assert.deepEqual(emitted, [['quick_disconnect', { connection_id: 'quick-a' }]]);
 });
 
 test('closing a regular SSH source tab never disconnects the terminal session', () => {
@@ -1506,6 +1626,7 @@ test('folder downloads queue the HTTP transfer id without a binary socket event'
 
     assert.deepEqual(requested, { path: '/remote/reports', sessionId: 'session' });
     assert.equal(queued.id, 'folder-local-id');
+    assert.equal(queued.sessionId, 'session');
     assert.equal(socketEvents.includes('download_folder_binary'), false);
 });
 
@@ -1533,6 +1654,7 @@ test('server copies queue the server-owned cancellable transfer id', async () =>
     assert.equal(request.event, 'transfer_server_to_server');
     assert.equal(request.payload.transfer_id, undefined);
     assert.equal(queued.id, 'server-transfer-id');
+    assert.deepEqual(queued.connectionIds, ['source-session', 'target-session']);
     manager.resolveS2STerminal('server-transfer-id', 'complete');
     await terminal;
 });
