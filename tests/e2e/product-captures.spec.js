@@ -240,17 +240,18 @@ async function seedDemoFileManager(page) {
         const manager = window.sftpFileManager;
         const demoPanes = {
             left: {
+                ...manager.createEmptyPaneState(),
                 type: 'ssh',
                 sessionId: 'capture-source',
                 connectionId: null,
                 path: '/srv/webssh/current',
                 files: [
-                    { name: 'config', is_dir: true, size: 0, permissions: 'drwxr-x---' },
-                    { name: 'logs', is_dir: true, size: 0, permissions: 'drwxr-x---' },
-                    { name: 'releases', is_dir: true, size: 0, permissions: 'drwxr-xr-x' },
-                    { name: 'compose.yaml', is_dir: false, size: 2841, permissions: '-rw-r-----' },
-                    { name: 'healthcheck.sh', is_dir: false, size: 912, permissions: '-rwxr-x---' },
-                    { name: 'README.md', is_dir: false, size: 4876, permissions: '-rw-r--r--' },
+                    { name: 'config', is_dir: true, size: 0, permissions: 'drwxr-x---', modified: 1786598100 },
+                    { name: 'logs', is_dir: true, size: 0, permissions: 'drwxr-x---', modified: 1786597500 },
+                    { name: 'releases', is_dir: true, size: 0, permissions: 'drwxr-xr-x', modified: 1786596900 },
+                    { name: 'compose.yaml', is_dir: false, size: 2841, permissions: '-rw-r-----', modified: 1786596300 },
+                    { name: 'healthcheck.sh', is_dir: false, size: 912, permissions: '-rwxr-x---', modified: 1786595700 },
+                    { name: 'README.md', is_dir: false, size: 4876, permissions: '-rw-r--r--', modified: 1786595100 },
                 ],
                 selected: new Set([3]),
                 lastSelected: 3,
@@ -260,6 +261,7 @@ async function seedDemoFileManager(page) {
                 error: null,
             },
             right: {
+                ...manager.createEmptyPaneState(),
                 type: 'ssh',
                 sessionId: 'capture-destination',
                 connectionId: null,
@@ -281,24 +283,31 @@ async function seedDemoFileManager(page) {
             },
         };
 
-        manager.panes.left = demoPanes.left;
-        manager.panes.right = demoPanes.right;
         const sources = [
-            ['left', 'capture-source', 'ops@edge-01.example'],
-            ['right', 'capture-destination', 'backup@archive.example'],
+            ['left', 'capture-source', 'prod-web-01', 'edge-01.example:22'],
+            ['right', 'capture-destination', 'release archive', 'archive.example:22'],
         ];
-        sources.forEach(([pane, sessionId, label]) => {
-            const capitalized = pane[0].toUpperCase() + pane.slice(1);
-            const group = document.getElementById(`fm${capitalized}Sessions`);
-            const option = document.createElement('option');
-            option.value = `ssh:${sessionId}`;
-            option.textContent = label;
-            group.appendChild(option);
-            document.getElementById(`fm${capitalized}Source`).value = `ssh:${sessionId}`;
+        sources.forEach(([pane, sessionId, label, endpoint]) => {
+            manager.workspace.openTab(pane, {
+                key: `ssh:${sessionId}`,
+                type: 'ssh',
+                label,
+                endpoint,
+                protocol: 'SFTP',
+                status: 'Connected',
+                security: 'SSH host key trusted',
+                sessionId,
+            }, demoPanes[pane]);
+            manager.syncPaneFromWorkspace(pane);
             manager.updatePathInput(pane, demoPanes[pane].path);
             manager.updatePaneBadge(pane);
             manager.renderPane(pane);
         });
+        manager.workspace.setLayout('split');
+        manager.workspace.setActivePane('left');
+        manager.activePane = 'left';
+        manager.closeSourceLauncher();
+        manager.renderWorkspaceChrome();
 
         manager.transferQueue = [
             {

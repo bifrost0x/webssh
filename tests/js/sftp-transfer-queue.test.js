@@ -3,6 +3,7 @@ const test = require('node:test');
 
 global.window = {};
 global.document = { getElementById: () => null };
+require('../../static/js/file-workspace-state.js');
 require('../../static/js/sftp-file-manager.js');
 const SFTPFileManager = global.window.SFTPFileManager;
 
@@ -11,9 +12,244 @@ function classList() {
     return {
         add(...names) { names.forEach(name => values.add(name)); },
         remove(...names) { names.forEach(name => values.delete(name)); },
+        toggle(name, force) {
+            const next = force === undefined ? !values.has(name) : Boolean(force);
+            if (next) values.add(name); else values.delete(name);
+            return next;
+        },
         contains(name) { return values.has(name); },
     };
 }
+
+test('standalone workspace starts in one pane with independent empty states', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+
+    manager.initializeWorkspaceState();
+
+    assert.equal(manager.workspace.layout, 'single');
+    assert.equal(manager.workspace.activePane, 'left');
+    assert.notEqual(manager.panes.left, manager.panes.right);
+    assert.equal(manager.workspace.getActiveTab('left'), null);
+    assert.equal(manager.workspace.getActiveTab('right'), null);
+});
+
+test('embedded pane state cannot overwrite standalone workspace tabs', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const standaloneState = {
+        ...manager.createEmptyPaneState(),
+        type: 'ssh', sessionId: 'workspace-session', path: '/srv/workspace',
+    };
+    const tab = manager.workspace.openTab('left', {
+        key: 'ssh:workspace-session', type: 'ssh', label: 'Workspace', sessionId: 'workspace-session',
+    }, standaloneState);
+    manager.syncPaneFromWorkspace('left');
+
+    manager.enterEmbeddedPaneState();
+    manager.panes.left.sessionId = 'embedded-session';
+    manager.panes.left.path = '/srv/embedded';
+    manager.restoreStandalonePaneState();
+
+    assert.equal(manager.panes.left, tab.paneState);
+    assert.equal(manager.panes.left.sessionId, 'workspace-session');
+    assert.equal(manager.panes.left.path, '/srv/workspace');
+});
+
+test('split layout preserves tabs and requests a source only for an empty pane', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const tab = manager.workspace.openTab('left', {
+        key: 'ssh:left', type: 'ssh', label: 'Left', sessionId: 'left',
+    }, manager.createEmptyPaneState());
+    manager.syncPaneFromWorkspace('left');
+    const launcherTargets = [];
+    Object.assign(manager, {
+        displayMode: 'modal',
+        renderWorkspaceChrome() {},
+        openSourceLauncher(pane) { launcherTargets.push(pane); },
+    });
+
+    manager.setWorkspaceLayout('split');
+
+    assert.equal(manager.workspace.layout, 'split');
+    assert.equal(manager.workspace.getActiveTab('left').id, tab.id);
+    assert.deepEqual(launcherTargets, ['right']);
+});
+
+test('source catalog exposes real SFTP sources and a disabled SMB coming-soon row', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        availableSessions: [{
+            id: 'session-a', username: 'ops', host: 'edge.example', port: 22, connected: true,
+        }],
+        quickConnections: [{
+            connectionId: 'quick-a', username: 'deploy', host: 'stage.example', port: 2222,
+        }],
+        qcProfiles: [{
+            id: 7, name: 'Database', username: 'dba', host: 'db.example', port: 22,
+            password: 'not-a-launcher-field',
+        }],
+        browserFS: { isSupported: true },
+        t(_key, fallback) { return fallback; },
+    });
+
+    const groups = manager.buildSourceCatalog();
+    const byId = Object.fromEntries(groups.map(group => [group.id, group]));
+
+    assert.deepEqual(byId.active.items[0], {
+        key: 'ssh:session-a', type: 'ssh', label: 'ops@edge.example',
+        endpoint: 'edge.example:22', protocol: 'SFTP', status: 'Connected',
+        security: 'SSH host key trusted', sessionId: 'session-a',
+    });
+    assert.equal(byId.saved.items[0].profileId, 7);
+    assert.equal(byId.saved.items[0].password, undefined);
+    assert.equal(byId.quick.items[0].connectionId, 'quick-a');
+    assert.equal(byId.browser.items[0].type, 'browser-local');
+    assert.deepEqual(byId.smb.items, [{
+        key: 'smb:coming-soon', type: 'smb', label: 'SMB share', endpoint: 'SMB 3',
+        protocol: 'SMB', status: 'Coming soon', security: 'Encryption required', disabled: true,
+    }]);
+});
+
+test('opening an SFTP source creates a real tab in only the targeted pane', async () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const sourceChanges = [];
+    Object.assign(manager, {
+        displayMode: 'modal',
+        async onSourceChange(pane, key) { sourceChanges.push([pane, key]); },
+        renderWorkspaceChrome() {},
+        closeSourceLauncher() {},
+        setActivePane(pane) { this.activePane = pane; },
+    });
+
+    const tab = await manager.openWorkspaceSource('right', {
+        key: 'ssh:session-a', type: 'ssh', label: 'Production', endpoint: 'edge.example:22',
+        protocol: 'SFTP', status: 'Connected', security: 'SSH host key trusted',
+        sessionId: 'session-a',
+    });
+
+    assert.equal(manager.workspace.getActiveTab('right'), tab);
+    assert.equal(manager.workspace.getActiveTab('left'), null);
+    assert.equal(manager.panes.right, tab.paneState);
+    assert.deepEqual(sourceChanges, [['right', 'ssh:session-a']]);
+});
+
+test('disabled SMB sources never invoke a connection path', async () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.onSourceChange = () => assert.fail('SMB attempted to connect');
+
+    const result = await manager.openWorkspaceSource('left', {
+        key: 'smb:coming-soon', type: 'smb', label: 'SMB share', disabled: true,
+    });
+
+    assert.equal(result, null);
+    assert.equal(manager.workspace.getActiveTab('left'), null);
+});
+
+test('a correlated listing updates an inactive source tab without replacing the visible tab', () => {
+    const listeners = {};
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const inactiveState = {
+        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-a', loading: true,
+        pendingDirectoryRequestId: 'left:directory:1', pendingDirectoryPath: '/srv/a',
+    };
+    const activeState = {
+        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-b', path: '/srv/b',
+        files: [{ name: 'visible.txt' }],
+    };
+    manager.workspace.openTab('left', {
+        key: 'ssh:session-a', type: 'ssh', label: 'A', sessionId: 'session-a',
+    }, inactiveState);
+    const activeTab = manager.workspace.openTab('left', {
+        key: 'ssh:session-b', type: 'ssh', label: 'B', sessionId: 'session-b',
+    }, activeState);
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        isOpen: true,
+        displayMode: 'modal',
+        updatePathInput() { assert.fail('inactive tab changed the visible path'); },
+        renderPane() { assert.fail('inactive tab re-rendered the visible pane'); },
+    });
+    manager.setupSocketListeners();
+
+    listeners.directory_listing({
+        session_id: 'session-a', request_id: 'left:directory:1', path: '/srv/a',
+        files: [{ name: 'late.txt' }],
+    });
+
+    assert.equal(manager.workspace.getActiveTab('left'), activeTab);
+    assert.equal(manager.panes.left, activeState);
+    assert.equal(manager.panes.left.files[0].name, 'visible.txt');
+    assert.equal(inactiveState.loading, false);
+    assert.equal(inactiveState.files[0].name, 'late.txt');
+});
+
+test('browser sources keep a separate filesystem handle per tab', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const firstState = manager.createEmptyPaneState();
+    const secondState = manager.createEmptyPaneState();
+    const handles = [{ id: 'first' }, { id: 'second' }];
+    manager.createBrowserFileSystem = () => handles.shift();
+
+    const first = manager.getBrowserFileSystem(firstState);
+    const second = manager.getBrowserFileSystem(secondState);
+
+    assert.notEqual(first, second);
+    assert.equal(manager.getBrowserFileSystem(firstState), first);
+    assert.equal(manager.getBrowserFileSystem(secondState), second);
+});
+
+test('single-pane workspace can activate either side even on a narrow viewport', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const elements = { fmLeftPane: { classList: classList() }, fmRightPane: { classList: classList() } };
+    const originalGetElementById = global.document.getElementById;
+    global.document.getElementById = id => elements[id] || null;
+    Object.assign(manager, {
+        displayMode: 'modal',
+        isMobile: () => true,
+        updateMobilePaneTabs() {},
+        renderWorkspaceChrome() {},
+    });
+
+    manager.setActivePane('right');
+
+    assert.equal(manager.activePane, 'right');
+    assert.equal(manager.workspace.activePane, 'right');
+    assert.equal(elements.fmRightPane.classList.contains('active'), true);
+    global.document.getElementById = originalGetElementById;
+});
+
+test('disconnect removes every matching workspace tab instead of leaving a green stale source', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.workspace.openTab('left', {
+        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
+    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
+    const survivor = manager.workspace.openTab('left', {
+        key: 'ssh:alive', type: 'ssh', label: 'Alive', sessionId: 'alive',
+    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'alive' });
+    manager.workspace.openTab('right', {
+        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
+    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
+    manager.syncPaneFromWorkspace('left');
+    manager.syncPaneFromWorkspace('right');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        updateSessionLists() {}, renderWorkspaceChrome() {},
+        updatePathInput() {}, updatePaneBadge() {}, renderPane() {},
+    });
+
+    manager.handleSessionDisconnected('gone');
+
+    assert.deepEqual(manager.workspace.getTabs('left').map(tab => tab.source.sessionId), ['alive']);
+    assert.equal(manager.workspace.getActiveTab('left'), survivor);
+    assert.equal(manager.workspace.getTabs('right').length, 0);
+});
 
 test('embedded mode mounts the existing manager body as one remote pane', async () => {
     const modalContent = {
@@ -383,12 +619,15 @@ test('embedded drag and drop uses the existing directory upload path', () => {
 
 test('opening the full modal closes embedded mode before restoring dual-pane UI', () => {
     const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
     let closed = 0;
     let shown = 0;
     Object.assign(manager, {
         displayMode: 'embedded', isOpen: true, modal: { style: {}, classList: classList() },
         closeEmbedded() { closed += 1; this.displayMode = 'closed'; this.isOpen = false; },
         updateSessionLists() {}, restoreLastSources() {}, applyTranslations() {},
+        loadWorkspaceProfiles() {}, updatePathInput() {}, updatePaneBadge() {}, renderPane() {},
+        renderWorkspaceChrome() {}, openSourceLauncher() {},
         isMobile() { return false; }, setActivePane() {}, updateMobilePaneTabs() {},
     });
     global.window.ModalManager = { open() { shown += 1; } };

@@ -119,6 +119,10 @@
 .fm-embedded-mode #fmPaneTabs,
 .fm-embedded-mode #fmTransfer,
 .fm-embedded-mode #fmLeftPane > .fm-pane-header,
+.fm-embedded-mode #fmLeftPane > .fm-source-identity,
+.fm-embedded-mode #fmLeftPane > .fm-pane-toolbar,
+.fm-embedded-mode #fmLeftPane > .fm-file-list-header,
+.fm-embedded-mode .fm-transfer-rail,
 .fm-embedded-mode #fmMobileUpload {
     display: none !important;
 }
