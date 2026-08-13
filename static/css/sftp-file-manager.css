@@ -2216,8 +2216,7 @@
     border-radius: 5px;
 }
 
-.fm-source-search,
-.fm-source-search-row {
+.fm-source-search {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2228,28 +2227,18 @@
     background: var(--bg-primary);
 }
 
-.fm-source-search .material-icons,
-.fm-source-search-row .material-icons {
+.fm-source-search .material-icons {
     color: var(--text-muted);
     font-size: 19px;
 }
 
-.fm-source-search input,
-.fm-source-search-row input {
+.fm-source-search input {
     width: 100%;
     min-height: 42px;
     border: 0;
     outline: 0;
     background: transparent;
     color: var(--text-primary);
-}
-
-.fm-source-search-row kbd {
-    padding: 2px 5px;
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
-    color: var(--text-muted);
-    font-size: 9px;
 }
 
 .fm-source-groups {
@@ -2391,17 +2380,6 @@
 
 .fm-source-row-status .material-icons {
     font-size: 13px;
-}
-
-.fm-coming-soon {
-    display: inline-block;
-    padding: 2px 6px;
-    border: 1px solid var(--border-hover);
-    border-radius: 999px;
-    color: var(--text-secondary);
-    font-size: 9px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
 }
 
 .fm-source-launcher-actions {

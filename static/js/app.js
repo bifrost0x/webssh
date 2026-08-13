@@ -1004,6 +1004,12 @@
 
     socket.on('keys_list', (data) => {
         ProfileManager.setKeys(data.keys);
+        const pendingKeyId = selectedConnectionProfileState?.pendingKeyId;
+        const keySelect = document.getElementById('keySelect');
+        if (pendingKeyId && ProfileManager.keys.some(key => key.id === pendingKeyId)) {
+            keySelect.value = pendingKeyId;
+            selectedConnectionProfileState.pendingKeyId = null;
+        }
     });
 
     socket.on('key_uploaded', (data) => {
@@ -1144,15 +1150,19 @@
             window.clearConnectionProfileState();
             return null;
         }
-        ProfileManager.selectProfile(profileId);
         const requiredJumpHostId = profile.jump_host_id || '';
         selectedConnectionProfileState = {
             profileId,
+            pendingKeyId: profile.auth_type === 'key' ? profile.key_id || null : null,
             missingJumpHost: Boolean(
                 requiredJumpHostId
                 && !window.JumpHostManager?.getById(requiredJumpHostId)
             ),
         };
+        ProfileManager.selectProfile(profileId);
+        if (document.getElementById('keySelect')?.value === selectedConnectionProfileState.pendingKeyId) {
+            selectedConnectionProfileState.pendingKeyId = null;
+        }
         const profileContext = document.getElementById('connectionProfileContext');
         profileContext?.classList.remove('hidden');
         const profileContextName = document.getElementById('connectionProfileContextName');

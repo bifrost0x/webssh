@@ -59,6 +59,14 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect(page.locator('#fmNewSftpSource')).toBeEnabled();
     await expect(page.locator('#fmNewSmbSource')).toBeDisabled();
     await expect(page.locator('#fmNewSmbSource')).toContainText('Coming soon');
+    await expect(page.locator('#fmSourceSearch')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator('#fmSourceLauncherClose')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator('#fmNewSftpSource')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#fmSourceLauncherClose')).toBeFocused();
+    await page.locator('#fmSourceSearch').focus();
     await expect.poll(() => page.evaluate(() => {
         const sourceRows = Array.from(document.querySelectorAll('#fm-source-group-active + .fm-source-group-items .fm-source-row'));
         const actionsTop = document.querySelector('.fm-source-launcher-actions')?.getBoundingClientRect().top || 0;
@@ -129,6 +137,52 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     const events = await page.evaluate(() => window.__fileWorkspaceEvents.map(item => item.event));
     expect(events).toContain('get_home_directory');
     expect(events).toContain('list_directory');
+    await assertNoExternalRequests(page);
+});
+
+test('saved key profile stays selected when keys arrive after profiles', async ({ page }) => {
+    await openWorkspaceWithSources(page);
+
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        manager.closeSourceLauncher();
+        const socket = window.socket;
+        const originalEmit = socket.emit;
+        const originalOnce = socket.once;
+        const callbacks = {};
+        socket.emit = function captureLists(event, ...args) {
+            if (event === 'list_profiles' || event === 'list_keys') return socket;
+            return originalEmit.call(socket, event, ...args);
+        };
+        socket.once = function captureListCallbacks(event, callback) {
+            if (event === 'profiles_list' || event === 'keys_list') {
+                callbacks[event] = callback;
+                return socket;
+            }
+            return originalOnce.call(socket, event, callback);
+        };
+
+        manager.openQuickConnect('race-profile');
+        callbacks.profiles_list({
+            profiles: [{
+                id: 'race-profile',
+                name: 'Key profile',
+                host: 'key.example',
+                port: 22,
+                username: 'deploy',
+                key_id: 'race-key',
+            }],
+        });
+        callbacks.keys_list({
+            keys: [{ id: 'race-key', name: 'Deployment key', type: 'ed25519' }],
+        });
+
+        socket.emit = originalEmit;
+        socket.once = originalOnce;
+    });
+
+    await expect(page.locator('input[name="fmQcAuth"][value="key"]')).toBeChecked();
+    await expect(page.locator('#fmQcKeySelect')).toHaveValue('race-key');
     await assertNoExternalRequests(page);
 });
 

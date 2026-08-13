@@ -338,6 +338,34 @@ test('disconnect removes every matching workspace tab instead of leaving a green
     assert.equal(manager.workspace.getTabs('right').length, 0);
 });
 
+test('disconnect removes matching workspace tabs while the file manager is closed', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.workspace.openTab('left', {
+        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
+    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
+    const survivor = manager.workspace.openTab('left', {
+        key: 'ssh:alive', type: 'ssh', label: 'Alive', sessionId: 'alive',
+    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'alive' });
+    manager.workspace.openTab('right', {
+        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
+    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
+    manager.syncPaneFromWorkspace('left');
+    manager.syncPaneFromWorkspace('right');
+    Object.assign(manager, {
+        displayMode: 'closed',
+        isOpen: false,
+        updateSessionLists() { throw new Error('closed workspace must not render'); },
+        renderWorkspaceChrome() { throw new Error('closed workspace must not render'); },
+    });
+
+    manager.handleSessionDisconnected('gone');
+
+    assert.deepEqual(manager.workspace.getTabs('left').map(tab => tab.source.sessionId), ['alive']);
+    assert.equal(manager.workspace.getActiveTab('left'), survivor);
+    assert.equal(manager.workspace.getTabs('right').length, 0);
+});
+
 test('embedded mode mounts the existing manager body as one remote pane', async () => {
     const modalContent = {
         children: [],
@@ -1138,6 +1166,126 @@ test('upload batch finishes on complete error and cancel then refreshes its sess
     assert.equal(batch.cancelled, 1);
     assert.equal(manager.currentUploadBatch, null);
     assert.deepEqual(refreshed, ['left']);
+});
+
+test('upload completion refreshes its original tab after another tab becomes active', async () => {
+    const emitted = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const destinationState = {
+        ...manager.createEmptyPaneState(),
+        type: 'ssh',
+        sessionId: 'upload-session',
+        path: '/srv/upload',
+    };
+    manager.workspace.openTab('left', {
+        key: 'ssh:upload-session', type: 'ssh', label: 'Upload', sessionId: 'upload-session',
+    }, destinationState);
+    manager.workspace.openTab('left', {
+        key: 'ssh:other-session', type: 'ssh', label: 'Other', sessionId: 'other-session',
+    }, {
+        ...manager.createEmptyPaneState(),
+        type: 'ssh',
+        sessionId: 'other-session',
+        path: '/srv/other',
+    });
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        isOpen: true,
+        requestSequence: 0,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        showUploadProgress() {},
+        showUploadComplete() {},
+    });
+
+    const batch = manager.startUploadBatch(1, 'upload-session', destinationState);
+    manager.recordUploadTerminal({
+        type: 'upload',
+        sessionId: 'upload-session',
+        batchId: batch.id,
+    }, 'complete');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(manager.workspace.getActiveTab('left').paneState.path, '/srv/other');
+    assert.deepEqual(emitted, [{
+        event: 'list_directory',
+        payload: {
+            session_id: 'upload-session',
+            remote_path: '/srv/upload',
+            request_id: 'left:directory:1',
+        },
+    }]);
+    assert.equal(destinationState.loading, true);
+});
+
+test('upload completion refreshes and caches its original tab while the workspace is closed', async () => {
+    const emitted = [];
+    const listeners = {};
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const destinationState = {
+        ...manager.createEmptyPaneState(),
+        type: 'ssh',
+        sessionId: 'upload-session',
+        path: '/srv/upload',
+        files: [{ name: 'old.txt' }],
+    };
+    manager.workspace.openTab('left', {
+        key: 'ssh:upload-session', type: 'ssh', label: 'Upload', sessionId: 'upload-session',
+    }, destinationState);
+    manager.workspace.openTab('left', {
+        key: 'ssh:other-session', type: 'ssh', label: 'Other', sessionId: 'other-session',
+    }, {
+        ...manager.createEmptyPaneState(),
+        type: 'ssh',
+        sessionId: 'other-session',
+        path: '/srv/other',
+    });
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'closed',
+        isOpen: false,
+        requestSequence: 0,
+        socket: {
+            emit(event, payload) { emitted.push({ event, payload }); },
+            on(event, callback) { listeners[event] = callback; },
+        },
+        showUploadProgress() {},
+        showUploadComplete() {},
+        showNotification() {},
+    });
+    manager.setupSocketListeners();
+
+    const batch = manager.startUploadBatch(1, 'upload-session', destinationState);
+    manager.recordUploadTerminal({
+        type: 'upload',
+        sessionId: 'upload-session',
+        batchId: batch.id,
+    }, 'complete');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepEqual(emitted, [{
+        event: 'list_directory',
+        payload: {
+            session_id: 'upload-session',
+            remote_path: '/srv/upload',
+            request_id: 'left:directory:1',
+        },
+    }]);
+
+    listeners.directory_listing({
+        session_id: 'upload-session',
+        request_id: 'left:directory:1',
+        path: '/srv/upload',
+        files: [{ name: 'new.txt' }],
+    });
+
+    assert.deepEqual(destinationState.files, [{ name: 'new.txt' }]);
+    assert.equal(destinationState.loading, false);
+    assert.equal(destinationState.pendingDirectoryRequestId, null);
 });
 
 test('directory upload batches consume every readEntries page before fixing the total', async () => {
