@@ -85,6 +85,47 @@ test('presents a focused two-column quick connect without a saved-profile picker
     expect(geometry.detailsRight).toBeLessThanOrEqual(geometry.recentLeft);
 });
 
+test('uses the requested connection details and advanced settings hierarchy', async ({ page }) => {
+    await page.locator('#newConnectionBtn').click();
+
+    const hierarchy = await page.locator('#connectionModal').evaluate(modal => {
+        const detailsContent = modal.querySelector('.quick-connect-details-content');
+        const authRow = modal.querySelector('.quick-connect-auth-method');
+        const authLabel = authRow?.querySelector('label');
+        const authSelect = authRow?.querySelector('select');
+        const host = modal.querySelector('#hostInput');
+        const jumpHostLabel = modal.querySelector('label[for="jumpHostSelect"]');
+        const runAfterLabel = modal.querySelector('.post-connect-label');
+        const previewLabel = modal.querySelector('.post-connect-preview-header');
+        const style = element => element ? getComputedStyle(element) : null;
+        const rect = element => element ? element.getBoundingClientRect() : null;
+
+        return {
+            detailsTitle: modal.querySelector('#connectionDetailsTitle')?.textContent.trim(),
+            advancedTitle: modal.querySelector('#connectionAdvancedSettings summary strong')?.textContent.trim(),
+            detailsBorder: style(detailsContent)?.borderTopWidth,
+            authLabelCenter: rect(authLabel) && (rect(authLabel).top + rect(authLabel).bottom) / 2,
+            authSelectCenter: rect(authSelect) && (rect(authSelect).top + rect(authSelect).bottom) / 2,
+            authBottom: rect(authRow)?.bottom,
+            hostTop: rect(host)?.top,
+            jumpHostFontSize: style(jumpHostLabel)?.fontSize,
+            runAfterFontSize: style(runAfterLabel)?.fontSize,
+            runAfterWeight: Number(style(runAfterLabel)?.fontWeight),
+            previewFontSize: style(previewLabel)?.fontSize,
+            previewWeight: Number(style(previewLabel)?.fontWeight),
+        };
+    });
+
+    expect(hierarchy.detailsTitle).toBe('Connection Details');
+    expect(hierarchy.advancedTitle).toBe('Advanced Settings');
+    expect(hierarchy.detailsBorder).toBe('1px');
+    expect(Math.abs(hierarchy.authLabelCenter - hierarchy.authSelectCenter)).toBeLessThan(2);
+    expect(hierarchy.authBottom).toBeLessThan(hierarchy.hostTop);
+    expect(hierarchy.runAfterFontSize).toBe(hierarchy.jumpHostFontSize);
+    expect(parseFloat(hierarchy.previewFontSize)).toBeLessThan(parseFloat(hierarchy.runAfterFontSize));
+    expect(hierarchy.previewWeight).toBeLessThan(hierarchy.runAfterWeight);
+});
+
 test('keeps modal actions fixed while expanded content scrolls inside', async ({ page }) => {
     await page.setViewportSize({ width: 1100, height: 700 });
     await page.evaluate(() => {

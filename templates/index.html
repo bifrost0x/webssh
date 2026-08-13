@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=14">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=15">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=4">
 </head>
@@ -419,11 +419,24 @@
                             <div class="quick-connect-card-header">
                                 <span class="material-icons" aria-hidden="true">terminal</span>
                                 <div>
-                                    <h3 id="connectionDetailsTitle" data-i18n="connection.details">Connection details</h3>
+                                    <h3 id="connectionDetailsTitle" data-i18n="connection.details">Connection Details</h3>
                                     <p data-i18n="connection.detailsHint">Enter the destination and choose how to authenticate.</p>
                                 </div>
                             </div>
 
+                            <div class="quick-connect-details-content">
+                                <div class="form-group quick-connect-auth-method">
+                                    <label for="authTypeSelect" data-i18n="connection.authMethod">Authentication Method</label>
+                                    <select id="authTypeSelect" class="form-control">
+                                        <option value="password" data-i18n="auth.password">Password</option>
+                                        <option value="key" data-i18n="connection.sshKey">SSH Key</option>
+                                        {% if tailscale_ssh_allowed %}
+                                        <option value="tailscale" data-i18n="connection.tailscaleSSH">Tailscale SSH</option>
+                                        {% endif %}
+                                    </select>
+                                </div>
+
+                                <div class="quick-connect-core-fields">
                             <div id="connectionProfileContext" class="connection-profile-context hidden" role="status">
                                 <span class="material-icons" aria-hidden="true">bookmark</span>
                                 <div>
@@ -459,17 +472,6 @@
                         <div class="field-hint" id="usernameHint"></div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="authTypeSelect" data-i18n="connection.authMethod">Authentication Method</label>
-                        <select id="authTypeSelect" class="form-control">
-                            <option value="password" data-i18n="auth.password">Password</option>
-                            <option value="key" data-i18n="connection.sshKey">SSH Key</option>
-                            {% if tailscale_ssh_allowed %}
-                            <option value="tailscale" data-i18n="connection.tailscaleSSH">Tailscale SSH</option>
-                            {% endif %}
-                        </select>
-                    </div>
-
                     <div class="form-group" id="passwordGroup">
                         <label for="passwordInput" data-i18n="auth.password">Password *</label>
                         <div class="input-wrapper with-toggle">
@@ -487,6 +489,8 @@
                         <div class="field-hint" id="keyHint"></div>
                     </div>
 
+                                </div>
+                            </div>
                         </section>
 
                         <div class="quick-connect-secondary">
@@ -509,7 +513,7 @@
                                 <summary>
                                     <span class="material-icons" aria-hidden="true">tune</span>
                                     <span>
-                                        <strong data-i18n="connection.advancedSettings">Advanced settings</strong>
+                                        <strong data-i18n="connection.advancedSettings">Advanced Settings</strong>
                                         <small data-i18n="connection.advancedSettingsHint">Jump host, post-connect actions, and persistence.</small>
                                     </span>
                                     <span class="material-icons connection-advanced-chevron" aria-hidden="true">expand_more</span>
@@ -1225,7 +1229,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=11"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=4"></script>

@@ -4826,6 +4826,42 @@ body.keyboard-open.notepad-focused .notepad-panel {
     margin-bottom: 20px;
 }
 
+.quick-connect-details-card {
+    padding: 0;
+    overflow: clip;
+}
+
+.quick-connect-details-card .quick-connect-card-header {
+    margin-bottom: 0;
+    padding: 18px 20px;
+}
+
+.quick-connect-details-content {
+    padding: 18px 20px 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.quick-connect-auth-method {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 44%);
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.quick-connect-auth-method label {
+    margin-bottom: 0;
+}
+
+.quick-connect-core-fields {
+    display: grid;
+    gap: 14px;
+}
+
+.quick-connect-core-fields :is(.form-row, .form-group, .connection-profile-context) {
+    margin-bottom: 0;
+}
+
 .quick-connect-card-header.compact {
     margin-bottom: 14px;
 }
@@ -4859,10 +4895,6 @@ body.keyboard-open.notepad-focused .notepad-panel {
     color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.45;
-}
-
-.quick-connect-details-card > .form-group:last-child {
-    margin-bottom: 0;
 }
 
 .connection-profile-context {
@@ -4998,6 +5030,18 @@ body.keyboard-open.notepad-focused .notepad-panel {
     margin-bottom: 0;
 }
 
+.connection-advanced-content .post-connect-label {
+    color: var(--text-primary);
+    font-size: 13px;
+    letter-spacing: 0.3px;
+}
+
+.connection-advanced-content .post-connect-preview-header {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+}
+
 @media (max-width: 900px) {
     .quick-connect-grid {
         grid-template-columns: minmax(0, 1fr);
@@ -5016,6 +5060,21 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
     .quick-connect-card {
         padding: 16px;
+    }
+
+    .quick-connect-details-card {
+        padding: 0;
+    }
+
+    .quick-connect-details-card .quick-connect-card-header,
+    .quick-connect-details-content {
+        padding: 16px;
+    }
+
+    .quick-connect-auth-method {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+        margin-bottom: 20px;
     }
 
     :is(.connection-advanced-settings, .recent-connections-card) {
