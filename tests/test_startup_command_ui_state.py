@@ -20,11 +20,10 @@ def test_app_exposes_a_complete_connection_profile_reset_helper():
     assert helper is not None
     assert 'ConnectionCommandManager?.clear()' in helper.group('body')
     assert 'ProfileManager.clearLegacyCommands()' in helper.group('body')
-    assert "document.getElementById('profileSelect')" in helper.group('body')
-    assert re.search(r'profileSelect\.value\s*=\s*[\'\"]{2}', helper.group('body'))
-    assert "document.getElementById('deleteProfileBtn')" in helper.group('body')
-    assert re.search(r"deleteProfileBtn\.style\.display\s*=\s*'none'", helper.group('body'))
-    assert 'delete deleteProfileBtn.dataset.profileId' in helper.group('body')
+    assert "document.getElementById('connectionProfileContext')" in helper.group('body')
+    assert "profileContext?.classList.add('hidden')" in helper.group('body')
+    assert "document.getElementById('connectionProfileContextName')" in helper.group('body')
+    assert "profileContextName.textContent = ''" in helper.group('body')
 
 
 def test_new_connection_and_history_target_selection_clear_command_set_state():
