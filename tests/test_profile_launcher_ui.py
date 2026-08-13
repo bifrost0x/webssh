@@ -24,8 +24,8 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=12',
-        "filename='js/i18n.js'": '?v=9',
+        "filename='css/style.css'": '?v=14',
+        "filename='js/i18n.js'": '?v=10',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
@@ -37,7 +37,8 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
         "filename='js/session-command-launcher.js'": '?v=2',
-        "filename='js/app.js'": '?v=11',
+        "filename='js/connection-history.js'": '?v=2',
+        "filename='js/app.js'": '?v=12',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
@@ -130,7 +131,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=12" in template
+    assert "filename='css/style.css') }}?v=14" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():
@@ -254,14 +255,15 @@ def test_submit_keeps_target_pane_until_all_passwords_are_validated():
     assert "document.getElementById('jumpHostPasswordInput').focus()" in body
 
 
-def test_dropdown_and_launcher_share_profile_selection_logic():
+def test_review_launcher_uses_profile_selection_logic_without_a_dropdown():
     source = read('static/js/app.js')
+    template = read('templates/index.html')
     assert 'function selectConnectionProfile(profileId)' in source
-    change_start = source.index(
-        "document.getElementById('profileSelect').addEventListener('change'"
-    )
-    change_body = source[change_start:change_start + 350]
-    assert 'selectConnectionProfile(e.target.value)' in change_body
+    review_start = source.index('function openProfileForReview')
+    review_body = source[review_start:review_start + 700]
+    assert 'selectConnectionProfile(profileId)' in review_body
+    assert 'id="profileSelect"' not in template
+    assert 'id="deleteProfileBtn"' not in template
 
 
 def test_profile_management_connect_uses_only_the_central_launcher():
@@ -347,13 +349,14 @@ def test_profile_groups_support_precise_handle_drag_without_favorite_targets():
 def test_advanced_connection_and_group_interactions_have_visible_focus_styles():
     source = read('static/css/style.css')
 
-    assert '.connection-advanced-settings {' in source
-    assert '.connection-advanced-settings > summary {' in source
-    assert '.connection-advanced-settings > summary:focus-visible' in source
+    collapsible_selector = ':is(.connection-advanced-settings, .recent-connections-card)'
+    assert f'{collapsible_selector} {{' in source
+    assert f'{collapsible_selector} > summary {{' in source
+    assert f'{collapsible_selector} > summary:focus-visible' in source
     assert '.profile-management-section-toggle:focus-visible' in source
     assert '.profile-drag-handle:focus-visible' in source
     assert '.profile-drop-slot.is-active::before' in source
-    affected_start = source.index('.connection-advanced-settings {')
+    affected_start = source.index(f'{collapsible_selector} {{')
     affected_end = source.index('.profile-management-section +', affected_start)
     affected = source[affected_start:affected_end]
     assert 'var(--accent-color)' not in affected

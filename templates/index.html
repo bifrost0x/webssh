@@ -17,11 +17,11 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=14">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=4">
 </head>
-<body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}">
+<body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-connection-history-scope="{{ connection_history_scope }}">
 
     <header class="header">
         <div class="header-content">
@@ -412,22 +412,33 @@
                 <span class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
             </div>
             <div class="modal-body">
-                <form id="connectionForm">
+                <form id="connectionForm" class="quick-connect-form">
+                    <div class="quick-connect-scroll-region">
+                        <div class="quick-connect-grid">
+                        <section id="connectionDetailsCard" class="quick-connect-card quick-connect-details-card" aria-labelledby="connectionDetailsTitle">
+                            <div class="quick-connect-card-header">
+                                <span class="material-icons" aria-hidden="true">terminal</span>
+                                <div>
+                                    <h3 id="connectionDetailsTitle" data-i18n="connection.details">Connection details</h3>
+                                    <p data-i18n="connection.detailsHint">Enter the destination and choose how to authenticate.</p>
+                                </div>
+                            </div>
 
-                    <div class="form-group" id="recentConnectionsGroup" style="display: none;">
-                        <label data-i18n="connection.recentConnections">Recent Connections</label>
-                        <div id="recentConnectionsList" class="recent-connections-list"></div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="profileSelect" data-i18n="connection.loadProfile">Load Saved Connection (Optional)</label>
-                        <div style="display: flex; gap: 10px;">
-                            <select id="profileSelect" class="form-control" style="flex: 1;">
-                                <option value="" data-i18n="connection.selectProfile">-- Select Saved Connection --</option>
-                            </select>
-                            <button type="button" id="deleteProfileBtn" class="btn btn-danger" style="display: none;"><span data-i18n="common.delete">Delete</span> 🗑️</button>
-                        </div>
-                    </div>
+                            <div id="connectionProfileContext" class="connection-profile-context hidden" role="status">
+                                <span class="material-icons" aria-hidden="true">bookmark</span>
+                                <div>
+                                    <small data-i18n="connection.savedContext">Saved connection</small>
+                                    <strong id="connectionProfileContextName"></strong>
+                                    <span data-i18n="connection.reviewBeforeConnect">Review the settings and provide any required credentials.</span>
+                                    <div id="connectionProfileJumpResolution" class="connection-profile-jump-resolution hidden">
+                                        <span data-i18n="connection.jumpHostUnavailable">The saved jump host is unavailable. Choose a replacement below or confirm a direct connection.</span>
+                                        <label for="connectionProfileDirectConfirm" class="checkbox-label">
+                                            <input type="checkbox" id="connectionProfileDirectConfirm">
+                                            <span data-i18n="connection.connectDirectlyInstead">Connect directly instead</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
 
                     <div class="form-row">
                         <div class="form-group flex-2">
@@ -476,8 +487,34 @@
                         <div class="field-hint" id="keyHint"></div>
                     </div>
 
-                    <details id="connectionAdvancedSettings" class="connection-advanced-settings">
-                        <summary data-i18n="connection.advancedSettings">Advanced settings</summary>
+                        </section>
+
+                        <div class="quick-connect-secondary">
+                            <details id="recentConnectionsCard" class="quick-connect-card recent-connections-card" aria-labelledby="recentConnectionsTitle" open>
+                                <summary>
+                                    <span class="material-icons" aria-hidden="true">history</span>
+                                    <span>
+                                        <strong id="recentConnectionsTitle" data-i18n="connection.recentConnections">Recent Connections</strong>
+                                        <small data-i18n="connection.recentConnectionsHint">Stored only in this browser for your account.</small>
+                                    </span>
+                                    <span class="material-icons connection-advanced-chevron" aria-hidden="true">expand_more</span>
+                                </summary>
+                                <div class="recent-connections-content">
+                                    <div id="recentConnectionsList" class="recent-connections-list"></div>
+                                    <p id="recentConnectionsEmpty" class="recent-connections-empty" data-i18n="connection.noRecentConnections">Your recent connections will appear here.</p>
+                                </div>
+                            </details>
+
+                            <details id="connectionAdvancedSettings" class="connection-advanced-settings quick-connect-card">
+                                <summary>
+                                    <span class="material-icons" aria-hidden="true">tune</span>
+                                    <span>
+                                        <strong data-i18n="connection.advancedSettings">Advanced settings</strong>
+                                        <small data-i18n="connection.advancedSettingsHint">Jump host, post-connect actions, and persistence.</small>
+                                    </span>
+                                    <span class="material-icons connection-advanced-chevron" aria-hidden="true">expand_more</span>
+                                </summary>
+                                <div class="connection-advanced-content">
 
                     <div class="form-group">
                         <label for="jumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
@@ -560,9 +597,13 @@
                     </div>
                     {% endif %}
 
-                    </details>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    </div>
 
-                    <div class="form-actions">
+                    <div class="form-actions quick-connect-actions">
                         <button type="button" class="btn btn-secondary" id="cancelConnectionBtn" data-i18n="common.cancel">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="connectBtn">
                             <span class="btn-label" data-i18n="connection.connect">Connect</span>
@@ -1184,7 +1225,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=9"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=10"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=4"></script>
@@ -1214,7 +1255,8 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/browser-filesystem.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=11"></script>
+    <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=12"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {
