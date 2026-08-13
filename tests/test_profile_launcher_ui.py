@@ -24,7 +24,7 @@ def test_template_has_one_empty_pane_renderer_and_loads_launcher_utility_first()
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=15',
+        "filename='css/style.css'": '?v=16',
         "filename='js/i18n.js'": '?v=11',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
@@ -131,7 +131,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=15" in template
+    assert "filename='css/style.css') }}?v=16" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():
