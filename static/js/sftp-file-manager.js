@@ -851,7 +851,7 @@ class SFTPFileManager {
             <div class="modal-content fm-qc-modal">
                 <div class="modal-header">
                     <h2 id="fmQcModalTitle" data-i18n="fm.qc.title">Connect to Server</h2>
-                    <span class="close" id="fmQcClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                    <button type="button" class="close" id="fmQcClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
                 </div>
                 <div class="modal-body">
                     <form id="fmQcForm">

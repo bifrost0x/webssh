@@ -409,7 +409,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">Quick Connect</h2>
-                <span class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="connectionForm" class="quick-connect-form">
@@ -623,11 +623,14 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="settingsTitle" data-i18n="settings.title">Settings</h2>
-                <span class="close" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body settings-modal-body">
-                <section class="settings-section" aria-labelledby="settingsAppearanceTitle">
-                    <h3 id="settingsAppearanceTitle" data-i18n="settings.appearance">Appearance</h3>
+                <section class="settings-section manager-card" aria-labelledby="settingsAppearanceTitle">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">palette</span>
+                        <h3 id="settingsAppearanceTitle" data-i18n="settings.appearance">Appearance</h3>
+                    </div>
                     <div class="settings-field">
                         <label for="settingsThemeSelect" data-i18n="account.theme">Theme</label>
                         <select id="settingsThemeSelect" class="form-control">
@@ -648,8 +651,11 @@
                         <select id="settingsLanguageSelect" class="form-control"></select>
                     </div>
                 </section>
-                <section class="settings-section" aria-labelledby="settingsTerminalTitle">
-                    <h3 id="settingsTerminalTitle" data-i18n="settings.terminal">Terminal</h3>
+                <section class="settings-section manager-card" aria-labelledby="settingsTerminalTitle">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">terminal</span>
+                        <h3 id="settingsTerminalTitle" data-i18n="settings.terminal">Terminal</h3>
+                    </div>
                     <div class="settings-field">
                         <label for="scrollbackInput" data-i18n="account.scrollback">Scrollback</label>
                         <div class="settings-number-control">
@@ -673,9 +679,9 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="profileManagementTitle" data-i18n="connectionAssets.hosts">Hosts</h2>
-                <span class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body profile-management-modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="hosts" aria-current="page" data-i18n="connectionAssets.hosts">Hosts</button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
@@ -692,8 +698,18 @@
                 </section>
 
                 <section id="profileEditorView" class="hidden">
-                    <form id="profileEditorForm">
+                    <form id="profileEditorForm" class="profile-editor-form">
                         <input type="hidden" id="profileEditorId">
+                        <div class="profile-editor-scroll-region">
+                            <div class="profile-editor-grid">
+                                <section id="profileConnectionDetailsCard" class="manager-card" aria-labelledby="profileConnectionDetailsTitle">
+                                    <div class="manager-card-header">
+                                        <span class="material-icons" aria-hidden="true">terminal</span>
+                                        <div>
+                                            <h3 id="profileConnectionDetailsTitle" data-i18n="connection.details">Connection Details</h3>
+                                            <p data-i18n="connection.detailsHint">Enter the destination and choose how to authenticate.</p>
+                                        </div>
+                                    </div>
                         <div class="form-group">
                             <label for="profileEditorName" data-i18n="connection.profileName">Connection Name *</label>
                             <input type="text" id="profileEditorName" class="form-control" maxlength="128" required>
@@ -746,6 +762,16 @@
                                 <p id="profileEditorKeyUploadStatus" class="profile-inline-key-status" role="status" aria-live="polite"></p>
                             </div>
                         </div>
+                                </section>
+
+                                <section id="profileAdvancedSettingsCard" class="manager-card" aria-labelledby="profileAdvancedSettingsTitle">
+                                    <div class="manager-card-header">
+                                        <span class="material-icons" aria-hidden="true">tune</span>
+                                        <div>
+                                            <h3 id="profileAdvancedSettingsTitle" data-i18n="connection.advancedSettings">Advanced Settings</h3>
+                                            <p data-i18n="connection.advancedSettingsHint">Jump host, post-connect actions, and persistence.</p>
+                                        </div>
+                                    </div>
                         <div class="form-group">
                             <label for="profileEditorJumpHostSelect" data-i18n="connection.jumpHost">Jump Host</label>
                             <select id="profileEditorJumpHostSelect" class="form-control"></select>
@@ -785,7 +811,10 @@
                             <label for="profileEditorCommandPreview" data-i18n="commandModes.exactPreview">Exact command preview</label>
                             <pre id="profileEditorCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
                         </div>
-                        <div class="form-actions">
+                                </section>
+                            </div>
+                        </div>
+                        <div class="form-actions profile-editor-actions">
                             <button type="button" id="cancelProfileEditorBtn" class="btn btn-secondary" data-i18n="common.cancel">Cancel</button>
                             <button type="submit" class="btn btn-primary" data-i18n="common.save">Save</button>
                         </div>
@@ -829,7 +858,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="keyManagementTitle" data-i18n="keys.manageSSHKeys">Manage SSH Keys</h2>
-                <span class="close" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -838,8 +867,12 @@
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="keys" aria-current="page" data-i18n="connectionAssets.keys">SSH Keys</button>
                 </nav>
 
-                <div class="key-upload-section">
-                    <h3 data-i18n="keys.uploadNewKey">Upload New Key</h3>
+                <div class="connection-asset-layout">
+                <section class="key-upload-section manager-card">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">upload_file</span>
+                        <h3 data-i18n="keys.uploadNewKey">Upload New Key</h3>
+                    </div>
                     <form id="keyUploadForm">
                         <div class="form-group">
                             <label for="keyNameInput" data-i18n="keys.keyName">Key Name</label>
@@ -847,16 +880,20 @@
                         </div>
                         <div class="form-group">
                             <label for="keyContentInput" data-i18n="keys.privateKey">Private Key</label>
-                            <textarea id="keyContentInput" class="form-control" rows="10" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
+                        <textarea id="keyContentInput" class="form-control" rows="8" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
 ..." required></textarea>
                         </div>
                         <button type="submit" class="btn btn-primary"><span data-i18n="keys.uploadKey">Upload Key</span> ⬆️</button>
                     </form>
-                </div>
+                </section>
 
-                <div class="keys-list-section">
-                    <h3 data-i18n="keys.storedKeys">Stored Keys</h3>
+                <section class="keys-list-section manager-card">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">key</span>
+                        <h3 data-i18n="keys.storedKeys">Stored Keys</h3>
+                    </div>
                     <div id="keysList" class="keys-list"></div>
+                </section>
                 </div>
             </div>
         </div>
@@ -866,7 +903,7 @@
         <div class="modal-content command-workspace-content command-set-modal-content">
             <div class="modal-header">
                 <h2 id="commandWorkspaceTitle" data-i18n="commands.workspace">Commands</h2>
-                <span class="close" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="command-workspace-tabs" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
                 <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
@@ -970,7 +1007,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="jumpHostManagementTitle" data-i18n="jumphosts.manage">Manage Jump Hosts</h2>
-                <span class="close" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -978,8 +1015,12 @@
                     <button type="button" class="connection-asset-nav-item active" data-connection-asset="jump-hosts" aria-current="page" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button>
                 </nav>
-                <div class="key-upload-section">
-                    <h3 data-i18n="jumphosts.addNew">Add Jump Host</h3>
+                <div class="connection-asset-layout">
+                <section class="key-upload-section manager-card">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">add_link</span>
+                        <h3 data-i18n="jumphosts.addNew">Add Jump Host</h3>
+                    </div>
                     <form id="jumpHostForm">
                         <div class="form-group">
                             <label for="jhNameInput" data-i18n="jumphosts.name">Name</label>
@@ -1015,10 +1056,14 @@
                         <p class="field-hint" data-i18n="jumphosts.noPasswordHint">Passwords are never stored — you enter them when connecting.</p>
                         <button type="submit" class="btn btn-primary"><span data-i18n="jumphosts.add">Add Jump Host</span></button>
                     </form>
-                </div>
-                <div class="keys-list-section">
-                    <h3 data-i18n="jumphosts.saved">Saved Jump Hosts</h3>
+                </section>
+                <section class="keys-list-section manager-card">
+                    <div class="manager-card-header">
+                        <span class="material-icons" aria-hidden="true">history</span>
+                        <h3 data-i18n="jumphosts.saved">Saved Jump Hosts</h3>
+                    </div>
                     <div id="jumpHostsList" class="keys-list"></div>
+                </section>
                 </div>
             </div>
         </div>
@@ -1030,7 +1075,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandFormTitle" data-i18n="commands.addCommand">Add New Command</h2>
-                <span class="close" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="commandForm">
@@ -1095,7 +1140,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandPaletteTitle" data-i18n="palette.title">Command Palette</h2>
-                <span class="close" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <input type="text" id="commandPaletteInput" class="form-control" data-i18n-placeholder="palette.searchPlaceholder" placeholder="Search actions, hosts, and sessions..." autocomplete="off">
@@ -1108,7 +1153,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="shortcutsTitle" data-i18n="shortcuts.title">Keyboard Shortcuts</h2>
-                <span class="close" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="shortcuts-list" id="shortcutsList"></div>
@@ -1120,7 +1165,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="dropUploadTitle" data-i18n="dropUpload.title">Upload File</h2>
-                <span class="close" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="dropUploadForm">
@@ -1145,7 +1190,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="paneAssignmentTitle" data-i18n="panes.assignTitle">Assign Sessions to Panes</h2>
-                <span class="close" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="pane-assignment-info">
@@ -1183,7 +1228,7 @@
                     <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh" data-i18n-title="preview.refresh">
                         <span class="material-icons">refresh</span>
                     </button>
-                    <span class="close" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</span>
+                <button type="button" class="close" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
                 </div>
             </div>
             <div class="modal-body preview-modal-body">
@@ -1250,7 +1295,7 @@
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=11"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=12"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
