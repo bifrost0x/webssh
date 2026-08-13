@@ -2620,8 +2620,11 @@ textarea.form-control {
 .recent-connections-list {
     display: grid;
     gap: 8px;
-    max-height: 230px;
+    grid-auto-rows: 42px;
+    max-height: calc((5 * 42px) + (4 * 8px));
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
 
 .recent-connections-empty {
@@ -2637,6 +2640,7 @@ textarea.form-control {
 
 .recent-connection-item {
     width: 100%;
+    height: 42px;
     min-width: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -4762,6 +4766,35 @@ body.keyboard-open.notepad-focused .notepad-panel {
     width: min(100%, 1080px);
 }
 
+#connectionModal .modal-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    padding: 0;
+    overflow: hidden;
+}
+
+.quick-connect-form {
+    min-height: 0;
+    width: 100%;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.quick-connect-scroll-region {
+    min-height: 0;
+    padding: 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.quick-connect-actions {
+    margin-top: 0;
+    padding: 20px 24px;
+    background: var(--bg-modal);
+}
+
 .quick-connect-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
@@ -4798,7 +4831,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .quick-connect-card-header > .material-icons,
-.connection-advanced-settings > summary > .material-icons:first-child {
+:is(.connection-advanced-settings, .recent-connections-card) > summary > .material-icons:first-child {
     display: grid;
     width: 36px;
     height: 36px;
@@ -4893,13 +4926,13 @@ body.keyboard-open.notepad-focused .notepad-panel {
     font-weight: 600;
 }
 
-.connection-advanced-settings {
+:is(.connection-advanced-settings, .recent-connections-card) {
     margin: 0;
     padding: 0;
     overflow: clip;
 }
 
-.connection-advanced-settings > summary {
+:is(.connection-advanced-settings, .recent-connections-card) > summary {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -4910,33 +4943,33 @@ body.keyboard-open.notepad-focused .notepad-panel {
     list-style: none;
 }
 
-.connection-advanced-settings > summary::-webkit-details-marker {
+:is(.connection-advanced-settings, .recent-connections-card) > summary::-webkit-details-marker {
     display: none;
 }
 
-.connection-advanced-settings > summary > span:nth-child(2) {
+:is(.connection-advanced-settings, .recent-connections-card) > summary > span:nth-child(2) {
     min-width: 0;
     display: grid;
     gap: 3px;
 }
 
-.connection-advanced-settings > summary strong {
+:is(.connection-advanced-settings, .recent-connections-card) > summary strong {
     font-size: 15px;
 }
 
-.connection-advanced-settings > summary small {
+:is(.connection-advanced-settings, .recent-connections-card) > summary small {
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 400;
     line-height: 1.4;
 }
 
-.connection-advanced-settings > summary:hover strong,
-.connection-advanced-settings > summary:focus-visible strong {
+:is(.connection-advanced-settings, .recent-connections-card) > summary:hover strong,
+:is(.connection-advanced-settings, .recent-connections-card) > summary:focus-visible strong {
     color: var(--accent-primary);
 }
 
-.connection-advanced-settings > summary:focus-visible {
+:is(.connection-advanced-settings, .recent-connections-card) > summary:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: -3px;
     border-radius: 10px;
@@ -4947,8 +4980,13 @@ body.keyboard-open.notepad-focused .notepad-panel {
     transition: transform 0.18s ease;
 }
 
-.connection-advanced-settings[open] .connection-advanced-chevron {
+:is(.connection-advanced-settings, .recent-connections-card)[open] .connection-advanced-chevron {
     transform: rotate(180deg);
+}
+
+.recent-connections-content {
+    padding: 18px 20px 20px;
+    border-top: 1px solid var(--border-color);
 }
 
 .connection-advanced-content {
@@ -4967,16 +5005,26 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 @media (max-width: 480px) {
+    .quick-connect-scroll-region {
+        padding: 16px;
+    }
+
+    .quick-connect-actions {
+        padding: 16px;
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+
     .quick-connect-card {
         padding: 16px;
     }
 
-    .connection-advanced-settings {
+    :is(.connection-advanced-settings, .recent-connections-card) {
         padding: 0;
     }
 
-    .connection-advanced-settings > summary,
-    .connection-advanced-content {
+    :is(.connection-advanced-settings, .recent-connections-card) > summary,
+    .connection-advanced-content,
+    .recent-connections-content {
         padding: 16px;
     }
 }

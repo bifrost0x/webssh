@@ -17,9 +17,11 @@ test.afterEach(async ({ page }) => {
 
 test('presents a focused two-column quick connect without a saved-profile picker', async ({ page }) => {
     await page.evaluate(() => {
-        window.ConnectionHistory.addConnection(
-            'recent.internal', 2202, 'operator'
-        );
+        for (let index = 0; index < 7; index += 1) {
+            window.ConnectionHistory.addConnection(
+                `recent-${index}.internal`, 2202 + index, 'operator'
+            );
+        }
     });
     await page.locator('#newConnectionBtn').click();
 
@@ -30,7 +32,31 @@ test('presents a focused two-column quick connect without a saved-profile picker
     await expect(page.locator('#profileSelect')).toHaveCount(0);
     await expect(page.locator('#deleteProfileBtn')).toHaveCount(0);
     await expect(page.locator('#connectionProfileContext')).toHaveClass(/hidden/);
-    await expect(page.locator('.recent-connection-item')).toHaveRole('button');
+    await expect(page.locator('.recent-connection-item').first()).toHaveRole('button');
+    await expect(page.locator('.recent-connection-item')).toHaveCount(7);
+    await expect(page.locator('#recentConnectionsCard')).toHaveAttribute('open', '');
+
+    const historyViewport = await page.locator('#recentConnectionsList').evaluate(list => {
+        const listRect = list.getBoundingClientRect();
+        const visibleItems = [...list.querySelectorAll('.recent-connection-item')]
+            .filter(item => {
+                const itemRect = item.getBoundingClientRect();
+                return itemRect.top >= listRect.top && itemRect.bottom <= listRect.bottom;
+            });
+        return {
+            clientHeight: list.clientHeight,
+            scrollHeight: list.scrollHeight,
+            visibleItems: visibleItems.length,
+        };
+    });
+    expect(historyViewport.visibleItems).toBe(5);
+    expect(historyViewport.scrollHeight).toBeGreaterThan(historyViewport.clientHeight);
+
+    await page.locator('#recentConnectionsCard > summary').click();
+    await expect(page.locator('#recentConnectionsCard')).not.toHaveAttribute('open', '');
+    await expect(page.locator('#recentConnectionsList')).not.toBeVisible();
+    await page.locator('#recentConnectionsCard > summary').click();
+    await expect(page.locator('#recentConnectionsList')).toBeVisible();
 
     const historyStorage = await page.evaluate(() => {
         const scope = document.body.dataset.connectionHistoryScope;
@@ -42,7 +68,7 @@ test('presents a focused two-column quick connect without a saved-profile picker
     });
     expect(historyStorage.key).toMatch(/^recentConnections:[a-f0-9]{64}$/);
     expect(historyStorage.legacy).toBeNull();
-    expect(historyStorage.scoped).toContain('recent.internal');
+    expect(historyStorage.scoped).toContain('recent-6.internal');
 
     const geometry = await page.locator('#connectionModal').evaluate(modal => {
         const details = modal.querySelector('#connectionDetailsCard')
@@ -57,6 +83,50 @@ test('presents a focused two-column quick connect without a saved-profile picker
     });
     expect(geometry.detailsLeft).toBeLessThan(geometry.recentLeft);
     expect(geometry.detailsRight).toBeLessThanOrEqual(geometry.recentLeft);
+});
+
+test('keeps modal actions fixed while expanded content scrolls inside', async ({ page }) => {
+    await page.setViewportSize({ width: 1100, height: 700 });
+    await page.evaluate(() => {
+        for (let index = 0; index < 7; index += 1) {
+            window.ConnectionHistory.addConnection(
+                `scroll-${index}.internal`, 22, 'operator'
+            );
+        }
+    });
+    await page.locator('#newConnectionBtn').click();
+    await page.locator('#connectionAdvancedSettings > summary').click();
+
+    const before = await page.locator('#connectionModal').evaluate(modal => {
+        const content = modal.querySelector('.modal-content').getBoundingClientRect();
+        const scroller = modal.querySelector('.quick-connect-scroll-region');
+        const actions = modal.querySelector('.quick-connect-actions').getBoundingClientRect();
+        return {
+            actionsBottom: actions.bottom,
+            actionsTop: actions.top,
+            contentBottom: content.bottom,
+            scrollerClientHeight: scroller.clientHeight,
+            scrollerScrollHeight: scroller.scrollHeight,
+        };
+    });
+    expect(before.actionsBottom).toBeLessThanOrEqual(before.contentBottom);
+    expect(before.scrollerScrollHeight).toBeGreaterThan(before.scrollerClientHeight);
+    await expect(page.locator('#cancelConnectionBtn')).toBeVisible();
+    await expect(page.locator('#connectBtn')).toBeVisible();
+
+    await page.locator('.quick-connect-scroll-region').evaluate(scroller => {
+        scroller.scrollTop = scroller.scrollHeight;
+    });
+    const after = await page.locator('#connectionModal').evaluate(modal => {
+        const scroller = modal.querySelector('.quick-connect-scroll-region');
+        const actions = modal.querySelector('.quick-connect-actions').getBoundingClientRect();
+        return {
+            actionsTop: actions.top,
+            scrollTop: scroller.scrollTop,
+        };
+    });
+    expect(after.scrollTop).toBeGreaterThan(0);
+    expect(after.actionsTop).toBeCloseTo(before.actionsTop, 0);
 });
 
 test('shows saved-profile context and opens advanced settings for review-only profiles', async ({ page }) => {

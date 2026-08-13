@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=14">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=4">
 </head>
@@ -413,7 +413,8 @@
             </div>
             <div class="modal-body">
                 <form id="connectionForm" class="quick-connect-form">
-                    <div class="quick-connect-grid">
+                    <div class="quick-connect-scroll-region">
+                        <div class="quick-connect-grid">
                         <section id="connectionDetailsCard" class="quick-connect-card quick-connect-details-card" aria-labelledby="connectionDetailsTitle">
                             <div class="quick-connect-card-header">
                                 <span class="material-icons" aria-hidden="true">terminal</span>
@@ -489,17 +490,20 @@
                         </section>
 
                         <div class="quick-connect-secondary">
-                            <section id="recentConnectionsCard" class="quick-connect-card recent-connections-card" aria-labelledby="recentConnectionsTitle">
-                                <div class="quick-connect-card-header compact">
+                            <details id="recentConnectionsCard" class="quick-connect-card recent-connections-card" aria-labelledby="recentConnectionsTitle" open>
+                                <summary>
                                     <span class="material-icons" aria-hidden="true">history</span>
-                                    <div>
-                                        <h3 id="recentConnectionsTitle" data-i18n="connection.recentConnections">Recent Connections</h3>
-                                        <p data-i18n="connection.recentConnectionsHint">Stored only in this browser for your account.</p>
-                                    </div>
+                                    <span>
+                                        <strong id="recentConnectionsTitle" data-i18n="connection.recentConnections">Recent Connections</strong>
+                                        <small data-i18n="connection.recentConnectionsHint">Stored only in this browser for your account.</small>
+                                    </span>
+                                    <span class="material-icons connection-advanced-chevron" aria-hidden="true">expand_more</span>
+                                </summary>
+                                <div class="recent-connections-content">
+                                    <div id="recentConnectionsList" class="recent-connections-list"></div>
+                                    <p id="recentConnectionsEmpty" class="recent-connections-empty" data-i18n="connection.noRecentConnections">Your recent connections will appear here.</p>
                                 </div>
-                                <div id="recentConnectionsList" class="recent-connections-list"></div>
-                                <p id="recentConnectionsEmpty" class="recent-connections-empty" data-i18n="connection.noRecentConnections">Your recent connections will appear here.</p>
-                            </section>
+                            </details>
 
                             <details id="connectionAdvancedSettings" class="connection-advanced-settings quick-connect-card">
                                 <summary>
@@ -597,8 +601,9 @@
                             </details>
                         </div>
                     </div>
+                    </div>
 
-                    <div class="form-actions">
+                    <div class="form-actions quick-connect-actions">
                         <button type="button" class="btn btn-secondary" id="cancelConnectionBtn" data-i18n="common.cancel">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="connectBtn">
                             <span class="btn-label" data-i18n="connection.connect">Connect</span>
