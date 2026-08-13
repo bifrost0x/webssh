@@ -41,6 +41,44 @@
             // History is optional. Restricted browser storage must not block SSH.
         }
 
+        function cleanupInactiveHistories() {
+            if (!storage || typeof storage.key !== 'function') return;
+
+            let keys;
+            try {
+                keys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
+                    .filter(key => key?.startsWith(`${LEGACY_STORAGE_KEY}:`) && key !== storageKey);
+            } catch {
+                return;
+            }
+
+            const currentTime = now();
+            keys.forEach(key => {
+                try {
+                    const parsed = JSON.parse(storage.getItem(key) || '[]');
+                    const history = Array.isArray(parsed)
+                        ? parsed
+                            .map(normalizeEntry)
+                            .filter(entry => entry && currentTime - entry.timestamp < maxAge)
+                            .slice(0, maxItems)
+                        : [];
+                    if (history.length === 0) {
+                        storage.removeItem(key);
+                    } else if (JSON.stringify(history) !== JSON.stringify(parsed)) {
+                        storage.setItem(key, JSON.stringify(history));
+                    }
+                } catch {
+                    try {
+                        storage.removeItem(key);
+                    } catch {
+                        // History cleanup is best effort only.
+                    }
+                }
+            });
+        }
+
+        cleanupInactiveHistories();
+
         function persist(history) {
             if (!storageKey || !storage) return;
             try {

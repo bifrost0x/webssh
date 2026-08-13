@@ -37,7 +37,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
         "filename='js/session-command-launcher.js'": '?v=2',
-        "filename='js/connection-history.js'": '?v=1',
+        "filename='js/connection-history.js'": '?v=2',
         "filename='js/app.js'": '?v=12',
     }
     for asset, version in expected_versions.items():

@@ -8,6 +8,12 @@ const { createConnectionHistory } = require(
 function createStorage(initial = {}) {
     const values = new Map(Object.entries(initial));
     return {
+        get length() {
+            return values.size;
+        },
+        key(index) {
+            return [...values.keys()][index] ?? null;
+        },
         getItem(key) {
             return values.has(key) ? values.get(key) : null;
         },
@@ -48,6 +54,28 @@ test('isolates recent connections by authenticated user scope', () => {
     assert.deepEqual(Object.keys(storage.snapshot()).sort(), [
         'recentConnections:user-1',
     ]);
+});
+
+test('removes expired histories from inactive account scopes', () => {
+    const day = 24 * 60 * 60 * 1_000;
+    const now = 40 * day;
+    const storage = createStorage({
+        'recentConnections:inactive-scope': JSON.stringify([{
+            host: 'expired.internal',
+            port: 22,
+            username: 'old-user',
+            timestamp: now - (31 * day),
+        }]),
+        unrelated: 'keep-me',
+    });
+
+    createConnectionHistory({
+        storage,
+        scope: 'current-scope',
+        now: () => now,
+    });
+
+    assert.deepEqual(storage.snapshot(), { unrelated: 'keep-me' });
 });
 
 test('fails closed without a user scope and removes legacy shared history', () => {
