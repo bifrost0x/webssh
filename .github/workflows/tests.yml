@@ -99,6 +99,11 @@ jobs:
             requirements.txt
             requirements-test.txt
 
+      - name: Install LDAP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+
       - name: Install dependencies
         run: |
           python -m pip install --require-hashes -r requirements-test.txt
@@ -146,6 +151,11 @@ jobs:
             requirements.txt
             requirements-test.txt
 
+      - name: Install LDAP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+
       - name: Install dependencies
         run: |
           python -m pip install --require-hashes -r requirements-test.txt
@@ -173,6 +183,11 @@ jobs:
             requirements.txt
             requirements-test.txt
 
+      - name: Install LDAP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+
       - name: Install dependencies
         run: |
           python -m pip install --require-hashes -r requirements-test.txt
@@ -199,6 +214,11 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-test.txt
+
+      - name: Install LDAP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
 
       - name: Install Python dependencies
         run: |

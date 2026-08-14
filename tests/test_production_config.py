@@ -1,9 +1,10 @@
 import json
 import os
+import re
 import subprocess
 import sys
-import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -399,11 +400,16 @@ def test_ldap_documentation_selects_overlay_for_every_helper_command():
 
 def test_readme_documents_complete_ldap_compose_quickstart():
     readme = Path('README.md').read_text(encoding='utf-8')
+    documented_urls = {
+        (parsed.scheme, parsed.hostname, parsed.port)
+        for value in re.findall(r'`(ldaps?://[^`:/\s]+:\d+)`', readme)
+        if (parsed := urlsplit(value)).hostname
+    }
 
     assert '#### Enable LDAP or LDAPS with Docker Compose' in readme
-    assert 'ldap://ldap.example.com:389' in readme
+    assert ('ldap', 'ldap.example.com', 389) in documented_urls
     assert 'mandatory StartTLS' in readme
-    assert 'ldaps://ldap.example.com:636' in readme
+    assert ('ldaps', 'ldap.example.com', 636) in documented_urls
     assert (
         '-f docker-compose.yml -f docker-compose.ldap.yml '
         '--profile ldap-tools run --rm ldap-tools set-password'
