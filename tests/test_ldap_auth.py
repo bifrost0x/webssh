@@ -1,6 +1,7 @@
 """Security boundaries for optional LDAP authentication."""
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 
 def _create_user(app, username, password="password123", *, is_admin=False):
@@ -42,6 +43,23 @@ def test_ldap_identity_is_explicit_and_blocks_local_password_fallback(app):
 
     assert authenticated is None
     assert error == "Invalid username or password"
+
+
+def test_login_identifier_rejects_stale_and_legacy_auth_generations(app):
+    from app.auth import load_user
+    from app.models import User, db
+
+    user_id = _create_user(app, "session_generation_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        stale_identifier = user.get_id()
+        user.auth_generation += 1
+        db.session.commit()
+        current_identifier = user.get_id()
+
+        assert load_user(stale_identifier) is None
+        assert load_user(str(user_id)) is None
+        assert load_user(current_identifier).id == user_id
 
 
 def test_disabled_ldap_has_no_route_and_local_login_still_works(app, client):
@@ -261,6 +279,55 @@ def test_admin_link_is_explicit_reauthenticated_and_cannot_convert_admin(
         assert row.subject == "stable-alice-id"
 
 
+def test_admin_link_invalidates_an_existing_local_browser_session(
+    app,
+    client,
+    monkeypatch,
+):
+    import app.ldap_session as ldap_session
+    from flask import g
+    from app.models import User, db
+
+    _create_user(app, "local_admin", is_admin=True)
+    target_id = _create_user(app, "alice")
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="stable-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: None)
+
+    admin_login = client.post(
+        "/login",
+        data={"username": "local_admin", "password": "password123"},
+    )
+    assert admin_login.status_code == 302
+    admin_login.close()
+    with app.app_context():
+        target_identifier = db.session.get(User, target_id).get_id()
+
+    linked = client.post(
+        f"/admin/api/users/{target_id}/ldap-link",
+        json={
+            "password": "password123",
+            "confirm_username": "alice",
+            "directory_username": "alice",
+        },
+    )
+    assert linked.status_code == 201
+    linked.close()
+    with client.session_transaction() as browser_session:
+        browser_session.clear()
+        browser_session["_user_id"] = target_identifier
+        browser_session["_fresh"] = True
+    g.pop("_login_user", None)
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert urlsplit(response.headers["Location"]).path == "/login"
+
+
 def test_admin_ldap_link_rejects_oversized_json_before_reauthentication(
     app,
     client,
@@ -308,6 +375,7 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
         db.session.add(row)
         db.session.commit()
         identity_id = row.id
+        linked_identifier = db.session.get(User, target_id).get_id()
     _enable_ldap_blueprint(
         app,
         monkeypatch,
@@ -345,7 +413,9 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
     assert revoked == [target_id]
     with app.app_context():
         assert LDAPIdentity.query.count() == 0
-        assert db.session.get(User, target_id).check_password(
+        target = db.session.get(User, target_id)
+        assert target.get_id() != linked_identifier
+        assert target.check_password(
             "new-local-password-123"
         )
 

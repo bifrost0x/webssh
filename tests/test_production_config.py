@@ -127,6 +127,9 @@ def test_enabled_ldap_requires_complete_configuration(missing_name):
         'ldap://user:secret@directory.example.com',
         'ldaps://directory.example.com/dc=example,dc=com',
         'ldaps://directory.example.com?base',
+        'ldap://directory.example.com:bad',
+        'ldap://directory.example.com:99999',
+        'ldap://directory.example.com:0',
     ),
 )
 def test_enabled_ldap_rejects_unsafe_or_ambiguous_url(ldap_url):
@@ -374,7 +377,7 @@ def test_ldap_compose_overlay_supplies_complete_secret_infrastructure():
     assert 'webssh_auth_secrets:/run/webssh-auth:ro' in overlay
     assert 'ldap-tools:' in overlay
     assert 'profiles: ["ldap-tools"]' in overlay
-    assert 'python", "/app/ldap_secret_cli.py"' in overlay
+    assert 'python", "/app/deployment/ldap_secret_cli.py"' in overlay
 
 
 def test_ldap_documentation_selects_overlay_for_every_helper_command():

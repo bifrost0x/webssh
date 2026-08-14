@@ -537,21 +537,28 @@ def validate_security_config():
                     'LDAP_ENABLED is true'
                 )
 
-        parsed_ldap_url = urlsplit(LDAP_URL)
+        ldap_url_error = (
+            'SECURITY ERROR: LDAP_URL must be an exact ldap:// or '
+            'ldaps:// server URL without credentials, path, query, or '
+            'fragment and with a valid port'
+        )
+        try:
+            parsed_ldap_url = urlsplit(LDAP_URL)
+            ldap_hostname = parsed_ldap_url.hostname
+            ldap_port = parsed_ldap_url.port
+        except ValueError as exc:
+            raise RuntimeError(ldap_url_error) from exc
         if (
             parsed_ldap_url.scheme not in {'ldap', 'ldaps'}
-            or not parsed_ldap_url.hostname
+            or not ldap_hostname
+            or (ldap_port is not None and ldap_port < 1)
             or parsed_ldap_url.username is not None
             or parsed_ldap_url.password is not None
             or parsed_ldap_url.path
             or parsed_ldap_url.query
             or parsed_ldap_url.fragment
         ):
-            raise RuntimeError(
-                'SECURITY ERROR: LDAP_URL must be an exact ldap:// or '
-                'ldaps:// server URL without credentials, path, query, or '
-                'fragment'
-            )
+            raise RuntimeError(ldap_url_error)
         if LDAP_USER_FILTER.count('{username}') != 1:
             raise RuntimeError(
                 'SECURITY ERROR: LDAP_USER_FILTER must contain exactly one '

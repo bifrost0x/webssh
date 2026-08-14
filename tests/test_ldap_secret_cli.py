@@ -18,7 +18,7 @@ F7Gx1mOqQJ7yC+NdQzMCIF3v5QgYJ5gPiU8Qm7vJ7F3WJ7y+bM1D80k5M3wQvY0r
 
 
 def test_password_helper_writes_atomic_private_file(tmp_path):
-    from ldap_secret_cli import cli
+    from deployment.ldap_secret_cli import cli
 
     runner = CliRunner()
     result = runner.invoke(
@@ -36,7 +36,7 @@ def test_password_helper_writes_atomic_private_file(tmp_path):
 
 
 def test_password_helper_rejects_empty_or_oversized_input(tmp_path):
-    from ldap_secret_cli import cli
+    from deployment.ldap_secret_cli import cli
 
     runner = CliRunner()
     empty = runner.invoke(
@@ -56,7 +56,7 @@ def test_password_helper_rejects_empty_or_oversized_input(tmp_path):
 
 
 def test_ca_helper_rejects_non_certificate_without_replacing_existing(tmp_path):
-    from ldap_secret_cli import cli
+    from deployment.ldap_secret_cli import cli
 
     target = tmp_path / "ldap_ca.pem"
     target.write_text("existing-ca", encoding="utf-8")
@@ -71,7 +71,7 @@ def test_ca_helper_rejects_non_certificate_without_replacing_existing(tmp_path):
 
 
 def test_remove_helper_deletes_only_known_ldap_files(tmp_path):
-    from ldap_secret_cli import cli
+    from deployment.ldap_secret_cli import cli
 
     for filename in ("ldap_bind_password", "ldap_ca.pem", "keep-me"):
         (tmp_path / filename).write_text(filename, encoding="utf-8")

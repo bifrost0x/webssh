@@ -34,7 +34,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    entrypoint: ["python", "/app/ldap_secret_cli.py"]
+    entrypoint: ["python", "/app/deployment/ldap_secret_cli.py"]
     command: ["status"]
     volumes:
       - webssh_auth_secrets:/run/webssh-auth

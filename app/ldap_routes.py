@@ -223,6 +223,7 @@ def link_ldap_identity(user_id):
     # Unlinking requires a fresh local password, so no old password silently
     # becomes valid again after a directory outage or rollback.
     target.set_password(secrets.token_urlsafe(48))
+    target.auth_generation = int(target.auth_generation or 0) + 1
     WebAuthnCredential.query.filter_by(user_id=target.id).delete()
     RecoveryCode.query.filter_by(user_id=target.id).delete()
     OIDCIdentity.query.filter_by(user_id=target.id).delete()
@@ -357,6 +358,7 @@ def unlink_ldap_identity(user_id, identity_id):
     provider = row.provider
     db.session.delete(row)
     target.set_password(new_password)
+    target.auth_generation = int(target.auth_generation or 0) + 1
     try:
         db.session.commit()
     except Exception as exc:

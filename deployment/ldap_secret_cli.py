@@ -1,6 +1,6 @@
 """Standalone LDAP secret-volume management.
 
-This file deliberately lives outside the ``app`` package so Python does not
+This deployment helper lives outside the ``app`` package so Python does not
 import Flask or project configuration before a broken LDAP setup can be
 repaired.
 """

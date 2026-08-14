@@ -4,7 +4,12 @@ from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
                session_insights, runtime_inventory)
 from .decorators import socket_login_required
-from .auth import register_socket_session, get_user_from_socket, check_socket_rate_limit
+from .auth import (
+    check_socket_rate_limit,
+    get_user_from_socket,
+    load_user,
+    register_socket_session,
+)
 from .models import db, SSHSession, SocketSession
 from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
@@ -149,9 +154,8 @@ def handle_connect():
         emit('connected', {'status': 'unavailable'})
         return False
 
-    from .models import User
-    user = db.session.get(User, int(user_id))
-    if not user or user.is_locked:
+    user = load_user(user_id)
+    if not user:
         log_warning("User not found during connect", user_id=user_id, sid=request.sid)
         emit('connected', {'status': 'unauthenticated'})
         disconnect()

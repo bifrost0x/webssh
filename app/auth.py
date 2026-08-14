@@ -93,10 +93,25 @@ def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
 @login_manager.user_loader
 def load_user(user_id):
     """Load user by ID for Flask-Login."""
-    user = db.session.get(User, int(user_id))
+    raw_identifier = str(user_id)
+    if ':' in raw_identifier:
+        raw_user_id, raw_generation = raw_identifier.split(':', 1)
+    else:
+        raw_user_id, raw_generation = raw_identifier, '0'
+    try:
+        parsed_user_id = int(raw_user_id)
+        parsed_generation = int(raw_generation)
+    except (TypeError, ValueError):
+        return None
+    if parsed_user_id <= 0 or parsed_generation < 0:
+        return None
+
+    user = db.session.get(User, parsed_user_id)
     if user is None or user.is_locked or (
         user.is_admin and user.is_ldap_managed
     ):
+        return None
+    if int(user.auth_generation or 0) != parsed_generation:
         return None
     return user
 

@@ -24,6 +24,7 @@ class User(db.Model, UserMixin):
     last_login = db.Column(db.DateTime)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
     is_locked = db.Column(db.Boolean, nullable=False, default=False)
+    auth_generation = db.Column(db.Integer, nullable=False, default=0)
 
     socket_sessions = db.relationship('SocketSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
     ssh_sessions = db.relationship('SSHSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
@@ -60,6 +61,10 @@ class User(db.Model, UserMixin):
         """Verify password against stored hash."""
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
+    def get_id(self):
+        """Bind Flask-Login sessions to the current authentication boundary."""
+        return f'{self.id}:{int(self.auth_generation or 0)}'
+
     @property
     def is_ldap_managed(self):
         """Return whether this account is exclusively directory-managed."""
@@ -80,7 +85,7 @@ def ensure_user_columns():
     """Additive, idempotent schema migration for the users table.
 
     db.create_all() only creates missing TABLES, never missing COLUMNS, so new
-    columns (is_admin, is_locked) added above would be absent on an existing
+    columns added above would be absent on an existing
     production database. This adds them in place via ALTER TABLE without touching
     existing rows. Must run inside an app context, after db.create_all().
     """
@@ -95,6 +100,11 @@ def ensure_user_columns():
         additions.append("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0")
     if 'is_locked' not in existing:
         additions.append("ALTER TABLE users ADD COLUMN is_locked BOOLEAN NOT NULL DEFAULT 0")
+    if 'auth_generation' not in existing:
+        additions.append(
+            "ALTER TABLE users ADD COLUMN auth_generation "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
     for stmt in additions:
         db.session.execute(text(stmt))
     # First-time migration of an existing install: there was no role separation

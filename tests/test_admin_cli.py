@@ -333,13 +333,15 @@ def test_legacy_role_migration_promotes_only_oldest_existing_user(app):
 
         ensure_user_columns()
         rows = db.session.execute(text(
-            'SELECT id, is_admin, is_locked FROM users ORDER BY id'
+            'SELECT id, is_admin, is_locked, auth_generation '
+            'FROM users ORDER BY id'
         )).all()
 
-        assert rows == [(1, 1, 0), (2, 0, 0)]
+        assert rows == [(1, 1, 0, 0), (2, 0, 0, 0)]
 
         ensure_user_columns()
         repeated = db.session.execute(text(
-            'SELECT id, is_admin, is_locked FROM users ORDER BY id'
+            'SELECT id, is_admin, is_locked, auth_generation '
+            'FROM users ORDER BY id'
         )).all()
         assert repeated == rows
