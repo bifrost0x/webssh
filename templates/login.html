@@ -7,7 +7,7 @@
     <meta name="app-root" content="{{ url_prefix }}">
     <title>Login - Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=3">
 </head>
 <body data-theme="glass" data-use-theme-preference>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -42,6 +42,7 @@
                 {% endif %}
             {% endwith %}
 
+            <section id="defaultLoginMode" class="login-mode{% if ldap_error %} hidden{% endif %}">
             <form method="POST" action="{{ url_for('login') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="form-group">
@@ -76,22 +77,9 @@
             </form>
 
             {% if ldap_enabled %}
-            <button type="button" class="btn-primary" id="ldapLoginBtn" onclick="document.getElementById('ldapLoginForm').classList.toggle('hidden')" style="margin-top:12px;">
+            <button type="button" class="btn-primary" id="ldapLoginBtn" aria-controls="ldapLoginMode" aria-expanded="false" style="margin-top:12px;">
                 Sign in with LDAP
             </button>
-            <form method="POST" action="{{ url_for('ldap.ldap_login') }}" id="ldapLoginForm" class="{% if not ldap_error %}hidden{% endif %}" style="margin-top:12px;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="form-group">
-                    <label for="ldapUsername">Directory username</label>
-                    <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" required>
-                </div>
-                <div class="form-group">
-                    <label for="ldapPassword">Directory password</label>
-                    <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" required>
-                </div>
-                {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
-                <button type="submit" class="btn-primary">Sign in</button>
-            </form>
             {% endif %}
             {% if webauthn_enabled %}
             <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
@@ -128,11 +116,42 @@
                 <a href="{{ url_for('register') }}" data-i18n="auth.registerHere">Register here</a>
                 {% endif %}
             </div>
+            </section>
+
+            {% if ldap_enabled %}
+            <section id="ldapLoginMode" class="login-mode{% if not ldap_error %} hidden{% endif %}" aria-labelledby="ldapLoginTitle">
+                <button type="button" class="login-mode-back" id="ldapBackBtn" aria-label="Back to sign-in options" title="Back to sign-in options">&larr;</button>
+                <div class="login-mode-heading">
+                    <h2 id="ldapLoginTitle">LDAP sign in</h2>
+                    <p>Use your directory account credentials</p>
+                </div>
+                <form method="POST" action="{{ url_for('ldap.ldap_login') }}" id="ldapLoginForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="ldapUsername">Directory username</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">&#128100;</span>
+                            <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="ldapPassword">Directory password</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">&#128274;</span>
+                            <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" required>
+                            <button type="button" class="password-toggle" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">&#128065;&#65039;</button>
+                        </div>
+                    </div>
+                    {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
+                    <button type="submit" class="btn-primary">Sign in</button>
+                </form>
+            </section>
+            {% endif %}
         </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>
     <script>
         function toggleLangDropdown() {

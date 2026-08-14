@@ -98,6 +98,28 @@ def _enable_ldap_blueprint(app, monkeypatch, directory):
     app.register_blueprint(ldap_routes.ldap_blueprint)
 
 
+def test_enabled_ldap_login_starts_as_an_isolated_hidden_mode(
+    app,
+    client,
+    monkeypatch,
+):
+    _create_user(app, "ldap_login_mode_user")
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="unused-id",
+        distinguished_name="uid=unused,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+
+    response = client.get("/login")
+
+    assert response.status_code == 200
+    assert b'id="defaultLoginMode" class="login-mode"' in response.data
+    assert b'id="ldapLoginMode" class="login-mode hidden"' in response.data
+    assert b'id="ldapBackBtn"' in response.data
+    assert b'onclick="document.getElementById(\'ldapLoginForm\')' not in response.data
+
+
 def test_ldap_login_accepts_only_matching_explicit_identity(
     app,
     client,
@@ -177,7 +199,8 @@ def test_ldap_login_rejects_subject_mismatch_before_password_bind(
 
     assert response.status_code == 401
     assert b"Invalid username or password" in response.data
-    assert b'id="ldapLoginForm" class="hidden"' not in response.data
+    assert b'id="defaultLoginMode" class="login-mode hidden"' in response.data
+    assert b'id="ldapLoginMode" class="login-mode"' in response.data
     assert directory.binds == []
 
 
