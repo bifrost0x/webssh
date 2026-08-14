@@ -75,6 +75,24 @@
                 </button>
             </form>
 
+            {% if ldap_enabled %}
+            <button type="button" class="btn-primary" id="ldapLoginBtn" onclick="document.getElementById('ldapLoginForm').classList.toggle('hidden')" style="margin-top:12px;">
+                Sign in with LDAP
+            </button>
+            <form method="POST" action="{{ url_for('ldap.ldap_login') }}" id="ldapLoginForm" class="{% if not ldap_error %}hidden{% endif %}" style="margin-top:12px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="ldapUsername">Directory username</label>
+                    <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="ldapPassword">Directory password</label>
+                    <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" required>
+                </div>
+                {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
+                <button type="submit" class="btn-primary">Sign in</button>
+            </form>
+            {% endif %}
             {% if webauthn_enabled %}
             <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
                 Sign in with passkey

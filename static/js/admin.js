@@ -5,6 +5,7 @@
     const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const CURRENT_USER = document.querySelector('meta[name="current-user"]')?.content || '';
     const OIDC_ENABLED = document.querySelector('meta[name="oidc-enabled"]')?.content === 'true';
+    const LDAP_ENABLED = document.querySelector('meta[name="ldap-enabled"]')?.content === 'true';
     const RECOVERY_ENABLED = document.querySelector('meta[name="recovery-enabled"]')?.content === 'true';
 
     const t = (key, fallback) => {
@@ -78,7 +79,7 @@
         const parts = [];
         if (u.is_admin) {
             parts.push(`<button class="btn btn-secondary" data-act="demote" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.demote', 'Demote'))}</button>`);
-        } else {
+        } else if (!u.ldap_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="promote">${escapeHtml(t('admin.promote', 'Promote'))}</button>`);
         }
         if (u.is_locked) {
@@ -86,11 +87,15 @@
         } else {
             parts.push(`<button class="btn btn-secondary" data-act="lock" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.lock', 'Lock'))}</button>`);
         }
-        if (RECOVERY_ENABLED) {
+        if (RECOVERY_ENABLED && !u.ldap_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="recovery">${escapeHtml(t('admin.recovery', 'Recovery'))}</button>`);
         }
-        if (OIDC_ENABLED) {
+        if (OIDC_ENABLED && !u.ldap_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="oidc-link">${escapeHtml(t('admin.oidcLink', 'Link OIDC'))}</button>`);
+        }
+        if (LDAP_ENABLED && !u.is_admin) {
+            const label = u.ldap_managed ? 'Manage LDAP' : 'Link LDAP';
+            parts.push(`<button class="btn btn-secondary" data-act="ldap-link">${escapeHtml(label)}</button>`);
         }
         parts.push(`<button class="btn btn-danger" data-act="delete" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.delete', 'Delete'))}</button>`);
         return `<div class="admin-actions">${parts.join('')}</div>`;
@@ -111,7 +116,7 @@
                 : `<span class="admin-badge">${escapeHtml(t('admin.statusActive', 'Active'))}</span>`;
             tr.innerHTML =
                 `<td>${u.id}</td>` +
-                `<td>${escapeHtml(u.username)}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
+                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
                 `<td>${role}</td>` +
                 `<td>${status}</td>` +
                 `<td>${escapeHtml(fmtDate(u.created_at))}</td>` +
@@ -143,6 +148,7 @@
     const securityRequests = window.WebSSHSecurityUI.createRequestCoordinator({
         persistentChannels: ['action']
     });
+    let currentLdapIdentityId = null;
 
     function clearSecurityReauthentication() {
         ['securityActionPassword', 'securityActionConfirmation'].forEach(id => {
@@ -152,7 +158,7 @@
     }
 
     function clearSecurityActionFields() {
-        ['securityActionPassword', 'securityActionConfirmation', 'securityActionSubject', 'securityActionResult']
+        ['securityActionPassword', 'securityActionConfirmation', 'securityActionSubject', 'securityActionDirectoryUsername', 'securityActionNewPassword', 'securityActionResult']
             .forEach(id => {
                 const field = document.getElementById(id);
                 if (field) { field.value = ''; }
@@ -178,6 +184,48 @@
         document.getElementById('securityActionOidcListGroup')?.classList.add('hidden');
         const oidcList = document.getElementById('securityActionOidcList');
         if (oidcList) { oidcList.textContent = ''; }
+        currentLdapIdentityId = null;
+    }
+
+    async function checkLdapStatus() {
+        const button = document.getElementById('ldapStatusCheck');
+        const result = document.getElementById('ldapStatusResult');
+        if (!button || !result) { return; }
+        button.disabled = true;
+        result.textContent = 'Checking...';
+        try {
+            const data = await api('/admin/api/ldap/status');
+            result.textContent = `Ready (${data.transport}, provider ${data.provider})`;
+        } catch (e) {
+            result.textContent = 'Unavailable';
+            notify(e.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function loadLdapIdentity() {
+        const context = securityRequests.current();
+        if (context?.mode !== 'ldap-link' || !context.userId) { return; }
+        const requestState = securityRequests.begin('list', { replace: true });
+        if (!requestState) { return; }
+        try {
+            const data = await api(`/admin/api/users/${requestState.context.userId}/ldap-identity`);
+            if (!securityRequests.isCurrent(requestState)) { return; }
+            const identity = data.identity;
+            currentLdapIdentityId = identity?.id || null;
+            const usernameField = document.getElementById('securityActionDirectoryUsername');
+            if (usernameField) {
+                usernameField.value = identity?.directory_username || requestState.context.username;
+                usernameField.disabled = Boolean(identity);
+            }
+            document.getElementById('securityActionNewPasswordGroup')?.classList.toggle('hidden', !identity);
+            document.getElementById('submitSecurityAction').textContent = identity ? 'Unlink LDAP' : 'Link LDAP';
+        } catch (e) {
+            if (securityRequests.isCurrent(requestState)) { notify(e.message, 'error'); }
+        } finally {
+            securityRequests.finish(requestState);
+        }
     }
 
     async function loadOidcIdentities() {
@@ -231,10 +279,15 @@
         setSecurityActionPending(securityRequests.isPending('action'));
         clearSecurityActionFields();
         const isOidc = mode === 'oidc-link';
-        document.getElementById('securityActionTitle').textContent = isOidc
+        const isLdap = mode === 'ldap-link';
+        document.getElementById('securityActionTitle').textContent = isLdap
+            ? 'Manage LDAP identity'
+            : isOidc
             ? t('admin.oidcManage', 'Manage OIDC identities')
             : t('admin.generateRecoveryCodes', 'Generate recovery codes');
-        document.getElementById('securityActionHint').textContent = isOidc
+        document.getElementById('securityActionHint').textContent = isLdap
+            ? `Link ${username} to exactly one verified directory identity. LDAP accounts cannot use local fallback authentication.`
+            : isOidc
             ? t(
                 'admin.oidcManageHint',
                 'Manage stable provider subjects for {username}. Enter your password and the target username before linking or unlinking.'
@@ -244,15 +297,20 @@
                 'Generate a new one-time recovery set for {username}. Existing recovery codes will stop working.'
             ).replace('{username}', username);
         document.getElementById('securityActionSubjectGroup')?.classList.toggle('hidden', !isOidc);
+        document.getElementById('securityActionDirectoryUsernameGroup')?.classList.toggle('hidden', !isLdap);
+        document.getElementById('securityActionNewPasswordGroup')?.classList.add('hidden');
         document.getElementById('securityActionOidcListGroup')?.classList.toggle('hidden', !isOidc);
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
-        document.getElementById('submitSecurityAction').textContent = isOidc
+        document.getElementById('submitSecurityAction').textContent = isLdap
+            ? 'Link LDAP'
+            : isOidc
             ? t('admin.oidcLinkIdentity', 'Link OIDC identity')
             : t('admin.continue', 'Continue');
         const modal = document.getElementById('securityActionModal');
         modal?.classList.add('show');
         modal?.setAttribute('aria-hidden', 'false');
         if (isOidc) { loadOidcIdentities(); }
+        if (isLdap) { loadLdapIdentity(); }
         document.getElementById('securityActionPassword')?.focus();
     }
 
@@ -301,20 +359,34 @@
         if (requestState.context.mode === 'oidc-link') {
             body.subject = document.getElementById('securityActionSubject').value.trim();
             path = `/admin/api/users/${requestState.context.userId}/oidc-link`;
+        } else if (requestState.context.mode === 'ldap-link') {
+            body.directory_username = document.getElementById('securityActionDirectoryUsername').value.trim();
+            if (currentLdapIdentityId) {
+                body.new_password = document.getElementById('securityActionNewPassword').value;
+                path = `/admin/api/users/${requestState.context.userId}/ldap-identities/${currentLdapIdentityId}`;
+            } else {
+                path = `/admin/api/users/${requestState.context.userId}/ldap-link`;
+            }
         }
         setSecurityActionPending(true);
         try {
-            const result = await api(path, { method: 'POST', body });
+            const method = requestState.context.mode === 'ldap-link' && currentLdapIdentityId ? 'DELETE' : 'POST';
+            const result = await api(path, { method, body });
             if (!securityRequests.isCurrent(requestState)) { return; }
             clearSecurityReauthentication();
             if (requestState.context.mode === 'recovery') {
                 document.getElementById('securityActionResult').value = (result.codes || []).join('\n');
                 document.getElementById('securityActionResultGroup')?.classList.remove('hidden');
                 notify(t('admin.recoveryGenerated', 'Recovery codes generated'), 'success');
-            } else {
+            } else if (requestState.context.mode === 'oidc-link') {
                 notify(t('admin.oidcLinked', 'OIDC identity linked'), 'success');
                 document.getElementById('securityActionSubject').value = '';
                 await loadOidcIdentities();
+            } else {
+                notify(currentLdapIdentityId ? 'LDAP identity unlinked' : 'LDAP identity linked', 'success');
+                currentLdapIdentityId = null;
+                closeSecurityAction();
+                await loadUsers();
             }
         } catch (e) {
             if (securityRequests.isCurrent(requestState)) {
@@ -338,7 +410,7 @@
             const username = tr?.dataset.username;
             const action = btn.dataset.act;
             if (!userId) { return; }
-            if (action === 'recovery' || action === 'oidc-link') {
+            if (action === 'recovery' || action === 'oidc-link' || action === 'ldap-link') {
                 openSecurityAction(action, userId, username);
                 return;
             }
@@ -491,6 +563,7 @@
     }
 
     function initSettings() {
+        document.getElementById('ldapStatusCheck')?.addEventListener('click', checkLdapStatus);
         document.getElementById('settingRegistration')?.addEventListener('change', async (e) => {
             const target = e.target;
             try {

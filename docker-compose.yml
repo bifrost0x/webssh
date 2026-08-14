@@ -144,7 +144,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # ── Redis (optional — uncomment for external rate-limit counters) ──────
+  # Redis (optional - uncomment for external rate-limit counters)
   # redis:
   #   image: redis:7-alpine
   #   container_name: webssh-redis

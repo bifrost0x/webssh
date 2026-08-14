@@ -1,8 +1,9 @@
 import os
 import secrets
 import ipaddress
+import re
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from datetime import timedelta
 from urllib.parse import urlsplit
 
@@ -81,6 +82,32 @@ OIDC_LOGIN_RATE_LIMIT = os.environ.get(
     '10 per minute',
 )
 
+# Optional LDAP authentication. Configuration values remain inert until the
+# explicit feature flag is enabled; in particular, secret files are never read
+# while LDAP is disabled.
+LDAP_ENABLED = os.environ.get('LDAP_ENABLED', 'false').lower() == 'true'
+LDAP_PROVIDER_ID = os.environ.get('LDAP_PROVIDER_ID', 'default').strip()
+LDAP_URL = os.environ.get('LDAP_URL', '').strip()
+LDAP_BASE_DN = os.environ.get('LDAP_BASE_DN', '').strip()
+LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', '').strip()
+LDAP_BIND_PASSWORD_FILE = os.environ.get(
+    'LDAP_BIND_PASSWORD_FILE',
+    '/run/webssh-auth/ldap_bind_password',
+).strip()
+LDAP_CA_FILE = os.environ.get(
+    'LDAP_CA_FILE',
+    '/run/webssh-auth/ldap_ca.pem',
+).strip()
+LDAP_USER_FILTER = os.environ.get('LDAP_USER_FILTER', '').strip()
+LDAP_UNIQUE_ID_ATTRIBUTE = os.environ.get(
+    'LDAP_UNIQUE_ID_ATTRIBUTE',
+    '',
+).strip()
+LDAP_LOGIN_RATE_LIMIT = os.environ.get(
+    'LDAP_LOGIN_RATE_LIMIT',
+    '5 per minute',
+)
+
 
 def _positive_int_env(name, default):
     raw_value = os.environ.get(name, str(default))
@@ -127,6 +154,17 @@ def _non_negative_int_env(name, default):
             f'CONFIGURATION ERROR: {name} must be a non-negative integer'
         )
     return value
+
+
+LDAP_CONNECT_TIMEOUT = _bounded_int_env(
+    'LDAP_CONNECT_TIMEOUT', 5, 1, 15
+)
+LDAP_OPERATION_TIMEOUT = _bounded_int_env(
+    'LDAP_OPERATION_TIMEOUT', 5, 1, 30
+)
+LDAP_SESSION_REVALIDATION_SECONDS = _bounded_int_env(
+    'LDAP_SESSION_REVALIDATION_SECONDS', 300, 60, 3600
+)
 
 
 AUDIT_LOG_MAX_BYTES = _positive_int_env(
@@ -238,7 +276,7 @@ _validate_quota_pair(
 # Three permanent cleanup jobs occupy executor slots for the app lifetime.
 # Reader and transfer capacity must stay available beyond those loops, otherwise
 # an idle cleanup job can starve an accepted SSH session or background transfer.
-BACKGROUND_CLEANUP_JOBS = 3
+BACKGROUND_CLEANUP_JOBS = 3 + (1 if LDAP_ENABLED else 0)
 BACKGROUND_WORKERS_MAX = 128
 BACKGROUND_WORKERS_MIN = (
     BACKGROUND_CLEANUP_JOBS
@@ -481,6 +519,99 @@ TMUX_DEFAULT = os.environ.get('TMUX_DEFAULT', 'false').lower() == 'true'
 
 def validate_security_config():
     """Validate the selected deployment profile and return compatibility warnings."""
+    if LDAP_ENABLED:
+        required_ldap_settings = {
+            'LDAP_URL': LDAP_URL,
+            'LDAP_PROVIDER_ID': LDAP_PROVIDER_ID,
+            'LDAP_BASE_DN': LDAP_BASE_DN,
+            'LDAP_BIND_DN': LDAP_BIND_DN,
+            'LDAP_BIND_PASSWORD_FILE': LDAP_BIND_PASSWORD_FILE,
+            'LDAP_CA_FILE': LDAP_CA_FILE,
+            'LDAP_USER_FILTER': LDAP_USER_FILTER,
+            'LDAP_UNIQUE_ID_ATTRIBUTE': LDAP_UNIQUE_ID_ATTRIBUTE,
+        }
+        for setting_name, setting_value in required_ldap_settings.items():
+            if not setting_value:
+                raise RuntimeError(
+                    f'SECURITY ERROR: {setting_name} is required when '
+                    'LDAP_ENABLED is true'
+                )
+
+        parsed_ldap_url = urlsplit(LDAP_URL)
+        if (
+            parsed_ldap_url.scheme not in {'ldap', 'ldaps'}
+            or not parsed_ldap_url.hostname
+            or parsed_ldap_url.username is not None
+            or parsed_ldap_url.password is not None
+            or parsed_ldap_url.path
+            or parsed_ldap_url.query
+            or parsed_ldap_url.fragment
+        ):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_URL must be an exact ldap:// or '
+                'ldaps:// server URL without credentials, path, query, or '
+                'fragment'
+            )
+        if LDAP_USER_FILTER.count('{username}') != 1:
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_USER_FILTER must contain exactly one '
+                '{username} placeholder'
+            )
+        if (
+            len(LDAP_USER_FILTER) > 4096
+            or '\x00' in LDAP_USER_FILTER
+            or '{' in LDAP_USER_FILTER.replace('{username}', '')
+            or '}' in LDAP_USER_FILTER.replace('{username}', '')
+        ):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_USER_FILTER contains an unsupported '
+                'template or exceeds the size limit'
+            )
+        if not re.fullmatch(
+            r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}',
+            LDAP_PROVIDER_ID,
+        ):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_PROVIDER_ID must be a short, stable '
+                'identifier containing only letters, digits, dot, dash, or '
+                'underscore'
+            )
+        ldap_attribute_pattern = (
+            r'(?:[A-Za-z][A-Za-z0-9-]*|[0-9]+(?:\.[0-9]+)+)'
+        )
+        if not re.fullmatch(ldap_attribute_pattern, LDAP_UNIQUE_ID_ATTRIBUTE):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_UNIQUE_ID_ATTRIBUTE must be an LDAP '
+                'attribute name or numeric OID'
+            )
+        for setting_name, distinguished_name in (
+            ('LDAP_BASE_DN', LDAP_BASE_DN),
+            ('LDAP_BIND_DN', LDAP_BIND_DN),
+        ):
+            if len(distinguished_name) > 2048 or '\x00' in distinguished_name:
+                raise RuntimeError(
+                    f'SECURITY ERROR: {setting_name} is invalid or exceeds '
+                    'the size limit'
+                )
+
+        def _is_absolute_secret_path(value):
+            return Path(value).is_absolute() or PurePosixPath(value).is_absolute()
+
+        if not _is_absolute_secret_path(LDAP_BIND_PASSWORD_FILE):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_BIND_PASSWORD_FILE must be an '
+                'absolute path'
+            )
+        if not _is_absolute_secret_path(LDAP_CA_FILE):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_CA_FILE must be an absolute path'
+            )
+        if Path(LDAP_BIND_PASSWORD_FILE) == Path(LDAP_CA_FILE):
+            raise RuntimeError(
+                'SECURITY ERROR: LDAP_BIND_PASSWORD_FILE and LDAP_CA_FILE '
+                'must be different files'
+            )
+
     if WEBAUTHN_ENABLED:
         parsed_webauthn_origin = urlsplit(WEBAUTHN_ORIGIN)
         origin_host = (parsed_webauthn_origin.hostname or '').lower()

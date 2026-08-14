@@ -106,6 +106,7 @@ def test_runtime_artifacts_do_not_select_cooperative_runtime():
         "requirements.in",
         "Dockerfile",
         "docker-compose.yml",
+        "docker-compose.ldap.yml",
         "config.py",
         "start.py",
     )

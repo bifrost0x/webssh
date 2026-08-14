@@ -45,6 +45,12 @@ class User(db.Model, UserMixin):
         cascade='all, delete-orphan',
         lazy='dynamic',
     )
+    ldap_identity = db.relationship(
+        'LDAPIdentity',
+        backref='user',
+        cascade='all, delete-orphan',
+        uselist=False,
+    )
 
     def set_password(self, password):
         """Hash and set user password using bcrypt."""
@@ -53,6 +59,11 @@ class User(db.Model, UserMixin):
     def check_password(self, password):
         """Verify password against stored hash."""
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
+
+    @property
+    def is_ldap_managed(self):
+        """Return whether this account is exclusively directory-managed."""
+        return self.ldap_identity is not None
 
     def get_data_dir(self):
         """Get user-specific data directory."""
@@ -226,6 +237,38 @@ class OIDCLoginState(db.Model):
     nonce = db.Column(db.String(128), nullable=False)
     code_verifier = db.Column(db.String(128), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
+
+
+class LDAPIdentity(db.Model):
+    """Administrator-approved stable LDAP identity mapping."""
+
+    __tablename__ = 'ldap_identities'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'provider',
+            'subject',
+            name='uq_ldap_provider_subject',
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    provider = db.Column(db.String(64), nullable=False)
+    subject = db.Column(db.String(512), nullable=False)
+    directory_username = db.Column(db.String(256), nullable=False)
+    distinguished_name = db.Column(db.String(2048), nullable=False)
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    last_verified_at = db.Column(db.DateTime)
 
 class SSHSession(db.Model):
     """Tracks SSH connections for users (persistent across browser reconnects)."""

@@ -5,6 +5,7 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import os
+import time
 from .models import db
 from .auth import (init_auth, authenticate_user, register_user,
                    check_rate_limit, is_bootstrap_registration_available,
@@ -126,6 +127,11 @@ def create_app(
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
             'webauthn_enabled': config.WEBAUTHN_ENABLED,
             'oidc_enabled': config.OIDC_ENABLED,
+            'ldap_enabled': config.LDAP_ENABLED,
+            'ldap_managed': bool(
+                current_user.is_authenticated
+                and current_user.is_ldap_managed
+            ),
             'recovery_codes_enabled': config.RECOVERY_CODES_ENABLED,
             'host_key_management_enabled': (
                 config.HOST_KEY_MANAGEMENT_ENABLED
@@ -152,6 +158,43 @@ def create_app(
                 'error': 'WebSSH is in restore maintenance mode',
                 'code': 'maintenance',
             }), 503
+        if (
+            current_user.is_authenticated
+            and current_user.is_ldap_managed
+            and not config.LDAP_ENABLED
+        ):
+            from . import user_lifecycle
+
+            user_id = current_user.id
+            user_lifecycle.revoke_user_access(user_id, socketio)
+            logout_user()
+            session.clear()
+            return redirect(url_for('login'))
+        if (
+            current_user.is_authenticated
+            and current_user.is_ldap_managed
+            and config.LDAP_ENABLED
+            and int(time.time()) - int(session.get('_ldap_verified_at', 0))
+            >= config.LDAP_SESSION_REVALIDATION_SECONDS
+        ):
+            from . import user_lifecycle
+            from .ldap_service import LDAPLookupRejected, LDAPUnavailable
+            from .ldap_session import revalidate_user
+
+            try:
+                revalidate_user(current_user)
+            except (LDAPLookupRejected, LDAPUnavailable) as exc:
+                user_id = current_user.id
+                log_warning(
+                    'LDAP session revalidation rejected',
+                    user=current_user.username,
+                    error=type(exc).__name__,
+                )
+                user_lifecycle.revoke_user_access(user_id, socketio)
+                logout_user()
+                session.clear()
+                return redirect(url_for('login'))
+            session['_ldap_verified_at'] = int(time.time())
         if initialize_storage and current_user.is_authenticated:
             from .session_epoch import current_epoch
             epoch = current_epoch()
@@ -213,6 +256,11 @@ def create_app(
     app.register_blueprint(recovery_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
+    if config.LDAP_ENABLED:
+        from .ldap_routes import ldap_blueprint
+        from .ldap_service import validate_runtime_files
+        validate_runtime_files()
+        app.register_blueprint(ldap_blueprint)
     if initialize_storage:
         _initialize_persistent_storage(app)
     if start_runtime:
@@ -305,11 +353,30 @@ def create_app(
                 except Exception as e:
                     log_error("SSH cleanup error", error=str(e))
 
+        def ldap_revalidation_task(cancel_event):
+            from .ldap_session import revalidate_all_linked_users
+
+            while not cancel_event.wait(
+                config.LDAP_SESSION_REVALIDATION_SECONDS
+            ):
+                try:
+                    revalidate_all_linked_users(app, socketio)
+                except Exception as e:
+                    log_error(
+                        "LDAP background revalidation error",
+                        error=type(e).__name__,
+                    )
+
         try:
             lifecycle.start_job(
                 'inactive_socket_session_cleanup', db_cleanup_task
             )
             lifecycle.start_job('idle_ssh_session_cleanup', ssh_cleanup_task)
+            if config.LDAP_ENABLED:
+                lifecycle.start_job(
+                    'ldap_session_revalidation',
+                    ldap_revalidation_task,
+                )
             connection_pool.bind_temp_connection_pool(lifecycle)
         except Exception:
             lifecycle.begin_shutdown(config.RUNTIME_SHUTDOWN_GRACE_SECONDS)
@@ -427,6 +494,8 @@ def create_app(
     @app.route('/change-password', methods=['GET', 'POST'])
     @login_required
     def change_password():
+        if current_user.is_ldap_managed:
+            abort(403)
         if request.method == 'POST':
             client_ip = get_client_ip()
             if config.RATELIMIT_ENABLED and check_rate_limit(
@@ -491,6 +560,7 @@ def create_app(
             'username': u.username,
             'is_admin': bool(u.is_admin),
             'is_locked': bool(u.is_locked),
+            'ldap_managed': bool(u.is_ldap_managed),
             'created_at': u.created_at.isoformat() if u.created_at else None,
             'last_login': u.last_login.isoformat() if u.last_login else None,
         }
@@ -551,6 +621,13 @@ def create_app(
         elif action == 'unlock':
             target.is_locked = False
         elif action == 'promote':
+            if target.is_ldap_managed:
+                return jsonify({
+                    'error': (
+                        'LDAP accounts cannot be administrators; keep a '
+                        'local break-glass administrator'
+                    )
+                }), 400
             target.is_admin = True
         elif action == 'demote':
             if is_self:

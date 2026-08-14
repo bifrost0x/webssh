@@ -84,6 +84,8 @@ def _credential_descriptor(row):
 @login_required
 def list_credentials():
     _require_enabled()
+    if current_user.is_ldap_managed:
+        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     rows = WebAuthnCredential.query.filter_by(
         user_id=current_user.id
     ).order_by(WebAuthnCredential.id.asc()).all()
@@ -106,6 +108,8 @@ def list_credentials():
 @login_required
 def registration_options():
     _require_enabled()
+    if current_user.is_ldap_managed:
+        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     client_ip = request.remote_addr or "unknown"
     if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
         current_user.id,
@@ -160,6 +164,8 @@ def registration_options():
 @login_required
 def verify_registration():
     _require_enabled()
+    if current_user.is_ldap_managed:
+        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
@@ -234,6 +240,8 @@ def verify_registration():
 @login_required
 def delete_credential(credential_id):
     _require_enabled()
+    if current_user.is_ldap_managed:
+        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     client_ip = request.remote_addr or "unknown"
     if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
         current_user.id,
@@ -317,7 +325,12 @@ def verify_authentication():
                 credential_id=credential_id,
             ).first()
             user = db.session.get(User, row.user_id) if row is not None else None
-            if row is None or user is None or user.is_locked:
+            if (
+                row is None
+                or user is None
+                or user.is_locked
+                or user.is_ldap_managed
+            ):
                 raise ChallengeError("Credential is not available")
             username = user.username
             verified = verify_authentication_response(

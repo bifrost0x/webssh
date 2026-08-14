@@ -1,0 +1,22 @@
+dn: ou=people,dc=example,dc=test
+objectClass: organizationalUnit
+ou: people
+
+dn: uid=alice,ou=people,dc=example,dc=test
+objectClass: inetOrgPerson
+cn: Alice Example
+sn: Example
+uid: alice
+mail: alice@example.test
+userPassword: alice-password
+
+dn: ou=services,dc=example,dc=test
+objectClass: organizationalUnit
+ou: services
+
+dn: cn=webssh,ou=services,dc=example,dc=test
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: webssh
+description: Read-only WebSSH integration test bind account
+userPassword: test-bind-password

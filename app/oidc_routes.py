@@ -44,6 +44,8 @@ def _require_enabled():
 
 
 def _password_matches(user, password):
+    if user.is_ldap_managed:
+        return False
     try:
         return user.check_password(password)
     except (TypeError, ValueError):
@@ -177,7 +179,7 @@ def oidc_callback():
         ):
             raise OIDCStateError("OIDC email domain is not allowed")
         user = resolve_identity(issuer, subject)
-        if user is None or user.is_locked:
+        if user is None or user.is_locked or user.is_ldap_managed:
             log_security_event(
                 "OIDC_IDENTITY_REJECTED",
                 level=logging.WARNING,
@@ -234,6 +236,10 @@ def link_oidc_identity(user_id):
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404
+    if target.is_ldap_managed:
+        return jsonify({
+            "error": "OIDC identities cannot be linked to LDAP accounts"
+        }), 400
     if data.get("confirm_username") != target.username:
         return jsonify({"error": "Target confirmation does not match"}), 400
     subject = str(data.get("subject") or "").strip()

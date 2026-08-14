@@ -15,6 +15,18 @@ SECURITY_ENV_NAMES = {
     'CORS_ORIGINS',
     'DEBUG',
     'DEPLOYMENT_PROFILE',
+    'LDAP_BASE_DN',
+    'LDAP_BIND_DN',
+    'LDAP_BIND_PASSWORD_FILE',
+    'LDAP_CA_FILE',
+    'LDAP_CONNECT_TIMEOUT',
+    'LDAP_ENABLED',
+    'LDAP_OPERATION_TIMEOUT',
+    'LDAP_PROVIDER_ID',
+    'LDAP_SESSION_REVALIDATION_SECONDS',
+    'LDAP_UNIQUE_ID_ATTRIBUTE',
+    'LDAP_URL',
+    'LDAP_USER_FILTER',
     'REGISTRATION_ENABLED',
     'SESSION_COOKIE_SECURE',
     'TRUSTED_PROXIES',
@@ -66,6 +78,125 @@ def test_safe_production_profile_loads():
     result = _load_config(_production_env())
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_ldap_is_disabled_by_default_and_ignores_incomplete_settings():
+    result = _load_config(
+        _production_env(LDAP_URL='not-an-ldap-url'),
+        'import config; print(config.LDAP_ENABLED)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == 'False'
+
+
+@pytest.mark.parametrize(
+    'missing_name',
+    (
+        'LDAP_URL',
+        'LDAP_BASE_DN',
+        'LDAP_BIND_DN',
+        'LDAP_USER_FILTER',
+        'LDAP_UNIQUE_ID_ATTRIBUTE',
+    ),
+)
+def test_enabled_ldap_requires_complete_configuration(missing_name):
+    settings = {
+        'LDAP_ENABLED': 'true',
+        'LDAP_URL': 'ldaps://directory.example.com:636',
+        'LDAP_BASE_DN': 'ou=people,dc=example,dc=com',
+        'LDAP_BIND_DN': 'cn=webssh,ou=services,dc=example,dc=com',
+        'LDAP_BIND_PASSWORD_FILE': '/run/webssh-auth/ldap_bind_password',
+        'LDAP_CA_FILE': '/run/webssh-auth/ldap_ca.pem',
+        'LDAP_USER_FILTER': '(&(objectClass=person)(uid={username}))',
+        'LDAP_UNIQUE_ID_ATTRIBUTE': 'entryUUID',
+    }
+    settings[missing_name] = None
+
+    result = _load_config(_production_env(**settings))
+
+    assert result.returncode != 0
+    assert missing_name in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    'ldap_url',
+    (
+        'http://directory.example.com',
+        'ldap://user:secret@directory.example.com',
+        'ldaps://directory.example.com/dc=example,dc=com',
+        'ldaps://directory.example.com?base',
+    ),
+)
+def test_enabled_ldap_rejects_unsafe_or_ambiguous_url(ldap_url):
+    result = _load_config(_production_env(
+        LDAP_ENABLED='true',
+        LDAP_URL=ldap_url,
+        LDAP_BASE_DN='ou=people,dc=example,dc=com',
+        LDAP_BIND_DN='cn=webssh,ou=services,dc=example,dc=com',
+        LDAP_BIND_PASSWORD_FILE='/run/webssh-auth/ldap_bind_password',
+        LDAP_CA_FILE='/run/webssh-auth/ldap_ca.pem',
+        LDAP_USER_FILTER='(&(objectClass=person)(uid={username}))',
+        LDAP_UNIQUE_ID_ATTRIBUTE='entryUUID',
+    ))
+
+    assert result.returncode != 0
+    assert 'LDAP_URL' in result.stdout + result.stderr
+
+
+def test_enabled_ldap_accepts_starttls_with_bounded_timeouts():
+    result = _load_config(
+        _production_env(
+            LDAP_ENABLED='true',
+            LDAP_URL='ldap://directory.example.com:389',
+            LDAP_BASE_DN='ou=people,dc=example,dc=com',
+            LDAP_BIND_DN='cn=webssh,ou=services,dc=example,dc=com',
+            LDAP_BIND_PASSWORD_FILE='/run/webssh-auth/ldap_bind_password',
+            LDAP_CA_FILE='/run/webssh-auth/ldap_ca.pem',
+            LDAP_USER_FILTER='(&(objectClass=person)(uid={username}))',
+            LDAP_UNIQUE_ID_ATTRIBUTE='entryUUID',
+            LDAP_CONNECT_TIMEOUT='4',
+            LDAP_OPERATION_TIMEOUT='6',
+        ),
+        (
+            'import config; '
+            'print(config.LDAP_CONNECT_TIMEOUT, config.LDAP_OPERATION_TIMEOUT)'
+        ),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == '4 6'
+
+
+@pytest.mark.parametrize(
+    ('setting_name', 'setting_value'),
+    (
+        ('LDAP_PROVIDER_ID', '../other-directory'),
+        ('LDAP_USER_FILTER', '(uid={username})(mail={mail})'),
+        ('LDAP_UNIQUE_ID_ATTRIBUTE', 'objectGUID)(uid=*'),
+    ),
+)
+def test_enabled_ldap_rejects_injectable_identifiers_and_templates(
+    setting_name,
+    setting_value,
+):
+    settings = {
+        'LDAP_ENABLED': 'true',
+        'LDAP_PROVIDER_ID': 'primary',
+        'LDAP_URL': 'ldaps://directory.example.com:636',
+        'LDAP_BASE_DN': 'ou=people,dc=example,dc=com',
+        'LDAP_BIND_DN': 'cn=webssh,ou=services,dc=example,dc=com',
+        'LDAP_BIND_PASSWORD_FILE': '/run/webssh-auth/ldap_bind_password',
+        'LDAP_CA_FILE': '/run/webssh-auth/ldap_ca.pem',
+        'LDAP_USER_FILTER': '(&(objectClass=person)(uid={username}))',
+        'LDAP_UNIQUE_ID_ATTRIBUTE': 'entryUUID',
+    }
+    settings[setting_name] = setting_value
+
+    result = _load_config(_production_env(**settings))
+
+    assert result.returncode != 0
+    assert setting_name in result.stdout + result.stderr
 
 
 def test_recovery_json_limit_cannot_exceed_hard_security_ceiling():
@@ -213,6 +344,87 @@ def test_homelab_compose_exposes_major_operator_choices():
     assert {
         name for name in expected_names if name not in compose
     } == set()
+
+
+def test_default_compose_has_no_ldap_secret_infrastructure():
+    compose = Path('docker-compose.yml').read_text(encoding='utf-8')
+    dockerfile = Path('Dockerfile').read_text(encoding='utf-8')
+
+    assert 'LDAP_ENABLED' not in compose
+    assert 'webssh_auth_secrets' not in compose
+    assert 'ldap-tools:' not in compose
+    assert 'VOLUME /run/webssh-auth' not in dockerfile
+
+
+def test_ldap_compose_overlay_supplies_complete_secret_infrastructure():
+    overlay = Path('docker-compose.ldap.yml').read_text(encoding='utf-8')
+
+    for name in (
+        'LDAP_ENABLED',
+        'LDAP_PROVIDER_ID',
+        'LDAP_URL',
+        'LDAP_BASE_DN',
+        'LDAP_BIND_DN',
+        'LDAP_USER_FILTER',
+        'LDAP_UNIQUE_ID_ATTRIBUTE',
+    ):
+        assert name in overlay
+    assert 'LDAP_ENABLED: "true"' in overlay
+    assert 'webssh_auth_secrets:/run/webssh-auth:ro' in overlay
+    assert 'ldap-tools:' in overlay
+    assert 'profiles: ["ldap-tools"]' in overlay
+    assert 'python", "/app/ldap_secret_cli.py"' in overlay
+
+
+def test_ldap_documentation_selects_overlay_for_every_helper_command():
+    documentation = Path('docs/ldap-authentication.md').read_text(
+        encoding='utf-8',
+    )
+    helper_commands = [
+        line
+        for line in documentation.splitlines()
+        if 'ldap-tools run' in line
+    ]
+
+    assert helper_commands
+    assert all(
+        '-f docker-compose.yml -f docker-compose.ldap.yml' in command
+        for command in helper_commands
+    )
+    assert (
+        '-f docker-compose.yml -f docker-compose.ldap.yml '
+        '-f docker-compose.production.yml up -d'
+    ) in documentation
+
+
+def test_readme_documents_complete_ldap_compose_quickstart():
+    readme = Path('README.md').read_text(encoding='utf-8')
+
+    assert '#### Enable LDAP or LDAPS with Docker Compose' in readme
+    assert 'ldap://ldap.example.com:389' in readme
+    assert 'mandatory StartTLS' in readme
+    assert 'ldaps://ldap.example.com:636' in readme
+    assert (
+        '-f docker-compose.yml -f docker-compose.ldap.yml '
+        '--profile ldap-tools run --rm ldap-tools set-password'
+    ) in readme
+    assert (
+        '-f docker-compose.yml -f docker-compose.ldap.yml up -d'
+    ) in readme
+    assert (
+        '-f docker-compose.yml -f docker-compose.ldap.yml '
+        '-f docker-compose.production.yml up -d'
+    ) in readme
+    assert 'docker compose -f docker-compose.yml up -d --force-recreate' in readme
+
+
+def test_disposable_ldap_lab_binds_published_test_service_to_loopback():
+    compose = Path('tests/integration/ldap/docker-compose.yml').read_text(
+        encoding='utf-8',
+    )
+
+    assert '127.0.0.1:5050:5000' in compose
+    assert '- "5050:5000"' not in compose
 
 
 @pytest.mark.parametrize(
