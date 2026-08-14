@@ -8,6 +8,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 PAGES_WORKFLOW = ROOT / ".github" / "workflows" / "graph-pages.yml"
+GRAPHIFY_IGNORE = ROOT / ".graphifyignore"
 LANDING_PAGE = ROOT / "site" / "index.html"
 SESSION_WORKSPACE_IMAGE = ROOT / "assets" / "session-workspace.png"
 SESSION_DIAGNOSTICS_IMAGE = ROOT / "assets" / "session-diagnostics.png"
@@ -33,6 +34,18 @@ def test_pages_workflow_publishes_product_root_and_code_graph_subpath():
     assert "cp -R site/. _site/" in workflow
     assert "mkdir -p _site/code-graph" in workflow
     assert "cp graphify-out/graph.html _site/code-graph/index.html" in workflow
+
+
+def test_code_graph_excludes_vendored_runtime_dependencies():
+    """The public code graph stays focused on first-party project code."""
+    patterns = {
+        line.strip()
+        for line in GRAPHIFY_IGNORE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert "/static/vendor/" in patterns
+    assert "/site/vendor/" in patterns
 
 
 def test_readme_code_map_badge_targets_graph_subpath():
