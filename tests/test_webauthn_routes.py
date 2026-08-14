@@ -347,7 +347,7 @@ def test_authentication_resolves_account_from_discoverable_credential(
     assert verified.status_code == 200
     assert verified.get_json() == {"ok": True}
     with client.session_transaction() as browser_session:
-        assert browser_session["_user_id"] == str(user_id)
+        assert browser_session["_user_id"] == f"{user_id}:0"
     with app.app_context():
         row = WebAuthnCredential.query.one()
         assert row.sign_count == 5

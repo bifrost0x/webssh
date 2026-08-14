@@ -1,0 +1,44 @@
+# Optional LDAP / Active Directory overlay for WebSSH.
+#
+# 1. Fill every empty directory setting below.
+# 2. Populate the secret volume with the isolated ldap-tools helper.
+# 3. Start WebSSH with both Compose files as documented in
+#    docs/ldap-authentication.md.
+services:
+  webssh:
+    environment:
+      LDAP_ENABLED: "true"
+      LDAP_PROVIDER_ID: default
+      LDAP_URL: ""
+      LDAP_BASE_DN: ""
+      LDAP_BIND_DN: ""
+      LDAP_USER_FILTER: ""
+      LDAP_UNIQUE_ID_ATTRIBUTE: ""
+      # Safe bounded defaults are built in. Uncomment only to tune them.
+      # LDAP_CONNECT_TIMEOUT: "5"
+      # LDAP_OPERATION_TIMEOUT: "5"
+      # LDAP_SESSION_REVALIDATION_SECONDS: "300"
+      # LDAP_LOGIN_RATE_LIMIT: 5 per minute
+    volumes:
+      - webssh_auth_secrets:/run/webssh-auth:ro
+
+  # Runs only when explicitly invoked. It uses the normal WebSSH image, has no
+  # network, and is the sole Compose service with write access to LDAP secrets.
+  ldap-tools:
+    image: ghcr.io/bifrost0x/webssh:latest
+    profiles: ["ldap-tools"]
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ["python", "/app/deployment/ldap_secret_cli.py"]
+    command: ["status"]
+    volumes:
+      - webssh_auth_secrets:/run/webssh-auth
+
+volumes:
+  webssh_auth_secrets:
+    driver: local

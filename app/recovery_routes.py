@@ -23,6 +23,8 @@ def _require_enabled():
 
 
 def _password_matches(user, password):
+    if user.is_ldap_managed:
+        return False
     try:
         return user.check_password(password)
     except (TypeError, ValueError):
@@ -90,7 +92,15 @@ def recovery_login():
         return _request_body_too_large()
     username = str(data.get("username") or "").strip()
     user = User.query.filter_by(username=username).first()
-    active_user = user if user is not None and not user.is_locked else None
+    active_user = (
+        user
+        if (
+            user is not None
+            and not user.is_locked
+            and not user.is_ldap_managed
+        )
+        else None
+    )
     code_valid = consume_code(
         active_user.id if active_user is not None else None,
         data.get("code", ""),
@@ -136,6 +146,10 @@ def admin_recovery(user_id):
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404
+    if target.is_ldap_managed:
+        return jsonify({
+            "error": "Recovery codes are unavailable for LDAP accounts"
+        }), 400
     if data.get("confirm_username") != target.username:
         return jsonify({"error": "Target confirmation does not match"}), 400
     codes = generate_codes(target.id)

@@ -171,6 +171,48 @@ body::after {
     font-weight: 500;
 }
 
+.login-mode-heading {
+    margin: 4px 0 28px;
+    text-align: center;
+}
+
+.login-mode-heading h2 {
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-size: 20px;
+}
+
+.login-mode-heading p {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.login-mode-back {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    margin: -8px 0 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-primary) 45%, transparent);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    transition: all 0.2s ease;
+}
+
+.login-mode-back:hover,
+.login-mode-back:focus-visible {
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+    color: var(--accent-primary);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-primary-glow);
+}
+
 .alert {
     padding: 14px 18px;
     border-radius: 8px;

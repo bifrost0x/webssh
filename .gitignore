@@ -71,6 +71,8 @@ plans/
 
 # Knowledge graph
 graphify-out/
+.test-tmp/
+.e2e-tmp/
 AGENTS.md
 .codex/hooks.json
 

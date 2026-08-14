@@ -58,10 +58,50 @@ def test_login_shows_only_enabled_external_authentication(
 
     assert b'id="passkeyLoginBtn"' not in disabled.data
     assert b'id="oidcLoginBtn"' not in disabled.data
+    assert b'id="ldapLoginBtn"' not in disabled.data
     assert b'id="recoveryLoginBtn"' in disabled.data
     assert b'id="recoveryLoginPanel"' in disabled.data
     assert b'id="passkeyLoginBtn"' in enabled.data
     assert b'id="oidcLoginBtn"' in enabled.data
+
+
+def test_ldap_managed_security_center_hides_local_authentication_controls(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app import ldap_session
+    from app.models import LDAPIdentity, User, db
+
+    _create_user(app, "ldap_security_user")
+    monkeypatch.setattr(config, "LDAP_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: True)
+    with app.app_context():
+        user = User.query.filter_by(username="ldap_security_user").one()
+        db.session.add(LDAPIdentity(
+            user_id=user.id,
+            provider="default",
+            subject="stable-security-id",
+            directory_username="ldap_security_user",
+            distinguished_name="uid=ldap_security_user,dc=example,dc=com",
+        ))
+        db.session.commit()
+        user_id = user.id
+    with client.session_transaction() as browser_session:
+        browser_session["_user_id"] = str(user_id)
+        browser_session["_fresh"] = True
+        browser_session["_ldap_verified_at"] = 2**31
+
+    response = client.get("/security")
+
+    assert response.status_code == 200
+    assert b'id="securityChangePasswordBtn"' not in response.data
+    assert b'id="passkeyAddBtn"' not in response.data
+    assert b'id="passkeyUpgradeBtn"' not in response.data
+    assert b'id="recoveryGenerateBtn"' not in response.data
+    assert b'id="ldapManagedNotice"' in response.data
 
 
 def test_admin_page_exposes_audit_and_global_host_key_controls(app, client):

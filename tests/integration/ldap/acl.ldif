@@ -1,0 +1,1 @@
+olcAccess: to dn.subtree="ou=people,dc=example,dc=test" attrs=entry,children,objectClass,uid,entryUUID by dn.exact="cn=webssh,ou=services,dc=example,dc=test" read by * break

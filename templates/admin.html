@@ -7,6 +7,7 @@
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="current-user" content="{{ username }}">
     <meta name="oidc-enabled" content="{{ 'true' if oidc_enabled else 'false' }}">
+    <meta name="ldap-enabled" content="{{ 'true' if ldap_enabled else 'false' }}">
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
     <title>Admin · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
@@ -93,6 +94,16 @@
 
         {% endif %}
         <section class="admin-panel hidden" id="tab-settings">
+            {% if ldap_enabled %}
+            <div class="admin-setting-row" id="ldapStatusPanel">
+                <h2>LDAP directory</h2>
+                <p class="admin-muted">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
+                <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
+                    <button class="btn btn-secondary" id="ldapStatusCheck">Check connection</button>
+                    <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite">Not checked</span>
+                </div>
+            </div>
+            {% endif %}
             <div class="admin-setting-row">
                 <label class="admin-checkbox">
                     <input type="checkbox" id="settingRegistration">
@@ -198,7 +209,7 @@
         </div>
     </div>
 
-    {% if recovery_codes_enabled or oidc_enabled %}
+    {% if recovery_codes_enabled or oidc_enabled or ldap_enabled %}
     <div class="modal modal-small" id="securityActionModal" role="dialog" aria-modal="true" aria-labelledby="securityActionTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
@@ -222,6 +233,15 @@
                 <div class="form-group hidden" id="securityActionSubjectGroup">
                     <label for="securityActionSubject" data-i18n="admin.stableOidcSubject">Stable OIDC subject</label>
                     <input type="text" id="securityActionSubject" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group hidden" id="securityActionDirectoryUsernameGroup">
+                    <label for="securityActionDirectoryUsername">Directory username</label>
+                    <input type="text" id="securityActionDirectoryUsername" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group hidden" id="securityActionNewPasswordGroup">
+                    <label for="securityActionNewPassword">New local password after unlinking</label>
+                    <input type="password" id="securityActionNewPassword" class="form-control" autocomplete="new-password">
+                    <p class="admin-muted">Unlinking restores local authentication and therefore requires a fresh password.</p>
                 </div>
                 <button class="btn btn-primary" id="submitSecurityAction" data-i18n="admin.continue">Continue</button>
                 <div class="form-group hidden" id="securityActionResultGroup" style="margin-top:16px;">

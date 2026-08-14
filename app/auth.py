@@ -93,8 +93,25 @@ def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
 @login_manager.user_loader
 def load_user(user_id):
     """Load user by ID for Flask-Login."""
-    user = db.session.get(User, int(user_id))
-    if user is None or user.is_locked:
+    raw_identifier = str(user_id)
+    if ':' in raw_identifier:
+        raw_user_id, raw_generation = raw_identifier.split(':', 1)
+    else:
+        raw_user_id, raw_generation = raw_identifier, '0'
+    try:
+        parsed_user_id = int(raw_user_id)
+        parsed_generation = int(raw_generation)
+    except (TypeError, ValueError):
+        return None
+    if parsed_user_id <= 0 or parsed_generation < 0:
+        return None
+
+    user = db.session.get(User, parsed_user_id)
+    if user is None or user.is_locked or (
+        user.is_admin and user.is_ldap_managed
+    ):
+        return None
+    if int(user.auth_generation or 0) != parsed_generation:
         return None
     return user
 
@@ -177,13 +194,22 @@ def is_bootstrap_registration_available():
 def ensure_initial_admin():
     """Return an existing admin or promote the oldest user if none exists."""
     with _registration_lock:
-        existing_admin = User.query.filter_by(
-            is_admin=True
-        ).order_by(User.id).first()
+        existing_admin = (
+            User.query
+            .filter_by(is_admin=True)
+            .filter(~User.ldap_identity.has())
+            .order_by(User.id)
+            .first()
+        )
         if existing_admin is not None:
             return existing_admin
 
-        oldest_user = User.query.order_by(User.id).first()
+        oldest_user = (
+            User.query
+            .filter(~User.ldap_identity.has())
+            .order_by(User.id)
+            .first()
+        )
         if oldest_user is None:
             return None
 
@@ -213,7 +239,13 @@ def authenticate_user(username, password):
         # as a wrong password, preventing username enumeration by timing.
         bcrypt.checkpw(password.encode('utf-8'), _DUMMY_PASSWORD_HASH)
         return None, "Invalid username or password"
-    if user.check_password(password):
+    password_matches = user.check_password(password)
+    # A directory-managed identity must never silently fall back to the local
+    # password database. Keep this boundary in the shared authenticator so it
+    # also protects reauthentication and future password-based entry points.
+    if user.ldap_identity is not None:
+        return None, "Invalid username or password"
+    if password_matches:
         if getattr(user, 'is_locked', False):
             return None, "This account is locked. Please contact an administrator."
         user.last_login = datetime.now(timezone.utc)
@@ -233,7 +265,7 @@ def sync_admin_users():
     changed = False
     for name in getattr(config, 'ADMIN_USERS', []):
         u = User.query.filter_by(username=name).first()
-        if u and not u.is_admin:
+        if u and not u.is_admin and not u.is_ldap_managed:
             u.is_admin = True
             changed = True
             log_info("Admin granted via ADMIN_USERS", user=name)

@@ -137,6 +137,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Host Key Auditing** - Persistent `known_hosts` policy with change detection
 - **Host Trust Center** - Users can inspect and revoke their SSH trust records; administrators manage the global trust store
 - **Passkeys** - Optional username-less WebAuthn sign-in with discoverable credentials and a safe legacy-passkey replacement flow
+- **LDAP / Active Directory** - Optional fail-closed LDAP or LDAPS sign-in with explicit stable-identity linking, strict TLS verification, and an opt-in Compose overlay
 - **Recovery Codes** - One-time account recovery codes stored only as hashes
 - **OpenID Connect** - Optional authorization-code flow with PKCE and explicit administrator linking by stable issuer and subject
 - **Audit Logging & Export** - Structured JSON logs for auth, SSH, and file events, plus bounded administrator export and configurable retention
@@ -495,6 +496,19 @@ docker build -t webssh:local .
 | `OIDC_ALLOWED_SUBJECTS` | No | - | Optional comma-separated subject allowlist |
 | `OIDC_ALLOWED_DOMAINS` | No | - | Optional comma-separated email-domain policy; identity linking still uses issuer and subject only |
 | `OIDC_LOGIN_RATE_LIMIT` | No | `10 per minute` | Per-IP rate limit for starting OIDC login |
+| `LDAP_ENABLED` | No | `false` | Enable optional LDAP/LDAPS authentication; the provided `docker-compose.ldap.yml` overlay sets this to `true` |
+| `LDAP_PROVIDER_ID` | With LDAP | `default` | Stable local identifier for this directory; do not change it after linking users |
+| `LDAP_URL` | With LDAP | - | Exact `ldap://host:port` (mandatory StartTLS) or `ldaps://host:port` URL |
+| `LDAP_BASE_DN` | With LDAP | - | Subtree base for directory user searches |
+| `LDAP_BIND_DN` | With LDAP | - | DN of the least-privilege read-only search account |
+| `LDAP_BIND_PASSWORD_FILE` | With LDAP | `/run/webssh-auth/ldap_bind_password` | Private bind-password file populated through the bundled helper |
+| `LDAP_CA_FILE` | With LDAP | `/run/webssh-auth/ldap_ca.pem` | PEM CA bundle used for mandatory server-certificate verification |
+| `LDAP_USER_FILTER` | With LDAP | - | LDAP filter containing exactly one `{username}` placeholder |
+| `LDAP_UNIQUE_ID_ATTRIBUTE` | With LDAP | - | Stable identity attribute, normally `entryUUID` or `objectGUID` |
+| `LDAP_CONNECT_TIMEOUT` | No | `5` | Bounded LDAP connect/bind timeout in seconds (1-15) |
+| `LDAP_OPERATION_TIMEOUT` | No | `5` | Bounded LDAP operation timeout in seconds (1-30) |
+| `LDAP_SESSION_REVALIDATION_SECONDS` | No | `300` | Fail-closed revalidation interval for active LDAP sessions (60-3600) |
+| `LDAP_LOGIN_RATE_LIMIT` | No | `5 per minute` | Per-IP LDAP login and diagnostic limit |
 | `ADMIN_USERS` | No | - | Compatibility option: comma-separated existing usernames granted admin on startup. Prefer `create-admin` for explicit bootstrap |
 | `ADMIN_PANEL_ENABLED` | No | `True` | Expose the role-gated Admin Panel and its API routes |
 | `SESSION_TIMEOUT` | No | `1800` | Idle SSH session timeout in seconds (30 minutes) |
@@ -530,6 +544,83 @@ only as hashes. OIDC never auto-links by email: an administrator must link the
 provider's stable `(issuer, subject)` identity to an existing local account.
 When OIDC runs in Docker, mount the client-secret file read-only and point
 `OIDC_CLIENT_SECRET_FILE` at its path inside the container.
+
+#### Enable LDAP or LDAPS with Docker Compose
+
+LDAP is disabled by default. A normal `docker compose up -d` creates no LDAP
+volume, mount, or helper service. Enabling it does not require a `.env` file or
+a hand-written secret mount: use the supplied `docker-compose.ldap.yml` overlay
+and keep it on the same WebSSH release or commit as `docker-compose.yml`.
+
+1. Edit `docker-compose.ldap.yml` and fill in the required values under
+   `services.webssh.environment`. For example:
+
+   ```yaml
+   LDAP_ENABLED: "true"
+   LDAP_PROVIDER_ID: primary-directory
+   LDAP_URL: ldaps://ldap.example.com:636
+   LDAP_BASE_DN: ou=people,dc=example,dc=com
+   LDAP_BIND_DN: cn=svc-webssh,ou=services,dc=example,dc=com
+   LDAP_USER_FILTER: "(&(objectClass=inetOrgPerson)(uid={username}))"
+   LDAP_UNIQUE_ID_ATTRIBUTE: entryUUID
+   ```
+
+   For Active Directory, the usual filter attribute is `sAMAccountName` and
+   the stable ID is `objectGUID`. For OpenLDAP, they are commonly `uid` and
+   `entryUUID`. Use a dedicated, least-privilege, read-only bind account. Keep
+   `LDAP_PROVIDER_ID` stable after users have been linked.
+
+2. Choose one encrypted transport. `ldap://ldap.example.com:389` means
+   mandatory StartTLS before any bind; `ldaps://ldap.example.com:636` starts TLS
+   immediately. WebSSH rejects plaintext LDAP and invalid certificates. The
+   DNS name in `LDAP_URL` must match the server certificate.
+
+3. Store the bind password and the issuing CA certificate in WebSSH's managed
+   secret volume. The password is prompted without being placed in Compose or
+   shell history:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm ldap-tools set-password
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm -T ldap-tools install-ca --stdin < company-ca.pem
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm ldap-tools status
+   ```
+
+   PowerShell users can install the same PEM-encoded CA with:
+
+   ```powershell
+   Get-Content -Raw .\company-ca.pem | docker compose -f docker-compose.yml -f docker-compose.ldap.yml --profile ldap-tools run --rm -T ldap-tools install-ca --stdin
+   ```
+
+4. Start WebSSH with the LDAP overlay:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml up -d
+   ```
+
+   For the production reverse-proxy profile, apply the production overlay last:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.ldap.yml -f docker-compose.production.yml up -d
+   ```
+
+5. Sign in with the existing local break-glass administrator. In **Admin**,
+   create or select a non-admin WebSSH account and use **Link LDAP** to attach
+   the directory's stable identity. WebSSH deliberately does not auto-provision
+   accounts and never grants administrator rights through LDAP. Test **Sign in
+   with LDAP** before relying on it.
+
+To disable LDAP again, recreate WebSSH from the standard Compose file only:
+
+```bash
+docker compose -f docker-compose.yml up -d --force-recreate
+```
+
+The LDAP UI and routes then disappear. Existing users and links remain stored,
+but a linked account does not regain an old local password as a fallback. Keep
+the local break-glass administrator and its recovery material available. See
+[Optional LDAP and Active Directory authentication](docs/ldap-authentication.md)
+for complete Active Directory/OpenLDAP filters, certificate requirements,
+troubleshooting, rollback details, and the disposable local test laboratory.
 
 Passkey sign-in uses username-less discoverable credentials so the
 authentication-options endpoint does not reveal whether an account exists.
@@ -1186,6 +1277,7 @@ webssh/
 ├── start.py                  # Native and Gunicorn entry point
 ├── Dockerfile                # Non-root production image
 ├── docker-compose.yml        # Zero-config homelab deployment
+├── docker-compose.ldap.yml   # Optional LDAP/AD overlay and secret helper
 └── docker-compose.production.yml # Strict reverse-proxy overlay
 ```
 

@@ -1,6 +1,74 @@
 (function() {
     'use strict';
 
+    function createLoginModeController(elements) {
+        const {
+            defaultPanel,
+            ldapPanel,
+            trigger,
+            localPassword,
+            ldapPassword,
+            ldapUsername,
+            localUsername
+        } = elements;
+
+        function applyMode(mode, { clearPassword = true, focus = true } = {}) {
+            const ldapActive = mode === 'ldap';
+            defaultPanel.classList.toggle('hidden', ldapActive);
+            ldapPanel.classList.toggle('hidden', !ldapActive);
+            trigger.setAttribute('aria-expanded', String(ldapActive));
+
+            if (clearPassword) {
+                const passwordToClear = ldapActive ? localPassword : ldapPassword;
+                if (passwordToClear) {
+                    passwordToClear.value = '';
+                }
+            }
+            if (focus) {
+                const fieldToFocus = ldapActive ? ldapUsername : localUsername;
+                fieldToFocus?.focus();
+            }
+        }
+
+        return {
+            showLdap() {
+                applyMode('ldap');
+            },
+            showDefault() {
+                applyMode('default');
+            },
+            sync() {
+                const initialMode = ldapPanel.classList.contains('hidden')
+                    ? 'default'
+                    : 'ldap';
+                applyMode(initialMode, { clearPassword: false });
+            }
+        };
+    }
+
+    function setupLoginModes() {
+        const defaultPanel = document.getElementById('defaultLoginMode');
+        const ldapPanel = document.getElementById('ldapLoginMode');
+        const trigger = document.getElementById('ldapLoginBtn');
+        const backButton = document.getElementById('ldapBackBtn');
+        if (!defaultPanel || !ldapPanel || !trigger || !backButton) {
+            return;
+        }
+
+        const controller = createLoginModeController({
+            defaultPanel,
+            ldapPanel,
+            trigger,
+            localPassword: document.getElementById('password'),
+            ldapPassword: document.getElementById('ldapPassword'),
+            ldapUsername: document.getElementById('ldapUsername'),
+            localUsername: document.getElementById('username')
+        });
+        trigger.addEventListener('click', controller.showLdap);
+        backButton.addEventListener('click', controller.showDefault);
+        controller.sync();
+    }
+
     function setFieldState(input, hintEl, message, isValid) {
         if (!input || !hintEl) {
             return;
@@ -119,9 +187,14 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        setupLoginModes();
         setupPasswordToggles();
         setupLoginValidation();
         setupRegisterValidation();
         setupChangePasswordValidation();
     });
+
+    if (typeof module === 'object' && module.exports) {
+        module.exports = { createLoginModeController };
+    }
 })();

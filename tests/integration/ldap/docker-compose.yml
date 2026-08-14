@@ -1,0 +1,92 @@
+# Disposable LDAP integration laboratory. Test credentials only.
+services:
+  ldap-certs-init:
+    image: webssh-ldap-test-webssh:local
+    user: root
+    entrypoint: ["python", "/generate_certs.py"]
+    volumes:
+      - ./generate_certs.py:/generate_certs.py:ro
+      - ldap_test_certs:/certs
+
+  openldap:
+    image: docker.io/osixia/openldap:2.6.10-alpha@sha256:80a577d7d4471c4db662195111e5709665b6fcbd6679094d05402b8c620e2607
+    hostname: ldap.example.test
+    environment:
+      OPENLDAP_BOOTSTRAP_ORGANIZATION: WebSSH Test
+      OPENLDAP_BOOTSTRAP_SUFFIX: dc=example,dc=test
+      OPENLDAP_BOOTSTRAP_DATA_ROOT_DN: cn=admin,dc=example,dc=test
+      OPENLDAP_BOOTSTRAP_DATA_ROOT_PASSWORD_HASHED: "{SSHA}gPHcwIz/ftw8IkZF7oGYHQREQ19stJJa"
+      OPENLDAP_BOOTSTRAP_CONFIG_ROOT_PASSWORD_HASHED: "{SSHA}UsOVszqq9+zx7NTrGJRS0tw9lIHRoaHw"
+      OPENLDAP_BOOTSTRAP_TLS: "true"
+      OPENLDAP_BOOTSTRAP_TLS_VERIFY_CLIENT: never
+      OPENLDAP_BOOTSTRAP_TLS_REQUIRED: "false"
+    depends_on:
+      ldap-certs-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./acl.ldif:/container/services/openldap-bootstrap/assets/ldif/config/custom/68-webssh-acl.ldif:ro
+      - ./bootstrap.ldif:/container/services/openldap-bootstrap/assets/ldif/data/custom/50-webssh.ldif:ro
+      - ldap_test_certs:/container/services/openldap/assets/certs
+    networks:
+      default:
+        aliases:
+          - ldap.example.test
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1:3890 -D cn=admin,dc=example,dc=test -w test-admin-password -b dc=example,dc=test -s base dn >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  ldap-secrets-init:
+    image: docker.io/osixia/openldap:2.6.10-alpha@sha256:80a577d7d4471c4db662195111e5709665b6fcbd6679094d05402b8c620e2607
+    user: root
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        test -s /ldap-certs/ca.crt
+        install -d -m 0700 -o 1000 -g 1000 /webssh-auth
+        install -m 0600 -o 1000 -g 1000 /ldap-certs/ca.crt /webssh-auth/ldap_ca.pem
+        printf %s test-bind-password > /webssh-auth/ldap_bind_password
+        chown 1000:1000 /webssh-auth/ldap_bind_password
+        chmod 0600 /webssh-auth/ldap_bind_password
+    depends_on:
+      openldap:
+        condition: service_healthy
+    volumes:
+      - ldap_test_certs:/ldap-certs:ro
+      - ldap_test_auth:/webssh-auth
+
+  webssh:
+    image: webssh-ldap-test-webssh:local
+    build:
+      context: ../../..
+    ports:
+      - "127.0.0.1:5050:5000"
+    environment:
+      SECRET_KEY: ldap-integration-test-secret-not-for-production
+      DEBUG: "True"
+      DEPLOYMENT_PROFILE: homelab
+      CORS_ORIGINS: http://localhost:5050
+      SESSION_COOKIE_SECURE: "false"
+      TRUSTED_PROXIES: "0"
+      BOOTSTRAP_REGISTRATION_ENABLED: "true"
+      LDAP_ENABLED: "true"
+      LDAP_PROVIDER_ID: test-openldap
+      LDAP_URL: ldap://ldap.example.test:3890
+      LDAP_BASE_DN: ou=people,dc=example,dc=test
+      LDAP_BIND_DN: cn=webssh,ou=services,dc=example,dc=test
+      LDAP_USER_FILTER: (&(objectClass=inetOrgPerson)(uid={username}))
+      LDAP_UNIQUE_ID_ATTRIBUTE: entryUUID
+      LDAP_BIND_PASSWORD_FILE: /run/webssh-auth/ldap_bind_password
+      LDAP_CA_FILE: /run/webssh-auth/ldap_ca.pem
+    depends_on:
+      ldap-secrets-init:
+        condition: service_completed_successfully
+    volumes:
+      - ldap_test_data:/app/data
+      - ldap_test_auth:/run/webssh-auth:ro
+
+volumes:
+  ldap_test_certs:
+  ldap_test_auth:
+  ldap_test_data:

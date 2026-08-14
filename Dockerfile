@@ -1,3 +1,19 @@
+FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc AS ldap-builder
+
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        build-essential \
+        libldap-dev \
+        libsasl2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /build/
+RUN pip install --no-cache-dir --require-hashes \
+    --prefix=/install -r requirements.txt
+
+
 FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc
 
 ARG VCS_REF=unknown
@@ -21,7 +37,13 @@ WORKDIR /app
 RUN adduser --disabled-password --gecos "" appuser
 
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt \
+COPY --from=ldap-builder /install /usr/local
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        ca-certificates \
+        libldap2 \
+        libsasl2-2 \
+    && rm -rf /var/lib/apt/lists/* \
     && python -m pip check \
     && python -m pip uninstall --yes pip \
     && rm -rf /usr/local/lib/python*/ensurepip
@@ -29,11 +51,13 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY . /app
 
 RUN chown -R appuser:appuser /app && \
-    mkdir -p /app/data/logs /app/data/keys && \
+    mkdir -p /app/data/logs /app/data/keys /run/webssh-auth && \
     chown -R appuser:appuser /app/data && \
+    chown appuser:appuser /run/webssh-auth && \
     chmod 700 /app/data && \
     chmod 700 /app/data/logs && \
-    chmod 700 /app/data/keys
+    chmod 700 /app/data/keys && \
+    chmod 700 /run/webssh-auth
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
