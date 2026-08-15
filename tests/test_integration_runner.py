@@ -1,4 +1,8 @@
 import inspect
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -95,12 +99,50 @@ def test_runner_targets_the_compose_ports_exposed_to_the_host(monkeypatch):
     assert run_integration_tests.main() == 0
 
     environment = calls[2][1]["env"]
+    assert environment["PARAMIKO5_DISPOSABLE_LAB"] == "1"
     assert environment["PARAMIKO5_TARGET_HOST"] == "127.0.0.1"
     assert environment["PARAMIKO5_TARGET_PORT"] == "2223"
     assert environment["PARAMIKO5_BASTION_HOST"] == "127.0.0.1"
     assert environment["PARAMIKO5_BASTION_PORT"] == "2222"
     assert environment["PARAMIKO5_CHANGED_HOST"] == "127.0.0.1"
     assert environment["PARAMIKO5_CHANGED_PORT"] == "2224"
+
+
+def test_direct_paramiko_integration_rejects_unmarked_targets():
+    environment = os.environ.copy()
+    environment.update({
+        "PARAMIKO5_INTEGRATION": "1",
+        "PARAMIKO5_TARGET_HOST": "ssh.production.example",
+        "PARAMIKO5_TARGET_PORT": "22",
+        "PARAMIKO5_BASTION_HOST": "bastion.production.example",
+        "PARAMIKO5_BASTION_PORT": "22",
+        "PARAMIKO5_CHANGED_HOST": "ssh.production.example",
+        "PARAMIKO5_CHANGED_PORT": "22",
+        "PARAMIKO5_PROXY_TARGET_HOST": "ssh.production.example",
+        "PARAMIKO5_PROXY_TARGET_PORT": "22",
+    })
+    environment.pop("PARAMIKO5_DISPOSABLE_LAB", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "tests/integration/test_paramiko5_openssh.py",
+            "-q",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Paramiko integration requires the disposable runner targets" in (
+        result.stdout + result.stderr
+    )
 
 
 def test_runner_targets_the_compose_service_from_inside_the_bastion(monkeypatch):

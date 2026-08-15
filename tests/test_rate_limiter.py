@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import types
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
@@ -76,6 +77,9 @@ class StatefulRedis:
 
     def zcard(self, key):
         return len(self.members.get(key, {}))
+
+    def delete(self, key):
+        return int(self.members.pop(key, None) is not None)
 
 
 class FlakyRedis:
@@ -193,6 +197,30 @@ def test_denied_requests_do_not_grow_redis_bucket():
     assert client.zcard('ratelimit:login:attacker') == 5
 
 
+def _exercise_real_redis_probe(client, key):
+    redis_key = f'ratelimit:{key}'
+    client.delete(redis_key)
+    try:
+        limiter = RedisRateLimiter(client)
+        allowed = sum(limiter.allow(key, 5, 60) for _ in range(1000))
+        return allowed, client.zcard(redis_key)
+    finally:
+        client.delete(redis_key)
+
+
+def test_real_redis_probe_cleans_only_its_namespaced_bucket():
+    client = StatefulRedis()
+    client.members['unrelated'] = {'keep': 1.0}
+
+    allowed, stored = _exercise_real_redis_probe(
+        client,
+        'login:integration:isolated',
+    )
+
+    assert (allowed, stored) == (5, 5)
+    assert client.members == {'unrelated': {'keep': 1.0}}
+
+
 def test_runtime_fallback_skips_redis_until_retry_window(monkeypatch):
     clock = {'now': 100.0}
     monkeypatch.setattr('app.rate_limiter.time.monotonic', lambda: clock['now'])
@@ -271,10 +299,8 @@ def test_real_redis_does_not_store_denied_requests():
     import redis
 
     client = redis.from_url(os.environ['TEST_REDIS_URL'])
-    client.flushdb()
-    limiter = RedisRateLimiter(client)
-
-    allowed = sum(limiter.allow('login:integration', 5, 60) for _ in range(1000))
+    key = f'login:integration:{uuid.uuid4().hex}'
+    allowed, stored = _exercise_real_redis_probe(client, key)
 
     assert allowed == 5
-    assert client.zcard('ratelimit:login:integration') == 5
+    assert stored == 5

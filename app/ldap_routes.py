@@ -3,6 +3,7 @@
 import logging
 import secrets
 import time
+import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
@@ -19,6 +20,7 @@ from .auth import (
     check_rate_limit,
     check_reauth_rate_limit,
     password_exceeds_bcrypt_limit,
+    user_creation_transaction,
 )
 from .decorators import admin_required
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
@@ -35,6 +37,7 @@ from .models import (
 ldap_blueprint = Blueprint('ldap', __name__)
 _MAX_LDAP_FORM_BYTES = 4096
 _MAX_LDAP_JSON_BYTES = 4096
+_MAX_AUTO_PROVISIONED_USERNAME_LENGTH = 80
 
 
 def _bounded_json():
@@ -84,14 +87,103 @@ def _rate_limited(endpoint):
     return False
 
 
+def _auto_provision_ldap_identity(username, resolved, *, presented_username=None):
+    """Create one non-admin LDAP account after its credentials are verified."""
+    presented_username = (
+        username if presented_username is None else presented_username
+    )
+    if (
+        not username
+        or len(username) > _MAX_AUTO_PROVISIONED_USERNAME_LENGTH
+        or any(
+            unicodedata.category(character).startswith('C')
+            for character in presented_username
+        )
+    ):
+        raise LDAPLookupRejected('Directory username cannot be provisioned safely')
+
+    with user_creation_transaction():
+        local_admin = (
+            User.query
+            .filter_by(is_admin=True, is_locked=False)
+            .filter(~User.ldap_identity.has())
+            .first()
+        )
+        if local_admin is None:
+            raise LDAPLookupRejected(
+                'A local break-glass administrator is required'
+            )
+
+        normalized_username = username.casefold()
+        existing_names = User.query.with_entities(User.username).all()
+        if any(
+            row.username.casefold() == normalized_username
+            for row in existing_names
+        ):
+            raise LDAPLookupRejected(
+                'Directory username conflicts with a local account'
+            )
+
+        user = User(username=username, is_admin=False, is_locked=False)
+        user.set_password(secrets.token_urlsafe(48))
+        mapping = LDAPIdentity(
+            user=user,
+            provider=resolved.provider,
+            subject=resolved.subject,
+            directory_username=username,
+            distinguished_name=resolved.distinguished_name,
+            last_verified_at=datetime.now(timezone.utc),
+        )
+        db.session.add_all((user, mapping))
+        try:
+            db.session.flush()
+            user.get_data_dir()
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            mapping = LDAPIdentity.query.filter_by(
+                provider=resolved.provider,
+                subject=resolved.subject,
+            ).first()
+            if (
+                mapping is None
+                or mapping.user.is_locked
+                or mapping.user.is_admin
+            ):
+                raise LDAPLookupRejected(
+                    'Directory identity could not be provisioned uniquely'
+                )
+            return mapping
+        except Exception as exc:
+            db.session.rollback()
+            log_security_event(
+                'LDAP_AUTO_PROVISION_STORAGE_FAILED',
+                level=logging.ERROR,
+                user=username,
+                provider=resolved.provider,
+                error=type(exc).__name__,
+            )
+            raise LDAPUnavailable(
+                'LDAP account provisioning storage is unavailable'
+            ) from exc
+
+    log_security_event(
+        'LDAP_USER_AUTO_PROVISIONED',
+        user=user.username,
+        provider=mapping.provider,
+    )
+    return mapping
+
+
 @ldap_blueprint.post('/login/ldap')
 def ldap_login():
     if request.content_length and request.content_length > _MAX_LDAP_FORM_BYTES:
-        return render_template('login.html'), 413
+        return render_template('login.html', auth_source='ldap'), 413
     if _rate_limited('ldap_login'):
-        return render_template('login.html'), 429
+        return render_template('login.html', auth_source='ldap'), 429
 
-    username = str(request.form.get('username') or '').strip()
+    presented_username = str(request.form.get('username') or '')
+    username = presented_username.strip()
     password = request.form.get('password') or ''
     client_ip = request.remote_addr or 'unknown'
     try:
@@ -102,16 +194,23 @@ def ldap_login():
             subject=resolved.subject,
         ).first()
         if (
-            mapping is None
-            or mapping.user.is_locked
-            or mapping.user.is_admin
+            mapping is not None
+            and (mapping.user.is_locked or mapping.user.is_admin)
         ):
+            raise LDAPLookupRejected('Identity is not linked to an active user')
+        if mapping is None and not config.LDAP_AUTO_PROVISION:
             raise LDAPLookupRejected('Identity is not linked to an active user')
         if not directory.verify_password(
             resolved.distinguished_name,
             password,
         ):
             raise LDAPLookupRejected('LDAP credentials are invalid')
+        if mapping is None:
+            mapping = _auto_provision_ldap_identity(
+                username,
+                resolved,
+                presented_username=presented_username,
+            )
     except LDAPLookupRejected:
         log_security_event(
             'LDAP_LOGIN_REJECTED',
@@ -123,6 +222,7 @@ def ldap_login():
         return render_template(
             'login.html',
             ldap_error='Invalid username or password',
+            auth_source='ldap',
         ), 401
     except LDAPUnavailable as exc:
         log_security_event(
@@ -135,6 +235,7 @@ def ldap_login():
         return render_template(
             'login.html',
             ldap_error='Directory sign-in is temporarily unavailable',
+            auth_source='ldap',
         ), 503
 
     user = mapping.user

@@ -153,6 +153,41 @@ def test_create_admin_rejects_password_file_for_existing_user(
     assert user.password_hash == original_hash
 
 
+def test_create_admin_rejects_promoting_ldap_managed_user(app):
+    from app.auth import register_user
+    from app.models import LDAPIdentity, db
+
+    with app.app_context():
+        admin, admin_error = register_user(
+            'localadmin',
+            'local-admin-password',
+        )
+        assert admin_error is None
+        assert admin.is_admin is True
+        user, error = register_user(
+            'directoryuser',
+            'existing-user-password',
+        )
+        assert error is None
+        db.session.add(LDAPIdentity(
+            user_id=user.id,
+            provider='default',
+            subject='stable-directory-user-id',
+            directory_username='directoryuser',
+            distinguished_name='uid=directoryuser,dc=example,dc=com',
+        ))
+        db.session.commit()
+
+    result = app.test_cli_runner().invoke(
+        args=['create-admin', '--username', 'directoryuser'],
+    )
+
+    assert result.exit_code != 0
+    assert 'LDAP-managed accounts cannot be administrators' in result.output
+    user = _admin(app, 'directoryuser')
+    assert user.is_admin is False
+
+
 def test_create_admin_reads_password_file_and_strips_one_newline(
     app,
     tmp_path,
