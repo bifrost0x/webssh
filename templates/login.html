@@ -42,15 +42,26 @@
                 {% endif %}
             {% endwith %}
 
-            <section id="defaultLoginMode" class="login-mode{% if ldap_error %} hidden{% endif %}">
-            <form method="POST" action="{{ url_for('login') }}">
+            {% set selected_auth_source = auth_source if auth_source in ('local', 'ldap') else ('ldap' if ldap_enabled else 'local') %}
+            <section id="passwordLoginMode" class="login-mode">
+            {% if ldap_enabled %}
+            <div class="form-group">
+                <label for="authenticationSource">Authentication Source</label>
+                <select id="authenticationSource" class="form-control" aria-controls="localLoginForm ldapLoginForm">
+                    <option value="local"{% if selected_auth_source == 'local' %} selected{% endif %}>Local account</option>
+                    <option value="ldap"{% if selected_auth_source == 'ldap' %} selected{% endif %}>{{ ldap_provider_id }}</option>
+                </select>
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('login') }}" id="localLoginForm" class="auth-source-form{% if selected_auth_source != 'local' %} hidden{% endif %}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="form-group">
                     <label for="username" data-i18n="auth.username">Username</label>
                     <div class="input-wrapper">
                         <span class="input-icon">👤</span>
                         <input type="text" id="username" name="username" class="form-control"
-                               data-i18n="auth.username" placeholder="Username" required autofocus>
+                               data-i18n="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} autofocus{% endif %}>
                     </div>
                     <div class="field-hint" id="loginUsernameHint"></div>
                 </div>
@@ -77,9 +88,26 @@
             </form>
 
             {% if ldap_enabled %}
-            <button type="button" class="btn-primary" id="ldapLoginBtn" aria-controls="ldapLoginMode" aria-expanded="false" style="margin-top:12px;">
-                Sign in with LDAP
-            </button>
+            <form method="POST" action="{{ url_for('ldap.ldap_login') }}" id="ldapLoginForm" class="auth-source-form{% if selected_auth_source != 'ldap' %} hidden{% endif %}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <label for="ldapUsername">Directory username</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">&#128100;</span>
+                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" required{% if selected_auth_source == 'ldap' %} autofocus{% endif %}>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="ldapPassword">Directory password</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">&#128274;</span>
+                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" required>
+                        <button type="button" class="password-toggle" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">&#128065;&#65039;</button>
+                    </div>
+                </div>
+                {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
+                <button type="submit" class="btn-primary">Sign in</button>
+            </form>
             {% endif %}
             {% if webauthn_enabled %}
             <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
@@ -117,41 +145,11 @@
                 {% endif %}
             </div>
             </section>
-
-            {% if ldap_enabled %}
-            <section id="ldapLoginMode" class="login-mode{% if not ldap_error %} hidden{% endif %}" aria-labelledby="ldapLoginTitle">
-                <button type="button" class="login-mode-back" id="ldapBackBtn" aria-label="Back to sign-in options" title="Back to sign-in options">&larr;</button>
-                <div class="login-mode-heading">
-                    <h2 id="ldapLoginTitle">LDAP sign in</h2>
-                    <p>Use your directory account credentials</p>
-                </div>
-                <form method="POST" action="{{ url_for('ldap.ldap_login') }}" id="ldapLoginForm">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="form-group">
-                        <label for="ldapUsername">Directory username</label>
-                        <div class="input-wrapper">
-                            <span class="input-icon">&#128100;</span>
-                            <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" required>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="ldapPassword">Directory password</label>
-                        <div class="input-wrapper">
-                            <span class="input-icon">&#128274;</span>
-                            <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" required>
-                            <button type="button" class="password-toggle" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">&#128065;&#65039;</button>
-                        </div>
-                    </div>
-                    {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
-                    <button type="submit" class="btn-primary">Sign in</button>
-                </form>
-            </section>
-            {% endif %}
         </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>
     <script>
         function toggleLangDropdown() {

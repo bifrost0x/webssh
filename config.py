@@ -86,6 +86,9 @@ OIDC_LOGIN_RATE_LIMIT = os.environ.get(
 # explicit feature flag is enabled; in particular, secret files are never read
 # while LDAP is disabled.
 LDAP_ENABLED = os.environ.get('LDAP_ENABLED', 'false').lower() == 'true'
+LDAP_AUTO_PROVISION = (
+    os.environ.get('LDAP_AUTO_PROVISION', 'false').lower() == 'true'
+)
 LDAP_PROVIDER_ID = os.environ.get('LDAP_PROVIDER_ID', 'default').strip()
 LDAP_URL = os.environ.get('LDAP_URL', '').strip()
 LDAP_BASE_DN = os.environ.get('LDAP_BASE_DN', '').strip()

@@ -1,8 +1,10 @@
 import bcrypt
 import config
+from contextlib import contextmanager
 from threading import Lock
 from flask_login import LoginManager
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import text
 from .models import db, User, SocketSession
 from .rate_limiter import create_rate_limiter
 
@@ -16,7 +18,20 @@ _DUMMY_PASSWORD_HASH = bcrypt.hashpw(b'account-enumeration-mitigation', bcrypt.g
 # Rate limiter instance — initialized in init_auth().
 # Falls back to in-memory automatically if Redis is unavailable.
 _rate_limiter = None
-_registration_lock = Lock()
+user_creation_lock = Lock()
+
+
+@contextmanager
+def user_creation_transaction():
+    """Serialize account-name checks and writes across SQLite connections."""
+    with user_creation_lock:
+        db.session.rollback()
+        db.session.execute(text('BEGIN IMMEDIATE'))
+        try:
+            yield
+        finally:
+            if db.session().in_transaction():
+                db.session.rollback()
 
 
 def _get_rate_limiter():
@@ -136,7 +151,9 @@ def validate_new_user(username, password):
     if not username.replace('_', '').isalnum():
         return "Username can only contain letters, numbers, and underscores"
 
-    if User.query.filter_by(username=username).first():
+    normalized_username = username.casefold()
+    existing_names = User.query.with_entities(User.username).all()
+    if any(row.username.casefold() == normalized_username for row in existing_names):
         return "Username already exists"
 
     if not password or len(password) < 8:
@@ -161,7 +178,7 @@ def register_user(username, password, *, first_user_only=False):
     Returns:
         tuple: (User object, error message) - one will be None
     """
-    with _registration_lock:
+    with user_creation_transaction():
         is_first_user = User.query.order_by(User.id).first() is None
         if first_user_only and not is_first_user:
             return None, 'Registration is currently disabled.'
@@ -193,7 +210,7 @@ def is_bootstrap_registration_available():
 
 def ensure_initial_admin():
     """Return an existing admin or promote the oldest user if none exists."""
-    with _registration_lock:
+    with user_creation_lock:
         existing_admin = (
             User.query
             .filter_by(is_admin=True)

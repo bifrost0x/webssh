@@ -17,6 +17,7 @@ SECURITY_ENV_NAMES = {
     'DEBUG',
     'DEPLOYMENT_PROFILE',
     'LDAP_BASE_DN',
+    'LDAP_AUTO_PROVISION',
     'LDAP_BIND_DN',
     'LDAP_BIND_PASSWORD_FILE',
     'LDAP_CA_FILE',
@@ -89,6 +90,23 @@ def test_ldap_is_disabled_by_default_and_ignores_incomplete_settings():
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.splitlines()[-1] == 'False'
+
+
+@pytest.mark.parametrize(
+    ('configured_value', 'expected'),
+    ((None, 'False'), ('true', 'True')),
+)
+def test_ldap_auto_provisioning_requires_explicit_opt_in(
+    configured_value,
+    expected,
+):
+    result = _load_config(
+        _production_env(LDAP_AUTO_PROVISION=configured_value),
+        'import config; print(config.LDAP_AUTO_PROVISION)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == expected
 
 
 @pytest.mark.parametrize(
@@ -365,6 +383,7 @@ def test_ldap_compose_overlay_supplies_complete_secret_infrastructure():
 
     for name in (
         'LDAP_ENABLED',
+        'LDAP_AUTO_PROVISION',
         'LDAP_PROVIDER_ID',
         'LDAP_URL',
         'LDAP_BASE_DN',
@@ -374,6 +393,7 @@ def test_ldap_compose_overlay_supplies_complete_secret_infrastructure():
     ):
         assert name in overlay
     assert 'LDAP_ENABLED: "true"' in overlay
+    assert 'LDAP_AUTO_PROVISION: "false"' in overlay
     assert 'webssh_auth_secrets:/run/webssh-auth:ro' in overlay
     assert 'ldap-tools:' in overlay
     assert 'profiles: ["ldap-tools"]' in overlay

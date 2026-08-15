@@ -497,6 +497,7 @@ docker build -t webssh:local .
 | `OIDC_ALLOWED_DOMAINS` | No | - | Optional comma-separated email-domain policy; identity linking still uses issuer and subject only |
 | `OIDC_LOGIN_RATE_LIMIT` | No | `10 per minute` | Per-IP rate limit for starting OIDC login |
 | `LDAP_ENABLED` | No | `false` | Enable optional LDAP/LDAPS authentication; the provided `docker-compose.ldap.yml` overlay sets this to `true` |
+| `LDAP_AUTO_PROVISION` | No | `false` | Create a non-admin LDAP-managed account after the first successful directory sign-in; existing local usernames are never claimed automatically |
 | `LDAP_PROVIDER_ID` | With LDAP | `default` | Stable local identifier for this directory; do not change it after linking users |
 | `LDAP_URL` | With LDAP | - | Exact `ldap://host:port` (mandatory StartTLS) or `ldaps://host:port` URL |
 | `LDAP_BASE_DN` | With LDAP | - | Subtree base for directory user searches |
@@ -557,6 +558,7 @@ and keep it on the same WebSSH release or commit as `docker-compose.yml`.
 
    ```yaml
    LDAP_ENABLED: "true"
+   LDAP_AUTO_PROVISION: "false"
    LDAP_PROVIDER_ID: primary-directory
    LDAP_URL: ldaps://ldap.example.com:636
    LDAP_BASE_DN: ou=people,dc=example,dc=com
@@ -603,11 +605,21 @@ and keep it on the same WebSSH release or commit as `docker-compose.yml`.
    docker compose -f docker-compose.yml -f docker-compose.ldap.yml -f docker-compose.production.yml up -d
    ```
 
-5. Sign in with the existing local break-glass administrator. In **Admin**,
-   create or select a non-admin WebSSH account and use **Link LDAP** to attach
-   the directory's stable identity. WebSSH deliberately does not auto-provision
-   accounts and never grants administrator rights through LDAP. Test **Sign in
-   with LDAP** before relying on it.
+5. Sign in with the existing local break-glass administrator. With the safe
+   default `LDAP_AUTO_PROVISION: "false"`, create or select a non-admin WebSSH
+   account in **Admin** and use **Link LDAP** to attach the directory's stable
+   identity. For larger directories, set `LDAP_AUTO_PROVISION: "true"` to
+   create a non-admin LDAP-managed account only after its first successful
+   directory password bind. Automatic provisioning never claims an existing
+   local username and still requires an active local break-glass administrator.
+
+The login page selects the configured `LDAP_PROVIDER_ID` by default whenever
+LDAP is enabled. Local password sign-in remains available from the
+**Authentication Source** selector. Auto-provisioned directory usernames must
+fit the 80-character local account field and contain no control characters;
+they are never silently truncated. Removed directory accounts lose access via
+the normal fail-closed revalidation, but WebSSH does not automatically delete
+their stored user data.
 
 To disable LDAP again, recreate WebSSH from the standard Compose file only:
 

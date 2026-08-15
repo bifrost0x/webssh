@@ -8,6 +8,7 @@ services:
   webssh:
     environment:
       LDAP_ENABLED: "true"
+      LDAP_AUTO_PROVISION: "false"
       LDAP_PROVIDER_ID: default
       LDAP_URL: ""
       LDAP_BASE_DN: ""

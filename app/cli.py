@@ -9,7 +9,10 @@ from flask import current_app
 
 import config
 from .audit_logger import audit_logger, log_warning
-from .auth import validate_new_user
+from .auth import (
+    user_creation_transaction,
+    validate_new_user,
+)
 from .models import User, db
 
 
@@ -124,6 +127,10 @@ def create_admin(username, password_file):
 
     user = User.query.filter_by(username=username).first()
     if user is not None:
+        if user.is_ldap_managed:
+            raise click.ClickException(
+                'LDAP-managed accounts cannot be administrators.'
+            )
         if password_file is not None:
             raise click.ClickException(
                 '--password-file cannot be used when promoting an existing '
@@ -148,20 +155,21 @@ def create_admin(username, password_file):
     else:
         password = _read_password_file(password_file)
 
-    error = validate_new_user(username, password)
-    if error:
-        raise click.ClickException(error)
+    with user_creation_transaction():
+        error = validate_new_user(username, password)
+        if error:
+            raise click.ClickException(error)
 
-    user = User(username=username, is_admin=True)
-    user.set_password(password)
-    db.session.add(user)
-    try:
-        db.session.flush()
-        user.get_data_dir()
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        raise
+        user = User(username=username, is_admin=True)
+        user.set_password(password)
+        db.session.add(user)
+        try:
+            db.session.flush()
+            user.get_data_dir()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
 
     _audit_admin_bootstrap(username, 'created')
     click.echo(f'Administrator created: {username}')

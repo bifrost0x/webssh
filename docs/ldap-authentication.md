@@ -16,14 +16,20 @@ the provided `docker-compose.ldap.yml` overlay with the same WebSSH image; no
   submitted user password is used only for the final bind and is never stored.
 - Directory usernames are escaped as RFC 4515 filter values. Searches are
   subtree-scoped, limited to two results, and must resolve to exactly one entry.
-- An administrator explicitly links a directory identity to an existing local
-  WebSSH user. There is no automatic account creation or username-only trust.
+- By default, an administrator explicitly links a directory identity to an
+  existing local WebSSH user. Optional auto-provisioning still requires a
+  successful password bind and never trusts a username by itself.
 - The stable `entryUUID` (OpenLDAP) or `objectGUID` (Active Directory) is the
   identity key. A renamed DN can be updated after successful authentication
   without changing account ownership.
 - LDAP users cannot be administrators and cannot fall back to local passwords,
   passkeys, recovery codes, or OIDC. Keep at least one unlinked local
   break-glass administrator.
+- `LDAP_AUTO_PROVISION=true` creates a non-admin LDAP-managed account only
+  after the first successful directory sign-in. It requires an active local
+  break-glass administrator and never attaches LDAP to an existing local
+  username. Case-insensitive collisions, control characters, and names longer
+  than 80 characters are rejected without truncation.
 - Linking destroys the user's dormant local password and all alternative local
   login factors. Unlinking requires a fresh local password.
 - LDAP sessions are revalidated every five minutes by default. A disabled
@@ -58,6 +64,7 @@ files from the same WebSSH release.
 
 ```yaml
 LDAP_ENABLED: "true"
+LDAP_AUTO_PROVISION: "false"
 LDAP_PROVIDER_ID: corp-ad
 LDAP_URL: ldaps://dc01.ad.example.com:636
 LDAP_BASE_DN: OU=People,DC=ad,DC=example,DC=com
@@ -74,6 +81,7 @@ Nested group semantics vary and must be validated by the AD administrator.
 
 ```yaml
 LDAP_ENABLED: "true"
+LDAP_AUTO_PROVISION: "false"
 LDAP_PROVIDER_ID: primary-openldap
 LDAP_URL: ldap://ldap.example.com:389
 LDAP_BASE_DN: ou=people,dc=example,dc=com
@@ -134,10 +142,17 @@ incomplete LDAP configuration prevents the Flask application from starting.
 4. Sign in with the local break-glass administrator.
 5. Open **Admin - Settings - LDAP directory** and run **Check connection**.
    The browser receives only ready/unavailable, transport, and provider ID.
-6. Create the target local WebSSH user if it does not exist.
-7. On the Users tab choose **Link LDAP**, enter the directory username, the
-   administrator password, and the exact target WebSSH username.
-8. Sign out and test **Sign in with LDAP** using that directory username.
+6. Keep `LDAP_AUTO_PROVISION: "false"` for explicit account lifecycle control.
+   Create the target local WebSSH user, then choose **Link LDAP** on the Users
+   tab and provide the directory username, administrator password, and exact
+   target WebSSH username.
+7. For larger directories, optionally set `LDAP_AUTO_PROVISION: "true"` and
+   recreate WebSSH with the overlay. A verified first sign-in then creates a
+   non-admin LDAP-managed account. Existing local usernames still require the
+   explicit administrator linking flow.
+8. Sign out and test the directory account. When LDAP is enabled, its
+   `LDAP_PROVIDER_ID` is the default **Authentication Source**; local sign-in
+   remains selectable.
 
 Do one non-administrator pilot account before migrating more users.
 
@@ -160,6 +175,9 @@ This removes the LDAP environment and mount from the container. The named
 secret volume remains stored but detached until the overlay is selected again.
 Existing LDAP sessions are invalidated. Local accounts continue normally, but
 linked LDAP accounts intentionally do not regain their old passwords.
+Directory removal or filter exclusion revokes access without deleting the
+account's stored WebSSH data; delete that data only through the normal explicit
+administrator lifecycle.
 
 To return one account to local authentication while LDAP is working, choose
 **Manage LDAP**, provide the administrator password, exact target username, and

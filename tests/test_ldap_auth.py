@@ -1,7 +1,11 @@
 """Security boundaries for optional LDAP authentication."""
 
+import sqlite3
 from dataclasses import dataclass
+from threading import Event, Thread
 from urllib.parse import urlsplit
+
+import pytest
 
 
 def _create_user(app, username, password="password123", *, is_admin=False):
@@ -111,16 +115,19 @@ def _enable_ldap_blueprint(app, monkeypatch, directory):
     import app.ldap_routes as ldap_routes
 
     monkeypatch.setattr(config, "LDAP_ENABLED", True)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", False, raising=False)
     monkeypatch.setattr(config, "LDAP_URL", "ldap://directory.example.com:389")
     monkeypatch.setattr(ldap_routes, "get_directory", lambda: directory)
     app.register_blueprint(ldap_routes.ldap_blueprint)
 
 
-def test_enabled_ldap_login_starts_as_an_isolated_hidden_mode(
+def test_enabled_ldap_login_defaults_to_named_directory_source(
     app,
     client,
     monkeypatch,
 ):
+    import config
+
     _create_user(app, "ldap_login_mode_user")
     directory = _FakeDirectory(_DirectoryIdentity(
         provider="default",
@@ -128,14 +135,41 @@ def test_enabled_ldap_login_starts_as_an_isolated_hidden_mode(
         distinguished_name="uid=unused,dc=example,dc=com",
     ))
     _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_PROVIDER_ID", "corp-directory")
 
     response = client.get("/login")
 
     assert response.status_code == 200
-    assert b'id="defaultLoginMode" class="login-mode"' in response.data
-    assert b'id="ldapLoginMode" class="login-mode hidden"' in response.data
-    assert b'id="ldapBackBtn"' in response.data
-    assert b'onclick="document.getElementById(\'ldapLoginForm\')' not in response.data
+    assert b'id="authenticationSource"' in response.data
+    assert b'<option value="ldap" selected>corp-directory</option>' in response.data
+    assert b'id="localLoginForm" class="auth-source-form hidden"' in response.data
+    assert b'id="ldapLoginForm" class="auth-source-form"' in response.data
+    assert b'id="ldapLoginBtn"' not in response.data
+    assert b'id="ldapBackBtn"' not in response.data
+
+
+def test_failed_local_login_keeps_local_source_selected(
+    app,
+    client,
+    monkeypatch,
+):
+    _create_user(app, "local_login_user")
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="unused-id",
+        distinguished_name="uid=unused,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+
+    response = client.post(
+        "/login",
+        data={"username": "local_login_user", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 200
+    assert b'<option value="local" selected>Local account</option>' in response.data
+    assert b'id="localLoginForm" class="auth-source-form"' in response.data
+    assert b'id="ldapLoginForm" class="auth-source-form hidden"' in response.data
 
 
 def test_ldap_login_accepts_only_matching_explicit_identity(
@@ -186,6 +220,367 @@ def test_ldap_login_accepts_only_matching_explicit_identity(
         assert row.last_verified_at is not None
 
 
+def test_ldap_login_auto_provisions_verified_non_admin_identity(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    _create_user(app, "local_admin", is_admin=True)
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={
+            "username": "alice@example.com",
+            "password": "directory-password",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+    assert directory.binds == [(
+        identity.distinguished_name,
+        "directory-password",
+    )]
+    with app.app_context():
+        user = User.query.filter_by(username="alice@example.com").one()
+        mapping = LDAPIdentity.query.filter_by(user_id=user.id).one()
+        assert user.is_admin is False
+        assert user.is_locked is False
+        assert user.check_password("directory-password") is False
+        assert mapping.provider == "default"
+        assert mapping.subject == "stable-alice-id"
+        assert mapping.directory_username == "alice@example.com"
+
+
+def test_ldap_auto_provisioning_rejects_invalid_password_without_account(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    _create_user(app, "local_admin", is_admin=True)
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity, password_valid=False)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert directory.binds == [(
+        identity.distinguished_name,
+        "wrong-password",
+    )]
+    with app.app_context():
+        assert User.query.count() == 1
+        assert LDAPIdentity.query.count() == 0
+
+
+def test_ldap_auto_provisioning_never_claims_existing_local_username(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    _create_user(app, "local_admin", is_admin=True)
+    _create_user(app, "alice")
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": "alice", "password": "directory-password"},
+    )
+
+    assert response.status_code == 401
+    assert directory.binds == [(
+        identity.distinguished_name,
+        "directory-password",
+    )]
+    with app.app_context():
+        assert User.query.count() == 2
+        assert LDAPIdentity.query.count() == 0
+
+
+def test_ldap_auto_provisioning_rejects_casefolded_local_collision(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    _create_user(app, "local_admin", is_admin=True)
+    _create_user(app, "Alice")
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": "alice", "password": "directory-password"},
+    )
+
+    assert response.status_code == 401
+    with app.app_context():
+        assert User.query.count() == 2
+        assert LDAPIdentity.query.count() == 0
+
+
+def test_local_registration_rejects_casefolded_ldap_collision(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.auth import register_user
+    from app.models import db
+
+    _create_user(app, "local_admin", is_admin=True)
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=Alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": "Alice", "password": "directory-password"},
+    )
+    assert response.status_code == 302
+
+    with app.app_context():
+        user, error = register_user("alice", "different-password")
+        transaction_still_open = db.session().in_transaction()
+
+    assert user is None
+    assert error == "Username already exists"
+    assert transaction_still_open is False
+
+
+def test_local_registration_serializes_casefold_check_across_connections(app):
+    import config
+    from app.auth import register_user
+
+    _create_user(app, "local_admin", is_admin=True)
+    connection = sqlite3.connect(config.DATA_DIR / "app.db", timeout=5)
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """
+        INSERT INTO users (
+            username,
+            password_hash,
+            is_admin,
+            is_locked,
+            auth_generation
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        ("Alice", "unused", False, False, 0),
+    )
+    completed = Event()
+    result = {}
+
+    def register_casefolded_name():
+        with app.app_context():
+            try:
+                result["user"], result["error"] = register_user(
+                    "alice",
+                    "different-password",
+                )
+            finally:
+                completed.set()
+
+    worker = Thread(target=register_casefolded_name)
+    worker.start()
+    assert completed.wait(0.2) is False
+    connection.commit()
+    connection.close()
+
+    worker.join(timeout=5)
+    assert completed.is_set()
+    assert result["user"] is None
+    assert result["error"] == "Username already exists"
+
+
+def test_ldap_auto_provisioning_uses_shared_user_creation_lock(app):
+    from app.auth import user_creation_lock
+    from app.ldap_routes import _auto_provision_ldap_identity
+    from app.models import db
+
+    _create_user(app, "local_admin", is_admin=True)
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    completed = Event()
+    result = {}
+
+    def provision():
+        with app.app_context():
+            try:
+                mapping = _auto_provision_ldap_identity(
+                    "alice",
+                    identity,
+                )
+                result["username"] = mapping.user.username
+            finally:
+                db.session.remove()
+                completed.set()
+
+    with user_creation_lock:
+        worker = Thread(target=provision)
+        worker.start()
+        assert completed.wait(0.2) is False
+
+    worker.join(timeout=5)
+    assert completed.is_set()
+    assert result["username"] == "alice"
+
+
+def test_ldap_auto_provisioning_rolls_back_when_user_storage_fails(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    _create_user(app, "local_admin", is_admin=True)
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-directory-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    def fail_user_storage(_user):
+        raise OSError("user storage unavailable")
+
+    monkeypatch.setattr(User, "get_data_dir", fail_user_storage)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": "alice", "password": "directory-password"},
+    )
+
+    assert response.status_code == 503
+    with app.app_context():
+        assert User.query.count() == 1
+        assert LDAPIdentity.query.count() == 0
+
+
+@pytest.mark.parametrize(
+    'username',
+    (
+        'a' * 81,
+        'alice\nadmin',
+        'alice\n',
+        '\talice',
+        'alice\r',
+        'ali\u200bce',
+    ),
+)
+def test_ldap_auto_provisioning_rejects_unsafe_local_account_name(
+    app,
+    client,
+    monkeypatch,
+    username,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    _create_user(app, "local_admin", is_admin=True)
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": username, "password": "directory-password"},
+    )
+
+    assert response.status_code == 401
+    with app.app_context():
+        assert User.query.count() == 1
+        assert LDAPIdentity.query.count() == 0
+
+
+def test_ldap_auto_provisioning_requires_local_break_glass_admin(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import LDAPIdentity, User
+
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-alice-id",
+        distinguished_name="uid=alice,ou=people,dc=example,dc=com",
+    )
+    directory = _FakeDirectory(identity)
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    monkeypatch.setattr(config, "LDAP_AUTO_PROVISION", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={"username": "alice", "password": "directory-password"},
+    )
+
+    assert response.status_code == 401
+    assert directory.binds == [(
+        identity.distinguished_name,
+        "directory-password",
+    )]
+    with app.app_context():
+        assert User.query.count() == 0
+        assert LDAPIdentity.query.count() == 0
+
+
 def test_ldap_login_rejects_subject_mismatch_before_password_bind(
     app,
     client,
@@ -217,8 +612,9 @@ def test_ldap_login_rejects_subject_mismatch_before_password_bind(
 
     assert response.status_code == 401
     assert b"Invalid username or password" in response.data
-    assert b'id="defaultLoginMode" class="login-mode hidden"' in response.data
-    assert b'id="ldapLoginMode" class="login-mode"' in response.data
+    assert b'<option value="ldap" selected>default</option>' in response.data
+    assert b'id="localLoginForm" class="auth-source-form hidden"' in response.data
+    assert b'id="ldapLoginForm" class="auth-source-form"' in response.data
     assert directory.binds == []
 
 

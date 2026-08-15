@@ -58,7 +58,8 @@ def test_login_shows_only_enabled_external_authentication(
 
     assert b'id="passkeyLoginBtn"' not in disabled.data
     assert b'id="oidcLoginBtn"' not in disabled.data
-    assert b'id="ldapLoginBtn"' not in disabled.data
+    assert b'id="authenticationSource"' not in disabled.data
+    assert b'id="localLoginForm" class="auth-source-form"' in disabled.data
     assert b'id="recoveryLoginBtn"' in disabled.data
     assert b'id="recoveryLoginPanel"' in disabled.data
     assert b'id="passkeyLoginBtn"' in enabled.data

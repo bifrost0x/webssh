@@ -128,6 +128,7 @@ def create_app(
             'webauthn_enabled': config.WEBAUTHN_ENABLED,
             'oidc_enabled': config.OIDC_ENABLED,
             'ldap_enabled': config.LDAP_ENABLED,
+            'ldap_provider_id': config.LDAP_PROVIDER_ID,
             'ldap_managed': bool(
                 current_user.is_authenticated
                 and current_user.is_ldap_managed
@@ -421,7 +422,7 @@ def create_app(
             ):
                 log_rate_limit_exceeded('login', client_ip)
                 flash('Too many login attempts. Please try again later.', 'error')
-                return render_template('login.html')
+                return render_template('login.html', auth_source='local')
 
             username = request.form.get('username')
             password = request.form.get('password')
@@ -435,7 +436,10 @@ def create_app(
             else:
                 log_login_attempt(username, False, client_ip, request.user_agent.string)
                 flash(error, 'error')
-        return render_template('login.html')
+        return render_template(
+            'login.html',
+            auth_source='local' if request.method == 'POST' else None,
+        )
 
     @app.route('/register', methods=['GET', 'POST'])
     def register():

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 global.document = { addEventListener() {} };
-const { createLoginModeController } = require('../../static/js/auth.js');
+const { createAuthenticationSourceController } = require('../../static/js/auth.js');
 delete global.document;
 
 function element({ hidden = false, value = '' } = {}) {
@@ -22,56 +22,56 @@ function element({ hidden = false, value = '' } = {}) {
     };
 }
 
-test('LDAP mode hides every standard sign-in option and clears local password', () => {
-    const defaultPanel = element();
-    const ldapPanel = element({ hidden: true });
-    const trigger = element();
+test('selecting LDAP shows its form and clears the local password', () => {
+    const sourceSelect = element({ value: 'local' });
+    const localForm = element();
+    const ldapForm = element({ hidden: true });
     const localPassword = element({ value: 'local-secret' });
     const ldapPassword = element();
     const ldapUsername = element();
     const localUsername = element();
-    const controller = createLoginModeController({
-        defaultPanel,
-        ldapPanel,
-        trigger,
+    const controller = createAuthenticationSourceController({
+        sourceSelect,
+        localForm,
+        ldapForm,
         localPassword,
         ldapPassword,
         ldapUsername,
         localUsername
     });
 
-    controller.showLdap();
+    controller.select('ldap');
 
-    assert.equal(defaultPanel.classList.contains('hidden'), true);
-    assert.equal(ldapPanel.classList.contains('hidden'), false);
-    assert.equal(trigger.attributes.get('aria-expanded'), 'true');
+    assert.equal(sourceSelect.value, 'ldap');
+    assert.equal(localForm.classList.contains('hidden'), true);
+    assert.equal(ldapForm.classList.contains('hidden'), false);
     assert.equal(localPassword.value, '');
     assert.equal(ldapUsername.focused, true);
 });
 
-test('back navigation restores standard sign-in and clears LDAP password', () => {
-    const defaultPanel = element({ hidden: true });
-    const ldapPanel = element();
-    const trigger = element();
+test('selecting local shows its form and clears the LDAP password', () => {
+    const sourceSelect = element({ value: 'ldap' });
+    const localForm = element({ hidden: true });
+    const ldapForm = element();
     const localPassword = element();
     const ldapPassword = element({ value: 'directory-secret' });
     const ldapUsername = element();
     const localUsername = element();
-    const controller = createLoginModeController({
-        defaultPanel,
-        ldapPanel,
-        trigger,
+    const controller = createAuthenticationSourceController({
+        sourceSelect,
+        localForm,
+        ldapForm,
         localPassword,
         ldapPassword,
         ldapUsername,
         localUsername
     });
 
-    controller.showDefault();
+    controller.select('local');
 
-    assert.equal(defaultPanel.classList.contains('hidden'), false);
-    assert.equal(ldapPanel.classList.contains('hidden'), true);
-    assert.equal(trigger.attributes.get('aria-expanded'), 'false');
+    assert.equal(sourceSelect.value, 'local');
+    assert.equal(localForm.classList.contains('hidden'), false);
+    assert.equal(ldapForm.classList.contains('hidden'), true);
     assert.equal(ldapPassword.value, '');
     assert.equal(localUsername.focused, true);
 });
