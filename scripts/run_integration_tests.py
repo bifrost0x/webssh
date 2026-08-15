@@ -70,6 +70,7 @@ def main() -> int:
         environment = os.environ.copy()
         environment.update({
             "PARAMIKO5_INTEGRATION": "1",
+            "PARAMIKO5_DISPOSABLE_LAB": "1",
             "PARAMIKO5_TARGET_HOST": "127.0.0.1",
             "PARAMIKO5_TARGET_PORT": "2223",
             "PARAMIKO5_PROXY_TARGET_HOST": "target",
