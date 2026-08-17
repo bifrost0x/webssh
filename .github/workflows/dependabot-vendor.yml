@@ -55,19 +55,20 @@ jobs:
             --jobs "$RUNNER_TEMP/jobs.json" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Fetch locked manifests
+      - name: Checkout validated Dependabot head
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ steps.context.outputs.head_ref }}
           HEAD_SHA: ${{ steps.context.outputs.head_sha }}
         run: |
           set -euo pipefail
-          gh api -H "Accept: application/vnd.github.raw+json" \
-            "repos/${GITHUB_REPOSITORY}/contents/package.json?ref=${HEAD_SHA}" \
-            > package.json
-          gh api -H "Accept: application/vnd.github.raw+json" \
-            "repos/${GITHUB_REPOSITORY}/contents/package-lock.json?ref=${HEAD_SHA}" \
-            > package-lock.json
+          sha256sum scripts/vendor.js scripts/dependabot_vendor.py \
+            > "$RUNNER_TEMP/trusted-script-checksums"
+          git fetch --no-tags origin "refs/heads/${HEAD_REF}"
+          test "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          sha256sum --check "$RUNNER_TEMP/trusted-script-checksums"
 
       - name: Generate vendor assets from locked dependencies
         shell: bash
@@ -88,9 +89,7 @@ jobs:
           HEAD_SHA: ${{ steps.context.outputs.head_sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "refs/heads/${HEAD_REF}"
-          test "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA"
-          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
           rsync --archive --delete "$RUNNER_TEMP/vendor/" static/vendor/
           python "$RUNNER_TEMP/dependabot_vendor.py" stage \
             --root . \

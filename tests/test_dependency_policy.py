@@ -241,9 +241,9 @@ def test_graph_dependencies_are_hash_locked_and_generated_with_other_locks():
         encoding='utf-8'
     )
 
-    assert 'graphifyy==0.9.39' in graph_input
+    assert 'graphifyy==0.9.42' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.39' in graph_lock
+    assert 'graphifyy==0.9.42' in graph_lock
     assert 'requirements-graph.in' in lock_script
     assert 'requirements-graph.txt' in lock_script
 
