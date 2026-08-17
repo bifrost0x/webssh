@@ -3,6 +3,7 @@ FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360
 WORKDIR /build
 
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends \
         build-essential \
         libldap-dev \
@@ -39,6 +40,7 @@ RUN adduser --disabled-password --gecos "" appuser
 COPY requirements.txt /app/
 COPY --from=ldap-builder /install /usr/local
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends \
         ca-certificates \
         libldap2 \

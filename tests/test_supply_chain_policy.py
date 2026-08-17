@@ -135,6 +135,13 @@ def test_container_build_inputs_and_ci_services_are_digest_pinned():
     assert all(IMAGE_DIGEST.search(reference) for reference in redis_references)
 
 
+def test_container_build_applies_available_base_image_security_updates():
+    dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
+
+    assert dockerfile.count('apt-get update') == 2
+    assert dockerfile.count('apt-get upgrade --yes') == 2
+
+
 def test_security_workflow_gates_publish_and_preserves_scan_evidence():
     security = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
     publish = (WORKFLOWS / 'docker-publish.yml').read_text(encoding='utf-8')
@@ -314,6 +321,38 @@ def test_dependabot_vendor_refresh_uses_a_separate_validated_write_workflow():
     assert 'workflow_dispatch:' in tests_workflow
 
 
+def test_dependabot_vendor_refresh_checks_out_validated_head_before_generation():
+    workflow = (WORKFLOWS / 'dependabot-vendor.yml').read_text(
+        encoding='utf-8'
+    )
+
+    validation = workflow.index('Fetch and validate Dependabot context')
+    checkout = workflow.index('Checkout validated Dependabot head')
+    generation = workflow.index('Generate vendor assets from locked dependencies')
+
+    assert validation < checkout < generation
+    assert 'git checkout --detach FETCH_HEAD' in workflow
+    assert '> package.json' not in workflow
+    assert '> package-lock.json' not in workflow
+
+
+def test_dependabot_vendor_refresh_executes_only_trusted_automation_scripts():
+    workflow = (WORKFLOWS / 'dependabot-vendor.yml').read_text(
+        encoding='utf-8'
+    )
+
+    snapshot = workflow.index(
+        'sha256sum scripts/vendor.js scripts/dependabot_vendor.py'
+    )
+    checkout = workflow.index('git checkout --detach FETCH_HEAD')
+    verification = workflow.index(
+        'sha256sum --check "$RUNNER_TEMP/trusted-script-checksums"'
+    )
+    generation = workflow.index('node scripts/vendor.js')
+
+    assert snapshot < checkout < verification < generation
+
+
 def test_readme_describes_current_transfer_and_log_rotation_contracts():
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
 
@@ -358,9 +397,9 @@ def test_graph_pages_toolchain_versions_are_explicit():
 
     assert re.search(r'with:\s*\n\s+version:\s*[\'"]?0\.12\.3', workflow)
     assert 'uv pip install --require-hashes -r requirements-graph.txt' in workflow
-    assert 'graphifyy==0.9.39' in graph_input
+    assert 'graphifyy==0.9.42' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.39' in graph_lock
+    assert 'graphifyy==0.9.42' in graph_lock
 
 
 def test_workflows_use_an_explicit_runner_release():
