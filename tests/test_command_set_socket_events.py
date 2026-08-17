@@ -57,6 +57,7 @@ def test_command_set_crud_socket_events_return_structured_acknowledgements(app, 
     assert listed['success'] is True
     assert listed['command_sets'][0]['id'] == saved['command_set']['id']
     assert listed['command_sets'][0]['resolved_command'] == 'uptime'
+    assert listed['command_sets'][0]['sudo_resolved_command'] == 'sudo uptime'
 
     duplicated, _emitted = call_socket_handler(
         app,

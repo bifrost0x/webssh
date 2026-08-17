@@ -551,6 +551,15 @@ def _load_command_sets_with_resolution_with_coordinator_held(user_id):
             item['resolution_error'] = resolution_error
         else:
             item['resolved_command'] = resolved
+            sudo_item = copy.deepcopy(item)
+            sudo_item['use_sudo'] = True
+            sudo_resolved, sudo_resolution_error = _resolve_loaded_command_set(
+                sudo_item, commands
+            )
+            if sudo_resolution_error:
+                item['sudo_resolution_error'] = sudo_resolution_error
+            else:
+                item['sudo_resolved_command'] = sudo_resolved
         enriched.append(item)
     return enriched, None
 

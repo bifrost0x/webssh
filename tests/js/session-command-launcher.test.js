@@ -28,6 +28,7 @@ const commandSets = [
         name: 'Release checks',
         description: 'Inspect the deployment',
         resolved_command: 'git status && systemctl status webssh',
+        sudo_resolved_command: 'sudo git status && sudo systemctl status webssh',
     },
     {
         id: 'set-broken',
@@ -90,6 +91,81 @@ test('inserts exact text into the bound connected session without Enter', () => 
     ]);
 });
 
+test('adds one sudo prefix to a single command when requested', () => {
+    const emissions = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true, name: 'Production Edge' }),
+        getCommands: () => commands,
+        getCommandSets: () => commandSets,
+        emitInput: (sessionId, text) => emissions.push({ sessionId, text }),
+    });
+
+    const result = controller.insert(
+        'session-a', 'command', 'cmd-1', { useSudo: true }
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(emissions, [{
+        sessionId: 'session-a',
+        text: 'sudo systemctl status webssh',
+    }]);
+});
+
+test('recognizes only an existing sudo command token as prefixed', () => {
+    const emissions = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true, name: 'Production Edge' }),
+        getCommands: () => [
+            {
+                id: 'cmd-sudo',
+                name: 'Restart WebSSH',
+                command: 'sudo systemctl restart',
+                parameters: 'webssh',
+            },
+            {
+                id: 'cmd-sudoers',
+                name: 'Check sudoers helper',
+                command: 'sudoers-check',
+                parameters: '',
+            },
+        ],
+        getCommandSets: () => [],
+        emitInput: (sessionId, text) => emissions.push({ sessionId, text }),
+    });
+
+    const result = controller.insert(
+        'session-a', 'command', 'cmd-sudo', { useSudo: true }
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(emissions[0].text, 'sudo systemctl restart webssh');
+
+    controller.insert(
+        'session-a', 'command', 'cmd-sudoers', { useSudo: true }
+    );
+    assert.equal(emissions[1].text, 'sudo sudoers-check');
+});
+
+test('uses the fully resolved sudo variant for a command set', () => {
+    const emissions = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => ({ connected: true, name: 'Production Edge' }),
+        getCommands: () => commands,
+        getCommandSets: () => commandSets,
+        emitInput: (sessionId, text) => emissions.push({ sessionId, text }),
+    });
+
+    const result = controller.insert(
+        'session-a', 'set', 'set-1', { useSudo: true }
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(
+        emissions[0].text,
+        'sudo git status && sudo systemctl status webssh'
+    );
+});
+
 test('refuses stale, disconnected, and multiline targets', () => {
     const emissions = [];
     const controller = launcher.createSessionCommandController({
@@ -115,9 +191,19 @@ test('mounts with the real top-level const manager pattern', () => {
             this.dataset = {};
             this.attributes = {};
             this.className = '';
+            this.listeners = {};
+            this.classList = {
+                add: (...names) => {
+                    const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+                    names.forEach(name => classes.add(name));
+                    this.className = [...classes].join(' ');
+                },
+            };
         }
 
-        addEventListener() {}
+        addEventListener(type, handler) {
+            this.listeners[type] = handler;
+        }
 
         append(...children) {
             children.forEach(child => this.appendChild(child));
@@ -128,6 +214,43 @@ test('mounts with the real top-level const manager pattern', () => {
             this.children.push(child);
             return child;
         }
+
+        replaceChildren(...children) {
+            this.children = [];
+            this.append(...children);
+        }
+
+        querySelector(selector) {
+            const matches = element => {
+                if (selector === 'input') return element.tagName === 'input';
+                if (selector.startsWith('.')) {
+                    return element.className.split(/\s+/).includes(selector.slice(1));
+                }
+                return false;
+            };
+            const visit = element => {
+                for (const child of element.children) {
+                    if (matches(child)) return child;
+                    const nested = visit(child);
+                    if (nested) return nested;
+                }
+                return null;
+            };
+            return visit(this);
+        }
+
+        findByText(text) {
+            if (this.textContent === text) return this;
+            for (const child of this.children) {
+                const match = child.findByText(text);
+                if (match) return match;
+            }
+            return null;
+        }
+
+        focus() {}
+
+        setSelectionRange() {}
 
         remove() {
             if (!this.parentElement) return;
@@ -176,6 +299,11 @@ test('mounts with the real top-level const manager pattern', () => {
         };
         const TerminalManager = { terminals: {} };
         window.CommandSetManager = { commandSets: [] };
+        window.socket = {
+            emissions: [],
+            on() {},
+            emit(event, payload) { this.emissions.push([event, payload]); },
+        };
     `, context);
     const source = fs.readFileSync(
         'static/js/session-command-launcher.js',
@@ -192,4 +320,32 @@ test('mounts with the real top-level const manager pattern', () => {
     const entries = context.SessionCommandLauncher.controller.entries();
     assert.equal(entries.length, 1);
     assert.equal(entries[0].id, 'status');
+
+    const container = pane.children.find(
+        child => child.className === 'session-command-launcher'
+    );
+    const trigger = container.children[0];
+    context.SessionCommandLauncher.open('real-session', container, trigger);
+    const sudoInput = context.SessionCommandLauncher.popup.querySelector(
+        '.session-command-sudo-input'
+    );
+    assert.ok(sudoInput);
+    assert.equal(sudoInput.checked, false);
+
+    sudoInput.checked = true;
+    sudoInput.listeners.change({ target: sudoInput });
+    assert.ok(
+        context.SessionCommandLauncher.popup.findByText(
+            'sudo systemctl status webssh'
+        )
+    );
+    const insert = context.SessionCommandLauncher.popup.findByText('Insert');
+    insert.listeners.click();
+
+    assert.equal(context.socket.emissions.length, 1);
+    assert.equal(context.socket.emissions[0][0], 'ssh_input');
+    assert.equal(
+        context.socket.emissions[0][1].data,
+        'sudo systemctl status webssh'
+    );
 });

@@ -13,6 +13,23 @@
         return /[\r\n]/.test(value);
     }
 
+    function prefixWithSudo(value) {
+        const stripped = value.trimStart();
+        const sudoBoundary = stripped.charAt(4);
+        const alreadyPrefixed = stripped === 'sudo'
+            || (
+                stripped.startsWith('sudo')
+                && ' \t;&|()<>'.includes(sudoBoundary)
+            );
+        if (!stripped || alreadyPrefixed) return value;
+        const leading = value.slice(0, value.length - stripped.length);
+        return `${leading}sudo ${stripped}`;
+    }
+
+    function insertTextFor(entry, useSudo) {
+        return useSudo === true ? entry?.sudoInsertText : entry?.insertText;
+    }
+
     function getSessionManager() {
         return typeof SessionManager !== 'undefined'
             ? SessionManager
@@ -43,6 +60,7 @@
             description: command?.description || '',
             preview: insertText,
             insertText,
+            sudoInsertText: prefixWithSudo(insertText),
             available,
             unavailableReason: available ? null : (hasLineBreak(insertText) ? 'multiline' : 'empty'),
         };
@@ -63,6 +81,9 @@
             description: commandSet?.description || '',
             preview: resolved || commandSet?.resolution_error || '',
             insertText: resolved,
+            sudoInsertText: typeof commandSet?.sudo_resolved_command === 'string'
+                ? commandSet.sudo_resolved_command
+                : '',
             available: unavailableReason === null,
             unavailableReason,
         };
@@ -100,7 +121,7 @@
                 );
             },
 
-            insert(sessionId, type, id) {
+            insert(sessionId, type, id, options = {}) {
                 const session = dependencies.getSession?.(sessionId);
                 if (!session || !session.connected) {
                     return { ok: false, reason: 'session-unavailable' };
@@ -108,11 +129,12 @@
                 const entry = this.entries().find(candidate => (
                     candidate.type === type && candidate.id === id
                 ));
-                if (!entry || !entry.available || hasLineBreak(entry.insertText)) {
+                const insertText = insertTextFor(entry, options.useSudo);
+                if (!entry || !entry.available || !insertText || hasLineBreak(insertText)) {
                     return { ok: false, reason: entry?.unavailableReason || 'entry-unavailable' };
                 }
 
-                dependencies.emitInput?.(sessionId, entry.insertText);
+                dependencies.emitInput?.(sessionId, insertText);
                 dependencies.close?.();
                 dependencies.focusSession?.(sessionId);
                 const label = sessionLabel(session, sessionId);
@@ -134,6 +156,7 @@
         trigger: null,
         popup: null,
         initialized: false,
+        useSudo: false,
 
         t(key, fallback) {
             const translated = root.i18n?.t(key);
@@ -235,6 +258,7 @@
             if (!session?.connected) return;
             this.sessionId = sessionId;
             this.searchQuery = '';
+            this.useSudo = false;
             this.trigger = trigger;
             trigger.setAttribute('aria-expanded', 'true');
 
@@ -255,6 +279,7 @@
             this.popup = null;
             this.sessionId = null;
             this.searchQuery = '';
+            this.useSudo = false;
             trigger?.setAttribute('aria-expanded', 'false');
             if (restoreFocus) trigger?.focus();
         },
@@ -310,6 +335,24 @@
                 nextSearch?.setSelectionRange(this.searchQuery.length, this.searchQuery.length);
             });
 
+            const sudoOption = document.createElement('label');
+            sudoOption.className = 'session-command-sudo-option';
+            const sudoInput = document.createElement('input');
+            sudoInput.type = 'checkbox';
+            sudoInput.className = 'session-command-sudo-input';
+            sudoInput.checked = this.useSudo;
+            sudoInput.addEventListener('change', event => {
+                this.useSudo = event.target.checked === true;
+                this.render();
+                this.popup?.querySelector('.session-command-sudo-input')?.focus();
+            });
+            const sudoText = document.createElement('span');
+            sudoText.textContent = this.t(
+                'sessionCommands.useSudo',
+                'Insert with sudo'
+            );
+            sudoOption.append(sudoInput, sudoText);
+
             const list = document.createElement('div');
             list.className = 'session-command-results';
             const entries = this.controller.entries(this.searchQuery);
@@ -339,7 +382,7 @@
                 root.CommandSetManager?.openManagement();
             });
             footer.append(hint, manage);
-            popup.append(header, search, list, footer);
+            popup.append(header, search, sudoOption, list, footer);
         },
 
         renderGroup(parent, entries, type, label) {
@@ -353,9 +396,13 @@
             section.appendChild(heading);
 
             matching.forEach(entry => {
+                const insertText = insertTextFor(entry, this.useSudo);
+                const available = entry.available
+                    && Boolean(insertText)
+                    && !hasLineBreak(insertText);
                 const row = document.createElement('article');
                 row.className = 'session-command-item';
-                if (!entry.available) row.classList.add('unavailable');
+                if (!available) row.classList.add('unavailable');
                 const details = document.createElement('div');
                 details.className = 'session-command-item-details';
                 const name = document.createElement('strong');
@@ -363,7 +410,7 @@
                 const description = document.createElement('span');
                 description.textContent = entry.description;
                 const preview = document.createElement('code');
-                preview.textContent = entry.preview;
+                preview.textContent = insertText || entry.preview;
                 details.append(name);
                 if (entry.description) details.append(description);
                 if (entry.preview) details.append(preview);
@@ -372,8 +419,8 @@
                 insert.type = 'button';
                 insert.className = 'btn btn-primary btn-small';
                 insert.textContent = this.t('sessionCommands.insert', 'Insert');
-                insert.disabled = !entry.available;
-                if (!entry.available) {
+                insert.disabled = !available;
+                if (!available) {
                     const reason = entry.unavailableReason === 'multiline'
                         ? this.t(
                             'sessionCommands.multilineUnavailable',
@@ -389,7 +436,8 @@
                     const result = this.controller.insert(
                         this.sessionId,
                         entry.type,
-                        entry.id
+                        entry.id,
+                        { useSudo: this.useSudo }
                     );
                     if (!result.ok) {
                         root.showNotification?.(

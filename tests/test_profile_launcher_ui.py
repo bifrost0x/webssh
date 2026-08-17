@@ -32,9 +32,9 @@ def test_saved_connection_context_precedes_authentication_method():
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=20',
+        "filename='css/style.css'": '?v=21',
         "filename='css/sftp-file-manager.css'": '?v=9',
-        "filename='js/i18n.js'": '?v=15',
+        "filename='js/i18n.js'": '?v=16',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
@@ -46,7 +46,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
-        "filename='js/session-command-launcher.js'": '?v=2',
+        "filename='js/session-command-launcher.js'": '?v=3',
         "filename='js/connection-history.js'": '?v=2',
         "filename='js/app.js'": '?v=13',
     }
@@ -141,7 +141,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=20" in template
+    assert "filename='css/style.css') }}?v=21" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():

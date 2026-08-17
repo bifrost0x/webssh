@@ -250,6 +250,7 @@ def test_all_popup_translation_references_exist_in_every_locale():
         Path('static/js/drag-drop-manager.js'),
         Path('static/js/file-transfer.js'),
         Path('static/js/security-ui.js'),
+        Path('static/js/session-command-launcher.js'),
         Path('static/js/sftp-file-manager.js'),
         Path('static/js/webauthn.js'),
     ]
