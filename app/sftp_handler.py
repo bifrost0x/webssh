@@ -1,11 +1,13 @@
 import os
+import socket
 import stat
 import posixpath
 import secrets
 import tempfile
+import time
 import zipfile
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Timer
 from contextlib import contextmanager
 from paramiko import SFTPClient
 from paramiko.sftp import (
@@ -27,6 +29,42 @@ _sftp_cache_lock = Lock()
 
 _sftp_session_locks = {}
 _sftp_session_locks_lock = Lock()
+CAPABILITY_RATE_LIMIT = '10 per minute'
+CAPABILITY_TIMEOUT = 3.0
+
+_capability_probe_locks = {}
+_capability_probe_locks_guard = Lock()
+
+
+def _acquire_capability_probe(session_id):
+    with _capability_probe_locks_guard:
+        entry = _capability_probe_locks.setdefault(
+            session_id,
+            {'lock': Lock(), 'references': 0},
+        )
+        entry['references'] += 1
+        probe_lock = entry['lock']
+
+    if probe_lock.acquire(blocking=False):
+        return probe_lock
+
+    with _capability_probe_locks_guard:
+        entry = _capability_probe_locks.get(session_id)
+        if entry and entry['lock'] is probe_lock:
+            entry['references'] -= 1
+            if entry['references'] == 0:
+                _capability_probe_locks.pop(session_id, None)
+    return None
+
+
+def _release_capability_probe(session_id, probe_lock):
+    with _capability_probe_locks_guard:
+        entry = _capability_probe_locks.get(session_id)
+        probe_lock.release()
+        if entry and entry['lock'] is probe_lock:
+            entry['references'] -= 1
+            if entry['references'] == 0:
+                _capability_probe_locks.pop(session_id, None)
 
 def _get_sftp_lock(session_id):
     """Get or create a per-session lock for serializing SFTP operations."""
@@ -510,6 +548,83 @@ def list_directory(session_id, remote_path='.'):
         return None, str(e)
     except Exception as e:
         return None, str(e)
+
+
+def probe_sftp_capability(session_id):
+    """Return whether an existing SSH session can browse via SFTP.
+
+    Opening the subsystem alone is insufficient for some appliances, so the
+    probe performs one bounded directory read through a fresh short-lived
+    channel. It never waits behind cached SFTP operations and concurrent probes
+    for the same session are deduplicated. ``None`` is retryable busy/timeout.
+    Remote exception details intentionally stay server-side.
+    """
+    probe_lock = _acquire_capability_probe(session_id)
+    if probe_lock is None:
+        return None
+
+    sftp = None
+    deadline_guard = None
+    deadline = None
+    deadline_expired = Event()
+    try:
+        with ssh_manager.sessions_lock:
+            session = ssh_manager.sessions.get(session_id)
+            if not session or not session.get('connected'):
+                return None
+            client = session.get('client')
+
+        transport = client.get_transport() if client else None
+        if not transport or not transport.is_active():
+            return None
+
+        deadline = time.monotonic() + CAPABILITY_TIMEOUT
+        timeout = min(CAPABILITY_TIMEOUT, float(config.SSH_CONNECT_TIMEOUT))
+        operation_timeout = min(
+            CAPABILITY_TIMEOUT,
+            float(config.SFTP_OPERATION_TIMEOUT),
+        )
+        sftp = open_sftp_client(
+            transport,
+            timeout=timeout,
+            operation_timeout=operation_timeout,
+            deadline=deadline,
+        )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout('SFTP capability probe exceeded its deadline')
+        def expire_probe():
+            deadline_expired.set()
+            try:
+                sftp.close()
+            except Exception:
+                pass
+
+        deadline_guard = Timer(remaining, expire_probe)
+        deadline_guard.daemon = True
+        deadline_guard.start()
+        with _directory_entries(sftp, '.') as entries:
+            next(entries, None)
+        if time.monotonic() > deadline:
+            return None
+        return True
+    except (socket.timeout, TimeoutError):
+        return None
+    except Exception:
+        if deadline_expired.is_set() or (
+            deadline is not None and time.monotonic() >= deadline
+        ):
+            return None
+        return False
+    finally:
+        if deadline_guard is not None:
+            deadline_guard.cancel()
+        if sftp is not None:
+            try:
+                sftp.close()
+            except Exception:
+                pass
+        _release_capability_probe(session_id, probe_lock)
 
 def create_directory(session_id, remote_path):
     """Create a directory on remote server."""

@@ -5,6 +5,8 @@ import socket
 import time
 from threading import Lock
 
+from paramiko import SSHException
+
 from . import ssh_manager
 
 
@@ -19,52 +21,71 @@ _collector_locks_guard = Lock()
 LINUX_STATS_COMMAND = r"""LC_ALL=C
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
 export LC_ALL PATH
-awk 'NR == 1 { $1=""; sub(/^ /, ""); print "cpu=" $0; exit }' /proc/stat
-awk '
-  /^MemTotal:/ { print "mem_total_kib=" $2 }
-  /^MemAvailable:/ { print "mem_available_kib=" $2 }
-' /proc/meminfo
-df -Pk / | awk 'NR == 2 {
-  percent=$5; sub(/%$/, "", percent)
-  print "disk_total_kib=" $2
-  print "disk_used_kib=" $3
-  print "disk_available_kib=" $4
-  print "disk_percent=" percent
-}'
-awk '{ print "uptime_seconds=" $1; exit }' /proc/uptime
-if [ -r /etc/os-release ]; then
-  os_name=$(sed -n 's/^PRETTY_NAME=//p' /etc/os-release | head -n 1)
+if [ -r /proc/stat ] && command -v awk >/dev/null 2>&1; then
+  awk 'NR == 1 { $1=""; sub(/^ /, ""); print "cpu=" $0; exit }' /proc/stat 2>/dev/null
+fi
+if [ -r /proc/meminfo ] && command -v awk >/dev/null 2>&1; then
+  awk '
+    /^MemTotal:/ { print "mem_total_kib=" $2 }
+    /^MemAvailable:/ { print "mem_available_kib=" $2 }
+  ' /proc/meminfo 2>/dev/null
+fi
+if command -v df >/dev/null 2>&1 && command -v awk >/dev/null 2>&1; then
+  df -Pk / 2>/dev/null | awk 'NR == 2 {
+    percent=$5; sub(/%$/, "", percent)
+    print "disk_total_kib=" $2
+    print "disk_used_kib=" $3
+    print "disk_available_kib=" $4
+    print "disk_percent=" percent
+  }'
+fi
+if [ -r /proc/uptime ] && command -v awk >/dev/null 2>&1; then
+  awk '{ print "uptime_seconds=" $1; exit }' /proc/uptime 2>/dev/null
+fi
+if [ -r /etc/os-release ] && command -v awk >/dev/null 2>&1; then
+  os_name=$(awk -F= '/^PRETTY_NAME=/ { sub(/^PRETTY_NAME=/, ""); print; exit }' /etc/os-release 2>/dev/null)
   os_name=${os_name#\"}; os_name=${os_name%\"}
   os_name=${os_name#\'}; os_name=${os_name%\'}
+elif command -v uname >/dev/null 2>&1; then
+  os_name=$(uname -srm 2>/dev/null)
 else
-  os_name=Linux
+  os_name=
 fi
-printf 'os_name=%s\n' "$os_name"
+[ -n "$os_name" ] && printf 'os_name=%s\n' "$os_name"
+:
 """
 
 
 LINUX_DIAGNOSTICS_COMMAND = LINUX_STATS_COMMAND + r"""
-awk '
-  /^SwapTotal:/ { print "swap_total_kib=" $2 }
-  /^SwapFree:/ { print "swap_free_kib=" $2 }
-' /proc/meminfo
-awk '{
-  print "load_1=" $1
-  print "load_5=" $2
-  print "load_15=" $3
-}' /proc/loadavg
-awk '/^cpu[0-9]+ / { count++ } END {
-  if (count > 0) print "cpu_count=" count
-}' /proc/stat
-awk -F '[: ]+' 'NR > 2 {
-  if ($2 != "lo") {
-    received += $3
-    transmitted += $11
-  }
-} END {
-  print "network_received_bytes=" received + 0
-  print "network_transmitted_bytes=" transmitted + 0
-}' /proc/net/dev
+if [ -r /proc/meminfo ] && command -v awk >/dev/null 2>&1; then
+  awk '
+    /^SwapTotal:/ { print "swap_total_kib=" $2 }
+    /^SwapFree:/ { print "swap_free_kib=" $2 }
+  ' /proc/meminfo 2>/dev/null
+fi
+if [ -r /proc/loadavg ] && command -v awk >/dev/null 2>&1; then
+  awk '{
+    print "load_1=" $1
+    print "load_5=" $2
+    print "load_15=" $3
+  }' /proc/loadavg 2>/dev/null
+fi
+if [ -r /proc/stat ] && command -v awk >/dev/null 2>&1; then
+  awk '/^cpu[0-9]+ / { count++ } END {
+    if (count > 0) print "cpu_count=" count
+  }' /proc/stat 2>/dev/null
+fi
+if [ -r /proc/net/dev ] && command -v awk >/dev/null 2>&1; then
+  awk -F '[: ]+' 'NR > 2 {
+    if ($2 != "lo") {
+      received += $3
+      transmitted += $11
+    }
+  } END {
+    print "network_received_bytes=" received + 0
+    print "network_transmitted_bytes=" transmitted + 0
+  }' /proc/net/dev 2>/dev/null
+fi
 
 process_probe=$(ps -p $$ -o pid= 2>&1)
 process_status=$?
@@ -88,6 +109,7 @@ elif printf '%s' "$process_probe" | grep -Eqi \
     'permission denied|access denied|not authorized|authorization denied'; then
   printf 'permission_denied=processes\n'
 fi
+:
 
 """
 
@@ -105,16 +127,6 @@ _MULTI_KEYS = {
     'process_cpu', 'process_memory', 'permission_denied',
 }
 _PERMISSION_SCOPES = ('processes',)
-
-
-def _non_negative_int(values, key):
-    try:
-        value = int(values[key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f'invalid {key}') from exc
-    if value < 0:
-        raise ValueError(f'invalid {key}')
-    return value
 
 
 def _optional_int(values, key, *, maximum=None):
@@ -189,57 +201,68 @@ def parse_linux_stats(text, *, max_bytes=DEFAULT_MAX_BYTES):
         elif key in _MULTI_KEYS and len(repeated[key]) < 16:
             repeated[key].append(value.strip())
 
+    result = {}
+
     try:
-        cpu = [int(part) for part in values['cpu'].split()]
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError('invalid cpu') from exc
-    if len(cpu) < 4 or any(value < 0 for value in cpu):
-        raise ValueError('invalid cpu')
+        cpu = [int(part) for part in values.get('cpu', '').split()]
+    except (TypeError, ValueError):
+        cpu = []
+    if len(cpu) >= 4 and all(value >= 0 for value in cpu):
+        result['cpu'] = cpu
 
-    mem_total = _non_negative_int(values, 'mem_total_kib')
-    mem_available = _non_negative_int(values, 'mem_available_kib')
-    if mem_total <= 0 or mem_available > mem_total:
-        raise ValueError('invalid memory')
-
-    disk_total = _non_negative_int(values, 'disk_total_kib')
-    disk_used = _non_negative_int(values, 'disk_used_kib')
-    disk_available = _non_negative_int(values, 'disk_available_kib')
-    disk_percent = _non_negative_int(values, 'disk_percent')
+    mem_total = _optional_int(
+        values, 'mem_total_kib', maximum=2 ** 63 - 1
+    )
+    mem_available = _optional_int(
+        values, 'mem_available_kib', maximum=2 ** 63 - 1
+    )
     if (
-        disk_total <= 0
-        or disk_used > disk_total
-        or disk_available > disk_total
-        or disk_percent > 100
+        mem_total is not None
+        and mem_available is not None
+        and mem_total > 0
+        and mem_available <= mem_total
     ):
-        raise ValueError('invalid disk')
-
-    try:
-        uptime_seconds = int(float(values['uptime_seconds']))
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        raise ValueError('invalid uptime') from exc
-    if uptime_seconds < 0:
-        raise ValueError('invalid uptime')
-
-    os_name = values.get('os_name', '').strip()
-    if not os_name or len(os_name) > 200:
-        raise ValueError('invalid os name')
-
-    result = {
-        'cpu': cpu,
-        'memory': {
+        result['memory'] = {
             'total_kib': mem_total,
             'available_kib': mem_available,
             'used_kib': mem_total - mem_available,
-        },
-        'disk': {
+        }
+
+    disk_total = _optional_int(
+        values, 'disk_total_kib', maximum=2 ** 63 - 1
+    )
+    disk_used = _optional_int(
+        values, 'disk_used_kib', maximum=2 ** 63 - 1
+    )
+    disk_available = _optional_int(
+        values, 'disk_available_kib', maximum=2 ** 63 - 1
+    )
+    disk_percent = _optional_int(values, 'disk_percent', maximum=100)
+    if (
+        disk_total is not None
+        and disk_used is not None
+        and disk_available is not None
+        and disk_percent is not None
+        and disk_total > 0
+        and disk_used <= disk_total
+        and disk_available <= disk_total
+    ):
+        result['disk'] = {
             'total_kib': disk_total,
             'used_kib': disk_used,
             'available_kib': disk_available,
             'percent': disk_percent,
-        },
-        'uptime_seconds': uptime_seconds,
-        'os_name': os_name,
-    }
+        }
+
+    uptime_value = _optional_float(
+        values, 'uptime_seconds', maximum=2 ** 63 - 1
+    )
+    if uptime_value is not None:
+        result['uptime_seconds'] = int(uptime_value)
+
+    os_name = _safe_text(values.get('os_name'), maximum=200)
+    if os_name is not None:
+        result['os_name'] = os_name
 
     load_values = (
         _optional_float(values, 'load_1'),
@@ -300,6 +323,9 @@ def parse_linux_stats(text, *, max_bytes=DEFAULT_MAX_BYTES):
     if permissions:
         result['permission_denied'] = permissions
 
+    if not result:
+        raise ValueError('no supported metrics')
+
     return result
 
 
@@ -339,7 +365,7 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
                         include_diagnostics=False):
     """Collect one Linux sample without touching the interactive PTY."""
     if not isinstance(session_id, str) or not session_id:
-        return None, 'unavailable'
+        return None, 'transient'
 
     collector_lock = _acquire_session_lock(session_id)
     if collector_lock is None:
@@ -350,12 +376,12 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
         with ssh_manager.sessions_lock:
             session = ssh_manager.sessions.get(session_id)
             if not session or not session.get('connected'):
-                return None, 'unavailable'
+                return None, 'transient'
             client = session.get('client')
 
         transport = client.get_transport() if client else None
         if not transport or not transport.is_active():
-            return None, 'unavailable'
+            return None, 'transient'
 
         command = (
             LINUX_DIAGNOSTICS_COMMAND
@@ -370,6 +396,13 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
         deadline = time.monotonic() + timeout
         output = bytearray()
 
+        def parse_output():
+            try:
+                text = output.decode('utf-8', errors='strict')
+                return parse_linux_stats(text, max_bytes=max_bytes), None
+            except (UnicodeDecodeError, ValueError):
+                return None, 'unsupported'
+
         while True:
             if channel.recv_ready():
                 chunk = channel.recv(min(4096, max_bytes + 1 - len(output)))
@@ -377,12 +410,14 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
                     break
                 output.extend(chunk)
                 if len(output) > max_bytes:
-                    return None, 'unavailable'
+                    return None, 'unsupported'
                 continue
             if channel.exit_status_ready():
                 break
             if time.monotonic() >= deadline:
-                return None, 'unavailable'
+                if output:
+                    return parse_output()
+                return None, 'transient'
             time.sleep(0.02)
 
         while channel.recv_ready():
@@ -391,20 +426,18 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
                 break
             output.extend(chunk)
             if len(output) > max_bytes:
-                return None, 'unavailable'
+                return None, 'unsupported'
 
         if channel.recv_exit_status() != 0:
-            return None, 'unavailable'
+            return None, 'unsupported'
 
-        try:
-            text = output.decode('utf-8', errors='strict')
-            return parse_linux_stats(text, max_bytes=max_bytes), None
-        except (UnicodeDecodeError, ValueError):
-            return None, 'unavailable'
+        return parse_output()
+    except SSHException:
+        return None, 'transient'
     except (OSError, socket.timeout):
-        return None, 'unavailable'
+        return None, 'transient'
     except Exception:
-        return None, 'unavailable'
+        return None, 'transient'
     finally:
         if channel is not None:
             try:

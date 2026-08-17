@@ -948,7 +948,7 @@
     });
 
     socket.on('ssh_output', (data) => {
-        TerminalManager.writeOutput(data.session_id, data.data);
+        TerminalManager.writeOutput(data.session_id, data.data, data.sequence);
 
     });
 

@@ -46,18 +46,19 @@ const SessionManager = {
             display_name: data.display_name
         };
 
+        // Seed the authoritative snapshot before terminal attachment. Any live
+        // output already received is merged behind it without replay overlap.
+        TerminalManager.seedRestoredOutput(
+            sessionId,
+            data.buffered_output,
+            data.output_sequence,
+        );
+
         const restoredId = this.createSession(sessionData);
 
         const emptyIndex = this.getFirstEmptyPaneIndex();
         const targetPane = emptyIndex !== -1 ? emptyIndex : this.activePaneIndex;
         this.assignSessionToPane(restoredId, targetPane);
-
-        // Write buffered output to the restored terminal
-        if (data.buffered_output) {
-            setTimeout(() => {
-                TerminalManager.writeOutput(sessionId, data.buffered_output);
-            }, 200);
-        }
 
     },
 

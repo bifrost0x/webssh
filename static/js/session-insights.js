@@ -11,6 +11,7 @@
 
     const POLL_INTERVAL_MS = 4000;
     const RESPONSE_TIMEOUT_MS = 3500;
+    const BACKOFF_RETRY_MS = 60000;
     const HISTORY_LIMIT = 150;
 
     function calculateCpuPercent(previous, current) {
@@ -116,6 +117,25 @@
         });
     }
 
+    function metricAvailability(state) {
+        const stats = state?.stats || {};
+        const availability = {
+            cpu: boundedPercent(state?.cpuPercent) !== null,
+            memory: percent(
+                stats.memory?.used_kib,
+                stats.memory?.total_kib,
+            ) !== null,
+            disk: (
+                boundedPercent(stats.disk?.percent) !== null
+                && percent(stats.disk?.used_kib, stats.disk?.total_kib) !== null
+            ),
+            os: typeof stats.os_name === 'string' && Boolean(stats.os_name.trim()),
+            uptime: nonNegativeNumber(stats.uptime_seconds) !== null,
+        };
+        availability.any = Object.values(availability).some(Boolean);
+        return availability;
+    }
+
     function createController(options) {
         const socket = options.socket;
         const render = options.render || (() => {});
@@ -131,6 +151,7 @@
         let diagnosticsVisible = false;
         let intervalId = null;
         let responseTimeoutId = null;
+        let retryTimeoutId = null;
         let pendingRequest = null;
         let requestCounter = 0;
         let failureCount = 0;
@@ -139,6 +160,8 @@
         const metricHistoryBySession = new Map();
         const previousNetworkBySession = new Map();
         const lastGoodBySession = new Map();
+        const unsupportedSessions = new Set();
+        const unsupportedDiagnosticsSessions = new Set();
 
         function currentState(status, extra = {}) {
             return {
@@ -162,29 +185,86 @@
                 intervalId = null;
             }
             clearResponseTimeout();
+            if (retryTimeoutId !== null) {
+                clearTimeoutFn(retryTimeoutId);
+                retryTimeoutId = null;
+            }
             pendingRequest = null;
         }
 
-        function renderFailure() {
+        function pauseRegularPolling() {
+            if (intervalId !== null) {
+                clearIntervalFn(intervalId);
+                intervalId = null;
+            }
+        }
+
+        function scheduleRetry() {
+            if (retryTimeoutId !== null || unsupportedSessions.has(sessionId)) return;
+            retryTimeoutId = setTimeoutFn(() => {
+                retryTimeoutId = null;
+                if (!visible || !connected || !sessionId || unsupportedSessions.has(sessionId)) {
+                    return;
+                }
+                requestSample();
+                if (intervalId === null) {
+                    intervalId = setIntervalFn(requestSample, POLL_INTERVAL_MS);
+                }
+            }, BACKOFF_RETRY_MS);
+        }
+
+        function renderFailure(reason = 'transient', responseRequest = null) {
+            if (reason === 'unsupported') {
+                if (responseRequest?.includeDiagnostics) {
+                    unsupportedDiagnosticsSessions.add(sessionId);
+                    failureCount = 0;
+                    render(currentState(lastGood ? 'ready' : 'loading', lastGood ? { ...lastGood } : {}));
+                    requestSample();
+                    return;
+                }
+                unsupportedSessions.add(sessionId);
+                pauseRegularPolling();
+                if (retryTimeoutId !== null) {
+                    clearTimeoutFn(retryTimeoutId);
+                    retryTimeoutId = null;
+                }
+                render(currentState('unavailable', lastGood ? { ...lastGood } : {}));
+                return;
+            }
+            if (reason === 'busy') {
+                render(currentState('stale', lastGood ? { ...lastGood } : {}));
+                return;
+            }
             failureCount += 1;
             const status = failureCount >= 3 ? 'unavailable' : 'stale';
             render(currentState(status, lastGood ? { ...lastGood } : {}));
+            if (failureCount >= 3) {
+                pauseRegularPolling();
+                scheduleRetry();
+            }
         }
 
         function requestSample() {
-            if (!visible || !connected || !sessionId || pendingRequest) return;
+            if (
+                !visible
+                || !connected
+                || !sessionId
+                || pendingRequest
+                || unsupportedSessions.has(sessionId)
+            ) return;
             requestCounter += 1;
             const requestId = `insights-${requestCounter}`;
             pendingRequest = {
                 sessionId,
                 requestId,
-                includeDiagnostics: diagnosticsVisible,
+                includeDiagnostics: diagnosticsVisible
+                    && !unsupportedDiagnosticsSessions.has(sessionId),
             };
             const payload = {
                 session_id: sessionId,
                 request_id: requestId,
             };
-            if (diagnosticsVisible) payload.include_diagnostics = true;
+            if (pendingRequest.includeDiagnostics) payload.include_diagnostics = true;
             socket.emit('request_session_insights', payload);
             responseTimeoutId = setTimeoutFn(() => {
                 if (!pendingRequest || pendingRequest.requestId !== requestId) return;
@@ -195,7 +275,12 @@
         }
 
         function startPolling() {
-            if (!visible || !connected || !sessionId) return;
+            if (
+                !visible
+                || !connected
+                || !sessionId
+                || unsupportedSessions.has(sessionId)
+            ) return;
             requestSample();
             intervalId = setIntervalFn(requestSample, POLL_INTERVAL_MS);
         }
@@ -214,7 +299,7 @@
             pendingRequest = null;
             clearResponseTimeout();
             if (!payload.success || !payload.stats) {
-                renderFailure();
+                renderFailure(payload.reason, responseRequest);
                 return;
             }
 
@@ -222,7 +307,9 @@
             const stats = payload.stats;
             const previousCpu = previousCpuBySession.get(sessionId) || null;
             const cpuPercent = calculateCpuPercent(previousCpu, stats.cpu);
-            previousCpuBySession.set(sessionId, Array.isArray(stats.cpu) ? stats.cpu.slice() : null);
+            if (Array.isArray(stats.cpu)) {
+                previousCpuBySession.set(sessionId, stats.cpu.slice());
+            }
 
             let networkRates = null;
             const sampledAt = nowFn();
@@ -262,7 +349,11 @@
             };
             lastGoodBySession.set(sessionId, lastGood);
             render(currentState('ready', { ...lastGood }));
-            if (diagnosticsVisible && !responseRequest.includeDiagnostics) {
+            if (
+                diagnosticsVisible
+                && !responseRequest.includeDiagnostics
+                && !unsupportedDiagnosticsSessions.has(sessionId)
+            ) {
                 requestSample();
             }
         }
@@ -278,11 +369,12 @@
                 connected = Boolean(isConnected && sessionId);
                 failureCount = 0;
                 lastGood = sessionId ? lastGoodBySession.get(sessionId) || null : null;
+                const unsupported = sessionId && unsupportedSessions.has(sessionId);
                 render(currentState(
-                    connected ? 'loading' : 'disconnected',
+                    connected ? (unsupported ? 'unavailable' : 'loading') : 'disconnected',
                     lastGood ? { ...lastGood } : { metricHistory: [] },
                 ));
-                startPolling();
+                if (!unsupported) startPolling();
             },
 
             setVisible(nextVisible) {
@@ -292,7 +384,9 @@
                 clearPolling();
                 if (visible) {
                     render(currentState(
-                        connected ? 'loading' : 'disconnected',
+                        connected && unsupportedSessions.has(sessionId)
+                            ? 'unavailable'
+                            : (connected ? 'loading' : 'disconnected'),
                         lastGood ? { ...lastGood } : {},
                     ));
                     startPolling();
@@ -315,6 +409,8 @@
                 previousNetworkBySession.delete(removedSessionId);
                 metricHistoryBySession.delete(removedSessionId);
                 lastGoodBySession.delete(removedSessionId);
+                unsupportedSessions.delete(removedSessionId);
+                unsupportedDiagnosticsSessions.delete(removedSessionId);
                 if (sessionId !== removedSessionId) return;
                 clearPolling();
                 sessionId = null;
@@ -334,11 +430,13 @@
     return {
         POLL_INTERVAL_MS,
         RESPONSE_TIMEOUT_MS,
+        BACKOFF_RETRY_MS,
         calculateCpuPercent,
         formatKib,
         severityForPercent,
         calculateNetworkRates,
         percent,
+        metricAvailability,
         createController,
     };
 }));

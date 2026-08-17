@@ -129,6 +129,23 @@ def clean_sessions():
         ssh_manager.close_session(session_id)
 
 
+def test_output_snapshot_carries_a_monotone_sequence_watermark():
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions['session-1'] = {
+            'connected': True,
+            'output_buffer': [],
+            'output_buffer_size': 0,
+            'output_buffer_max': 512000,
+            'output_sequence': 0,
+        }
+
+    assert ssh_manager.record_output('session-1', 'switch# ', now=1) == 1
+    assert ssh_manager.record_output('session-1', 'switch# ', now=2) == 2
+    assert ssh_manager.get_output_snapshot('session-1') == ('switch# switch# ', 2)
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions.pop('session-1', None)
+
+
 def install_ssh_clients(monkeypatch, *connect_errors):
     clients = ClientList()
     opened_sockets = []

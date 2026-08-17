@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app import socket_events
 
 
@@ -104,3 +106,74 @@ def test_sftp_request_handlers_reject_malformed_payloads(monkeypatch):
             'request_id': None,
         }),
     ]
+
+
+def test_sftp_capability_probe_returns_only_correlated_availability(monkeypatch):
+    emitted, user = _capture(monkeypatch)
+    monkeypatch.setattr(socket_events, 'check_socket_rate_limit', lambda *_args: False)
+    monkeypatch.setattr(
+        socket_events.sftp_handler,
+        'probe_sftp_capability',
+        lambda _session_id: False,
+    )
+
+    socket_events.handle_probe_session_sftp.__wrapped__({
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:4',
+    }, current_user=user)
+
+    assert emitted == [('session_sftp_capability', {
+        'success': True,
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:4',
+        'available': False,
+    })]
+
+
+def test_sftp_capability_probe_reports_busy_as_retryable_generic_failure(monkeypatch):
+    emitted, user = _capture(monkeypatch)
+    monkeypatch.setattr(socket_events, 'check_socket_rate_limit', lambda *_args: False)
+    monkeypatch.setattr(
+        socket_events.sftp_handler,
+        'probe_sftp_capability',
+        lambda _session_id: None,
+    )
+
+    socket_events.handle_probe_session_sftp.__wrapped__({
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:busy',
+    }, current_user=user)
+
+    assert emitted == [('session_sftp_capability', {
+        'success': False,
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:busy',
+        'available': False,
+    })]
+
+
+def test_sftp_capability_probe_rejects_unowned_session_generically(monkeypatch):
+    emitted, user = _capture(monkeypatch)
+    monkeypatch.setattr(socket_events, 'check_socket_rate_limit', lambda *_args: False)
+    monkeypatch.setattr(
+        socket_events,
+        'verify_session_ownership',
+        lambda _session_id, _user_id: False,
+    )
+    monkeypatch.setattr(
+        socket_events.sftp_handler,
+        'probe_sftp_capability',
+        lambda _session_id: pytest.fail('unowned session reached SFTP'),
+    )
+
+    socket_events.handle_probe_session_sftp.__wrapped__({
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:5',
+    }, current_user=user)
+
+    assert emitted == [('session_sftp_capability', {
+        'success': False,
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:5',
+        'available': False,
+    })]

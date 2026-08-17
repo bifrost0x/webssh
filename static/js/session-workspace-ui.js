@@ -78,8 +78,10 @@
             toggle: documentRef.getElementById('sessionSftpToggleBtn'),
             filesMount: documentRef.getElementById('sessionFilesMount'),
             notepadPanel: documentRef.getElementById('notepadPanel'),
+            insightsCard: documentRef.getElementById('sessionInsightsCard'),
             insightsHost: documentRef.getElementById('sessionInsightsHost'),
             insightsState: documentRef.getElementById('sessionInsightsState'),
+            cpuResource: documentRef.getElementById('sessionCpuResource'),
             cpuGauge: documentRef.getElementById('sessionCpuGauge'),
             cpuValue: documentRef.getElementById('sessionCpuValue'),
             cpuChart: documentRef.getElementById('sessionCpuChart'),
@@ -91,6 +93,7 @@
             diskBar: documentRef.getElementById('sessionDiskBar'),
             osValue: documentRef.getElementById('sessionOsValue'),
             uptimeValue: documentRef.getElementById('sessionUptimeValue'),
+            insightsMeta: documentRef.getElementById('sessionInsightsMeta'),
         };
         if (!elements.mainSplit || !elements.toggle || !elements.filesPanel || !elements.filesMount) return null;
 
@@ -114,6 +117,20 @@
         function renderInsights(state) {
             lastInsightsState = state;
             const active = sessionManager.getSession(state.sessionId);
+            const availability = insightsModule.metricAvailability(state);
+            diagnosticsController?.render(state, active, lastInventoryState);
+            elements.insightsCard.hidden = !availability.any;
+            elements.cpuResource.hidden = !availability.cpu;
+            elements.ramResource.hidden = !availability.memory;
+            elements.diskResource.hidden = !availability.disk;
+            elements.osValue.hidden = !availability.os;
+            elements.uptimeValue.hidden = !availability.uptime;
+            elements.insightsMeta.hidden = !availability.os && !availability.uptime;
+            if (!availability.any) {
+                drawCpuHistory(elements.cpuChart, []);
+                return;
+            }
+
             elements.insightsHost.textContent = active
                 ? `${active.username}@${active.host}`
                 : 'No active session';
@@ -123,39 +140,35 @@
             };
             elements.insightsState.textContent = labels[state.status] || 'Offline';
             elements.insightsState.className = `session-insights-state ${state.status || ''}`;
-            diagnosticsController?.render(state, active, lastInventoryState);
-            if (!state.stats) {
-                if (state.status === 'disconnected' || state.status === 'unavailable') {
-                    elements.cpuValue.textContent = '--';
-                    elements.cpuGauge.style.setProperty('--value', '0');
-                    elements.ramValue.textContent = '--';
-                    elements.diskValue.textContent = '--';
-                    elements.ramBar.style.width = '0%';
-                    elements.diskBar.style.width = '0%';
-                    elements.osValue.textContent = 'Linux only';
-                    elements.uptimeValue.textContent = state.status === 'unavailable'
-                        ? 'Telemetry unavailable'
-                        : 'Refreshes every 4s';
-                    drawCpuHistory(elements.cpuChart, []);
-                }
-                return;
+
+            if (availability.cpu) {
+                const cpu = state.cpuPercent;
+                elements.cpuValue.textContent = `${cpu}%`;
+                elements.cpuGauge.style.setProperty('--value', String(cpu));
+                elements.cpuGauge.classList.remove('normal', 'warning', 'critical');
+                elements.cpuGauge.classList.add(insightsModule.severityForPercent(cpu));
+                drawCpuHistory(elements.cpuChart, state.cpuHistory);
+            } else {
+                drawCpuHistory(elements.cpuChart, []);
             }
 
-            const cpu = state.cpuPercent;
-            elements.cpuValue.textContent = cpu === null ? '...' : `${cpu}%`;
-            elements.cpuGauge.style.setProperty('--value', String(cpu || 0));
-            elements.cpuGauge.classList.remove('normal', 'warning', 'critical');
-            elements.cpuGauge.classList.add(insightsModule.severityForPercent(cpu || 0));
-            drawCpuHistory(elements.cpuChart, state.cpuHistory);
-
-            const memoryPercent = percent(state.stats.memory.used_kib, state.stats.memory.total_kib);
-            const diskPercent = Number(state.stats.disk.percent) || 0;
-            elements.ramValue.textContent = `${insightsModule.formatKib(state.stats.memory.used_kib)} / ${insightsModule.formatKib(state.stats.memory.total_kib)}`;
-            elements.diskValue.textContent = `${insightsModule.formatKib(state.stats.disk.used_kib)} / ${insightsModule.formatKib(state.stats.disk.total_kib)}`;
-            setResource(elements.ramResource, elements.ramBar, memoryPercent);
-            setResource(elements.diskResource, elements.diskBar, diskPercent);
-            elements.osValue.textContent = state.stats.os_name;
-            elements.uptimeValue.textContent = formatUptime(state.stats.uptime_seconds);
+            if (availability.memory) {
+                const memoryPercent = percent(
+                    state.stats.memory.used_kib,
+                    state.stats.memory.total_kib,
+                );
+                elements.ramValue.textContent = `${insightsModule.formatKib(state.stats.memory.used_kib)} / ${insightsModule.formatKib(state.stats.memory.total_kib)}`;
+                setResource(elements.ramResource, elements.ramBar, memoryPercent);
+            }
+            if (availability.disk) {
+                const diskPercent = Number(state.stats.disk.percent);
+                elements.diskValue.textContent = `${insightsModule.formatKib(state.stats.disk.used_kib)} / ${insightsModule.formatKib(state.stats.disk.total_kib)}`;
+                setResource(elements.diskResource, elements.diskBar, diskPercent);
+            }
+            if (availability.os) elements.osValue.textContent = state.stats.os_name;
+            if (availability.uptime) {
+                elements.uptimeValue.textContent = formatUptime(state.stats.uptime_seconds);
+            }
         }
 
         filesController = filesModule.createController({
@@ -187,6 +200,10 @@
         insightsController = insightsModule.createController({ socket, render: renderInsights });
         const desktopQuery = root.matchMedia('(min-width: 851px)');
         const wideDesktopQuery = root.matchMedia('(min-width: 1440px)');
+        const sftpCapabilityTracker = workspaceModule.createSftpCapabilityTracker({
+            socket,
+            onChange: sync,
+        });
         coordinator = workspaceModule.createCoordinator({
             filesPanel: filesController,
             insights: insightsController,
@@ -197,6 +214,7 @@
                 elements.toggle.setAttribute('aria-pressed', String(state.sftpOpen));
                 elements.mainSplit.classList.toggle('sftp-open', state.sftpOpen);
                 elements.filesPanel.classList.toggle('hidden', !state.sftpOpen);
+                sftpCapabilityTracker.probeIfNeeded(state);
                 root.requestAnimationFrame(() => terminalManager?.fitAllTerminals?.());
             },
         });
@@ -210,6 +228,7 @@
                 sessionId: activeId,
                 session: activeSession,
                 sessionCount: sessionManager.getAllSessions().length,
+                sftpCapability: sftpCapabilityTracker.get(activeId),
             });
             if (activeId !== inventorySessionId || connected !== inventoryConnected) {
                 inventorySessionId = activeId || null;
@@ -241,6 +260,7 @@
             const removedSessionId = event?.detail?.sessionId;
             insightsController?.removeSession(removedSessionId);
             inventoryController?.removeSession(removedSessionId);
+            sftpCapabilityTracker.remove(removedSessionId);
         });
         documentRef.addEventListener('visibilitychange', syncInsightsVisibility);
         desktopQuery.addEventListener?.('change', () => {

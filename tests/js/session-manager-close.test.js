@@ -21,7 +21,10 @@ function loadSessionManager(confirmSessionClose = true) {
                 return null;
             },
         },
-        TerminalManager: { destroyTerminal() {} },
+        TerminalManager: {
+            destroyTerminal() {},
+            seedRestoredOutput() {},
+        },
         CustomEvent: class CustomEvent {
             constructor(type, options) {
                 this.type = type;
@@ -100,4 +103,33 @@ test('emits a session-removed event exactly once for each actual UI removal', ()
     assert.deepEqual(removedIds, ['sessionA']);
     manager.removeSessionUI('missing-session');
     assert.deepEqual(removedIds, ['sessionA']);
+});
+
+test('seeds restored output before creating and attaching the terminal', () => {
+    const { manager, context } = loadSessionManager();
+    const calls = [];
+    context.TerminalManager.seedRestoredOutput = (sessionId, output, sequence) => {
+        calls.push(['seed', sessionId, output, sequence]);
+    };
+    manager.createSession = data => {
+        calls.push(['create', data.session_id]);
+        return data.session_id;
+    };
+    manager.getFirstEmptyPaneIndex = () => 0;
+    manager.assignSessionToPane = sessionId => calls.push(['assign', sessionId]);
+
+    manager.restoreSession({
+        session_id: 'restored',
+        host: 'switch.test',
+        port: 22,
+        username: 'admin',
+        buffered_output: 'switch# ',
+        output_sequence: 14,
+    });
+
+    assert.deepEqual(calls, [
+        ['seed', 'restored', 'switch# ', 14],
+        ['create', 'restored'],
+        ['assign', 'restored'],
+    ]);
 });

@@ -19,13 +19,13 @@ function pngSize(filePath) {
     return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
 }
 
-async function seedLinuxSession(page) {
+async function seedLinuxSession(page, options = {}) {
     await expect.poll(() => page.evaluate(() => (
         typeof Terminal === 'function'
         && typeof SessionManager !== 'undefined'
         && typeof SessionManager.createSession === 'function'
     ))).toBe(true);
-    await page.evaluate(() => {
+    await page.evaluate(seedOptions => {
         const originalEmit = window.socket.emit.bind(window.socket);
         let insightSample = 0;
         window.__workspaceEvents = [];
@@ -97,6 +97,15 @@ async function seedLinuxSession(page) {
             }
             window.__workspaceEvents.push({ event, payload: recordedPayload });
             if (payload?.session_id === 'workspace-linux') {
+                if (event === 'probe_session_sftp') {
+                    deliver('session_sftp_capability', {
+                        success: true,
+                        available: seedOptions.sftpAvailable !== false,
+                        session_id: payload.session_id,
+                        request_id: payload.request_id,
+                    });
+                    return window.socket;
+                }
                 if (event === 'request_session_runtime_inventory') {
                     window.__workspaceInventoryRequests += 1;
                     const response = {
@@ -131,13 +140,14 @@ async function seedLinuxSession(page) {
                         [260, 0, 180, 1060],
                         [400, 0, 260, 1120],
                     ];
-                    const stats = {
+                    const memory = {
+                        total_kib: 16 * 1024 * 1024,
+                        available_kib: 6 * 1024 * 1024,
+                        used_kib: 10 * 1024 * 1024,
+                    };
+                    const stats = seedOptions.partialMetrics ? { memory } : {
                         cpu: cpuSamples[Math.min(insightSample - 1, cpuSamples.length - 1)],
-                        memory: {
-                            total_kib: 16 * 1024 * 1024,
-                            available_kib: 6 * 1024 * 1024,
-                            used_kib: 10 * 1024 * 1024,
-                        },
+                        memory,
                         disk: {
                             total_kib: 100 * 1024 * 1024,
                             available_kib: 39 * 1024 * 1024,
@@ -234,7 +244,7 @@ async function seedLinuxSession(page) {
             '- Verify deployment health',
             '- Archive audit notes',
         ].join('\n');
-    });
+    }, options);
 }
 
 test('single-session workspace combines terminal, SFTP, live Linux stats, and notepad', async ({ page }, testInfo) => {
@@ -353,8 +363,34 @@ test('mobile workspace shows dormant diagnostics without polling', async ({ page
     await page.waitForTimeout(500);
 
     expect(await page.evaluate(() => window.__workspaceInsightSample || 0)).toBe(0);
-    await expect(page.locator('#sessionInsightsCard')).toBeVisible();
+    await expect(page.locator('#sessionInsightsCard')).toBeHidden();
     await expect(page.locator('#sessionDiagnosticsToggle')).toBeDisabled();
+    await assertNoExternalRequests(page);
+});
+
+test('wide workspace keeps embedded SFTP closed when the session probe fails', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page, { sftpAvailable: false });
+
+    await expect.poll(() => page.evaluate(() => window.__workspaceEvents.filter(
+        event => event.event === 'probe_session_sftp',
+    ).length)).toBe(1);
+    await expect(page.locator('#sessionSftpToggleBtn')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#sessionFilesPanel')).toBeHidden();
+    await expect(page.locator('#sessionInsightsCard')).toBeVisible();
+    await assertNoExternalRequests(page);
+});
+
+test('partial telemetry shows only metrics returned by the device', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page, { partialMetrics: true, sftpAvailable: false });
+
+    await expect(page.locator('#sessionInsightsCard')).toBeVisible();
+    await expect(page.locator('#sessionRamResource')).toBeVisible();
+    await expect(page.locator('#sessionCpuResource')).toBeHidden();
+    await expect(page.locator('#sessionDiskResource')).toBeHidden();
+    await expect(page.locator('#sessionInsightsMeta')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsToggle')).toBeEnabled();
     await assertNoExternalRequests(page);
 });
 

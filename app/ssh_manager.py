@@ -340,6 +340,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'output_buffer': [],
                 'output_buffer_size': 0,
                 'output_buffer_max': 512000,  # 512KB max buffer
+                'output_sequence': 0,
                 'quota_reservation': reservation,
                 'reader_handle': None,
             }
@@ -422,6 +423,30 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             except Exception:
                 pass
 
+def record_output(session_id, decoded_data, *, now=None):
+    """Append one output chunk and return its monotone session sequence."""
+    activity_time = time.time() if now is None else now
+    with sessions_lock:
+        session = sessions.get(session_id)
+        if not session or not session.get('connected'):
+            return None
+        sequence = session.get('output_sequence', 0) + 1
+        session['output_sequence'] = sequence
+        session['last_activity'] = activity_time
+        buf = session.get('output_buffer')
+        if buf is not None:
+            buf.append(decoded_data)
+            session['output_buffer_size'] += len(decoded_data)
+            while (
+                session['output_buffer_size']
+                > session.get('output_buffer_max', 512000)
+                and len(buf) > 1
+            ):
+                removed = buf.pop(0)
+                session['output_buffer_size'] -= len(removed)
+        return sequence
+
+
 def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
     """Continuously read SSH output and emit it until cancelled or disconnected.
 
@@ -480,23 +505,17 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
                         if not decoded_data:
                             # Nothing to emit; skip
                             continue
+                        now = time.time()
+                        sequence = record_output(
+                            session_id, decoded_data, now=now
+                        )
+                        if sequence is None:
+                            break
                         socketio_instance.emit('ssh_output', {
                             'session_id': session_id,
-                            'data': decoded_data
+                            'data': decoded_data,
+                            'sequence': sequence,
                         }, room=cached_room)
-
-                        now = time.time()
-                        with sessions_lock:
-                            if session_id in sessions:
-                                sessions[session_id]['last_activity'] = now
-                                buf = sessions[session_id].get('output_buffer')
-                                if buf is not None:
-                                    buf.append(decoded_data)
-                                    sessions[session_id]['output_buffer_size'] += len(decoded_data)
-                                    # Trim buffer if over max
-                                    while sessions[session_id]['output_buffer_size'] > sessions[session_id].get('output_buffer_max', 512000) and len(buf) > 1:
-                                        removed = buf.pop(0)
-                                        sessions[session_id]['output_buffer_size'] -= len(removed)
 
                         if now - last_db_update >= 10.0:
                             last_db_update = now
@@ -693,6 +712,11 @@ def get_session(session_id):
 
 def get_output_buffer(session_id):
     """Get buffered output for a session (for replay on reconnect)."""
+    return get_output_snapshot(session_id)[0]
+
+
+def get_output_snapshot(session_id):
+    """Return buffered output and its atomic monotone sequence watermark."""
     import re as _re
     with sessions_lock:
         if session_id in sessions:
@@ -701,8 +725,9 @@ def get_output_buffer(session_id):
                 output = ''.join(buf)
                 # Filter Device Attributes responses (ESC[c sequences only)
                 output = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', output)
-                return output
-    return ''
+                return output, sessions[session_id].get('output_sequence', 0)
+            return '', sessions[session_id].get('output_sequence', 0)
+    return '', 0
 
 def cleanup_idle_sessions():
     """Clean up sessions that have been idle too long."""
