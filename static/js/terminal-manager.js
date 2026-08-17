@@ -7,6 +7,9 @@ const TerminalManager = {
     sessionTerminals: {},
     transcripts: {},
     transcriptSizes: {},
+    sequencedOutput: {},
+    sequencedOutputSizes: {},
+    lastOutputSequences: {},
     maxTranscriptSize: 200000,
 
     getCssVar(name, fallback = '') {
@@ -139,6 +142,7 @@ const TerminalManager = {
             return false;
         }
 
+        const existingOutput = [...(this.transcripts[sessionId] || [])];
         this.pendingOutput[key] = [];
         this.terminalReady[key] = false;
         if (!this.transcripts[sessionId]) {
@@ -157,11 +161,13 @@ const TerminalManager = {
 
                 setTimeout(() => {
                     terminal.clear();
-                    // Discard any output buffered before the terminal was ready
-                    // to prevent stale output from previous sessions appearing
+                    const pendingOutput = this.pendingOutput[key] || [];
                     this.pendingOutput[key] = [];
-
                     this.terminalReady[key] = true;
+
+                    existingOutput.concat(pendingOutput).forEach(data => {
+                        this.writeOutputToTerminal(key, data);
+                    });
                 }, 50);
             });
         });
@@ -169,7 +175,31 @@ const TerminalManager = {
         return true;
     },
 
-    writeOutput(sessionId, data) {
+    writeOutput(sessionId, data, sequence = null) {
+        const normalizedSequence = Number.isSafeInteger(sequence) && sequence > 0
+            ? sequence
+            : null;
+        if (normalizedSequence !== null) {
+            const lastSequence = this.lastOutputSequences[sessionId] || 0;
+            if (normalizedSequence <= lastSequence) return;
+            this.lastOutputSequences[sessionId] = normalizedSequence;
+            if (!this.sequencedOutput[sessionId]) {
+                this.sequencedOutput[sessionId] = [];
+                this.sequencedOutputSizes[sessionId] = 0;
+            }
+            this.sequencedOutput[sessionId].push({
+                sequence: normalizedSequence,
+                data,
+            });
+            this.sequencedOutputSizes[sessionId] += data.length;
+            while (
+                this.sequencedOutputSizes[sessionId] > this.maxTranscriptSize
+                && this.sequencedOutput[sessionId].length > 1
+            ) {
+                const removed = this.sequencedOutput[sessionId].shift();
+                this.sequencedOutputSizes[sessionId] -= removed.data.length;
+            }
+        }
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         this.appendTranscript(sessionId, data);
         if (terminalKeys.length === 0) {
@@ -233,6 +263,32 @@ const TerminalManager = {
             const removed = this.transcripts[sessionId].shift();
             this.transcriptSizes[sessionId] -= removed.length;
         }
+    },
+
+    seedRestoredOutput(sessionId, bufferedOutput, outputSequence = null) {
+        const snapshot = typeof bufferedOutput === 'string' ? bufferedOutput : '';
+        if (!snapshot) return;
+
+        const watermark = Number.isSafeInteger(outputSequence) && outputSequence >= 0
+            ? outputSequence
+            : null;
+        let liveOutput = this.getTranscript(sessionId);
+        if (watermark !== null) {
+            const events = (this.sequencedOutput[sessionId] || [])
+                .filter(event => event.sequence > watermark);
+            liveOutput = events.map(event => event.data).join('');
+            this.sequencedOutput[sessionId] = events;
+            this.sequencedOutputSizes[sessionId] = liveOutput.length;
+            this.lastOutputSequences[sessionId] = Math.max(
+                this.lastOutputSequences[sessionId] || 0,
+                watermark,
+            );
+        }
+
+        const merged = `${snapshot}${liveOutput}`;
+        const bounded = merged.slice(-this.maxTranscriptSize);
+        this.transcripts[sessionId] = bounded ? [bounded] : [];
+        this.transcriptSizes[sessionId] = bounded.length;
     },
 
     getTranscript(sessionId) {
@@ -332,6 +388,9 @@ const TerminalManager = {
         delete this.sessionTerminals[sessionId];
         delete this.transcripts[sessionId];
         delete this.transcriptSizes[sessionId];
+        delete this.sequencedOutput[sessionId];
+        delete this.sequencedOutputSizes[sessionId];
+        delete this.lastOutputSequences[sessionId];
     },
 
     setupScrollbar(container, terminal, terminalKey) {

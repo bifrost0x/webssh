@@ -137,7 +137,7 @@ def test_session_insights_socket_returns_generic_collector_failure(monkeypatch):
     emitted, calls = invoke(
         monkeypatch,
         {'session_id': 'owned-session', 'request_id': 'sample-3'},
-        collector_result=(None, 'unavailable'),
+        collector_result=(None, 'unsupported'),
     )
 
     assert calls == [('owned-session', False)]
@@ -146,6 +146,7 @@ def test_session_insights_socket_returns_generic_collector_failure(monkeypatch):
         'session_id': 'owned-session',
         'request_id': 'sample-3',
         'error': 'Session insights unavailable',
+        'reason': 'unsupported',
     })]
 
 

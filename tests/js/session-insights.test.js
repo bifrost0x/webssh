@@ -72,6 +72,25 @@ test('formats KiB values and maps visual thresholds', () => {
     assert.equal(insights.severityForPercent(90), 'critical');
 });
 
+test('reports only telemetry sections with usable values', () => {
+    assert.deepEqual(insights.metricAvailability({
+        cpuPercent: null,
+        stats: {
+            memory: { total_kib: 4096, used_kib: 3072 },
+            os_name: 'Appliance OS',
+        },
+    }), {
+        cpu: false,
+        memory: true,
+        disk: false,
+        os: true,
+        uptime: false,
+        any: true,
+    });
+
+    assert.equal(insights.metricAvailability({ stats: {} }).any, false);
+});
+
 
 test('requests immediately and repeats on an exact four second interval', () => {
     const runtime = fakeRuntime();
@@ -282,6 +301,114 @@ test('marks one failed update stale and three consecutive failures unavailable',
     failCurrentRequest();
 
     assert.equal(runtime.renders.at(-1).status, 'unavailable');
+});
+
+test('stops probing a session after the server confirms metrics are unsupported', () => {
+    const runtime = fakeRuntime();
+    runtime.controller.setSession('switch-a', true);
+    const request = runtime.emitted.at(-1).payload;
+
+    runtime.handlers.get('session_insights')({
+        success: false,
+        reason: 'unsupported',
+        session_id: 'switch-a',
+        request_id: request.request_id,
+    });
+
+    assert.equal(runtime.intervals.size, 0);
+    assert.equal(runtime.renders.at(-1).status, 'unavailable');
+    runtime.controller.setSession('switch-a', true);
+    assert.equal(runtime.emitted.length, 1);
+
+    runtime.controller.removeSession('switch-a');
+    runtime.controller.setSession('switch-a', true);
+    assert.equal(runtime.emitted.length, 2);
+});
+
+test('keeps base telemetry polling when only expanded diagnostics are unsupported', () => {
+    const runtime = fakeRuntime();
+    runtime.controller.setSession('appliance-a', true);
+    const baseRequest = runtime.emitted.at(-1).payload;
+    runtime.handlers.get('session_insights')({
+        success: true,
+        session_id: 'appliance-a',
+        request_id: baseRequest.request_id,
+        stats: { memory: { total_kib: 1000, used_kib: 600 } },
+    });
+
+    runtime.controller.setDiagnosticsVisible(true);
+    const expandedRequest = runtime.emitted.at(-1).payload;
+    assert.equal(expandedRequest.include_diagnostics, true);
+    runtime.handlers.get('session_insights')({
+        success: false,
+        reason: 'unsupported',
+        session_id: 'appliance-a',
+        request_id: expandedRequest.request_id,
+    });
+
+    const fallbackRequest = runtime.emitted.at(-1).payload;
+    assert.notEqual(fallbackRequest.request_id, expandedRequest.request_id);
+    assert.equal('include_diagnostics' in fallbackRequest, false);
+    assert.equal(runtime.intervals.size, 1);
+    assert.equal(runtime.renders.at(-1).status, 'ready');
+    const emittedBeforeFallbackResponse = runtime.emitted.length;
+    runtime.handlers.get('session_insights')({
+        success: true,
+        session_id: 'appliance-a',
+        request_id: fallbackRequest.request_id,
+        stats: { memory: { total_kib: 1000, used_kib: 600 } },
+    });
+    assert.equal(runtime.emitted.length, emittedBeforeFallbackResponse);
+});
+
+test('keeps the previous CPU baseline across partial samples without CPU counters', () => {
+    const runtime = fakeRuntime();
+    runtime.controller.setSession('session-a', true);
+
+    function respond(stats) {
+        const request = runtime.emitted.at(-1).payload;
+        runtime.handlers.get('session_insights')({
+            success: true,
+            session_id: 'session-a',
+            request_id: request.request_id,
+            stats,
+        });
+    }
+
+    respond({ cpu: [100, 0, 50, 850] });
+    [...runtime.intervals.values()][0].callback();
+    respond({ memory: { total_kib: 1000, used_kib: 500 } });
+    [...runtime.intervals.values()][0].callback();
+    respond({ cpu: [110, 0, 60, 880] });
+
+    assert.equal(runtime.renders.at(-1).cpuPercent, 40);
+});
+
+test('backs off regular polling after three transient failures', () => {
+    const runtime = fakeRuntime();
+    runtime.controller.setSession('iot-a', true);
+
+    function failCurrentRequest() {
+        const request = runtime.emitted.at(-1).payload;
+        runtime.handlers.get('session_insights')({
+            success: false,
+            reason: 'transient',
+            session_id: 'iot-a',
+            request_id: request.request_id,
+        });
+    }
+
+    failCurrentRequest();
+    [...runtime.intervals.values()][0].callback();
+    failCurrentRequest();
+    [...runtime.intervals.values()][0].callback();
+    failCurrentRequest();
+
+    assert.equal(runtime.intervals.size, 0);
+    assert.equal(
+        [...runtime.timeouts.values()].some(timer => timer.delay === 60000),
+        true,
+    );
 });
 
 

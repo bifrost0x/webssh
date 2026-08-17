@@ -223,7 +223,6 @@
 
     function buildViewModel(state = {}, session = null, inventoryState = {}, filters = {}) {
         const stats = state.stats || null;
-        const available = Boolean(state.sessionId && stats);
         const host = session ? `${session.username}@${session.host}` : 'No active session';
         const history = normalizedHistory(state);
         const scopedInventoryState = (
@@ -249,6 +248,28 @@
         const processes = stats?.processes;
         const topCpu = boundedProcesses(processes?.top_cpu, 'cpu_percent');
         const topMemory = boundedProcesses(processes?.top_memory, 'memory_percent');
+        const uptime = formatUptime(stats?.uptime_seconds);
+        const hasNetworkStats = (
+            finiteNumber(stats?.network?.received_bytes) !== null
+            && finiteNumber(stats?.network?.transmitted_bytes) !== null
+        );
+        const available = Boolean(state.sessionId && stats && (
+            finiteNumber(state.cpuPercent) !== null
+            || memoryPercent !== null
+            || diskPercent !== null
+            || loadPercent !== null
+            || swapPercent !== null
+            || uptime !== null
+            || hasNetworkStats
+            || topCpu.length
+            || topMemory.length
+            || (typeof stats.os_name === 'string' && stats.os_name.trim())
+        ));
+        const hasPressureHistory = history.some(sample => (
+            sample.cpuPercent !== null
+            || sample.memoryPercent !== null
+            || sample.normalizedLoadPercent !== null
+        ));
         const inventory = scopedInventoryState.inventory || null;
         const sampledAt = finiteNumber(scopedInventoryState.sampledAt);
 
@@ -260,7 +281,7 @@
             statusClass: state.status || 'disconnected',
             resources: {
                 cpu: available ? resource(
-                    finiteNumber(state.cpuPercent), 'Current utilization', 'cpuPercent', history, true,
+                    finiteNumber(state.cpuPercent), 'Current utilization', 'cpuPercent', history,
                 ) : null,
                 memory: available ? resource(
                     memoryPercent,
@@ -289,6 +310,7 @@
                     transmittedBps: sample.transmittedBps,
                 })),
             },
+            hasPressureHistory,
             secondary: {
                 swap: swapPercent === null ? null : {
                     percent: swapPercent,
@@ -297,7 +319,7 @@
                     detail: `${formatKib(stats.swap.used_kib)} of ${formatKib(stats.swap.total_kib)}`,
                     severity: severityForPercent(swapPercent),
                 },
-                uptime: formatUptime(stats?.uptime_seconds),
+                uptime,
                 processTotal: finiteNumber(processes?.total),
                 processZombies: finiteNumber(processes?.zombies),
                 received: formatRate(state.networkRates?.received_bps),
@@ -630,7 +652,7 @@
                 : (model.inventory.loading ? 'Loading inventory' : 'Inventory not loaded');
 
             ['cpu', 'memory', 'disk', 'load'].forEach(key => setResource(key, model.resources[key]));
-            elements.pressureSection.hidden = !model.available;
+            elements.pressureSection.hidden = !model.hasPressureHistory;
             const hasNetwork = Boolean(
                 model.secondary.received || model.secondary.transmitted
                 || model.charts.networkHistory.some(sample => sample.receivedBps !== null || sample.transmittedBps !== null)

@@ -257,7 +257,9 @@ def restore_user_sessions(user_id):
         session = ssh_manager.get_session(session_id)
 
         if session and session.get('connected'):
-            buffered_output = ssh_manager.get_output_buffer(session_id)
+            buffered_output, output_sequence = (
+                ssh_manager.get_output_snapshot(session_id)
+            )
             emit('ssh_session_restored', {
                 'session_id': session_id,
                 'host': db_session.host,
@@ -268,7 +270,8 @@ def restore_user_sessions(user_id):
                 'use_tmux': session.get('use_tmux', False),
                 'tmux_session_name': session.get('tmux_session_name'),
                 'display_name': db_session.display_name,
-                'buffered_output': buffered_output
+                'buffered_output': buffered_output,
+                'output_sequence': output_sequence,
             }, room=room)
             log_info(f"Restored SSH session {session_id}", user_id=user_id, room=room)
         else:
@@ -1047,6 +1050,64 @@ def handle_delete_key(data, current_user=None):
     except Exception:
         emit('error', {'error': 'Failed to delete key'})
 
+@socketio.on('probe_session_sftp')
+@socket_login_required
+def handle_probe_session_sftp(data, current_user=None):
+    """Check whether an owned SSH session supports browsable SFTP."""
+    session_id = data.get('session_id') if isinstance(data, dict) else None
+    request_id = data.get('request_id') if isinstance(data, dict) else None
+    valid_identifiers = (
+        isinstance(session_id, str)
+        and 0 < len(session_id) <= 128
+        and isinstance(request_id, str)
+        and 0 < len(request_id) <= 128
+    )
+    safe_session_id = session_id if valid_identifiers else ''
+    safe_request_id = request_id if valid_identifiers else ''
+
+    def emit_result(*, success, available=False):
+        emit('session_sftp_capability', {
+            'success': success,
+            'session_id': safe_session_id,
+            'request_id': safe_request_id,
+            'available': available,
+        })
+
+    if not valid_identifiers:
+        emit_result(success=False)
+        return
+    if check_socket_rate_limit(
+            current_user.id,
+            'session_sftp_capability',
+            sftp_handler.CAPABILITY_RATE_LIMIT):
+        emit_result(success=False)
+        return
+    if not verify_session_ownership(session_id, current_user.id):
+        log_warning(
+            'Unauthorized SFTP capability request',
+            user_id=current_user.id,
+            session_id=session_id,
+        )
+        emit_result(success=False)
+        return
+
+    try:
+        available = sftp_handler.probe_sftp_capability(session_id)
+    except Exception as exc:
+        log_warning(
+            'SFTP capability probe failed',
+            session_id=session_id,
+            error_type=type(exc).__name__,
+        )
+        emit_result(success=False)
+        return
+
+    if available is None:
+        emit_result(success=False)
+        return
+    emit_result(success=True, available=available is True)
+
+
 @socketio.on('list_directory')
 @socket_login_required
 def handle_list_directory(data, current_user=None):
@@ -1574,13 +1635,16 @@ def handle_request_session_insights(data, current_user=None):
     safe_session_id = session_id if valid_identifiers else ''
     safe_request_id = request_id if valid_identifiers else ''
 
-    def emit_unavailable():
-        emit('session_insights', {
+    def emit_unavailable(reason=None):
+        payload = {
             'success': False,
             'session_id': safe_session_id,
             'request_id': safe_request_id,
             'error': 'Session insights unavailable',
-        })
+        }
+        if reason in {'busy', 'transient', 'unsupported'}:
+            payload['reason'] = reason
+        emit('session_insights', payload)
 
     if not valid_identifiers:
         emit_unavailable()
@@ -1614,11 +1678,11 @@ def handle_request_session_insights(data, current_user=None):
             session_id=session_id,
             error_type=type(exc).__name__,
         )
-        emit_unavailable()
+        emit_unavailable('transient')
         return
 
     if error or stats is None:
-        emit_unavailable()
+        emit_unavailable(error)
         return
 
     emit('session_insights', {

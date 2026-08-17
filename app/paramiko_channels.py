@@ -14,6 +14,15 @@ def _request_guard(channel, timeout):
     return guard
 
 
+def _remaining_timeout(deadline, maximum):
+    if deadline is None:
+        return maximum
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise socket.timeout('SSH channel operation exceeded its deadline')
+    return min(maximum, remaining)
+
+
 def open_shell_channel(transport, *, timeout, term, width, height):
     """Open a PTY shell without Paramiko's unbounded request waits."""
     channel = transport.open_session(timeout=timeout)
@@ -32,17 +41,20 @@ def open_shell_channel(transport, *, timeout, term, width, height):
     return channel
 
 
-def open_sftp_client(transport, *, timeout, operation_timeout):
+def open_sftp_client(transport, *, timeout, operation_timeout, deadline=None):
     """Open SFTP with a handshake deadline and bounded later operations."""
-    channel = transport.open_session(timeout=timeout)
-    channel.settimeout(timeout)
-    timeout_guard = _request_guard(channel, timeout)
+    channel = transport.open_session(
+        timeout=_remaining_timeout(deadline, timeout)
+    )
+    handshake_timeout = _remaining_timeout(deadline, timeout)
+    channel.settimeout(handshake_timeout)
+    timeout_guard = _request_guard(channel, handshake_timeout)
     try:
         channel.invoke_subsystem('sftp')
         sftp = paramiko.SFTPClient(channel)
         if channel.closed:
             raise socket.timeout('SFTP request exceeded its deadline')
-        channel.settimeout(operation_timeout)
+        channel.settimeout(_remaining_timeout(deadline, operation_timeout))
         return sftp
     except Exception:
         channel.close()

@@ -3,6 +3,162 @@
 import pytest
 
 
+def test_probe_sftp_capability_verifies_directory_access(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    class ClosingIterator:
+        def __init__(self):
+            self.closed = False
+            self.used = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            if self.used:
+                raise StopIteration
+            self.used = True
+            return object()
+
+        def close(self):
+            self.closed = True
+
+    entries = ClosingIterator()
+    fake_sftp = type('FakeSFTP', (), {
+        'listdir_iter': lambda self, path: entries,
+        'close': lambda self: None,
+    })()
+    transport = type('Transport', (), {'is_active': lambda self: True})()
+    client = type('Client', (), {'get_transport': lambda self: transport})()
+    monkeypatch.setitem(sftp_handler.ssh_manager.sessions, 'session-a', {
+        'connected': True,
+        'client': client,
+    })
+    monkeypatch.setattr(
+        sftp_handler,
+        'open_sftp_client',
+        lambda *_args, **_kwargs: fake_sftp,
+    )
+
+    assert sftp_handler.probe_sftp_capability('session-a') is True
+    assert entries.closed is True
+
+
+def test_probe_sftp_capability_hides_remote_failure(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    transport = type('Transport', (), {'is_active': lambda self: True})()
+    client = type('Client', (), {'get_transport': lambda self: transport})()
+    monkeypatch.setitem(sftp_handler.ssh_manager.sessions, 'session-a', {
+        'connected': True,
+        'client': client,
+    })
+    monkeypatch.setattr(
+        sftp_handler,
+        'open_sftp_client',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError('device-specific secret failure')
+        ),
+    )
+
+    assert sftp_handler.probe_sftp_capability('session-a') is False
+
+
+def test_probe_sftp_capability_uses_a_fresh_bounded_client(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    class FakeSFTP:
+        def __init__(self):
+            self.closed = False
+
+        def listdir_iter(self, _path):
+            return iter([object()])
+
+        def close(self):
+            self.closed = True
+
+    class FakeClient:
+        def get_transport(self):
+            return type('Transport', (), {'is_active': lambda self: True})()
+
+    fake_sftp = FakeSFTP()
+    monkeypatch.setitem(sftp_handler.ssh_manager.sessions, 'session-a', {
+        'connected': True,
+        'client': FakeClient(),
+    })
+    observed = {}
+
+    def open_client(transport, *, timeout, operation_timeout, deadline):
+        observed.update(
+            transport=transport,
+            timeout=timeout,
+            operation_timeout=operation_timeout,
+            deadline=deadline,
+        )
+        return fake_sftp
+
+    monkeypatch.setattr(sftp_handler, 'open_sftp_client', open_client)
+    monkeypatch.setattr(
+        sftp_handler,
+        'sftp_session',
+        lambda _session_id: pytest.fail('capability probe used cached SFTP'),
+    )
+
+    assert sftp_handler.probe_sftp_capability('session-a') is True
+    assert observed['timeout'] <= 3
+    assert observed['operation_timeout'] <= 3
+    assert observed['deadline'] > 0
+    assert fake_sftp.closed is True
+
+
+def test_probe_sftp_capability_returns_retryable_busy_without_waiting(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    held_lock = sftp_handler._acquire_capability_probe('session-a')
+    assert held_lock is not None
+    try:
+        assert sftp_handler.probe_sftp_capability('session-a') is None
+    finally:
+        sftp_handler._release_capability_probe('session-a', held_lock)
+
+
+def test_probe_sftp_capability_treats_deadline_closed_channel_as_retryable(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    transport = type('Transport', (), {'is_active': lambda self: True})()
+    client = type('Client', (), {'get_transport': lambda self: transport})()
+    monkeypatch.setitem(sftp_handler.ssh_manager.sessions, 'session-a', {
+        'connected': True,
+        'client': client,
+    })
+
+    class DeadlineClosedSFTP:
+        def listdir_iter(self, _path):
+            raise EOFError('channel closed by deadline guard')
+
+        def close(self):
+            pass
+
+    clock = iter([10.0, 10.1, 13.1])
+    monkeypatch.setattr(sftp_handler.time, 'monotonic', lambda: next(clock))
+    monkeypatch.setattr(
+        sftp_handler,
+        'open_sftp_client',
+        lambda *_args, **_kwargs: DeadlineClosedSFTP(),
+    )
+    monkeypatch.setattr(
+        sftp_handler,
+        'Timer',
+        lambda *_args, **_kwargs: type('Guard', (), {
+            'daemon': True,
+            'start': lambda self: None,
+            'cancel': lambda self: None,
+        })(),
+    )
+
+    assert sftp_handler.probe_sftp_capability('session-a') is None
+
+
 class TestSanitizePath:
     """Tests for the sanitize_path function."""
 

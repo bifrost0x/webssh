@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createCoordinator } = require('../../static/js/session-workspace.js');
+const {
+    createCoordinator,
+    createSftpCapabilityTracker,
+} = require('../../static/js/session-workspace.js');
 
 function createHarness(options = {}) {
     const calls = [];
@@ -34,6 +37,7 @@ test('auto-opens embedded SFTP for the sole connected session on a wide desktop'
         sessionId: 's1',
         session: { host: 'alpha', connected: true },
         sessionCount: 1,
+        sftpCapability: 'available',
     });
 
     assert.deepEqual(calls.slice(-2), [
@@ -41,6 +45,30 @@ test('auto-opens embedded SFTP for the sole connected session on a wide desktop'
         ['files.open', 's1', 'alpha'],
     ]);
     assert.equal(coordinator.getState().sftpOpen, true);
+});
+
+test('probes before auto-opening embedded SFTP and stays closed when unavailable', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
+    const update = sftpCapability => coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'switch', connected: true },
+        sessionCount: 1,
+        sftpCapability,
+    });
+
+    update('unknown');
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.equal(coordinator.getState().sftpProbeNeeded, true);
+    assert.equal(calls.some(call => call[0] === 'files.open'), false);
+
+    update('unavailable');
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.equal(coordinator.getState().sftpProbeNeeded, false);
+    assert.equal(calls.some(call => call[0] === 'files.open'), false);
+
+    assert.equal(coordinator.toggleSftp(), true);
+    assert.deepEqual(calls.slice(-1), [['files.open', 's1', 'switch']]);
 });
 
 test('does not auto-open below the wide-desktop breakpoint but keeps manual SFTP available', () => {
@@ -77,6 +105,7 @@ test('manual close suppresses automatic reopening for the same session', () => {
         sessionId: 's1',
         session: { host: 'alpha', connected: true },
         sessionCount: 1,
+        sftpCapability: 'available',
     };
     coordinator.update(update);
     assert.equal(coordinator.toggleSftp(), false);
@@ -165,4 +194,125 @@ test('visibility pauses and resumes live insights without changing SFTP state', 
         ['insights.visible', true],
     ]);
     assert.equal(coordinator.getState().sftpOpen, true);
+});
+
+test('SFTP capability tracker probes once and accepts only its correlated response', () => {
+    const handlers = {};
+    const emitted = [];
+    const changes = [];
+    const socket = {
+        on(event, handler) { handlers[event] = handler; },
+        emit(event, payload) { emitted.push([event, payload]); },
+    };
+    const tracker = createSftpCapabilityTracker({
+        socket,
+        onChange(sessionId) { changes.push(sessionId); },
+        createRequestId: () => 'probe-1',
+    });
+    const candidate = { sessionId: 's1', sftpProbeNeeded: true };
+
+    tracker.probeIfNeeded(candidate);
+    tracker.probeIfNeeded(candidate);
+    assert.deepEqual(emitted, [['probe_session_sftp', {
+        session_id: 's1',
+        request_id: 'probe-1',
+    }]]);
+
+    handlers.session_sftp_capability({
+        success: true,
+        available: true,
+        session_id: 's1',
+        request_id: 'stale-probe',
+    });
+    assert.equal(tracker.get('s1'), 'unknown');
+
+    handlers.session_sftp_capability({
+        success: true,
+        available: true,
+        session_id: 's1',
+        request_id: 'probe-1',
+    });
+    assert.equal(tracker.get('s1'), 'available');
+    assert.deepEqual(changes, ['s1']);
+
+    tracker.remove('s1');
+    assert.equal(tracker.get('s1'), 'unknown');
+});
+
+test('SFTP capability tracker retries a busy probe without opening the pane', () => {
+    const handlers = {};
+    const emitted = [];
+    const timers = new Map();
+    let nextTimer = 1;
+    let nextRequest = 1;
+    const socket = {
+        on(event, handler) { handlers[event] = handler; },
+        emit(event, payload) { emitted.push([event, payload]); },
+    };
+    const tracker = createSftpCapabilityTracker({
+        socket,
+        createRequestId: () => `probe-${nextRequest++}`,
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+    const candidate = { sessionId: 's1', sftpProbeNeeded: true };
+
+    tracker.probeIfNeeded(candidate);
+    handlers.session_sftp_capability({
+        success: false,
+        available: false,
+        session_id: 's1',
+        request_id: 'probe-1',
+    });
+
+    assert.equal(tracker.get('s1'), 'unknown');
+    assert.equal(timers.size, 1);
+    assert.equal([...timers.values()][0].delay, 10000);
+    [...timers.values()][0].callback();
+    assert.deepEqual(emitted.at(-1), ['probe_session_sftp', {
+        session_id: 's1',
+        request_id: 'probe-2',
+    }]);
+});
+
+test('SFTP capability tracker expires a lost request and ignores its late response', () => {
+    const handlers = {};
+    const emitted = [];
+    const timers = new Map();
+    let nextTimer = 1;
+    let nextRequest = 1;
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit(event, payload) { emitted.push([event, payload]); },
+        },
+        createRequestId: () => `probe-${nextRequest++}`,
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+
+    tracker.probeIfNeeded({ sessionId: 's1', sftpProbeNeeded: true });
+    const [deadlineId, deadline] = [...timers.entries()]
+        .find(([_id, timer]) => timer.delay === 5000);
+    timers.delete(deadlineId);
+    deadline.callback();
+    handlers.session_sftp_capability({
+        success: true,
+        available: true,
+        session_id: 's1',
+        request_id: 'probe-1',
+    });
+
+    assert.equal(tracker.get('s1'), 'unknown');
+    const retry = [...timers.values()].find(timer => timer.delay === 10000);
+    retry.callback();
+    assert.equal(emitted.at(-1)[1].request_id, 'probe-2');
 });

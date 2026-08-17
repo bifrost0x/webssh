@@ -134,3 +134,42 @@ def test_open_sftp_sets_bounded_normal_operation_timeout(monkeypatch):
     assert result is marker
     assert transport.channel.timeouts == [3, 17]
     assert transport.channel.closed is False
+
+
+def test_open_sftp_uses_one_shared_absolute_deadline(monkeypatch):
+    from app import paramiko_channels
+
+    now = iter([10.0, 10.4, 10.8])
+    monkeypatch.setattr(paramiko_channels.time, 'monotonic', lambda: next(now))
+
+    class Channel:
+        closed = False
+
+        def __init__(self):
+            self.timeouts = []
+
+        def settimeout(self, timeout):
+            self.timeouts.append(timeout)
+
+        def invoke_subsystem(self, _name):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    channel = Channel()
+
+    class Transport:
+        def open_session(self, timeout=None):
+            assert timeout == pytest.approx(2.0)
+            return channel
+
+    guard = type('Guard', (), {'cancel': lambda self: None})()
+    monkeypatch.setattr(paramiko_channels, '_request_guard', lambda *_args: guard)
+    monkeypatch.setattr(paramiko_channels.paramiko, 'SFTPClient', lambda _channel: object())
+
+    paramiko_channels.open_sftp_client(
+        Transport(), timeout=5, operation_timeout=5, deadline=12.0
+    )
+
+    assert channel.timeouts == pytest.approx([1.6, 1.2])

@@ -218,3 +218,20 @@ test('returns an unavailable model without telemetry or a connected session', ()
     assert.equal(model.docker, null);
     assert.deepEqual(model.permissionNotices, []);
 });
+
+test('partial telemetry omits empty diagnostic cards and pressure chart', () => {
+    const model = diagnostics.buildViewModel({
+        status: 'ready',
+        sessionId: 'switch-a',
+        cpuPercent: null,
+        metricHistory: [],
+        stats: {
+            memory: { total_kib: 4096, available_kib: 1024, used_kib: 3072 },
+        },
+    });
+
+    assert.equal(model.available, true);
+    assert.equal(model.resources.cpu, null);
+    assert.equal(model.resources.memory.percent, 75);
+    assert.equal(model.hasPressureHistory, false);
+});

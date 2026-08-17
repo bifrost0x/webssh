@@ -56,20 +56,82 @@ def test_parse_linux_stats_returns_normalized_numeric_values():
     }
 
 
+def test_parse_linux_stats_keeps_supported_partial_metrics():
+    result = session_insights.parse_linux_stats("""\
+disk_total_kib=2048000
+disk_used_kib=1024000
+disk_available_kib=1024000
+disk_percent=50
+os_name=Network appliance OS
+""")
+
+    assert result == {
+        'disk': {
+            'total_kib': 2048000,
+            'used_kib': 1024000,
+            'available_kib': 1024000,
+            'percent': 50,
+        },
+        'os_name': 'Network appliance OS',
+    }
+
+
+def test_parse_linux_stats_ignores_invalid_section_when_another_is_valid():
+    result = session_insights.parse_linux_stats("""\
+cpu=not counters
+mem_total_kib=4096
+mem_available_kib=1024
+""")
+
+    assert result == {
+        'memory': {
+            'total_kib': 4096,
+            'available_kib': 1024,
+            'used_kib': 3072,
+        },
+    }
+
+
+def test_parse_linux_stats_rejects_payload_without_supported_metrics():
+    with pytest.raises(ValueError, match='no supported metrics'):
+        session_insights.parse_linux_stats('vendor_prompt=Switch#\n')
+
+
 @pytest.mark.parametrize(
-    'mutation',
+    ('mutation', 'omitted_section'),
     [
-        lambda value: value.replace('cpu=100 5 50 800 20 10 5 10\n', ''),
-        lambda value: value.replace('mem_total_kib=16384000', 'mem_total_kib=-1'),
-        lambda value: value.replace('mem_available_kib=6144000', 'mem_available_kib=20000000'),
-        lambda value: value.replace('disk_percent=60', 'disk_percent=101'),
-        lambda value: value.replace('uptime_seconds=93784.75', 'uptime_seconds=unknown'),
-        lambda value: value.replace('os_name=Ubuntu 24.04.2 LTS', 'os_name='),
+        (
+            lambda value: value.replace('cpu=100 5 50 800 20 10 5 10\n', ''),
+            'cpu',
+        ),
+        (
+            lambda value: value.replace('mem_total_kib=16384000', 'mem_total_kib=-1'),
+            'memory',
+        ),
+        (
+            lambda value: value.replace('mem_available_kib=6144000', 'mem_available_kib=20000000'),
+            'memory',
+        ),
+        (
+            lambda value: value.replace('disk_percent=60', 'disk_percent=101'),
+            'disk',
+        ),
+        (
+            lambda value: value.replace('uptime_seconds=93784.75', 'uptime_seconds=unknown'),
+            'uptime_seconds',
+        ),
+        (
+            lambda value: value.replace('os_name=Ubuntu 24.04.2 LTS', 'os_name='),
+            'os_name',
+        ),
     ],
 )
-def test_parse_linux_stats_rejects_missing_or_invalid_linux_values(mutation):
-    with pytest.raises(ValueError):
-        session_insights.parse_linux_stats(mutation(VALID_PAYLOAD))
+def test_parse_linux_stats_omits_only_missing_or_invalid_section(
+        mutation, omitted_section):
+    result = session_insights.parse_linux_stats(mutation(VALID_PAYLOAD))
+
+    assert omitted_section not in result
+    assert result
 
 
 def test_parse_linux_stats_rejects_output_above_bound():
@@ -175,6 +237,9 @@ def test_remote_diagnostics_use_a_fixed_safe_environment_without_elevation():
         assert forbidden not in session_insights.LINUX_DIAGNOSTICS_COMMAND
     assert 'comm=' in session_insights.LINUX_DIAGNOSTICS_COMMAND
     assert 'args=' not in session_insights.LINUX_DIAGNOSTICS_COMMAND
+    assert 'if [ -r /proc/stat ]' in session_insights.LINUX_STATS_COMMAND
+    assert 'command -v df' in session_insights.LINUX_STATS_COMMAND
+    assert 'command -v uname' in session_insights.LINUX_STATS_COMMAND
 
 
 class FakeChannel:
@@ -261,6 +326,30 @@ def test_collect_linux_stats_uses_separate_fixed_exec_channel(monkeypatch):
     assert channel.closed is True
 
 
+def test_collect_linux_stats_accepts_bounded_metrics_without_exit_status(
+        monkeypatch):
+    install_session(monkeypatch)
+
+    class NoExitStatusChannel(FakeChannel):
+        def exit_status_ready(self):
+            return False
+
+    channel = NoExitStatusChannel()
+    monkeypatch.setattr(
+        session_insights.ssh_manager,
+        '_open_exec_channel',
+        lambda *_args, **_kwargs: channel,
+    )
+
+    stats, error = session_insights.collect_linux_stats(
+        'owned-session', timeout=0.01
+    )
+
+    assert error is None
+    assert stats['os_name'] == 'Ubuntu 24.04.2 LTS'
+    assert channel.closed is True
+
+
 def test_collect_linux_stats_uses_expanded_fixed_command_only_when_requested(
         monkeypatch):
     transport = install_session(monkeypatch)
@@ -296,8 +385,8 @@ def test_collect_linux_stats_uses_expanded_fixed_command_only_when_requested(
 @pytest.mark.parametrize(
     ('connected', 'transport_active', 'expected_error'),
     [
-        (False, True, 'unavailable'),
-        (True, False, 'unavailable'),
+        (False, True, 'transient'),
+        (True, False, 'transient'),
     ],
 )
 def test_collect_linux_stats_rejects_inactive_sessions(
@@ -322,7 +411,7 @@ def test_collect_linux_stats_rejects_missing_session(monkeypatch):
     stats, error = session_insights.collect_linux_stats('owned-session')
 
     assert stats is None
-    assert error == 'unavailable'
+    assert error == 'transient'
 
 
 def test_collect_linux_stats_rejects_overlapping_collection(monkeypatch):
@@ -397,7 +486,7 @@ def test_collect_linux_stats_rejects_nonzero_remote_status(monkeypatch):
     stats, error = session_insights.collect_linux_stats('owned-session')
 
     assert stats is None
-    assert error == 'unavailable'
+    assert error == 'unsupported'
     assert channel.closed is True
 
 
@@ -415,5 +504,23 @@ def test_collect_linux_stats_rejects_output_above_collection_bound(monkeypatch):
     )
 
     assert stats is None
-    assert error == 'unavailable'
+    assert error == 'unsupported'
     assert channel.closed is True
+
+
+def test_collect_linux_stats_treats_generic_ssh_channel_race_as_transient(monkeypatch):
+    from paramiko import SSHException
+
+    install_session(monkeypatch)
+    monkeypatch.setattr(
+        session_insights.ssh_manager,
+        '_open_exec_channel',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            SSHException('channel closed during transport race')
+        ),
+    )
+
+    stats, error = session_insights.collect_linux_stats('owned-session')
+
+    assert stats is None
+    assert error == 'transient'
