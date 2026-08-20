@@ -2400,7 +2400,7 @@
             if (!menu || !menuBtn) {
                 return;
             }
-            if (!e.target.closest('.header-buttons') && e.target !== menuBtn) {
+            if (!e.target.closest('.header-buttons') && !menuBtn.contains(e.target)) {
                 menu.classList.remove('is-open');
             }
         });

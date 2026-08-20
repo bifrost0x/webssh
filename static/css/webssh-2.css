@@ -29,10 +29,6 @@ body {
     letter-spacing: 0;
 }
 
-body::before {
-    opacity: min(var(--theme-background-opacity), 0.035);
-}
-
 button,
 input,
 select,
@@ -53,8 +49,7 @@ textarea {
 .header {
     padding: 0;
     border-bottom: 1px solid var(--ws2-border);
-    background: var(--ws2-surface);
-    background-image: none;
+    background-color: var(--ws2-surface);
     backdrop-filter: none;
     box-shadow: none;
 }
@@ -187,8 +182,7 @@ textarea {
 .account-dropdown-header {
     border: 1px solid var(--ws2-border);
     border-radius: var(--ws2-radius-lg);
-    background: var(--ws2-surface);
-    background-image: none;
+    background-color: var(--ws2-surface);
     box-shadow: var(--ws2-shadow);
 }
 
@@ -303,8 +297,7 @@ textarea {
 .notepad-panel {
     min-width: 280px;
     border-left: 1px solid var(--ws2-border);
-    background: var(--ws2-surface);
-    background-image: none;
+    background-color: var(--ws2-surface);
     backdrop-filter: none;
 }
 
@@ -583,8 +576,7 @@ textarea:hover {
 .modal-content {
     border: 1px solid var(--ws2-border);
     border-radius: var(--ws2-radius-lg);
-    background: var(--ws2-surface);
-    background-image: none;
+    background-color: var(--ws2-surface);
     box-shadow: var(--ws2-shadow);
 }
 
@@ -842,7 +834,7 @@ body:has(.auth-container) {
 .auth-card {
     border: 1px solid var(--ws2-border);
     border-radius: var(--ws2-radius-lg);
-    background: var(--ws2-surface);
+    background-color: var(--ws2-surface);
     box-shadow: var(--ws2-shadow);
 }
 

@@ -46,12 +46,17 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await expect(page.locator('#totpAddBtn')).toBeVisible();
     await page.locator('#totpAddBtn').click();
     await expect(page.locator('#securityConfirmationModal')).toHaveClass(/show/);
+    await expect(page.locator('#securityConfirmationLabelGroup')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#securityConfirmationPasswordGroup')).toHaveClass(/hidden/);
+    await page.locator('#securityConfirmationLabel').fill('E2E authenticator');
+    await page.locator('#securityConfirmationSubmit').click();
+
+    await expect(page.locator('#securityConfirmationPasswordGroup')).not.toHaveClass(/hidden/);
     await expect(page.locator('#securityConfirmationPassword')).toHaveAttribute(
         'type',
         'password',
     );
     await page.locator('#securityConfirmationPassword').fill('browser-password');
-    await page.locator('#securityConfirmationLabel').fill('E2E authenticator');
     await page.locator('#securityConfirmationSubmit').click();
 
     await expect(page.locator('#totpEnrollment')).not.toHaveClass(/hidden/);

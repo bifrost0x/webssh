@@ -35,8 +35,12 @@ test('registers a passkey and signs in with a virtual authenticator', async ({
         ]);
         await page.locator('#passkeyAddBtn').click();
         await expect(page.locator('#securityConfirmationModal')).toHaveClass(/show/);
-        await page.locator('#securityConfirmationPassword').fill('browser-password');
+        await expect(page.locator('#securityConfirmationLabelGroup')).not.toHaveClass(/hidden/);
         await page.locator('#securityConfirmationLabel').fill('E2E passkey');
+        await page.locator('#securityConfirmationSubmit').click();
+
+        await expect(page.locator('#securityConfirmationPasswordGroup')).not.toHaveClass(/hidden/);
+        await page.locator('#securityConfirmationPassword').fill('browser-password');
         await page.locator('#securityConfirmationSubmit').click();
         expect(await ceremony).toBe('registered');
 
