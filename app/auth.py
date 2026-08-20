@@ -109,10 +109,14 @@ def check_reauth_rate_limit(user_id, ip_address, endpoint, limit_str):
 def load_user(user_id):
     """Load user by ID for Flask-Login."""
     raw_identifier = str(user_id)
-    if ':' in raw_identifier:
-        raw_user_id, raw_generation = raw_identifier.split(':', 1)
-    else:
-        raw_user_id, raw_generation = raw_identifier, '0'
+    identifier_parts = raw_identifier.split(':', 2)
+    raw_user_id = identifier_parts[0]
+    raw_generation = (
+        identifier_parts[1] if len(identifier_parts) > 1 else '0'
+    )
+    auth_session_token = (
+        identifier_parts[2] if len(identifier_parts) > 2 else None
+    )
     try:
         parsed_user_id = int(raw_user_id)
         parsed_generation = int(raw_generation)
@@ -128,6 +132,17 @@ def load_user(user_id):
         return None
     if int(user.auth_generation or 0) != parsed_generation:
         return None
+    if auth_session_token is not None:
+        from flask import session
+        from .auth_assurance import authentication_session_for_token
+
+        if authentication_session_for_token(
+            auth_session_token,
+            user.id,
+            parsed_generation,
+        ) is None:
+            return None
+        session['_auth_session'] = auth_session_token
     return user
 
 def init_auth(app):
@@ -265,8 +280,6 @@ def authenticate_user(username, password):
     if password_matches:
         if getattr(user, 'is_locked', False):
             return None, "This account is locked. Please contact an administrator."
-        user.last_login = datetime.now(timezone.utc)
-        db.session.commit()
         return user, None
     return None, "Invalid username or password"
 

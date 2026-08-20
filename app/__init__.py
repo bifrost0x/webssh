@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
 from flask_socketio import SocketIO
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
@@ -207,6 +207,19 @@ def create_app(
             elif stored_epoch != epoch:
                 logout_user()
                 session.clear()
+                return redirect(url_for('login', next=request.path))
+        if initialize_storage and current_user.is_authenticated:
+            from .auth_assurance import current_authentication_session
+
+            if current_authentication_session() is None:
+                username = current_user.username
+                logout_user()
+                session.clear()
+                log_warning(
+                    'Authentication session rejected',
+                    user=username,
+                )
+                return redirect(url_for('login', next=request.path))
 
     trusted_proxies = config.TRUSTED_PROXIES
     if trusted_proxies > 0:
@@ -457,11 +470,39 @@ def create_app(
             password = request.form.get('password')
             user, error = authenticate_user(username, password)
             if user:
+                from .auth_assurance import (
+                    AssuranceLevel,
+                    available_mfa_methods,
+                    begin_authentication,
+                    browser_session_binding,
+                    consume_pending,
+                    finalize_login,
+                )
+
                 session.clear()
                 remember_me = request.form.get('remember') == 'on'
-                login_user(user, remember=remember_me)
-                log_login_attempt(username, True, client_ip, request.user_agent.string)
-                return redirect(url_for('index'))
+                binding = browser_session_binding()
+                token = begin_authentication(
+                    user,
+                    'password',
+                    assurance=AssuranceLevel.BASIC,
+                    session_binding=binding,
+                    remember=remember_me,
+                    continuation=request.args.get('next', '/'),
+                )
+                if user.mfa_enabled:
+                    methods = available_mfa_methods(user)
+                    session['_pending_authentication'] = token
+                    return render_template(
+                        'login.html',
+                        auth_source='local',
+                        mfa_required=True,
+                        pending_token=token,
+                        mfa_methods=methods,
+                    )
+                pending = consume_pending(token, binding)
+                finalize_login(pending, methods=['password'])
+                return redirect(pending.continuation)
             else:
                 log_login_attempt(username, False, client_ip, request.user_agent.string)
                 flash(error, 'error')
@@ -503,8 +544,26 @@ def create_app(
                     first_user_only=not ongoing_registration,
                 )
                 if user:
+                    from .auth_assurance import (
+                        AssuranceLevel,
+                        begin_authentication,
+                        browser_session_binding,
+                        consume_pending,
+                        finalize_login,
+                    )
+
                     session.clear()
-                    login_user(user)
+                    binding = browser_session_binding()
+                    token = begin_authentication(
+                        user,
+                        'password',
+                        assurance=AssuranceLevel.BASIC,
+                        session_binding=binding,
+                        remember=False,
+                        continuation='/',
+                    )
+                    pending = consume_pending(token, binding)
+                    finalize_login(pending, methods=['password'])
                     log_registration(username, True, client_ip)
                     flash('Account created successfully!', 'success')
                     return redirect(url_for('index'))
@@ -517,11 +576,22 @@ def create_app(
     @login_required
     def logout():
         from . import user_lifecycle
+        from .auth_assurance import delete_current_authentication_session
 
         user_id = current_user.id
         log_logout(current_user.username, get_client_ip())
+        try:
+            delete_current_authentication_session()
+        except Exception as exc:
+            db.session.rollback()
+            log_warning(
+                'Authentication session deletion failed during logout',
+                user_id=user_id,
+                error=type(exc).__name__,
+            )
         user_lifecycle.revoke_user_access(user_id, socketio)
         logout_user()
+        session.clear()
         return redirect(url_for('login'))
 
     @app.route('/change-password', methods=['GET', 'POST'])

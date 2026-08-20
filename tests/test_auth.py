@@ -390,10 +390,34 @@ class TestAuthentication:
     def test_authenticate_valid_credentials(self, app):
         with app.app_context():
             from app.auth import register_user, authenticate_user
-            register_user('testuser', 'password123')
+            registered, register_error = register_user(
+                'testuser',
+                'password123',
+            )
+            assert register_error is None
             user, error = authenticate_user('testuser', 'password123')
             assert user is not None
             assert error is None
+            assert registered.last_login is None
+
+    def test_registration_route_uses_the_authentication_finalizer(
+        self,
+        app,
+        client,
+    ):
+        from app.models import AuthenticationSession
+
+        response = client.post('/register', data={
+            'username': 'registereduser',
+            'password': 'password123',
+            'confirm_password': 'password123',
+        })
+
+        assert response.status_code == 302
+        with app.app_context():
+            row = AuthenticationSession.query.one()
+            assert row.assurance == 'BASIC'
+            assert row.methods_json == '["password"]'
 
     def test_authenticate_wrong_password(self, app):
         with app.app_context():
