@@ -49,8 +49,8 @@ def _initialize_persistent_storage(app):
     initialize_file_logging(config.DATA_DIR)
     with app.app_context():
         db.create_all()
-        from .models import ensure_user_columns, ensure_ssh_session_columns
-        ensure_user_columns()
+        from .models import ensure_security_columns, ensure_ssh_session_columns
+        ensure_security_columns()
         ensure_ssh_session_columns()
         from .auth import ensure_initial_admin, sync_admin_users
         ensure_initial_admin()
@@ -334,6 +334,7 @@ def create_app(
     def setup_background_tasks():
         """Setup background tasks like session cleanup."""
         from .auth import cleanup_inactive_socket_sessions
+        from .models import cleanup_expired_security_rows
         from .ssh_manager import cleanup_idle_sessions
         lifecycle = app.extensions['runtime_lifecycle']
 
@@ -342,8 +343,14 @@ def create_app(
                 try:
                     with app.app_context():
                         deleted = cleanup_inactive_socket_sessions(timeout_minutes=30)
+                        security_deleted = cleanup_expired_security_rows()
                         if deleted > 0:
                             log_info(f"Cleaned up {deleted} inactive sessions")
+                        if security_deleted > 0:
+                            log_info(
+                                "Cleaned up expired authentication state",
+                                count=security_deleted,
+                            )
                 except Exception as e:
                     log_error("Session cleanup error", error=str(e))
 
