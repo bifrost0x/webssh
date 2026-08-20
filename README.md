@@ -865,7 +865,8 @@ server.local {
 
 #### Apache httpd 2.4.47+ (subfolder)
 
-Use the same modules and TLS settings as in the root example:
+Use the same modules and TLS settings as in the root example. Also enable
+`mod_alias` for the exact bare-path redirect:
 
 ```apache
 <VirtualHost *:443>
@@ -879,6 +880,8 @@ Use the same modules and TLS settings as in the root example:
     ProxyPreserveHost On
     ProxyAddHeaders On
     RequestHeader set X-Forwarded-Proto "https"
+
+    RedirectMatch permanent "^/webssh$" "/webssh/"
 
     <Location "/webssh/">
         RequestHeader set X-Forwarded-Prefix "/webssh"
