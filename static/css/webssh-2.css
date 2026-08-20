@@ -936,6 +936,18 @@ body:has(.auth-container) {
         grid-template-columns: 1fr auto auto;
     }
 
+    .account-selector {
+        min-width: 0;
+    }
+
+    .account-dropdown-header {
+        right: 0;
+        left: auto;
+        width: min(310px, calc(100vw - 32px));
+        min-width: 0;
+        max-width: calc(100vw - 32px);
+    }
+
     .global-navigation {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
