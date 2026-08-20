@@ -179,7 +179,7 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 
 ### Deployment
 - **Docker & Docker Compose** - Single-command deployment with healthcheck
-- **Reverse Proxy Ready** - Traefik, nginx, and Caddy examples included
+- **Reverse Proxy Ready** - Traefik, Nginx, Caddy, and Apache examples included
 - **Subfolder Deployment** - Host under a URL subpath like `/webssh` (see [Subfolder Deployment](#subfolder-deployment))
 - **Homelab Friendly** - Wildcard CORS mode for internal networks
 
@@ -724,6 +724,30 @@ deployments. `.env` is git-ignored — never commit your real secrets.
 
 ### Reverse Proxy Setup
 
+WebSSH does not require a proxy-specific integration. Any reverse proxy can be
+used when it:
+
+- forwards regular HTTP requests and Socket.IO WebSocket upgrades;
+- preserves the public host through `Host` or `X-Forwarded-Host` and sends the
+  public scheme and client IP through `X-Forwarded-Proto` and
+  `X-Forwarded-For`;
+- restricts the backend port to the trusted proxy; and
+- strips a URL prefix and sends `X-Forwarded-Prefix` when WebSSH is published
+  below a subfolder.
+
+Set `TRUSTED_PROXIES` to the exact number of trusted proxy layers. For a
+production deployment, also configure the browser-facing HTTPS origin and
+secure cookies:
+
+```bash
+CORS_ORIGINS=https://ssh.example.com
+TRUSTED_PROXIES=1
+SESSION_COOKIE_SECURE=true
+```
+
+When using `docker-compose.production.yml`, set `WEBSSH_ORIGIN` instead of
+`CORS_ORIGINS`; the Compose override maps it to the application setting.
+
 #### Traefik
 
 ```yaml
@@ -743,6 +767,7 @@ location / {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -756,6 +781,35 @@ ssh.example.com {
     reverse_proxy webssh:5000
 }
 ```
+
+#### Apache httpd 2.4.47+
+
+Enable `mod_proxy`, `mod_proxy_http`, `mod_headers`, and `mod_ssl`. The backend
+address below matches the loopback binding in `docker-compose.production.yml`.
+For Apache running in another container, connect both services to a private
+Docker network and use `http://webssh:5000/` instead.
+
+```apache
+<VirtualHost *:443>
+    ServerName ssh.example.com
+
+    SSLEngine On
+    SSLCertificateFile /etc/letsencrypt/live/ssh.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/ssh.example.com/privkey.pem
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyAddHeaders On
+    RequestHeader set X-Forwarded-Proto "https"
+
+    ProxyPass "/" "http://127.0.0.1:5000/" upgrade=websocket
+    ProxyPassReverse "/" "http://127.0.0.1:5000/"
+</VirtualHost>
+```
+
+Apache httpd 2.4.47 and newer can pass WebSocket upgrades through
+`mod_proxy_http`. Older releases require a separate `mod_proxy_wstunnel`
+configuration.
 
 ### Subfolder Deployment
 
@@ -777,6 +831,7 @@ location /webssh/ {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -806,6 +861,35 @@ server.local {
         }
     }
 }
+```
+
+#### Apache httpd 2.4.47+ (subfolder)
+
+Use the same modules and TLS settings as in the root example. Also enable
+`mod_alias` for the exact bare-path redirect:
+
+```apache
+<VirtualHost *:443>
+    ServerName server.local
+
+    SSLEngine On
+    SSLCertificateFile /path/to/fullchain.pem
+    SSLCertificateKeyFile /path/to/privkey.pem
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyAddHeaders On
+    RequestHeader set X-Forwarded-Proto "https"
+
+    RedirectMatch permanent "^/webssh$" "/webssh/"
+
+    <Location "/webssh/">
+        RequestHeader set X-Forwarded-Prefix "/webssh"
+    </Location>
+
+    ProxyPass "/webssh/" "http://127.0.0.1:5000/" upgrade=websocket
+    ProxyPassReverse "/webssh/" "http://127.0.0.1:5000/"
+</VirtualHost>
 ```
 
 ### Homelab Configuration
