@@ -47,6 +47,28 @@ test('auto-opens embedded SFTP for the sole connected session on a wide desktop'
     assert.equal(coordinator.getState().sftpOpen, true);
 });
 
+test('keeps an auto-opened SFTP panel open below the wide breakpoint', () => {
+    let wideDesktop = true;
+    const { coordinator, calls } = createHarness({
+        isWideDesktop: () => wideDesktop,
+    });
+    const update = {
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+        sftpCapability: 'available',
+    };
+    coordinator.update(update);
+    calls.length = 0;
+
+    wideDesktop = false;
+    coordinator.update(update);
+
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(calls, []);
+});
+
 test('probes before auto-opening embedded SFTP and stays closed when unavailable', () => {
     const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
     const update = sftpCapability => coordinator.update({
@@ -67,35 +89,47 @@ test('probes before auto-opening embedded SFTP and stays closed when unavailable
     assert.equal(coordinator.getState().sftpProbeNeeded, false);
     assert.equal(calls.some(call => call[0] === 'files.open'), false);
 
-    assert.equal(coordinator.toggleSftp(), true);
-    assert.deepEqual(calls.slice(-1), [['files.open', 's1', 'switch']]);
+    assert.equal(coordinator.toggleSftp(), false);
+    assert.equal(calls.some(call => call[0] === 'files.open'), false);
 });
 
-test('does not auto-open below the wide-desktop breakpoint but keeps manual SFTP available', () => {
+test('probes below the wide-desktop breakpoint and keeps capable SFTP manually available', () => {
     const { coordinator, calls } = createHarness({ isWideDesktop: () => false });
     coordinator.update({
         layout: 1,
         sessionId: 's1',
         session: { host: 'alpha', connected: true },
         sessionCount: 1,
+        sftpCapability: 'unknown',
     });
 
     assert.equal(coordinator.getState().sftpOpen, false);
+    assert.equal(coordinator.getState().sftpProbeNeeded, true);
+    assert.equal(coordinator.toggleSftp(), false);
+
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+        sftpCapability: 'available',
+    });
     assert.equal(coordinator.toggleSftp(), true);
     assert.deepEqual(calls.slice(-1), [['files.open', 's1', 'alpha']]);
 });
 
-test('does not auto-open when more than one SSH session exists', () => {
+test('auto-opens a capable active session even when other SSH sessions exist', () => {
     const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
     coordinator.update({
         layout: 1,
         sessionId: 's1',
         session: { host: 'alpha', connected: true },
         sessionCount: 2,
+        sftpCapability: 'available',
     });
 
-    assert.equal(coordinator.getState().sftpOpen, false);
-    assert.equal(calls.some(call => call[0] === 'files.open'), false);
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(calls.slice(-1), [['files.open', 's1', 'alpha']]);
 });
 
 test('manual close suppresses automatic reopening for the same session', () => {
@@ -117,9 +151,131 @@ test('manual close suppresses automatic reopening for the same session', () => {
     assert.deepEqual(calls, []);
 });
 
+test('removing a session clears its SFTP visibility preference', () => {
+    const { coordinator } = createHarness({ isWideDesktop: () => true });
+    const update = {
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+        sftpCapability: 'available',
+    };
+    coordinator.update(update);
+    assert.equal(coordinator.toggleSftp(), false);
+
+    coordinator.removeSession('s1');
+    coordinator.update(update);
+
+    assert.equal(coordinator.getState().sftpOpen, true);
+});
+
+test('closes SFTP for an unavailable session and restores it for the capable session', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
+    coordinator.update({
+        layout: 1,
+        sessionId: 'linux',
+        session: { host: 'server', connected: true },
+        sessionCount: 1,
+        sftpCapability: 'available',
+    });
+    calls.length = 0;
+
+    coordinator.update({
+        layout: 1,
+        sessionId: 'cisco',
+        session: { host: 'switch', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'unavailable',
+    });
+
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.deepEqual(calls, [
+        ['insights.session', 'cisco', true],
+        ['files.close'],
+    ]);
+
+    calls.length = 0;
+    coordinator.update({
+        layout: 1,
+        sessionId: 'linux',
+        session: { host: 'server', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'available',
+    });
+
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(calls, [
+        ['insights.session', 'linux', true],
+        ['files.open', 'linux', 'server'],
+    ]);
+});
+
+test('probes the active session even when other SSH sessions exist', () => {
+    const { coordinator } = createHarness({ isWideDesktop: () => true });
+
+    coordinator.update({
+        layout: 1,
+        sessionId: 'cisco',
+        session: { host: 'switch', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'unknown',
+    });
+
+    assert.equal(coordinator.getState().sftpProbeNeeded, true);
+    assert.equal(coordinator.getState().sftpOpen, false);
+});
+
+test('keeps manual SFTP visibility preferences isolated per session', () => {
+    const { coordinator, calls } = createHarness();
+    coordinator.update({
+        layout: 1,
+        sessionId: 'linux',
+        session: { host: 'server', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'available',
+    });
+    assert.equal(coordinator.toggleSftp(), true);
+    calls.length = 0;
+
+    coordinator.update({
+        layout: 1,
+        sessionId: 'cisco',
+        session: { host: 'switch', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'unavailable',
+    });
+
+    assert.equal(coordinator.getState().sftpOpen, false);
+    assert.equal(coordinator.toggleSftp(), false);
+    assert.deepEqual(calls, [
+        ['insights.session', 'cisco', true],
+        ['files.close'],
+    ]);
+
+    calls.length = 0;
+    coordinator.update({
+        layout: 1,
+        sessionId: 'linux',
+        session: { host: 'server', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'available',
+    });
+
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(calls, [
+        ['insights.session', 'linux', true],
+        ['files.open', 'linux', 'server'],
+    ]);
+});
+
 test('opens embedded SFTP only for a connected session in layout 1', () => {
     const { coordinator, calls } = createHarness();
-    coordinator.update({ layout: 1, sessionId: 's1', session: { host: 'alpha', connected: true } });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sftpCapability: 'available',
+    });
 
     assert.equal(coordinator.toggleSftp(), true);
     assert.deepEqual(calls.slice(-1), [['files.open', 's1', 'alpha']]);
@@ -137,13 +293,24 @@ test('refuses SFTP without a connected session or on a narrow viewport', () => {
     assert.equal(narrow.toggleSftp(), false);
 });
 
-test('follows the active session while SFTP is open and always retargets insights', () => {
-    const { coordinator, calls } = createHarness();
-    coordinator.update({ layout: 1, sessionId: 's1', session: { host: 'alpha', connected: true } });
-    coordinator.toggleSftp();
+test('follows the active session only when the new session is capable and open', () => {
+    const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+        sftpCapability: 'available',
+    });
     calls.length = 0;
 
-    coordinator.update({ layout: 1, sessionId: 's2', session: { host: 'beta', connected: true } });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's2',
+        session: { host: 'beta', connected: true },
+        sessionCount: 2,
+        sftpCapability: 'available',
+    });
 
     assert.deepEqual(calls, [
         ['insights.session', 's2', true],
@@ -153,7 +320,12 @@ test('follows the active session while SFTP is open and always retargets insight
 
 test('switching to 2 or 4 closes SFTP and returning to 1 keeps it closed', () => {
     const { coordinator, calls } = createHarness();
-    coordinator.update({ layout: 1, sessionId: 's1', session: { host: 'alpha', connected: true } });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sftpCapability: 'available',
+    });
     coordinator.toggleSftp();
     calls.length = 0;
 
@@ -166,7 +338,12 @@ test('switching to 2 or 4 closes SFTP and returning to 1 keeps it closed', () =>
 
 test('disconnect closes SFTP and marks insights disconnected', () => {
     const { coordinator, calls } = createHarness();
-    coordinator.update({ layout: 1, sessionId: 's1', session: { host: 'alpha', connected: true } });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sftpCapability: 'available',
+    });
     coordinator.toggleSftp();
     calls.length = 0;
 
@@ -180,9 +357,37 @@ test('disconnect closes SFTP and marks insights disconnected', () => {
     assert.equal(coordinator.getState().sftpOpen, false);
 });
 
+test('restores an explicit SFTP preference after a transient disconnect', () => {
+    const { coordinator, calls } = createHarness();
+    const update = connected => coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected },
+        sftpCapability: 'available',
+    });
+    update(true);
+    coordinator.toggleSftp();
+    calls.length = 0;
+
+    update(false);
+    update(true);
+
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(calls.filter(call => call[0].startsWith('files.')), [
+        ['files.disconnected', 's1'],
+        ['files.close'],
+        ['files.open', 's1', 'alpha'],
+    ]);
+});
+
 test('visibility pauses and resumes live insights without changing SFTP state', () => {
     const { coordinator, calls } = createHarness();
-    coordinator.update({ layout: 1, sessionId: 's1', session: { host: 'alpha', connected: true } });
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sftpCapability: 'available',
+    });
     coordinator.toggleSftp();
     calls.length = 0;
 
@@ -217,6 +422,7 @@ test('SFTP capability tracker probes once and accepts only its correlated respon
         session_id: 's1',
         request_id: 'probe-1',
     }]]);
+    assert.equal(tracker.get('s1'), 'probing');
 
     handlers.session_sftp_capability({
         success: true,
@@ -224,7 +430,7 @@ test('SFTP capability tracker probes once and accepts only its correlated respon
         session_id: 's1',
         request_id: 'stale-probe',
     });
-    assert.equal(tracker.get('s1'), 'unknown');
+    assert.equal(tracker.get('s1'), 'probing');
 
     handlers.session_sftp_capability({
         success: true,
@@ -269,14 +475,98 @@ test('SFTP capability tracker retries a busy probe without opening the pane', ()
         request_id: 'probe-1',
     });
 
-    assert.equal(tracker.get('s1'), 'unknown');
+    assert.equal(tracker.get('s1'), 'probing');
     assert.equal(timers.size, 1);
     assert.equal([...timers.values()][0].delay, 10000);
+    tracker.probeIfNeeded({
+        sessionId: 's1',
+        sftpProbeNeeded: true,
+        sftpCapability: 'probing',
+    });
+    assert.equal(timers.size, 1);
+    assert.equal(tracker.get('s1'), 'probing');
     [...timers.values()][0].callback();
     assert.deepEqual(emitted.at(-1), ['probe_session_sftp', {
         session_id: 's1',
         request_id: 'probe-2',
     }]);
+});
+
+test('SFTP capability tracker cancels retries while the session is ineligible', () => {
+    const handlers = {};
+    const emitted = [];
+    const timers = new Map();
+    let nextTimer = 1;
+    let nextRequest = 1;
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit(event, payload) { emitted.push([event, payload]); },
+        },
+        createRequestId: () => `probe-${nextRequest++}`,
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+
+    tracker.probeIfNeeded({ sessionId: 's1', sftpProbeNeeded: true });
+    handlers.session_sftp_capability({
+        success: false,
+        available: false,
+        session_id: 's1',
+        request_id: 'probe-1',
+    });
+    assert.equal([...timers.values()].some(timer => timer.delay === 10000), true);
+
+    tracker.probeIfNeeded({
+        sessionId: 's1',
+        sftpProbeNeeded: false,
+        sftpCapability: 'probing',
+    });
+
+    assert.equal(timers.size, 0);
+    assert.equal(tracker.get('s1'), 'unknown');
+    assert.equal(emitted.length, 1);
+});
+
+test('SFTP capability tracker cancels an in-flight probe during disconnect', () => {
+    const handlers = {};
+    const emitted = [];
+    const timers = new Map();
+    let nextTimer = 1;
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit(event, payload) { emitted.push([event, payload]); },
+        },
+        createRequestId: () => 'probe-1',
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+
+    tracker.probeIfNeeded({ sessionId: 's1', sftpProbeNeeded: true });
+    tracker.probeIfNeeded({
+        sessionId: 's1',
+        sftpProbeNeeded: false,
+        sftpCapability: 'probing',
+    });
+    handlers.session_sftp_capability({
+        success: false,
+        available: false,
+        session_id: 's1',
+        request_id: 'probe-1',
+    });
+
+    assert.equal(timers.size, 0);
+    assert.equal(tracker.get('s1'), 'unknown');
+    assert.equal(emitted.length, 1);
 });
 
 test('SFTP capability tracker expires a lost request and ignores its late response', () => {
@@ -311,8 +601,68 @@ test('SFTP capability tracker expires a lost request and ignores its late respon
         request_id: 'probe-1',
     });
 
-    assert.equal(tracker.get('s1'), 'unknown');
+    assert.equal(tracker.get('s1'), 'probing');
     const retry = [...timers.values()].find(timer => timer.delay === 10000);
     retry.callback();
     assert.equal(emitted.at(-1)[1].request_id, 'probe-2');
+});
+
+test('SFTP capability tracker records an authoritative unavailable result', () => {
+    const handlers = {};
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit() {},
+        },
+        createRequestId: () => 'probe-1',
+    });
+
+    tracker.probeIfNeeded({ sessionId: 'switch', sftpProbeNeeded: true });
+    handlers.session_sftp_capability({
+        success: true,
+        available: false,
+        session_id: 'switch',
+        request_id: 'probe-1',
+    });
+
+    assert.equal(tracker.get('switch'), 'unavailable');
+});
+
+test('SFTP capability tracker exposes manual fallback after bounded probe failures', () => {
+    const handlers = {};
+    const timers = new Map();
+    let nextTimer = 1;
+    let nextRequest = 1;
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit() {},
+        },
+        createRequestId: () => `probe-${nextRequest++}`,
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+
+    tracker.probeIfNeeded({ sessionId: 'appliance', sftpProbeNeeded: true });
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        handlers.session_sftp_capability({
+            success: false,
+            available: false,
+            session_id: 'appliance',
+            request_id: `probe-${attempt}`,
+        });
+        const retry = [...timers.entries()]
+            .find(([_id, timer]) => timer.delay === 10000);
+        if (retry) {
+            timers.delete(retry[0]);
+            retry[1].callback();
+        }
+    }
+
+    assert.equal(tracker.get('appliance'), 'inconclusive');
+    assert.equal([...timers.values()].some(timer => timer.delay === 10000), false);
 });

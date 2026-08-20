@@ -96,6 +96,27 @@ async function seedLinuxSession(page, options = {}) {
                 // Socket callbacks are not part of the observability requests under test.
             }
             window.__workspaceEvents.push({ event, payload: recordedPayload });
+            if (payload?.session_id === 'workspace-cisco') {
+                if (event === 'probe_session_sftp') {
+                    deliver('session_sftp_capability', {
+                        success: true,
+                        available: false,
+                        session_id: payload.session_id,
+                        request_id: payload.request_id,
+                    });
+                    return window.socket;
+                }
+                if (event === 'request_session_insights') {
+                    deliver('session_insights', {
+                        success: false,
+                        unsupported: true,
+                        session_id: payload.session_id,
+                        request_id: payload.request_id,
+                    });
+                    return window.socket;
+                }
+                if (['ssh_input', 'ssh_resize'].includes(event)) return window.socket;
+            }
             if (payload?.session_id === 'workspace-linux') {
                 if (event === 'probe_session_sftp') {
                     deliver('session_sftp_capability', {
@@ -224,6 +245,16 @@ async function seedLinuxSession(page, options = {}) {
                 display_name: 'Production Edge',
             });
             SessionManager.assignSessionToPane('workspace-linux', 0);
+        };
+        window.__createWorkspaceSwitchSession = function createWorkspaceSwitchSession() {
+            SessionManager.createSession({
+                session_id: 'workspace-cisco',
+                host: 'core-switch.example',
+                port: 22,
+                username: 'operator',
+                display_name: 'Core Switch',
+            });
+            SessionManager.assignSessionToPane('workspace-cisco', 0);
         };
         window.__createWorkspaceSession();
         document.querySelector('.account-name').textContent = 'operator';
@@ -378,6 +409,40 @@ test('wide workspace keeps embedded SFTP closed when the session probe fails', a
     await expect(page.locator('#sessionSftpToggleBtn')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
     await expect(page.locator('#sessionInsightsCard')).toBeVisible();
+    await assertNoExternalRequests(page);
+});
+
+test('embedded SFTP follows each session capability and preserves Linux dismissal', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    const toggle = page.locator('#sessionSftpToggleBtn');
+    const panel = page.locator('#sessionFilesPanel');
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel).toBeVisible();
+
+    await page.evaluate(() => window.__createWorkspaceSwitchSession());
+    await expect.poll(() => page.evaluate(() => window.__workspaceEvents.some(
+        event => event.event === 'probe_session_sftp'
+            && event.payload.session_id === 'workspace-cisco',
+    ))).toBe(true);
+    await expect(toggle).toBeDisabled();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(panel).toBeHidden();
+
+    await page.evaluate(() => SessionManager.assignSessionToPane('workspace-linux', 0));
+    await expect(toggle).toBeEnabled();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel).toBeVisible();
+
+    await toggle.click();
+    await expect(panel).toBeHidden();
+    await page.evaluate(() => SessionManager.assignSessionToPane('workspace-cisco', 0));
+    await expect(panel).toBeHidden();
+    await page.evaluate(() => SessionManager.assignSessionToPane('workspace-linux', 0));
+    await expect(toggle).toBeEnabled();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(panel).toBeHidden();
     await assertNoExternalRequests(page);
 });
 

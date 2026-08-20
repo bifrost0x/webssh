@@ -32,14 +32,15 @@ def test_saved_connection_context_precedes_authentication_method():
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=21',
+        "filename='css/style.css'": '?v=22',
         "filename='css/sftp-file-manager.css'": '?v=9',
-        "filename='js/i18n.js'": '?v=16',
+        "filename='js/i18n.js'": '?v=17',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=12',
+        "filename='js/profile-manager.js'": '?v=13',
+        "filename='js/session-workspace.js'": '?v=7',
         "filename='js/session-manager.js'": '?v=8',
         "filename='js/terminal-manager.js'": '?v=7',
         "filename='js/sftp-file-manager.js'": '?v=13',
@@ -141,7 +142,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=21" in template
+    assert "filename='css/style.css') }}?v=22" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():
@@ -336,6 +337,37 @@ def test_profile_groups_render_as_accessible_session_collapsibles():
     assert 'items.hidden = collapsed' in source
     assert "event.target.closest('[data-profile-group-toggle]')" in source
     assert 'this.toggleGroupCollapsed(groupToggle.dataset.profileGroupToggle)' in source
+
+
+def test_profile_management_keeps_toolbar_controls_outside_the_scroll_region():
+    template = read('templates/index.html')
+    source = read('static/css/style.css')
+
+    toolbar_start = template.index('class="profile-management-toolbar"')
+    list_start = template.index('id="profileManagementList"')
+    assert toolbar_start < template.index('id="profileSearchInput"') < list_start
+    assert toolbar_start < template.index('id="collapseAllProfilesBtn"') < list_start
+    assert toolbar_start < template.index('id="newProfileBtn"') < list_start
+
+    view = source[source.index('#profileManagementView:not(.hidden) {'):source.index(
+        '#profileEditorView:not(.hidden)',
+    )]
+    profile_list = source[source.index('.profile-management-list {'):source.index(
+        '.profile-management-section {',
+    )]
+    assert 'display: flex;' in view
+    assert 'flex-direction: column;' in view
+    assert 'overflow: hidden;' in view
+    assert 'overflow-y: auto;' not in view
+    assert 'flex: 1;' in profile_list
+    assert 'min-height: 0;' in profile_list
+    assert 'overflow-y: auto;' in profile_list
+
+
+def test_profile_collapse_all_is_translated_for_every_supported_locale():
+    source = read('static/js/i18n.js')
+
+    assert source.count("'profiles.collapseAll':") == 6
 
 
 def test_profile_groups_support_precise_handle_drag_without_favorite_targets():

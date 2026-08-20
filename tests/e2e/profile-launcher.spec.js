@@ -206,6 +206,30 @@ test('searches grouped hosts and updates favorites without duplicates', async ({
     await expect(favorite).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('focuses host search and collapses every saved connection section', async ({ page }) => {
+    await openProfileManagement(page);
+    const search = page.locator('#profileSearchInput');
+    const collapseAll = page.locator('#collapseAllProfilesBtn');
+    const toggles = page.locator('[data-profile-group-toggle]');
+
+    await expect(search).toBeFocused();
+    await expect(collapseAll).toBeEnabled();
+    await collapseAll.click();
+    await expect(toggles).not.toHaveCount(0);
+    await expect.poll(() => toggles.evaluateAll(elements => (
+        elements.every(element => element.getAttribute('aria-expanded') === 'false')
+    ))).toBe(true);
+    await expect(collapseAll).toBeDisabled();
+
+    await search.fill('passworduser');
+    await expect(collapseAll).toBeDisabled();
+    await expect(toggles).toHaveCount(1);
+    await expect(toggles).toHaveAttribute('aria-expanded', 'true');
+
+    await search.fill('');
+    await expect(toggles.first()).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('reorders hosts precisely, persists launcher order, and confirms group removal', async ({ page }) => {
     await openProfileManagement(page);
 
@@ -592,21 +616,25 @@ test('modals restore focus and close by Escape or overlay while containing scrol
     await trigger.click();
     const modal = page.locator('#profileManagementModal');
     await expect(modal).toHaveClass(/show/);
-    await expect(
-        page.locator('#profileManagementModal [data-connection-asset="hosts"]'),
-    ).toBeFocused();
+    await expect(page.locator('#profileSearchInput')).toBeFocused();
 
     const scrollState = await modal.evaluate(element => {
         const content = element.querySelector('.modal-content');
         const body = element.querySelector('.modal-body');
-        const scrollRegion = element.querySelector('#profileManagementView:not(.hidden)');
+        const managementView = element.querySelector('#profileManagementView:not(.hidden)');
+        const scrollRegion = element.querySelector('.profile-management-list');
+        const toolbar = element.querySelector('.profile-management-toolbar');
+        const toolbarTopBeforeScroll = toolbar.getBoundingClientRect().top;
         scrollRegion.scrollTop = scrollRegion.scrollHeight;
         const header = element.querySelector('.modal-header');
         return {
             contentOverflow: getComputedStyle(content).overflow,
             bodyOverflowY: getComputedStyle(body).overflowY,
+            managementOverflow: getComputedStyle(managementView).overflow,
             scrollRegionOverflowY: getComputedStyle(scrollRegion).overflowY,
             scrolls: scrollRegion.scrollHeight > scrollRegion.clientHeight,
+            toolbarTopBeforeScroll,
+            toolbarTopAfterScroll: toolbar.getBoundingClientRect().top,
             headerTop: header.getBoundingClientRect().top,
             contentTop: content.getBoundingClientRect().top,
         };
@@ -614,9 +642,11 @@ test('modals restore focus and close by Escape or overlay while containing scrol
     expect(scrollState).toMatchObject({
         contentOverflow: 'hidden',
         bodyOverflowY: 'hidden',
+        managementOverflow: 'hidden',
         scrollRegionOverflowY: 'auto',
         scrolls: true,
     });
+    expect(scrollState.toolbarTopAfterScroll).toBe(scrollState.toolbarTopBeforeScroll);
     expect(scrollState.headerTop).toBeGreaterThanOrEqual(scrollState.contentTop);
 
     await page.keyboard.press('Escape');

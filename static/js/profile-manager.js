@@ -29,6 +29,9 @@ const ProfileManager = {
         document.getElementById('newProfileBtn')?.addEventListener('click', () => {
             this.openEditor();
         });
+        document.getElementById('collapseAllProfilesBtn')?.addEventListener('click', () => {
+            this.collapseAllGroups();
+        });
         document.getElementById('profileSearchInput')?.addEventListener('input', event => {
             this.profileSearchQuery = event.target.value;
             this.renderManagementList();
@@ -748,7 +751,7 @@ const ProfileManager = {
         window.JumpHostManager?.load();
         const modal = document.getElementById('profileManagementModal');
         window.ModalManager?.open(modal);
-        modal?.querySelector('[data-connection-asset="hosts"]')?.focus();
+        modal?.querySelector('#profileSearchInput')?.focus();
     },
 
     showManagementList() {
@@ -770,6 +773,36 @@ const ProfileManager = {
             this.collapsedGroups.add(sectionKey);
         }
         this.renderManagementList();
+    },
+
+    buildManagementSections() {
+        return window.ProfileLauncherUtils?.buildProfileSections(
+            this.profiles,
+            this.profileSearchQuery,
+            {
+                favorites: this.t('profiles.favorites', 'Favorites'),
+                ungrouped: this.t('profiles.ungrouped', 'Ungrouped'),
+            },
+        ) || [];
+    },
+
+    collapseAllGroups() {
+        if (!this.isProfileSortingEnabled()) return false;
+        const sections = this.buildManagementSections();
+        const changed = sections.some(section => !this.collapsedGroups.has(section.key));
+        if (!changed) return false;
+        sections.forEach(section => this.collapsedGroups.add(section.key));
+        this.renderManagementList();
+        return true;
+    },
+
+    updateCollapseAllState(sections) {
+        const button = document.getElementById('collapseAllProfilesBtn');
+        if (!button) return;
+        button.disabled = (
+            !this.isProfileSortingEnabled()
+            || !sections.some(section => !this.collapsedGroups.has(section.key))
+        );
     },
 
     isProfileSortingEnabled() {
@@ -803,6 +836,7 @@ const ProfileManager = {
         if (!container) return;
         container.replaceChildren();
         if (!this.profiles.length) {
+            this.updateCollapseAllState([]);
             const empty = document.createElement('p');
             empty.className = 'no-items';
             empty.textContent = this.t('profiles.none', 'No saved connections.');
@@ -810,14 +844,8 @@ const ProfileManager = {
             return;
         }
 
-        const sections = window.ProfileLauncherUtils?.buildProfileSections(
-            this.profiles,
-            this.profileSearchQuery,
-            {
-                favorites: this.t('profiles.favorites', 'Favorites'),
-                ungrouped: this.t('profiles.ungrouped', 'Ungrouped'),
-            },
-        ) || [];
+        const sections = this.buildManagementSections();
+        this.updateCollapseAllState(sections);
         if (!sections.length) {
             const empty = document.createElement('p');
             empty.className = 'no-items';

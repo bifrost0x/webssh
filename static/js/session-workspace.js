@@ -30,6 +30,14 @@
             retryTimers.delete(sessionId);
         }
 
+        function cancelProbe(sessionId) {
+            clearRetry(sessionId);
+            const request = pending.get(sessionId);
+            if (request) clearTimeoutFn(request.timeoutId);
+            pending.delete(sessionId);
+            retryCounts.delete(sessionId);
+        }
+
         function startProbe(sessionId) {
             if (pending.has(sessionId) || capabilities.has(sessionId)) return false;
             const requestId = createRequestId();
@@ -49,9 +57,15 @@
 
         function scheduleRetry(sessionId) {
             const retries = retryCounts.get(sessionId) || 0;
+            if (retries >= 2 && activeProbeSessionId === sessionId) {
+                clearRetry(sessionId);
+                retryCounts.delete(sessionId);
+                capabilities.set(sessionId, 'inconclusive');
+                onChange(sessionId);
+                return;
+            }
             if (
-                retries >= 2
-                || retryTimers.has(sessionId)
+                retryTimers.has(sessionId)
                 || activeProbeSessionId !== sessionId
             ) return;
             retryCounts.set(sessionId, retries + 1);
@@ -88,7 +102,9 @@
 
         return {
             get(sessionId) {
-                return capabilities.get(sessionId) || 'unknown';
+                if (capabilities.has(sessionId)) return capabilities.get(sessionId);
+                if (pending.has(sessionId) || retryTimers.has(sessionId)) return 'probing';
+                return 'unknown';
             },
 
             probeIfNeeded(state) {
@@ -99,12 +115,13 @@
                     ? targetSessionId
                     : null;
                 if (activeProbeSessionId !== eligibleSessionId) {
-                    if (activeProbeSessionId) clearRetry(activeProbeSessionId);
+                    if (activeProbeSessionId) cancelProbe(activeProbeSessionId);
                     activeProbeSessionId = eligibleSessionId;
                 }
                 if (
                     !eligibleSessionId
                     || pending.has(targetSessionId)
+                    || retryTimers.has(targetSessionId)
                 ) {
                     return false;
                 }
@@ -112,12 +129,8 @@
             },
 
             remove(sessionId) {
-                clearRetry(sessionId);
+                cancelProbe(sessionId);
                 capabilities.delete(sessionId);
-                const request = pending.get(sessionId);
-                if (request) clearTimeoutFn(request.timeoutId);
-                pending.delete(sessionId);
-                retryCounts.delete(sessionId);
                 if (activeProbeSessionId === sessionId) activeProbeSessionId = null;
             },
         };
@@ -134,9 +147,10 @@
         let sessionId = null;
         let session = null;
         let sftpOpen = false;
+        let panelSessionId = null;
         let sftpCapability = 'unknown';
         let visible = true;
-        const manuallyDismissedSessions = new Set();
+        const sftpPreferences = new Map();
 
         function canOpenSftp() {
             return Boolean(
@@ -144,19 +158,26 @@
                 && isDesktop()
                 && sessionId
                 && session?.connected
+                && ['available', 'inconclusive'].includes(sftpCapability)
             );
+        }
+
+        function shouldOpenSftp() {
+            if (!canOpenSftp()) return false;
+            const preference = sftpPreferences.get(sessionId);
+            if (preference === 'open') return true;
+            if (preference === 'closed') return false;
+            if (sftpOpen && panelSessionId === sessionId) return true;
+            return isWideDesktop() && sftpCapability === 'available';
         }
 
         function state() {
             const sftpProbeNeeded = Boolean(
-                !sftpOpen
-                && layout === 1
-                && isWideDesktop()
+                layout === 1
+                && isDesktop()
                 && sessionId
                 && session?.connected
-                && currentSessionCount === 1
-                && sftpCapability === 'unknown'
-                && !manuallyDismissedSessions.has(sessionId)
+                && ['unknown', 'probing'].includes(sftpCapability)
             );
             return {
                 layout,
@@ -170,8 +191,6 @@
             };
         }
 
-        let currentSessionCount = 0;
-
         function renderState() {
             render(state());
         }
@@ -179,11 +198,13 @@
         function closeSftp() {
             if (!sftpOpen) return;
             sftpOpen = false;
+            panelSessionId = null;
             filesPanel?.close?.();
         }
 
         function openSftp() {
             sftpOpen = true;
+            panelSessionId = sessionId;
             filesPanel?.open?.(sessionId, session);
         }
 
@@ -191,15 +212,18 @@
             update(next) {
                 const previousSessionId = sessionId;
                 const wasConnected = Boolean(session?.connected);
+                const previousLayout = layout;
                 layout = [1, 2, 4].includes(next?.layout) ? next.layout : 1;
                 sessionId = typeof next?.sessionId === 'string' && next.sessionId
                     ? next.sessionId
                     : null;
                 session = next?.session || null;
-                currentSessionCount = Number.isInteger(next?.sessionCount)
-                    ? next.sessionCount
-                    : 0;
-                sftpCapability = ['available', 'unavailable'].includes(next?.sftpCapability)
+                sftpCapability = [
+                    'available',
+                    'unavailable',
+                    'probing',
+                    'inconclusive',
+                ].includes(next?.sftpCapability)
                     ? next.sftpCapability
                     : 'unknown';
                 const connected = Boolean(sessionId && session?.connected);
@@ -210,21 +234,23 @@
                     insights.setSession?.(sessionId, connected);
                 }
 
+                if (previousLayout === 1 && layout !== 1 && previousSessionId) {
+                    sftpPreferences.set(previousSessionId, 'closed');
+                }
                 if (layout !== 1 || !isDesktop() || !connected) {
                     if (sftpOpen && !connected && sessionId) {
                         filesPanel?.setDisconnected?.(sessionId);
                     }
                     closeSftp();
-                } else if (sftpOpen && sessionChanged) {
-                    filesPanel?.follow?.(sessionId, session);
-                } else if (
-                    !sftpOpen
-                    && isWideDesktop()
-                    && currentSessionCount === 1
-                    && sftpCapability === 'available'
-                    && !manuallyDismissedSessions.has(sessionId)
-                ) {
-                    openSftp();
+                } else if (shouldOpenSftp()) {
+                    if (sftpOpen && panelSessionId !== sessionId) {
+                        panelSessionId = sessionId;
+                        filesPanel?.follow?.(sessionId, session);
+                    } else if (!sftpOpen) {
+                        openSftp();
+                    }
+                } else {
+                    closeSftp();
                 }
 
                 renderState();
@@ -232,7 +258,7 @@
 
             toggleSftp() {
                 if (sftpOpen) {
-                    if (sessionId) manuallyDismissedSessions.add(sessionId);
+                    if (sessionId) sftpPreferences.set(sessionId, 'closed');
                     closeSftp();
                     renderState();
                     return false;
@@ -241,7 +267,7 @@
                     renderState();
                     return false;
                 }
-                manuallyDismissedSessions.delete(sessionId);
+                sftpPreferences.set(sessionId, 'open');
                 openSftp();
                 renderState();
                 return true;
@@ -251,6 +277,11 @@
                 visible = Boolean(nextVisible);
                 insights.setVisible?.(visible);
                 renderState();
+            },
+
+            removeSession(removedSessionId) {
+                if (typeof removedSessionId !== 'string' || !removedSessionId) return;
+                sftpPreferences.delete(removedSessionId);
             },
 
             getState() {
