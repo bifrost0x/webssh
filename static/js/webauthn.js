@@ -3,7 +3,7 @@
 
     const root = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-    const ldapManaged = document.body?.dataset.ldapManaged === 'true';
+    const recoveryMode = document.body?.dataset.recoveryMode === 'true';
     const t = (key, fallback) => {
         const translated = window.i18n && i18n.t ? i18n.t(key) : null;
         return translated && translated !== key ? translated : (fallback || key);
@@ -107,24 +107,58 @@
         if (!modal) { return Promise.resolve(null); }
         if (confirmationRequest) { closeConfirmation(null); }
         const settings = Object.assign({
-            password: false,
+            authentication: null,
+            methodChoices: null,
+            preferredMethod: null,
             label: false,
             account: false,
             labelText: 'Name',
             labelDefault: '',
             hint: 'Confirm this account security change.'
         }, options || {});
+        const passwordAuthentication = ['password', 'ldap'].includes(
+            settings.authentication
+        );
         document.getElementById('securityConfirmationHint').textContent = settings.hint;
         document.getElementById('securityConfirmationLabelText').textContent = settings.labelText;
-        document.getElementById('securityConfirmationPasswordGroup').classList.toggle('hidden', !settings.password);
+        document.getElementById('securityConfirmationPasswordGroup').classList.toggle('hidden', !passwordAuthentication);
+        document.getElementById('securityConfirmationTotpGroup').classList.toggle('hidden', settings.authentication !== 'totp');
+        const methodGroup = document.getElementById('securityConfirmationMethodGroup');
+        const methodSelect = document.getElementById('securityConfirmationMethod');
+        const methodChoices = Array.isArray(settings.methodChoices)
+            ? settings.methodChoices
+            : [];
+        methodGroup.classList.toggle('hidden', methodChoices.length === 0);
+        methodSelect.replaceChildren();
+        const methodLabels = {
+            oidc: t('security.methodOidc', 'Identity provider'),
+            passkey: t('security.methodPasskey', 'Passkey'),
+            totp: t('security.methodTotp', 'Authenticator app'),
+            ldap: t('security.methodLdap', 'Directory password'),
+            password: t('security.methodPassword', 'WebSSH password')
+        };
+        for (const method of methodChoices) {
+            const option = document.createElement('option');
+            option.value = method;
+            option.textContent = methodLabels[method] || method;
+            option.selected = method === settings.preferredMethod;
+            methodSelect.appendChild(option);
+        }
+        document.getElementById('securityConfirmationPasswordText').textContent = settings.authentication === 'ldap'
+            ? t('security.directoryPassword', 'Directory password')
+            : t('auth.currentPassword', 'Current password');
         document.getElementById('securityConfirmationLabelGroup').classList.toggle('hidden', !settings.label);
         document.getElementById('securityConfirmationAccountGroup').classList.toggle('hidden', !settings.account);
         document.getElementById('securityConfirmationLabel').value = settings.labelDefault;
         document.getElementById('securityConfirmationError').classList.add('hidden');
         modal.classList.add('show');
         modal.setAttribute('aria-hidden', 'false');
-        const firstField = settings.password
+        const firstField = methodChoices.length
+            ? methodSelect
+            : passwordAuthentication
             ? document.getElementById('securityConfirmationPassword')
+            : settings.authentication === 'totp'
+                ? document.getElementById('securityConfirmationTotp')
             : settings.label
                 ? document.getElementById('securityConfirmationLabel')
                 : document.getElementById('securityConfirmationAccount');
@@ -138,11 +172,24 @@
         if (!confirmationRequest) { return; }
         const settings = confirmationRequest.settings;
         const result = {};
-        if (settings.password) {
-            result.password = document.getElementById('securityConfirmationPassword').value;
-            if (!result.password) {
+        if (Array.isArray(settings.methodChoices) && settings.methodChoices.length) {
+            result.method = document.getElementById('securityConfirmationMethod').value;
+        }
+        if (['password', 'ldap'].includes(settings.authentication)) {
+            result.secret = document.getElementById('securityConfirmationPassword').value;
+            if (!result.secret) {
                 const error = document.getElementById('securityConfirmationError');
                 error.textContent = t('auth.currentPasswordRequired', 'Current password is required.');
+                error.classList.remove('hidden');
+                return;
+            }
+        }
+        if (settings.authentication === 'totp') {
+            result.secret = document.getElementById('securityConfirmationTotp').value
+                .replace(/\s+/g, '');
+            if (!/^[0-9]{6}$/.test(result.secret)) {
+                const error = document.getElementById('securityConfirmationError');
+                error.textContent = t('security.invalidTotpCode', 'Enter a valid six-digit code.');
                 error.classList.remove('hidden');
                 return;
             }
@@ -168,17 +215,49 @@
         closeConfirmation(result);
     }
 
-    async function factorChangeBody(options) {
-        const settings = Object.assign({}, options || {}, {
-            password: !ldapManaged
+    async function requestStepUpSecret(method) {
+        const result = await requestConfirmation({
+            authentication: method,
+            hint: method === 'ldap'
+                ? t('security.confirmWithDirectory', 'Confirm with the password you use for directory sign-in.')
+                : method === 'totp'
+                    ? t('security.confirmWithTotp', 'Enter a current code from your authenticator app.')
+                    : t('security.confirmFactorChange', 'Confirm this account security change.')
         });
-        const result = await requestConfirmation(settings);
-        if (result === null) { return null; }
-        const body = {};
-        if (result.password) { body.password = result.password; }
-        if (result.label) { body.label = result.label; }
-        if (result.account) { body.confirm_username = result.account; }
-        return body;
+        return result === null ? null : result.secret;
+    }
+
+    async function chooseStepUpMethod(methods, preferredMethod) {
+        const result = await requestConfirmation({
+            methodChoices: methods,
+            preferredMethod,
+            hint: t(
+                'security.chooseConfirmationMethod',
+                'Choose how you want to confirm this security change.'
+            )
+        });
+        return result === null ? null : result.method;
+    }
+
+    const accountStepUp = window.WebSSHSecurityUI.createAccountStepUpClient({
+        api,
+        chooseMethod: chooseStepUpMethod,
+        requestSecret: requestStepUpSecret,
+        getPasskeyAssertion: async publicKey => navigator.credentials.get({
+            publicKey: decodeRequestOptions(publicKey)
+        }),
+        serializeCredential,
+        openAuthorization: url => window.open(
+            url,
+            'webssh-account-step-up',
+            'popup,width=720,height=760'
+        )
+    });
+
+    async function stepUpHeaders(action, target) {
+        if (recoveryMode) { return {}; }
+        const grant = await accountStepUp.authorize(action, target);
+        return grant ? accountStepUp.header(grant) : null;
     }
 
     async function loadHostKeys() {
@@ -236,11 +315,15 @@
             button.className = 'btn btn-danger';
             button.textContent = t('common.delete', 'Delete');
             button.addEventListener('click', async () => {
-                const body = await factorChangeBody();
-                if (body === null) { return; }
+                if (!window.confirm(t(
+                    'security.confirmDeletePasskey',
+                    'Delete this passkey? Make sure another sign-in method remains available.'
+                ))) { return; }
+                const headers = await stepUpHeaders('passkey.delete', credential.id);
+                if (headers === null) { return; }
                 await api(`/api/webauthn/credentials/${credential.id}`, {
                     method: 'DELETE',
-                    body
+                    headers
                 });
                 await loadPasskeys();
             });
@@ -268,26 +351,35 @@
             const defaultName = legacyUpgrade
                 ? t('security.replacementPasskey', 'Replacement passkey')
                 : t('security.passkeyDefaultName', 'Passkey');
-            const body = await factorChangeBody({
+            const details = await requestConfirmation({
                 label: true,
                 labelText: t('security.passkeyName', 'Passkey name'),
                 labelDefault: defaultName,
                 hint: t('security.confirmFactorChange', 'Confirm the passkey enrollment for this account.')
             });
-            if (body === null) { return; }
-            const name = body.label;
-            delete body.label;
+            if (details === null) { return; }
+            const headers = await stepUpHeaders('passkey.enroll');
+            if (headers === null) { return; }
+            const name = details.label;
+            const body = {};
             if (legacyUpgrade) { body.legacy_upgrade = true; }
-            const options = decodeCreationOptions(await api(
+            const optionsPayload = await api(
                 '/api/webauthn/register/options',
-                { method: 'POST', body }
-            ));
+                { method: 'POST', body, headers }
+            );
+            const ceremony = optionsPayload.ceremony;
+            delete optionsPayload.ceremony;
+            const options = decodeCreationOptions(optionsPayload);
             const credential = await navigator.credentials.create({
                 publicKey: options
             });
             await api('/api/webauthn/register/verify', {
                 method: 'POST',
-                body: { name, credential: serializeCredential(credential) }
+                body: {
+                    ceremony,
+                    name,
+                    credential: serializeCredential(credential)
+                }
             });
             await loadPasskeys();
             notify(t('security.passkeyAdded', 'Passkey added'), 'success');
@@ -328,14 +420,20 @@
     }
 
     async function beginTotpEnrollment() {
-        const body = await factorChangeBody({
+        const details = await requestConfirmation({
             label: true,
             labelText: t('security.authenticatorName', 'Authenticator name'),
             labelDefault: t('security.authenticatorDefaultName', 'Authenticator'),
             hint: t('security.confirmFactorChange', 'Confirm the authenticator enrollment for this account.')
         });
-        if (body === null) { return; }
-        const data = await api('/api/totp/enroll', { method: 'POST', body });
+        if (details === null) { return; }
+        const headers = await stepUpHeaders('totp.enroll');
+        if (headers === null) { return; }
+        const data = await api('/api/totp/enroll', {
+            method: 'POST',
+            headers,
+            body: { label: details.label }
+        });
         activeTotpEnrollment = data;
         const image = document.getElementById('totpQr');
         image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data.qr_svg);
@@ -387,12 +485,13 @@
             'security.confirmDisableMfa',
             'Disable the MFA requirement for future sign-ins? Enrolled factors remain stored.'
         ))) { return; }
-        const body = await factorChangeBody({
-            hint: t('security.confirmFactorChange', 'Confirm this account security change.')
+        const headers = await stepUpHeaders('mfa.disable');
+        if (headers === null) { return; }
+        await api('/api/account/mfa/disable', {
+            method: 'POST',
+            headers,
+            body: { confirm_disable_mfa: true }
         });
-        if (body === null) { return; }
-        body.confirm_disable_mfa = true;
-        await api('/api/totp/disable', { method: 'POST', body });
         await loadTotpAuthenticators();
         notify(t('security.mfaDisabled', 'MFA requirement disabled'), 'success');
     }
@@ -418,13 +517,12 @@
         }
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {
-                const body = await factorChangeBody({
-                    hint: t('security.confirmFactorChange', 'Confirm this account security change.')
-                });
-                if (body === null) { return; }
+                const headers = await stepUpHeaders('recovery.rotate');
+                if (headers === null) { return; }
                 const data = await api('/api/recovery-codes', {
                     method: 'POST',
-                    body
+                    headers,
+                    body: {}
                 });
                 document.getElementById('recoveryCodes').textContent = data.codes.join('\n');
                 notify(t(

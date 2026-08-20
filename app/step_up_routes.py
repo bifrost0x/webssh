@@ -31,6 +31,7 @@ from .auth_assurance import (
 from .decorators import admin_required
 from .models import User, WebAuthnCredential, db
 from .step_up import (
+    ACCOUNT_STEP_UP_ACTIONS,
     StepUpError,
     create_step_up_grant,
     create_step_up_grant_for_hash,
@@ -51,6 +52,8 @@ def _intent():
     if not isinstance(data, dict):
         raise StepUpError("step-up request is invalid")
     action = normalize_action(data.get("action"))
+    if action in ACCOUNT_STEP_UP_ACTIONS:
+        raise StepUpError("step-up request is invalid")
     target = data.get("target")
     hash_step_up_target(target)
     return data, action, target

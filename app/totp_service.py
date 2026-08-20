@@ -23,6 +23,7 @@ from .models import (
 
 _ENROLLMENT_TTL = timedelta(minutes=5)
 _MAX_AUTHENTICATORS_PER_USER = 5
+_MAX_ENROLLMENTS_PER_USER = 5
 _totp_lock = RLock()
 
 
@@ -70,7 +71,7 @@ def _qr_svg(provisioning_uri):
     return output.getvalue().decode("utf-8")
 
 
-def begin_totp_enrollment(user_id, session_binding):
+def begin_totp_enrollment(user_id, session_binding, *, label="Authenticator"):
     """Create a five-minute enrollment and return its one-time setup view."""
     binding = str(session_binding or "")
     if not binding or len(binding) > 512:
@@ -78,12 +79,15 @@ def begin_totp_enrollment(user_id, session_binding):
     user = db.session.get(User, int(user_id))
     if user is None or user.is_locked:
         raise TOTPEnrollmentError("account is unavailable")
-    label = user.username
+    normalized_label = str(label or "Authenticator").strip()
+    if not normalized_label or len(normalized_label) > 80:
+        raise TOTPEnrollmentError("TOTP label is invalid")
+    account_name = user.username
     now = as_naive_utc(datetime.now(timezone.utc))
     token = secrets.token_urlsafe(32)
     secret = pyotp.random_base32(length=32)
     provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
-        name=label,
+        name=account_name,
         issuer_name="WebSSH",
     )
 
@@ -91,15 +95,20 @@ def begin_totp_enrollment(user_id, session_binding):
         TOTPEnrollment.query.filter(
             TOTPEnrollment.expires_at <= now
         ).delete(synchronize_session=False)
-        TOTPEnrollment.query.filter_by(user_id=user.id).delete(
-            synchronize_session=False
+        live_rows = (
+            TOTPEnrollment.query
+            .filter_by(user_id=user.id)
+            .order_by(TOTPEnrollment.created_at.desc(), TOTPEnrollment.id.desc())
+            .all()
         )
+        for stale in live_rows[_MAX_ENROLLMENTS_PER_USER - 1:]:
+            db.session.delete(stale)
         row = TOTPEnrollment(
             token_hash=_digest(token),
             user_id=user.id,
             session_binding_hash=_digest(binding),
             encrypted_secret=encrypt_totp_secret(user.id, secret),
-            label="Authenticator",
+            label=normalized_label,
             created_at=now,
             expires_at=now + _ENROLLMENT_TTL,
         )

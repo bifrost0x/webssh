@@ -456,6 +456,16 @@ def test_homelab_compose_exposes_major_operator_choices():
     } == set()
 
 
+def test_compose_exposes_totp_capability_without_bypassing_admin_gate():
+    compose = Path('docker-compose.yml').read_text(encoding='utf-8')
+    production = Path('docker-compose.production.yml').read_text(
+        encoding='utf-8'
+    )
+
+    assert 'TOTP_ENABLED=${TOTP_ENABLED:-true}' in compose
+    assert 'TOTP_ENABLED: "${TOTP_ENABLED:-true}"' in production
+
+
 def test_default_compose_has_no_ldap_secret_infrastructure():
     compose = Path('docker-compose.yml').read_text(encoding='utf-8')
     dockerfile = Path('Dockerfile').read_text(encoding='utf-8')

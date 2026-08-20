@@ -4,6 +4,11 @@ import time
 
 import pyotp
 
+from tests.step_up_helpers import (
+    account_password_step_up_headers,
+    mint_account_step_up_headers,
+)
+
 
 def _create_user(app, username="totp_route_user"):
     from app.auth import register_user
@@ -55,9 +60,16 @@ def test_user_explicitly_enrolls_totp_and_receives_one_time_recovery_codes(
     _activate_totp_feature(app, monkeypatch)
     _login(client)
 
+    headers, _verified = account_password_step_up_headers(
+        client,
+        "totp.enroll",
+        user_id,
+    )
+
     started = client.post(
         "/api/totp/enroll",
-        json={"password": "password123", "label": "Phone"},
+        json={"label": "Phone"},
+        headers=headers,
     )
     assert started.status_code == 200
     assert started.headers["Cache-Control"] == "no-store"
@@ -114,9 +126,15 @@ def test_totp_completes_pending_password_login(app, client, monkeypatch):
     user_id = _create_user(app, "totp_login_user")
     _activate_totp_feature(app, monkeypatch)
     _login(client, "totp_login_user")
+    headers, _verified = account_password_step_up_headers(
+        client,
+        "totp.enroll",
+        user_id,
+    )
     started = client.post(
         "/api/totp/enroll",
-        json={"password": "password123"},
+        json={},
+        headers=headers,
     ).get_json()
     secret = started["secret"]
     assert client.post(
@@ -201,9 +219,15 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
     user_id = _create_user(app, "disable_totp_user")
     _activate_totp_feature(app, monkeypatch)
     _login(client, "disable_totp_user")
+    enrollment_headers, _verified = account_password_step_up_headers(
+        client,
+        "totp.enroll",
+        user_id,
+    )
     started = client.post(
         "/api/totp/enroll",
-        json={"password": "password123"},
+        json={},
+        headers=enrollment_headers,
     ).get_json()
     assert client.post(
         "/api/totp/enroll/verify",
@@ -218,16 +242,26 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
         "/api/totp/disable",
         json={"password": "wrong", "confirm_disable_mfa": True},
     )
+    disable_headers = mint_account_step_up_headers(
+        app,
+        client,
+        "mfa.disable",
+        user_id,
+        assurance="MFA",
+        method="totp",
+    )
     unconfirmed = client.post(
         "/api/totp/disable",
-        json={"password": "password123", "confirm_disable_mfa": False},
+        json={"confirm_disable_mfa": False},
+        headers=disable_headers,
     )
     accepted = client.post(
         "/api/totp/disable",
-        json={"password": "password123", "confirm_disable_mfa": True},
+        json={"confirm_disable_mfa": True},
+        headers=disable_headers,
     )
 
-    assert rejected.status_code == 403
+    assert rejected.status_code == 409
     assert unconfirmed.status_code == 400
     assert accepted.status_code == 200
     with app.app_context():

@@ -65,6 +65,15 @@
         };
     }
 
+    function featureDisableWarning(_feature, label) {
+        const name = String(label || 'this authentication feature');
+        return `Disable ${name}? If this is your current sign-in method, `
+            + 'you may not be able to sign in again. Existing browser, SSH, '
+            + 'and tmux sessions remain available until their normal timeout; '
+            + 'this change does not terminate them. New logins and factor '
+            + 'setup use the new rule immediately.';
+    }
+
     function totpAccountState(payload) {
         const item = payload || {};
         const authenticators = Array.isArray(item.authenticators)
@@ -75,6 +84,111 @@
             hasAuthenticator: authenticators.length > 0,
             canDisable: Boolean(item.mfa_enabled) && authenticators.length > 0
         };
+    }
+
+    function createAccountStepUpClient(dependencies) {
+        const options = dependencies || {};
+        const api = options.api;
+        const requestSecret = options.requestSecret;
+        const chooseMethod = options.chooseMethod;
+        const getPasskeyAssertion = options.getPasskeyAssertion;
+        const serializeCredential = options.serializeCredential || (value => value);
+        const openAuthorization = options.openAuthorization || (url => {
+            window.open(url, 'webssh-account-step-up', 'popup,width=720,height=760');
+        });
+        const wait = options.wait || (milliseconds => new Promise(resolve => {
+            setTimeout(resolve, milliseconds);
+        }));
+
+        if (typeof api !== 'function') {
+            throw new TypeError('account step-up requires an API client');
+        }
+
+        async function authorize(action, target) {
+            const created = await api('/api/account/step-up/intents', {
+                method: 'POST',
+                body: { action, target }
+            });
+            if (created.grant) { return created.grant; }
+            if (!created.intent || !Array.isArray(created.methods)
+                    || !created.methods.includes(created.preferred_method)) {
+                throw new Error('No supported authentication method is available.');
+            }
+            const method = created.methods.length > 1
+                && typeof chooseMethod === 'function'
+                ? await chooseMethod(created.methods, created.preferred_method)
+                : created.preferred_method;
+            if (method === null || method === undefined) { return null; }
+            if (!created.methods.includes(method)) {
+                throw new Error('No supported authentication method is available.');
+            }
+            if (method === 'password' || method === 'ldap') {
+                const secret = await requestSecret(method);
+                if (secret === null || secret === undefined) { return null; }
+                const completed = await api(`/api/account/step-up/${method}`, {
+                    method: 'POST',
+                    body: { intent: created.intent, password: secret }
+                });
+                return completed.grant;
+            }
+            if (method === 'totp') {
+                const secret = await requestSecret(method);
+                if (secret === null || secret === undefined) { return null; }
+                const completed = await api('/api/account/step-up/totp', {
+                    method: 'POST',
+                    body: { intent: created.intent, code: secret }
+                });
+                return completed.grant;
+            }
+            if (method === 'passkey') {
+                if (typeof getPasskeyAssertion !== 'function') {
+                    throw new Error('Passkey authentication is unavailable.');
+                }
+                const publicKey = await api(
+                    '/api/account/step-up/passkey/options',
+                    { method: 'POST', body: { intent: created.intent } }
+                );
+                const assertion = await getPasskeyAssertion(publicKey);
+                const completed = await api(
+                    '/api/account/step-up/passkey/verify',
+                    {
+                        method: 'POST',
+                        body: {
+                            intent: created.intent,
+                            credential: serializeCredential(assertion)
+                        }
+                    }
+                );
+                return completed.grant;
+            }
+            if (method === 'oidc') {
+                const started = await api('/api/account/step-up/oidc/start', {
+                    method: 'POST',
+                    body: {
+                        intent: created.intent,
+                        continuation: '/security'
+                    }
+                });
+                openAuthorization(started.authorization_url);
+                for (let attempt = 0; attempt < 120; attempt += 1) {
+                    await wait(1000);
+                    const status = await api('/api/account/step-up/status', {
+                        method: 'POST',
+                        body: { intent: created.intent }
+                    });
+                    if (status.status === 'completed' && status.grant) {
+                        return status.grant;
+                    }
+                }
+                throw new Error('Authentication confirmation timed out.');
+            }
+            throw new Error('No supported authentication method is available.');
+        }
+
+        return Object.freeze({
+            authorize,
+            header: grant => ({ 'X-WebSSH-Step-Up': grant })
+        });
     }
 
     function createRequestCoordinator(options) {
@@ -191,9 +305,11 @@
     }
 
     return {
+        createAccountStepUpClient,
         createRequestCoordinator,
         describeHostKey,
         downloadAuditExport,
+        featureDisableWarning,
         featureToggleState,
         hostKeyConfirmation,
         totpAccountState

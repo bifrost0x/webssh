@@ -1280,50 +1280,50 @@
         hostInput.addEventListener('input', () => {
             const value = hostInput.value.trim();
             const isValid = value && (hostnamePattern.test(value) || ipPattern.test(value));
-            setFieldState(hostInput, hostHint, isValid ? '✓ Valid host' : 'Hostname or IP required', isValid);
+            setFieldState(hostInput, hostHint, isValid ? 'Valid host' : 'Hostname or IP required', isValid);
         });
 
         portInput.addEventListener('input', () => {
             const value = parseInt(portInput.value, 10);
             const isValid = value >= 1 && value <= 65535;
-            setFieldState(portInput, portHint, isValid ? '✓ Valid port' : 'Port 1-65535', isValid);
+            setFieldState(portInput, portHint, isValid ? 'Valid port' : 'Port 1-65535', isValid);
         });
 
         userInput.addEventListener('input', () => {
             const value = userInput.value.trim();
             const isValid = usernamePattern.test(value);
-            setFieldState(userInput, userHint, isValid ? '✓ Valid username' : '1-32 chars, a-z 0-9 _ -', isValid);
+            setFieldState(userInput, userHint, isValid ? 'Valid username' : '1-32 chars, a-z 0-9 _ -', isValid);
         });
 
         if (passwordInput) {
             passwordInput.addEventListener('input', () => {
                 const value = passwordInput.value;
                 const isValid = value.length > 0;
-                setFieldState(passwordInput, passHint, isValid ? '✓ Ready' : 'Password required', isValid);
+                setFieldState(passwordInput, passHint, isValid ? 'Ready' : 'Password required', isValid);
             });
         }
 
         if (keySelect) {
             keySelect.addEventListener('change', () => {
                 const value = keySelect.value;
-                setFieldState(keySelect, keyHint, value ? '✓ Key selected' : 'Select a key', Boolean(value));
+                setFieldState(keySelect, keyHint, value ? 'Key selected' : 'Select a key', Boolean(value));
             });
         }
 
         if (profileNameInput) {
             profileNameInput.addEventListener('input', () => {
                 const value = profileNameInput.value.trim();
-                setFieldState(profileNameInput, profileHint, value ? '✓ Saved name' : '', value ? true : null);
+                setFieldState(profileNameInput, profileHint, value ? 'Saved name' : '', value ? true : null);
             });
         }
 
         if (authTypeSelect) {
             authTypeSelect.addEventListener('change', () => {
                 if (authTypeSelect.value === 'password' && passwordInput) {
-                    setFieldState(passwordInput, passHint, passwordInput.value ? '✓ Ready' : 'Password required', Boolean(passwordInput.value));
+                    setFieldState(passwordInput, passHint, passwordInput.value ? 'Ready' : 'Password required', Boolean(passwordInput.value));
                 }
                 if (authTypeSelect.value === 'key' && keySelect) {
-                    setFieldState(keySelect, keyHint, keySelect.value ? '✓ Key selected' : 'Select a key', Boolean(keySelect.value));
+                    setFieldState(keySelect, keyHint, keySelect.value ? 'Key selected' : 'Select a key', Boolean(keySelect.value));
                 }
             });
         }
@@ -1465,7 +1465,7 @@
                 saveStatus.textContent = 'Saving...';
                 saveStatus.className = 'notepad-save-status saving';
             } else if (status === 'saved') {
-                saveStatus.textContent = '✓ Saved';
+                saveStatus.textContent = 'Saved';
                 saveStatus.className = 'notepad-save-status saved';
                 setTimeout(() => {
                     saveStatus.className = 'notepad-save-status';

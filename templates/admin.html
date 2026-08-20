@@ -13,15 +13,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <h1 class="app-title"><span data-i18n="admin.title">Admin Panel</span> ⚙️</h1>
+                <h1 class="app-title"><span class="material-icons" aria-hidden="true">admin_panel_settings</span><span data-i18n="admin.title">Admin Center</span></h1>
             </div>
             <div class="header-buttons">
-                <a class="btn btn-secondary" href="{{ url_for('index') }}">← <span data-i18n="admin.backToApp">Back to Terminal</span></a>
+                <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Terminal</span></a>
             </div>
         </div>
     </header>
@@ -94,6 +95,7 @@
 
         {% endif %}
         <section class="admin-panel hidden" id="tab-settings">
+            <div class="admin-settings-grid">
             {% if ldap_enabled %}
             <div class="admin-setting-row" id="ldapStatusPanel">
                 <h2>LDAP directory</h2>
@@ -111,14 +113,14 @@
                 </label>
                 <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
             </div>
-            <div class="admin-setting-row" style="margin-top:16px;">
+            <div class="admin-setting-row admin-auth-features">
                 <h2>Authentication features</h2>
                 <p class="admin-muted">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
                 <div id="securityFeatureList" style="margin-top:14px;"></div>
                 <p id="securityFeatureStatus" class="admin-muted" role="status" aria-live="polite">Not loaded</p>
             </div>
             {% if audit_export_enabled %}
-            <div class="admin-setting-row" style="margin-top:16px;">
+            <div class="admin-setting-row admin-audit-retention">
                 <label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label>
                 <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
                     <input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5">
@@ -127,6 +129,7 @@
                 <p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p>
             </div>
             {% endif %}
+            </div>
             {% if host_key_management_enabled %}
             <div class="admin-setting-row" style="margin-top:16px;max-width:none;">
                 <div class="admin-toolbar">
@@ -196,7 +199,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="addUserModalTitle" data-i18n="admin.addUser">Add User</h2>
-                <button type="button" class="close" id="closeAddUser" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeAddUser" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -220,7 +223,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="securityActionTitle" data-i18n="admin.accountRecovery">Account recovery</h2>
-                <button type="button" class="close" id="closeSecurityAction" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeSecurityAction" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p id="securityActionHint" class="admin-muted"></p>
@@ -260,7 +263,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="stepUpTitle" data-i18n="admin.additionalAuthentication">Additional authentication</h2>
-                <button type="button" class="close" id="stepUpCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="stepUpCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p class="admin-muted" data-i18n="admin.stepUpHint">Confirm this sensitive administrator action. The authorization is valid for this action only.</p>
@@ -284,7 +287,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="restoreFirstConfirmTitle" data-i18n="backup.firstConfirm">Confirm restore impact</h2>
-                <button type="button" class="close" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p data-i18n="backup.restoreWarning">Restore replaces the complete persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH.</p>
@@ -304,7 +307,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="restoreSecondConfirmTitle" data-i18n="backup.secondConfirm">Final destructive confirmation</h2>
-                <button type="button" class="close" id="restoreSecondCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="restoreSecondCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">

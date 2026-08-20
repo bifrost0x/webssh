@@ -558,6 +558,12 @@ Compose/environment configuration is absent; the UI keeps that toggle locked
 and explains why. This preserves a normal Docker homelab: operators opt in to
 the capability through Compose and then decide when users may use it.
 
+The bundled Compose files expose the TOTP capability to the Admin page by
+default, but do not activate it for users. A fresh installation still requires
+an explicit Admin decision before authenticator enrollment appears. Existing
+`SecurityFeatureState` decisions are preserved, and an explicit
+`TOTP_ENABLED=false` remains a deployment-level kill switch.
+
 Changing a feature policy affects new login and enrollment attempts. It does
 not forcibly terminate an already authenticated browser session or an active
 SSH session. The user can continue working until the session reaches its normal
@@ -591,6 +597,14 @@ bound to the current server-side authentication session, exact action, exact
 target and assurance level, is consumed before the action runs, and cannot be
 reused for another user or operation. The browser keeps it only in the active
 JavaScript call and never in local or session storage.
+
+Sensitive account-factor changes use the same narrow grant contract without
+mixing account and administrator permissions. A local session confirms with
+the WebSSH password, an LDAP session performs a fresh directory bind, and an
+OIDC session reauthenticates at its provider. WebSSH never asks an OIDC user for
+the unrelated local fallback password. MFA-enabled accounts may choose an
+available Passkey or TOTP authenticator; each grant is bound to the exact
+factor action and target and is consumed once.
 
 #### Enable LDAP or LDAPS with Docker Compose
 

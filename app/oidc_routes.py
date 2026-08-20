@@ -103,6 +103,7 @@ def _authorization_redirect(
     requested_acr=None,
     step_up_action=None,
     step_up_target_hash=None,
+    step_up_intent_id=None,
 ):
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
@@ -117,6 +118,7 @@ def _authorization_redirect(
         requested_acr=requested_acr,
         step_up_action=step_up_action,
         step_up_target_hash=step_up_target_hash,
+        step_up_intent_id=step_up_intent_id,
     )
     challenge = base64.urlsafe_b64encode(
         hashlib.sha256(verifier.encode("ascii")).digest()
@@ -157,6 +159,26 @@ def begin_oidc_step_up(*, action, target_hash, continuation="/admin"):
     )
 
 
+def begin_oidc_account_step_up(*, intent, continuation="/security"):
+    """Start provider reauthentication for one persistent account intent."""
+    from .auth_assurance import AssuranceLevel
+    from .models import StepUpIntent
+
+    if not isinstance(intent, StepUpIntent) or intent.id is None:
+        raise OIDCStateError("account step-up intent is invalid")
+    requested_acr = None
+    if intent.required_assurance != AssuranceLevel.BASIC.value:
+        requested_acr = (
+            " ".join(sorted(config.OIDC_STEP_UP_ACR_VALUES)) or None
+        )
+    return _authorization_redirect(
+        purpose="step_up",
+        continuation=continuation,
+        requested_acr=requested_acr,
+        step_up_intent_id=intent.id,
+    )
+
+
 @oidc_blueprint.get("/oidc/login")
 def oidc_login():
     _require_enabled()
@@ -192,7 +214,10 @@ def oidc_callback():
         )
         if intent.purpose == "step_up" and (
             not current_user.is_authenticated
-            or not current_user.is_admin
+            or (
+                intent.step_up_intent_id is None
+                and not current_user.is_admin
+            )
         ):
             return jsonify({"error": "Step-up authentication failed"}), 403
         client = _client()
@@ -272,6 +297,7 @@ def oidc_callback():
     )
     from .auth_assurance import (
         AssuranceLevel,
+        authentication_methods,
         available_mfa_methods,
         begin_authentication,
         browser_session_binding,
@@ -281,23 +307,26 @@ def oidc_callback():
     )
 
     if intent.purpose == "step_up":
-        from .step_up import StepUpError, create_step_up_grant_for_hash
+        from .step_up import (
+            StepUpError,
+            approve_account_step_up_intent_by_id,
+            create_step_up_grant_for_hash,
+        )
 
         auth_session = current_authentication_session()
         now_timestamp = int(datetime.now(timezone.utc).timestamp())
         requested_acr = set((intent.requested_acr or "").split())
-        if (
+        invalid_step_up = (
             not current_user.is_authenticated
-            or not current_user.is_admin
             or auth_session is None
             or user.id != current_user.id
-            or assurance.level is AssuranceLevel.BASIC
             or assurance.auth_time is None
             or not 0 <= now_timestamp - assurance.auth_time <= (
                 config.STEP_UP_MAX_AGE_SECONDS
             )
             or (requested_acr and assurance.acr not in requested_acr)
-        ):
+        )
+        if invalid_step_up:
             log_security_event(
                 "OIDC_STEP_UP_REJECTED",
                 level=logging.WARNING,
@@ -305,6 +334,32 @@ def oidc_callback():
                 issuer=issuer,
                 reason="insufficient_or_mismatched_assurance",
             )
+            return jsonify({"error": "Step-up authentication failed"}), 403
+        if intent.step_up_intent_id is not None:
+            if "oidc" not in authentication_methods(auth_session):
+                return jsonify({"error": "Step-up authentication failed"}), 403
+            try:
+                approved = approve_account_step_up_intent_by_id(
+                    intent.step_up_intent_id,
+                    auth_session,
+                    assurance=assurance.level,
+                    method="oidc",
+                )
+            except StepUpError:
+                return jsonify({"error": "Step-up authentication failed"}), 403
+            log_security_event(
+                "ACCOUNT_STEP_UP_GRANTED",
+                user=current_user.username,
+                method="oidc",
+                action=approved.action,
+                assurance=assurance.level.value,
+                result="approved",
+            )
+            return redirect(intent.continuation)
+        if (
+            not current_user.is_admin
+            or assurance.level is AssuranceLevel.BASIC
+        ):
             return jsonify({"error": "Step-up authentication failed"}), 403
         try:
             grant = create_step_up_grant_for_hash(

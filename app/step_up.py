@@ -17,19 +17,42 @@ from .auth_assurance import (
     AssuranceLevel,
     current_authentication_session,
 )
-from .models import AuthenticationSession, StepUpGrant, User, as_naive_utc, db
+from .models import (
+    AuthenticationSession,
+    StepUpGrant,
+    StepUpIntent,
+    User,
+    as_naive_utc,
+    db,
+)
 
 
 _GRANT_TTL = timedelta(minutes=5)
+_INTENT_TTL = timedelta(minutes=5)
 _MAX_GRANTS_PER_SESSION = 32
+_MAX_ACCOUNT_INTENTS_PER_SESSION = 8
 _ACTION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,95}$")
+_METHOD_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
 _MAX_TARGET_BYTES = 1024
 _TARGET_DOMAIN = b"webssh-step-up-target-v1\x00"
 _grant_lock = Lock()
+_intent_lock = Lock()
+
+ACCOUNT_STEP_UP_ACTIONS = frozenset({
+    "passkey.enroll",
+    "passkey.delete",
+    "totp.enroll",
+    "mfa.disable",
+    "recovery.rotate",
+})
 
 
 class StepUpError(RuntimeError):
     """A grant or its requested authorization context is invalid."""
+
+
+class SecurityUIUpgradeRequired(StepUpError):
+    """A cached client attempted the removed inline reauthentication flow."""
 
 
 def normalize_action(value):
@@ -69,6 +92,238 @@ def required_assurance_for_user(user):
     return AssuranceLevel.MFA if user.mfa_enabled else AssuranceLevel.BASIC
 
 
+def _valid_authentication_session(auth_session, now):
+    if not isinstance(auth_session, AuthenticationSession):
+        return None
+    user = db.session.get(User, auth_session.user_id, populate_existing=True)
+    if (
+        auth_session.id is None
+        or auth_session.expires_at <= now
+        or user is None
+        or auth_session.auth_generation != int(user.auth_generation or 0)
+    ):
+        return None
+    return user
+
+
+def create_account_step_up_intent(auth_session, action, target):
+    """Create one opaque, persistent intent for a permitted account action."""
+    action = normalize_action(action)
+    if action not in ACCOUNT_STEP_UP_ACTIONS:
+        raise StepUpError("step-up authorization is invalid")
+    target_hash = hash_step_up_target(target)
+    now = as_naive_utc(datetime.now(timezone.utc))
+    user = _valid_authentication_session(auth_session, now)
+    if user is None:
+        raise StepUpError("step-up authorization is invalid")
+    required_assurance = required_assurance_for_user(user)
+    token = secrets.token_urlsafe(32)
+    with _intent_lock:
+        StepUpIntent.query.filter(
+            StepUpIntent.expires_at <= now
+        ).delete(synchronize_session=False)
+        live_count = StepUpIntent.query.filter(
+            StepUpIntent.authentication_session_id == auth_session.id,
+            StepUpIntent.scope == "account",
+            StepUpIntent.status.in_(("pending", "approved")),
+            StepUpIntent.expires_at > now,
+        ).count()
+        if live_count >= _MAX_ACCOUNT_INTENTS_PER_SESSION:
+            db.session.rollback()
+            raise StepUpError("step-up authorization is invalid")
+        intent = StepUpIntent(
+            token_hash=_token_hash(token),
+            authentication_session_id=auth_session.id,
+            user_id=user.id,
+            scope="account",
+            action=action,
+            target_hash=target_hash,
+            required_assurance=required_assurance.value,
+            status="pending",
+            created_at=now,
+            expires_at=now + _INTENT_TTL,
+        )
+        db.session.add(intent)
+        db.session.commit()
+    return token, intent
+
+
+def _bound_account_intent(token, auth_session, *, status):
+    if not isinstance(token, str) or not token or len(token) > 256:
+        raise StepUpError("step-up authorization is invalid")
+    now = as_naive_utc(datetime.now(timezone.utc))
+    user = _valid_authentication_session(auth_session, now)
+    if user is None:
+        raise StepUpError("step-up authorization is invalid")
+    intent = StepUpIntent.query.filter_by(
+        token_hash=_token_hash(token),
+        authentication_session_id=auth_session.id,
+        user_id=user.id,
+        scope="account",
+        status=status,
+    ).first()
+    if (
+        intent is None
+        or intent.expires_at <= now
+        or intent.action not in ACCOUNT_STEP_UP_ACTIONS
+        or intent.required_assurance != required_assurance_for_user(user).value
+    ):
+        raise StepUpError("step-up authorization is invalid")
+    return intent, user, now
+
+
+def account_step_up_intent(token, auth_session, *, status="pending"):
+    """Return one valid account intent in the explicitly requested state."""
+    if status not in {"pending", "approved"}:
+        raise StepUpError("step-up authorization is invalid")
+    intent, _user, _now = _bound_account_intent(
+        token, auth_session, status=status
+    )
+    return intent
+
+
+def account_step_up_status(token, auth_session):
+    """Return a valid bound intent state without issuing a grant."""
+    if not isinstance(token, str) or not token or len(token) > 256:
+        raise StepUpError("step-up authorization is invalid")
+    now = as_naive_utc(datetime.now(timezone.utc))
+    user = _valid_authentication_session(auth_session, now)
+    if user is None:
+        raise StepUpError("step-up authorization is invalid")
+    intent = StepUpIntent.query.filter_by(
+        token_hash=_token_hash(token),
+        authentication_session_id=auth_session.id,
+        user_id=user.id,
+        scope="account",
+    ).first()
+    if (
+        intent is None
+        or intent.expires_at <= now
+        or intent.action not in ACCOUNT_STEP_UP_ACTIONS
+        or intent.required_assurance != required_assurance_for_user(user).value
+    ):
+        raise StepUpError("step-up authorization is invalid")
+    return intent.status
+
+
+def _approve_bound_account_intent(intent, assurance, method, now):
+    if _assurance_rank(assurance) < _assurance_rank(
+        intent.required_assurance
+    ):
+        raise StepUpError("step-up authorization is invalid")
+    intent.status = "approved"
+    intent.approved_assurance = assurance.value
+    intent.approved_method = method
+    intent.approved_at = now
+    db.session.commit()
+    return intent
+
+
+def approve_account_step_up_intent(
+    token,
+    auth_session,
+    *,
+    assurance,
+    method,
+):
+    """Persist verified evidence without ever persisting the evidence itself."""
+    try:
+        assurance = AssuranceLevel(assurance)
+    except ValueError as exc:
+        raise StepUpError("step-up authorization is invalid") from exc
+    method = str(method or "").strip().lower()
+    if not _METHOD_PATTERN.fullmatch(method):
+        raise StepUpError("step-up authorization is invalid")
+    with _intent_lock:
+        intent, _user, now = _bound_account_intent(
+            token, auth_session, status="pending"
+        )
+        return _approve_bound_account_intent(
+            intent, assurance, method, now
+        )
+
+
+def approve_account_step_up_intent_by_id(
+    intent_id,
+    auth_session,
+    *,
+    assurance,
+    method,
+):
+    """Approve a provider callback using only its server-owned intent id."""
+    if not isinstance(intent_id, int) or isinstance(intent_id, bool):
+        raise StepUpError("step-up authorization is invalid")
+    try:
+        assurance = AssuranceLevel(assurance)
+    except ValueError as exc:
+        raise StepUpError("step-up authorization is invalid") from exc
+    method = str(method or "").strip().lower()
+    if not _METHOD_PATTERN.fullmatch(method):
+        raise StepUpError("step-up authorization is invalid")
+    with _intent_lock:
+        now = as_naive_utc(datetime.now(timezone.utc))
+        user = _valid_authentication_session(auth_session, now)
+        if user is None:
+            raise StepUpError("step-up authorization is invalid")
+        intent = StepUpIntent.query.filter_by(
+            id=intent_id,
+            authentication_session_id=auth_session.id,
+            user_id=user.id,
+            scope="account",
+            status="pending",
+        ).first()
+        if (
+            intent is None
+            or intent.expires_at <= now
+            or intent.action not in ACCOUNT_STEP_UP_ACTIONS
+            or intent.required_assurance
+            != required_assurance_for_user(user).value
+        ):
+            raise StepUpError("step-up authorization is invalid")
+        return _approve_bound_account_intent(
+            intent, assurance, method, now
+        )
+
+
+def claim_account_step_up_grant(token, auth_session):
+    """Atomically complete an approved intent and issue its sole raw grant."""
+    with _intent_lock, _grant_lock:
+        intent, user, now = _bound_account_intent(
+            token, auth_session, status="approved"
+        )
+        if (
+            intent.approved_assurance is None
+            or _assurance_rank(intent.approved_assurance)
+            < _assurance_rank(intent.required_assurance)
+        ):
+            raise StepUpError("step-up authorization is invalid")
+        live_rows = (
+            StepUpGrant.query
+            .filter_by(authentication_session_id=auth_session.id)
+            .order_by(StepUpGrant.created_at.desc(), StepUpGrant.id.desc())
+            .all()
+        )
+        for stale in live_rows[_MAX_GRANTS_PER_SESSION - 1:]:
+            db.session.delete(stale)
+        grant = secrets.token_urlsafe(32)
+        db.session.add(StepUpGrant(
+            token_hash=_token_hash(grant),
+            authentication_session_id=auth_session.id,
+            action=intent.action,
+            target_hash=intent.target_hash,
+            assurance=intent.approved_assurance,
+            created_at=now,
+            expires_at=now + _GRANT_TTL,
+        ))
+        intent.status = "completed"
+        intent.completed_at = now
+        if auth_session.auth_generation != int(user.auth_generation or 0):
+            db.session.rollback()
+            raise StepUpError("step-up authorization is invalid")
+        db.session.commit()
+    return grant
+
+
 def create_step_up_grant(auth_session, action, target, assurance):
     return create_step_up_grant_for_hash(
         auth_session,
@@ -94,13 +349,10 @@ def create_step_up_grant_for_hash(
         assurance = AssuranceLevel(assurance)
     except ValueError as exc:
         raise StepUpError("step-up authorization is invalid") from exc
-    user = db.session.get(User, auth_session.user_id, populate_existing=True)
     now = as_naive_utc(datetime.now(timezone.utc))
+    user = _valid_authentication_session(auth_session, now)
     if (
-        auth_session.id is None
-        or auth_session.expires_at <= now
-        or user is None
-        or auth_session.auth_generation != int(user.auth_generation or 0)
+        user is None
         or _assurance_rank(assurance) < _assurance_rank(
             required_assurance_for_user(user)
         )
@@ -163,12 +415,32 @@ def consume_step_up_grant(token, auth_session, action, target):
         or row["expires_at"] <= now
         or _assurance_rank(row["assurance"]) < _assurance_rank(
             required_assurance_for_user(
-                db.session.get(User, current_user.id, populate_existing=True)
+                db.session.get(
+                    User, auth_session.user_id, populate_existing=True
+                )
             )
         )
     ):
         raise StepUpError("step-up authorization is invalid")
     return True
+
+
+def consume_account_step_up_grant(action, target):
+    """Consume the exact account grant supplied by a current browser request."""
+    action = normalize_action(action)
+    if action not in ACCOUNT_STEP_UP_ACTIONS:
+        raise StepUpError("step-up authorization is invalid")
+    token = request.headers.get("X-WebSSH-Step-Up", "")
+    if not token:
+        raise SecurityUIUpgradeRequired(
+            "security interface upgrade is required"
+        )
+    return consume_step_up_grant(
+        token,
+        current_authentication_session(),
+        action,
+        target,
+    )
 
 
 def step_up_required(action, target):

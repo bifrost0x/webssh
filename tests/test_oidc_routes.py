@@ -903,6 +903,92 @@ def test_oidc_step_up_issues_one_exact_grant_for_same_admin(
     assert client.get("/api/step-up/oidc/result").status_code == 404
 
 
+def test_oidc_account_step_up_approves_bound_intent_for_original_tab(
+    app,
+    client,
+    monkeypatch,
+):
+    import time
+
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.auth_assurance import authentication_session_for_token
+    from app.models import OIDCIdentity, StepUpIntent, User, db
+    from app.oidc_service import create_login_state
+    from app.step_up import create_account_step_up_intent
+
+    user_id = _create_user(app, "account_oidc_step", is_admin=False)
+    _login(client, "account_oidc_step")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    state = "account-step-up-callback-state"
+    binding = "account-step-up-callback-binding"
+    with client.session_transaction() as browser_session:
+        auth_token = browser_session["_auth_session"]
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        auth_session = authentication_session_for_token(
+            auth_token,
+            user.id,
+            user.auth_generation,
+        )
+        auth_session.methods_json = '["oidc"]'
+        db.session.add(OIDCIdentity(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="account-step-subject",
+        ))
+        intent_token, account_intent = create_account_step_up_intent(
+            auth_session,
+            "recovery.rotate",
+            user_id,
+        )
+        account_intent_id = account_intent.id
+        create_login_state(
+            state=state,
+            nonce=f"nonce-{state}",
+            session_binding=binding,
+            code_verifier=f"verifier-{state}",
+            purpose="step_up",
+            continuation="/security",
+            step_up_intent_id=account_intent.id,
+        )
+        db.session.commit()
+    with client.session_transaction() as browser_session:
+        browser_session["oidc_binding"] = binding
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, {
+            "iss": "https://issuer.example",
+            "sub": "account-step-subject",
+            "amr": ["pwd"],
+            "auth_time": int(time.time()),
+        }),
+    )
+
+    callback = client.get(f"/oidc/callback?state={state}")
+    result = client.post("/api/account/step-up/status", json={
+        "intent": intent_token,
+    })
+    repeated = client.post("/api/account/step-up/status", json={
+        "intent": intent_token,
+    })
+
+    assert callback.status_code == 302
+    assert callback.headers["Location"].endswith("/security")
+    assert result.status_code == 200
+    assert result.get_json()["status"] == "completed"
+    assert result.get_json()["grant"]
+    assert repeated.status_code == 410
+    with client.session_transaction() as browser_session:
+        assert "_oidc_step_up_result" not in browser_session
+    with app.app_context():
+        assert db.session.get(StepUpIntent, account_intent_id).status == (
+            "completed"
+        )
+
+
 def test_oidc_callback_rejections_are_security_audited(
     app, client, monkeypatch, caplog
 ):

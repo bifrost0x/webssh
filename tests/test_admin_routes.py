@@ -338,6 +338,8 @@ def test_security_feature_status_exposes_all_supported_gates(app, client):
         'admin_enabled',
         'active',
         'reason',
+        'configuration_keys',
+        'documentation_url',
     } for feature in features)
 
 
@@ -423,6 +425,49 @@ def test_security_feature_update_activates_ready_totp(
     assert feature['admin_enabled'] is True
     assert feature['active'] is True
     assert feature['reason'] is None
+
+
+def test_disabling_active_feature_requires_session_fallback_confirmation(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import SecurityFeatureState, db
+
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TOTP_ENABLED', True)
+    app.extensions.setdefault('security_feature_readiness', {})['totp'] = (
+        True,
+        None,
+    )
+    with app.app_context():
+        db.session.add(SecurityFeatureState(feature='totp', enabled=True))
+        db.session.commit()
+
+    rejected = client.post(
+        '/admin/api/security-features/totp',
+        json={'enabled': False},
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0],
+    )
+    accepted = client.post(
+        '/admin/api/security-features/totp',
+        json={
+            'enabled': False,
+            'confirm_session_fallback': True,
+        },
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0],
+    )
+
+    assert rejected.status_code == 409
+    assert rejected.get_json()['code'] == 'session_fallback_confirmation_required'
+    assert 'not be terminated' in rejected.get_json()['message']
+    assert accepted.status_code == 200
+    assert accepted.get_json()['feature']['active'] is False
 
 
 def test_admin_mfa_reset_removes_all_factors_and_revokes_target(

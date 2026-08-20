@@ -281,6 +281,7 @@ def create_app(
     from .cli import register_cli
     from .audit_export import audit_export_blueprint
     from .admin_backup import admin_backup_blueprint
+    from .account_step_up_routes import account_step_up_blueprint
     from .health import health_blueprint
     from .host_key_routes import host_key_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
@@ -295,6 +296,7 @@ def create_app(
         if config.OIDC_ENABLED:
             oidc_ready = True
     app.register_blueprint(audit_export_blueprint)
+    app.register_blueprint(account_step_up_blueprint)
     app.register_blueprint(admin_backup_blueprint)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(host_key_blueprint)
@@ -666,14 +668,35 @@ def create_app(
     @app.route('/security')
     @login_required
     def security_center():
-        from .auth_assurance import recovery_session_required
+        from .auth_assurance import (
+            authentication_methods,
+            current_authentication_session,
+            recovery_session_required,
+        )
 
         settings = get_user_settings(current_user.id)
+        auth_session = current_authentication_session()
+        method_labels = {
+            'password': 'WebSSH password',
+            'ldap': 'LDAP directory',
+            'oidc': 'Identity provider (OIDC)',
+            'passkey': 'Passkey',
+            'totp': 'Authenticator app',
+            'recovery_code': 'Recovery code',
+        }
+        methods = authentication_methods(auth_session)
         return render_template(
             'security.html',
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
-            recovery_mode=recovery_session_required(),
+            recovery_mode=recovery_session_required(auth_session),
+            authentication_method_labels=tuple(
+                method_labels.get(method, method) for method in methods
+            ),
+            authentication_assurance=(
+                auth_session.assurance if auth_session is not None else 'BASIC'
+            ),
+            account_mfa_enabled=bool(current_user.mfa_enabled),
         )
 
     from .decorators import admin_required, step_up_required
@@ -912,6 +935,7 @@ def create_app(
         from .security_features import (
             FeatureUnavailable,
             UnknownSecurityFeature,
+            feature_status,
             set_feature_active,
         )
 
@@ -919,6 +943,27 @@ def create_app(
         if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
             return jsonify({'error': 'enabled must be a boolean'}), 400
         try:
+            current_status = feature_status(feature_name)
+            if (
+                current_status.active
+                and data['enabled'] is False
+                and data.get('confirm_session_fallback') is not True
+            ):
+                log_warning(
+                    'Security feature change needs fallback confirmation',
+                    admin=current_user.username,
+                    feature=feature_name,
+                )
+                return jsonify({
+                    'error': 'Explicit confirmation is required',
+                    'code': 'session_fallback_confirmation_required',
+                    'message': (
+                        'Existing browser, SSH, and tmux sessions will not be '
+                        'terminated. New logins and factor ceremonies will '
+                        'follow the disabled rule immediately.'
+                    ),
+                    'feature': current_status.to_dict(),
+                }), 409
             status = set_feature_active(
                 feature_name,
                 data['enabled'],

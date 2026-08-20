@@ -104,12 +104,12 @@
 
         username.addEventListener('input', () => {
             const value = username.value.trim();
-            setFieldState(username, usernameHint, value ? '✓ Looks good' : 'Username required', Boolean(value));
+            setFieldState(username, usernameHint, value ? 'Looks good' : 'Username required', Boolean(value));
         });
 
         password.addEventListener('input', () => {
             const value = password.value;
-            setFieldState(password, passwordHint, value ? '✓ Ready' : 'Password required', Boolean(value));
+            setFieldState(password, passwordHint, value ? 'Ready' : 'Password required', Boolean(value));
         });
     }
 
@@ -131,7 +131,7 @@
             setFieldState(
                 username,
                 usernameHint,
-                value ? (isValid ? '✓ Valid username' : '3-32 chars, letters/numbers/_') : 'Username required',
+                value ? (isValid ? 'Valid username' : '3-32 chars, letters/numbers/_') : 'Username required',
                 value ? isValid : false
             );
         });
@@ -139,12 +139,12 @@
         password.addEventListener('input', () => {
             const value = password.value;
             const isValid = value.length >= 8;
-            setFieldState(password, passwordHint, isValid ? '✓ Strong enough' : 'Minimum 8 characters', isValid);
+            setFieldState(password, passwordHint, isValid ? 'Strong enough' : 'Minimum 8 characters', isValid);
         });
 
         const checkMatch = () => {
             const match = confirm.value && confirm.value === password.value;
-            setFieldState(confirm, confirmHint, match ? '✓ Passwords match' : 'Passwords do not match', match);
+            setFieldState(confirm, confirmHint, match ? 'Passwords match' : 'Passwords do not match', match);
         };
 
         confirm.addEventListener('input', checkMatch);
@@ -165,18 +165,18 @@
 
         current.addEventListener('input', () => {
             const value = current.value;
-            setFieldState(current, currentHint, value ? '✓ Looks good' : 'Current password required', Boolean(value));
+            setFieldState(current, currentHint, value ? 'Looks good' : 'Current password required', Boolean(value));
         });
 
         next.addEventListener('input', () => {
             const value = next.value;
             const isValid = value.length >= 8;
-            setFieldState(next, nextHint, isValid ? '✓ Strong enough' : 'Minimum 8 characters', isValid);
+            setFieldState(next, nextHint, isValid ? 'Strong enough' : 'Minimum 8 characters', isValid);
         });
 
         const checkMatch = () => {
             const match = confirm.value && confirm.value === next.value;
-            setFieldState(confirm, confirmHint, match ? '✓ Passwords match' : 'Passwords do not match', match);
+            setFieldState(confirm, confirmHint, match ? 'Passwords match' : 'Passwords do not match', match);
         };
 
         confirm.addEventListener('input', checkMatch);

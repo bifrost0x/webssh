@@ -154,6 +154,20 @@ def test_password_step_up_is_disabled_when_account_uses_mfa(app, client):
     assert response.get_json()["error"] == "Step-up authentication failed"
 
 
+def test_administrator_step_up_cannot_mint_account_factor_grants(app, client):
+    _create_admin(app)
+    _login(client)
+
+    response = client.post("/api/step-up/password", json={
+        "action": "recovery.rotate",
+        "target": 1,
+        "password": "password123",
+    })
+
+    assert response.status_code == 400
+    assert "grant" not in response.get_json()
+
+
 def test_recent_phishing_resistant_login_can_mint_exact_grant(app, client):
     _create_admin(app)
     _login(client)

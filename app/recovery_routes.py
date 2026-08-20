@@ -1,6 +1,5 @@
 """Recovery Code enrollment and primary-factor-bound account recovery."""
 
-from datetime import datetime, timezone
 import logging
 
 import config
@@ -9,7 +8,7 @@ from flask_login import current_user, login_required
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from .audit_logger import log_rate_limit_exceeded, log_security_event
-from .auth import check_rate_limit, check_reauth_rate_limit
+from .auth import check_rate_limit
 from .auth_assurance import (
     AssuranceLevel,
     AuthenticationFinalizationError,
@@ -22,6 +21,11 @@ from .auth_assurance import (
 from .decorators import admin_required, step_up_required
 from .models import User, db
 from .recovery_service import consume_code, generate_codes
+from .step_up import (
+    SecurityUIUpgradeRequired,
+    StepUpError,
+    consume_account_step_up_grant,
+)
 
 
 recovery_blueprint = Blueprint("recovery", __name__)
@@ -32,26 +36,6 @@ def _require_enabled():
 
     if not feature_is_active("recovery"):
         abort(404)
-
-
-def _password_matches(user, password):
-    if user.is_ldap_managed:
-        return False
-    try:
-        return user.check_password(password)
-    except (TypeError, ValueError):
-        return False
-
-
-def _factor_change_reauthenticated(user, data):
-    if user.is_ldap_managed:
-        try:
-            verified_at = int(session.get("_ldap_verified_at", 0))
-        except (TypeError, ValueError):
-            return False
-        age = int(datetime.now(timezone.utc).timestamp()) - verified_at
-        return 0 <= age <= config.STEP_UP_MAX_AGE_SECONDS
-    return _password_matches(user, data.get("password", ""))
 
 
 def _bounded_json():
@@ -83,20 +67,29 @@ def _no_store(response):
 @login_required
 def regenerate_own_recovery_codes():
     _require_enabled()
-    client_ip = request.remote_addr or "unknown"
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        "recovery_codes_reauth",
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded("recovery_codes_reauth", client_ip)
-        return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    if not _factor_change_reauthenticated(current_user, data):
-        return jsonify({"error": "Recent authentication is required"}), 403
+    try:
+        consume_account_step_up_grant(
+            "recovery.rotate",
+            current_user.id,
+        )
+    except SecurityUIUpgradeRequired:
+        return jsonify({
+            "error": "Reload the Security page before continuing",
+            "code": "security_ui_upgrade_required",
+        }), 409
+    except StepUpError:
+        return jsonify({
+            "error": "Additional authentication is required",
+            "code": "step_up_required",
+        }), 403
+    log_security_event(
+        "ACCOUNT_STEP_UP_CONSUMED",
+        user=current_user.username,
+        action="recovery.rotate",
+    )
     codes = generate_codes(current_user.id)
     log_security_event(
         "RECOVERY_CODES_REGENERATED",

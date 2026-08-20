@@ -72,7 +72,7 @@ def test_oidc_identity_resolution_never_uses_email(app):
         ) is None
 
 
-def test_new_oidc_state_replaces_prior_state_for_same_browser(app):
+def test_oidc_states_remain_independent_for_same_browser(app):
     from app.models import OIDCLoginState
     from app.oidc_service import create_login_state
 
@@ -85,9 +85,11 @@ def test_new_oidc_state_replaces_prior_state_for_same_browser(app):
                 code_verifier=f"verifier-{suffix}-token",
             )
 
-        rows = OIDCLoginState.query.all()
-        assert len(rows) == 1
-        assert rows[0].nonce == "nonce-second-token"
+        rows = OIDCLoginState.query.order_by(OIDCLoginState.id).all()
+        assert [row.nonce for row in rows] == [
+            "nonce-first-token",
+            "nonce-second-token",
+        ]
 
 
 def test_as_naive_utc_normalizes_aware_and_preserves_naive_values():
@@ -242,3 +244,27 @@ def test_oidc_step_up_state_binds_requested_assurance_action_and_target(app):
     assert intent.requested_acr == "urn:example:aal2 urn:example:aal3"
     assert intent.step_up_action == "user.lock"
     assert intent.step_up_target_hash == target_hash
+
+
+def test_oidc_account_step_up_state_binds_only_persistent_intent_id(app):
+    from app.oidc_service import consume_login_state, create_login_state
+
+    with app.app_context():
+        create_login_state(
+            state="account-step-up-state",
+            nonce="account-step-up-nonce",
+            session_binding="account-step-up-binding",
+            code_verifier="account-step-up-verifier",
+            purpose="step_up",
+            continuation="/security",
+            step_up_intent_id=42,
+        )
+
+        intent = consume_login_state(
+            state="account-step-up-state",
+            session_binding="account-step-up-binding",
+        )
+
+    assert intent.step_up_intent_id == 42
+    assert intent.step_up_action is None
+    assert intent.step_up_target_hash is None

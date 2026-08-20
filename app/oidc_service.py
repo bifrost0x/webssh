@@ -24,6 +24,7 @@ _MAX_AMR_VALUES = 16
 _MAX_AMR_VALUE_LENGTH = 128
 _MAX_ACR_LENGTH = 256
 _MAX_AUTH_TIME = 253_402_300_799
+_MAX_STATES_PER_BINDING = 8
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class OIDCLoginIntent:
     requested_acr: str | None
     step_up_action: str | None
     step_up_target_hash: str | None
+    step_up_intent_id: int | None
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ def _normalize_state_intent(
     requested_acr,
     step_up_action,
     step_up_target_hash,
+    step_up_intent_id,
 ):
     purpose = str(purpose or "")
     if purpose not in _STATE_PURPOSES:
@@ -95,16 +98,37 @@ def _normalize_state_intent(
     continuation = _safe_continuation(continuation)
     requested_acr = _normalize_requested_acr(requested_acr)
     if purpose == "login":
-        if step_up_action is not None or step_up_target_hash is not None:
+        if (
+            step_up_action is not None
+            or step_up_target_hash is not None
+            or step_up_intent_id is not None
+        ):
             raise OIDCStateError("login state contains step-up context")
-        return purpose, continuation, requested_acr, None, None
+        return purpose, continuation, requested_acr, None, None, None
+    if step_up_intent_id is not None:
+        if (
+            not isinstance(step_up_intent_id, int)
+            or isinstance(step_up_intent_id, bool)
+            or step_up_intent_id < 1
+            or step_up_action is not None
+            or step_up_target_hash is not None
+        ):
+            raise OIDCStateError("step-up intent reference is invalid")
+        return (
+            purpose,
+            continuation,
+            requested_acr,
+            None,
+            None,
+            step_up_intent_id,
+        )
     action = str(step_up_action or "")
     target_hash = str(step_up_target_hash or "")
     if not _ACTION_PATTERN.fullmatch(action):
         raise OIDCStateError("step-up action is invalid")
     if not _TARGET_HASH_PATTERN.fullmatch(target_hash):
         raise OIDCStateError("step-up target is invalid")
-    return purpose, continuation, requested_acr, action, target_hash
+    return purpose, continuation, requested_acr, action, target_hash, None
 
 
 def create_login_state(
@@ -118,6 +142,7 @@ def create_login_state(
     requested_acr=None,
     step_up_action=None,
     step_up_target_hash=None,
+    step_up_intent_id=None,
     now=None,
     ttl=timedelta(minutes=5),
 ):
@@ -139,12 +164,14 @@ def create_login_state(
         requested_acr,
         step_up_action,
         step_up_target_hash,
+        step_up_intent_id,
     ) = _normalize_state_intent(
         purpose=purpose,
         continuation=continuation,
         requested_acr=requested_acr,
         step_up_action=step_up_action,
         step_up_target_hash=step_up_target_hash,
+        step_up_intent_id=step_up_intent_id,
     )
     now = as_naive_utc(now or datetime.now(timezone.utc))
     binding_hash = _hash(session_binding)
@@ -152,9 +179,14 @@ def create_login_state(
         OIDCLoginState.query.filter(
             OIDCLoginState.expires_at < now
         ).delete(synchronize_session=False)
-        OIDCLoginState.query.filter_by(
-            session_binding_hash=binding_hash
-        ).delete(synchronize_session=False)
+        live_rows = (
+            OIDCLoginState.query
+            .filter_by(session_binding_hash=binding_hash)
+            .order_by(OIDCLoginState.id.desc())
+            .all()
+        )
+        for stale in live_rows[_MAX_STATES_PER_BINDING - 1:]:
+            db.session.delete(stale)
         row = OIDCLoginState(
             state_hash=_hash(state),
             session_binding_hash=binding_hash,
@@ -165,6 +197,7 @@ def create_login_state(
             requested_acr=requested_acr,
             step_up_action=step_up_action,
             step_up_target_hash=step_up_target_hash,
+            step_up_intent_id=step_up_intent_id,
             expires_at=now + ttl,
         )
         db.session.add(row)
@@ -189,6 +222,7 @@ def consume_login_state(*, state, session_binding, now=None):
             "requested_acr": row.requested_acr,
             "step_up_action": row.step_up_action,
             "step_up_target_hash": row.step_up_target_hash,
+            "step_up_intent_id": row.step_up_intent_id,
         }
         expires_at = row.expires_at
         db.session.delete(row)
@@ -201,12 +235,14 @@ def consume_login_state(*, state, session_binding, now=None):
             intent_values["requested_acr"],
             intent_values["step_up_action"],
             intent_values["step_up_target_hash"],
+            intent_values["step_up_intent_id"],
         ) = _normalize_state_intent(
             purpose=intent_values["purpose"],
             continuation=intent_values["continuation"],
             requested_acr=intent_values["requested_acr"],
             step_up_action=intent_values["step_up_action"],
             step_up_target_hash=intent_values["step_up_target_hash"],
+            step_up_intent_id=intent_values["step_up_intent_id"],
         )
         return OIDCLoginIntent(**intent_values)
 

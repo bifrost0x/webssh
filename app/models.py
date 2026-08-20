@@ -195,6 +195,11 @@ def ensure_security_columns():
             "ALTER TABLE oidc_login_states ADD COLUMN step_up_target_hash "
             "VARCHAR(64)"
         )
+    if 'step_up_intent_id' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN step_up_intent_id "
+            "INTEGER"
+        )
     for statement in additions:
         db.session.execute(text(statement))
     if additions:
@@ -358,6 +363,12 @@ class AuthenticationSession(db.Model):
         cascade='all, delete-orphan',
         lazy='dynamic',
     )
+    step_up_intents = db.relationship(
+        'StepUpIntent',
+        backref='authentication_session',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
 
 
 class TOTPAuthenticator(db.Model):
@@ -414,7 +425,7 @@ class TOTPEnrollment(db.Model):
 
 
 class StepUpGrant(db.Model):
-    """Single-use administrator authorization for one action and target."""
+    """Single-use authorization for one action and target."""
 
     __tablename__ = 'step_up_grants'
 
@@ -440,6 +451,46 @@ class StepUpGrant(db.Model):
     consumed_at = db.Column(db.DateTime)
 
 
+class StepUpIntent(db.Model):
+    """Server-owned account or administrator reauthentication intent."""
+
+    __tablename__ = 'step_up_intents'
+
+    id = db.Column(db.Integer, primary_key=True)
+    token_hash = db.Column(
+        db.String(64), unique=True, nullable=False, index=True
+    )
+    authentication_session_id = db.Column(
+        db.Integer,
+        db.ForeignKey('authentication_sessions.id'),
+        nullable=False,
+        index=True,
+    )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        index=True,
+    )
+    scope = db.Column(db.String(16), nullable=False, index=True)
+    action = db.Column(db.String(96), nullable=False, index=True)
+    target_hash = db.Column(db.String(64), nullable=False, index=True)
+    required_assurance = db.Column(db.String(24), nullable=False)
+    status = db.Column(
+        db.String(16), nullable=False, default='pending', index=True
+    )
+    approved_assurance = db.Column(db.String(24))
+    approved_method = db.Column(db.String(24))
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    approved_at = db.Column(db.DateTime)
+    completed_at = db.Column(db.DateTime)
+
+
 def cleanup_expired_security_rows(limit=500, now=None):
     """Delete at most ``limit`` expired transient authentication rows."""
     if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
@@ -449,6 +500,7 @@ def cleanup_expired_security_rows(limit=500, now=None):
     remaining = limit
     deleted = 0
     for model in (
+        StepUpIntent,
         StepUpGrant,
         PendingAuthentication,
         TOTPEnrollment,
@@ -525,6 +577,12 @@ class OIDCLoginState(db.Model):
     requested_acr = db.Column(db.String(512))
     step_up_action = db.Column(db.String(96))
     step_up_target_hash = db.Column(db.String(64))
+    step_up_intent_id = db.Column(
+        db.Integer,
+        db.ForeignKey('step_up_intents.id'),
+        nullable=True,
+        index=True,
+    )
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
 

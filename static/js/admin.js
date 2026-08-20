@@ -789,6 +789,21 @@
             reason.className = 'admin-muted';
             reason.textContent = state.reason || 'Active';
             row.append(label, reason);
+            if (['oidc', 'ldap'].includes(state.name)) {
+                const configuration = document.createElement('p');
+                configuration.className = 'admin-muted';
+                configuration.append('Deployment configuration: ');
+                const keys = document.createElement('code');
+                keys.textContent = (feature.configuration_keys || []).join(', ');
+                configuration.append(keys, ' · ');
+                const guide = document.createElement('a');
+                guide.href = feature.documentation_url;
+                guide.target = '_blank';
+                guide.rel = 'noopener noreferrer';
+                guide.textContent = 'Open setup guide';
+                configuration.appendChild(guide);
+                row.appendChild(configuration);
+            }
             list.appendChild(row);
         }
         status.textContent = features && features.length
@@ -824,11 +839,25 @@
         document.getElementById('securityFeatureList')?.addEventListener('change', async (event) => {
             const target = event.target;
             if (!target.matches('input[data-security-feature]')) { return; }
+            const featureName = target.dataset.securityFeature;
+            const enabling = target.checked;
+            if (!enabling && !window.confirm(
+                window.WebSSHSecurityUI.featureDisableWarning(
+                    { name: featureName },
+                    SECURITY_FEATURE_LABELS[featureName] || featureName
+                )
+            )) {
+                target.checked = true;
+                return;
+            }
             target.disabled = true;
             try {
-                await stepUpApi('security_feature.update', target.dataset.securityFeature, `/admin/api/security-features/${encodeURIComponent(target.dataset.securityFeature)}`, {
+                await stepUpApi('security_feature.update', featureName, `/admin/api/security-features/${encodeURIComponent(featureName)}`, {
                     method: 'POST',
-                    body: { enabled: target.checked }
+                    body: {
+                        enabled: enabling,
+                        confirm_session_fallback: !enabling
+                    }
                 });
                 notify(t('admin.settingsSaved', 'Settings saved'), 'success');
             } catch (err) {

@@ -3,6 +3,7 @@
 import json
 import logging
 import secrets
+import hashlib
 from datetime import datetime, timezone
 from threading import Lock
 
@@ -31,7 +32,7 @@ from .audit_logger import (
     log_rate_limit_exceeded,
     log_security_event,
 )
-from .auth import check_rate_limit, check_reauth_rate_limit
+from .auth import check_rate_limit
 from .auth_assurance import (
     AssuranceLevel,
     PendingAuthenticationError,
@@ -42,8 +43,14 @@ from .auth_assurance import (
     finalize_login,
     finalize_pending_with_factor,
     pending_authentication,
+    recovery_session_required,
 )
-from .models import User, WebAuthnCredential, db
+from .models import TOTPAuthenticator, User, WebAuthnCredential, db
+from .step_up import (
+    SecurityUIUpgradeRequired,
+    StepUpError,
+    consume_account_step_up_grant,
+)
 from .webauthn_service import ChallengeError, consume_challenge, create_challenge
 
 
@@ -91,18 +98,37 @@ def _credential_descriptor(row):
     return PublicKeyCredentialDescriptor(id=bytes(row.credential_id))
 
 
-def _factor_change_reauthenticated(data):
-    if current_user.is_ldap_managed:
-        try:
-            verified_at = int(session.get("_ldap_verified_at", 0))
-        except (TypeError, ValueError):
-            return False
-        age = int(datetime.now(timezone.utc).timestamp()) - verified_at
-        return 0 <= age <= config.STEP_UP_MAX_AGE_SECONDS
+def _consume_factor_grant(action, target, *, recovery_repair=False):
+    if recovery_repair and recovery_session_required():
+        return None
     try:
-        return current_user.check_password(data.get("password", ""))
-    except (TypeError, ValueError):
-        return False
+        consume_account_step_up_grant(action, target)
+    except SecurityUIUpgradeRequired:
+        return jsonify({
+            "error": "Reload the Security page before continuing",
+            "code": "security_ui_upgrade_required",
+        }), 409
+    except StepUpError:
+        return jsonify({
+            "error": "Additional authentication is required",
+            "code": "step_up_required",
+        }), 403
+    log_security_event(
+        "ACCOUNT_STEP_UP_CONSUMED",
+        user=current_user.username,
+        action=action,
+    )
+
+
+def _registration_binding(ceremony):
+    if (
+        not isinstance(ceremony, str)
+        or len(ceremony) < 16
+        or len(ceremony) > 256
+    ):
+        raise ChallengeError("registration ceremony is invalid")
+    digest = hashlib.sha256(ceremony.encode("utf-8")).hexdigest()
+    return f"{_binding()}:{digest}"
 
 
 @webauthn_blueprint.get("/api/webauthn/credentials")
@@ -131,26 +157,16 @@ def list_credentials():
 @login_required
 def registration_options():
     _require_enabled()
-    client_ip = request.remote_addr or "unknown"
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        "webauthn_register_reauth",
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded("webauthn_register_reauth", client_ip)
-        return jsonify({"error": "Too many password attempts"}), 429
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    if not _factor_change_reauthenticated(data):
-        return jsonify({
-            "error": (
-                "A recent directory sign-in is required"
-                if current_user.is_ldap_managed
-                else "Current password is incorrect"
-            )
-        }), 403
+    grant_error = _consume_factor_grant(
+        "passkey.enroll",
+        current_user.id,
+        recovery_repair=True,
+    )
+    if grant_error is not None:
+        return grant_error
     existing = WebAuthnCredential.query.filter_by(
         user_id=current_user.id
     ).all()
@@ -173,13 +189,16 @@ def registration_options():
             user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )
+    ceremony = secrets.token_urlsafe(24)
     create_challenge(
         user_id=current_user.id,
         purpose="register",
-        session_binding=_binding(),
+        session_binding=_registration_binding(ceremony),
         challenge=bytes(options.challenge),
     )
-    return jsonify(json.loads(options_to_json(options)))
+    payload = json.loads(options_to_json(options))
+    payload["ceremony"] = ceremony
+    return jsonify(payload)
 
 
 @webauthn_blueprint.post("/api/webauthn/register/verify")
@@ -192,10 +211,11 @@ def verify_registration():
     credential = data.get("credential")
     name = str(data.get("name") or "Passkey").strip()[:80] or "Passkey"
     try:
+        ceremony = data.get("ceremony")
         challenge = consume_challenge(
             user_id=current_user.id,
             purpose="register",
-            session_binding=_binding(),
+            session_binding=_registration_binding(ceremony),
         )
         verified = verify_registration_response(
             credential=credential,
@@ -261,29 +281,34 @@ def verify_registration():
 @login_required
 def delete_credential(credential_id):
     _require_enabled()
-    client_ip = request.remote_addr or "unknown"
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        "webauthn_delete_reauth",
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded("webauthn_delete_reauth", client_ip)
-        return jsonify({"error": "Too many password attempts"}), 429
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    if not _factor_change_reauthenticated(data):
-        return jsonify({
-            "error": (
-                "A recent directory sign-in is required"
-                if current_user.is_ldap_managed
-                else "Current password is incorrect"
-            )
-        }), 403
     row = db.session.get(WebAuthnCredential, credential_id)
     if row is None or row.user_id != current_user.id:
         return jsonify({"error": "Passkey not found"}), 404
+    grant_error = _consume_factor_grant("passkey.delete", credential_id)
+    if grant_error is not None:
+        return grant_error
+    if current_user.mfa_enabled:
+        from .security_features import feature_is_active
+
+        passkey_count = WebAuthnCredential.query.filter_by(
+            user_id=current_user.id
+        ).count()
+        totp_count = (
+            TOTPAuthenticator.query.filter_by(
+                user_id=current_user.id,
+                active=True,
+            ).count()
+            if feature_is_active("totp")
+            else 0
+        )
+        if passkey_count + totp_count <= 1:
+            return jsonify({
+                "error": "Add a replacement factor or disable MFA first",
+                "code": "last_factor_required",
+            }), 409
     db.session.delete(row)
     db.session.commit()
     log_security_event(

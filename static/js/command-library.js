@@ -240,12 +240,12 @@ const CommandLibrary = {
                     ${this.escapeHtml(cmd.description)}
                 </div>
                 <div class="command-cell command-actions">
-                    <button class="btn-icon cmd-execute" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Execute">▶️</button>
+                    <button class="btn-icon cmd-execute material-icons" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Execute" aria-label="Execute">play_arrow</button>
                     ${cmd.isSystem ? `
-                        <button class="btn-icon cmd-copy" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Copy to My Commands">📋</button>
+                        <button class="btn-icon cmd-copy material-icons" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Copy to My Commands" aria-label="Copy to My Commands">content_copy</button>
                     ` : `
-                        <button class="btn-icon cmd-edit" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Edit">✏️</button>
-                        <button class="btn-icon cmd-delete" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Delete">🗑️</button>
+                        <button class="btn-icon cmd-edit material-icons" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Edit" aria-label="Edit">edit</button>
+                        <button class="btn-icon cmd-delete material-icons" data-cmd-id="${this.escapeHtml(cmd.id)}" title="Delete" aria-label="Delete">delete</button>
                     `}
                 </div>
             `;

@@ -47,6 +47,11 @@ def test_security_center_requires_login_and_exposes_management_controls(
         assert control in authenticated.data
     assert b'js/security-ui.js' in authenticated.data
     assert b'non-discoverable passkey' in authenticated.data
+    assert b'id="securityAssuranceOverview"' in authenticated.data
+    assert b'id="securityCurrentMethod"' in authenticated.data
+    assert b'WebSSH password' in authenticated.data
+    assert b'id="securityCurrentAssurance"' in authenticated.data
+    assert b'BASIC' in authenticated.data
 
 
 def test_login_shows_only_enabled_external_authentication(

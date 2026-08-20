@@ -1,6 +1,5 @@
 """Optional TOTP enrollment and pending-login completion endpoints."""
 
-from datetime import datetime, timezone
 import logging
 import secrets
 
@@ -18,6 +17,7 @@ from .auth_assurance import (
     clear_recovery_restriction,
     finalize_pending_with_factor,
     pending_authentication,
+    recovery_session_required,
 )
 from .models import TOTPAuthenticator, User, db
 from .totp_service import (
@@ -25,6 +25,11 @@ from .totp_service import (
     activate_totp_enrollment,
     begin_totp_enrollment,
     verify_totp,
+)
+from .step_up import (
+    SecurityUIUpgradeRequired,
+    StepUpError,
+    consume_account_step_up_grant,
 )
 
 
@@ -53,18 +58,27 @@ def _enrollment_binding():
     return session.setdefault("totp_binding", secrets.token_urlsafe(32))
 
 
-def _factor_change_reauthenticated(data):
-    if current_user.is_ldap_managed:
-        try:
-            verified_at = int(session.get("_ldap_verified_at", 0))
-        except (TypeError, ValueError):
-            return False
-        age = int(datetime.now(timezone.utc).timestamp()) - verified_at
-        return 0 <= age <= config.STEP_UP_MAX_AGE_SECONDS
+def _consume_factor_grant(action, *, recovery_repair=False):
+    if recovery_repair and recovery_session_required():
+        return None
     try:
-        return current_user.check_password(data.get("password", ""))
-    except (TypeError, ValueError):
-        return False
+        consume_account_step_up_grant(action, current_user.id)
+    except SecurityUIUpgradeRequired:
+        return jsonify({
+            "error": "Reload the Security page before continuing",
+            "code": "security_ui_upgrade_required",
+        }), 409
+    except StepUpError:
+        return jsonify({
+            "error": "Additional authentication is required",
+            "code": "step_up_required",
+        }), 403
+    log_security_event(
+        "ACCOUNT_STEP_UP_CONSUMED",
+        user=current_user.username,
+        action=action,
+    )
+    return None
 
 
 def _reauth_rate_limited(action):
@@ -105,16 +119,21 @@ def list_totp_authenticators():
 @login_required
 def start_totp_enrollment():
     _require_enabled()
-    if _reauth_rate_limited("totp_enrollment_reauth"):
-        return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
-    if not _factor_change_reauthenticated(data):
-        return jsonify({"error": "Recent authentication is required"}), 403
+    grant_error = _consume_factor_grant(
+        "totp.enroll",
+        recovery_repair=True,
+    )
+    if grant_error is not None:
+        return grant_error
     label = str(data.get("label") or "Authenticator").strip()
     if not label or len(label) > 80:
         return jsonify({"error": "Authenticator label is invalid"}), 400
-    view = begin_totp_enrollment(current_user.id, _enrollment_binding())
-    session["_totp_enrollment_label"] = label
+    view = begin_totp_enrollment(
+        current_user.id,
+        _enrollment_binding(),
+        label=label,
+    )
     response = jsonify({
         "token": view.token,
         "secret": view.secret,
@@ -136,12 +155,10 @@ def finish_totp_enrollment():
     if data.get("confirm_enable_mfa") is not True:
         return jsonify({"error": "MFA activation must be confirmed"}), 400
     try:
-        label = session.get("_totp_enrollment_label", "Authenticator")
         authenticator = activate_totp_enrollment(
             data.get("token"),
             data.get("code"),
             _enrollment_binding(),
-            label=label,
         )
     except TOTPEnrollmentError:
         log_security_event(
@@ -150,7 +167,6 @@ def finish_totp_enrollment():
             user=current_user.username,
         )
         return jsonify({"error": "TOTP enrollment could not be verified"}), 400
-    session.pop("_totp_enrollment_label", None)
     clear_recovery_restriction(replacement_factor="totp")
     response = jsonify({
         "ok": True,
@@ -205,13 +221,12 @@ def verify_totp_login():
 @login_required
 def disable_mfa():
     _require_enabled()
-    if _reauth_rate_limited("mfa_disable_reauth"):
-        return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
     if data.get("confirm_disable_mfa") is not True:
         return jsonify({"error": "MFA deactivation must be confirmed"}), 400
-    if not _factor_change_reauthenticated(data):
-        return jsonify({"error": "Recent authentication is required"}), 403
+    grant_error = _consume_factor_grant("mfa.disable")
+    if grant_error is not None:
+        return grant_error
     user = db.session.get(User, current_user.id)
     user.mfa_enabled = False
     db.session.commit()

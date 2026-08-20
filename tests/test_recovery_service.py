@@ -8,7 +8,10 @@ import time
 import pyotp
 from werkzeug.test import EnvironBuilder
 
-from tests.step_up_helpers import password_step_up_headers
+from tests.step_up_helpers import (
+    mint_account_step_up_headers,
+    password_step_up_headers,
+)
 
 
 def _create_user(app, username, *, is_admin=False):
@@ -344,26 +347,38 @@ def test_recovery_code_regeneration_supports_recent_ldap_reauthentication(
     with client.session_transaction() as browser_session:
         browser_session["_ldap_verified_at"] = int(time.time())
 
-    response = client.post("/api/recovery-codes", json={})
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "recovery.rotate",
+        user_id,
+        method="ldap",
+    )
+
+    response = client.post(
+        "/api/recovery-codes",
+        json={},
+        headers=headers,
+    )
 
     assert response.status_code == 200
     assert len(response.get_json()["codes"]) == 10
 
 
-def test_recovery_code_regeneration_rate_limits_before_reauthentication(
+def test_recovery_code_regeneration_does_not_repeat_password_verification(
     app,
     client,
     monkeypatch,
 ):
-    import app.recovery_routes as recovery_routes
     from app.models import User
 
-    _create_user(app, "limited_recovery_user")
+    user_id = _create_user(app, "limited_recovery_user")
     _login(client, "limited_recovery_user")
-    monkeypatch.setattr(
-        recovery_routes,
-        "check_reauth_rate_limit",
-        lambda *_args, **_kwargs: True,
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "recovery.rotate",
+        user_id,
     )
     monkeypatch.setattr(
         User,
@@ -375,10 +390,11 @@ def test_recovery_code_regeneration_rate_limits_before_reauthentication(
 
     response = client.post(
         "/api/recovery-codes",
-        json={"password": "password123"},
+        json={},
+        headers=headers,
     )
 
-    assert response.status_code == 429
+    assert response.status_code == 200
 
 
 def test_recovery_mfa_is_rate_limited_before_code_verification(

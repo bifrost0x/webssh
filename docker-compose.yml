@@ -107,9 +107,10 @@ services:
       # - WEBAUTHN_RP_ID=ssh.example.com
       # - WEBAUTHN_RP_NAME=WebSSH
       # - WEBAUTHN_ORIGIN=https://ssh.example.com
-      # TOTP is a deployment capability ceiling. Its safe default is false;
-      # set TOTP_ENABLED=true only when users should be allowed to enroll it.
-      - TOTP_ENABLED=${TOTP_ENABLED:-false}
+      # TOTP is available to the Admin feature gate by default. It remains
+      # inactive until an administrator enables it; an explicit false is a
+      # deployment-level kill switch and remains supported for upgrades.
+      - TOTP_ENABLED=${TOTP_ENABLED:-true}
       # OIDC additionally requires a read-only client-secret file mounted into
       # the container. Accounts are linked by issuer + subject in Admin.
       # - OIDC_ENABLED=true

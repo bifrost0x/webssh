@@ -6,6 +6,7 @@ SECURITY_TABLES = {
     'pending_authentications',
     'security_feature_states',
     'step_up_grants',
+    'step_up_intents',
     'totp_authenticators',
     'totp_enrollments',
 }
@@ -86,4 +87,5 @@ def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):
             'requested_acr',
             'step_up_action',
             'step_up_target_hash',
+            'step_up_intent_id',
         } <= columns

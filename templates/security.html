@@ -6,24 +6,50 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
     <title data-i18n="security.pageTitle">Security · Web SSH Terminal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
 </head>
-<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}">
+<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}">
     <header class="header">
         <div class="header-content">
-            <h1 class="app-title" data-i18n="security.title">Security</h1>
+            <h1 class="app-title"><span class="material-icons" aria-hidden="true">shield</span><span data-i18n="security.title">Security Center</span></h1>
             {% if recovery_mode %}
             <form action="{{ url_for('logout') }}" method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-secondary" id="recoveryLogoutBtn" type="submit">Sign out</button>
             </form>
             {% else %}
-            <a class="btn btn-secondary" href="{{ url_for('index') }}">← <span data-i18n="security.backToTerminal">Back to terminal</span></a>
+            <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="security.backToTerminal">Back to terminal</span></a>
             {% endif %}
         </div>
     </header>
     <main class="admin-main">
+        <section class="security-assurance-overview" id="securityAssuranceOverview" aria-labelledby="securityAssuranceTitle">
+            <div class="security-overview-heading">
+                <div>
+                    <span class="security-section-eyebrow">Account protection</span>
+                    <h2 id="securityAssuranceTitle">Sign-in assurance</h2>
+                    <p>Security changes are confirmed with the method used for this session. OIDC credentials are handled only by the identity provider.</p>
+                </div>
+                <span class="security-policy-badge {{ 'active' if account_mfa_enabled else '' }}">{{ 'MFA enabled' if account_mfa_enabled else 'MFA optional' }}</span>
+            </div>
+            <dl class="security-assurance-grid">
+                <div>
+                    <dt>Current sign-in</dt>
+                    <dd id="securityCurrentMethod">{{ authentication_method_labels|join(' + ') if authentication_method_labels else 'WebSSH password' }}</dd>
+                </div>
+                <div>
+                    <dt>Assurance</dt>
+                    <dd id="securityCurrentAssurance">{{ authentication_assurance }}</dd>
+                </div>
+                <div>
+                    <dt>Factor policy</dt>
+                    <dd>{{ 'Strong confirmation required' if account_mfa_enabled else 'Basic confirmation required' }}</dd>
+                </div>
+            </dl>
+        </section>
         {% if recovery_mode %}
         <section class="admin-setting-row" id="recoveryRequiredNotice" style="max-width:none;">
             <h2>Recovery session</h2>
@@ -65,8 +91,10 @@
             <div class="admin-toolbar">
                 <h2 data-i18n="security.passkeys">Passkeys</h2>
                 {% if webauthn_enabled %}
-                <button class="btn btn-primary" id="passkeyAddBtn" data-i18n="security.addPasskey">Add passkey</button>
-                <button class="btn btn-secondary" id="passkeyUpgradeBtn" data-i18n="security.replaceLegacyPasskey">Replace legacy passkey</button>
+                <div class="admin-toolbar-actions">
+                    <button class="btn btn-primary" id="passkeyAddBtn" data-i18n="security.addPasskey">Add passkey</button>
+                    <button class="btn btn-secondary" id="passkeyUpgradeBtn" data-i18n="security.replaceLegacyPasskey">Replace legacy passkey</button>
+                </div>
                 {% endif %}
             </div>
             {% if webauthn_enabled %}
@@ -87,8 +115,10 @@
                     <h2>Authenticator app (TOTP)</h2>
                     <p class="admin-muted">Optionally protect password or directory sign-in with a six-digit code from an authenticator app.</p>
                 </div>
-                <button class="btn btn-primary" id="totpAddBtn">Add authenticator</button>
-                <button class="btn btn-danger hidden" id="totpDisableBtn">Disable MFA requirement</button>
+                <div class="admin-toolbar-actions">
+                    <button class="btn btn-primary" id="totpAddBtn">Add authenticator</button>
+                    <button class="btn btn-danger hidden" id="totpDisableBtn">Disable MFA requirement</button>
+                </div>
             </div>
             <div id="totpList"></div>
             <div id="totpEnrollment" class="hidden" style="margin-top:16px;" role="region" aria-live="polite" aria-labelledby="totpEnrollmentTitle">
@@ -119,13 +149,21 @@
             <form id="securityConfirmationForm">
                 <div class="modal-header">
                     <h2 id="securityConfirmationTitle" data-i18n="security.confirmSecurityAction">Confirm security action</h2>
-                    <button type="button" class="close" id="securityConfirmationClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                    <button type="button" class="close material-icons" id="securityConfirmationClose" aria-label="Close" data-i18n-aria-label="common.close">close</button>
                 </div>
                 <div class="modal-body">
                     <p class="admin-muted" id="securityConfirmationHint">Confirm this account security change.</p>
+                    <div class="form-group hidden" id="securityConfirmationMethodGroup">
+                        <label for="securityConfirmationMethod">Confirmation method</label>
+                        <select id="securityConfirmationMethod" class="form-control"></select>
+                    </div>
                     <div class="form-group hidden" id="securityConfirmationPasswordGroup">
-                        <label for="securityConfirmationPassword" data-i18n="auth.currentPassword">Current password</label>
+                        <label for="securityConfirmationPassword" id="securityConfirmationPasswordText" data-i18n="auth.currentPassword">Current password</label>
                         <input type="password" id="securityConfirmationPassword" class="form-control" autocomplete="current-password">
+                    </div>
+                    <div class="form-group hidden" id="securityConfirmationTotpGroup">
+                        <label for="securityConfirmationTotp">Authenticator code</label>
+                        <input id="securityConfirmationTotp" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
                     </div>
                     <div class="form-group hidden" id="securityConfirmationLabelGroup">
                         <label for="securityConfirmationLabel" id="securityConfirmationLabelText">Name</label>

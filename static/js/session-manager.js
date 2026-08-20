@@ -162,6 +162,7 @@ const SessionManager = {
             port,
             username,
             connected: true,
+            hostKeyVerified: true,
             terminalId,
             os: 'all',
             displayName: storedName || null,
@@ -193,8 +194,8 @@ const SessionManager = {
         this.renderTabLabelContent(tabLabel, sessionId);
 
         const tabEdit = document.createElement('span');
-        tabEdit.className = 'tab-edit';
-        tabEdit.innerHTML = '✎';
+        tabEdit.className = 'tab-edit material-icons';
+        tabEdit.textContent = 'edit';
         const renameLabel = window.i18n ? i18n.t('session.rename') : 'Rename session';
         tabEdit.setAttribute('aria-label', renameLabel);
         tabEdit.setAttribute('title', renameLabel);
@@ -202,9 +203,9 @@ const SessionManager = {
         tabEdit.dataset.i18nTitle = 'session.rename';
 
         const tabClose = document.createElement('span');
-        tabClose.className = 'tab-close';
+        tabClose.className = 'tab-close material-icons';
         tabClose.dataset.sessionId = sessionId;
-        tabClose.innerHTML = '&times;';
+        tabClose.textContent = 'close';
         tabClose.setAttribute('aria-label', window.i18n ? i18n.t('session.close') : 'Close session');
         tabClose.dataset.i18nAriaLabel = 'session.close';
 
@@ -213,21 +214,21 @@ const SessionManager = {
         const sess = this.sessions[sessionId];
         if (sess && sess.viaJump) {
             const jumpBadge = document.createElement('span');
-            jumpBadge.className = 'tab-jump-badge';
-            jumpBadge.textContent = '🛰️';
+            jumpBadge.className = 'tab-jump-badge material-icons';
+            jumpBadge.textContent = 'alt_route';
             jumpBadge.title = 'via ' + sess.viaJump;
             tab.appendChild(jumpBadge);
         }
         if (sess && sess.useTmux) {
             const tmuxBadge = document.createElement('span');
-            tmuxBadge.className = 'tab-tmux-badge';
-            tmuxBadge.textContent = '📌';
+            tmuxBadge.className = 'tab-tmux-badge material-icons';
+            tmuxBadge.textContent = 'push_pin';
             tmuxBadge.title = 'Persistent tmux session' + (sess.tmuxSessionName ? ': ' + sess.tmuxSessionName : '');
             tab.appendChild(tmuxBadge);
         }
         const tabReconnect = document.createElement('span');
-        tabReconnect.className = 'tab-reconnect';
-        tabReconnect.innerHTML = '⟳';
+        tabReconnect.className = 'tab-reconnect material-icons';
+        tabReconnect.textContent = 'refresh';
         tabReconnect.setAttribute('aria-label', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
         tabReconnect.setAttribute('title', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
         tabReconnect.dataset.i18nAriaLabel = 'session.reconnect';
@@ -517,7 +518,8 @@ const SessionManager = {
         const tabClose = document.createElement('span');
         tabClose.className = 'tab-close';
         tabClose.dataset.pendingId = requestId;
-        tabClose.innerHTML = '&times;';
+        tabClose.classList.add('material-icons');
+        tabClose.textContent = 'close';
         tabClose.setAttribute('aria-label', 'Cancel connection');
 
         tab.appendChild(statusDot);

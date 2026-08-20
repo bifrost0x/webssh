@@ -33,6 +33,40 @@ _UPGRADE_COMPATIBLE_DEFAULTS = frozenset({
     'ldap',
     'recovery',
 })
+_CONFIGURATION_KEYS = {
+    'passkey': (
+        'WEBAUTHN_ENABLED', 'WEBAUTHN_RP_ID', 'WEBAUTHN_ORIGIN',
+    ),
+    'totp': ('TOTP_ENABLED',),
+    'oidc': (
+        'OIDC_ENABLED',
+        'OIDC_ISSUER',
+        'OIDC_CLIENT_ID',
+        'OIDC_CLIENT_SECRET_FILE',
+        'OIDC_REDIRECT_URI',
+    ),
+    'ldap': (
+        'LDAP_ENABLED',
+        'LDAP_URL',
+        'LDAP_BASE_DN',
+        'LDAP_BIND_DN',
+        'LDAP_BIND_PASSWORD_FILE',
+        'LDAP_CA_FILE',
+        'LDAP_USER_FILTER',
+        'LDAP_UNIQUE_ID_ATTRIBUTE',
+    ),
+    'recovery': ('RECOVERY_CODES_ENABLED',),
+}
+_DOCUMENTATION_URLS = {
+    'passkey': 'https://github.com/bifrost0x/webssh#authentication-features',
+    'totp': 'https://github.com/bifrost0x/webssh#authentication-features',
+    'oidc': 'https://github.com/bifrost0x/webssh#authentication-features',
+    'ldap': (
+        'https://github.com/bifrost0x/webssh/blob/main/'
+        'docs/ldap-authentication.md'
+    ),
+    'recovery': 'https://github.com/bifrost0x/webssh#authentication-features',
+}
 
 
 @dataclass(frozen=True)
@@ -43,6 +77,8 @@ class FeatureStatus:
     admin_enabled: bool
     active: bool
     reason: str | None
+    configuration_keys: tuple[str, ...]
+    documentation_url: str
 
     def to_dict(self):
         return asdict(self)
@@ -142,6 +178,8 @@ def feature_status(name):
         admin_enabled=admin_enabled,
         active=active,
         reason=reason,
+        configuration_keys=_CONFIGURATION_KEYS[name],
+        documentation_url=_DOCUMENTATION_URLS[name],
     )
 
 

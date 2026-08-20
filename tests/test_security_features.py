@@ -132,6 +132,41 @@ def test_admin_cannot_enable_a_deployment_disabled_feature(app):
         assert db.session.get(SecurityFeatureState, 'oidc') is None
 
 
+def test_provider_status_exposes_configuration_names_and_documentation_only(
+    app,
+):
+    from app.security_features import feature_status
+
+    with app.app_context():
+        oidc = feature_status('oidc').to_dict()
+        ldap = feature_status('ldap').to_dict()
+
+    assert oidc['configuration_keys'] == (
+        'OIDC_ENABLED',
+        'OIDC_ISSUER',
+        'OIDC_CLIENT_ID',
+        'OIDC_CLIENT_SECRET_FILE',
+        'OIDC_REDIRECT_URI',
+    )
+    assert oidc['documentation_url'].startswith(
+        'https://github.com/bifrost0x/webssh'
+    )
+    assert ldap['configuration_keys'] == (
+        'LDAP_ENABLED',
+        'LDAP_URL',
+        'LDAP_BASE_DN',
+        'LDAP_BIND_DN',
+        'LDAP_BIND_PASSWORD_FILE',
+        'LDAP_CA_FILE',
+        'LDAP_USER_FILTER',
+        'LDAP_UNIQUE_ID_ATTRIBUTE',
+    )
+    assert all('SECRET=' not in item for item in (
+        *oidc['configuration_keys'],
+        *ldap['configuration_keys'],
+    ))
+
+
 def test_runtime_activation_does_not_read_provider_secret_files(
     app,
     monkeypatch,

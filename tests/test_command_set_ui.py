@@ -38,6 +38,7 @@ def test_commands_workspace_unifies_library_and_command_sets():
     assert 'id="commandSetManagementModal"' not in template
     assert re.search(
         r'id="commandLibraryBtn"[^>]*>\s*'
+        r'<span class="material-icons"[^>]*>code</span>\s*'
         r'<span data-i18n="commands\.workspace">',
         template,
     )
@@ -203,8 +204,8 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
     template = read('templates/index.html')
     app_source = read('static/js/app.js')
 
-    header_group = re.search(
-        r'<div class="header-group"[^>]*>(?P<body>.*?)</div>',
+    global_navigation = re.search(
+        r'<nav class="global-navigation"[^>]*>(?P<body>.*?)</nav>',
         template,
         re.DOTALL,
     )
@@ -214,14 +215,14 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
         template,
         re.DOTALL,
     )
-    assert header_group
+    assert global_navigation
     assert account_menu
-    header_tools = header_group.group('body')
-    assert 'manageProfilesBtn' in header_tools
-    assert header_tools.index('commandLibraryBtn') < header_tools.index(
-        'manageProfilesBtn'
+    navigation = global_navigation.group('body')
+    assert 'manageProfilesBtn' in navigation
+    assert navigation.index('manageProfilesBtn') < navigation.index(
+        'commandLibraryBtn'
     )
-    assert 'data-i18n="connectionAssets.hosts">Hosts</span>' in header_tools
+    assert 'data-i18n="connectionAssets.hosts">Hosts</span>' in navigation
     assert 'manageProfilesBtn' not in account_menu.group('body')
     assert 'manageKeysBtn' not in account_menu.group('body')
     assert 'manageJumpHostsBtn' not in account_menu.group('body')

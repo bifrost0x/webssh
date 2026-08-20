@@ -100,6 +100,43 @@ def test_totp_accepts_adjacent_steps_once_and_tracks_exact_timecode(app):
         assert verify_totp(user_id, current_code, now=reference) is False
 
 
+def test_parallel_totp_enrollments_keep_their_own_tokens_and_labels(app):
+    from app.models import TOTPAuthenticator, TOTPEnrollment
+    from app.totp_service import (
+        activate_totp_enrollment,
+        begin_totp_enrollment,
+    )
+
+    user_id = _create_user(app, "parallel_totp")
+    with app.app_context():
+        phone = begin_totp_enrollment(
+            user_id,
+            "shared-browser-binding",
+            label="Phone",
+        )
+        tablet = begin_totp_enrollment(
+            user_id,
+            "shared-browser-binding",
+            label="Tablet",
+        )
+
+        assert TOTPEnrollment.query.count() == 2
+        activate_totp_enrollment(
+            phone.token,
+            pyotp.TOTP(phone.secret).now(),
+            "shared-browser-binding",
+        )
+        activate_totp_enrollment(
+            tablet.token,
+            pyotp.TOTP(tablet.secret).now(),
+            "shared-browser-binding",
+        )
+
+        assert {
+            row.label for row in TOTPAuthenticator.query.all()
+        } == {"Phone", "Tablet"}
+
+
 def test_totp_ciphertext_is_user_and_domain_separated(app):
     from cryptography.fernet import InvalidToken
 

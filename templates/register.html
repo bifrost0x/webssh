@@ -5,15 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="app-root" content="{{ url_prefix }}">
     <title>Register - Web SSH Terminal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
 </head>
 <body data-theme="glass" data-use-theme-preference>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
 
     <div class="language-selector">
         <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
-            <span id="currentLangFlag">🇬🇧</span>
+            <span id="currentLangFlag" class="language-code">EN</span>
             <span id="currentLangName">English</span>
         </button>
         <div class="lang-dropdown" id="langDropdown"></div>
@@ -26,7 +28,7 @@
     <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
-                <div class="logo">🖥️</div>
+                <div class="logo"><span class="material-icons" aria-hidden="true">person_add</span></div>
                 <h1 data-i18n="auth.register">Create Account</h1>
                 <p data-i18n="auth.registerPrompt">Join us and start your journey</p>
             </div>
@@ -46,7 +48,7 @@
                 <div class="form-group">
                     <label for="username" data-i18n="auth.username">Username</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">👤</span>
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
                         <input type="text" id="username" name="username" class="form-control"
                                data-i18n="auth.username" placeholder="Username" required autofocus
                                pattern="[a-zA-Z0-9_]{3,32}"
@@ -58,10 +60,10 @@
                 <div class="form-group">
                     <label for="password" data-i18n="auth.password">Password</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">🔒</span>
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="password" name="password" class="form-control"
                                data-i18n="auth.password" placeholder="Password" required minlength="8">
-                        <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                        <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                     <div class="field-hint" data-i18n="auth.passwordHint">Minimum 8 characters</div>
                 </div>
@@ -69,16 +71,16 @@
                 <div class="form-group">
                     <label for="confirm_password" data-i18n="auth.confirmPassword">Confirm Password</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">🔒</span>
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="confirm_password" name="confirm_password" class="form-control"
                                data-i18n="auth.confirmPassword" placeholder="Confirm Password" required>
-                        <button type="button" class="password-toggle" data-target="confirm_password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                        <button type="button" class="password-toggle material-icons" data-target="confirm_password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                     <div class="password-match-indicator" id="passwordMatchIndicator"></div>
                 </div>
 
                 <button type="submit" class="btn-primary" id="submitBtn">
-                    <span data-i18n="auth.createAccount">Create Account</span> 🚀
+                    <span data-i18n="auth.createAccount">Create Account</span>
                 </button>
             </form>
 
@@ -137,11 +139,11 @@
             }
 
             if (password === confirmPassword) {
-                indicator.innerHTML = '✓ ' + (i18n.t('auth.passwordsMatch') || 'Passwords match');
+                indicator.textContent = i18n.t('auth.passwordsMatch') || 'Passwords match';
                 indicator.className = 'password-match-indicator match';
                 return true;
             } else {
-                indicator.innerHTML = '✗ ' + (i18n.t('auth.passwordsNoMatch') || 'Passwords do not match');
+                indicator.textContent = i18n.t('auth.passwordsNoMatch') || 'Passwords do not match';
                 indicator.className = 'password-match-indicator no-match';
                 return false;
             }

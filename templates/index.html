@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=22">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -27,25 +28,29 @@
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <h1 class="app-title" data-i18n="app.title">Web SSH Terminal</h1>
-                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu">☰</button>
+                <a class="app-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces">
+                    <span class="app-brand-mark" aria-hidden="true"><span class="material-icons">terminal</span></span>
+                    <span><strong>WebSSH</strong><small>Secure workspace</small></span>
+                </a>
+                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu"><span class="material-icons" aria-hidden="true">menu</span></button>
             </div>
             <div class="header-buttons">
-                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">Quick Connect</span> ✨</button>
+                <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation">
+                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page"><span class="material-icons" aria-hidden="true">terminal</span><span>Workspaces</span></button>
+                    <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
+                    <button id="commandLibraryBtn" class="global-nav-item" type="button"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
+                </nav>
 
-                <div class="header-group" role="group" aria-label="Tools">
-                    <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
-                    <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
-                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts"><span data-i18n="connectionAssets.hosts">Hosts</span> 🗂️</button>
-                </div>
+                <button id="newConnectionBtn" class="btn btn-primary quick-connect-btn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
 
                 <span class="header-divider" aria-hidden="true"></span>
 
                 <div class="account-selector">
                     <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
-                        <span class="account-avatar" aria-hidden="true">👤</span>
+                        <span class="account-avatar material-icons" aria-hidden="true">person</span>
                         <span class="account-name">{{ current_user.username }}</span>
-                        <span class="account-caret" aria-hidden="true">▾</span>
+                        <span class="account-caret material-icons" aria-hidden="true">expand_more</span>
                     </button>
                     <div class="account-dropdown-header" id="accountDropdownHeader">
                         <div class="account-profile-card" id="accountProfileCard">
@@ -75,13 +80,13 @@
                         </section>
 
                         <div class="account-divider" role="separator"></div>
-                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎛️</span> <span data-i18n="settings.title">Settings</span></button>
-                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span data-i18n="security.title">Security</span></a>
-                        <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">⌨️</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
-                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">tune</span> <span data-i18n="settings.title">Settings</span></button>
+                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon material-icons" aria-hidden="true">shield</span> <span data-i18n="security.title">Security</span></a>
+                        <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
+                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon material-icons" aria-hidden="true">admin_panel_settings</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
 
                         <div class="account-divider" role="separator"></div>
-                        <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
+                        <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">logout</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>
                 </div>
             </div>
@@ -100,13 +105,13 @@
                 </button>
                 <div class="tab-row-divider"></div>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
-                    <span aria-hidden="true">📡</span>
+                    <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
                 <button class="tab-row-icon-btn" id="saveTranscriptBtn" title="Save Transcript" aria-label="Save transcript">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><rect x="8" y="4" width="8" height="5"></rect><rect x="8" y="15" width="8" height="4" rx="1"></rect></svg>
                 </button>
                 <div class="tab-row-divider"></div>
-                <button class="btn-new-tab" id="newTabBtn" title="Quick Connect" data-i18n-title="connection.newConnection" aria-label="Quick Connect" data-i18n-aria-label="connection.newConnection">+</button>
+                <button class="btn-new-tab material-icons" id="newTabBtn" title="Quick Connect" data-i18n-title="connection.newConnection" aria-label="Quick Connect" data-i18n-aria-label="connection.newConnection">add</button>
             </div>
         </div>
     </header>
@@ -127,7 +132,7 @@
         </div>
         <div class="broadcast-bar hidden" id="broadcastBar">
             <span class="broadcast-bar-label">
-                <span class="broadcast-bar-icon" aria-hidden="true">📡</span>
+                <span class="broadcast-bar-icon material-icons" aria-hidden="true">cell_tower</span>
                 <span data-i18n="broadcast.barLabel">Broadcast to</span>
                 <strong id="broadcastCount">0</strong>
                 <span data-i18n="broadcast.sessions">sessions</span>
@@ -137,7 +142,7 @@
                    placeholder="Type a command — sent to all open sessions on Enter"
                    maxlength="4096" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <button class="btn btn-primary" id="broadcastSendBtn" type="button"><span data-i18n="broadcast.send">Send to all</span></button>
-            <button class="btn btn-secondary broadcast-close" id="broadcastCloseBtn" type="button" aria-label="Close broadcast">&times;</button>
+            <button class="btn btn-secondary broadcast-close material-icons" id="broadcastCloseBtn" type="button" aria-label="Close broadcast">close</button>
         </div>
         <div class="workspace" id="workspace">
             <div class="terminal-area">
@@ -155,7 +160,7 @@
                         <span class="search-count" id="terminalSearchCount"></span>
                         <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)">▲</button>
                         <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)">▼</button>
-                        <button class="search-btn search-close" id="terminalSearchClose" title="Close (Escape)">✕</button>
+                        <button class="search-btn search-close material-icons" id="terminalSearchClose" title="Close (Escape)" aria-label="Close search">close</button>
                     </div>
                 </div>
                 <aside class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files">
@@ -164,7 +169,7 @@
                             <div class="session-panel-eyebrow">Active session</div>
                             <div class="session-panel-title"><span class="material-icons" aria-hidden="true">folder_open</span> SFTP</div>
                         </div>
-                        <button class="session-panel-close" id="sessionFilesCloseBtn" type="button" aria-label="Close SFTP split" title="Close SFTP split">&times;</button>
+                        <button class="session-panel-close material-icons" id="sessionFilesCloseBtn" type="button" aria-label="Close SFTP split" title="Close SFTP split">close</button>
                     </div>
                     <div class="session-files-mount" id="sessionFilesMount"></div>
                 </aside>
@@ -175,6 +180,27 @@
                 <button id="notepadToggle" class="notepad-toggle-btn" aria-label="Toggle notepad" title="Toggle notepad">◀</button>
             </div>
             <aside class="notepad-panel" id="notepadPanel">
+                <section class="session-context-card" id="sessionContextCard" aria-labelledby="sessionContextTitle">
+                    <div class="session-context-heading">
+                        <div>
+                            <span class="session-panel-eyebrow">Active session</span>
+                            <h2 id="sessionContextTitle">No active session</h2>
+                        </div>
+                        <span class="session-context-state" id="sessionContextState">Offline</span>
+                    </div>
+                    <dl class="session-context-details">
+                        <div><dt>Target</dt><dd id="sessionContextHost">—</dd></div>
+                        <div><dt>Remote user</dt><dd id="sessionContextUser">—</dd></div>
+                        <div><dt>Host trust</dt><dd id="sessionContextTrust">No connected host</dd></div>
+                        <div><dt>Persistence</dt><dd id="sessionContextPersistence">Not active</dd></div>
+                    </dl>
+                </section>
+                <div class="session-tool-tabs" id="sessionToolTabs" role="toolbar" aria-label="Session tools">
+                    <button type="button" data-session-tool="files" aria-pressed="false"><span class="material-icons" aria-hidden="true">folder_open</span>Files</button>
+                    <button type="button" data-session-tool="commands" aria-pressed="false"><span class="material-icons" aria-hidden="true">code</span>Commands</button>
+                    <button type="button" data-session-tool="diagnostics" aria-pressed="false"><span class="material-icons" aria-hidden="true">monitor_heart</span>Diagnostics</button>
+                    <button type="button" data-session-tool="notes" aria-pressed="true" class="active"><span class="material-icons" aria-hidden="true">edit_note</span>Notes</button>
+                </div>
                 <section class="session-insights-card" id="sessionInsightsCard" aria-live="polite" hidden>
                     <div class="session-insights-heading">
                         <div>
@@ -219,6 +245,15 @@
             </aside>
         </div>
     </main>
+    <footer class="workspace-status-bar" id="workspaceStatusBar" aria-label="Workspace status">
+        <span class="workspace-status-state" id="workspaceStatusState">No active session</span>
+        <span><strong>Target</strong> <span id="workspaceStatusTarget">—</span></span>
+        <span id="workspaceStatusTransport">SSH</span>
+        <span id="workspaceStatusTrust">No connected host</span>
+        <span id="workspaceStatusPersistence">Not active</span>
+        <span class="workspace-status-spacer"></span>
+        <span><span class="material-icons" aria-hidden="true">sync_alt</span> Transfers</span>
+    </footer>
 
     <div class="session-diagnostics-overlay hidden" id="sessionDiagnosticsOverlay" aria-hidden="true">
         <div class="session-diagnostics-backdrop" id="sessionDiagnosticsBackdrop"></div>
@@ -241,7 +276,7 @@
                         <span class="material-icons" aria-hidden="true">refresh</span>
                         <span>Refresh</span>
                     </button>
-                    <button class="session-diagnostics-close" id="sessionDiagnosticsClose" type="button" aria-label="Close server diagnostics" title="Close server diagnostics">&times;</button>
+                    <button class="session-diagnostics-close material-icons" id="sessionDiagnosticsClose" type="button" aria-label="Close server diagnostics" title="Close server diagnostics">close</button>
                 </div>
             </div>
 
@@ -410,7 +445,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">Quick Connect</h2>
-                <button type="button" class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <form id="connectionForm" class="quick-connect-form">
@@ -477,7 +512,7 @@
                         <label for="passwordInput" data-i18n="auth.password">Password *</label>
                         <div class="input-wrapper with-toggle">
                             <input type="password" id="passwordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
-                            <button type="button" class="password-toggle" data-target="passwordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                            <button type="button" class="password-toggle material-icons" data-target="passwordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                         </div>
                         <div class="field-hint" id="passwordHint"></div>
                     </div>
@@ -533,7 +568,7 @@
                         <label for="jumpHostPasswordInput" data-i18n="connection.jumpHostPassword">Jump Host Password</label>
                         <div class="input-wrapper with-toggle">
                             <input type="password" id="jumpHostPasswordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
-                            <button type="button" class="password-toggle" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                            <button type="button" class="password-toggle material-icons" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                         </div>
                         <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
                     </div>
@@ -624,7 +659,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="settingsTitle" data-i18n="settings.title">Settings</h2>
-                <button type="button" class="close" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body settings-modal-body">
                 <section class="settings-section manager-card" aria-labelledby="settingsAppearanceTitle">
@@ -684,7 +719,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="profileManagementTitle" data-i18n="connectionAssets.hosts">Hosts</h2>
-                <button type="button" class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body profile-management-modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -837,7 +872,7 @@
                     <span class="material-icons" aria-hidden="true">folder_off</span>
                     <h2 id="profileMoveConfirmationTitle" data-i18n="profiles.groupRemovalTitle">Remove empty group?</h2>
                 </div>
-                <button type="button" class="close profile-confirmation-close" id="closeProfileMoveConfirmation" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close profile-confirmation-close material-icons" id="closeProfileMoveConfirmation" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p id="profileMoveConfirmationDescription" class="profile-confirmation-lead" data-i18n="profiles.groupRemovalLead">This is the last connection in the group.</p>
@@ -864,7 +899,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="keyManagementTitle" data-i18n="keys.manageSSHKeys">Manage SSH Keys</h2>
-                <button type="button" class="close" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -909,7 +944,7 @@
         <div class="modal-content command-workspace-content command-set-modal-content">
             <div class="modal-header">
                 <h2 id="commandWorkspaceTitle" data-i18n="commands.workspace">Commands</h2>
-                <button type="button" class="close" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="command-workspace-tabs" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
                 <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
@@ -919,7 +954,7 @@
                 <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
                     <div class="command-toolbar">
                         <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
-                        <button class="btn btn-primary" id="addCommandBtn"><span data-i18n="commands.addCommand">Add Command</span> ➕</button>
+                        <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
                     </div>
                     <div class="os-filter-toolbar">
                         <span data-i18n="commands.filterByOs">Filter by OS:</span>
@@ -943,8 +978,8 @@
                         <div class="commands-table-body" id="commandsList"></div>
                     </div>
                     <div class="command-help">
-                        <p>💡 <strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Click ▶️ to insert command into terminal.</span></p>
-                        <p>🔒 <span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
+                        <p><span class="material-icons" aria-hidden="true">lightbulb</span><strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Use the run action to insert a command into the terminal.</span></p>
+                        <p><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
                     </div>
                 </section>
 
@@ -1013,7 +1048,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="jumpHostManagementTitle" data-i18n="jumphosts.manage">Manage Jump Hosts</h2>
-                <button type="button" class="close" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -1081,7 +1116,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandFormTitle" data-i18n="commands.addCommand">Add New Command</h2>
-                <button type="button" class="close" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <form id="commandForm">
@@ -1134,7 +1169,8 @@
                             <span data-i18n="common.cancel">Cancel</span>
                         </button>
                         <button type="submit" class="btn btn-primary">
-                            <span data-i18n="common.save">Save</span> ✅
+                            <span class="material-icons" aria-hidden="true">save</span>
+                            <span data-i18n="common.save">Save</span>
                         </button>
                     </div>
                 </form>
@@ -1146,7 +1182,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandPaletteTitle" data-i18n="palette.title">Command Palette</h2>
-                <button type="button" class="close" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <input type="text" id="commandPaletteInput" class="form-control" data-i18n-placeholder="palette.searchPlaceholder" placeholder="Search actions, hosts, and sessions..." autocomplete="off">
@@ -1159,7 +1195,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="shortcutsTitle" data-i18n="shortcuts.title">Keyboard Shortcuts</h2>
-                <button type="button" class="close" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="shortcuts-list" id="shortcutsList"></div>
@@ -1171,7 +1207,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="dropUploadTitle" data-i18n="dropUpload.title">Upload File</h2>
-                <button type="button" class="close" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <form id="dropUploadForm">
@@ -1196,7 +1232,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="paneAssignmentTitle" data-i18n="panes.assignTitle">Assign Sessions to Panes</h2>
-                <button type="button" class="close" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="pane-assignment-info">
@@ -1234,7 +1270,7 @@
                     <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh" data-i18n-title="preview.refresh">
                         <span class="material-icons">refresh</span>
                     </button>
-                <button type="button" class="close" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
                 </div>
             </div>
             <div class="modal-body preview-modal-body">
@@ -1299,6 +1335,7 @@
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=7"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=13"></script>
@@ -1431,6 +1468,10 @@
         document.addEventListener('DOMContentLoaded', () => {
             initThemeSelectorHeader();
             initLanguageSelectorHeader();
+            window.webssh2Shell = window.WebSSH2Shell?.init({
+                sessionManager: SessionManager,
+                document,
+            });
             window.accountWorkspacePulse = window.AccountWorkspacePulseModule?.createAccountWorkspacePulse({
                 sessionManager: SessionManager,
                 document,
