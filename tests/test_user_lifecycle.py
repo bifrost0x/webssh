@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 def _create_user(username, password='password123', *, is_admin=False):
     from app.auth import register_user
@@ -196,7 +198,12 @@ class TestUserAccessRevocation:
             lambda user_id, socketio_instance=None: revoked.append(user_id),
         )
 
-        response = client.post(f'/admin/api/users/{target_id}/lock')
+        response = client.post(
+            f'/admin/api/users/{target_id}/lock',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{target_id}:lock'
+            )[0],
+        )
 
         assert response.status_code == 200
         assert response.get_json()['user']['is_locked'] is True
@@ -239,7 +246,12 @@ class TestSafeUserDeletion:
             assert admin.is_admin
 
         _login(client, 'deleteadmin')
-        response = client.post(f'/admin/api/users/{target_id}/delete')
+        response = client.post(
+            f'/admin/api/users/{target_id}/delete',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{target_id}:delete'
+            )[0],
+        )
 
         assert response.status_code == 200
         with app.app_context():

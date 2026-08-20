@@ -27,8 +27,8 @@ from .audit_logger import (
     log_security_event,
     log_warning,
 )
-from .auth import check_rate_limit, check_reauth_rate_limit
-from .decorators import admin_required
+from .auth import check_rate_limit
+from .decorators import admin_required, step_up_required
 from .models import OIDCIdentity, User, db
 from .oidc_service import (
     OIDCStateError,
@@ -51,15 +51,6 @@ def _issuer():
 def _require_enabled():
     if not config.OIDC_ENABLED:
         abort(404)
-
-
-def _password_matches(user, password):
-    if user.is_ldap_managed:
-        return False
-    try:
-        return user.check_password(password)
-    except (TypeError, ValueError):
-        return False
 
 
 def _binding():
@@ -199,8 +190,11 @@ def oidc_callback():
             state=state,
             session_binding=_binding(),
         )
-        if intent.purpose != "login":
-            raise OIDCStateError("OIDC state purpose is invalid for login")
+        if intent.purpose == "step_up" and (
+            not current_user.is_authenticated
+            or not current_user.is_admin
+        ):
+            return jsonify({"error": "Step-up authentication failed"}), 403
         client = _client()
         token = client.authorize_access_token(
             code_verifier=intent.code_verifier,
@@ -283,8 +277,58 @@ def oidc_callback():
         begin_authentication,
         browser_session_binding,
         consume_pending,
+        current_authentication_session,
         finalize_login,
     )
+
+    if intent.purpose == "step_up":
+        from .step_up import StepUpError, create_step_up_grant_for_hash
+
+        auth_session = current_authentication_session()
+        now_timestamp = int(datetime.now(timezone.utc).timestamp())
+        requested_acr = set((intent.requested_acr or "").split())
+        if (
+            not current_user.is_authenticated
+            or not current_user.is_admin
+            or auth_session is None
+            or user.id != current_user.id
+            or assurance.level is AssuranceLevel.BASIC
+            or assurance.auth_time is None
+            or not 0 <= now_timestamp - assurance.auth_time <= (
+                config.STEP_UP_MAX_AGE_SECONDS
+            )
+            or (requested_acr and assurance.acr not in requested_acr)
+        ):
+            log_security_event(
+                "OIDC_STEP_UP_REJECTED",
+                level=logging.WARNING,
+                user=getattr(current_user, "username", None),
+                issuer=issuer,
+                reason="insufficient_or_mismatched_assurance",
+            )
+            return jsonify({"error": "Step-up authentication failed"}), 403
+        try:
+            grant = create_step_up_grant_for_hash(
+                auth_session,
+                intent.step_up_action,
+                intent.step_up_target_hash,
+                assurance.level,
+            )
+        except StepUpError:
+            return jsonify({"error": "Step-up authentication failed"}), 403
+        session["_oidc_step_up_result"] = {
+            "grant": grant,
+            "action": intent.step_up_action,
+            "expires_at": now_timestamp + 300,
+        }
+        log_security_event(
+            "ADMIN_STEP_UP_GRANTED",
+            user=current_user.username,
+            method="oidc",
+            action=intent.step_up_action,
+            assurance=assurance.level.value,
+        )
+        return redirect(intent.continuation)
 
     local_mfa_methods = None
     if user.mfa_enabled and assurance.level is AssuranceLevel.BASIC:
@@ -356,20 +400,10 @@ def oidc_callback():
 @oidc_blueprint.post("/admin/api/users/<int:user_id>/oidc-link")
 @admin_required
 @login_required
+@step_up_required('oidc.link', lambda user_id: user_id)
 def link_oidc_identity(user_id):
     _require_enabled()
-    client_ip = request.remote_addr or "unknown"
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        "oidc_link_reauth",
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded("oidc_link_reauth", client_ip)
-        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
-    if not _password_matches(current_user, data.get("password", "")):
-        return jsonify({"error": "Administrator password is incorrect"}), 403
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404
@@ -443,20 +477,13 @@ def list_oidc_identities(user_id):
 )
 @admin_required
 @login_required
+@step_up_required(
+    'oidc.unlink',
+    lambda user_id, identity_id: f'{user_id}:{identity_id}',
+)
 def unlink_oidc_identity(user_id, identity_id):
     _require_enabled()
-    client_ip = request.remote_addr or "unknown"
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        "oidc_unlink_reauth",
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded("oidc_unlink_reauth", client_ip)
-        return jsonify({"error": "Too many password attempts"}), 429
     data = request.get_json(silent=True) or {}
-    if not _password_matches(current_user, data.get("password", "")):
-        return jsonify({"error": "Administrator password is incorrect"}), 403
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404

@@ -229,10 +229,6 @@
                     <div id="securityActionOidcList" class="admin-oidc-list" aria-live="polite"></div>
                 </div>
                 <div class="form-group">
-                    <label for="securityActionPassword" data-i18n="admin.administratorPassword">Your administrator password</label>
-                    <input type="password" id="securityActionPassword" class="form-control" autocomplete="current-password">
-                </div>
-                <div class="form-group">
                     <label for="securityActionConfirmation" data-i18n="admin.confirmTargetUsername">Type the target username to confirm</label>
                     <input type="text" id="securityActionConfirmation" class="form-control" autocomplete="off">
                 </div>
@@ -259,6 +255,30 @@
         </div>
     </div>
     {% endif %}
+
+    <div class="modal modal-small" id="stepUpModal" role="dialog" aria-modal="true" aria-labelledby="stepUpTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="stepUpTitle" data-i18n="admin.additionalAuthentication">Additional authentication</h2>
+                <button type="button" class="close" id="stepUpCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="admin-muted" data-i18n="admin.stepUpHint">Confirm this sensitive administrator action. The authorization is valid for this action only.</p>
+                <div class="form-group hidden" id="stepUpPasswordGroup">
+                    <label for="stepUpPassword" data-i18n="admin.administratorPassword">Administrator password</label>
+                    <input type="password" id="stepUpPassword" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group hidden" id="stepUpTotpGroup">
+                    <label for="stepUpTotp" data-i18n="security.authenticatorCode">Authenticator code</label>
+                    <input type="text" id="stepUpTotp" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="16">
+                </div>
+                <div class="admin-toolbar">
+                    <button type="button" class="btn btn-secondary" id="stepUpCancelButton" data-i18n="common.cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="stepUpSubmit" data-i18n="admin.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal modal-small" id="restoreFirstConfirmModal" role="dialog" aria-modal="true" aria-labelledby="restoreFirstConfirmTitle" aria-hidden="true">
         <div class="modal-content">
@@ -290,10 +310,6 @@
                 <div class="form-group">
                     <label for="restorePhrase" data-i18n="backup.typeRestore">Type RESTORE</label>
                     <input type="text" id="restorePhrase" class="form-control" autocomplete="off">
-                </div>
-                <div class="form-group">
-                    <label for="restorePassword" data-i18n="backup.password">Administrator password</label>
-                    <input type="password" id="restorePassword" class="form-control" autocomplete="current-password">
                 </div>
                 <label class="admin-checkbox">
                     <input type="checkbox" id="restoreFinalAcknowledge">

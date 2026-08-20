@@ -11,7 +11,7 @@ from flask_login import current_user, login_required
 from . import audit_logger as audit_logging
 from .app_settings import set_audit_backup_count as persist_backup_count
 from .audit_logger import apply_audit_backup_count, log_security_event
-from .decorators import admin_required
+from .decorators import admin_required, step_up_required
 
 
 audit_export_blueprint = Blueprint("audit_export", __name__)
@@ -192,6 +192,7 @@ def export_audit_log():
 @audit_export_blueprint.post("/admin/api/audit/retention")
 @admin_required
 @login_required
+@step_up_required("audit.retention", "global")
 def update_audit_retention():
     _require_enabled()
     data = request.get_json(silent=True) or {}

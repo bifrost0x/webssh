@@ -285,6 +285,7 @@ def create_app(
     from .host_key_routes import host_key_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
     from .recovery_routes import recovery_blueprint
+    from .step_up_routes import step_up_blueprint
     from .totp_routes import totp_blueprint
     from .transfer_routes import transfer_blueprint, transfer_manager
     register_cli(app)
@@ -299,6 +300,7 @@ def create_app(
     app.register_blueprint(host_key_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)
+    app.register_blueprint(step_up_blueprint)
     app.register_blueprint(totp_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
@@ -674,7 +676,7 @@ def create_app(
             recovery_mode=recovery_session_required(),
         )
 
-    from .decorators import admin_required
+    from .decorators import admin_required, step_up_required
     from .models import User
     from .audit_logger import read_audit_logs
 
@@ -684,6 +686,7 @@ def create_app(
             'username': u.username,
             'is_admin': bool(u.is_admin),
             'is_locked': bool(u.is_locked),
+            'mfa_enabled': bool(u.mfa_enabled),
             'ldap_managed': bool(u.is_ldap_managed),
             'created_at': u.created_at.isoformat() if u.created_at else None,
             'last_login': u.last_login.isoformat() if u.last_login else None,
@@ -707,6 +710,10 @@ def create_app(
     @app.route('/admin/api/users', methods=['POST'])
     @admin_required
     @login_required
+    @step_up_required(
+        'user.create',
+        lambda: str((request.get_json(silent=True) or {}).get('username') or ''),
+    )
     def admin_create_user():
         data = request.get_json(silent=True) or {}
         username = (data.get('username') or '').strip()
@@ -725,6 +732,10 @@ def create_app(
     @app.route('/admin/api/users/<int:user_id>/<action>', methods=['POST'])
     @admin_required
     @login_required
+    @step_up_required(
+        'user.manage',
+        lambda user_id, action: f'{user_id}:{action}',
+    )
     def admin_user_action(user_id, action):
         from . import user_lifecycle
 
@@ -791,6 +802,42 @@ def create_app(
                  user=target.username, action=action)
         return jsonify({'user': _user_to_dict(target)})
 
+    @app.route('/admin/api/users/<int:user_id>/mfa', methods=['DELETE'])
+    @admin_required
+    @login_required
+    @step_up_required('user.mfa_reset', lambda user_id: user_id)
+    def admin_reset_user_mfa(user_id):
+        from . import user_lifecycle
+        from .models import (
+            RecoveryCode,
+            TOTPAuthenticator,
+            TOTPEnrollment,
+            WebAuthnChallenge,
+            WebAuthnCredential,
+        )
+
+        data = request.get_json(silent=True) or {}
+        target = db.session.get(User, user_id)
+        if target is None:
+            return jsonify({'error': 'User not found'}), 404
+        if data.get('confirm_username') != target.username:
+            return jsonify({'error': 'Target confirmation does not match'}), 400
+        WebAuthnCredential.query.filter_by(user_id=target.id).delete()
+        WebAuthnChallenge.query.filter_by(user_id=target.id).delete()
+        TOTPAuthenticator.query.filter_by(user_id=target.id).delete()
+        TOTPEnrollment.query.filter_by(user_id=target.id).delete()
+        RecoveryCode.query.filter_by(user_id=target.id).delete()
+        target.mfa_enabled = False
+        target.auth_generation = int(target.auth_generation or 0) + 1
+        db.session.commit()
+        user_lifecycle.revoke_user_access(target.id, socketio)
+        log_warning(
+            'Admin reset user MFA',
+            admin=current_user.username,
+            user=target.username,
+        )
+        return jsonify({'ok': True})
+
     @app.route('/admin/api/audit', methods=['GET'])
     @admin_required
     @login_required
@@ -816,6 +863,7 @@ def create_app(
     @app.route('/admin/api/settings', methods=['POST'])
     @admin_required
     @login_required
+    @step_up_required('settings.update', 'global')
     def admin_set_settings():
         data = request.get_json(silent=True) or {}
         if 'registration_enabled' in data:
@@ -856,6 +904,10 @@ def create_app(
     )
     @admin_required
     @login_required
+    @step_up_required(
+        'security_feature.update',
+        lambda feature_name: feature_name,
+    )
     def admin_set_security_feature(feature_name):
         from .security_features import (
             FeatureUnavailable,

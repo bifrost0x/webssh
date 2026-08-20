@@ -8,6 +8,8 @@ import time
 import pyotp
 from werkzeug.test import EnvironBuilder
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -490,20 +492,28 @@ def test_admin_recovery_requires_reauthentication_and_exact_target_confirmation(
     assert admin_id != target_id
     _login(client, "recovery_admin")
 
-    wrong_password = client.post(
-        f"/admin/api/users/{target_id}/recovery",
-        json={"password": "wrong", "confirm_username": "recovery_target"},
+    _headers, wrong_password = password_step_up_headers(
+        client,
+        "recovery.reset",
+        target_id,
+        password="wrong",
+        expected_status=403,
     )
+    wrong_headers = password_step_up_headers(
+        client, "recovery.reset", target_id
+    )[0]
     wrong_target = client.post(
         f"/admin/api/users/{target_id}/recovery",
-        json={"password": "password123", "confirm_username": "other"},
+        json={"confirm_username": "other"},
+        headers=wrong_headers,
     )
+    accepted_headers = password_step_up_headers(
+        client, "recovery.reset", target_id
+    )[0]
     accepted = client.post(
         f"/admin/api/users/{target_id}/recovery",
-        json={
-            "password": "password123",
-            "confirm_username": "recovery_target",
-        },
+        json={"confirm_username": "recovery_target"},
+        headers=accepted_headers,
     )
 
     assert wrong_password.status_code == 403

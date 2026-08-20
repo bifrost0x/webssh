@@ -19,7 +19,7 @@ from .auth_assurance import (
     pending_authentication,
     recovery_session_required,
 )
-from .decorators import admin_required
+from .decorators import admin_required, step_up_required
 from .models import User, db
 from .recovery_service import consume_code, generate_codes
 
@@ -192,22 +192,12 @@ def disable_mfa_after_recovery():
 @recovery_blueprint.post("/admin/api/users/<int:user_id>/recovery")
 @admin_required
 @login_required
+@step_up_required("recovery.reset", lambda user_id: user_id)
 def admin_recovery(user_id):
     _require_enabled()
-    client_ip = request.remote_addr or "unknown"
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        "admin_recovery_reauth",
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded("admin_recovery_reauth", client_ip)
-        return jsonify({"error": "Too many authentication attempts"}), 429
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    if not _password_matches(current_user, data.get("password", "")):
-        return jsonify({"error": "Administrator password is incorrect"}), 403
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404

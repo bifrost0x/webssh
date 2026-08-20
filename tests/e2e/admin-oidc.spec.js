@@ -1,6 +1,14 @@
 const { test, expect } = require('playwright/test');
 const { login } = require('./helpers');
 
+async function completePasswordStepUp(page) {
+    const modal = page.locator('#stepUpModal');
+    await expect(modal).toHaveClass(/show/);
+    await page.locator('#stepUpPassword').fill('browser-password');
+    await page.locator('#stepUpSubmit').click();
+    await expect(modal).not.toHaveClass(/show/);
+}
+
 test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => {
     await login(page);
     await page.goto('/admin');
@@ -13,20 +21,18 @@ test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => 
     await expect(modal).toHaveClass(/show/);
     await expect(modal.getByText('existing-e2e-subject')).toBeVisible();
 
-    await page.locator('#securityActionPassword').fill('browser-password');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     page.once('dialog', dialog => dialog.accept());
     await modal.locator('button[data-oidc-identity-id]').click();
+    await completePasswordStepUp(page);
     await expect(modal.getByText('existing-e2e-subject')).toHaveCount(0);
-    await expect(page.locator('#securityActionPassword')).toHaveValue('');
     await expect(page.locator('#securityActionConfirmation')).toHaveValue('');
 
-    await page.locator('#securityActionPassword').fill('browser-password');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#securityActionSubject').fill('replacement-e2e-subject');
     await page.locator('#submitSecurityAction').click();
+    await completePasswordStepUp(page);
     await expect(modal.getByText('replacement-e2e-subject')).toBeVisible();
-    await expect(page.locator('#securityActionPassword')).toHaveValue('');
     await expect(page.locator('#securityActionConfirmation')).toHaveValue('');
 });
 
@@ -50,9 +56,9 @@ test('a delayed recovery response cannot populate another user modal', async ({ 
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
     await userRow.locator('button[data-act="recovery"]').click();
-    await page.locator('#securityActionPassword').fill('browser-password');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
+    await completePasswordStepUp(page);
     await requestStarted;
 
     await page.locator('#closeSecurityAction').click();
@@ -95,9 +101,9 @@ test('recovery submission is single-flight and clears reauthentication fields', 
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
     await userRow.locator('button[data-act="recovery"]').click();
-    await page.locator('#securityActionPassword').fill('browser-password');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
+    await completePasswordStepUp(page);
     await requestStarted;
 
     await expect(page.locator('#submitSecurityAction')).toBeDisabled();
@@ -106,7 +112,7 @@ test('recovery submission is single-flight and clears reauthentication fields', 
 
     releaseResponse();
     await expect(page.locator('#securityActionResult')).toHaveValue('single-valid-recovery-code');
-    await expect(page.locator('#securityActionPassword')).toHaveValue('');
+    await expect(page.locator('#stepUpPassword')).toHaveValue('');
     await expect(page.locator('#securityActionConfirmation')).toHaveValue('');
     await expect(page.locator('#submitSecurityAction')).toBeEnabled();
 });
@@ -133,9 +139,9 @@ test('closing and reopening cannot overlap recovery rotations', async ({ page })
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
     await userRow.locator('button[data-act="recovery"]').click();
-    await page.locator('#securityActionPassword').fill('browser-password');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
+    await completePasswordStepUp(page);
     await requestStarted;
 
     await page.locator('#closeSecurityAction').click();

@@ -7,6 +7,12 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from tests.step_up_helpers import password_step_up_headers
+
+
+def _step_up(client, action, target):
+    return password_step_up_headers(client, action, target)[0]
+
 
 def _create_user(
     app,
@@ -718,29 +724,28 @@ def test_admin_link_is_explicit_reauthenticated_and_cannot_convert_admin(
     )
     assert login.status_code == 302
 
-    wrong_password = client.post(
-        f"/admin/api/users/{target_id}/ldap-link",
-        json={
-            "password": "wrong",
-            "confirm_username": "alice",
-            "directory_username": "alice",
-        },
+    _headers, wrong_password = password_step_up_headers(
+        client,
+        "ldap.link",
+        target_id,
+        password="wrong",
+        expected_status=403,
     )
     linked = client.post(
         f"/admin/api/users/{target_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "alice",
             "directory_username": "alice",
         },
+        headers=_step_up(client, "ldap.link", target_id),
     )
     admin_rejected = client.post(
         f"/admin/api/users/{second_admin_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "second_admin",
             "directory_username": "second_admin",
         },
+        headers=_step_up(client, "ldap.link", second_admin_id),
     )
 
     assert wrong_password.status_code == 403
@@ -799,10 +804,10 @@ def test_admin_ldap_link_preserves_native_factors_but_removes_oidc(
     linked = client.post(
         f"/admin/api/users/{target_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "factor_user",
             "directory_username": "factor_user",
         },
+        headers=_step_up(client, "ldap.link", target_id),
     )
 
     assert linked.status_code == 201
@@ -845,10 +850,10 @@ def test_admin_link_invalidates_an_existing_local_browser_session(
     linked = client.post(
         f"/admin/api/users/{target_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "alice",
             "directory_username": "alice",
         },
+        headers=_step_up(client, "ldap.link", target_id),
     )
     assert linked.status_code == 201
     linked.close()
@@ -884,6 +889,7 @@ def test_admin_ldap_link_rejects_oversized_json_before_reauthentication(
         f"/admin/api/users/{target_id}/ldap-link",
         data=b'{"padding":"' + (b"x" * 5000) + b'"}',
         content_type="application/json",
+        headers=_step_up(client, "ldap.link", target_id),
     )
 
     assert response.status_code == 413
@@ -930,17 +936,21 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
     missing_password = client.delete(
         f"/admin/api/users/{target_id}/ldap-identities/{identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "alice",
         },
+        headers=_step_up(
+            client, "ldap.unlink", f"{target_id}:{identity_id}"
+        ),
     )
     unlinked = client.delete(
         f"/admin/api/users/{target_id}/ldap-identities/{identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "alice",
             "new_password": "new-local-password-123",
         },
+        headers=_step_up(
+            client, "ldap.unlink", f"{target_id}:{identity_id}"
+        ),
     )
 
     assert missing_password.status_code == 400
@@ -1023,7 +1033,10 @@ def test_linked_user_cannot_be_promoted_to_admin(app, client):
         data={"username": "local_admin", "password": "password123"},
     ).status_code == 302
 
-    response = client.post(f"/admin/api/users/{target_id}/promote")
+    response = client.post(
+        f"/admin/api/users/{target_id}/promote",
+        headers=_step_up(client, "user.manage", f"{target_id}:promote"),
+    )
 
     assert response.status_code == 400
     with app.app_context():

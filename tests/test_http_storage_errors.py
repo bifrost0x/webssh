@@ -1,5 +1,7 @@
 """Safe HTTP boundaries for typed persistent-storage corruption."""
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 GENERIC_ERROR = 'Stored data is unreadable. Please restore or remove it.'
 
@@ -115,6 +117,9 @@ def test_corrupt_app_settings_admin_post_does_not_overwrite_bytes(
     response = client.post(
         '/admin/api/settings',
         json={'registration_enabled': True},
+        headers=password_step_up_headers(
+            client, 'settings.update', 'global'
+        )[0],
     )
 
     assert response.status_code == 503

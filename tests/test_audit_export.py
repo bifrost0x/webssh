@@ -3,6 +3,8 @@
 import json
 from logging.handlers import RotatingFileHandler
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -199,6 +201,9 @@ def test_retention_rejects_out_of_range_without_changing_handlers(
     response = client.post(
         "/admin/api/audit/retention",
         json={"backup_count": 0},
+        headers=password_step_up_headers(
+            client, "audit.retention", "global"
+        )[0],
     )
 
     assert response.status_code == 400
@@ -222,6 +227,9 @@ def test_retention_endpoint_applies_selected_backup_count(
     response = client.post(
         "/admin/api/audit/retention",
         json={"backup_count": 14},
+        headers=password_step_up_headers(
+            client, "audit.retention", "global"
+        )[0],
     )
 
     assert response.status_code == 200

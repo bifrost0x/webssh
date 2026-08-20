@@ -7,6 +7,7 @@ import zipfile
 import pytest
 
 from app.backup_manager import create_backup
+from tests.step_up_helpers import password_step_up_headers
 
 
 def _create_user(app, username, *, admin):
@@ -27,6 +28,10 @@ def _login(client, username):
         'password': 'password123',
     })
     assert response.status_code == 302
+
+
+def _step_up(client, action, target):
+    return password_step_up_headers(client, action, target)[0]
 
 
 def _wait_for_status(client, operation_id, expected, timeout=5):
@@ -139,7 +144,16 @@ def test_busy_backup_response_does_not_expose_exception_details(
 
     monkeypatch.setattr(isolated_operations, 'create', reject_operation)
 
-    response = client.post(endpoint, data=b'PK\x03\x04')
+    action, target = (
+        ('backup.create', 'new')
+        if endpoint == '/admin/api/backups'
+        else ('backup.upload', 'upload')
+    )
+    response = client.post(
+        endpoint,
+        data=b'PK\x03\x04',
+        headers=_step_up(client, action, target),
+    )
 
     assert response.status_code == 409
     assert response.json == {
@@ -161,7 +175,11 @@ def test_upload_limit_response_does_not_expose_exception_details(
 
     monkeypatch.setattr(admin_backup, '_stream_upload', reject_upload)
 
-    response = client.post('/admin/api/backups/upload', data=b'PK\x03\x04')
+    response = client.post(
+        '/admin/api/backups/upload',
+        data=b'PK\x03\x04',
+        headers=_step_up(client, 'backup.upload', 'upload'),
+    )
 
     assert response.status_code == 413
     assert response.json == {'error': 'Backup upload is too large'}
@@ -175,14 +193,19 @@ def test_admin_can_create_and_one_time_download_online_backup(
     _create_user(app, 'backup_admin', admin=True)
     _login(client, 'backup_admin')
 
-    created = client.post('/admin/api/backups')
+    created = client.post(
+        '/admin/api/backups',
+        headers=_step_up(client, 'backup.create', 'new'),
+    )
     assert created.status_code == 202
     operation_id = created.json['operation_id']
     ready = _wait_for_status(client, operation_id, {'ready', 'failed'})
     assert ready.json['status'] == 'ready'
 
     download = client.post(
-        f'/admin/api/backups/{operation_id}/download', buffered=False
+        f'/admin/api/backups/{operation_id}/download',
+        buffered=False,
+        headers=_step_up(client, 'backup.download', operation_id),
     )
     assert download.status_code == 200
     assert download.mimetype == 'application/zip'
@@ -192,7 +215,8 @@ def test_admin_can_create_and_one_time_download_online_backup(
     assert operation_id not in isolated_operations._records
     download.close()
     assert client.post(
-        f'/admin/api/backups/{operation_id}/download'
+        f'/admin/api/backups/{operation_id}/download',
+        headers=_step_up(client, 'backup.download', operation_id),
     ).status_code == 404
 
 
@@ -201,13 +225,18 @@ def test_interrupted_download_invalidates_server_archive(
 ):
     _create_user(app, 'disconnect_backup_admin', admin=True)
     _login(client, 'disconnect_backup_admin')
-    created = client.post('/admin/api/backups')
+    created = client.post(
+        '/admin/api/backups',
+        headers=_step_up(client, 'backup.create', 'new'),
+    )
     operation_id = created.json['operation_id']
     ready = _wait_for_status(client, operation_id, {'ready', 'failed'})
     assert ready.json['status'] == 'ready'
 
     download = client.post(
-        f'/admin/api/backups/{operation_id}/download', buffered=False
+        f'/admin/api/backups/{operation_id}/download',
+        buffered=False,
+        headers=_step_up(client, 'backup.download', operation_id),
     )
     download.close()
 
@@ -225,6 +254,7 @@ def test_uploaded_backup_is_session_bound_and_requires_two_step_reauth(
         '/admin/api/backups/upload',
         data=archive.read_bytes(),
         content_type='application/zip',
+        headers=_step_up(client, 'backup.upload', 'upload'),
     )
     assert uploaded.status_code == 202
     operation_id = uploaded.json['operation_id']
@@ -236,15 +266,10 @@ def test_uploaded_backup_is_session_bound_and_requires_two_step_reauth(
         'format_version', 'legacy', 'total_uncompressed_size',
     }
 
-    other_session = app.test_client()
-    _login(other_session, 'restore_admin')
-    assert other_session.get(
-        f'/admin/api/backups/{operation_id}'
-    ).status_code == 404
-
     first = client.post(
         f'/admin/api/backups/{operation_id}/restore/prepare',
         json={'acknowledge_sensitive_restore': True},
+        headers=_step_up(client, 'backup.restore_prepare', operation_id),
     )
     assert first.status_code == 200
     token = first.json['confirmation_token']
@@ -254,7 +279,6 @@ def test_uploaded_backup_is_session_bound_and_requires_two_step_reauth(
             'confirmation_token': token,
             'confirmation_phrase': 'RESTORE',
             'confirm_destructive_restore': True,
-            'password': 'wrong-password',
         },
     ).status_code == 403
 
@@ -271,12 +295,18 @@ def test_uploaded_backup_is_session_bound_and_requires_two_step_reauth(
             'confirmation_token': token,
             'confirmation_phrase': 'RESTORE',
             'confirm_destructive_restore': True,
-            'password': 'password123',
         },
+        headers=_step_up(client, 'backup.restore', operation_id),
     )
     assert response.status_code == 202
     assert len(started) == 1
     assert started[0].status == 'restoring'
+
+    other_session = app.test_client()
+    _login(other_session, 'restore_admin')
+    assert other_session.get(
+        f'/admin/api/backups/{operation_id}'
+    ).status_code in {302, 404}
 
 
 def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
@@ -291,6 +321,7 @@ def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
         '/admin/api/backups/upload',
         data=future.read_bytes(),
         content_type='application/zip',
+        headers=_step_up(client, 'backup.upload', 'upload'),
     )
     operation_id = uploaded.json['operation_id']
     verified = _wait_for_status(client, operation_id, {'verified', 'failed'})
@@ -305,6 +336,7 @@ def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
     assert client.post(
         f'/admin/api/backups/{operation_id}/restore/prepare',
         json={'acknowledge_sensitive_restore': True},
+        headers=_step_up(client, 'backup.restore_prepare', operation_id),
     ).status_code == 409
 
     with client.session_transaction() as browser_session:
@@ -325,8 +357,8 @@ def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
             'confirmation_token': token,
             'confirmation_phrase': 'RESTORE',
             'confirm_destructive_restore': True,
-            'password': 'password123',
         },
+        headers=_step_up(client, 'backup.restore', operation_id),
     )
 
     assert response.status_code == 409
@@ -345,6 +377,7 @@ def test_legacy_v1_upload_remains_restore_compatible(
         '/admin/api/backups/upload',
         data=legacy.read_bytes(),
         content_type='application/zip',
+        headers=_step_up(client, 'backup.upload', 'upload'),
     )
     operation_id = uploaded.json['operation_id']
     verified = _wait_for_status(client, operation_id, {'verified', 'failed'})
@@ -357,6 +390,7 @@ def test_legacy_v1_upload_remains_restore_compatible(
     prepared = client.post(
         f'/admin/api/backups/{operation_id}/restore/prepare',
         json={'acknowledge_sensitive_restore': True},
+        headers=_step_up(client, 'backup.restore_prepare', operation_id),
     )
     assert prepared.status_code == 200
 
@@ -373,6 +407,7 @@ def test_upload_limit_and_csrf_are_enforced(
         '/admin/api/backups/upload',
         data=b'PK123',
         content_type='application/zip',
+        headers=_step_up(client, 'backup.upload', 'upload'),
     )
     assert oversized.status_code == 413
     assert not tuple(Path(config.BACKUP_TEMP_DIR).glob('operation-*'))
@@ -387,7 +422,10 @@ def test_admin_backup_ui_is_native_and_has_destructive_confirmations():
     assert 'data-tab="backup"' in template
     assert 'restoreFirstConfirmModal' in template
     assert 'restoreSecondConfirmModal' in template
-    assert 'restorePassword' in template
+    assert 'restorePassword' not in template
+    assert 'X-WebSSH-Step-Up' in Path('static/js/admin.js').read_text(
+        encoding='utf-8'
+    )
     assert 'backupDataSchemaVersion' in template
     assert 'backupCurrentDataSchemaVersion' in template
     assert 'backupCreatedAt' in template

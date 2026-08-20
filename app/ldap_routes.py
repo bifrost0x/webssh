@@ -18,7 +18,6 @@ from . import socketio, user_lifecycle
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
     check_rate_limit,
-    check_reauth_rate_limit,
     password_exceeds_bcrypt_limit,
     user_creation_transaction,
 )
@@ -30,7 +29,7 @@ from .auth_assurance import (
     consume_pending,
     finalize_login,
 )
-from .decorators import admin_required
+from .decorators import admin_required, step_up_required
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
 from .models import (
     LDAPIdentity,
@@ -68,17 +67,6 @@ def _request_body_too_large():
 
 def get_directory():
     return LDAPDirectory()
-
-
-def _local_password_matches(user, password):
-    if user.ldap_identity is not None:
-        return False
-    try:
-        return not password_exceeds_bcrypt_limit(password) and user.check_password(
-            password
-        )
-    except (TypeError, ValueError, UnicodeError):
-        return False
 
 
 def _rate_limited(endpoint):
@@ -284,33 +272,14 @@ def ldap_login():
     return redirect(url_for('index'))
 
 
-def _admin_reauthenticated(data, endpoint):
-    client_ip = request.remote_addr or 'unknown'
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        endpoint,
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded(endpoint, client_ip)
-        return None, (jsonify({'error': 'Too many password attempts'}), 429)
-    if not _local_password_matches(current_user, data.get('password', '')):
-        return None, (jsonify({
-            'error': 'Administrator password is incorrect'
-        }), 403)
-    return client_ip, None
-
-
 @ldap_blueprint.post('/admin/api/users/<int:user_id>/ldap-link')
 @admin_required
 @login_required
+@step_up_required('ldap.link', lambda user_id: user_id)
 def link_ldap_identity(user_id):
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    _client_ip, rejection = _admin_reauthenticated(data, 'ldap_link_reauth')
-    if rejection is not None:
-        return rejection
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({'error': 'User not found'}), 404
@@ -451,13 +420,14 @@ def ldap_status():
 )
 @admin_required
 @login_required
+@step_up_required(
+    'ldap.unlink',
+    lambda user_id, identity_id: f'{user_id}:{identity_id}',
+)
 def unlink_ldap_identity(user_id, identity_id):
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    _client_ip, rejection = _admin_reauthenticated(data, 'ldap_unlink_reauth')
-    if rejection is not None:
-        return rejection
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({'error': 'User not found'}), 404

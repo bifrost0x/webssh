@@ -2,6 +2,8 @@
 
 import logging
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -21,6 +23,10 @@ def _login(client, username):
         data={"username": username, "password": "password123"},
     )
     assert response.status_code == 302
+
+
+def _step_up(client, action, target):
+    return password_step_up_headers(client, action, target)[0]
 
 
 def _prepare_oidc_callback(app, client, user_id, *, state, subject):
@@ -99,10 +105,10 @@ def test_admin_link_requires_password_confirmation_and_stable_subject(
     linked = client.post(
         f"/admin/api/users/{target_id}/oidc-link",
         json={
-            "password": "password123",
             "confirm_username": "oidc_target",
             "subject": "stable-subject",
         },
+        headers=_step_up(client, "oidc.link", target_id),
     )
 
     assert rejected.status_code == 403
@@ -148,16 +154,20 @@ def test_admin_can_list_and_unlink_the_exact_oidc_identity(
     wrong_target = client.delete(
         f"/admin/api/users/{target_id}/oidc-identities/{other_identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "unlink_oidc_target",
         },
+        headers=_step_up(
+            client, "oidc.unlink", f"{target_id}:{other_identity_id}"
+        ),
     )
     removed = client.delete(
         f"/admin/api/users/{target_id}/oidc-identities/{target_identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "unlink_oidc_target",
         },
+        headers=_step_up(
+            client, "oidc.unlink", f"{target_id}:{target_identity_id}"
+        ),
     )
 
     assert listed.status_code == 200
@@ -198,19 +208,21 @@ def test_oidc_unlink_requires_admin_reauthentication_and_confirmation(
         db.session.commit()
         identity_id = identity.id
 
-    wrong_password = client.delete(
-        f"/admin/api/users/{target_id}/oidc-identities/{identity_id}",
-        json={
-            "password": "wrong",
-            "confirm_username": "reauth_oidc_target",
-        },
+    _headers, wrong_password = password_step_up_headers(
+        client,
+        "oidc.unlink",
+        f"{target_id}:{identity_id}",
+        password="wrong",
+        expected_status=403,
     )
     wrong_confirmation = client.delete(
         f"/admin/api/users/{target_id}/oidc-identities/{identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "someone-else",
         },
+        headers=_step_up(
+            client, "oidc.unlink", f"{target_id}:{identity_id}"
+        ),
     )
 
     assert wrong_password.status_code == 403
@@ -219,9 +231,11 @@ def test_oidc_unlink_requires_admin_reauthentication_and_confirmation(
         assert db.session.get(OIDCIdentity, identity_id) is not None
 
 
-def test_oidc_unlink_rate_limits_before_bcrypt(app, client, monkeypatch):
+def test_oidc_unlink_step_up_rate_limits_before_bcrypt(
+    app, client, monkeypatch
+):
     import config
-    import app.oidc_routes as oidc_routes
+    import app.step_up_routes as step_up_routes
     from app.models import User
 
     _create_user(app, "limited_unlink_admin", is_admin=True)
@@ -229,7 +243,7 @@ def test_oidc_unlink_rate_limits_before_bcrypt(app, client, monkeypatch):
     _login(client, "limited_unlink_admin")
     monkeypatch.setattr(config, "OIDC_ENABLED", True)
     monkeypatch.setattr(
-        oidc_routes,
+        step_up_routes,
         "check_reauth_rate_limit",
         lambda *_args, **_kwargs: True,
     )
@@ -241,13 +255,11 @@ def test_oidc_unlink_rate_limits_before_bcrypt(app, client, monkeypatch):
         ),
     )
 
-    response = client.delete(
-        f"/admin/api/users/{target_id}/oidc-identities/1",
-        json={
-            "password": "password123",
-            "confirm_username": "limited_unlink_target",
-        },
-    )
+    response = client.post("/api/step-up/password", json={
+        "action": "oidc.unlink",
+        "target": f"{target_id}:1",
+        "password": "password123",
+    })
 
     assert response.status_code == 429
 
@@ -272,17 +284,28 @@ def test_oidc_unlink_commit_failure_preserves_the_mapping(
         db.session.commit()
         identity_id = identity.id
 
+    headers = _step_up(client, "oidc.unlink", f"{target_id}:{identity_id}")
+    original_commit = db.session.commit
+    commit_calls = 0
+
+    def fail_identity_commit():
+        nonlocal commit_calls
+        commit_calls += 1
+        if commit_calls == 2:
+            raise RuntimeError("database unavailable")
+        return original_commit()
+
     monkeypatch.setattr(
         db.session,
         "commit",
-        lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+        fail_identity_commit,
     )
     response = client.delete(
         f"/admin/api/users/{target_id}/oidc-identities/{identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "failing_unlink_target",
         },
+        headers=headers,
     )
 
     assert response.status_code == 503
@@ -293,9 +316,11 @@ def test_oidc_unlink_commit_failure_preserves_the_mapping(
         assert db.session.get(OIDCIdentity, identity_id) is not None
 
 
-def test_oidc_link_rate_limits_before_bcrypt(app, client, monkeypatch):
+def test_oidc_link_step_up_rate_limits_before_bcrypt(
+    app, client, monkeypatch
+):
     import config
-    import app.oidc_routes as oidc_routes
+    import app.step_up_routes as step_up_routes
     from app.models import User
 
     _create_user(app, "limited_oidc_admin", is_admin=True)
@@ -303,10 +328,9 @@ def test_oidc_link_rate_limits_before_bcrypt(app, client, monkeypatch):
     _login(client, "limited_oidc_admin")
     monkeypatch.setattr(config, "OIDC_ENABLED", True)
     monkeypatch.setattr(
-        oidc_routes,
+        step_up_routes,
         "check_reauth_rate_limit",
         lambda *_args, **_kwargs: True,
-        raising=False,
     )
     monkeypatch.setattr(
         User,
@@ -316,17 +340,14 @@ def test_oidc_link_rate_limits_before_bcrypt(app, client, monkeypatch):
         ),
     )
 
-    response = client.post(
-        f"/admin/api/users/{target_id}/oidc-link",
-        json={
-            "password": "password123",
-            "confirm_username": "limited_oidc_target",
-            "subject": "subject",
-        },
-    )
+    response = client.post("/api/step-up/password", json={
+        "action": "oidc.link",
+        "target": target_id,
+        "password": "password123",
+    })
 
     assert response.status_code == 429
-    assert response.get_json() == {"error": "Too many password attempts"}
+    assert response.get_json() == {"error": "Step-up authentication failed"}
 
 
 def test_oidc_link_commit_failure_is_not_a_duplicate(
@@ -340,19 +361,30 @@ def test_oidc_link_commit_failure_is_not_a_duplicate(
     _login(client, "failing_oidc_admin")
     monkeypatch.setattr(config, "OIDC_ENABLED", True)
     monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    headers = _step_up(client, "oidc.link", target_id)
+    original_commit = db.session.commit
+    commit_calls = 0
+
+    def fail_identity_commit():
+        nonlocal commit_calls
+        commit_calls += 1
+        if commit_calls == 2:
+            raise RuntimeError("database unavailable")
+        return original_commit()
+
     monkeypatch.setattr(
         db.session,
         "commit",
-        lambda: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+        fail_identity_commit,
     )
 
     response = client.post(
         f"/admin/api/users/{target_id}/oidc-link",
         json={
-            "password": "password123",
             "confirm_username": "failing_oidc_target",
             "subject": "stable-subject",
         },
+        headers=headers,
     )
 
     assert response.status_code == 503
@@ -799,9 +831,78 @@ def test_oidc_step_up_state_cannot_be_replayed_as_a_login(
         "/oidc/callback?state=step-up-callback-state"
     )
 
-    assert rejected.status_code == 400
+    assert rejected.status_code == 403
     with app.app_context():
         assert OIDCLoginState.query.count() == 0
+
+
+def test_oidc_step_up_issues_one_exact_grant_for_same_admin(
+    app,
+    client,
+    monkeypatch,
+):
+    import time
+
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity, db
+    from app.oidc_service import create_login_state
+    from app.step_up import hash_step_up_target
+
+    user_id = _create_user(app, "stepup_oidc_admin", is_admin=True)
+    _login(client, "stepup_oidc_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(
+        config, "OIDC_MFA_ACR_VALUES", frozenset({"urn:example:aal2"})
+    )
+    state = "successful-step-up-state"
+    binding = "successful-step-up-binding"
+    with app.app_context():
+        db.session.add(OIDCIdentity(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="stepup-admin-subject",
+        ))
+        create_login_state(
+            state=state,
+            nonce=f"nonce-{state}",
+            session_binding=binding,
+            code_verifier=f"verifier-{state}",
+            purpose="step_up",
+            continuation="/admin",
+            requested_acr="urn:example:aal2",
+            step_up_action="settings.update",
+            step_up_target_hash=hash_step_up_target("global"),
+        )
+        db.session.commit()
+    with client.session_transaction() as browser_session:
+        browser_session["oidc_binding"] = binding
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, {
+            "iss": "https://issuer.example",
+            "sub": "stepup-admin-subject",
+            "acr": "urn:example:aal2",
+            "amr": ["mfa"],
+            "auth_time": int(time.time()),
+        }),
+    )
+
+    callback = client.get(f"/oidc/callback?state={state}")
+    result = client.get("/api/step-up/oidc/result")
+    changed = client.post(
+        "/admin/api/settings",
+        json={"registration_enabled": False},
+        headers={"X-WebSSH-Step-Up": result.get_json()["grant"]},
+    )
+
+    assert callback.status_code == 302
+    assert callback.headers["Location"].endswith("/admin")
+    assert result.status_code == 200
+    assert changed.status_code == 200
+    assert client.get("/api/step-up/oidc/result").status_code == 404
 
 
 def test_oidc_callback_rejections_are_security_audited(

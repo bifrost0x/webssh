@@ -6,7 +6,7 @@ from flask_login import current_user, login_required
 import config
 
 from .audit_logger import log_security_event
-from .decorators import admin_required
+from .decorators import admin_required, step_up_required
 from .host_key_store import HostKeyStore
 
 
@@ -66,6 +66,7 @@ def list_global_host_keys():
 @host_key_blueprint.delete("/admin/api/host-keys/<entry_id>")
 @admin_required
 @login_required
+@step_up_required("host_key.global_delete", lambda entry_id: entry_id)
 def delete_global_host_key(entry_id):
     _require_enabled()
     removed = HostKeyStore.delete_file_entry(

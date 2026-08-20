@@ -23,6 +23,14 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+# Kept in this module as the public decorator import without creating an
+# auth/decorator import cycle during application startup.
+def step_up_required(action, target):
+    from .step_up import step_up_required as implementation
+
+    return implementation(action, target)
+
 def socket_login_required(f):
     """
     Decorator to require authentication for socket events.
