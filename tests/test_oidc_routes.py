@@ -53,9 +53,8 @@ def _prepare_oidc_callback(app, client, user_id, *, state, subject):
 
 def _signed_provider(state, claims):
     class SignedProvider:
-        def authorize_access_token(self, *, code_verifier, redirect_uri):
+        def authorize_access_token(self, *, code_verifier):
             assert code_verifier == f"verifier-{state}"
-            assert redirect_uri == "https://localhost/oidc/callback"
             return {"id_token": "validated-by-provider-client"}
 
         def parse_id_token(self, token, *, nonce):
@@ -452,9 +451,8 @@ def test_linked_oidc_callback_is_single_use_and_normalizes_issuer(
         browser_session["oidc_binding"] = "browser-oidc-binding"
 
     class FakeProvider:
-        def authorize_access_token(self, *, code_verifier, redirect_uri):
+        def authorize_access_token(self, *, code_verifier):
             assert code_verifier == "callback-pkce-verifier"
-            assert redirect_uri == "https://localhost/oidc/callback"
             return {
                 "userinfo": {
                     "iss": "https://issuer.example/",

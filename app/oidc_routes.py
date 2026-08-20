@@ -198,7 +198,6 @@ def oidc_callback():
         client = _client()
         token = client.authorize_access_token(
             code_verifier=intent.code_verifier,
-            redirect_uri=config.OIDC_REDIRECT_URI,
         )
         signed_claims = None
         if token.get("id_token"):
