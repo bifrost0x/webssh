@@ -1,34 +1,32 @@
 const { test, expect } = require('playwright/test');
 const { login } = require('./helpers');
 
-test('login recovery remains reachable in a 720px-high viewport', async ({ page }) => {
+test('login alternatives remain reachable in a 720px-high viewport', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/login');
     const initialCardTop = await page.locator('.auth-card').evaluate(
         element => element.getBoundingClientRect().top
     );
-    await page.locator('#recoveryLoginBtn').click();
-
-    const submit = page.locator('#submitRecoveryLogin');
-    await submit.scrollIntoViewIfNeeded();
-    await expect(submit).toBeVisible();
+    const oidcLogin = page.locator('#oidcLoginBtn');
+    await oidcLogin.scrollIntoViewIfNeeded();
+    await expect(oidcLogin).toBeVisible();
+    await expect(page.locator('#recoveryLoginBtn')).toHaveCount(0);
     const layout = await page.evaluate(() => {
-        const rect = document.querySelector('#submitRecoveryLogin').getBoundingClientRect();
+        const rect = document.querySelector('#oidcLoginBtn').getBoundingClientRect();
         return {
             viewportHeight: window.innerHeight,
             bodyClientHeight: document.body.clientHeight,
             bodyScrollHeight: document.body.scrollHeight,
-            submitTop: rect.top,
-            submitBottom: rect.bottom,
+            alternativeTop: rect.top,
+            alternativeBottom: rect.bottom,
             htmlOverflowY: getComputedStyle(document.documentElement).overflowY,
             bodyOverflowY: getComputedStyle(document.body).overflowY,
         };
     });
 
-    expect(layout.bodyScrollHeight).toBeGreaterThan(layout.bodyClientHeight);
     expect(initialCardTop).toBeGreaterThanOrEqual(0);
-    expect(layout.submitTop).toBeGreaterThanOrEqual(0);
-    expect(layout.submitBottom).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.alternativeTop).toBeGreaterThanOrEqual(0);
+    expect(layout.alternativeBottom).toBeLessThanOrEqual(layout.viewportHeight);
     expect(layout.htmlOverflowY).not.toBe('hidden');
     expect(layout.bodyOverflowY).not.toBe('hidden');
 });
@@ -96,7 +94,7 @@ test('new login, security, and admin controls honor the stored locale', async ({
 
     await expect(page.locator('#passkeyLoginBtn')).toHaveText('Mit Passkey anmelden');
     await expect(page.locator('#oidcLoginBtn')).toHaveText('Mit Identitätsanbieter anmelden');
-    await expect(page.locator('#recoveryLoginBtn')).toHaveText('Mit Wiederherstellungscode anmelden');
+    await expect(page.locator('#recoveryLoginBtn')).toHaveCount(0);
 
     await login(page);
     await page.goto('/security');
@@ -106,6 +104,12 @@ test('new login, security, and admin controls honor the stored locale', async ({
     await expect(page.locator('#recoveryGenerateBtn')).toHaveText(
         'Wiederherstellungscodes erstellen'
     );
+    await page.locator('#passkeyAddBtn').click();
+    await expect(page.locator('#securityConfirmationTitle')).toHaveText(
+        'Sicherheitsaktion bestätigen'
+    );
+    await expect(page.locator('#securityConfirmationSubmit')).toHaveText('Weiter');
+    await page.locator('#securityConfirmationCancel').click();
 
     await page.goto('/admin');
     await page.locator('.admin-tab[data-tab="settings"]').click();

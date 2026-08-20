@@ -91,7 +91,8 @@
                 <button class="btn btn-danger hidden" id="totpDisableBtn">Disable MFA requirement</button>
             </div>
             <div id="totpList"></div>
-            <div id="totpEnrollment" class="hidden" style="margin-top:16px;">
+            <div id="totpEnrollment" class="hidden" style="margin-top:16px;" role="region" aria-live="polite" aria-labelledby="totpEnrollmentTitle">
+                <h3 id="totpEnrollmentTitle">Set up authenticator app</h3>
                 <p>Scan this QR code locally in your authenticator app, or enter the setup key manually. The setup expires after five minutes.</p>
                 <img id="totpQr" alt="TOTP enrollment QR code" width="240" height="240">
                 <p><strong>Setup key:</strong> <code id="totpSecret"></code></p>
@@ -101,7 +102,7 @@
                 </div>
                 <button class="btn btn-primary" id="totpActivateBtn">Verify and enable MFA</button>
             </div>
-            <pre id="totpRecoveryCodes" style="white-space:pre-wrap;word-break:break-word;"></pre>
+            <pre id="totpRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
         {% endif %}
         {% if recovery_codes_enabled and not recovery_mode %}
@@ -109,11 +110,41 @@
             <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
             <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>
             <button class="btn btn-primary" id="recoveryGenerateBtn" data-i18n="security.generateRecoveryCodes">Generate recovery codes</button>
-            <pre id="recoveryCodes" style="white-space:pre-wrap;word-break:break-word;"></pre>
+            <pre id="recoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
         {% endif %}
     </main>
-    <div id="notificationContainer" class="notification-container"></div>
+    <div class="modal modal-small" id="securityConfirmationModal" role="dialog" aria-modal="true" aria-labelledby="securityConfirmationTitle" aria-describedby="securityConfirmationHint" aria-hidden="true">
+        <div class="modal-content">
+            <form id="securityConfirmationForm">
+                <div class="modal-header">
+                    <h2 id="securityConfirmationTitle" data-i18n="security.confirmSecurityAction">Confirm security action</h2>
+                    <button type="button" class="close" id="securityConfirmationClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="admin-muted" id="securityConfirmationHint">Confirm this account security change.</p>
+                    <div class="form-group hidden" id="securityConfirmationPasswordGroup">
+                        <label for="securityConfirmationPassword" data-i18n="auth.currentPassword">Current password</label>
+                        <input type="password" id="securityConfirmationPassword" class="form-control" autocomplete="current-password">
+                    </div>
+                    <div class="form-group hidden" id="securityConfirmationLabelGroup">
+                        <label for="securityConfirmationLabel" id="securityConfirmationLabelText">Name</label>
+                        <input type="text" id="securityConfirmationLabel" class="form-control" autocomplete="off" maxlength="120">
+                    </div>
+                    <div class="form-group hidden" id="securityConfirmationAccountGroup">
+                        <label for="securityConfirmationAccount" data-i18n="security.confirmAccountName">Type your account name to confirm</label>
+                        <input type="text" id="securityConfirmationAccount" class="form-control" autocomplete="off" maxlength="80">
+                    </div>
+                    <p class="alert alert-error hidden" id="securityConfirmationError" role="alert" aria-live="assertive"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="securityConfirmationCancel" data-i18n="common.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="securityConfirmationSubmit" data-i18n="common.continue">Continue</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>

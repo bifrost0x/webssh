@@ -88,10 +88,97 @@
         setTimeout(() => item.remove(), 4000);
     }
 
-    function factorChangeBody() {
-        if (ldapManaged) { return {}; }
-        const password = window.prompt(t('auth.currentPassword', 'Current password'));
-        return password === null ? null : { password };
+    let confirmationRequest = null;
+
+    function closeConfirmation(result) {
+        const modal = document.getElementById('securityConfirmationModal');
+        if (!modal || !confirmationRequest) { return; }
+        const resolve = confirmationRequest.resolve;
+        confirmationRequest = null;
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+        document.getElementById('securityConfirmationForm')?.reset();
+        document.getElementById('securityConfirmationError')?.classList.add('hidden');
+        resolve(result);
+    }
+
+    function requestConfirmation(options) {
+        const modal = document.getElementById('securityConfirmationModal');
+        if (!modal) { return Promise.resolve(null); }
+        if (confirmationRequest) { closeConfirmation(null); }
+        const settings = Object.assign({
+            password: false,
+            label: false,
+            account: false,
+            labelText: 'Name',
+            labelDefault: '',
+            hint: 'Confirm this account security change.'
+        }, options || {});
+        document.getElementById('securityConfirmationHint').textContent = settings.hint;
+        document.getElementById('securityConfirmationLabelText').textContent = settings.labelText;
+        document.getElementById('securityConfirmationPasswordGroup').classList.toggle('hidden', !settings.password);
+        document.getElementById('securityConfirmationLabelGroup').classList.toggle('hidden', !settings.label);
+        document.getElementById('securityConfirmationAccountGroup').classList.toggle('hidden', !settings.account);
+        document.getElementById('securityConfirmationLabel').value = settings.labelDefault;
+        document.getElementById('securityConfirmationError').classList.add('hidden');
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+        const firstField = settings.password
+            ? document.getElementById('securityConfirmationPassword')
+            : settings.label
+                ? document.getElementById('securityConfirmationLabel')
+                : document.getElementById('securityConfirmationAccount');
+        queueMicrotask(() => firstField?.focus());
+        return new Promise(resolve => {
+            confirmationRequest = { resolve, settings };
+        });
+    }
+
+    function submitConfirmation() {
+        if (!confirmationRequest) { return; }
+        const settings = confirmationRequest.settings;
+        const result = {};
+        if (settings.password) {
+            result.password = document.getElementById('securityConfirmationPassword').value;
+            if (!result.password) {
+                const error = document.getElementById('securityConfirmationError');
+                error.textContent = t('auth.currentPasswordRequired', 'Current password is required.');
+                error.classList.remove('hidden');
+                return;
+            }
+        }
+        if (settings.label) {
+            result.label = document.getElementById('securityConfirmationLabel').value.trim();
+            if (!result.label) {
+                const error = document.getElementById('securityConfirmationError');
+                error.textContent = settings.labelText + ' is required.';
+                error.classList.remove('hidden');
+                return;
+            }
+        }
+        if (settings.account) {
+            result.account = document.getElementById('securityConfirmationAccount').value.trim();
+            if (!result.account) {
+                const error = document.getElementById('securityConfirmationError');
+                error.textContent = t('security.confirmAccountName', 'Type your account name to confirm.');
+                error.classList.remove('hidden');
+                return;
+            }
+        }
+        closeConfirmation(result);
+    }
+
+    async function factorChangeBody(options) {
+        const settings = Object.assign({}, options || {}, {
+            password: !ldapManaged
+        });
+        const result = await requestConfirmation(settings);
+        if (result === null) { return null; }
+        const body = {};
+        if (result.password) { body.password = result.password; }
+        if (result.label) { body.label = result.label; }
+        if (result.account) { body.confirm_username = result.account; }
+        return body;
     }
 
     async function loadHostKeys() {
@@ -149,7 +236,7 @@
             button.className = 'btn btn-danger';
             button.textContent = t('common.delete', 'Delete');
             button.addEventListener('click', async () => {
-                const body = factorChangeBody();
+                const body = await factorChangeBody();
                 if (body === null) { return; }
                 await api(`/api/webauthn/credentials/${credential.id}`, {
                     method: 'DELETE',
@@ -178,14 +265,18 @@
             )) {
                 return;
             }
-            const body = factorChangeBody();
+            const defaultName = legacyUpgrade
+                ? t('security.replacementPasskey', 'Replacement passkey')
+                : t('security.passkeyDefaultName', 'Passkey');
+            const body = await factorChangeBody({
+                label: true,
+                labelText: t('security.passkeyName', 'Passkey name'),
+                labelDefault: defaultName,
+                hint: t('security.confirmFactorChange', 'Confirm the passkey enrollment for this account.')
+            });
             if (body === null) { return; }
-            const name = window.prompt(
-                t('security.passkeyName', 'Passkey name'),
-                legacyUpgrade
-                    ? t('security.replacementPasskey', 'Replacement passkey')
-                    : t('security.passkeyDefaultName', 'Passkey')
-            ) || t('security.passkeyDefaultName', 'Passkey');
+            const name = body.label;
+            delete body.label;
             if (legacyUpgrade) { body.legacy_upgrade = true; }
             const options = decodeCreationOptions(await api(
                 '/api/webauthn/register/options',
@@ -237,14 +328,13 @@
     }
 
     async function beginTotpEnrollment() {
-        const body = factorChangeBody();
+        const body = await factorChangeBody({
+            label: true,
+            labelText: t('security.authenticatorName', 'Authenticator name'),
+            labelDefault: t('security.authenticatorDefaultName', 'Authenticator'),
+            hint: t('security.confirmFactorChange', 'Confirm the authenticator enrollment for this account.')
+        });
         if (body === null) { return; }
-        const label = window.prompt(
-            t('security.authenticatorName', 'Authenticator name'),
-            t('security.authenticatorDefaultName', 'Authenticator')
-        );
-        if (label === null) { return; }
-        body.label = label;
         const data = await api('/api/totp/enroll', { method: 'POST', body });
         activeTotpEnrollment = data;
         const image = document.getElementById('totpQr');
@@ -297,7 +387,9 @@
             'security.confirmDisableMfa',
             'Disable the MFA requirement for future sign-ins? Enrolled factors remain stored.'
         ))) { return; }
-        const body = factorChangeBody();
+        const body = await factorChangeBody({
+            hint: t('security.confirmFactorChange', 'Confirm this account security change.')
+        });
         if (body === null) { return; }
         body.confirm_disable_mfa = true;
         await api('/api/totp/disable', { method: 'POST', body });
@@ -306,6 +398,18 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('securityConfirmationForm')?.addEventListener('submit', event => {
+            event.preventDefault();
+            submitConfirmation();
+        });
+        document.getElementById('securityConfirmationClose')?.addEventListener('click', () => closeConfirmation(null));
+        document.getElementById('securityConfirmationCancel')?.addEventListener('click', () => closeConfirmation(null));
+        document.getElementById('securityConfirmationModal')?.addEventListener('click', event => {
+            if (event.target.id === 'securityConfirmationModal') { closeConfirmation(null); }
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && confirmationRequest) { closeConfirmation(null); }
+        });
         document.getElementById('hostKeyRefresh')?.addEventListener('click', () => {
             loadHostKeys().catch(error => notify(error.message, 'error'));
         });
@@ -314,7 +418,9 @@
         }
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {
-                const body = factorChangeBody();
+                const body = await factorChangeBody({
+                    hint: t('security.confirmFactorChange', 'Confirm this account security change.')
+                });
                 if (body === null) { return; }
                 const data = await api('/api/recovery-codes', {
                     method: 'POST',
@@ -347,16 +453,14 @@
         });
         document.getElementById('recoveryDisableMfaBtn')?.addEventListener('click', async () => {
             try {
-                const confirmation = window.prompt(
-                    t(
-                        'security.confirmAccountName',
-                        'Enter your username to disable MFA'
-                    )
-                );
-                if (confirmation === null) { return; }
+                const body = await requestConfirmation({
+                    account: true,
+                    hint: t('security.confirmDisableMfa', 'Disable every MFA factor?')
+                });
+                if (body === null) { return; }
                 await api('/api/auth/mfa/disable', {
                     method: 'POST',
-                    body: { confirm_username: confirmation }
+                    body: { confirm_username: body.account }
                 });
                 window.location.assign(root + '/');
             } catch (error) {

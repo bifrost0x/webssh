@@ -41,6 +41,8 @@ def test_security_center_requires_login_and_exposes_management_controls(
         b'id="recoveryGenerateBtn"',
         b'id="passkeyList"',
         b'id="passkeyUpgradeBtn"',
+        b'id="securityConfirmationModal"',
+        b'id="securityConfirmationPassword"',
     ):
         assert control in authenticated.data
     assert b'js/security-ui.js' in authenticated.data
@@ -120,8 +122,10 @@ def test_admin_page_exposes_audit_and_global_host_key_controls(app, client):
     assert b'id="auditRetention"' in response.data
     assert b'id="globalHostKeyList"' in response.data
     assert b'id="securityActionModal"' in response.data
-    assert b'id="securityActionPassword"' in response.data
     assert b'id="securityActionConfirmation"' in response.data
+    assert b'id="stepUpModal"' in response.data
+    assert b'id="stepUpPassword"' in response.data
+    assert b'id="stepUpTotp"' in response.data
     assert b'js/security-ui.js' in response.data
 
 
@@ -150,3 +154,39 @@ def test_security_features_can_be_rolled_back_independently(
     _login(client, "rollback_user")
     assert client.get("/api/host-keys").status_code == 404
     assert client.get("/admin/api/audit/export").status_code == 404
+
+
+def test_security_center_offers_totp_only_when_effectively_active(
+    app, client, monkeypatch
+):
+    import config
+    from app.models import SecurityFeatureState, User, db
+
+    _create_user(app, "optional_totp_user", is_admin=True)
+    _login(client, "optional_totp_user")
+
+    monkeypatch.setattr(config, "TOTP_ENABLED", True)
+    deployment_only = client.get("/security")
+    assert b'id="totpAddBtn"' not in deployment_only.data
+
+    with app.app_context():
+        admin = User.query.filter_by(username="optional_totp_user").one()
+        db.session.add(SecurityFeatureState(
+            feature="totp",
+            enabled=True,
+            updated_by=admin.id,
+        ))
+        db.session.commit()
+
+    active = client.get("/security")
+    assert b'id="totpAddBtn"' in active.data
+
+
+def test_security_copy_keeps_mfa_optional(app, client):
+    _create_user(app, "optional_mfa_user")
+    _login(client, "optional_mfa_user")
+
+    html = client.get("/security").get_data(as_text=True).lower()
+
+    assert "required for all" not in html
+    assert "mandatory for all" not in html
