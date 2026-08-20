@@ -4,12 +4,12 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-function loadProfileManager() {
+function loadProfileManager(contextOverrides = {}) {
     const source = fs.readFileSync(path.join(
         __dirname,
         '../../static/js/profile-manager.js',
     ), 'utf8');
-    const context = { window: {} };
+    const context = { window: {}, ...contextOverrides };
 
     vm.createContext(context);
     vm.runInContext(source, context);
@@ -149,6 +149,76 @@ test('collapsed group state toggles for the session but search keeps matches vis
     manager.profileSearchQuery = '';
     manager.toggleGroupCollapsed('group:production');
     assert.equal(manager.isGroupCollapsed('group:production'), false);
+});
+
+test('collapse all records every rendered profile section', () => {
+    const manager = loadProfileManager();
+    manager.__testWindow.ProfileLauncherUtils = require(
+        '../../static/js/profile-launcher-utils.js'
+    );
+    manager.profiles = [
+        {id: 'favorite', name: 'Favorite', group: 'Production', favorite: true},
+        {id: 'grouped', name: 'Grouped', group: 'Production'},
+        {id: 'ungrouped', name: 'Ungrouped'},
+    ];
+    manager.profileSearchQuery = '';
+    manager.collapsedGroups = new Set();
+    let renders = 0;
+    manager.renderManagementList = () => { renders += 1; };
+
+    assert.equal(manager.collapseAllGroups(), true);
+    assert.deepEqual([...manager.collapsedGroups].sort(), [
+        'favorites',
+        'group:production',
+        'ungrouped',
+    ]);
+    assert.equal(renders, 1);
+});
+
+test('collapse all stays inactive while search results are expanded', () => {
+    const manager = loadProfileManager();
+    manager.__testWindow.ProfileLauncherUtils = require(
+        '../../static/js/profile-launcher-utils.js'
+    );
+    manager.profiles = [{id: 'profile-1', name: 'API', group: 'Production'}];
+    manager.profileSearchQuery = 'api';
+    manager.collapsedGroups = new Set();
+    manager.renderManagementList = () => {
+        throw new Error('search must not collapse or rerender groups');
+    };
+
+    assert.equal(manager.collapseAllGroups(), false);
+    assert.deepEqual([...manager.collapsedGroups], []);
+});
+
+test('opening Hosts focuses the saved connection search', () => {
+    let focused = null;
+    const modal = {
+        querySelector(selector) {
+            if (selector === '#profileSearchInput') {
+                return {focus() { focused = 'search'; }};
+            }
+            if (selector === '[data-connection-asset="hosts"]') {
+                return {focus() { focused = 'hosts'; }};
+            }
+            return null;
+        },
+    };
+    const manager = loadProfileManager({
+        document: {
+            getElementById(id) {
+                return id === 'profileManagementModal' ? modal : null;
+            },
+        },
+    });
+    manager.showManagementList = () => {};
+    manager.loadProfiles = () => {};
+    manager.loadKeys = () => {};
+    manager.__testWindow.ModalManager = {open() {}};
+
+    manager.openManagement();
+
+    assert.equal(focused, 'search');
 });
 
 test('moving a profile applies only the authoritative successful response', () => {

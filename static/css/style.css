@@ -5258,10 +5258,11 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 #profileManagementView:not(.hidden) {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
+    overflow: hidden;
 }
 
 #profileEditorView:not(.hidden) {
@@ -5316,6 +5317,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .profile-management-toolbar {
+    flex: 0 0 auto;
     justify-content: space-between;
 }
 
@@ -5339,8 +5341,16 @@ body.keyboard-open.notepad-focused .notepad-panel {
 
 .profile-management-list {
     display: grid;
+    grid-auto-rows: max-content;
+    align-content: start;
+    flex: 1;
+    min-height: 0;
     gap: 12px;
     margin-top: 18px;
+    padding-right: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
 }
 
 .profile-management-section {
@@ -5986,6 +5996,10 @@ body.keyboard-open.notepad-focused .notepad-panel {
     .profile-management-toolbar {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .profile-management-list {
+        padding-right: 6px;
     }
 
     .profile-management-item {

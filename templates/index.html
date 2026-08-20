@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=21">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=22">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=7">
 </head>
@@ -697,6 +697,7 @@
                         <p data-i18n="profiles.manageHint">Save and update connection settings without connecting.</p>
                         <label class="sr-only" for="profileSearchInput" data-i18n="profiles.search">Search saved connections</label>
                         <input type="search" id="profileSearchInput" class="form-control profile-management-search" data-i18n-placeholder="profiles.searchPlaceholder" placeholder="Search by name, host, user, or group">
+                        <button type="button" id="collapseAllProfilesBtn" class="btn btn-secondary" data-i18n="profiles.collapseAll">Collapse all</button>
                         <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create saved connection</button>
                     </div>
                     <div id="profileManagementList" class="profile-management-list"></div>
@@ -1279,7 +1280,7 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=16"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=17"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=6"></script>
@@ -1287,7 +1288,7 @@
     <script src="{{ url_for('static', filename='js/session-diagnostics-charts.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
@@ -1300,7 +1301,7 @@
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=8"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=12"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=13"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
