@@ -1,5 +1,7 @@
 """Visibility and authentication boundaries for security management UI."""
 
+import time
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -66,7 +68,7 @@ def test_login_shows_only_enabled_external_authentication(
     assert b'id="oidcLoginBtn"' in enabled.data
 
 
-def test_ldap_managed_security_center_hides_local_authentication_controls(
+def test_ldap_managed_security_center_offers_passkeys_but_not_local_password(
     app,
     client,
     monkeypatch,
@@ -76,6 +78,7 @@ def test_ldap_managed_security_center_hides_local_authentication_controls(
     from app.models import LDAPIdentity, User, db
 
     _create_user(app, "ldap_security_user")
+    _login(client, "ldap_security_user")
     monkeypatch.setattr(config, "LDAP_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: True)
@@ -89,18 +92,18 @@ def test_ldap_managed_security_center_hides_local_authentication_controls(
             distinguished_name="uid=ldap_security_user,dc=example,dc=com",
         ))
         db.session.commit()
-        user_id = user.id
+    from flask import g
+    g.pop("_login_user", None)
+    db.session.expire_all()
     with client.session_transaction() as browser_session:
-        browser_session["_user_id"] = str(user_id)
-        browser_session["_fresh"] = True
-        browser_session["_ldap_verified_at"] = 2**31
+        browser_session["_ldap_verified_at"] = int(time.time())
 
     response = client.get("/security")
 
     assert response.status_code == 200
     assert b'id="securityChangePasswordBtn"' not in response.data
-    assert b'id="passkeyAddBtn"' not in response.data
-    assert b'id="passkeyUpgradeBtn"' not in response.data
+    assert b'id="passkeyAddBtn"' in response.data
+    assert b'id="passkeyUpgradeBtn"' in response.data
     assert b'id="recoveryGenerateBtn"' not in response.data
     assert b'id="ldapManagedNotice"' in response.data
 

@@ -198,6 +198,22 @@ def consume_pending(token, session_binding):
     return pending
 
 
+def pending_authentication(token, session_binding):
+    """Return a valid bound pending transaction without consuming it."""
+    token_value = str(token or '')
+    binding_value = str(session_binding or '')
+    if not token_value or not binding_value:
+        raise PendingAuthenticationError('pending authentication is invalid')
+    now = as_naive_utc(datetime.now(timezone.utc))
+    pending = PendingAuthentication.query.filter_by(
+        token_hash=_digest(token_value),
+        session_binding_hash=_digest(binding_value),
+    ).first()
+    if pending is None or pending.expires_at <= now:
+        raise PendingAuthenticationError('pending authentication is invalid')
+    return pending
+
+
 def _normalize_methods(methods, primary_method):
     if not isinstance(methods, (list, tuple)):
         raise TypeError('methods must be a list or tuple')
@@ -311,6 +327,38 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
     )
     pending._finalized = True
     return row
+
+
+def finalize_pending_with_factor(
+    token,
+    session_binding,
+    *,
+    user_id,
+    factor,
+    assurance,
+):
+    """Consume a bound primary login and finish it with one verified factor."""
+    pending = consume_pending(token, session_binding)
+    if pending.user_id != int(user_id):
+        raise PendingAuthenticationError('pending authentication is invalid')
+    upgraded = AssuranceLevel(assurance)
+    current = AssuranceLevel(pending.assurance)
+    ranking = {
+        AssuranceLevel.BASIC: 0,
+        AssuranceLevel.MFA: 1,
+        AssuranceLevel.PHISHING_RESISTANT: 2,
+    }
+    if ranking[upgraded] < ranking[current]:
+        raise AuthenticationFinalizationError(
+            'authentication assurance cannot be downgraded'
+        )
+    pending.assurance = upgraded.value
+    continuation = pending.continuation
+    row = finalize_login(
+        pending,
+        methods=[pending.primary_method, factor],
+    )
+    return row, continuation
 
 
 def authentication_session_for_token(token, user_id, auth_generation):

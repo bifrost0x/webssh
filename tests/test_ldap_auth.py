@@ -8,7 +8,14 @@ from urllib.parse import urlsplit
 import pytest
 
 
-def _create_user(app, username, password="password123", *, is_admin=False):
+def _create_user(
+    app,
+    username,
+    password="password123",
+    *,
+    is_admin=False,
+    mfa_enabled=False,
+):
     from app.auth import register_user
     from app.models import db
 
@@ -16,6 +23,7 @@ def _create_user(app, username, password="password123", *, is_admin=False):
         user, error = register_user(username, password)
         assert error is None
         user.is_admin = is_admin
+        user.mfa_enabled = mfa_enabled
         db.session.commit()
         return user.id
 
@@ -218,6 +226,75 @@ def test_ldap_login_accepts_only_matching_explicit_identity(
         assert row.directory_username == "alice-renamed"
         assert row.distinguished_name == identity.distinguished_name
         assert row.last_verified_at is not None
+
+
+def test_ldap_password_stays_pending_when_user_enabled_mfa(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import (
+        AuthenticationSession,
+        LDAPIdentity,
+        PendingAuthentication,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "ldap_mfa_user", mfa_enabled=True)
+    with app.app_context():
+        db.session.add_all((
+            LDAPIdentity(
+                user_id=user_id,
+                provider="default",
+                subject="stable-ldap-mfa-id",
+                directory_username="ldap_mfa_user",
+                distinguished_name=(
+                    "uid=ldap_mfa_user,ou=people,dc=example,dc=com"
+                ),
+            ),
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=b"ldap-mfa-credential",
+                public_key=b"public-key",
+                sign_count=0,
+                transports="[]",
+                name="LDAP passkey",
+            ),
+        ))
+        db.session.commit()
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="stable-ldap-mfa-id",
+        distinguished_name=(
+            "uid=ldap_mfa_user,ou=people,dc=example,dc=com"
+        ),
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    import config
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={
+            "username": "ldap_mfa_user",
+            "password": "directory-password",
+        },
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "mfa_required": True,
+        "methods": ["passkey"],
+        "ok": True,
+    }
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
+        assert browser_session.get("_pending_authentication")
+    with app.app_context():
+        assert PendingAuthentication.query.count() == 1
+        assert AuthenticationSession.query.count() == 0
 
 
 def test_ldap_login_auto_provisions_verified_non_admin_identity(
@@ -674,6 +751,67 @@ def test_admin_link_is_explicit_reauthenticated_and_cannot_convert_admin(
         assert row.user_id == target_id
         assert row.directory_username == "alice"
         assert row.subject == "stable-alice-id"
+
+
+def test_admin_ldap_link_preserves_native_factors_but_removes_oidc(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import (
+        OIDCIdentity,
+        RecoveryCode,
+        WebAuthnCredential,
+        db,
+    )
+
+    _create_user(app, "local_admin", is_admin=True)
+    target_id = _create_user(app, "factor_user")
+    with app.app_context():
+        db.session.add_all((
+            WebAuthnCredential(
+                user_id=target_id,
+                credential_id=b"preserved-credential",
+                public_key=b"public-key",
+                sign_count=0,
+                transports="[]",
+                name="Preserved passkey",
+            ),
+            RecoveryCode(user_id=target_id, code_hash=b"r" * 32),
+            OIDCIdentity(
+                user_id=target_id,
+                issuer="https://issuer.example",
+                subject="oidc-subject",
+            ),
+        ))
+        db.session.commit()
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="stable-factor-id",
+        distinguished_name="uid=factor_user,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    assert client.post(
+        "/login",
+        data={"username": "local_admin", "password": "password123"},
+    ).status_code == 302
+
+    linked = client.post(
+        f"/admin/api/users/{target_id}/ldap-link",
+        json={
+            "password": "password123",
+            "confirm_username": "factor_user",
+            "directory_username": "factor_user",
+        },
+    )
+
+    assert linked.status_code == 201
+    with app.app_context():
+        assert WebAuthnCredential.query.filter_by(
+            user_id=target_id,
+        ).count() == 1
+        assert RecoveryCode.query.filter_by(user_id=target_id).count() == 1
+        assert OIDCIdentity.query.filter_by(user_id=target_id).count() == 0
 
 
 def test_admin_link_invalidates_an_existing_local_browser_session(

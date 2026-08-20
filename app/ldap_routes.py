@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
-from flask_login import current_user, login_required, login_user
+from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -22,14 +22,20 @@ from .auth import (
     password_exceeds_bcrypt_limit,
     user_creation_transaction,
 )
+from .auth_assurance import (
+    AssuranceLevel,
+    available_mfa_methods,
+    begin_authentication,
+    browser_session_binding,
+    consume_pending,
+    finalize_login,
+)
 from .decorators import admin_required
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
 from .models import (
     LDAPIdentity,
     OIDCIdentity,
-    RecoveryCode,
     User,
-    WebAuthnCredential,
     db,
 )
 
@@ -239,20 +245,42 @@ def ldap_login():
         ), 503
 
     user = mapping.user
+    verified_at = int(time.time())
     mapping.directory_username = username
     mapping.distinguished_name = resolved.distinguished_name
     mapping.last_verified_at = datetime.now(timezone.utc)
-    user.last_login = datetime.now(timezone.utc)
-    db.session.commit()
     session.clear()
-    session['_ldap_verified_at'] = int(time.time())
-    login_user(user, remember=False)
-    log_security_event(
-        'LDAP_LOGIN_SUCCESS',
-        user=user.username,
-        provider=mapping.provider,
-        ip=client_ip,
+    binding = browser_session_binding()
+    token = begin_authentication(
+        user,
+        'ldap',
+        assurance=AssuranceLevel.BASIC,
+        session_binding=binding,
+        remember=False,
+        continuation='/',
+        evidence={
+            'provider': mapping.provider,
+            'verified_at': verified_at,
+        },
     )
+    if user.mfa_enabled:
+        methods = available_mfa_methods(user)
+        session['_pending_authentication'] = token
+        if request.accept_mimetypes.best == 'application/json':
+            return jsonify({
+                'ok': True,
+                'mfa_required': True,
+                'methods': list(methods),
+            })
+        return render_template(
+            'login.html',
+            auth_source='ldap',
+            mfa_required=True,
+            pending_token=token,
+            mfa_methods=methods,
+        )
+    pending = consume_pending(token, binding)
+    finalize_login(pending, methods=['ldap'])
     return redirect(url_for('index'))
 
 
@@ -320,13 +348,11 @@ def link_ldap_identity(user_id):
         distinguished_name=resolved.distinguished_name,
         last_verified_at=datetime.now(timezone.utc),
     )
-    # Destroy the dormant local credential and every alternative login factor.
+    # Destroy the dormant local credential and incompatible OIDC mapping.
     # Unlinking requires a fresh local password, so no old password silently
     # becomes valid again after a directory outage or rollback.
     target.set_password(secrets.token_urlsafe(48))
     target.auth_generation = int(target.auth_generation or 0) + 1
-    WebAuthnCredential.query.filter_by(user_id=target.id).delete()
-    RecoveryCode.query.filter_by(user_id=target.id).delete()
     OIDCIdentity.query.filter_by(user_id=target.id).delete()
     db.session.add(row)
     try:

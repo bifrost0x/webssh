@@ -29,7 +29,7 @@ def create_challenge(
     now=None,
     ttl=timedelta(minutes=5),
 ):
-    if purpose not in {"register", "authenticate"}:
+    if purpose not in {"register", "login", "mfa_login", "step_up"}:
         raise ChallengeError("Invalid WebAuthn challenge purpose")
     if not isinstance(challenge, bytes) or len(challenge) < 16:
         raise ChallengeError("Invalid WebAuthn challenge")

@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import re
+import time
 from types import SimpleNamespace
 
 from werkzeug.test import EnvironBuilder
@@ -72,6 +73,48 @@ def test_registration_options_require_current_password_and_exact_rp(
     assert options["authenticatorSelection"]["residentKey"] == "required"
     assert options["authenticatorSelection"]["userVerification"] == "required"
     assert base64.urlsafe_b64decode(options["challenge"] + "==")
+
+
+def test_ldap_user_can_request_passkey_registration_options(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from flask import g
+    from app import ldap_session
+    from app.models import LDAPIdentity, User, db
+
+    user_id = _create_user(app, "ldap_passkey_user")
+    _login(client, "ldap_passkey_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_admin = False
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider="default",
+            subject="ldap-passkey-subject",
+            directory_username="ldap_passkey_user",
+            distinguished_name="uid=ldap_passkey_user,dc=example,dc=com",
+        ))
+        db.session.commit()
+    g.pop("_login_user", None)
+    db.session.expire_all()
+    with client.session_transaction() as browser_session:
+        browser_session["_ldap_verified_at"] = int(time.time())
+    monkeypatch.setattr(config, "LDAP_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: True)
+
+    response = client.post(
+        "/api/webauthn/register/options",
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["user"]["name"] == "ldap_passkey_user"
 
 
 def test_registration_options_rate_limit_before_bcrypt(
@@ -347,11 +390,205 @@ def test_authentication_resolves_account_from_discoverable_credential(
     assert verified.status_code == 200
     assert verified.get_json() == {"ok": True}
     with client.session_transaction() as browser_session:
-        assert browser_session["_user_id"] == f"{user_id}:0"
+        assert browser_session["_user_id"].startswith(f"{user_id}:0:")
     with app.app_context():
+        from app.models import AuthenticationSession
+
         row = WebAuthnCredential.query.one()
         assert row.sign_count == 5
         assert row.last_used_at is not None
+        auth_session = AuthenticationSession.query.one()
+        assert auth_session.assurance == "PHISHING_RESISTANT"
+        assert auth_session.methods_json == '["passkey"]'
+
+
+def test_ldap_user_can_sign_in_directly_with_owned_passkey(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        AuthenticationSession,
+        LDAPIdentity,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "ldap_direct_passkey")
+    credential_id = b"ldap-direct-passkey-credential"
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_admin = False
+        db.session.add_all((
+            LDAPIdentity(
+                user_id=user_id,
+                provider="default",
+                subject="ldap-direct-passkey-subject",
+                directory_username="ldap_direct_passkey",
+                distinguished_name="uid=ldap_direct_passkey,dc=example,dc=com",
+            ),
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=credential_id,
+                public_key=b"verified-public-key",
+                sign_count=0,
+                transports="[]",
+                name="LDAP direct passkey",
+            ),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, "LDAP_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+
+    assert client.post("/api/webauthn/auth/options", json={}).status_code == 200
+    encoded_id = base64.urlsafe_b64encode(credential_id).decode().rstrip("=")
+    verified = client.post(
+        "/api/webauthn/auth/verify",
+        json={"credential": {"id": encoded_id}},
+    )
+
+    assert verified.status_code == 200
+    with app.app_context():
+        auth_session = AuthenticationSession.query.one()
+        assert auth_session.user_id == user_id
+        assert auth_session.assurance == "PHISHING_RESISTANT"
+
+
+def test_passkey_completes_pending_password_mfa(app, client, monkeypatch):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        AuthenticationSession,
+        PendingAuthentication,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "passkey_mfa_user")
+    credential_id = b"passkey-mfa-credential"
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=credential_id,
+            public_key=b"verified-public-key",
+            sign_count=0,
+            transports="[]",
+            name="MFA passkey",
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+    primary = client.post(
+        "/login",
+        data={"username": "passkey_mfa_user", "password": "password123"},
+    )
+    assert primary.status_code == 200
+
+    options = client.post("/api/webauthn/auth/options", json={})
+    encoded_id = base64.urlsafe_b64encode(credential_id).decode().rstrip("=")
+    verified = client.post(
+        "/api/webauthn/auth/verify",
+        json={"credential": {"id": encoded_id}},
+    )
+
+    assert options.status_code == 200
+    assert verified.status_code == 200
+    with client.session_transaction() as browser_session:
+        assert "_pending_authentication" not in browser_session
+        assert browser_session["_user_id"].startswith(f"{user_id}:0:")
+    with app.app_context():
+        assert PendingAuthentication.query.count() == 0
+        auth_session = AuthenticationSession.query.one()
+        assert auth_session.assurance == "PHISHING_RESISTANT"
+        assert auth_session.methods_json == '["password","passkey"]'
+
+
+def test_passkey_mfa_rejects_a_different_accounts_credential(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        AuthenticationSession,
+        PendingAuthentication,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "pending_owner")
+    other_id = _create_user(app, "credential_owner")
+    owner_credential = b"pending-owner-credential"
+    other_credential = b"different-owner-credential"
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        db.session.add_all((
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=owner_credential,
+                public_key=b"owner-key",
+                sign_count=0,
+                transports="[]",
+                name="Owner passkey",
+            ),
+            WebAuthnCredential(
+                user_id=other_id,
+                credential_id=other_credential,
+                public_key=b"other-key",
+                sign_count=0,
+                transports="[]",
+                name="Other passkey",
+            ),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+    assert client.post(
+        "/login",
+        data={"username": "pending_owner", "password": "password123"},
+    ).status_code == 200
+    assert client.post("/api/webauthn/auth/options", json={}).status_code == 200
+    encoded_id = base64.urlsafe_b64encode(other_credential).decode().rstrip("=")
+
+    rejected = client.post(
+        "/api/webauthn/auth/verify",
+        json={"credential": {"id": encoded_id}},
+    )
+
+    assert rejected.status_code == 401
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
+    with app.app_context():
+        assert AuthenticationSession.query.count() == 0
+        assert PendingAuthentication.query.filter_by(user_id=user_id).count() == 1
 
 
 def test_webauthn_auth_verify_rejects_oversized_json_before_challenge(

@@ -3,6 +3,7 @@
 
     const root = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const ldapManaged = document.body?.dataset.ldapManaged === 'true';
     const t = (key, fallback) => {
         const translated = window.i18n && i18n.t ? i18n.t(key) : null;
         return translated && translated !== key ? translated : (fallback || key);
@@ -87,6 +88,12 @@
         setTimeout(() => item.remove(), 4000);
     }
 
+    function factorChangeBody() {
+        if (ldapManaged) { return {}; }
+        const password = window.prompt(t('auth.currentPassword', 'Current password'));
+        return password === null ? null : { password };
+    }
+
     async function loadHostKeys() {
         const body = document.getElementById('hostKeyList');
         if (!body) { return; }
@@ -142,11 +149,11 @@
             button.className = 'btn btn-danger';
             button.textContent = t('common.delete', 'Delete');
             button.addEventListener('click', async () => {
-                const password = window.prompt(t('auth.currentPassword', 'Current password'));
-                if (password === null) { return; }
+                const body = factorChangeBody();
+                if (body === null) { return; }
                 await api(`/api/webauthn/credentials/${credential.id}`, {
                     method: 'DELETE',
-                    body: { password }
+                    body
                 });
                 await loadPasskeys();
             });
@@ -171,15 +178,14 @@
             )) {
                 return;
             }
-            const password = window.prompt(t('auth.currentPassword', 'Current password'));
-            if (password === null) { return; }
+            const body = factorChangeBody();
+            if (body === null) { return; }
             const name = window.prompt(
                 t('security.passkeyName', 'Passkey name'),
                 legacyUpgrade
                     ? t('security.replacementPasskey', 'Replacement passkey')
                     : t('security.passkeyDefaultName', 'Passkey')
             ) || t('security.passkeyDefaultName', 'Passkey');
-            const body = { password };
             if (legacyUpgrade) { body.legacy_upgrade = true; }
             const options = decodeCreationOptions(await api(
                 '/api/webauthn/register/options',
@@ -237,11 +243,11 @@
                     body: {}
                 }));
                 const credential = await navigator.credentials.get({ publicKey: options });
-                await api('/api/webauthn/auth/verify', {
+                const result = await api('/api/webauthn/auth/verify', {
                     method: 'POST',
                     body: { credential: serializeCredential(credential) }
                 });
-                window.location.assign(root + '/');
+                window.location.assign(root + (result.continuation || '/'));
             } catch (error) {
                 window.alert(error.message);
             }

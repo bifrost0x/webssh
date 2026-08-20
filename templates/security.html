@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 </head>
-<body data-theme="{{ theme|default('glass') }}">
+<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}">
     <header class="header">
         <div class="header-content">
             <h1 class="app-title" data-i18n="security.title">Security</h1>
@@ -20,7 +20,7 @@
         {% if ldap_managed %}
         <section class="admin-setting-row" id="ldapManagedNotice" style="max-width:none;">
             <h2>Directory-managed account</h2>
-            <p class="admin-muted">Your password and sign-in policy are managed by your LDAP directory. Local passwords, passkeys, recovery codes, and OIDC sign-in are unavailable for this account.</p>
+            <p class="admin-muted">Your password and primary sign-in policy are managed by your LDAP directory. You can add passkeys to your WebSSH account after a recent directory sign-in.</p>
         </section>
         {% else %}
         <section class="admin-setting-row" id="password" style="max-width:none;">
@@ -47,7 +47,6 @@
             </div>
         </section>
         {% endif %}
-        {% if not ldap_managed %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
                 <h2 data-i18n="security.passkeys">Passkeys</h2>
@@ -67,14 +66,13 @@
             <p class="admin-muted" id="passkeyList" data-i18n="security.passkeysDisabled">Passkeys are disabled by configuration.</p>
             {% endif %}
         </section>
-        {% if recovery_codes_enabled %}
+        {% if recovery_codes_enabled and not ldap_managed %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
             <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>
             <button class="btn btn-primary" id="recoveryGenerateBtn" data-i18n="security.generateRecoveryCodes">Generate recovery codes</button>
             <pre id="recoveryCodes" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
-        {% endif %}
         {% endif %}
     </main>
     <div id="notificationContainer" class="notification-container"></div>

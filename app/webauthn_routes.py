@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from threading import Lock
 
 from flask import Blueprint, abort, jsonify, request, session
-from flask_login import current_user, login_required, login_user
+from flask_login import current_user, login_required
 from webauthn import (
     base64url_to_bytes,
     generate_authentication_options,
@@ -32,6 +32,16 @@ from .audit_logger import (
     log_security_event,
 )
 from .auth import check_rate_limit, check_reauth_rate_limit
+from .auth_assurance import (
+    AssuranceLevel,
+    PendingAuthenticationError,
+    begin_authentication,
+    browser_session_binding,
+    consume_pending,
+    finalize_login,
+    finalize_pending_with_factor,
+    pending_authentication,
+)
 from .models import User, WebAuthnCredential, db
 from .webauthn_service import ChallengeError, consume_challenge, create_challenge
 
@@ -80,12 +90,24 @@ def _credential_descriptor(row):
     return PublicKeyCredentialDescriptor(id=bytes(row.credential_id))
 
 
+def _factor_change_reauthenticated(data):
+    if current_user.is_ldap_managed:
+        try:
+            verified_at = int(session.get("_ldap_verified_at", 0))
+        except (TypeError, ValueError):
+            return False
+        age = int(datetime.now(timezone.utc).timestamp()) - verified_at
+        return 0 <= age <= config.STEP_UP_MAX_AGE_SECONDS
+    try:
+        return current_user.check_password(data.get("password", ""))
+    except (TypeError, ValueError):
+        return False
+
+
 @webauthn_blueprint.get("/api/webauthn/credentials")
 @login_required
 def list_credentials():
     _require_enabled()
-    if current_user.is_ldap_managed:
-        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     rows = WebAuthnCredential.query.filter_by(
         user_id=current_user.id
     ).order_by(WebAuthnCredential.id.asc()).all()
@@ -108,8 +130,6 @@ def list_credentials():
 @login_required
 def registration_options():
     _require_enabled()
-    if current_user.is_ldap_managed:
-        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     client_ip = request.remote_addr or "unknown"
     if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
         current_user.id,
@@ -122,13 +142,14 @@ def registration_options():
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    password = data.get("password", "")
-    try:
-        password_valid = current_user.check_password(password)
-    except (TypeError, ValueError):
-        password_valid = False
-    if not password_valid:
-        return jsonify({"error": "Current password is incorrect"}), 403
+    if not _factor_change_reauthenticated(data):
+        return jsonify({
+            "error": (
+                "A recent directory sign-in is required"
+                if current_user.is_ldap_managed
+                else "Current password is incorrect"
+            )
+        }), 403
     existing = WebAuthnCredential.query.filter_by(
         user_id=current_user.id
     ).all()
@@ -164,8 +185,6 @@ def registration_options():
 @login_required
 def verify_registration():
     _require_enabled()
-    if current_user.is_ldap_managed:
-        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
@@ -240,8 +259,6 @@ def verify_registration():
 @login_required
 def delete_credential(credential_id):
     _require_enabled()
-    if current_user.is_ldap_managed:
-        return jsonify({"error": "Passkeys are unavailable for LDAP accounts"}), 403
     client_ip = request.remote_addr or "unknown"
     if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
         current_user.id,
@@ -254,12 +271,14 @@ def delete_credential(credential_id):
     data = _bounded_json()
     if data is None:
         return _request_body_too_large()
-    try:
-        password_valid = current_user.check_password(data.get("password", ""))
-    except (TypeError, ValueError):
-        password_valid = False
-    if not password_valid:
-        return jsonify({"error": "Current password is incorrect"}), 403
+    if not _factor_change_reauthenticated(data):
+        return jsonify({
+            "error": (
+                "A recent directory sign-in is required"
+                if current_user.is_ldap_managed
+                else "Current password is incorrect"
+            )
+        }), 403
     row = db.session.get(WebAuthnCredential, credential_id)
     if row is None or row.user_id != current_user.id:
         return jsonify({"error": "Passkey not found"}), 404
@@ -283,13 +302,38 @@ def authentication_options():
     ):
         log_rate_limit_exceeded("webauthn_auth_options", client_ip)
         return jsonify({"error": "Too many login attempts"}), 429
+    pending_token = session.get("_pending_authentication")
+    pending = None
+    purpose = "login"
+    challenge_user_id = None
+    allow_credentials = []
+    if pending_token is not None:
+        try:
+            pending = pending_authentication(
+                pending_token,
+                session.get("_auth_binding"),
+            )
+        except PendingAuthenticationError:
+            session.pop("_pending_authentication", None)
+            return jsonify({"error": "Authentication continuation expired"}), 401
+        purpose = "mfa_login"
+        challenge_user_id = pending.user_id
+        allow_credentials = [
+            _credential_descriptor(row)
+            for row in WebAuthnCredential.query.filter_by(
+                user_id=pending.user_id,
+            ).all()
+        ]
+        if not allow_credentials:
+            return jsonify({"error": "No passkey is available"}), 409
     options = generate_authentication_options(
         rp_id=config.WEBAUTHN_RP_ID,
+        allow_credentials=allow_credentials,
         user_verification=UserVerificationRequirement.REQUIRED,
     )
     create_challenge(
-        user_id=None,
-        purpose="authenticate",
+        user_id=challenge_user_id,
+        purpose=purpose,
         session_binding=_binding(),
         challenge=bytes(options.challenge),
     )
@@ -311,11 +355,22 @@ def verify_authentication():
         return _request_body_too_large()
     username = None
     user = None
+    pending_token = session.get("_pending_authentication")
+    pending = None
+    purpose = "login"
+    challenge_user_id = None
     try:
         with _authentication_lock:
+            if pending_token is not None:
+                pending = pending_authentication(
+                    pending_token,
+                    session.get("_auth_binding"),
+                )
+                purpose = "mfa_login"
+                challenge_user_id = pending.user_id
             challenge = consume_challenge(
-                user_id=None,
-                purpose="authenticate",
+                user_id=challenge_user_id,
+                purpose=purpose,
                 session_binding=_binding(),
             )
             credential_id = base64url_to_bytes(
@@ -329,7 +384,7 @@ def verify_authentication():
                 row is None
                 or user is None
                 or user.is_locked
-                or user.is_ldap_managed
+                or (pending is not None and user.id != pending.user_id)
             ):
                 raise ChallengeError("Credential is not available")
             username = user.username
@@ -348,6 +403,28 @@ def verify_authentication():
             row.sign_count = max(row.sign_count, new_sign_count)
             row.last_used_at = datetime.now(timezone.utc)
             db.session.commit()
+        if pending is not None:
+            _auth_session, continuation = finalize_pending_with_factor(
+                pending_token,
+                session.get("_auth_binding"),
+                user_id=user.id,
+                factor="passkey",
+                assurance=AssuranceLevel.PHISHING_RESISTANT,
+            )
+        else:
+            session.clear()
+            binding = browser_session_binding()
+            token = begin_authentication(
+                user,
+                "passkey",
+                assurance=AssuranceLevel.PHISHING_RESISTANT,
+                session_binding=binding,
+                remember=False,
+                continuation="/",
+            )
+            direct_pending = consume_pending(token, binding)
+            finalize_login(direct_pending, methods=["passkey"])
+            continuation = "/"
     except Exception as exc:
         db.session.rollback()
         log_security_event(
@@ -358,10 +435,7 @@ def verify_authentication():
             error=type(exc).__name__,
         )
         return jsonify({"error": "Passkey authentication failed"}), 401
-    session.clear()
-    login_user(user)
-    log_security_event(
-        "WEBAUTHN_AUTHENTICATION_SUCCESS",
-        user=user.username,
-    )
-    return jsonify({"ok": True})
+    response = {"ok": True}
+    if pending is not None:
+        response["continuation"] = continuation
+    return jsonify(response)

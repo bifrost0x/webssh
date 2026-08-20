@@ -54,7 +54,7 @@ def test_challenge_rejects_wrong_user_wrong_session_and_expiry(app):
     with app.app_context():
         create_challenge(
             user_id=user_id,
-            purpose="authenticate",
+            purpose="login",
             session_binding="browser-a-binding",
             challenge=b"authentication-challenge",
             now=now,
@@ -80,7 +80,7 @@ def test_challenge_rejects_wrong_user_wrong_session_and_expiry(app):
         ):
             with pytest.raises(ChallengeError):
                 consume_challenge(
-                    purpose="authenticate",
+                    purpose="login",
                     **kwargs,
                 )
 
@@ -93,7 +93,7 @@ def test_creating_challenge_prunes_expired_rows_for_other_bindings(app):
     with app.app_context():
         create_challenge(
             user_id=None,
-            purpose="authenticate",
+            purpose="login",
             session_binding="expired-browser-binding",
             challenge=b"expired-authentication-challenge",
             now=now - timedelta(minutes=10),
@@ -101,14 +101,14 @@ def test_creating_challenge_prunes_expired_rows_for_other_bindings(app):
         )
         create_challenge(
             user_id=None,
-            purpose="authenticate",
+            purpose="login",
             session_binding="live-browser-binding",
             challenge=b"live-authentication-challenge",
             now=now,
         )
         create_challenge(
             user_id=None,
-            purpose="authenticate",
+            purpose="login",
             session_binding="new-browser-binding",
             challenge=b"new-authentication-challenge",
             now=now,
@@ -122,3 +122,17 @@ def test_creating_challenge_prunes_expired_rows_for_other_bindings(app):
         b"live-authentication-challenge",
         b"new-authentication-challenge",
     ]
+
+
+@pytest.mark.parametrize("purpose", ("login", "mfa_login", "step_up"))
+def test_authentication_challenge_purposes_are_explicit(app, purpose):
+    from app.webauthn_service import create_challenge
+
+    with app.app_context():
+        row = create_challenge(
+            user_id=None,
+            purpose=purpose,
+            session_binding="browser-purpose-binding",
+            challenge=b"purpose-specific-challenge",
+        )
+        assert row.purpose == purpose
