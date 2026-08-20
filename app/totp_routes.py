@@ -15,6 +15,7 @@ from .auth_assurance import (
     AuthenticationFinalizationError,
     PendingAuthenticationError,
     browser_session_binding,
+    clear_recovery_restriction,
     finalize_pending_with_factor,
     pending_authentication,
 )
@@ -150,6 +151,7 @@ def finish_totp_enrollment():
         )
         return jsonify({"error": "TOTP enrollment could not be verified"}), 400
     session.pop("_totp_enrollment_label", None)
+    clear_recovery_restriction(replacement_factor="totp")
     response = jsonify({
         "ok": True,
         "authenticator_id": authenticator.id,

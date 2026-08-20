@@ -161,6 +161,21 @@ def handle_connect():
         disconnect()
         return False
 
+    from .auth_assurance import (
+        current_authentication_session,
+        recovery_session_required,
+    )
+    auth_session = current_authentication_session()
+    if auth_session is None or recovery_session_required(auth_session):
+        log_warning(
+            "Socket connection rejected by authentication assurance",
+            user=user.username,
+            sid=request.sid,
+        )
+        emit('connected', {'status': 'recovery_required'})
+        disconnect()
+        return False
+
     socket_sid = request.sid
     if not socket_capacity.reserve(
         user.id,

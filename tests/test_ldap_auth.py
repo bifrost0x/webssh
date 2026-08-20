@@ -955,7 +955,7 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
         )
 
 
-def test_linked_user_cannot_use_recovery_code_or_change_password(
+def test_linked_user_cannot_use_recovery_code_without_primary_authentication(
     app,
     client,
     monkeypatch,
@@ -995,7 +995,7 @@ def test_linked_user_cannot_use_recovery_code_or_change_password(
     )
     password_change = client.get("/change-password")
 
-    assert recovery.status_code == 401
+    assert recovery.status_code == 400
     assert login.status_code == 302
     assert password_change.status_code == 403, password_change.headers.get(
         "Location"

@@ -18,6 +18,7 @@ from .audit_logger import log_security_event
 from .models import (
     AuthenticationSession,
     PendingAuthentication,
+    RecoveryCode,
     TOTPAuthenticator,
     User,
     as_naive_utc,
@@ -419,6 +420,87 @@ def delete_current_authentication_session():
     return bool(deleted)
 
 
+def authentication_methods(row):
+    """Return bounded methods from one trusted AuthenticationSession row."""
+    if row is None:
+        return ()
+    try:
+        values = json.loads(row.methods_json or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return ()
+    if not isinstance(values, list) or len(values) > _MAX_METHODS:
+        return ()
+    methods = []
+    for value in values:
+        method = str(value or "").strip().lower()
+        if not _METHOD_PATTERN.fullmatch(method) or method in methods:
+            return ()
+        methods.append(method)
+    return tuple(methods)
+
+
+def recovery_session_required(row=None):
+    """Return whether the current server-side login still needs factor repair."""
+    row = current_authentication_session() if row is None else row
+    return "recovery_code" in authentication_methods(row)
+
+
+def recovery_route_allowed(path, method):
+    """Allow only factor repair and logout during a Recovery session."""
+    path = str(path or "")
+    method = str(method or "GET").upper()
+    if path == "/security" or path == "/logout" or path.startswith("/static/"):
+        return True
+    if path in {
+        "/api/webauthn/register/options",
+        "/api/webauthn/register/verify",
+    }:
+        return method == "POST"
+    if path == "/api/webauthn/credentials":
+        return method == "GET"
+    if path in {"/api/totp/enroll", "/api/totp/enroll/verify"}:
+        return method == "POST"
+    if path == "/api/totp/authenticators":
+        return method == "GET"
+    if path in {"/api/totp/disable", "/api/auth/mfa/disable"}:
+        return method == "POST"
+    return False
+
+
+def clear_recovery_restriction(*, replacement_factor=None, disable_mfa=False):
+    """Atomically release a Recovery session after repair or explicit disable."""
+    if type(disable_mfa) is not bool:
+        raise TypeError("disable_mfa must be a boolean")
+    row = current_authentication_session()
+    methods = list(authentication_methods(row))
+    if row is None or "recovery_code" not in methods:
+        return False
+    methods.remove("recovery_code")
+    if replacement_factor is not None:
+        factor = str(replacement_factor or "").strip().lower()
+        if not _METHOD_PATTERN.fullmatch(factor):
+            raise ValueError("invalid replacement factor")
+        if factor not in methods:
+            methods.append(factor)
+    if not methods:
+        raise AuthenticationFinalizationError("authentication methods are invalid")
+    row.methods_json = json.dumps(methods, separators=(",", ":"))
+    user = db.session.get(User, row.user_id)
+    if user is None:
+        raise AuthenticationFinalizationError("account is no longer eligible")
+    if disable_mfa:
+        user.mfa_enabled = False
+        row.assurance = AssuranceLevel.BASIC.value
+    db.session.commit()
+    log_security_event(
+        "RECOVERY_RESTRICTION_CLEARED",
+        user=user.username,
+        replacement_factor=replacement_factor,
+        mfa_disabled=disable_mfa,
+    )
+    return True
+
+
 def available_mfa_methods(user):
     """Return enrolled factors that are both deployed and admin-active."""
     from .security_features import feature_is_active
@@ -431,4 +513,8 @@ def available_mfa_methods(user):
         active=True,
     ).first() is not None:
         methods.append('totp')
+    if feature_is_active('recovery') and RecoveryCode.query.filter_by(
+        user_id=user.id,
+    ).first() is not None:
+        methods.append('recovery')
     return tuple(methods)

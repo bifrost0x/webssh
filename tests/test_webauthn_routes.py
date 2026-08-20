@@ -351,6 +351,60 @@ def test_registration_verify_rechecks_passkey_limit_before_storage(
         assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 10
 
 
+def test_verified_passkey_replacement_releases_recovery_session(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import AuthenticationSession, User, db
+    from app.recovery_service import generate_codes
+
+    user_id = _create_user(app, "passkey_recovery_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        recovery_code = generate_codes(user_id, count=1)[0]
+        db.session.commit()
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    assert client.post(
+        "/login",
+        data={"username": "passkey_recovery_user", "password": "password123"},
+    ).status_code == 200
+    assert client.post(
+        "/api/auth/recovery",
+        json={"code": recovery_code},
+    ).status_code == 200
+    assert client.post(
+        "/api/webauthn/register/options",
+        json={"password": "password123"},
+    ).status_code == 200
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_registration_response",
+        lambda **_kwargs: SimpleNamespace(
+            credential_id=b"replacement-passkey",
+            credential_public_key=b"public-key",
+            sign_count=0,
+        ),
+    )
+
+    verified = client.post(
+        "/api/webauthn/register/verify",
+        json={"credential": {"response": {"transports": []}}},
+    )
+
+    assert verified.status_code == 201
+    assert client.get("/").status_code == 200
+    with app.app_context():
+        row = AuthenticationSession.query.one()
+        assert row.methods_json == '["password","passkey"]'
+
+
 def test_authentication_resolves_account_from_discoverable_credential(
     app, client, monkeypatch
 ):

@@ -212,7 +212,8 @@ def create_app(
         if initialize_storage and current_user.is_authenticated:
             from .auth_assurance import current_authentication_session
 
-            if current_authentication_session() is None:
+            auth_session = current_authentication_session()
+            if auth_session is None:
                 username = current_user.username
                 logout_user()
                 session.clear()
@@ -221,6 +222,20 @@ def create_app(
                     user=username,
                 )
                 return redirect(url_for('login', next=request.path))
+            from .auth_assurance import (
+                recovery_route_allowed,
+                recovery_session_required,
+            )
+            if (
+                recovery_session_required(auth_session)
+                and not recovery_route_allowed(request.path, request.method)
+            ):
+                if request.path.startswith('/api/'):
+                    return jsonify({
+                        'error': 'A replacement factor or explicit MFA disable is required',
+                        'code': 'recovery_required',
+                    }), 403
+                abort(403)
 
     trusted_proxies = config.TRUSTED_PROXIES
     if trusted_proxies > 0:
@@ -649,11 +664,14 @@ def create_app(
     @app.route('/security')
     @login_required
     def security_center():
+        from .auth_assurance import recovery_session_required
+
         settings = get_user_settings(current_user.id)
         return render_template(
             'security.html',
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
+            recovery_mode=recovery_session_required(),
         )
 
     from .decorators import admin_required

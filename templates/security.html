@@ -13,14 +13,28 @@
     <header class="header">
         <div class="header-content">
             <h1 class="app-title" data-i18n="security.title">Security</h1>
+            {% if recovery_mode %}
+            <form action="{{ url_for('logout') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-secondary" id="recoveryLogoutBtn" type="submit">Sign out</button>
+            </form>
+            {% else %}
             <a class="btn btn-secondary" href="{{ url_for('index') }}">← <span data-i18n="security.backToTerminal">Back to terminal</span></a>
+            {% endif %}
         </div>
     </header>
     <main class="admin-main">
-        {% if ldap_managed %}
+        {% if recovery_mode %}
+        <section class="admin-setting-row" id="recoveryRequiredNotice" style="max-width:none;">
+            <h2>Recovery session</h2>
+            <p class="admin-muted">Add and verify a replacement Passkey or authenticator app to restore normal access. You can also explicitly disable MFA for this account.</p>
+            <p class="admin-muted">Confirm account: <code>{{ username }}</code></p>
+            <button class="btn btn-danger" id="recoveryDisableMfaBtn">Disable MFA and continue</button>
+        </section>
+        {% elif ldap_managed %}
         <section class="admin-setting-row" id="ldapManagedNotice" style="max-width:none;">
             <h2>Directory-managed account</h2>
-            <p class="admin-muted">Your password and primary sign-in policy are managed by your LDAP directory. You can add passkeys to your WebSSH account after a recent directory sign-in.</p>
+            <p class="admin-muted">Your password and primary sign-in policy are managed by your LDAP directory. You can add Passkeys and authenticator apps after a recent directory sign-in.</p>
         </section>
         {% else %}
         <section class="admin-setting-row" id="password" style="max-width:none;">
@@ -33,7 +47,7 @@
             </div>
         </section>
         {% endif %}
-        {% if host_key_management_enabled %}
+        {% if host_key_management_enabled and not recovery_mode %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
                 <h2 data-i18n="security.sshHostTrust">SSH host trust</h2>
@@ -90,7 +104,7 @@
             <pre id="totpRecoveryCodes" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
         {% endif %}
-        {% if recovery_codes_enabled and not ldap_managed %}
+        {% if recovery_codes_enabled and not recovery_mode %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
             <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>

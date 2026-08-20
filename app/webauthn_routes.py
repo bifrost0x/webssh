@@ -37,6 +37,7 @@ from .auth_assurance import (
     PendingAuthenticationError,
     begin_authentication,
     browser_session_binding,
+    clear_recovery_restriction,
     consume_pending,
     finalize_login,
     finalize_pending_with_factor,
@@ -252,6 +253,7 @@ def verify_registration():
         "WEBAUTHN_CREDENTIAL_REGISTERED",
         user=current_user.username,
     )
+    clear_recovery_restriction(replacement_factor="passkey")
     return jsonify({"id": row.id, "name": row.name}), 201
 
 

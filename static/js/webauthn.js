@@ -314,11 +314,11 @@
         }
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {
-                const password = window.prompt(t('auth.currentPassword', 'Current password'));
-                if (password === null) { return; }
+                const body = factorChangeBody();
+                if (body === null) { return; }
                 const data = await api('/api/recovery-codes', {
                     method: 'POST',
-                    body: { password }
+                    body
                 });
                 document.getElementById('recoveryCodes').textContent = data.codes.join('\n');
                 notify(t(
@@ -345,6 +345,24 @@
         document.getElementById('totpDisableBtn')?.addEventListener('click', () => {
             disableTotpMfa().catch(error => notify(error.message, 'error'));
         });
+        document.getElementById('recoveryDisableMfaBtn')?.addEventListener('click', async () => {
+            try {
+                const confirmation = window.prompt(
+                    t(
+                        'security.confirmAccountName',
+                        'Enter your username to disable MFA'
+                    )
+                );
+                if (confirmation === null) { return; }
+                await api('/api/auth/mfa/disable', {
+                    method: 'POST',
+                    body: { confirm_username: confirmation }
+                });
+                window.location.assign(root + '/');
+            } catch (error) {
+                notify(error.message, 'error');
+            }
+        });
         loadTotpAuthenticators().catch(error => notify(error.message, 'error'));
         document.getElementById('passkeyLoginBtn')?.addEventListener('click', async () => {
             try {
@@ -358,30 +376,6 @@
                     body: { credential: serializeCredential(credential) }
                 });
                 window.location.assign(root + (result.continuation || '/'));
-            } catch (error) {
-                window.alert(error.message);
-            }
-        });
-        document.getElementById('recoveryLoginBtn')?.addEventListener('click', () => {
-            const panel = document.getElementById('recoveryLoginPanel');
-            panel?.classList.toggle('hidden');
-            if (panel && !panel.classList.contains('hidden')) {
-                const username = document.getElementById('username')?.value.trim();
-                if (username) {
-                    document.getElementById('recoveryUsername').value = username;
-                }
-                document.getElementById('recoveryUsername')?.focus();
-            }
-        });
-        document.getElementById('submitRecoveryLogin')?.addEventListener('click', async () => {
-            try {
-                const username = document.getElementById('recoveryUsername').value.trim();
-                const code = document.getElementById('recoveryCode').value.trim();
-                await api('/login/recovery', {
-                    method: 'POST',
-                    body: { username, code }
-                });
-                window.location.assign(root + '/');
             } catch (error) {
                 window.alert(error.message);
             }

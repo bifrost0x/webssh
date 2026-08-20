@@ -240,6 +240,58 @@
         });
     }
 
+    function setupRecoveryMfa() {
+        const button = document.getElementById('submitRecoveryMfa');
+        const input = document.getElementById('recoveryMfaCode');
+        const error = document.getElementById('recoveryMfaError');
+        if (!button || !input || !error) {
+            return;
+        }
+        const root = (document.querySelector('meta[name="app-root"]')?.content || '')
+            .replace(/\/$/, '');
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const submit = async () => {
+            const code = input.value.trim();
+            if (!code) {
+                error.textContent = 'Enter a Recovery Code.';
+                error.classList.remove('hidden');
+                return;
+            }
+            button.disabled = true;
+            error.classList.add('hidden');
+            try {
+                const response = await fetch(root + '/api/auth/recovery', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    body: JSON.stringify({ code })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.error || 'Recovery authentication failed.');
+                }
+                window.location.assign(root + (data.continuation || '/security'));
+            } catch (requestError) {
+                error.textContent = requestError.message;
+                error.classList.remove('hidden');
+                input.select();
+            } finally {
+                button.disabled = false;
+            }
+        };
+        button.addEventListener('click', submit);
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                submit();
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         setupAuthenticationSources();
         setupPasswordToggles();
@@ -247,6 +299,7 @@
         setupRegisterValidation();
         setupChangePasswordValidation();
         setupTotpMfa();
+        setupRecoveryMfa();
     });
 
     if (typeof module === 'object' && module.exports) {

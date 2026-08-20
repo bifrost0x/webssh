@@ -169,8 +169,17 @@ def request_feature_name(path):
         return 'passkey'
     if path.startswith('/api/totp/'):
         return 'totp'
-    if path.startswith('/api/recovery-codes') or path == '/login/recovery' or (
-        path.startswith('/admin/api/users/') and path.endswith('/recovery')
+    if (
+        path.startswith('/api/recovery-codes')
+        or path in {
+            '/login/recovery',
+            '/api/auth/recovery',
+            '/api/auth/mfa/disable',
+        }
+        or (
+            path.startswith('/admin/api/users/')
+            and path.endswith('/recovery')
+        )
     ):
         return 'recovery'
     return None

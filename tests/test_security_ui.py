@@ -62,8 +62,9 @@ def test_login_shows_only_enabled_external_authentication(
     assert b'id="oidcLoginBtn"' not in disabled.data
     assert b'id="authenticationSource"' not in disabled.data
     assert b'id="localLoginForm" class="auth-source-form"' in disabled.data
-    assert b'id="recoveryLoginBtn"' in disabled.data
-    assert b'id="recoveryLoginPanel"' in disabled.data
+    assert b'id="recoveryLoginBtn"' not in disabled.data
+    assert b'id="recoveryLoginPanel"' not in disabled.data
+    assert b'id="recoveryMfaPanel"' not in disabled.data
     assert b'id="passkeyLoginBtn"' in enabled.data
     assert b'id="oidcLoginBtn"' in enabled.data
 
@@ -104,7 +105,7 @@ def test_ldap_managed_security_center_offers_passkeys_but_not_local_password(
     assert b'id="securityChangePasswordBtn"' not in response.data
     assert b'id="passkeyAddBtn"' in response.data
     assert b'id="passkeyUpgradeBtn"' in response.data
-    assert b'id="recoveryGenerateBtn"' not in response.data
+    assert b'id="recoveryGenerateBtn"' in response.data
     assert b'id="ldapManagedNotice"' in response.data
 
 
