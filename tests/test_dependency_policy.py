@@ -184,6 +184,16 @@ def test_runtime_locks_exclude_vulnerable_cryptography_versions(path):
     assert locked_version(path, "cryptography") >= Version("50.0.0")
 
 
+@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
+def test_runtime_locks_include_reviewed_mfa_libraries(path):
+    """TOTP verification and local SVG provisioning require reviewed APIs."""
+    pyotp_version = locked_version(path, "pyotp")
+    qrcode_version = locked_version(path, "qrcode")
+
+    assert Version("2.10") <= pyotp_version < Version("3")
+    assert Version("8.2") <= qrcode_version < Version("9")
+
+
 def test_frontend_lock_excludes_vulnerable_socket_io_parser_versions():
     """CVE-2026-69185 affects socket.io-parser 4.0.0 through 4.2.6."""
     package_lock = json.loads(Path("package-lock.json").read_text(encoding="utf-8"))

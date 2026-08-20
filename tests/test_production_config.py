@@ -29,8 +29,15 @@ SECURITY_ENV_NAMES = {
     'LDAP_UNIQUE_ID_ATTRIBUTE',
     'LDAP_URL',
     'LDAP_USER_FILTER',
+    'OIDC_MFA_ACR_VALUES',
+    'OIDC_MFA_AMR_VALUES',
+    'OIDC_PHISHING_RESISTANT_ACR_VALUES',
+    'OIDC_PHISHING_RESISTANT_AMR_VALUES',
+    'OIDC_STEP_UP_ACR_VALUES',
     'REGISTRATION_ENABLED',
     'SESSION_COOKIE_SECURE',
+    'STEP_UP_MAX_AGE_SECONDS',
+    'TOTP_ENABLED',
     'TRUSTED_PROXIES',
     'WEBAUTHN_ENABLED',
     'WEBAUTHN_ORIGIN',
@@ -80,6 +87,80 @@ def test_safe_production_profile_loads():
     result = _load_config(_production_env())
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_totp_is_disabled_by_default():
+    result = _load_config(
+        _production_env(),
+        'import config; print(config.TOTP_ENABLED)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == 'False'
+
+
+def test_oidc_assurance_values_default_to_empty_explicit_sets():
+    result = _load_config(
+        _production_env(),
+        'import config; print('
+        'config.OIDC_MFA_AMR_VALUES, '
+        'config.OIDC_MFA_ACR_VALUES, '
+        'config.OIDC_PHISHING_RESISTANT_AMR_VALUES, '
+        'config.OIDC_PHISHING_RESISTANT_ACR_VALUES, '
+        'config.OIDC_STEP_UP_ACR_VALUES)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == (
+        'frozenset() frozenset() frozenset() frozenset() frozenset()'
+    )
+
+
+def test_oidc_assurance_values_are_trimmed_explicit_sets():
+    result = _load_config(
+        _production_env(
+            OIDC_MFA_AMR_VALUES='mfa, otp, mfa',
+            OIDC_MFA_ACR_VALUES='urn:example:aal2',
+            OIDC_PHISHING_RESISTANT_AMR_VALUES='webauthn, hwk',
+            OIDC_PHISHING_RESISTANT_ACR_VALUES='urn:example:aal3',
+            OIDC_STEP_UP_ACR_VALUES='urn:example:aal2, urn:example:aal3',
+        ),
+        'import config; print('
+        'sorted(config.OIDC_MFA_AMR_VALUES), '
+        'sorted(config.OIDC_MFA_ACR_VALUES), '
+        'sorted(config.OIDC_PHISHING_RESISTANT_AMR_VALUES), '
+        'sorted(config.OIDC_PHISHING_RESISTANT_ACR_VALUES), '
+        'sorted(config.OIDC_STEP_UP_ACR_VALUES))',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == (
+        "['mfa', 'otp'] ['urn:example:aal2'] ['hwk', 'webauthn'] "
+        "['urn:example:aal3'] ['urn:example:aal2', 'urn:example:aal3']"
+    )
+
+
+@pytest.mark.parametrize('configured_value', ('59', '901', 'not-an-integer'))
+def test_step_up_max_age_rejects_values_outside_security_bounds(
+    configured_value,
+):
+    result = _load_config(
+        _production_env(STEP_UP_MAX_AGE_SECONDS=configured_value),
+        'import config',
+    )
+
+    assert result.returncode != 0
+    assert 'STEP_UP_MAX_AGE_SECONDS' in result.stdout + result.stderr
+
+
+def test_step_up_max_age_defaults_to_five_minutes():
+    result = _load_config(
+        _production_env(),
+        'import config; print(config.STEP_UP_MAX_AGE_SECONDS)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == '300'
 
 
 def test_ldap_is_disabled_by_default_and_ignores_incomplete_settings():
@@ -355,9 +436,16 @@ def test_homelab_compose_exposes_major_operator_choices():
         'BOOTSTRAP_REGISTRATION_ENABLED',
         'HOST_KEY_MANAGEMENT_ENABLED',
         'OIDC_ENABLED',
+        'OIDC_MFA_ACR_VALUES',
+        'OIDC_MFA_AMR_VALUES',
+        'OIDC_PHISHING_RESISTANT_ACR_VALUES',
+        'OIDC_PHISHING_RESISTANT_AMR_VALUES',
+        'OIDC_STEP_UP_ACR_VALUES',
         'RECOVERY_CODES_ENABLED',
         'REGISTRATION_ENABLED',
+        'STEP_UP_MAX_AGE_SECONDS',
         'TAILSCALE_SSH_ENABLED',
+        'TOTP_ENABLED',
         'TMUX_DEFAULT',
         'TMUX_ENABLED',
         'WEBAUTHN_ENABLED',

@@ -107,6 +107,9 @@ services:
       # - WEBAUTHN_RP_ID=ssh.example.com
       # - WEBAUTHN_RP_NAME=WebSSH
       # - WEBAUTHN_ORIGIN=https://ssh.example.com
+      # TOTP is a deployment capability ceiling. Its safe default is false;
+      # set TOTP_ENABLED=true only when users should be allowed to enroll it.
+      - TOTP_ENABLED=${TOTP_ENABLED:-false}
       # OIDC additionally requires a read-only client-secret file mounted into
       # the container. Accounts are linked by issuer + subject in Admin.
       # - OIDC_ENABLED=true
@@ -117,6 +120,14 @@ services:
       # - OIDC_ALLOWED_SUBJECTS=
       # - OIDC_ALLOWED_DOMAINS=example.com
       # - OIDC_LOGIN_RATE_LIMIT=10 per minute
+      # Provider-specific assurance values stay empty unless the provider's
+      # signed acr/amr contract explicitly documents them.
+      - OIDC_MFA_AMR_VALUES=${OIDC_MFA_AMR_VALUES:-}
+      - OIDC_MFA_ACR_VALUES=${OIDC_MFA_ACR_VALUES:-}
+      - OIDC_PHISHING_RESISTANT_AMR_VALUES=${OIDC_PHISHING_RESISTANT_AMR_VALUES:-}
+      - OIDC_PHISHING_RESISTANT_ACR_VALUES=${OIDC_PHISHING_RESISTANT_ACR_VALUES:-}
+      - OIDC_STEP_UP_ACR_VALUES=${OIDC_STEP_UP_ACR_VALUES:-}
+      - STEP_UP_MAX_AGE_SECONDS=${STEP_UP_MAX_AGE_SECONDS:-300}
 
       # === Optional: Usually no changes needed ===
       # The image already supplies DEBUG=false, HOST=0.0.0.0, PORT=5000, and
