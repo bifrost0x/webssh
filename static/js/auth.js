@@ -183,15 +183,76 @@
         next.addEventListener('input', checkMatch);
     }
 
+    function normalizeTotpCode(value) {
+        const normalized = String(value || '').replace(/\s+/g, '');
+        return /^[0-9]{6}$/.test(normalized) ? normalized : null;
+    }
+
+    function setupTotpMfa() {
+        const button = document.getElementById('submitTotpMfa');
+        const input = document.getElementById('totpMfaCode');
+        const error = document.getElementById('totpMfaError');
+        if (!button || !input || !error) {
+            return;
+        }
+        const root = (document.querySelector('meta[name="app-root"]')?.content || '')
+            .replace(/\/$/, '');
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const submit = async () => {
+            const code = normalizeTotpCode(input.value);
+            if (!code) {
+                error.textContent = 'Enter a valid six-digit code.';
+                error.classList.remove('hidden');
+                return;
+            }
+            button.disabled = true;
+            error.classList.add('hidden');
+            try {
+                const response = await fetch(root + '/api/totp/auth/verify', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    body: JSON.stringify({ code })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.error || 'The code could not be verified.');
+                }
+                window.location.assign(root + (data.continuation || '/'));
+            } catch (requestError) {
+                error.textContent = requestError.message;
+                error.classList.remove('hidden');
+                input.select();
+            } finally {
+                button.disabled = false;
+            }
+        };
+        button.addEventListener('click', submit);
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                submit();
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         setupAuthenticationSources();
         setupPasswordToggles();
         setupLoginValidation();
         setupRegisterValidation();
         setupChangePasswordValidation();
+        setupTotpMfa();
     });
 
     if (typeof module === 'object' && module.exports) {
-        module.exports = { createAuthenticationSourceController };
+        module.exports = {
+            createAuthenticationSourceController,
+            normalizeTotpCode
+        };
     }
 })();

@@ -43,7 +43,20 @@
             {% endwith %}
 
             {% set selected_auth_source = auth_source if auth_source in ('local', 'ldap') else ('ldap' if ldap_enabled else 'local') %}
+            {% if mfa_required and 'totp' in mfa_methods %}
+            <section id="totpMfaPanel" class="login-mode">
+                <h2>Two-factor authentication</h2>
+                <p>Enter the six-digit code from your authenticator app.</p>
+                <div class="form-group">
+                    <label for="totpMfaCode">Authenticator code</label>
+                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
+                </div>
+                <div class="alert alert-error hidden" id="totpMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitTotpMfa">Verify code</button>
+            </section>
+            {% endif %}
             <section id="passwordLoginMode" class="login-mode">
+            <div id="passwordAuthenticationForms"{% if mfa_required %} class="hidden"{% endif %}>
             {% if ldap_enabled %}
             <div class="form-group">
                 <label for="authenticationSource">Authentication Source</label>
@@ -109,17 +122,18 @@
                 <button type="submit" class="btn-primary">Sign in</button>
             </form>
             {% endif %}
-            {% if webauthn_enabled %}
+            </div>
+            {% if webauthn_enabled and (not mfa_required or 'passkey' in mfa_methods) %}
             <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
                 Sign in with passkey
             </button>
             {% endif %}
-            {% if oidc_enabled %}
+            {% if oidc_enabled and not mfa_required %}
             <a class="btn-primary" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}" style="display:block;text-align:center;margin-top:12px;text-decoration:none;" data-i18n="auth.signInWithIdentityProvider">
                 Sign in with identity provider
             </a>
             {% endif %}
-            {% if recovery_codes_enabled %}
+            {% if recovery_codes_enabled and not mfa_required %}
             <button type="button" class="btn-primary" id="recoveryLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithRecoveryCode">
                 Sign in with recovery code
             </button>
@@ -138,7 +152,7 @@
             </div>
             {% endif %}
 
-            <div class="auth-footer">
+            <div class="auth-footer{% if mfa_required %} hidden{% endif %}">
                 {% if registration_enabled %}
                 <span data-i18n="auth.noAccount">Don't have an account?</span>
                 <a href="{{ url_for('register') }}" data-i18n="auth.registerHere">Register here</a>

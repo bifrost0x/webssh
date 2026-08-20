@@ -219,8 +219,20 @@ def test_admin_disabling_ldap_does_not_terminate_an_existing_session(
         user, error = register_user('linkedldapuser', 'password123')
         assert error is None
         user.is_admin = False
+        db.session.commit()
+        user_id = user.id
+
+    login_response = client.post('/login', data={
+        'username': 'linkedldapuser',
+        'password': 'password123',
+    })
+    assert login_response.status_code == 302
+    with client.session_transaction() as browser_session:
+        login_identifier = browser_session['_user_id']
+
+    with app.app_context():
         db.session.add(LDAPIdentity(
-            user_id=user.id,
+            user_id=user_id,
             provider='default',
             subject='stable-directory-id',
             directory_username='linkedldapuser',
@@ -228,11 +240,8 @@ def test_admin_disabling_ldap_does_not_terminate_an_existing_session(
         ))
         db.session.add(SecurityFeatureState(feature='ldap', enabled=False))
         db.session.commit()
-        login_identifier = user.get_id()
 
     with client.session_transaction() as browser_session:
-        browser_session['_user_id'] = login_identifier
-        browser_session['_fresh'] = True
         browser_session['_ldap_verified_at'] = int(time.time())
 
     response = client.get('/')

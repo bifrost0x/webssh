@@ -6,7 +6,8 @@ const {
     describeHostKey,
     downloadAuditExport,
     featureToggleState,
-    hostKeyConfirmation
+    hostKeyConfirmation,
+    totpAccountState
 } = require('../../static/js/security-ui.js');
 
 test('feature toggles lock deployment-disabled and unready features', () => {
@@ -35,6 +36,25 @@ test('feature toggles lock deployment-disabled and unready features', () => {
         checked: false,
         disabled: true,
         reason: 'LDAP is not ready.'
+    });
+});
+
+test('TOTP account state only offers explicit disable for enabled accounts', () => {
+    assert.deepEqual(totpAccountState({
+        mfa_enabled: true,
+        authenticators: [{ id: 1 }]
+    }), {
+        mfaEnabled: true,
+        hasAuthenticator: true,
+        canDisable: true
+    });
+    assert.deepEqual(totpAccountState({
+        mfa_enabled: false,
+        authenticators: []
+    }), {
+        mfaEnabled: false,
+        hasAuthenticator: false,
+        canDisable: false
     });
 });
 

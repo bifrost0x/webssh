@@ -307,9 +307,11 @@ def rotate_secret_key(confirm_offline):
     _audit_operation(
         'SECRET_ROTATION_SUCCESS',
         rotated_keys=report.rotated_keys,
+        rotated_totp_secrets=report.rotated_totp_secrets,
     )
     click.echo(
-        f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys. '
+        f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys and '
+        f'{report.rotated_totp_secrets} TOTP secrets. '
         f'Verified backup: {report.backup_path}'
     )
     click.echo(

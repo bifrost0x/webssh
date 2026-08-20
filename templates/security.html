@@ -66,6 +66,30 @@
             <p class="admin-muted" id="passkeyList" data-i18n="security.passkeysDisabled">Passkeys are disabled by configuration.</p>
             {% endif %}
         </section>
+        {% if totp_enabled %}
+        <section class="admin-setting-row" id="totpSettings" style="max-width:none;margin-top:18px;">
+            <div class="admin-toolbar">
+                <div>
+                    <h2>Authenticator app (TOTP)</h2>
+                    <p class="admin-muted">Optionally protect password or directory sign-in with a six-digit code from an authenticator app.</p>
+                </div>
+                <button class="btn btn-primary" id="totpAddBtn">Add authenticator</button>
+                <button class="btn btn-danger hidden" id="totpDisableBtn">Disable MFA requirement</button>
+            </div>
+            <div id="totpList"></div>
+            <div id="totpEnrollment" class="hidden" style="margin-top:16px;">
+                <p>Scan this QR code locally in your authenticator app, or enter the setup key manually. The setup expires after five minutes.</p>
+                <img id="totpQr" alt="TOTP enrollment QR code" width="240" height="240">
+                <p><strong>Setup key:</strong> <code id="totpSecret"></code></p>
+                <div class="form-group">
+                    <label for="totpActivationCode">Six-digit code</label>
+                    <input id="totpActivationCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+                </div>
+                <button class="btn btn-primary" id="totpActivateBtn">Verify and enable MFA</button>
+            </div>
+            <pre id="totpRecoveryCodes" style="white-space:pre-wrap;word-break:break-word;"></pre>
+        </section>
+        {% endif %}
         {% if recovery_codes_enabled and not ldap_managed %}
         <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
             <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>

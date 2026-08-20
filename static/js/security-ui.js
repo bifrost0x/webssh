@@ -65,6 +65,18 @@
         };
     }
 
+    function totpAccountState(payload) {
+        const item = payload || {};
+        const authenticators = Array.isArray(item.authenticators)
+            ? item.authenticators
+            : [];
+        return {
+            mfaEnabled: Boolean(item.mfa_enabled),
+            hasAuthenticator: authenticators.length > 0,
+            canDisable: Boolean(item.mfa_enabled) && authenticators.length > 0
+        };
+    }
+
     function createRequestCoordinator(options) {
         let generation = 0;
         let sequence = 0;
@@ -183,6 +195,7 @@
         describeHostKey,
         downloadAuditExport,
         featureToggleState,
-        hostKeyConfirmation
+        hostKeyConfirmation,
+        totpAccountState
     };
 });

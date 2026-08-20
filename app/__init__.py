@@ -128,6 +128,7 @@ def create_app(
             'tmux_default': config.TMUX_DEFAULT,
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
             'webauthn_enabled': feature_is_active('passkey'),
+            'totp_enabled': feature_is_active('totp'),
             'oidc_enabled': feature_is_active('oidc'),
             'ldap_enabled': feature_is_active('ldap'),
             'ldap_provider_id': config.LDAP_PROVIDER_ID,
@@ -269,6 +270,7 @@ def create_app(
     from .host_key_routes import host_key_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
     from .recovery_routes import recovery_blueprint
+    from .totp_routes import totp_blueprint
     from .transfer_routes import transfer_blueprint, transfer_manager
     register_cli(app)
     oidc_ready = not config.OIDC_ENABLED
@@ -282,6 +284,7 @@ def create_app(
     app.register_blueprint(host_key_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)
+    app.register_blueprint(totp_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
     ldap_ready = not config.LDAP_ENABLED

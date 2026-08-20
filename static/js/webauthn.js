@@ -205,6 +205,106 @@
         }
     }
 
+    let activeTotpEnrollment = null;
+
+    async function loadTotpAuthenticators() {
+        const container = document.getElementById('totpList');
+        if (!container) { return; }
+        const data = await api('/api/totp/authenticators');
+        const state = window.WebSSHSecurityUI.totpAccountState(data);
+        container.replaceChildren();
+        for (const authenticator of data.authenticators || []) {
+            const row = document.createElement('div');
+            row.className = 'admin-toolbar';
+            const label = document.createElement('span');
+            label.textContent = `${authenticator.label} · ${new Date(authenticator.created_at).toLocaleString()}`;
+            row.appendChild(label);
+            container.appendChild(row);
+        }
+        if (!state.hasAuthenticator) {
+            const empty = document.createElement('p');
+            empty.className = 'admin-muted';
+            empty.textContent = t(
+                'security.noTotpAuthenticators',
+                'No authenticator app is enrolled.'
+            );
+            container.appendChild(empty);
+        }
+        document.getElementById('totpDisableBtn')?.classList.toggle(
+            'hidden',
+            !state.canDisable
+        );
+    }
+
+    async function beginTotpEnrollment() {
+        const body = factorChangeBody();
+        if (body === null) { return; }
+        const label = window.prompt(
+            t('security.authenticatorName', 'Authenticator name'),
+            t('security.authenticatorDefaultName', 'Authenticator')
+        );
+        if (label === null) { return; }
+        body.label = label;
+        const data = await api('/api/totp/enroll', { method: 'POST', body });
+        activeTotpEnrollment = data;
+        const image = document.getElementById('totpQr');
+        image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(data.qr_svg);
+        document.getElementById('totpSecret').textContent = data.secret;
+        document.getElementById('totpEnrollment').classList.remove('hidden');
+        document.getElementById('totpActivationCode').focus();
+    }
+
+    async function activateTotpEnrollment() {
+        if (!activeTotpEnrollment) { return; }
+        const code = document.getElementById('totpActivationCode').value
+            .replace(/\s+/g, '');
+        if (!/^[0-9]{6}$/.test(code)) {
+            throw new Error(t(
+                'security.invalidTotpCode',
+                'Enter a valid six-digit code.'
+            ));
+        }
+        const data = await api('/api/totp/enroll/verify', {
+            method: 'POST',
+            body: {
+                token: activeTotpEnrollment.token,
+                code,
+                confirm_enable_mfa: true
+            }
+        });
+        activeTotpEnrollment = null;
+        document.getElementById('totpEnrollment').classList.add('hidden');
+        document.getElementById('totpQr').removeAttribute('src');
+        document.getElementById('totpSecret').textContent = '';
+        document.getElementById('totpActivationCode').value = '';
+        const codes = data.recovery_codes || [];
+        if (codes.length) {
+            document.getElementById('totpRecoveryCodes').textContent = [
+                t(
+                    'security.storeRecoveryCodes',
+                    'Store these codes now. They will not be shown again.'
+                ),
+                '',
+                ...codes
+            ].join('\n');
+        }
+        await loadTotpAuthenticators();
+        notify(t('security.mfaEnabled', 'MFA enabled'), 'success');
+    }
+
+    async function disableTotpMfa() {
+        if (!window.confirm(t(
+            'security.confirmDisableMfa',
+            'Disable the MFA requirement for future sign-ins? Enrolled factors remain stored.'
+        ))) { return; }
+        const body = factorChangeBody();
+        if (body === null) { return; }
+        body.confirm_disable_mfa = true;
+        await api('/api/totp/disable', { method: 'POST', body });
+        await loadTotpAuthenticators();
+        notify(t('security.mfaDisabled', 'MFA requirement disabled'), 'success');
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('hostKeyRefresh')?.addEventListener('click', () => {
             loadHostKeys().catch(error => notify(error.message, 'error'));
@@ -236,6 +336,16 @@
             registerPasskey(true);
         });
         loadPasskeys().catch(error => notify(error.message, 'error'));
+        document.getElementById('totpAddBtn')?.addEventListener('click', () => {
+            beginTotpEnrollment().catch(error => notify(error.message, 'error'));
+        });
+        document.getElementById('totpActivateBtn')?.addEventListener('click', () => {
+            activateTotpEnrollment().catch(error => notify(error.message, 'error'));
+        });
+        document.getElementById('totpDisableBtn')?.addEventListener('click', () => {
+            disableTotpMfa().catch(error => notify(error.message, 'error'));
+        });
+        loadTotpAuthenticators().catch(error => notify(error.message, 'error'));
         document.getElementById('passkeyLoginBtn')?.addEventListener('click', async () => {
             try {
                 const options = decodeRequestOptions(await api('/api/webauthn/auth/options', {

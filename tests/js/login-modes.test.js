@@ -2,8 +2,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 global.document = { addEventListener() {} };
-const { createAuthenticationSourceController } = require('../../static/js/auth.js');
+const {
+    createAuthenticationSourceController,
+    normalizeTotpCode
+} = require('../../static/js/auth.js');
 delete global.document;
+
+test('TOTP codes accept six ASCII digits and ignore spaces only', () => {
+    assert.equal(normalizeTotpCode(' 123 456 '), '123456');
+    assert.equal(normalizeTotpCode('12345'), null);
+    assert.equal(normalizeTotpCode('１２３４５６'), null);
+});
 
 function element({ hidden = false, value = '' } = {}) {
     const classes = new Set(hidden ? ['hidden'] : []);
