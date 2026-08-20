@@ -261,6 +261,7 @@
             insightsController?.removeSession(removedSessionId);
             inventoryController?.removeSession(removedSessionId);
             sftpCapabilityTracker.remove(removedSessionId);
+            coordinator.removeSession(removedSessionId);
         });
         documentRef.addEventListener('visibilitychange', syncInsightsVisibility);
         desktopQuery.addEventListener?.('change', () => {

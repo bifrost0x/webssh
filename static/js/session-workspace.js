@@ -30,6 +30,14 @@
             retryTimers.delete(sessionId);
         }
 
+        function cancelProbe(sessionId) {
+            clearRetry(sessionId);
+            const request = pending.get(sessionId);
+            if (request) clearTimeoutFn(request.timeoutId);
+            pending.delete(sessionId);
+            retryCounts.delete(sessionId);
+        }
+
         function startProbe(sessionId) {
             if (pending.has(sessionId) || capabilities.has(sessionId)) return false;
             const requestId = createRequestId();
@@ -101,16 +109,13 @@
 
             probeIfNeeded(state) {
                 const targetSessionId = state?.sessionId;
-                const eligibleSessionId = (
-                    state?.sftpProbeNeeded
-                    || state?.sftpCapability === 'probing'
-                )
+                const eligibleSessionId = state?.sftpProbeNeeded
                     && typeof targetSessionId === 'string'
                     && targetSessionId
                     ? targetSessionId
                     : null;
                 if (activeProbeSessionId !== eligibleSessionId) {
-                    if (activeProbeSessionId) clearRetry(activeProbeSessionId);
+                    if (activeProbeSessionId) cancelProbe(activeProbeSessionId);
                     activeProbeSessionId = eligibleSessionId;
                 }
                 if (
@@ -124,12 +129,8 @@
             },
 
             remove(sessionId) {
-                clearRetry(sessionId);
+                cancelProbe(sessionId);
                 capabilities.delete(sessionId);
-                const request = pending.get(sessionId);
-                if (request) clearTimeoutFn(request.timeoutId);
-                pending.delete(sessionId);
-                retryCounts.delete(sessionId);
                 if (activeProbeSessionId === sessionId) activeProbeSessionId = null;
             },
         };
@@ -175,7 +176,7 @@
                 && isDesktop()
                 && sessionId
                 && session?.connected
-                && sftpCapability === 'unknown'
+                && ['unknown', 'probing'].includes(sftpCapability)
             );
             return {
                 layout,
@@ -275,6 +276,11 @@
                 visible = Boolean(nextVisible);
                 insights.setVisible?.(visible);
                 renderState();
+            },
+
+            removeSession(removedSessionId) {
+                if (typeof removedSessionId !== 'string' || !removedSessionId) return;
+                sftpPreferences.delete(removedSessionId);
             },
 
             getState() {
