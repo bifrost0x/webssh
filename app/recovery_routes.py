@@ -134,6 +134,8 @@ def complete_pending_with_recovery():
         pending = pending_authentication(token, binding)
     except PendingAuthenticationError:
         return jsonify({"error": "Pending authentication is invalid"}), 401
+    if pending.primary_method not in {"password", "ldap"}:
+        return jsonify({"error": "Recovery authentication failed"}), 401
     user = db.session.get(User, pending.user_id)
     if user is None or user.is_locked or not user.mfa_enabled:
         return jsonify({"error": "Recovery authentication failed"}), 401

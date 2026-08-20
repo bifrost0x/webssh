@@ -159,7 +159,46 @@ def ensure_user_columns():
 
 def ensure_security_columns():
     """Apply additive authentication-security schema upgrades."""
+    from sqlalchemy import inspect, text
+
     ensure_user_columns()
+    inspector = inspect(db.engine)
+    if 'oidc_login_states' not in inspector.get_table_names():
+        return
+    existing = {
+        column['name']
+        for column in inspector.get_columns('oidc_login_states')
+    }
+    additions = []
+    if 'purpose' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN purpose "
+            "VARCHAR(24) NOT NULL DEFAULT 'login'"
+        )
+    if 'continuation' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN continuation "
+            "VARCHAR(512) NOT NULL DEFAULT '/'"
+        )
+    if 'requested_acr' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN requested_acr "
+            "VARCHAR(512)"
+        )
+    if 'step_up_action' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN step_up_action "
+            "VARCHAR(96)"
+        )
+    if 'step_up_target_hash' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN step_up_target_hash "
+            "VARCHAR(64)"
+        )
+    for statement in additions:
+        db.session.execute(text(statement))
+    if additions:
+        db.session.commit()
 
 class SocketSession(db.Model):
     """Tracks SocketIO sessions for users (browser connections)."""
@@ -471,6 +510,21 @@ class OIDCLoginState(db.Model):
     session_binding_hash = db.Column(db.String(64), nullable=False, index=True)
     nonce = db.Column(db.String(128), nullable=False)
     code_verifier = db.Column(db.String(128), nullable=False)
+    purpose = db.Column(
+        db.String(24),
+        nullable=False,
+        default='login',
+        server_default='login',
+    )
+    continuation = db.Column(
+        db.String(512),
+        nullable=False,
+        default='/',
+        server_default='/',
+    )
+    requested_acr = db.Column(db.String(512))
+    step_up_action = db.Column(db.String(96))
+    step_up_target_hash = db.Column(db.String(64))
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
 

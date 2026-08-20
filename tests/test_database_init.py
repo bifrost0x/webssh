@@ -53,3 +53,37 @@ def test_legacy_user_schema_adds_disabled_mfa_idempotently(app):
             'SELECT username, mfa_enabled FROM users WHERE id = 1'
         )).one()
         assert row == ('legacy-user', 0)
+
+
+def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):
+    from sqlalchemy import inspect, text
+    from app.models import db, ensure_security_columns
+
+    with app.app_context():
+        db.session.execute(text('DROP TABLE oidc_login_states'))
+        db.session.execute(text(
+            'CREATE TABLE oidc_login_states ('
+            'id INTEGER PRIMARY KEY, '
+            'state_hash VARCHAR(64) NOT NULL UNIQUE, '
+            'session_binding_hash VARCHAR(64) NOT NULL, '
+            'nonce VARCHAR(128) NOT NULL, '
+            'code_verifier VARCHAR(128) NOT NULL, '
+            'expires_at DATETIME NOT NULL'
+            ')'
+        ))
+        db.session.commit()
+
+        ensure_security_columns()
+        ensure_security_columns()
+
+        columns = {
+            column['name']
+            for column in inspect(db.engine).get_columns('oidc_login_states')
+        }
+        assert {
+            'purpose',
+            'continuation',
+            'requested_acr',
+            'step_up_action',
+            'step_up_target_hash',
+        } <= columns

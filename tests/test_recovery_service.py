@@ -289,6 +289,33 @@ def test_ldap_verified_pending_can_use_recovery_without_password_storage(
         assert browser_session["_ldap_verified_at"] == verified_at
 
 
+def test_oidc_pending_cannot_exchange_a_recovery_code(app, client):
+    from app.auth_assurance import AssuranceLevel, begin_authentication
+    from app.models import RecoveryCode, User, db
+
+    user_id = _create_user(app, "oidc_recovery_rejected")
+    code = _enable_recovery_mfa(app, user_id, count=1)[0]
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        token = begin_authentication(
+            user,
+            "oidc",
+            assurance=AssuranceLevel.BASIC,
+            session_binding="oidc-recovery-binding",
+            remember=False,
+            continuation="/",
+        )
+    with client.session_transaction() as browser_session:
+        browser_session["_pending_authentication"] = token
+        browser_session["_auth_binding"] = "oidc-recovery-binding"
+
+    rejected = client.post("/api/auth/recovery", json={"code": code})
+
+    assert rejected.status_code == 401
+    with app.app_context():
+        assert RecoveryCode.query.filter_by(user_id=user_id).count() == 1
+
+
 def test_recovery_code_regeneration_supports_recent_ldap_reauthentication(
     app,
     client,
