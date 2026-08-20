@@ -47,6 +47,28 @@ test('auto-opens embedded SFTP for the sole connected session on a wide desktop'
     assert.equal(coordinator.getState().sftpOpen, true);
 });
 
+test('keeps an auto-opened SFTP panel open below the wide breakpoint', () => {
+    let wideDesktop = true;
+    const { coordinator, calls } = createHarness({
+        isWideDesktop: () => wideDesktop,
+    });
+    const update = {
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sessionCount: 1,
+        sftpCapability: 'available',
+    };
+    coordinator.update(update);
+    calls.length = 0;
+
+    wideDesktop = false;
+    coordinator.update(update);
+
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(calls, []);
+});
+
 test('probes before auto-opening embedded SFTP and stays closed when unavailable', () => {
     const { coordinator, calls } = createHarness({ isWideDesktop: () => true });
     const update = sftpCapability => coordinator.update({

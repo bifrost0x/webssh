@@ -167,6 +167,7 @@
             const preference = sftpPreferences.get(sessionId);
             if (preference === 'open') return true;
             if (preference === 'closed') return false;
+            if (sftpOpen && panelSessionId === sessionId) return true;
             return isWideDesktop() && sftpCapability === 'available';
         }
 
