@@ -496,7 +496,6 @@ def clear_recovery_restriction(*, replacement_factor=None, disable_mfa=False):
         "RECOVERY_RESTRICTION_CLEARED",
         user=user.username,
         replacement_factor=replacement_factor,
-        mfa_disabled=disable_mfa,
     )
     return True
 

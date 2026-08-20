@@ -1,6 +1,7 @@
 import logging
 import json
 import sys
+from collections.abc import Mapping
 from threading import RLock
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -258,6 +259,68 @@ def _sanitize_log_value(value):
     s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\x00', '\\x00')
     return s[:512]
 
+
+_SENSITIVE_AUDIT_DETAIL_KEYS = frozenset({
+    'assertion',
+    'authorization',
+    'cookie',
+    'credential',
+    'password',
+    'passphrase',
+    'private_key',
+    'recovery_code',
+    'secret',
+    'token',
+    'totp_code',
+})
+_SENSITIVE_AUDIT_DETAIL_SUFFIXES = tuple(
+    f'_{key}' for key in _SENSITIVE_AUDIT_DETAIL_KEYS
+)
+_SENSITIVE_AUDIT_DETAIL_PARTS = frozenset({
+    'assertion', 'assertions',
+    'authorization',
+    'cookie', 'cookies',
+    'credential', 'credentials',
+    'passphrase', 'passphrases',
+    'password', 'passwords',
+    'secret', 'secrets',
+    'token', 'tokens',
+})
+
+
+def _audit_detail_key_is_sensitive(key):
+    normalized = ''.join(
+        character.lower() if character.isalnum() else '_'
+        for character in str(key)
+    ).strip('_')
+    return (
+        normalized in _SENSITIVE_AUDIT_DETAIL_KEYS
+        or normalized.endswith(_SENSITIVE_AUDIT_DETAIL_SUFFIXES)
+        or bool(
+            set(normalized.split('_')) & _SENSITIVE_AUDIT_DETAIL_PARTS
+        )
+    )
+
+
+def _redact_audit_detail(key, value):
+    if _audit_detail_key_is_sensitive(key):
+        return '[REDACTED]'
+    if isinstance(value, Mapping):
+        return sanitize_audit_details(value)
+    if isinstance(value, list):
+        return [_redact_audit_detail('', item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_audit_detail('', item) for item in value)
+    return value
+
+
+def sanitize_audit_details(details):
+    """Return structured audit details with secret-bearing fields redacted."""
+    return {
+        str(key): _redact_audit_detail(key, value)
+        for key, value in details.items()
+    }
+
 def log_login_attempt(username, success, ip_address, user_agent=None):
     status = "SUCCESS" if success else "FAILED"
     audit_logger.info(
@@ -379,9 +442,10 @@ def log_security_event(event, *, level=logging.INFO, **kwargs):
         character if character.isalnum() else '_'
         for character in str(event).upper()
     ).strip('_')[:96]
+    safe_details = sanitize_audit_details(kwargs)
     details = ''.join(
         f" | {key}={_sanitize_log_value(value)}"
-        for key, value in sorted(kwargs.items())
+        for key, value in sorted(safe_details.items())
         if value is not None
     )
     audit_logger.log(level, f"{event_name}{details}")
