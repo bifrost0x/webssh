@@ -26,6 +26,18 @@ ADMIN_REQUESTS = (
         {'registration_enabled': True},
         id='set-settings',
     ),
+    pytest.param(
+        'get',
+        '/admin/api/security-features',
+        None,
+        id='get-security-features',
+    ),
+    pytest.param(
+        'post',
+        '/admin/api/security-features/totp',
+        {'enabled': False},
+        id='set-security-feature',
+    ),
 )
 
 ADMIN_RULE_PATHS = (
@@ -34,6 +46,11 @@ ADMIN_RULE_PATHS = (
     pytest.param('/admin/api/users/1/lock', id='user-action'),
     pytest.param('/admin/api/audit', id='audit-log'),
     pytest.param('/admin/api/settings', id='settings'),
+    pytest.param('/admin/api/security-features', id='security-features'),
+    pytest.param(
+        '/admin/api/security-features/totp',
+        id='security-feature',
+    ),
 )
 
 
@@ -190,6 +207,20 @@ def test_enabled_admin_routes_redirect_locked_users(app, client, method, path, d
             200,
             id='set-settings',
         ),
+        pytest.param(
+            'get',
+            '/admin/api/security-features',
+            None,
+            200,
+            id='get-security-features',
+        ),
+        pytest.param(
+            'post',
+            '/admin/api/security-features/totp',
+            {'enabled': False},
+            200,
+            id='set-security-feature',
+        ),
     ),
 )
 def test_enabled_admin_routes_allow_administrators(
@@ -254,6 +285,105 @@ def test_production_profile_rejects_enabling_registration(
         'error': 'Registration cannot be enabled in the production profile'
     }
     assert not path.exists()
+
+
+def test_security_feature_status_exposes_all_supported_gates(app, client):
+    _prepare_role(app, client, 'admin')
+
+    response = client.get('/admin/api/security-features')
+
+    assert response.status_code == 200
+    features = response.get_json()['features']
+    assert [feature['name'] for feature in features] == [
+        'passkey',
+        'totp',
+        'oidc',
+        'ldap',
+        'recovery',
+    ]
+    assert all(set(feature) == {
+        'name',
+        'deployment_allowed',
+        'ready',
+        'admin_enabled',
+        'active',
+        'reason',
+    } for feature in features)
+
+
+def test_admin_page_includes_security_feature_controls(app, client):
+    _prepare_role(app, client, 'admin')
+
+    response = client.get('/admin')
+
+    assert response.status_code == 200
+    assert b'id="securityFeatureList"' in response.data
+    assert b'id="securityFeatureStatus"' in response.data
+
+
+def test_security_feature_enable_returns_same_unavailable_reason_as_status(
+    app,
+    client,
+):
+    _prepare_role(app, client, 'admin')
+    before = client.get('/admin/api/security-features').get_json()
+    oidc_before = next(
+        feature for feature in before['features']
+        if feature['name'] == 'oidc'
+    )
+
+    response = client.post(
+        '/admin/api/security-features/oidc',
+        json={'enabled': True},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {
+        'error': oidc_before['reason'],
+        'feature': oidc_before,
+    }
+
+
+def test_security_feature_update_requires_a_boolean(app, client):
+    from app.models import SecurityFeatureState
+
+    _prepare_role(app, client, 'admin')
+
+    response = client.post(
+        '/admin/api/security-features/totp',
+        json={'enabled': 'true'},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'enabled must be a boolean'}
+    with app.app_context():
+        assert SecurityFeatureState.query.filter_by(feature='totp').first() is None
+
+
+def test_security_feature_update_activates_ready_totp(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TOTP_ENABLED', True)
+    app.extensions.setdefault('security_feature_readiness', {})['totp'] = (
+        True,
+        None,
+    )
+
+    response = client.post(
+        '/admin/api/security-features/totp',
+        json={'enabled': True},
+    )
+
+    assert response.status_code == 200
+    feature = response.get_json()['feature']
+    assert feature['admin_enabled'] is True
+    assert feature['active'] is True
+    assert feature['reason'] is None
 
 
 def test_disabled_panel_hides_admin_navigation(app, client, monkeypatch):

@@ -553,6 +553,59 @@
     }
 
     // ---- Settings ----
+    const SECURITY_FEATURE_LABELS = Object.freeze({
+        passkey: 'Passkeys',
+        totp: 'Authenticator apps (TOTP)',
+        oidc: 'OpenID Connect (OIDC)',
+        ldap: 'LDAP directory login',
+        recovery: 'Recovery codes'
+    });
+
+    function renderSecurityFeatures(features) {
+        const list = document.getElementById('securityFeatureList');
+        const status = document.getElementById('securityFeatureStatus');
+        if (!list || !status) { return; }
+        list.textContent = '';
+        for (const feature of features || []) {
+            const state = window.WebSSHSecurityUI.featureToggleState(feature);
+            const row = document.createElement('div');
+            row.style.marginTop = '12px';
+
+            const label = document.createElement('label');
+            label.className = 'admin-checkbox';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.dataset.securityFeature = state.name;
+            input.checked = state.checked;
+            input.disabled = state.disabled;
+            const title = document.createElement('strong');
+            title.textContent = SECURITY_FEATURE_LABELS[state.name] || state.name;
+            label.append(input, title);
+
+            const reason = document.createElement('p');
+            reason.className = 'admin-muted';
+            reason.textContent = state.reason || 'Active';
+            row.append(label, reason);
+            list.appendChild(row);
+        }
+        status.textContent = features && features.length
+            ? 'Feature status loaded'
+            : 'No authentication features reported';
+    }
+
+    async function loadSecurityFeatures() {
+        const status = document.getElementById('securityFeatureStatus');
+        if (!status) { return; }
+        status.textContent = 'Loading feature status…';
+        try {
+            const data = await api('/admin/api/security-features');
+            renderSecurityFeatures(data.features || []);
+        } catch (e) {
+            status.textContent = e.message;
+            notify(e.message, 'error');
+        }
+    }
+
     async function loadSettings() {
         try {
             const data = await api('/admin/api/settings');
@@ -560,10 +613,27 @@
         } catch (e) {
             notify(e.message, 'error');
         }
+        await loadSecurityFeatures();
     }
 
     function initSettings() {
         document.getElementById('ldapStatusCheck')?.addEventListener('click', checkLdapStatus);
+        document.getElementById('securityFeatureList')?.addEventListener('change', async (event) => {
+            const target = event.target;
+            if (!target.matches('input[data-security-feature]')) { return; }
+            target.disabled = true;
+            try {
+                await api(`/admin/api/security-features/${encodeURIComponent(target.dataset.securityFeature)}`, {
+                    method: 'POST',
+                    body: { enabled: target.checked }
+                });
+                notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+            } catch (err) {
+                notify(err.message, 'error');
+            } finally {
+                await loadSecurityFeatures();
+            }
+        });
         document.getElementById('settingRegistration')?.addEventListener('change', async (e) => {
             const target = e.target;
             try {

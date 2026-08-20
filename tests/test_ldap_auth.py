@@ -408,10 +408,11 @@ def test_local_registration_serializes_casefold_check_across_connections(app):
             password_hash,
             is_admin,
             is_locked,
-            auth_generation
-        ) VALUES (?, ?, ?, ?, ?)
+            auth_generation,
+            mfa_enabled
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("Alice", "unused", False, False, 0),
+        ("Alice", "unused", False, False, 0, False),
     )
     completed = Event()
     result = {}

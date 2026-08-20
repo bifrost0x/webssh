@@ -115,6 +115,8 @@ def create_app(
 
     @app.context_processor
     def inject_url_prefix():
+        from .security_features import feature_is_active
+
         registration_available = (
             is_registration_enabled()
             or is_bootstrap_registration_available()
@@ -125,15 +127,15 @@ def create_app(
             'tmux_enabled': config.TMUX_ENABLED,
             'tmux_default': config.TMUX_DEFAULT,
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
-            'webauthn_enabled': config.WEBAUTHN_ENABLED,
-            'oidc_enabled': config.OIDC_ENABLED,
-            'ldap_enabled': config.LDAP_ENABLED,
+            'webauthn_enabled': feature_is_active('passkey'),
+            'oidc_enabled': feature_is_active('oidc'),
+            'ldap_enabled': feature_is_active('ldap'),
             'ldap_provider_id': config.LDAP_PROVIDER_ID,
             'ldap_managed': bool(
                 current_user.is_authenticated
                 and current_user.is_ldap_managed
             ),
-            'recovery_codes_enabled': config.RECOVERY_CODES_ENABLED,
+            'recovery_codes_enabled': feature_is_active('recovery'),
             'host_key_management_enabled': (
                 config.HOST_KEY_MANAGEMENT_ENABLED
             ),
@@ -237,6 +239,15 @@ def create_app(
     from .request_limits import init_request_limits
     from .webauthn_routes import webauthn_blueprint
     init_request_limits(app)
+
+    @app.before_request
+    def enforce_security_feature_gate():
+        from .security_features import feature_is_active, request_feature_name
+
+        feature_name = request_feature_name(request.path)
+        if feature_name is not None and not feature_is_active(feature_name):
+            abort(404)
+
     csrf.init_app(app)
     from .cli import register_cli
     from .audit_export import audit_export_blueprint
@@ -247,8 +258,11 @@ def create_app(
     from .recovery_routes import recovery_blueprint
     from .transfer_routes import transfer_blueprint, transfer_manager
     register_cli(app)
+    oidc_ready = not config.OIDC_ENABLED
     if initialize_oidc:
         init_oidc(app)
+        if config.OIDC_ENABLED:
+            oidc_ready = True
     app.register_blueprint(audit_export_blueprint)
     app.register_blueprint(admin_backup_blueprint)
     app.register_blueprint(health_blueprint)
@@ -257,11 +271,19 @@ def create_app(
     app.register_blueprint(recovery_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
+    ldap_ready = not config.LDAP_ENABLED
     if config.LDAP_ENABLED:
         from .ldap_routes import ldap_blueprint
         from .ldap_service import validate_runtime_files
         validate_runtime_files()
         app.register_blueprint(ldap_blueprint)
+        ldap_ready = True
+    from .security_features import initialize_feature_readiness
+    initialize_feature_readiness(
+        app,
+        oidc_ready=oidc_ready,
+        ldap_ready=ldap_ready,
+    )
     if initialize_storage:
         _initialize_persistent_storage(app)
     if start_runtime:
@@ -724,5 +746,48 @@ def create_app(
             log_info("Admin changed registration setting",
                      admin=current_user.username, registration_enabled=val)
         return jsonify({'registration_enabled': is_registration_enabled()})
+
+    @app.route('/admin/api/security-features', methods=['GET'])
+    @admin_required
+    @login_required
+    def admin_get_security_features():
+        from .security_features import all_feature_statuses
+
+        return jsonify({
+            'features': [
+                status.to_dict() for status in all_feature_statuses()
+            ],
+        })
+
+    @app.route(
+        '/admin/api/security-features/<feature_name>',
+        methods=['POST'],
+    )
+    @admin_required
+    @login_required
+    def admin_set_security_feature(feature_name):
+        from .security_features import (
+            FeatureUnavailable,
+            UnknownSecurityFeature,
+            set_feature_active,
+        )
+
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
+            return jsonify({'error': 'enabled must be a boolean'}), 400
+        try:
+            status = set_feature_active(
+                feature_name,
+                data['enabled'],
+                current_user.id,
+            )
+        except UnknownSecurityFeature:
+            abort(404)
+        except FeatureUnavailable as exc:
+            return jsonify({
+                'error': exc.status.reason,
+                'feature': exc.status.to_dict(),
+            }), 409
+        return jsonify({'feature': status.to_dict()})
 
     return app

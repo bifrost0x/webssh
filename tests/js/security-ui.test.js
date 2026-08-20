@@ -5,8 +5,54 @@ const {
     createRequestCoordinator,
     describeHostKey,
     downloadAuditExport,
+    featureToggleState,
     hostKeyConfirmation
 } = require('../../static/js/security-ui.js');
+
+test('feature toggles lock deployment-disabled and unready features', () => {
+    assert.deepEqual(featureToggleState({
+        name: 'oidc',
+        deployment_allowed: false,
+        ready: true,
+        admin_enabled: true,
+        active: false,
+        reason: 'OIDC is disabled by deployment configuration.'
+    }), {
+        name: 'oidc',
+        checked: false,
+        disabled: true,
+        reason: 'OIDC is disabled by deployment configuration.'
+    });
+    assert.deepEqual(featureToggleState({
+        name: 'ldap',
+        deployment_allowed: true,
+        ready: false,
+        admin_enabled: true,
+        active: false,
+        reason: 'LDAP is not ready.'
+    }), {
+        name: 'ldap',
+        checked: false,
+        disabled: true,
+        reason: 'LDAP is not ready.'
+    });
+});
+
+test('ready feature toggles remain editable when admin-disabled', () => {
+    assert.deepEqual(featureToggleState({
+        name: 'totp',
+        deployment_allowed: true,
+        ready: true,
+        admin_enabled: false,
+        active: false,
+        reason: 'TOTP is not activated in the admin panel.'
+    }), {
+        name: 'totp',
+        checked: false,
+        disabled: false,
+        reason: 'TOTP is not activated in the admin panel.'
+    });
+});
 
 test('request snapshots become stale when the security modal context changes', () => {
     const coordinator = createRequestCoordinator();

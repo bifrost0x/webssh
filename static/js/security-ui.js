@@ -55,6 +55,16 @@
         return Number.isFinite(value) ? value : null;
     }
 
+    function featureToggleState(feature) {
+        const item = feature || {};
+        return {
+            name: String(item.name || ''),
+            checked: Boolean(item.active),
+            disabled: !Boolean(item.deployment_allowed) || !Boolean(item.ready),
+            reason: String(item.reason || '')
+        };
+    }
+
     function createRequestCoordinator(options) {
         let generation = 0;
         let sequence = 0;
@@ -172,6 +182,7 @@
         createRequestCoordinator,
         describeHostKey,
         downloadAuditExport,
+        featureToggleState,
         hostKeyConfirmation
     };
 });

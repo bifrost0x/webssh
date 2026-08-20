@@ -111,6 +111,12 @@
                 </label>
                 <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
             </div>
+            <div class="admin-setting-row" style="margin-top:16px;">
+                <h2>Authentication features</h2>
+                <p class="admin-muted">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
+                <div id="securityFeatureList" style="margin-top:14px;"></div>
+                <p id="securityFeatureStatus" class="admin-muted" role="status" aria-live="polite">Not loaded</p>
+            </div>
             {% if audit_export_enabled %}
             <div class="admin-setting-row" style="margin-top:16px;">
                 <label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label>
