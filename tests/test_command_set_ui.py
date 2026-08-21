@@ -344,8 +344,10 @@ def test_connection_mode_help_uses_accessible_tooltips():
     assert 'class="info-tooltip-trigger"' in template
 
 
-def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
-    readme = read('README.md')
+def test_wiki_documents_command_set_lifecycle_and_upgrade_behavior():
+    documentation = ' '.join(
+        read('docs/wiki/Profiles-Jump-Hosts-and-Commands.md').split()
+    )
 
     for phrase in (
         'Run after',
@@ -369,4 +371,4 @@ def test_readme_documents_command_set_lifecycle_and_upgrade_behavior():
         'inside a free-text step remain unchanged',
         'legacy startup commands',
     ):
-        assert phrase in readme
+        assert phrase in documentation

@@ -10,8 +10,8 @@ README = ROOT / "README.md"
 PAGES_WORKFLOW = ROOT / ".github" / "workflows" / "graph-pages.yml"
 GRAPHIFY_IGNORE = ROOT / ".graphifyignore"
 LANDING_PAGE = ROOT / "site" / "index.html"
-SESSION_WORKSPACE_IMAGE = ROOT / "assets" / "session-workspace.png"
-SESSION_DIAGNOSTICS_IMAGE = ROOT / "assets" / "session-diagnostics.png"
+README_WORKSPACE_IMAGE = ROOT / "assets" / "workspace-overview.png"
+LANDING_WORKSPACE_IMAGE = ROOT / "assets" / "session-workspace.png"
 
 
 @pytest.mark.parametrize(
@@ -72,20 +72,18 @@ def test_product_landing_page_uses_current_connection_terminology():
 
 def test_public_surfaces_use_the_large_real_session_workspace_capture():
     """The new workspace is shown with a desktop-sized product capture."""
-    image_reference = "assets/session-workspace.png"
-    assert image_reference in README.read_text(encoding="utf-8")
-    assert image_reference in LANDING_PAGE.read_text(encoding="utf-8")
+    assert "assets/workspace-overview.png" in README.read_text(encoding="utf-8")
+    assert "assets/session-workspace.png" in LANDING_PAGE.read_text(encoding="utf-8")
 
-    png = SESSION_WORKSPACE_IMAGE.read_bytes()
-    assert png[:8] == b"\x89PNG\r\n\x1a\n"
-    width = int.from_bytes(png[16:20], "big")
-    height = int.from_bytes(png[20:24], "big")
-    assert width >= 1920
-    assert height >= 1080
+    for image in (README_WORKSPACE_IMAGE, LANDING_WORKSPACE_IMAGE):
+        png = image.read_bytes()
+        assert png[:8] == b"\x89PNG\r\n\x1a\n"
+        assert int.from_bytes(png[16:20], "big") >= 1920
+        assert int.from_bytes(png[20:24], "big") >= 1080
 
 
-def test_readme_documents_session_diagnostics_with_a_large_capture():
-    """Monitoring, diagnostics, and safe service actions stay public."""
+def test_readme_keeps_current_session_diagnostics_public():
+    """Monitoring, diagnostics, and safe service actions stay discoverable."""
     readme = README.read_text(encoding="utf-8")
     for feature in (
         "Active Session Monitoring",
@@ -94,8 +92,4 @@ def test_readme_documents_session_diagnostics_with_a_large_capture():
     ):
         assert feature in readme
 
-    assert "assets/session-diagnostics.png" in readme
-    png = SESSION_DIAGNOSTICS_IMAGE.read_bytes()
-    assert png[:8] == b"\x89PNG\r\n\x1a\n"
-    assert int.from_bytes(png[16:20], "big") >= 1920
-    assert int.from_bytes(png[20:24], "big") >= 1080
+    assert "Session-aware Files, Commands, Diagnostics, and Notes contexts" in readme

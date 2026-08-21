@@ -482,6 +482,18 @@ async function seedDemoWorkspace(page) {
     ))).toBe(true);
 }
 
+async function focusDemoWorkspace(page) {
+    await page.evaluate(() => {
+        SessionManager.setSplitLayout(1);
+        SessionManager.setActivePane(0);
+    });
+    await expect(page.locator('#terminalGrid .terminal-pane')).toHaveCount(1);
+    await expect(page.locator('#terminalGrid .xterm-screen')).toHaveCount(1);
+    await expect(page.locator('#sessionTabs .session-tab')).toHaveCount(4);
+    await expect(page.locator('#notepadPanel')).toBeVisible();
+    await expect(page.locator('#sessionNotepad')).toHaveValue(/Release checklist/);
+}
+
 async function assertWorkspaceIsContained(page) {
     const geometry = await page.locator('#terminalGrid').evaluate(grid => {
         const gridRect = grid.getBoundingClientRect();
@@ -535,6 +547,26 @@ async function assertWorkspaceIsContained(page) {
 test.use({
     viewport: DESKTOP_VIEWPORT,
     deviceScaleFactor: DESKTOP_DEVICE_SCALE_FACTOR,
+});
+
+test('captures the focused session workspace and operational context', async ({ page }, testInfo) => {
+    await installCaptureNetworkGuard(page);
+    await login(page);
+    await installSshConnectTrap(page);
+    await sanitizeSeededCatalog(page);
+    await seedDemoWorkspace(page);
+    await focusDemoWorkspace(page);
+
+    expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
+    await expect(page.locator('#sessionTabs')).toContainText('Production Edge');
+    await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
+    await expect(page.locator('#notepadPanel')).toContainText('Notepad');
+    await expect(page.locator('header.header')).not.toContainText('E2E');
+    await expect(page.locator('main')).not.toContainText('.local');
+    await expectCurrentCaptureTerminology(page);
+    await captureDesktopStill(page, 'workspace-overview.png', testInfo);
+
+    await assertCaptureNetworkClean(page);
 });
 
 test('captures the current Quick Connect surface at Full HD scale without outbound requests', async ({ page }, testInfo) => {
@@ -642,7 +674,7 @@ test('captures a populated dual-pane File Manager without remote file actions', 
     await expectCurrentCaptureTerminology(page);
     expect(await page.evaluate(() => window.__captureFileManagerSocketEvents)).toEqual([]);
     await assertFileManagerIsContained(page);
-    await captureDesktopStill(page, 'filemanager.png', testInfo);
+    await captureDesktopStill(page, 'sftp-workspace.png', testInfo);
 
     expect(await page.evaluate(() => window.__captureFileManagerSocketEvents)).toEqual([]);
     await assertCaptureNetworkClean(page);
@@ -893,7 +925,7 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await expect(page.locator('main')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
     await assertWorkspaceIsContained(page);
-    await captureDesktopStill(page, 'multi.png', testInfo);
+    await captureDesktopStill(page, 'multi-session.png', testInfo);
 
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
@@ -913,6 +945,26 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await assertCaptureNetworkClean(page);
 });
 
+test('captures the current Security Center assurance overview', async ({ page }, testInfo) => {
+    await installCaptureNetworkGuard(page);
+    await login(page);
+    await page.goto('/security');
+
+    expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
+    await expect(page.locator('#securityAssuranceOverview')).toBeVisible();
+    await expect(page.locator('#securityAssuranceTitle')).toHaveText(
+        'How security changes are confirmed',
+    );
+    await expect(page.locator('#securityCurrentMethod')).toContainText('WebSSH password');
+    await expect(page.locator('#passkeyAddBtn')).toBeVisible();
+    await expect(page.locator('#totpAddBtn')).toBeVisible();
+    await expect(page.locator('#recoveryGenerateBtn')).toBeVisible();
+    await expect(page.locator('body')).not.toContainText('E2E');
+    await captureDesktopStill(page, 'security-center.png', testInfo);
+
+    await assertCaptureNetworkClean(page);
+});
+
 test.describe('mobile product capture', () => {
     test.use({
         viewport: MOBILE_VIEWPORT,
@@ -924,13 +976,16 @@ test.describe('mobile product capture', () => {
         await login(page);
         await installSshConnectTrap(page);
         await sanitizeSeededCatalog(page);
+        await seedDemoWorkspace(page);
+        await focusDemoWorkspace(page);
+        await page.evaluate(() => window.workspaceLayoutController.setNotesOpen(false));
 
         expect(page.viewportSize()).toEqual(MOBILE_VIEWPORT);
-        const launcher = page.locator('.profile-launcher');
-        await expect(launcher.getByText('Hosts', { exact: true })).toBeVisible();
-        await expect(launcher.getByText('Production gateway', { exact: true })).toBeVisible();
-        await expect(launcher).not.toContainText('E2E');
-        await expect(launcher).not.toContainText('.local');
+        await expect(page.locator('#sessionTabs')).toContainText('Production Edge');
+        await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
+        await expect(page.locator('#notepadPanel')).toBeHidden();
+        await expect(page.locator('main')).not.toContainText('E2E');
+        await expect(page.locator('main')).not.toContainText('.local');
         await expectCurrentCaptureTerminology(page);
 
         const layout = await page.evaluate(() => ({
@@ -941,7 +996,7 @@ test.describe('mobile product capture', () => {
         expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
         expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth);
 
-        const filePath = captureOutputPath(testInfo, 'mobile.png');
+        const filePath = captureOutputPath(testInfo, 'mobile-workspace.png');
         await page.screenshot({
             path: filePath,
             animations: 'disabled',

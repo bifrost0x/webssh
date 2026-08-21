@@ -519,30 +519,43 @@ def test_ldap_documentation_selects_overlay_for_every_helper_command():
     ) in documentation
 
 
-def test_readme_documents_complete_ldap_compose_quickstart():
-    readme = Path('README.md').read_text(encoding='utf-8')
+def test_wiki_documents_complete_ldap_compose_quickstart():
+    documentation = Path(
+        'docs/wiki/LDAP-and-Active-Directory.md'
+    ).read_text(encoding='utf-8')
+    normalized = ' '.join(documentation.replace('\\\n', '').split())
     documented_urls = {
         (parsed.scheme, parsed.hostname, parsed.port)
-        for value in re.findall(r'`(ldaps?://[^`:/\s]+:\d+)`', readme)
+        for value in re.findall(
+            r'`(ldaps?://[^`:/\s]+:\d+)`', documentation
+        )
         if (parsed := urlsplit(value)).hostname
     }
 
-    assert '#### Enable LDAP or LDAPS with Docker Compose' in readme
+    assert '# LDAP and Active Directory' in documentation
     assert ('ldap', 'ldap.example.com', 389) in documented_urls
-    assert 'mandatory StartTLS' in readme
+    assert 'mandatory StartTLS' in documentation
     assert ('ldaps', 'ldap.example.com', 636) in documented_urls
     assert (
         '-f docker-compose.yml -f docker-compose.ldap.yml '
         '--profile ldap-tools run --rm ldap-tools set-password'
-    ) in readme
+    ) in normalized
     assert (
         '-f docker-compose.yml -f docker-compose.ldap.yml up -d'
-    ) in readme
+    ) in normalized
     assert (
         '-f docker-compose.yml -f docker-compose.ldap.yml '
         '-f docker-compose.production.yml up -d'
-    ) in readme
-    assert 'docker compose -f docker-compose.yml up -d --force-recreate' in readme
+    ) in normalized
+    assert (
+        'docker compose -f docker-compose.yml '
+        'up -d --force-recreate'
+    ) in normalized
+    assert (
+        'docker compose -f docker-compose.yml '
+        '-f docker-compose.production.yml '
+        'up -d --force-recreate'
+    ) in normalized
 
 
 def test_disposable_ldap_lab_binds_published_test_service_to_loopback():
