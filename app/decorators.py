@@ -38,8 +38,9 @@ def socket_login_required(f):
     This decorator:
     1. Gets the SocketIO session ID from the request
     2. Looks up the authenticated user for this socket
-    3. Disconnects if no authenticated user found
-    4. Injects 'current_user' parameter into the decorated function
+    3. Revalidates the server-side browser authentication session
+    4. Disconnects if either authentication boundary is no longer valid
+    5. Injects 'current_user' parameter into the decorated function
 
     Usage:
         @socketio.on('some_event')
@@ -65,6 +66,23 @@ def socket_login_required(f):
             log_warning("Unauthorized socket event attempt", event=f.__name__, sid=socket_sid)
             disconnect()
             return
+        from .auth_assurance import current_authentication_session
+        auth_session = current_authentication_session()
+        if auth_session is None or auth_session.user_id != user.id:
+            payload = {
+                'success': False,
+                'error': 'Authentication required',
+                'code': 'authentication_required',
+            }
+            log_warning(
+                "Socket authentication assurance rejected",
+                event=f.__name__,
+                user_id=user.id,
+                sid=socket_sid,
+            )
+            emit('error', payload)
+            disconnect()
+            return payload
         kwargs['current_user'] = user
         return f(*args, **kwargs)
 
