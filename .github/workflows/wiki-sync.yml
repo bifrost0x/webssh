@@ -75,8 +75,7 @@ jobs:
           fi
 
           git -C "$RUNNER_TEMP/webssh-wiki" diff --check
-          git -C "$RUNNER_TEMP/webssh-wiki" add --all -- \
-            '*.md' '*.markdown' '*.mdown' '*.mkdn'
+          git -C "$RUNNER_TEMP/webssh-wiki" add --all
           if git -C "$RUNNER_TEMP/webssh-wiki" diff --cached --quiet; then
             echo "The live Wiki already matches docs/wiki."
             exit 0
