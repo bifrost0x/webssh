@@ -1,6 +1,7 @@
 """Behavioral tests for publishing the canonical Wiki source."""
 
 from pathlib import Path
+import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -19,7 +20,12 @@ class WikiSyncTests(unittest.TestCase):
     def make_wiki_checkout(self, root: Path) -> Path:
         destination = root / "wiki"
         destination.mkdir()
-        (destination / ".git").mkdir()
+        subprocess.run(
+            ["git", "init", "--quiet", str(destination)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         return destination
 
     def test_sync_mirrors_markdown_pages_without_touching_other_files(self):
@@ -36,7 +42,12 @@ class WikiSyncTests(unittest.TestCase):
             (destination / "Removed-Page.md").write_text(
                 "# Removed\n", encoding="utf-8"
             )
+            (destination / "Rogue.markdown").write_text(
+                "# Rogue\n", encoding="utf-8"
+            )
             (destination / "attachment.png").write_bytes(b"keep")
+            temporary_attachment = destination / ".Home.md.wiki-sync.tmp"
+            temporary_attachment.write_bytes(b"keep temporary attachment")
 
             result = sync_wiki(source, destination)
 
@@ -49,8 +60,11 @@ class WikiSyncTests(unittest.TestCase):
                 "# Home\n",
             )
             self.assertEqual((destination / "attachment.png").read_bytes(), b"keep")
+            self.assertEqual(
+                temporary_attachment.read_bytes(), b"keep temporary attachment"
+            )
             self.assertEqual(result.copied, 4)
-            self.assertEqual(result.removed, 1)
+            self.assertEqual(result.removed, 2)
 
     def test_sync_rejects_non_markdown_source_artifacts(self):
         with TemporaryDirectory() as directory:
@@ -87,6 +101,43 @@ class WikiSyncTests(unittest.TestCase):
                 (destination / "valuable.md").read_text(encoding="utf-8"),
                 "keep",
             )
+
+    def test_sync_refuses_fake_git_metadata_before_removing_pages(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.make_wiki_source(root)
+            destination = root / "fake-checkout"
+            destination.mkdir()
+            (destination / ".git").write_text("not Git metadata", encoding="utf-8")
+            valuable = destination / "valuable.md"
+            valuable.write_text("keep", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Git checkout"):
+                sync_wiki(source, destination)
+
+            self.assertEqual(valuable.read_text(encoding="utf-8"), "keep")
+
+    def test_sync_rejects_page_symlinks_before_removing_stale_pages(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.make_wiki_source(root)
+            (source / "ZZZ.md").write_text("linked", encoding="utf-8")
+            destination = self.make_wiki_checkout(root)
+            outside = root / "outside.md"
+            outside.write_text("outside", encoding="utf-8")
+            stale = destination / "AAA-Stale.md"
+            stale.write_text("stale", encoding="utf-8")
+            linked_page = destination / "ZZZ.md"
+            try:
+                linked_page.symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
+
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                sync_wiki(source, destination)
+
+            self.assertEqual(outside.read_text(encoding="utf-8"), "outside")
+            self.assertEqual(stale.read_text(encoding="utf-8"), "stale")
 
 
 if __name__ == "__main__":

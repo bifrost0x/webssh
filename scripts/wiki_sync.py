@@ -7,9 +7,12 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
+import subprocess
+import tempfile
 
 
 REQUIRED_PAGES = {"Home.md", "_Sidebar.md", "_Footer.md"}
+PUBLISHED_PAGE_SUFFIXES = {".md", ".markdown"}
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,66 @@ def _canonical_pages(source: Path) -> dict[str, Path]:
     return pages
 
 
+def _require_git_toplevel(destination: Path) -> None:
+    result = subprocess.run(
+        ["git", "-C", str(destination), "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError("Wiki destination must be an existing Git checkout")
+    try:
+        top_level = Path(result.stdout.strip()).resolve(strict=True)
+    except (FileNotFoundError, OSError) as exc:
+        raise ValueError(
+            "Wiki destination must be an existing Git checkout"
+        ) from exc
+    if top_level != destination:
+        raise ValueError("Wiki destination must be the Git checkout top-level")
+
+
+def _published_pages(destination: Path) -> dict[str, Path]:
+    pages: dict[str, Path] = {}
+    for entry in destination.iterdir():
+        if entry.suffix.lower() not in PUBLISHED_PAGE_SUFFIXES:
+            continue
+        if entry.is_symlink():
+            raise ValueError(
+                f"Wiki destination page must not be a symbolic link: {entry.name}"
+            )
+        if not entry.is_file():
+            raise ValueError(
+                f"Wiki destination page must be a regular file: {entry.name}"
+            )
+        pages[entry.name] = entry
+    return pages
+
+
+def _copy_page(source: Path, destination: Path) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".wiki-sync-{destination.name}-",
+        suffix=".tmp",
+        dir=destination.parent,
+    )
+    temporary_page = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as output, source.open("rb") as input_file:
+            shutil.copyfileobj(input_file, output)
+            output.flush()
+            os.fsync(output.fileno())
+        if destination.is_symlink() or (
+            destination.exists() and not destination.is_file()
+        ):
+            raise ValueError(
+                "Wiki destination page must be a regular non-symlink file: "
+                f"{destination.name}"
+            )
+        os.replace(temporary_page, destination)
+    finally:
+        temporary_page.unlink(missing_ok=True)
+
+
 def sync_wiki(source: Path | str, destination: Path | str) -> SyncResult:
     """Mirror top-level Markdown pages without deleting non-page attachments."""
     source_path = _existing_directory(Path(source), "Wiki source")
@@ -64,17 +127,11 @@ def sync_wiki(source: Path | str, destination: Path | str) -> SyncResult:
     ):
         raise ValueError("Wiki source and destination must not overlap")
 
-    git_metadata = destination_path / ".git"
-    if git_metadata.is_symlink() or not git_metadata.exists():
-        raise ValueError("Wiki destination must be an existing Git checkout")
-
+    _require_git_toplevel(destination_path)
     pages = _canonical_pages(source_path)
+    published_pages = _published_pages(destination_path)
     removed = 0
-    for existing in destination_path.glob("*.md"):
-        if existing.is_symlink():
-            raise ValueError(
-                f"Wiki destination page must not be a symbolic link: {existing.name}"
-            )
+    for existing in published_pages.values():
         if existing.name not in pages:
             existing.unlink()
             removed += 1
@@ -94,12 +151,7 @@ def sync_wiki(source: Path | str, destination: Path | str) -> SyncResult:
             unchanged += 1
             continue
 
-        temporary_page = destination_path / f".{name}.wiki-sync.tmp"
-        try:
-            shutil.copyfile(source_page, temporary_page)
-            os.replace(temporary_page, destination_page)
-        finally:
-            temporary_page.unlink(missing_ok=True)
+        _copy_page(source_page, destination_page)
         copied += 1
 
     return SyncResult(copied=copied, removed=removed, unchanged=unchanged)
