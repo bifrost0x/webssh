@@ -70,6 +70,10 @@ test('renders hostile inventory only as DOM text with unique service action name
                 }
             });
 
+        window.workspaceLayoutController = {
+            getState: () => ({ activeContext: 'diagnostics' }),
+            setContextAvailability() {},
+        };
         const controller = window.SessionDiagnosticsModule.createController({
             document,
             window,
@@ -108,7 +112,7 @@ test('renders hostile inventory only as DOM text with unique service action name
                 },
             },
         };
-        controller.render(state, null, inventory);
+        controller.render(state, { connected: true }, inventory);
         const systemd = document.getElementById('sessionDiagnosticsSystemdServices');
         const docker = document.getElementById('sessionDiagnosticsDockerContainers');
         const buttons = Array.from(systemd.querySelectorAll('button'));
@@ -127,6 +131,8 @@ test('renders hostile inventory only as DOM text with unique service action name
             actions: buttons.map(button => button.dataset.action),
             unitTag: systemd.querySelector('tr > :first-child')?.tagName,
             unitScope: systemd.querySelector('tr > :first-child')?.scope,
+            diagnosticsVisible: !document.getElementById('sessionDiagnosticsOverlay')
+                .classList.contains('hidden'),
         };
         controller.destroy();
         return result;
@@ -141,6 +147,7 @@ test('renders hostile inventory only as DOM text with unique service action name
     expect(rendered.actions).toEqual(['start', 'stop', 'restart']);
     expect(rendered.unitTag).toBe('TH');
     expect(rendered.unitScope).toBe('row');
+    expect(rendered.diagnosticsVisible).toBe(true);
     await expect(page.getByRole('button', {
         name: `Restart for ${hostileUnit}`,
         exact: true,

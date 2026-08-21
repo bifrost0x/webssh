@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=14">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
     <header class="header">
@@ -98,11 +98,11 @@
             <div class="admin-settings-grid">
             {% if ldap_enabled %}
             <div class="admin-setting-row" id="ldapStatusPanel">
-                <h2>LDAP directory</h2>
-                <p class="admin-muted">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
+                <h2 data-i18n="admin.ldapDirectory">LDAP directory</h2>
+                <p class="admin-muted" data-i18n="admin.ldapCheckHint">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
                 <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
-                    <button class="btn btn-secondary" id="ldapStatusCheck">Check connection</button>
-                    <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite">Not checked</span>
+                    <button class="btn btn-secondary" id="ldapStatusCheck" data-i18n="admin.checkConnection">Check connection</button>
+                    <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.notChecked">Not checked</span>
                 </div>
             </div>
             {% endif %}
@@ -114,10 +114,10 @@
                 <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
             </div>
             <div class="admin-setting-row admin-auth-features">
-                <h2>Authentication features</h2>
-                <p class="admin-muted">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
+                <h2 data-i18n="admin.authenticationFeatures">Authentication features</h2>
+                <p class="admin-muted" data-i18n="admin.authenticationFeaturesHint">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
                 <div id="securityFeatureList" style="margin-top:14px;"></div>
-                <p id="securityFeatureStatus" class="admin-muted" role="status" aria-live="polite">Not loaded</p>
+                <p id="securityFeatureStatus" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</p>
             </div>
             {% if audit_export_enabled %}
             <div class="admin-setting-row admin-audit-retention">
@@ -240,13 +240,13 @@
                     <input type="text" id="securityActionSubject" class="form-control" autocomplete="off">
                 </div>
                 <div class="form-group hidden" id="securityActionDirectoryUsernameGroup">
-                    <label for="securityActionDirectoryUsername">Directory username</label>
+                    <label for="securityActionDirectoryUsername" data-i18n="admin.directoryUsername">Directory username</label>
                     <input type="text" id="securityActionDirectoryUsername" class="form-control" autocomplete="off">
                 </div>
                 <div class="form-group hidden" id="securityActionNewPasswordGroup">
-                    <label for="securityActionNewPassword">New local password after unlinking</label>
+                    <label for="securityActionNewPassword" data-i18n="admin.newLocalPasswordAfterUnlinking">New local password after unlinking</label>
                     <input type="password" id="securityActionNewPassword" class="form-control" autocomplete="new-password">
-                    <p class="admin-muted">Unlinking restores local authentication and therefore requires a fresh password.</p>
+                    <p class="admin-muted" data-i18n="admin.unlinkRestoresLocalAuth">Unlinking restores local authentication and therefore requires a fresh password.</p>
                 </div>
                 <button class="btn btn-primary" id="submitSecurityAction" data-i18n="admin.continue">Continue</button>
                 <div class="form-group hidden" id="securityActionResultGroup" style="margin-top:16px;">
@@ -328,9 +328,9 @@
 
     <div id="notificationContainer" class="notification-container"></div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=18"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=2"></script>
 </body>
 </html>

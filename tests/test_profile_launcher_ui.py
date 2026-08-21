@@ -34,22 +34,22 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     expected_versions = {
         "filename='css/style.css'": '?v=22',
         "filename='css/sftp-file-manager.css'": '?v=9',
-        "filename='js/i18n.js'": '?v=18',
+        "filename='js/i18n.js'": '?v=22',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
         "filename='js/profile-manager.js'": '?v=13',
-        "filename='js/session-workspace.js'": '?v=8',
-        "filename='js/session-manager.js'": '?v=9',
-        "filename='js/terminal-manager.js'": '?v=9',
-        "filename='js/sftp-file-manager.js'": '?v=13',
+        "filename='js/session-workspace.js'": '?v=9',
+        "filename='js/session-manager.js'": '?v=11',
+        "filename='js/terminal-manager.js'": '?v=10',
+        "filename='js/sftp-file-manager.js'": '?v=14',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
         "filename='js/session-command-launcher.js'": '?v=5',
         "filename='js/connection-history.js'": '?v=2',
-        "filename='js/app.js'": '?v=15',
+        "filename='js/app.js'": '?v=18',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)

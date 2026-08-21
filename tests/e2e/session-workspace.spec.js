@@ -119,12 +119,17 @@ async function seedLinuxSession(page, options = {}) {
             }
             if (payload?.session_id === 'workspace-linux') {
                 if (event === 'probe_session_sftp') {
-                    deliver('session_sftp_capability', {
+                    const sendCapability = () => deliver('session_sftp_capability', {
                         success: true,
                         available: seedOptions.sftpAvailable !== false,
                         session_id: payload.session_id,
                         request_id: payload.request_id,
                     });
+                    if (seedOptions.sftpProbeDelayMs) {
+                        setTimeout(sendCapability, seedOptions.sftpProbeDelayMs);
+                    } else {
+                        sendCapability();
+                    }
                     return window.socket;
                 }
                 if (event === 'request_session_runtime_inventory') {
@@ -349,6 +354,19 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     expect(geometry.files.right).toBeLessThanOrEqual(geometry.viewport.width);
     expect(geometry.files.bottom).toBeLessThanOrEqual(geometry.viewport.height);
 
+    const initialContextWidth = await page.locator('#contextWorkspace').evaluate(
+        element => element.getBoundingClientRect().width,
+    );
+    await page.locator('#contextWorkspaceResizer').focus();
+    await page.locator('#contextWorkspaceResizer').press('ArrowLeft');
+    await expect.poll(() => page.evaluate(() => Number(
+        localStorage.getItem('webssh.workspace.contextWidth'),
+    ))).toBe(Math.round(initialContextWidth + 24));
+    const resizedContextWidth = await page.locator('#contextWorkspace').evaluate(
+        element => element.getBoundingClientRect().width,
+    );
+    expect(resizedContextWidth).toBeGreaterThan(initialContextWidth);
+
     const screenshotPath = capturePath(testInfo, 'session-workspace.png');
     await page.screenshot({
         path: screenshotPath,
@@ -421,7 +439,12 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
 
     await page.evaluate(() => SessionManager.setSplitLayout(2));
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
-    await expect(filesTab).toBeDisabled();
+    await expect(filesTab).toBeEnabled();
+    await page.locator('#contextWorkspaceLauncher').click();
+    await filesTab.click();
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await page.locator('#contextWorkspaceClose').click();
+    await expect(page.locator('#sessionFilesPanel')).toBeHidden();
     await page.evaluate(() => SessionManager.setSplitLayout(1));
     await expect(filesTab).toBeEnabled();
     await expect(filesTab).toHaveAttribute('aria-selected', 'false');
@@ -441,6 +464,9 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await expect(page.locator('#contextFilesTab')).toBeEnabled();
     await expect(page.locator('#contextCommandsTab')).toBeEnabled();
     await expect(page.locator('#contextNotesTab')).toBeEnabled();
+    await expect(page.locator('#contextWorkspace')).toBeHidden();
+    await expect(page.locator('#contextWorkspaceLauncher')).toBeVisible();
+    await expect(page.locator('#contextWorkspaceLauncher')).toContainText('Tools');
 
     await page.locator('#contextWorkspaceLauncher').click();
     await page.locator('#contextCommandsTab').click();
@@ -516,9 +542,13 @@ test('desktop-to-mobile resize is not mistaken for an open virtual keyboard', as
         .toBe('mobile');
     await expect(page.locator('body')).not.toHaveClass(/keyboard-open/);
     await expect(page.locator('header.header')).toBeVisible();
-    await expect(page.locator('#contextNotesPanel')).toBeVisible();
+    await expect(page.locator('#contextWorkspace')).toBeHidden();
+    await expect(page.locator('#contextNotesPanel')).toBeHidden();
+    await expect(page.locator('#contextWorkspaceLauncher')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 
+    await page.locator('#contextWorkspaceLauncher').click();
+    await expect(page.locator('#contextNotesPanel')).toBeVisible();
     await page.locator('#contextWorkspaceClose').click();
     await expect(page.locator('header.header')).toBeVisible();
     await expect(page.locator('.terminal-pane.active')).toBeVisible();
@@ -532,9 +562,175 @@ test('wide workspace keeps embedded SFTP closed when the session probe fails', a
     await expect.poll(() => page.evaluate(() => window.__workspaceEvents.filter(
         event => event.event === 'probe_session_sftp',
     ).length)).toBe(1);
-    await expect(page.locator('#contextFilesTab')).toBeDisabled();
+    await expect(page.locator('#contextFilesTab')).toBeEnabled();
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
     await expect(page.locator('#contextDiagnosticsTab')).toBeEnabled();
+    await expect(page.locator('#contextDiagnosticsTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await page.locator('#contextFilesTab').click();
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#sessionFilesStatus')).toContainText('SFTP is not available');
+    await assertNoExternalRequests(page);
+});
+
+test('manual context choice wins while SFTP capability is still probing', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page, { sftpProbeDelayMs: 500 });
+
+    await page.locator('#contextNotesTab').click();
+    await expect(page.locator('#contextNotesTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#contextFilesTab')).toBeEnabled({ timeout: 3000 });
+    await expect(page.locator('#contextNotesTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#notepadPanel')).toBeVisible();
+    await assertNoExternalRequests(page);
+});
+
+test('desktop context width survives a page reload without affecting mobile layout', async ({ page }) => {
+    await login(page);
+    await page.evaluate(() => {
+        localStorage.setItem('webssh.workspace.contextWidth', '512');
+    });
+    await page.reload();
+
+    await expect(page.locator('#contextWorkspace')).toBeVisible();
+    await expect.poll(() => page.locator('#contextWorkspace').evaluate(
+        element => Math.round(element.getBoundingClientRect().width),
+    )).toBe(512);
+
+    await page.setViewportSize({ width: 360, height: 640 });
+    await expect.poll(() => page.evaluate(() => window.workspaceLayoutController?.getState().mode))
+        .toBe('mobile');
+    await expect(page.locator('#contextWorkspaceResizer')).toBeHidden();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+    await assertNoExternalRequests(page);
+});
+
+test('automatic context width follows live desktop resizes without a reload', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await login(page);
+    await page.evaluate(() => {
+        localStorage.removeItem('webssh.workspace.contextWidth');
+        localStorage.removeItem('webssh.workspace.contextWidthMode');
+    });
+    await page.reload();
+
+    const contextWidth = () => page.locator('#contextWorkspace').evaluate(
+        element => Math.round(element.getBoundingClientRect().width),
+    );
+    await expect.poll(contextWidth).toBe(420);
+    await expect.poll(() => page.evaluate(
+        () => window.workspaceLayoutController?.getContextWidthMode(),
+    )).toBe('auto');
+
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await expect.poll(contextWidth).toBe(614);
+
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    await expect.poll(contextWidth).toBe(720);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect.poll(contextWidth).toBe(420);
+    await assertNoExternalRequests(page);
+});
+
+test('narrow desktop tools contain German diagnostics and commands inside every surface', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await login(page);
+    await page.evaluate(() => localStorage.setItem('language', 'de'));
+    await page.reload();
+    await seedLinuxSession(page);
+
+    await page.locator('#contextWorkspaceResizer').focus();
+    await page.locator('#contextWorkspaceResizer').press('Home');
+    await expect.poll(() => page.locator('#contextWorkspace').evaluate(
+        element => Math.round(element.getBoundingClientRect().width),
+    )).toBe(320);
+
+    await page.locator('#contextDiagnosticsTab').click();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsMemoryValue')).toHaveText('62.5%');
+
+    const diagnosticsGeometry = await page.evaluate(() => {
+        const panel = document.querySelector('#contextWorkspace');
+        const content = document.querySelector('.session-diagnostics-content');
+        const grid = document.querySelector('.session-diagnostics-primary-grid');
+        const visible = selector => Array.from(document.querySelectorAll(selector))
+            .filter(element => !element.hidden && element.getClientRects().length > 0);
+        const contained = (child, parent) => {
+            const childBox = child.getBoundingClientRect();
+            const parentBox = parent.getBoundingClientRect();
+            return childBox.left >= parentBox.left - 1
+                && childBox.right <= parentBox.right + 1;
+        };
+        const cards = visible('.session-diagnostics-primary-card');
+        const sections = visible('.session-diagnostics-section');
+        const escapedDescendants = [...cards, ...sections].flatMap(surface => (
+            visible('h3, h4, strong, small, canvas, .session-diagnostics-card-heading')
+                .filter(element => surface.contains(element) && !contained(element, surface))
+                .map(element => ({
+                    element: `${element.tagName}.${element.className}`,
+                    surface: `${surface.tagName}.${surface.className}`,
+                }))
+        ));
+        const overflowingSurfaces = [...cards, ...sections]
+            .filter(surface => surface.scrollWidth > surface.clientWidth + 1)
+            .map(surface => ({
+                element: `${surface.tagName}.${surface.className}`,
+                clientWidth: surface.clientWidth,
+                scrollWidth: surface.scrollWidth,
+            }));
+        return {
+            documentContained: document.documentElement.scrollWidth <= innerWidth,
+            panelClipsOverflow: getComputedStyle(panel).overflowX === 'hidden',
+            contentContained: content.scrollWidth <= content.clientWidth + 1,
+            columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+            escapedDescendants,
+            overflowingSurfaces,
+        };
+    });
+    expect(diagnosticsGeometry).toEqual({
+        documentContained: true,
+        panelClipsOverflow: true,
+        contentContained: true,
+        columns: 1,
+        escapedDescendants: [],
+        overflowingSurfaces: [],
+    });
+
+    await page.locator('#contextCommandsTab').click();
+    await expect(page.locator('#sessionCommandsPanel')).toBeVisible();
+    await expect(page.locator('.session-command-item')).not.toHaveCount(0);
+    const commandsGeometry = await page.evaluate(() => {
+        const panel = document.querySelector('#contextWorkspace');
+        const results = document.querySelector('.session-command-results');
+        const footer = document.querySelector('.session-command-popover-footer');
+        const contained = (child, parent) => {
+            const childBox = child.getBoundingClientRect();
+            const parentBox = parent.getBoundingClientRect();
+            return childBox.left >= parentBox.left - 1
+                && childBox.right <= parentBox.right + 1;
+        };
+        const items = Array.from(document.querySelectorAll('.session-command-item'))
+            .filter(element => element.getClientRects().length > 0);
+        return {
+            documentContained: document.documentElement.scrollWidth <= innerWidth,
+            panelContained: panel.scrollWidth <= panel.clientWidth + 1,
+            resultsContained: results.scrollWidth <= results.clientWidth + 1,
+            footerContained: footer.scrollWidth <= footer.clientWidth + 1
+                && Array.from(footer.children).every(child => contained(child, footer)),
+            itemsContained: items.every(item => (
+                item.scrollWidth <= item.clientWidth + 1
+                && Array.from(item.children).every(child => contained(child, item))
+            )),
+        };
+    });
+    expect(commandsGeometry).toEqual({
+        documentContained: true,
+        panelContained: true,
+        resultsContained: true,
+        footerContained: true,
+        itemsContained: true,
+    });
     await assertNoExternalRequests(page);
 });
 
@@ -552,9 +748,12 @@ test('Files context follows session capability and stays mounted while tools swi
         event => event.event === 'probe_session_sftp'
             && event.payload.session_id === 'workspace-cisco',
     ))).toBe(true);
-    await expect(filesTab).toBeDisabled();
+    await expect(filesTab).toBeEnabled();
     await expect(filesTab).toHaveAttribute('aria-selected', 'false');
     await expect(panel).toBeHidden();
+    await filesTab.click();
+    await expect(panel).toBeVisible();
+    await expect(page.locator('#sessionFilesStatus')).toContainText('SFTP is not available');
 
     await page.evaluate(() => SessionManager.assignSessionToPane('workspace-linux', 0));
     await expect(filesTab).toBeEnabled();
@@ -602,8 +801,8 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     const drawerWidth = await page.locator('.session-diagnostics-drawer').evaluate(
         element => element.getBoundingClientRect().width,
     );
-    expect(drawerWidth).toBeGreaterThanOrEqual(360);
-    expect(drawerWidth).toBeLessThanOrEqual(500);
+    expect(drawerWidth).toBeGreaterThanOrEqual(420);
+    expect(drawerWidth).toBeLessThanOrEqual(720);
     for (const selector of [
         '#sessionDiagnosticsCpuMetric',
         '#sessionDiagnosticsMemoryMetric',
@@ -657,7 +856,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
         'sudo systemctl restart -- backup.service',
     );
     await expect(page.locator('#sessionDiagnosticsClipboardFeedback')).toHaveText(
-        'Command copied: restart backup.service',
+        'Command copied: Restart backup.service',
     );
     const clipboardNotification = page.locator('.notification-success').filter({
         hasText: 'Command copied to clipboard',
@@ -724,7 +923,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await assertNoExternalRequests(page);
 });
 
-test('open diagnostics keep polling across the mobile breakpoint', async ({ page }) => {
+test('compact breakpoints close diagnostics until the user reopens session tools', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
     await expect(page.locator('#contextDiagnosticsTab')).toBeEnabled();
@@ -736,6 +935,11 @@ test('open diagnostics keep polling across the mobile breakpoint', async ({ page
 
     const beforeResize = await page.evaluate(() => window.__workspaceExpandedRequests);
     await page.setViewportSize({ width: 800, height: 900 });
+    await expect(page.locator('#contextWorkspace')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeHidden();
+    await expect(page.locator('#contextWorkspaceLauncher')).toBeVisible();
+
+    await page.locator('#contextWorkspaceLauncher').click();
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__workspaceExpandedRequests), {
         timeout: 6000,

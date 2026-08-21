@@ -222,6 +222,9 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
     assert account_menu
     navigation = global_navigation.group('body')
     assert 'manageProfilesBtn' in navigation
+    assert navigation.index('fileTransferBtn') < navigation.index(
+        'manageProfilesBtn'
+    )
     assert navigation.index('manageProfilesBtn') < navigation.index(
         'commandLibraryBtn'
     )
@@ -294,7 +297,7 @@ def test_close_confirmation_preference_is_rendered_for_session_manager():
     app_source = read('app/__init__.py')
     template = read('templates/index.html')
 
-    assert "confirm_session_close=settings.get('confirm_session_close', True)" in app_source
+    assert "confirm_session_close=settings.get('confirm_session_close', False)" in app_source
     assert 'data-confirm-session-close="{{ \'true\' if confirm_session_close else \'false\' }}"' in template
 
 

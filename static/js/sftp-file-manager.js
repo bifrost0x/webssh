@@ -1279,7 +1279,15 @@ class SFTPFileManager {
         });
 
         this.socket.on('quick_connect_error', (data) => {
-            this.showNotification(`${this.t('fm.qc.connectionFailed', 'Connection failed')}: ${data.error}`, 'error');
+            const presentation = window.SSHErrorUI?.describeSSHError?.(
+                data,
+                key => this.t(key, key),
+                window.APP_ROOT || '',
+            );
+            this.showNotification(
+                presentation || `${this.t('fm.qc.connectionFailed', 'Connection failed')}: ${data.error}`,
+                'error'
+            );
             const btn = document.getElementById('fmQcConnectBtn');
             if (btn) {
                 btn.disabled = false;

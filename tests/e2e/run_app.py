@@ -268,7 +268,7 @@ def main():
             'DEBUG': 'False',
             'HOST': '127.0.0.1',
             'PORT': os.environ.get('WEBSSH_E2E_PORT', '4173'),
-            'REGISTRATION_ENABLED': 'False',
+            'REGISTRATION_ENABLED': 'True',
             'RATELIMIT_STORAGE_URL': 'memory://',
             'RATELIMIT_LOGIN_LIMIT': '100 per minute',
             'CORS_ORIGINS': (

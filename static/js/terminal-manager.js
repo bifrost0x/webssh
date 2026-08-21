@@ -95,7 +95,7 @@ const TerminalManager = {
         const key = terminalKey || sessionId;
         const monoFont = this.getMonoFont();
         const theme = this.buildTheme();
-        const scrollbackLines = parseInt(localStorage.getItem('terminalScrollback') || '150', 10);
+        const scrollbackLines = parseInt(localStorage.getItem('terminalScrollback') || '500', 10);
         const terminal = new Terminal({
             cursorBlink: true,
             fontSize: this.getResponsiveFontSize(),

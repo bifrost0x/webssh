@@ -50,8 +50,10 @@ def test_security_center_requires_login_and_exposes_management_controls(
     assert b'id="securityAssuranceOverview"' in authenticated.data
     assert b'id="securityCurrentMethod"' in authenticated.data
     assert b'WebSSH password' in authenticated.data
-    assert b'id="securityCurrentAssurance"' in authenticated.data
-    assert b'BASIC' in authenticated.data
+    assert b'How security changes are confirmed' in authenticated.data
+    assert b'WebSSH password from this sign-in' in authenticated.data
+    assert b'id="securityCurrentAssurance"' not in authenticated.data
+    assert b'BASIC' not in authenticated.data
 
 
 def test_login_shows_only_enabled_external_authentication(
@@ -74,6 +76,8 @@ def test_login_shows_only_enabled_external_authentication(
     assert b'id="recoveryMfaPanel"' not in disabled.data
     assert b'id="passkeyLoginBtn"' in enabled.data
     assert b'id="oidcLoginBtn"' in enabled.data
+    assert b'name="webauthn-configured-origin"' in enabled.data
+    assert b'id="authNotificationContainer"' in enabled.data
 
 
 def test_ldap_managed_security_center_offers_passkeys_but_not_local_password(

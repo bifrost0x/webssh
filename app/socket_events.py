@@ -24,6 +24,7 @@ from .tailscale_ssh import (
 )
 from .storage_errors import StorageCorruptionError
 from .network_policy import canonicalize_hostname
+from .ssh_errors import connection_error_payload
 from . import binary_transfer, connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaKind, quota_manager
@@ -338,7 +339,10 @@ def handle_ssh_connect(data, current_user=None):
         auth_type = data.get('auth_type') or ('key' if key_id else 'password')
 
         def emit_error(message):
-            emit('ssh_error', {'error': message, 'client_request_id': client_request_id})
+            emit('ssh_error', connection_error_payload(
+                message,
+                client_request_id=client_request_id,
+            ))
 
         startup_commands, startup_commands_error = (
             post_connect_manager.resolve_configuration(
@@ -1255,6 +1259,50 @@ def handle_set_confirm_session_close(data, current_user=None):
         emit('error', payload)
         return payload
 
+
+@socketio.on('set_disconnect_session_action')
+@socket_login_required
+def handle_set_disconnect_session_action(data, current_user=None):
+    """Persist how the workspace handles a completed SSH connection."""
+    try:
+        action = data.get('action') if isinstance(data, dict) else None
+        if action not in {'retry', 'close'}:
+            payload = {
+                'success': False,
+                'error': 'Invalid disconnect session action',
+            }
+            emit('error', payload)
+            return payload
+
+        if not save_user_settings(
+            current_user.id,
+            {'disconnect_session_action': action},
+        ):
+            payload = {
+                'success': False,
+                'error': 'Failed to save disconnect session action',
+            }
+            emit('error', payload)
+            return payload
+
+        return {
+            'success': True,
+            'disconnect_session_action': action,
+        }
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error(
+            "Failed to save disconnect session action",
+            error=str(error),
+        )
+        payload = {
+            'success': False,
+            'error': 'Failed to save disconnect session action',
+        }
+        emit('error', payload)
+        return payload
+
 @socketio.on('get_notepad')
 @socket_login_required
 def handle_get_notepad(current_user=None):
@@ -1901,7 +1949,7 @@ def handle_quick_connect(data, current_user=None):
             data.get('host'), data.get('port', 22), data.get('username')
         )
         if error:
-            emit('quick_connect_error', {'error': error})
+            emit('quick_connect_error', connection_error_payload(error))
             return
 
         if not password and not key_id:
@@ -1930,7 +1978,7 @@ def handle_quick_connect(data, current_user=None):
             key_content = None
 
         if error:
-            emit('quick_connect_error', {'error': error})
+            emit('quick_connect_error', connection_error_payload(error))
         else:
             emit('quick_connect_success', {
                 'connection_id': connection_id,

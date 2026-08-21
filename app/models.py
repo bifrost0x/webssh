@@ -26,6 +26,12 @@ class User(db.Model, UserMixin):
     is_locked = db.Column(db.Boolean, nullable=False, default=False)
     auth_generation = db.Column(db.Integer, nullable=False, default=0)
     mfa_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    settings_default_generation = db.Column(
+        db.Integer,
+        nullable=False,
+        default=1,
+        server_default='1',
+    )
 
     socket_sessions = db.relationship('SocketSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
     ssh_sessions = db.relationship('SSHSession', backref='user', cascade='all, delete-orphan', lazy='dynamic')
@@ -134,6 +140,11 @@ def ensure_user_columns():
         additions.append(
             "ALTER TABLE users ADD COLUMN mfa_enabled "
             "BOOLEAN NOT NULL DEFAULT 0"
+        )
+    if 'settings_default_generation' not in existing:
+        additions.append(
+            "ALTER TABLE users ADD COLUMN settings_default_generation "
+            "INTEGER NOT NULL DEFAULT 0"
         )
     for stmt in additions:
         db.session.execute(text(stmt))

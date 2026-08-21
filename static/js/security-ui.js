@@ -65,13 +65,39 @@
         };
     }
 
-    function featureDisableWarning(_feature, label) {
+    function featureStatusReason(feature, label, translate) {
+        const item = feature || {};
+        const name = String(label || item.name || 'Authentication feature');
+        const t = typeof translate === 'function'
+            ? translate
+            : (_key, fallback) => fallback;
+        let key = 'admin.featureActive';
+        let fallback = '{feature} is active.';
+        if (!item.deployment_allowed) {
+            key = 'admin.featureDeploymentDisabled';
+            fallback = '{feature} is disabled by deployment configuration.';
+        } else if (!item.ready) {
+            key = 'admin.featureNotReady';
+            fallback = '{feature} is configured but not ready.';
+        } else if (!item.admin_enabled) {
+            key = 'admin.featureAdminDisabled';
+            fallback = '{feature} is available but not activated in the admin panel.';
+        }
+        return t(key, fallback).replace('{feature}', name);
+    }
+
+    function featureDisableWarning(_feature, label, translate) {
         const name = String(label || 'this authentication feature');
-        return `Disable ${name}? If this is your current sign-in method, `
+        const fallback = `Disable ${name}? If this is your current sign-in method, `
             + 'you may not be able to sign in again. Existing browser, SSH, '
             + 'and tmux sessions remain available until their normal timeout; '
             + 'this change does not terminate them. New logins and factor '
             + 'setup use the new rule immediately.';
+        const t = typeof translate === 'function'
+            ? translate
+            : (_key, value) => value;
+        return t('admin.disableFeatureWarning', fallback)
+            .replace('{feature}', name);
     }
 
     function totpAccountState(payload) {
@@ -310,6 +336,7 @@
         describeHostKey,
         downloadAuditExport,
         featureDisableWarning,
+        featureStatusReason,
         featureToggleState,
         hostKeyConfirmation,
         totpAccountState

@@ -13,6 +13,18 @@ global.navigator = {};
 require('../../static/js/terminal-manager.js');
 const TerminalManager = global.window.TerminalManager;
 
+test('new terminals use 500 scrollback lines when no preference is stored', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/terminal-manager.js'),
+        'utf8',
+    );
+
+    assert.match(
+        source,
+        /localStorage\.getItem\('terminalScrollback'\) \|\| '500'/,
+    );
+});
+
 test('virtual keyboard detection follows visual viewport occlusion, not browser resize history', () => {
     assert.equal(TerminalManager.isVirtualKeyboardVisible(640, 640), false);
     assert.equal(TerminalManager.isVirtualKeyboardVisible(420, 640), true);
@@ -142,6 +154,52 @@ test('session workspace panel changes synchronize visible remote PTYs', () => {
 
     assert.match(render, /fitAndSyncVisibleTerminals/);
     assert.doesNotMatch(render, /fitAllTerminals/);
+});
+
+test('session workspace renders Files availability before enabling its context', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/session-workspace-ui.js'),
+        'utf8',
+    );
+    const render = source.slice(
+        source.indexOf('            render(state) {'),
+        source.indexOf('        function sync()'),
+    );
+
+    const visibilityRender = render.indexOf(
+        "elements.filesPanel.classList.toggle('hidden', !state.filesAvailable)",
+    );
+    const availabilityUpdate = render.indexOf(
+        "root.workspaceLayoutController?.setContextAvailability?.(",
+    );
+
+    assert.notEqual(visibilityRender, -1);
+    assert.notEqual(availabilityUpdate, -1);
+    assert.ok(
+        visibilityRender < availabilityUpdate,
+        'a nested Files activation must not be overwritten by stale availability state',
+    );
+});
+
+test('active Files context rebinds SFTP after every active-session update', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/session-workspace-ui.js'),
+        'utf8',
+    );
+    const sync = source.slice(
+        source.indexOf('        function sync()'),
+        source.indexOf("        documentRef.addEventListener('session-sftp-request-close'"),
+    );
+
+    const coordinatorUpdate = sync.indexOf('coordinator.update({');
+    const contextSync = sync.indexOf('syncContextControllers();');
+
+    assert.notEqual(coordinatorUpdate, -1);
+    assert.notEqual(contextSync, -1);
+    assert.ok(
+        coordinatorUpdate < contextSync,
+        'Files must reopen or follow the current capable session after state changes',
+    );
 });
 
 test('font size changes update hidden options without fitting hidden terminals', () => {

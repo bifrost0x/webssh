@@ -75,15 +75,29 @@
         return result;
     }
 
-    function notify(message, type) {
-        const container = document.getElementById('notificationContainer');
+    function notify(message, type, action) {
+        const presentation = typeof message === 'object' && message !== null
+            ? message
+            : { message, type, action };
+        const container = document.getElementById('authNotificationContainer')
+            || document.getElementById('notificationContainer');
         if (!container) {
-            window.alert(message);
+            console.warn(String(presentation.message || 'Authentication notice'));
             return;
         }
         const item = document.createElement('div');
-        item.className = `notification notification-${type || 'info'}`;
-        item.textContent = message;
+        item.className = `notification notification-${presentation.type || 'info'}`;
+        item.setAttribute('role', presentation.type === 'error' ? 'alert' : 'status');
+        const copy = document.createElement('span');
+        copy.textContent = String(presentation.message || '');
+        item.appendChild(copy);
+        if (presentation.action?.url && presentation.action?.label) {
+            const link = document.createElement('a');
+            link.className = 'auth-notification-action';
+            link.href = presentation.action.url;
+            link.textContent = presentation.action.label;
+            item.appendChild(link);
+        }
         container.appendChild(item);
         setTimeout(() => item.remove(), 4000);
     }
@@ -567,7 +581,7 @@
         });
         loadTotpAuthenticators().catch(error => notify(error.message, 'error'));
         document.getElementById('passkeyLoginBtn')?.addEventListener('click', async () => {
-            try {
+            const operation = async () => {
                 const options = decodeRequestOptions(await api('/api/webauthn/auth/options', {
                     method: 'POST',
                     body: {}
@@ -578,8 +592,27 @@
                     body: { credential: serializeCredential(credential) }
                 });
                 window.location.assign(root + (result.continuation || '/'));
-            } catch (error) {
-                window.alert(error.message);
+                return true;
+            };
+            const configuredOrigin = document.querySelector(
+                'meta[name="webauthn-configured-origin"]'
+            )?.content || '';
+            const runner = window.WebSSHAuthUI?.createPasskeyOperationRunner?.({
+                configuredOrigin,
+                notify,
+                translate: t,
+            });
+            if (runner) {
+                await runner(operation);
+                return;
+            }
+            try {
+                await operation();
+            } catch {
+                notify(t(
+                    'auth.passkeyFailed',
+                    'Passkey sign-in could not be completed. Try again or use another sign-in method.',
+                ), 'error');
             }
         });
     });

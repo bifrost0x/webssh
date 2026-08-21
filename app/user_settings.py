@@ -5,8 +5,16 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 DEFAULT_SETTINGS = {
     'theme': 'glass',
     'notepad': '',
-    'confirm_session_close': True,
+    'confirm_session_close': False,
+    'disconnect_session_action': 'retry',
 }
+
+
+def _defaults_for_user(user):
+    settings = DEFAULT_SETTINGS.copy()
+    if int(user.settings_default_generation or 0) < 1:
+        settings['confirm_session_close'] = True
+    return settings
 
 
 def _valid_settings(value):
@@ -21,6 +29,14 @@ def _valid_settings(value):
     if (
         'confirm_session_close' in value
         and not isinstance(value['confirm_session_close'], bool)
+    ):
+        return False
+    if (
+        'disconnect_session_action' in value
+        and (
+            not isinstance(value['disconnect_session_action'], str)
+            or value['disconnect_session_action'] not in {'retry', 'close'}
+        )
     ):
         return False
     return True
@@ -41,6 +57,13 @@ def _valid_settings_update(value):
             'confirm_session_close' not in value
             or isinstance(value['confirm_session_close'], bool)
         )
+        and (
+            'disconnect_session_action' not in value
+            or (
+                isinstance(value['disconnect_session_action'], str)
+                and value['disconnect_session_action'] in {'retry', 'close'}
+            )
+        )
     )
 
 
@@ -57,7 +80,7 @@ def _get_user_settings_with_lock_held(user_id):
         dict,
         _valid_settings,
     )
-    settings = DEFAULT_SETTINGS.copy()
+    settings = _defaults_for_user(user)
     settings.update(data)
     settings.pop('schema_version', None)
     return settings

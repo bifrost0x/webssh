@@ -153,8 +153,7 @@
 
         function canOpenSftp() {
             return Boolean(
-                layout === 1
-                && sessionId
+                sessionId
                 && session?.connected
                 && ['available', 'inconclusive'].includes(sftpCapability)
             );
@@ -165,14 +164,14 @@
             const preference = sftpPreferences.get(sessionId);
             if (preference === 'open') return true;
             if (preference === 'closed') return false;
-            if (sftpOpen && panelSessionId === sessionId) return true;
+            if (sftpOpen) return true;
             return isWideDesktop() && sftpCapability === 'available';
         }
 
         function state() {
+            const filesAvailable = Boolean(sessionId && session?.connected);
             const sftpProbeNeeded = Boolean(
-                layout === 1
-                && sessionId
+                sessionId
                 && session?.connected
                 && ['unknown', 'probing'].includes(sftpCapability)
             );
@@ -180,6 +179,7 @@
                 layout,
                 sessionId,
                 connected: Boolean(session?.connected),
+                filesAvailable,
                 sftpOpen,
                 sftpEnabled: canOpenSftp(),
                 sftpCapability,
@@ -209,7 +209,6 @@
             update(next) {
                 const previousSessionId = sessionId;
                 const wasConnected = Boolean(session?.connected);
-                const previousLayout = layout;
                 layout = [1, 2, 4].includes(next?.layout) ? next.layout : 1;
                 sessionId = typeof next?.sessionId === 'string' && next.sessionId
                     ? next.sessionId
@@ -231,10 +230,7 @@
                     insights.setSession?.(sessionId, connected);
                 }
 
-                if (previousLayout === 1 && layout !== 1 && previousSessionId) {
-                    sftpPreferences.set(previousSessionId, 'closed');
-                }
-                if (layout !== 1 || !connected) {
+                if (!connected) {
                     if (sftpOpen && !connected && sessionId) {
                         filesPanel?.setDisconnected?.(sessionId);
                     }
@@ -248,6 +244,12 @@
                     }
                 } else {
                     closeSftp();
+                    if (sftpCapability !== 'available') {
+                        filesPanel?.setStatus?.(
+                            sftpCapability === 'unknown' ? 'probing' : sftpCapability,
+                            session,
+                        );
+                    }
                 }
 
                 renderState();

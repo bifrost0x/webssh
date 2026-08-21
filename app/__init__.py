@@ -128,6 +128,8 @@ def create_app(
             'tmux_default': config.TMUX_DEFAULT,
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
             'webauthn_enabled': feature_is_active('passkey'),
+            'webauthn_origin': config.WEBAUTHN_ORIGIN,
+            'webauthn_rp_id': config.WEBAUTHN_RP_ID,
             'totp_enabled': feature_is_active('totp'),
             'oidc_enabled': feature_is_active('oidc'),
             'ldap_enabled': feature_is_active('ldap'),
@@ -464,7 +466,11 @@ def create_app(
                 current_user,
                 app.config['SECRET_KEY'],
             ),
-            confirm_session_close=settings.get('confirm_session_close', True),
+            confirm_session_close=settings.get('confirm_session_close', False),
+            disconnect_session_action=settings.get(
+                'disconnect_session_action',
+                'retry',
+            ),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
         )
 
@@ -684,18 +690,33 @@ def create_app(
             'totp': 'Authenticator app',
             'recovery_code': 'Recovery code',
         }
+        method_i18n_keys = {
+            'password': 'security.methodPassword',
+            'ldap': 'security.methodLdap',
+            'oidc': 'security.methodOidc',
+            'passkey': 'security.methodPasskey',
+            'totp': 'security.methodTotp',
+            'recovery_code': 'security.methodRecoveryCode',
+        }
         methods = authentication_methods(auth_session)
+        primary_method = methods[0] if methods else 'password'
         return render_template(
             'security.html',
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
             recovery_mode=recovery_session_required(auth_session),
-            authentication_method_labels=tuple(
-                method_labels.get(method, method) for method in methods
+            authentication_methods=tuple(
+                {
+                    'id': method,
+                    'label': method_labels.get(method, method),
+                    'i18n_key': method_i18n_keys.get(
+                        method,
+                        'security.methodUnknown',
+                    ),
+                }
+                for method in (methods or ('password',))
             ),
-            authentication_assurance=(
-                auth_session.assurance if auth_session is not None else 'BASIC'
-            ),
+            authentication_primary_method=primary_method,
             account_mfa_enabled=bool(current_user.mfa_enabled),
         )
 

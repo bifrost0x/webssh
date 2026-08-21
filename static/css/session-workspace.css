@@ -479,7 +479,8 @@ body.session-diagnostics-open {
     gap: 10px;
 }
 
-.session-diagnostics-close {
+.session-diagnostics-close,
+.session-diagnostics-expand {
     width: 34px;
     height: 34px;
     border: 1px solid var(--border-color);
@@ -491,7 +492,8 @@ body.session-diagnostics-open {
     line-height: 1;
 }
 
-.session-diagnostics-close:hover {
+.session-diagnostics-close:hover,
+.session-diagnostics-expand:hover {
     color: var(--text-primary);
 }
 
@@ -783,7 +785,8 @@ body.session-diagnostics-open {
 }
 
 .session-diagnostics-refresh:hover:not(:disabled),
-.session-diagnostics-close:hover {
+.session-diagnostics-close:hover,
+.session-diagnostics-expand:hover {
     border-color: color-mix(in srgb, var(--accent-primary) 60%, var(--border-color));
     color: var(--text-primary);
 }
@@ -797,8 +800,13 @@ body.session-diagnostics-open {
     font-size: 17px;
 }
 
+.session-diagnostics-expand .material-icons {
+    font-size: 18px;
+}
+
 .session-diagnostics-refresh:focus-visible,
 .session-diagnostics-close:focus-visible,
+.session-diagnostics-expand:focus-visible,
 .session-inventory-filters button:focus-visible,
 .session-service-actions button:focus-visible,
 .session-inventory-search input:focus-visible {

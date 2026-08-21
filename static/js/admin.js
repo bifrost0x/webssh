@@ -403,12 +403,16 @@
         const result = document.getElementById('ldapStatusResult');
         if (!button || !result) { return; }
         button.disabled = true;
-        result.textContent = 'Checking...';
+        result.textContent = t('admin.ldapChecking', 'Checking...');
         try {
             const data = await api('/admin/api/ldap/status');
-            result.textContent = `Ready (${data.transport}, provider ${data.provider})`;
+            result.textContent = t(
+                'admin.ldapReady',
+                'Ready ({transport}, provider {provider})'
+            ).replace('{transport}', data.transport)
+                .replace('{provider}', data.provider);
         } catch (e) {
-            result.textContent = 'Unavailable';
+            result.textContent = t('admin.unavailable', 'Unavailable');
             notify(e.message, 'error');
         } finally {
             button.disabled = false;
@@ -431,7 +435,9 @@
                 usernameField.disabled = Boolean(identity);
             }
             document.getElementById('securityActionNewPasswordGroup')?.classList.toggle('hidden', !identity);
-            document.getElementById('submitSecurityAction').textContent = identity ? 'Unlink LDAP' : 'Link LDAP';
+            document.getElementById('submitSecurityAction').textContent = identity
+                ? t('admin.ldapUnlink', 'Unlink LDAP')
+                : t('admin.ldapLink', 'Link LDAP');
         } catch (e) {
             if (securityRequests.isCurrent(requestState)) { notify(e.message, 'error'); }
         } finally {
@@ -492,12 +498,15 @@
         const isOidc = mode === 'oidc-link';
         const isLdap = mode === 'ldap-link';
         document.getElementById('securityActionTitle').textContent = isLdap
-            ? 'Manage LDAP identity'
+            ? t('admin.ldapManage', 'Manage LDAP identity')
             : isOidc
             ? t('admin.oidcManage', 'Manage OIDC identities')
             : t('admin.generateRecoveryCodes', 'Generate recovery codes');
         document.getElementById('securityActionHint').textContent = isLdap
-            ? `Link ${username} to exactly one verified directory identity. LDAP accounts cannot use local fallback authentication.`
+            ? t(
+                'admin.ldapManageHint',
+                'Link {username} to exactly one verified directory identity. LDAP accounts cannot use local fallback authentication.'
+            ).replace('{username}', username)
             : isOidc
             ? t(
                 'admin.oidcManageHint',
@@ -513,7 +522,7 @@
         document.getElementById('securityActionOidcListGroup')?.classList.toggle('hidden', !isOidc);
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
         document.getElementById('submitSecurityAction').textContent = isLdap
-            ? 'Link LDAP'
+            ? t('admin.ldapLink', 'Link LDAP')
             : isOidc
             ? t('admin.oidcLinkIdentity', 'Link OIDC identity')
             : t('admin.continue', 'Continue');
@@ -600,7 +609,12 @@
                 document.getElementById('securityActionSubject').value = '';
                 await loadOidcIdentities();
             } else {
-                notify(currentLdapIdentityId ? 'LDAP identity unlinked' : 'LDAP identity linked', 'success');
+                notify(
+                    currentLdapIdentityId
+                        ? t('admin.ldapUnlinked', 'LDAP identity unlinked')
+                        : t('admin.ldapLinked', 'LDAP identity linked'),
+                    'success'
+                );
                 currentLdapIdentityId = null;
                 closeSecurityAction();
                 await loadUsers();
@@ -774,19 +788,26 @@
 
     // ---- Settings ----
     const SECURITY_FEATURE_LABELS = Object.freeze({
-        passkey: 'Passkeys',
-        totp: 'Authenticator apps (TOTP)',
-        oidc: 'OpenID Connect (OIDC)',
-        ldap: 'LDAP directory login',
-        recovery: 'Recovery codes'
+        passkey: ['admin.featurePasskeys', 'Passkeys'],
+        totp: ['admin.featureTotp', 'Authenticator apps (TOTP)'],
+        oidc: ['admin.featureOidc', 'OpenID Connect (OIDC)'],
+        ldap: ['admin.featureLdap', 'LDAP directory login'],
+        recovery: ['admin.featureRecovery', 'Recovery codes']
     });
+    let securityFeatureSnapshot = [];
+
+    function securityFeatureLabel(name) {
+        const definition = SECURITY_FEATURE_LABELS[name];
+        return definition ? t(...definition) : name;
+    }
 
     function renderSecurityFeatures(features) {
         const list = document.getElementById('securityFeatureList');
         const status = document.getElementById('securityFeatureStatus');
         if (!list || !status) { return; }
+        securityFeatureSnapshot = Array.isArray(features) ? features : [];
         list.textContent = '';
-        for (const feature of features || []) {
+        for (const feature of securityFeatureSnapshot) {
             const state = window.WebSSHSecurityUI.featureToggleState(feature);
             const row = document.createElement('div');
             row.style.marginTop = '12px';
@@ -799,17 +820,25 @@
             input.checked = state.checked;
             input.disabled = state.disabled;
             const title = document.createElement('strong');
-            title.textContent = SECURITY_FEATURE_LABELS[state.name] || state.name;
+            const labelText = securityFeatureLabel(state.name);
+            title.textContent = labelText;
             label.append(input, title);
 
             const reason = document.createElement('p');
             reason.className = 'admin-muted';
-            reason.textContent = state.reason || 'Active';
+            reason.textContent = window.WebSSHSecurityUI.featureStatusReason(
+                feature,
+                labelText,
+                t
+            );
             row.append(label, reason);
             if (['oidc', 'ldap'].includes(state.name)) {
                 const configuration = document.createElement('p');
                 configuration.className = 'admin-muted';
-                configuration.append('Deployment configuration: ');
+                configuration.append(t(
+                    'admin.deploymentConfiguration',
+                    'Deployment configuration'
+                ), ': ');
                 const keys = document.createElement('code');
                 keys.textContent = (feature.configuration_keys || []).join(', ');
                 configuration.append(keys, ' · ');
@@ -817,21 +846,21 @@
                 guide.href = feature.documentation_url;
                 guide.target = '_blank';
                 guide.rel = 'noopener noreferrer';
-                guide.textContent = 'Open setup guide';
+                guide.textContent = t('admin.openSetupGuide', 'Open setup guide');
                 configuration.appendChild(guide);
                 row.appendChild(configuration);
             }
             list.appendChild(row);
         }
-        status.textContent = features && features.length
-            ? 'Feature status loaded'
-            : 'No authentication features reported';
+        status.textContent = securityFeatureSnapshot.length
+            ? t('admin.featureStatusLoaded', 'Feature status loaded')
+            : t('admin.noAuthenticationFeatures', 'No authentication features reported');
     }
 
     async function loadSecurityFeatures() {
         const status = document.getElementById('securityFeatureStatus');
         if (!status) { return; }
-        status.textContent = 'Loading feature status…';
+        status.textContent = t('admin.featureStatusLoading', 'Loading feature status…');
         try {
             const data = await api('/admin/api/security-features');
             renderSecurityFeatures(data.features || []);
@@ -861,7 +890,8 @@
             if (!enabling && !window.confirm(
                 window.WebSSHSecurityUI.featureDisableWarning(
                     { name: featureName },
-                    SECURITY_FEATURE_LABELS[featureName] || featureName
+                    securityFeatureLabel(featureName),
+                    t
                 )
             )) {
                 target.checked = true;
@@ -1295,5 +1325,8 @@
         initBackupRestore();
         loadUsers();
         loadGlobalHostKeys();
+        window.addEventListener('languageChanged', () => {
+            renderSecurityFeatures(securityFeatureSnapshot);
+        });
     });
 })();

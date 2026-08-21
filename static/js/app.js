@@ -21,13 +21,29 @@
     };
 
     window.showNotification = function(message, type = 'info', duration) {
+        const presentation = typeof message === 'object' && message !== null
+            ? message
+            : { message, type, duration };
         const container = document.getElementById('notificationContainer');
         const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
+        const notificationType = presentation.type || type;
+        notification.className = `notification notification-${notificationType}`;
+        notification.setAttribute('role', notificationType === 'error' ? 'alert' : 'status');
+        const copy = document.createElement('span');
+        copy.className = 'notification-copy';
+        copy.textContent = String(presentation.message || '');
+        notification.appendChild(copy);
+        if (presentation.action?.label && presentation.action?.url) {
+            const action = document.createElement('a');
+            action.className = 'notification-action';
+            action.href = presentation.action.url;
+            action.textContent = presentation.action.label;
+            notification.appendChild(action);
+        }
         container.appendChild(notification);
 
-        const timeout = duration || (type === 'success' || type === 'info' ? 2000 : 3000);
+        const timeout = presentation.duration
+            || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 300);
@@ -953,7 +969,12 @@
     });
 
     socket.on('ssh_error', (data) => {
-        showNotification(`SSH Error: ${data.error}`, 'error');
+        const presentation = window.SSHErrorUI?.describeSSHError?.(
+            data,
+            key => window.i18n?.t?.(key),
+            APP_ROOT,
+        ) || { message: `SSH Error: ${data.error}`, type: 'error' };
+        showNotification(presentation);
 
         if (connectTimer) {
             clearInterval(connectTimer);
@@ -2084,7 +2105,7 @@
         // Scrollback lines setting
         const scrollbackInput = document.getElementById('scrollbackInput');
         if (scrollbackInput) {
-            const savedScrollback = localStorage.getItem('terminalScrollback') || '150';
+            const savedScrollback = localStorage.getItem('terminalScrollback') || '500';
             scrollbackInput.value = savedScrollback;
             scrollbackInput.addEventListener('change', () => {
                 let val = parseInt(scrollbackInput.value, 10);
@@ -2134,6 +2155,46 @@
                             );
                         }
                         confirmSessionCloseInput.disabled = false;
+                    },
+                );
+            });
+        }
+
+        const disconnectSessionActionSelect = document.getElementById('disconnectSessionActionSelect');
+        if (disconnectSessionActionSelect) {
+            disconnectSessionActionSelect.value = SessionManager.disconnectSessionAction;
+            disconnectSessionActionSelect.addEventListener('change', () => {
+                const previousValue = SessionManager.disconnectSessionAction;
+                const requestedValue = disconnectSessionActionSelect.value;
+                disconnectSessionActionSelect.disabled = true;
+
+                if (!window.socket || !['retry', 'close'].includes(requestedValue)) {
+                    disconnectSessionActionSelect.value = previousValue;
+                    disconnectSessionActionSelect.disabled = false;
+                    showNotification(
+                        window.i18n ? i18n.t('settings.saveFailed') : 'Failed to save setting',
+                        'error',
+                    );
+                    return;
+                }
+
+                window.socket.emit(
+                    'set_disconnect_session_action',
+                    { action: requestedValue },
+                    response => {
+                        const savedValue = response?.disconnect_session_action;
+                        if (response?.success && ['retry', 'close'].includes(savedValue)) {
+                            SessionManager.disconnectSessionAction = savedValue;
+                            document.body.dataset.disconnectSessionAction = savedValue;
+                            disconnectSessionActionSelect.value = savedValue;
+                        } else {
+                            disconnectSessionActionSelect.value = previousValue;
+                            showNotification(
+                                window.i18n ? i18n.t('settings.saveFailed') : 'Failed to save setting',
+                                'error',
+                            );
+                        }
+                        disconnectSessionActionSelect.disabled = false;
                     },
                 );
             });

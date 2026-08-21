@@ -6,7 +6,10 @@ const SessionManager = {
     layout: 1,
     paneAssignments: [],
     activePaneIndex: 0,
-    confirmSessionClose: document.body?.dataset.confirmSessionClose !== 'false',
+    confirmSessionClose: document.body?.dataset.confirmSessionClose === 'true',
+    disconnectSessionAction: ['retry', 'close'].includes(
+        document.body?.dataset.disconnectSessionAction
+    ) ? document.body.dataset.disconnectSessionAction : 'retry',
 
     init() {
         if (window.socket) {
@@ -43,7 +46,8 @@ const SessionManager = {
             username: data.username,
             auth_type: data.auth_type,
             via_jump: data.via_jump,
-            display_name: data.display_name
+            display_name: data.display_name,
+            restored: true,
         };
 
         // Seed the authoritative snapshot before terminal attachment. Any live
@@ -170,7 +174,8 @@ const SessionManager = {
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
             keyId: sessionData.key_id || null,
-            authType: sessionData.auth_type || 'password'
+            authType: sessionData.auth_type || 'password',
+            restored: sessionData.restored === true,
         };
 
         this.createSessionTab(session_id);
@@ -492,6 +497,17 @@ const SessionManager = {
 
         if (this.sessions[sessionId]) {
             this.sessions[sessionId].connected = (status === 'connected');
+        }
+
+        if (
+            status === 'disconnected'
+            && this.disconnectSessionAction === 'close'
+            && !this.sessions[sessionId]?.isPersistentCandidate
+            && !this.sessions[sessionId]?.useTmux
+            && !this.sessions[sessionId]?.tmuxSessionName
+        ) {
+            this.removeSessionUI(sessionId);
+            return;
         }
 
         if (status === 'disconnected') {
@@ -995,17 +1011,34 @@ const SessionManager = {
                 card.appendChild(tmuxInfo);
             }
 
-            const button = document.createElement('button');
-            button.className = 'btn btn-primary';
-            button.dataset.sessionId = sessionId;
-            button.dataset.i18n = isPersistent ? 'session.reconnect' : 'session.retry';
-            button.textContent = isPersistent
+            const actions = document.createElement('div');
+            actions.className = 'session-overlay-actions';
+
+            const retryButton = document.createElement('button');
+            retryButton.className = 'btn btn-primary';
+            retryButton.dataset.sessionId = sessionId;
+            retryButton.dataset.i18n = isPersistent ? 'session.reconnect' : 'session.retry';
+            retryButton.textContent = isPersistent
                 ? (window.i18n ? i18n.t('session.reconnect') : 'Reconnect')
                 : (window.i18n ? i18n.t('session.retry') : 'Retry');
-            button.addEventListener('click', () => {
+            retryButton.addEventListener('click', () => {
                 this.prefillConnectionForm(sessionId);
             });
-            card.appendChild(button);
+
+            const closeButton = document.createElement('button');
+            closeButton.className = 'btn btn-secondary session-overlay-close-tab';
+            closeButton.dataset.sessionId = sessionId;
+            closeButton.dataset.i18n = 'session.closeTab';
+            closeButton.textContent = window.i18n
+                ? i18n.t('session.closeTab')
+                : 'Close tab';
+            closeButton.addEventListener('click', () => {
+                this.closeSession(sessionId);
+            });
+
+            actions.appendChild(retryButton);
+            actions.appendChild(closeButton);
+            card.appendChild(actions);
 
             overlay.appendChild(card);
             container.appendChild(overlay);

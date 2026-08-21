@@ -11,6 +11,13 @@
 
     const CONTEXTS = Object.freeze(['files', 'commands', 'diagnostics', 'notes']);
     const CONTEXT_STORAGE_KEY = 'webssh.workspace.lastContext';
+    const CONTEXT_WIDTH_STORAGE_KEY = 'webssh.workspace.contextWidth';
+    const CONTEXT_WIDTH_MODE_STORAGE_KEY = 'webssh.workspace.contextWidthMode';
+    const DEFAULT_CONTEXT_WIDTH = 420;
+    const MIN_CONTEXT_WIDTH = 320;
+    const MAX_CONTEXT_WIDTH = 720;
+    const MIN_TERMINAL_WIDTH = 480;
+    const AUTO_CONTEXT_WIDTH_RATIO = 0.32;
     const LAYOUT_CLASSES = ['layout-desktop', 'layout-tablet', 'layout-mobile'];
 
     function breakpointForWidth(width) {
@@ -18,6 +25,38 @@
         if (viewportWidth >= 1024) return 'desktop';
         if (viewportWidth >= 768) return 'tablet';
         return 'mobile';
+    }
+
+    function contextWidthBounds(viewportWidth) {
+        const usableWidth = Number.isFinite(Number(viewportWidth))
+            ? Number(viewportWidth)
+            : 1280;
+        return {
+            min: MIN_CONTEXT_WIDTH,
+            max: Math.max(
+                MIN_CONTEXT_WIDTH,
+                Math.min(MAX_CONTEXT_WIDTH, usableWidth - MIN_TERMINAL_WIDTH),
+            ),
+        };
+    }
+
+    function clampContextWidth(width, viewportWidth) {
+        const bounds = contextWidthBounds(viewportWidth);
+        const hasStoredWidth = width !== null && width !== undefined && width !== '';
+        const numericWidth = hasStoredWidth ? Number(width) : Number.NaN;
+        const candidate = Number.isFinite(numericWidth)
+            ? numericWidth
+            : DEFAULT_CONTEXT_WIDTH;
+        return Math.round(Math.min(bounds.max, Math.max(bounds.min, candidate)));
+    }
+
+    function defaultContextWidth(viewportWidth) {
+        const numericViewport = Number(viewportWidth);
+        const usableWidth = Number.isFinite(numericViewport) ? numericViewport : 1280;
+        return clampContextWidth(
+            Math.max(DEFAULT_CONTEXT_WIDTH, usableWidth * AUTO_CONTEXT_WIDTH_RATIO),
+            usableWidth,
+        );
     }
 
     function createController(options = {}) {
@@ -33,6 +72,7 @@
         const elements = {
             workspace: byId('workspace'),
             panel: byId('contextWorkspace'),
+            resizer: byId('contextWorkspaceResizer'),
             launcher: byId('contextWorkspaceLauncher'),
             close: byId('contextWorkspaceClose'),
             backdrop: byId('contextWorkspaceBackdrop'),
@@ -51,6 +91,7 @@
         if (
             !elements.workspace
             || !elements.panel
+            || !elements.resizer
             || !elements.launcher
             || !elements.close
             || !elements.tablist
@@ -75,6 +116,11 @@
         let activeContext = null;
         let lastContext = 'files';
         let syncTimer = null;
+        let contextWidth = DEFAULT_CONTEXT_WIDTH;
+        let contextWidthMode = 'auto';
+        let resizePointerId = null;
+        let userInteractionRevision = 0;
+        const sessionDefaults = new Map();
 
         function listen(target, name, listener) {
             target?.addEventListener?.(name, listener);
@@ -110,6 +156,44 @@
             return CONTEXTS.filter(name => availability.get(name));
         }
 
+        function applyContextWidth() {
+            contextWidth = contextWidthMode === 'auto'
+                ? defaultContextWidth(windowRef.innerWidth)
+                : clampContextWidth(contextWidth, windowRef.innerWidth);
+            const bounds = contextWidthBounds(windowRef.innerWidth);
+            elements.workspace.style?.setProperty?.(
+                '--context-workspace-width',
+                `${contextWidth}px`,
+            );
+            elements.resizer.setAttribute('aria-valuemin', String(bounds.min));
+            elements.resizer.setAttribute('aria-valuemax', String(bounds.max));
+            elements.resizer.setAttribute('aria-valuenow', String(contextWidth));
+        }
+
+        function persistContextWidth() {
+            try {
+                storage?.setItem?.(CONTEXT_WIDTH_STORAGE_KEY, String(contextWidth));
+                storage?.setItem?.(CONTEXT_WIDTH_MODE_STORAGE_KEY, contextWidthMode);
+            } catch {
+                // Resizing remains available when browser storage is unavailable.
+            }
+        }
+
+        function setContextWidth(
+            nextWidth,
+            { persist = false, widthMode = contextWidthMode } = {},
+        ) {
+            const previousWidth = contextWidth;
+            contextWidthMode = widthMode === 'manual' ? 'manual' : 'auto';
+            contextWidth = contextWidthMode === 'auto'
+                ? defaultContextWidth(windowRef.innerWidth)
+                : clampContextWidth(nextWidth, windowRef.innerWidth);
+            applyContextWidth();
+            if (persist) persistContextWidth();
+            if (contextWidth !== previousWidth) scheduleTerminalSync(true);
+            return contextWidth;
+        }
+
         function fallbackContext() {
             if (availability.get(lastContext)) return lastContext;
             return ['notes', 'commands', 'files', 'diagnostics']
@@ -123,6 +207,7 @@
             elements.workspace.classList.toggle('context-open', panelOpen);
             elements.panel.hidden = !panelOpen;
             elements.panel.setAttribute('aria-hidden', String(!panelOpen));
+            elements.resizer.hidden = !panelOpen || mode !== 'desktop';
             elements.launcher.hidden = panelOpen;
             elements.launcher.setAttribute('aria-expanded', String(panelOpen));
             elements.backdrop?.classList.toggle(
@@ -151,6 +236,7 @@
 
         function openContext(name, reason = 'programmatic') {
             if (!CONTEXTS.includes(name) || !availability.get(name)) return false;
+            if (reason === 'user') userInteractionRevision += 1;
             const previousContext = activeContext;
             activeContext = name;
             lastContext = name;
@@ -169,6 +255,7 @@
 
         function closeContext(reason = 'programmatic') {
             if (!activeContext) return false;
+            if (reason === 'user') userInteractionRevision += 1;
             const previousContext = activeContext;
             activeContext = null;
             render();
@@ -211,7 +298,12 @@
         function reconcile() {
             const nextMode = breakpointForWidth(windowRef.innerWidth);
             const changed = mode !== null && nextMode !== mode;
+            const previousMode = mode;
             mode = nextMode;
+            applyContextWidth();
+            if (changed && previousMode === 'desktop' && mode !== 'desktop' && activeContext) {
+                closeContext('responsive');
+            }
             if (mode === 'desktop') {
                 elements.mobileMenu?.classList.remove('is-open');
                 elements.mobileMenuToggle?.setAttribute('aria-expanded', 'false');
@@ -219,6 +311,70 @@
             render();
             scheduleTerminalSync(changed);
             return { mode, activeContext, lastContext };
+        }
+
+        function selectSessionDefault({ sessionId, sftpAvailable } = {}) {
+            if (typeof sessionId !== 'string' || !sessionId) return false;
+            let state = sessionDefaults.get(sessionId);
+            if (!state) {
+                state = { revision: userInteractionRevision, applied: false };
+                sessionDefaults.set(sessionId, state);
+            }
+            if (state.applied || sftpAvailable === null || sftpAvailable === undefined) {
+                return false;
+            }
+            if (state.revision !== userInteractionRevision || mode !== 'desktop') {
+                state.applied = true;
+                return false;
+            }
+            const target = sftpAvailable === true ? 'files' : 'diagnostics';
+            if (!availability.get(target)) return false;
+            const opened = openContext(target, 'session-default');
+            if (opened) state.applied = true;
+            return opened;
+        }
+
+        function handleResizePointerDown(event) {
+            if (mode !== 'desktop' || !activeContext) return;
+            if (event.button !== undefined && event.button !== 0) return;
+            resizePointerId = event.pointerId ?? 'mouse';
+            elements.resizer.setPointerCapture?.(event.pointerId);
+            elements.workspace.classList.add('context-resizing');
+            event.preventDefault?.();
+        }
+
+        function handleResizePointerMove(event) {
+            if (resizePointerId === null || !Number.isFinite(Number(event.clientX))) return;
+            setContextWidth(windowRef.innerWidth - Number(event.clientX), {
+                widthMode: 'manual',
+            });
+            event.preventDefault?.();
+        }
+
+        function finishResize(event) {
+            if (resizePointerId === null) return;
+            elements.resizer.releasePointerCapture?.(event?.pointerId);
+            resizePointerId = null;
+            elements.workspace.classList.remove('context-resizing');
+            persistContextWidth();
+            scheduleTerminalSync(true);
+        }
+
+        function handleResizeKeydown(event) {
+            if (mode !== 'desktop' || !activeContext) return;
+            const bounds = contextWidthBounds(windowRef.innerWidth);
+            const widths = {
+                ArrowLeft: contextWidth + 24,
+                ArrowRight: contextWidth - 24,
+                Home: bounds.min,
+                End: bounds.max,
+            };
+            if (!Object.hasOwn(widths, event.key)) return;
+            event.preventDefault?.();
+            setContextWidth(widths[event.key], {
+                persist: true,
+                widthMode: 'manual',
+            });
         }
 
         function moveTabFocus(event) {
@@ -248,12 +404,38 @@
             try {
                 const stored = storage?.getItem?.(CONTEXT_STORAGE_KEY);
                 if (CONTEXTS.includes(stored)) lastContext = stored;
+                const storedWidth = storage?.getItem?.(CONTEXT_WIDTH_STORAGE_KEY);
+                const numericStoredWidth = Number(storedWidth);
+                const storedWidthMode = storage?.getItem?.(
+                    CONTEXT_WIDTH_MODE_STORAGE_KEY,
+                );
+                if (storedWidthMode === 'manual' && Number.isFinite(numericStoredWidth)) {
+                    contextWidthMode = 'manual';
+                    contextWidth = clampContextWidth(storedWidth, windowRef.innerWidth);
+                } else if (storedWidthMode === 'auto') {
+                    contextWidthMode = 'auto';
+                    contextWidth = defaultContextWidth(windowRef.innerWidth);
+                } else if (
+                    storedWidth !== null
+                    && storedWidth !== ''
+                    && Number.isFinite(numericStoredWidth)
+                    && numericStoredWidth !== DEFAULT_CONTEXT_WIDTH
+                ) {
+                    contextWidthMode = 'manual';
+                    contextWidth = clampContextWidth(storedWidth, windowRef.innerWidth);
+                } else {
+                    contextWidthMode = 'auto';
+                    contextWidth = defaultContextWidth(windowRef.innerWidth);
+                }
             } catch {
                 lastContext = 'files';
+                contextWidthMode = 'auto';
+                contextWidth = defaultContextWidth(windowRef.innerWidth);
             }
             if (mode === 'desktop') {
                 activeContext = fallbackContext();
             }
+            applyContextWidth();
             render();
 
             CONTEXTS.forEach(name => {
@@ -269,6 +451,17 @@
                 }
             });
             listen(elements.close, 'click', () => closeContext('user'));
+            listen(elements.resizer, 'pointerdown', handleResizePointerDown);
+            listen(elements.resizer, 'keydown', handleResizeKeydown);
+            listen(elements.resizer, 'dblclick', () => {
+                setContextWidth(defaultContextWidth(windowRef.innerWidth), {
+                    persist: true,
+                    widthMode: 'auto',
+                });
+            });
+            listen(documentRef, 'pointermove', handleResizePointerMove);
+            listen(documentRef, 'pointerup', finishResize);
+            listen(documentRef, 'pointercancel', finishResize);
             listen(elements.backdrop, 'click', () => closeContext('user'));
             listen(documentRef, 'keydown', event => {
                 if (event.key === 'Escape' && activeContext && mode !== 'desktop') {
@@ -307,12 +500,21 @@
             openContext,
             closeContext,
             setContextAvailability,
+            selectSessionDefault,
             setNotesOpen,
             setCommandsOpen,
+            getContextWidth: () => contextWidth,
+            getContextWidthMode: () => contextWidthMode,
             getState: () => ({ mode, activeContext, lastContext }),
             destroy,
         });
     }
 
-    return Object.freeze({ CONTEXTS, breakpointForWidth, createController });
+    return Object.freeze({
+        CONTEXTS,
+        breakpointForWidth,
+        clampContextWidth,
+        defaultContextWidth,
+        createController,
+    });
 }));

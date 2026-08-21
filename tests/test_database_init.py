@@ -24,6 +24,7 @@ def test_fresh_database_initializes_authentication_assurance_schema(app):
 
         assert SECURITY_TABLES <= tables
         assert 'mfa_enabled' in user_columns
+        assert 'settings_default_generation' in user_columns
 
 
 def test_legacy_user_schema_adds_disabled_mfa_idempotently(app):
@@ -51,9 +52,10 @@ def test_legacy_user_schema_adds_disabled_mfa_idempotently(app):
         ensure_security_columns()
 
         row = db.session.execute(text(
-            'SELECT username, mfa_enabled FROM users WHERE id = 1'
+            'SELECT username, mfa_enabled, settings_default_generation '
+            'FROM users WHERE id = 1'
         )).one()
-        assert row == ('legacy-user', 0)
+        assert row == ('legacy-user', 0, 0)
 
 
 def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):

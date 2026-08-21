@@ -35,3 +35,34 @@ test('session context is explicit and never invents connection data', () => {
         transport: 'SSH via bastion.example'
     });
 });
+
+test('session context accepts localized product copy', () => {
+    const translations = {
+        'workspace.noActiveSession': 'Keine aktive Sitzung',
+        'workspace.noConnectedHost': 'Kein verbundener Host',
+        'workspace.notActive': 'Nicht aktiv',
+        'workspace.connected': 'Verbunden',
+        'workspace.hostKeyVerified': 'Host-Schlüssel überprüft',
+        'workspace.standardSession': 'Standardsitzung',
+    };
+    const translate = key => translations[key] || key;
+
+    assert.equal(buildSessionContext(null, translate).title, 'Keine aktive Sitzung');
+    assert.deepEqual(
+        buildSessionContext({
+            host: 'edge.example',
+            username: 'ops',
+            connected: true,
+            hostKeyVerified: true,
+        }, translate),
+        {
+            connected: true,
+            title: 'ops@edge.example',
+            host: 'edge.example:22',
+            user: 'ops',
+            trust: 'Host-Schlüssel überprüft',
+            persistence: 'Standardsitzung',
+            transport: 'SSH',
+        },
+    );
+});

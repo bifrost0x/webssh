@@ -9,8 +9,9 @@ from app.quota_manager import QuotaExceeded, QuotaKind, QuotaManager
 
 
 class FakeChannel:
-    def __init__(self, exec_error=None):
+    def __init__(self, exec_error=None, exit_status=0):
         self.exec_error = exec_error
+        self.exit_status = exit_status
         self.closed = False
         self.command = None
         self.timeout = None
@@ -30,6 +31,12 @@ class FakeChannel:
 
     def recv(self, _size):
         return b''
+
+    def exit_status_ready(self):
+        return True
+
+    def recv_exit_status(self):
+        return self.exit_status
 
     def get_pty(self, term, width, height):
         self.pty = (term, width, height)
@@ -298,6 +305,71 @@ def test_reader_closing_its_own_session_never_joins_itself(monkeypatch):
             assert session_id not in ssh_manager.sessions
     finally:
         lifecycle.begin_shutdown(1)
+
+
+@pytest.mark.parametrize(
+    ('tmux_exit_status', 'should_remain'),
+    [(0, True), (1, False)],
+)
+def test_reader_preserves_only_a_confirmed_remote_tmux_session(
+        app, monkeypatch, tmux_exit_status, should_remain):
+    from app.auth import register_user
+    from app.models import SSHSession, db
+
+    with app.app_context():
+        user, error = register_user(
+            f'reader_tmux_{tmux_exit_status}', 'password-123'
+        )
+        assert error is None
+        user_id = user.id
+        db.session.add(SSHSession(
+            session_id=f'reader-session-{tmux_exit_status}',
+            user_id=user_id,
+            host='target.example',
+            port=22,
+            username='alice',
+            connected=True,
+            is_persistent=True,
+            tmux_session_name='webssh_alice_target',
+        ))
+        db.session.commit()
+
+    interactive_channel = FakeChannel()
+    probe_channel = FakeChannel(exit_status=tmux_exit_status)
+    transport = FakeTransport(kill_channel=probe_channel)
+    client = FakeSSHClient(transport=transport)
+    session_id = f'reader-session-{tmux_exit_status}'
+    with ssh_manager.sessions_lock:
+        ssh_manager.sessions[session_id] = _session(
+            client,
+            channel=interactive_channel,
+            use_tmux=True,
+            tmux_session_name='webssh_alice_target',
+        )
+
+    emitted = []
+
+    class SocketIO:
+        @staticmethod
+        def emit(event, payload, room=None):
+            emitted.append((event, payload, room))
+
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _session_id: None
+    )
+
+    ssh_manager.read_ssh_output(session_id, SocketIO(), app)
+
+    with app.app_context():
+        stored = SSHSession.query.filter_by(session_id=session_id).first()
+        assert (stored is not None) is should_remain
+        if stored is not None:
+            assert stored.connected is False
+
+    assert probe_channel.command == (
+        'tmux has-session -t webssh_alice_target'
+    )
+    assert any(event == 'ssh_disconnected' for event, _payload, _room in emitted)
 
 
 def test_close_session_releases_quota_exactly_once(monkeypatch):

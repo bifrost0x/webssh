@@ -21,6 +21,7 @@
             filesPanel: documentRef.getElementById('sessionFilesPanel'),
             filesTab: documentRef.getElementById('contextFilesTab'),
             filesMount: documentRef.getElementById('sessionFilesMount'),
+            filesStatus: documentRef.getElementById('sessionFilesStatus'),
         };
         if (!elements.filesTab || !elements.filesPanel || !elements.filesMount) return null;
 
@@ -34,15 +35,55 @@
         let inventorySessionId = null;
         let inventoryConnected = false;
 
+        function selectedContext() {
+            return root.workspaceLayoutController?.getState?.().activeContext || null;
+        }
+
+        function syncInsightsVisibility() {
+            coordinator.setVisible(
+                documentRef.visibilityState !== 'hidden'
+                && selectedContext() === 'diagnostics'
+                && diagnosticsController?.isOpen()
+            );
+        }
+
+        function syncContextControllers(activeContext = selectedContext()) {
+            if (activeContext === 'files') coordinator?.openSftpPanel?.();
+            diagnosticsController?.setOpen(activeContext === 'diagnostics');
+            if (coordinator) syncInsightsVisibility();
+        }
+
+        function applySessionContextDefault(state = coordinator?.getState?.()) {
+            const session = state?.sessionId
+                ? sessionManager.getSession(state.sessionId)
+                : null;
+            if (!session?.connected || session.restored === true) return false;
+            let sftpAvailable = null;
+            if (state.sftpCapability === 'available') sftpAvailable = true;
+            if (['unavailable', 'inconclusive'].includes(state.sftpCapability)) {
+                sftpAvailable = false;
+            }
+            return root.workspaceLayoutController?.selectSessionDefault?.({
+                sessionId: state.sessionId,
+                sftpAvailable,
+            }) || false;
+        }
+
         function renderInsights(state) {
             lastInsightsState = state;
             const active = sessionManager.getSession(state.sessionId);
             diagnosticsController?.render(state, active, lastInventoryState);
+            applySessionContextDefault();
+            syncContextControllers();
         }
 
         filesController = filesModule.createController({
             manager: fileManager,
             container: elements.filesMount,
+            status: elements.filesStatus,
+            translate(key, fallback) {
+                return root.i18n?.t?.(key) || fallback;
+            },
         });
         diagnosticsController = diagnosticsModule.createController({
             document: documentRef,
@@ -77,11 +118,16 @@
             insights: insightsController,
             isWideDesktop: () => wideDesktopQuery.matches,
             render(state) {
+                // Render the coordinator snapshot before availability changes can
+                // synchronously activate Files and trigger a nested, newer render.
+                // Otherwise the stale outer snapshot can hide an already-mounted
+                // SFTP workspace until the user changes tabs.
+                elements.filesPanel.classList.toggle('hidden', !state.filesAvailable);
                 root.workspaceLayoutController?.setContextAvailability?.(
-                    'files', state.sftpEnabled
+                    'files', state.filesAvailable
                 );
-                elements.filesPanel.classList.toggle('hidden', !state.sftpOpen);
                 sftpCapabilityTracker.probeIfNeeded(state);
+                applySessionContextDefault(state);
                 root.requestAnimationFrame(() => {
                     terminalManager?.fitAndSyncVisibleTerminals?.({
                         socket,
@@ -105,6 +151,7 @@
                 sessionCount: sessionManager.getAllSessions().length,
                 sftpCapability: sftpCapabilityTracker.get(activeId),
             });
+            syncContextControllers();
             if (activeId !== inventorySessionId || connected !== inventoryConnected) {
                 inventorySessionId = activeId || null;
                 inventoryConnected = connected;
@@ -120,19 +167,8 @@
         });
 
         documentRef.addEventListener('workspace-context-change', event => {
-            const activeContext = event.detail?.activeContext || null;
-            if (activeContext === 'files') coordinator.openSftpPanel();
-            diagnosticsController?.setOpen(activeContext === 'diagnostics');
-            syncInsightsVisibility();
+            syncContextControllers(event.detail?.activeContext || null);
         });
-
-        function syncInsightsVisibility() {
-            coordinator.setVisible(
-                documentRef.visibilityState !== 'hidden'
-                && root.workspaceLayoutController?.getState?.().activeContext === 'diagnostics'
-                && diagnosticsController?.isOpen()
-            );
-        }
         root.addEventListener('session-workspace-change', sync);
         root.addEventListener('session-removed', event => {
             const removedSessionId = event?.detail?.sessionId;
@@ -146,7 +182,7 @@
         root.addEventListener('themeChanged', () => {
             diagnosticsController?.redraw();
         });
-        syncInsightsVisibility();
+        syncContextControllers();
         sync();
         return coordinator;
     }

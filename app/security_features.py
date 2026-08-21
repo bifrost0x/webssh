@@ -60,7 +60,9 @@ _CONFIGURATION_KEYS = {
 _DOCUMENTATION_URLS = {
     'passkey': 'https://github.com/bifrost0x/webssh#authentication-features',
     'totp': 'https://github.com/bifrost0x/webssh#authentication-features',
-    'oidc': 'https://github.com/bifrost0x/webssh#authentication-features',
+    'oidc': (
+        'https://github.com/bifrost0x/webssh/wiki/OpenID-Connect'
+    ),
     'ldap': (
         'https://github.com/bifrost0x/webssh/blob/main/'
         'docs/ldap-authentication.md'

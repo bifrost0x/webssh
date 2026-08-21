@@ -181,7 +181,10 @@ def test_failed_local_login_keeps_local_source_selected(
     )
 
     assert response.status_code == 200
-    assert b'<option value="local" selected>Local account</option>' in response.data
+    assert (
+        b'<option value="local" selected '
+        b'data-i18n="auth.localAccount">Local account</option>'
+    ) in response.data
     assert b'id="localLoginForm" class="auth-source-form"' in response.data
     assert b'id="ldapLoginForm" class="auth-source-form hidden"' in response.data
 

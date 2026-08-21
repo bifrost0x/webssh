@@ -21,11 +21,16 @@ function classList() {
 function element(id, documentRef) {
     const attributes = new Map();
     const listeners = new Map();
+    const styleValues = new Map();
     return {
         id,
         hidden: false,
         disabled: false,
         classList: classList(),
+        style: {
+            setProperty(name, value) { styleValues.set(name, String(value)); },
+            getPropertyValue(name) { return styleValues.get(name) || ''; },
+        },
         addEventListener(name, listener) { listeners.set(name, listener); },
         removeEventListener(name) { listeners.delete(name); },
         dispatch(name, event = {}) { listeners.get(name)?.({ currentTarget: this, ...event }); },
@@ -53,6 +58,7 @@ function fixture(width = 1280) {
         'contextWorkspace',
         'contextWorkspaceLauncher',
         'contextWorkspaceClose',
+        'contextWorkspaceResizer',
         'contextWorkspaceBackdrop',
         'contextWorkspaceTabs',
         'contextFilesTab',
@@ -142,6 +148,15 @@ test('breakpointForWidth uses the approved desktop tablet and mobile boundaries'
     assert.equal(breakpointForWidth(767), 'mobile');
 });
 
+test('automatic context width grows with the live desktop viewport', () => {
+    const { defaultContextWidth } = require('../../static/js/workspace-layout-controller.js');
+
+    assert.equal(defaultContextWidth(1280), 420);
+    assert.equal(defaultContextWidth(1536), 492);
+    assert.equal(defaultContextWidth(1920), 614);
+    assert.equal(defaultContextWidth(3440), 720);
+});
+
 test('desktop starts with the last available context open and still allows dismissal', () => {
     const { controller, state } = createHarness(1280);
     state.storage.setItem('webssh.workspace.lastContext', 'commands');
@@ -181,6 +196,132 @@ test('desktop promotes Files when the first SFTP-capable session becomes availab
     assert.equal(controller.getState().activeContext, 'files');
     assert.equal(state.elements.contextFilesPanel.hidden, false);
     assert.equal(state.elements.contextNotesPanel.hidden, true);
+});
+
+test('a new session selects Files only after SFTP is confirmed available', () => {
+    const { controller } = createHarness(1280);
+    controller.init();
+    controller.setContextAvailability('files', true);
+    controller.setContextAvailability('diagnostics', true);
+
+    assert.equal(controller.selectSessionDefault({
+        sessionId: 'session-a',
+        sftpAvailable: null,
+    }), false);
+    assert.equal(controller.selectSessionDefault({
+        sessionId: 'session-a',
+        sftpAvailable: true,
+    }), true);
+    assert.equal(controller.getState().activeContext, 'files');
+});
+
+test('a new session selects Diagnostics when SFTP is unavailable', () => {
+    const { controller } = createHarness(1280);
+    controller.init();
+    controller.setContextAvailability('diagnostics', true);
+
+    controller.selectSessionDefault({ sessionId: 'session-a', sftpAvailable: null });
+    assert.equal(controller.selectSessionDefault({
+        sessionId: 'session-a',
+        sftpAvailable: false,
+    }), true);
+    assert.equal(controller.getState().activeContext, 'diagnostics');
+});
+
+test('a context chosen while SFTP is probing is never overwritten', () => {
+    const { controller } = createHarness(1280);
+    controller.init();
+    controller.setContextAvailability('files', true);
+    controller.setContextAvailability('diagnostics', true);
+
+    controller.selectSessionDefault({ sessionId: 'session-a', sftpAvailable: null });
+    controller.openContext('notes', 'user');
+
+    assert.equal(controller.selectSessionDefault({
+        sessionId: 'session-a',
+        sftpAvailable: true,
+    }), false);
+    assert.equal(controller.getState().activeContext, 'notes');
+});
+
+test('desktop context width restores safely and keyboard resizing persists it', () => {
+    const { controller, state } = createHarness(1280);
+    state.storage.setItem('webssh.workspace.contextWidth', '900');
+
+    controller.init();
+
+    assert.equal(controller.getContextWidth(), 720);
+    assert.equal(
+        state.elements.workspace.style.getPropertyValue('--context-workspace-width'),
+        '720px',
+    );
+    assert.equal(state.elements.contextWorkspaceResizer.hidden, false);
+    assert.equal(
+        state.elements.contextWorkspaceResizer.getAttribute('aria-valuenow'),
+        '720',
+    );
+
+    state.elements.contextWorkspaceResizer.dispatch('keydown', {
+        key: 'ArrowRight',
+        preventDefault() {},
+    });
+
+    assert.equal(controller.getContextWidth(), 696);
+    assert.equal(state.storage.getItem('webssh.workspace.contextWidth'), '696');
+    assert.equal(state.storage.getItem('webssh.workspace.contextWidthMode'), 'manual');
+    assert.equal(controller.getContextWidthMode(), 'manual');
+});
+
+test('desktop context width uses automatic sizing without stored state', () => {
+    const { controller, state } = createHarness(1920);
+
+    controller.init();
+
+    assert.equal(controller.getContextWidth(), 614);
+    assert.equal(controller.getContextWidthMode(), 'auto');
+    assert.equal(
+        state.elements.workspace.style.getPropertyValue('--context-workspace-width'),
+        '614px',
+    );
+});
+
+test('legacy default width migrates to auto while custom widths stay manual', () => {
+    const legacyDefault = createHarness(1920);
+    legacyDefault.state.storage.setItem('webssh.workspace.contextWidth', '420');
+    legacyDefault.controller.init();
+
+    assert.equal(legacyDefault.controller.getContextWidth(), 614);
+    assert.equal(legacyDefault.controller.getContextWidthMode(), 'auto');
+
+    const legacyCustom = createHarness(1920);
+    legacyCustom.state.storage.setItem('webssh.workspace.contextWidth', '512');
+    legacyCustom.controller.init();
+
+    assert.equal(legacyCustom.controller.getContextWidth(), 512);
+    assert.equal(legacyCustom.controller.getContextWidthMode(), 'manual');
+});
+
+test('automatic width follows resize and double click resets manual width to auto', () => {
+    const { controller, state, syncCalls } = createHarness(1280);
+    controller.init();
+    assert.equal(controller.getContextWidth(), 420);
+
+    state.setWidth(1920);
+    state.listeners.get('resize')?.();
+    assert.equal(controller.getContextWidth(), 614);
+    assert.ok(syncCalls.length > 0);
+
+    state.elements.contextWorkspaceResizer.dispatch('keydown', {
+        key: 'ArrowRight',
+        preventDefault() {},
+    });
+    assert.equal(controller.getContextWidth(), 590);
+    assert.equal(controller.getContextWidthMode(), 'manual');
+
+    state.elements.contextWorkspaceResizer.dispatch('dblclick');
+    assert.equal(controller.getContextWidth(), 614);
+    assert.equal(controller.getContextWidthMode(), 'auto');
+    assert.equal(state.storage.getItem('webssh.workspace.contextWidthMode'), 'auto');
 });
 
 test('mobile keeps the context workspace closed when SFTP becomes available', () => {
@@ -233,7 +374,7 @@ test('disabled session contexts cannot open and fall back safely when active', (
     assert.equal(state.elements.contextNotesPanel.hidden, false);
 });
 
-test('context remains open across breakpoints and every layout change syncs PTY size', () => {
+test('entering a compact breakpoint closes session tools so the terminal stays visible', () => {
     const { controller, state, syncCalls } = createHarness();
     controller.init();
     controller.openContext('commands', 'user');
@@ -243,8 +384,10 @@ test('context remains open across breakpoints and every layout change syncs PTY 
     controller.reconcile();
 
     assert.equal(controller.getState().mode, 'mobile');
-    assert.equal(controller.getState().activeContext, 'commands');
-    assert.equal(state.elements.contextWorkspaceBackdrop.classList.contains('visible'), true);
+    assert.equal(controller.getState().activeContext, null);
+    assert.equal(state.elements.contextWorkspace.hidden, true);
+    assert.equal(state.elements.contextWorkspaceLauncher.hidden, false);
+    assert.equal(state.elements.contextWorkspaceBackdrop.classList.contains('visible'), false);
     assert.ok(syncCalls.length > beforeResize);
     assert.equal(syncCalls.at(-1).force, true);
 });

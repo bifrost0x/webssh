@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=14">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}">
     <header class="header">
@@ -18,7 +18,7 @@
             {% if recovery_mode %}
             <form action="{{ url_for('logout') }}" method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-secondary" id="recoveryLogoutBtn" type="submit">Sign out</button>
+                <button class="btn btn-secondary" id="recoveryLogoutBtn" type="submit" data-i18n="auth.logout">Sign out</button>
             </form>
             {% else %}
             <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="security.backToTerminal">Back to terminal</span></a>
@@ -29,38 +29,72 @@
         <section class="security-assurance-overview" id="securityAssuranceOverview" aria-labelledby="securityAssuranceTitle">
             <div class="security-overview-heading">
                 <div>
-                    <span class="security-section-eyebrow">Account protection</span>
-                    <h2 id="securityAssuranceTitle">Sign-in assurance</h2>
-                    <p>Security changes are confirmed with the method used for this session. OIDC credentials are handled only by the identity provider.</p>
+                    <span class="security-section-eyebrow" data-i18n="security.accountProtection">Account protection</span>
+                    <h2 id="securityAssuranceTitle" data-i18n="security.confirmationOverviewTitle">How security changes are confirmed</h2>
+                    <p data-i18n="security.confirmationOverviewHint">WebSSH uses this signed-in browser session to protect changes to passkeys, authenticator apps, recovery codes, and passwords.</p>
                 </div>
-                <span class="security-policy-badge {{ 'active' if account_mfa_enabled else '' }}">{{ 'MFA enabled' if account_mfa_enabled else 'MFA optional' }}</span>
+                {% if account_mfa_enabled %}
+                <span class="security-policy-badge active" data-i18n="security.mfaEnabled">MFA enabled</span>
+                {% else %}
+                <span class="security-policy-badge" data-i18n="security.mfaOptional">MFA optional</span>
+                {% endif %}
             </div>
             <dl class="security-assurance-grid">
                 <div>
-                    <dt>Current sign-in</dt>
-                    <dd id="securityCurrentMethod">{{ authentication_method_labels|join(' + ') if authentication_method_labels else 'WebSSH password' }}</dd>
+                    <dt data-i18n="security.currentSignIn">Signed in with</dt>
+                    <dd id="securityCurrentMethod">
+                        {% for method in authentication_methods %}
+                            {% if method.i18n_key == 'security.methodLdap' %}<span data-i18n="security.methodLdap">{{ method.label }}</span>
+                            {% elif method.i18n_key == 'security.methodOidc' %}<span data-i18n="security.methodOidc">{{ method.label }}</span>
+                            {% elif method.i18n_key == 'security.methodPasskey' %}<span data-i18n="security.methodPasskey">{{ method.label }}</span>
+                            {% elif method.i18n_key == 'security.methodPassword' %}<span data-i18n="security.methodPassword">{{ method.label }}</span>
+                            {% elif method.i18n_key == 'security.methodTotp' %}<span data-i18n="security.methodTotp">{{ method.label }}</span>
+                            {% elif method.i18n_key == 'security.methodRecoveryCode' %}<span data-i18n="security.methodRecoveryCode">{{ method.label }}</span>
+                            {% else %}<span data-i18n="security.methodUnknown">{{ method.label }}</span>{% endif %}
+                            {% if not loop.last %}<span aria-hidden="true"> + </span>{% endif %}
+                        {% endfor %}
+                    </dd>
                 </div>
                 <div>
-                    <dt>Assurance</dt>
-                    <dd id="securityCurrentAssurance">{{ authentication_assurance }}</dd>
+                    <dt data-i18n="security.changeConfirmation">For protected changes</dt>
+                    {% if authentication_primary_method == 'oidc' %}
+                    <dd data-i18n="security.confirmationOidc">Your identity provider session is used. No local WebSSH password is required.</dd>
+                    {% elif authentication_primary_method == 'ldap' %}
+                    <dd data-i18n="security.confirmationLdap">Your directory sign-in is used. No separate WebSSH password is required.</dd>
+                    {% elif authentication_primary_method == 'passkey' %}
+                    <dd data-i18n="security.confirmationPasskey">Your Passkey from this sign-in</dd>
+                    {% elif authentication_primary_method == 'recovery_code' %}
+                    <dd data-i18n="security.confirmationRecovery">Add a replacement factor before normal access continues.</dd>
+                    {% else %}
+                    <dd data-i18n="security.confirmationPassword">WebSSH password from this sign-in</dd>
+                    {% endif %}
                 </div>
                 <div>
-                    <dt>Factor policy</dt>
-                    <dd>{{ 'Strong confirmation required' if account_mfa_enabled else 'Basic confirmation required' }}</dd>
+                    <dt data-i18n="security.extraProtection">Extra protection</dt>
+                    {% if account_mfa_enabled %}
+                    <dd data-i18n="security.extraProtectionEnabled">A registered strong factor is required for protected changes.</dd>
+                    {% else %}
+                    <dd data-i18n="security.extraProtectionOptional">Passkeys and authenticator apps are optional for this account.</dd>
+                    {% endif %}
                 </div>
             </dl>
         </section>
         {% if recovery_mode %}
         <section class="admin-setting-row" id="recoveryRequiredNotice" style="max-width:none;">
-            <h2>Recovery session</h2>
-            <p class="admin-muted">Add and verify a replacement Passkey or authenticator app to restore normal access. You can also explicitly disable MFA for this account.</p>
-            <p class="admin-muted">Confirm account: <code>{{ username }}</code></p>
-            <button class="btn btn-danger" id="recoveryDisableMfaBtn">Disable MFA and continue</button>
+            <h2 data-i18n="security.recoverySession">Recovery session</h2>
+            <p class="admin-muted" data-i18n="security.recoverySessionHint">Add and verify a replacement Passkey or authenticator app to restore normal access. You can also explicitly disable MFA for this account.</p>
+            <p class="admin-muted"><span data-i18n="security.confirmAccount">Confirm account</span>: <code>{{ username }}</code></p>
+            <button class="btn btn-danger" id="recoveryDisableMfaBtn" data-i18n="security.disableMfaContinue">Disable MFA and continue</button>
+        </section>
+        {% elif authentication_primary_method == 'oidc' %}
+        <section class="admin-setting-row" id="oidcManagedNotice" style="max-width:none;">
+            <h2 data-i18n="security.identityManagedAccount">Identity-provider account</h2>
+            <p class="admin-muted" data-i18n="security.identityManagedHint">Your identity provider controls your primary sign-in. WebSSH never asks for a separate local password when you manage Passkeys, authenticator apps, or recovery codes.</p>
         </section>
         {% elif ldap_managed %}
         <section class="admin-setting-row" id="ldapManagedNotice" style="max-width:none;">
-            <h2>Directory-managed account</h2>
-            <p class="admin-muted">Your password and primary sign-in policy are managed by your LDAP directory. You can add Passkeys and authenticator apps after a recent directory sign-in.</p>
+            <h2 data-i18n="security.directoryManagedAccount">Directory-managed account</h2>
+            <p class="admin-muted" data-i18n="security.directoryManagedHint">Your password and primary sign-in policy are managed by your LDAP directory. You can add Passkeys and authenticator apps after a recent directory sign-in.</p>
         </section>
         {% else %}
         <section class="admin-setting-row" id="password" style="max-width:none;">
@@ -87,7 +121,7 @@
             </div>
         </section>
         {% endif %}
-        <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
+        <section class="admin-setting-row" id="ssh-host-trust" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
                 <h2 data-i18n="security.passkeys">Passkeys</h2>
                 {% if webauthn_enabled %}
@@ -112,25 +146,25 @@
         <section class="admin-setting-row" id="totpSettings" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
                 <div>
-                    <h2>Authenticator app (TOTP)</h2>
-                    <p class="admin-muted">Optionally protect password or directory sign-in with a six-digit code from an authenticator app.</p>
+                    <h2 data-i18n="security.authenticatorAppTotp">Authenticator app (TOTP)</h2>
+                    <p class="admin-muted" data-i18n="security.authenticatorAppHint">Optionally protect password or directory sign-in with a six-digit code from an authenticator app.</p>
                 </div>
                 <div class="admin-toolbar-actions">
-                    <button class="btn btn-primary" id="totpAddBtn">Add authenticator</button>
-                    <button class="btn btn-danger hidden" id="totpDisableBtn">Disable MFA requirement</button>
+                    <button class="btn btn-primary" id="totpAddBtn" data-i18n="security.addAuthenticator">Add authenticator</button>
+                    <button class="btn btn-danger hidden" id="totpDisableBtn" data-i18n="security.disableMfaRequirement">Disable MFA requirement</button>
                 </div>
             </div>
             <div id="totpList"></div>
             <div id="totpEnrollment" class="hidden" style="margin-top:16px;" role="region" aria-live="polite" aria-labelledby="totpEnrollmentTitle">
-                <h3 id="totpEnrollmentTitle">Set up authenticator app</h3>
-                <p>Scan this QR code locally in your authenticator app, or enter the setup key manually. The setup expires after five minutes.</p>
-                <img id="totpQr" alt="TOTP enrollment QR code" width="240" height="240">
-                <p><strong>Setup key:</strong> <code id="totpSecret"></code></p>
+                <h3 id="totpEnrollmentTitle" data-i18n="security.setupAuthenticator">Set up authenticator app</h3>
+                <p data-i18n="security.setupAuthenticatorHint">Scan this QR code locally in your authenticator app, or enter the setup key manually. The setup expires after five minutes.</p>
+                <img id="totpQr" alt="TOTP enrollment QR code" data-i18n-alt="security.totpQrCode" width="240" height="240">
+                <p><strong data-i18n="security.setupKey">Setup key</strong>: <code id="totpSecret"></code></p>
                 <div class="form-group">
-                    <label for="totpActivationCode">Six-digit code</label>
+                    <label for="totpActivationCode" data-i18n="security.sixDigitCode">Six-digit code</label>
                     <input id="totpActivationCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
                 </div>
-                <button class="btn btn-primary" id="totpActivateBtn">Verify and enable MFA</button>
+                <button class="btn btn-primary" id="totpActivateBtn" data-i18n="security.verifyEnableMfa">Verify and enable MFA</button>
             </div>
             <pre id="totpRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
@@ -152,9 +186,9 @@
                     <button type="button" class="close material-icons" id="securityConfirmationClose" aria-label="Close" data-i18n-aria-label="common.close">close</button>
                 </div>
                 <div class="modal-body">
-                    <p class="admin-muted" id="securityConfirmationHint">Confirm this account security change.</p>
+                    <p class="admin-muted" id="securityConfirmationHint" data-i18n="security.confirmFactorChange">Confirm this account security change.</p>
                     <div class="form-group hidden" id="securityConfirmationMethodGroup">
-                        <label for="securityConfirmationMethod">Confirmation method</label>
+                        <label for="securityConfirmationMethod" data-i18n="security.confirmationMethod">Confirmation method</label>
                         <select id="securityConfirmationMethod" class="form-control"></select>
                     </div>
                     <div class="form-group hidden" id="securityConfirmationPasswordGroup">
@@ -162,7 +196,7 @@
                         <input type="password" id="securityConfirmationPassword" class="form-control" autocomplete="current-password">
                     </div>
                     <div class="form-group hidden" id="securityConfirmationTotpGroup">
-                        <label for="securityConfirmationTotp">Authenticator code</label>
+                        <label for="securityConfirmationTotp" data-i18n="security.authenticatorCode">Authenticator code</label>
                         <input id="securityConfirmationTotp" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
                     </div>
                     <div class="form-group hidden" id="securityConfirmationLabelGroup">
@@ -183,8 +217,8 @@
         </div>
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=18"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=2"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@ const {
     downloadAuditExport,
     featureToggleState,
     featureDisableWarning,
+    featureStatusReason,
     hostKeyConfirmation,
     totpAccountState
 } = require('../../static/js/security-ui.js');
@@ -18,6 +19,25 @@ test('feature disable warning explains self-lockout and session fallback', () =>
     assert.match(warning, /may not be able to sign in again/i);
     assert.match(warning, /remain available until their normal timeout/i);
     assert.match(warning, /New logins and factor setup/i);
+});
+
+test('feature status and disable warning use the active locale', () => {
+    const translate = (key, fallback) => ({
+        'admin.featureDeploymentDisabled': '{feature} ist in Docker deaktiviert.',
+        'admin.disableFeatureWarning': '{feature} deaktivieren? Bestehende Sitzungen laufen regulär aus.'
+    }[key] || fallback);
+
+    assert.equal(featureStatusReason({
+        name: 'oidc',
+        deployment_allowed: false,
+        ready: false,
+        admin_enabled: false,
+        active: false
+    }, 'OpenID Connect', translate), 'OpenID Connect ist in Docker deaktiviert.');
+    assert.equal(
+        featureDisableWarning({ name: 'oidc' }, 'OpenID Connect', translate),
+        'OpenID Connect deaktivieren? Bestehende Sitzungen laufen regulär aus.'
+    );
 });
 
 test('account step-up follows the authentication source selected by the server', async () => {

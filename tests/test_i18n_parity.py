@@ -245,21 +245,25 @@ def test_all_popup_translation_references_exist_in_every_locale():
     source_paths = sorted(Path('templates').glob('*.html')) + [
         Path('static/js/admin.js'),
         Path('static/js/app.js'),
+        Path('static/js/auth.js'),
         Path('static/js/binary-transfer-client.js'),
         Path('static/js/command-library.js'),
         Path('static/js/drag-drop-manager.js'),
         Path('static/js/file-transfer.js'),
         Path('static/js/security-ui.js'),
+        Path('static/js/session-diagnostics.js'),
+        Path('static/js/ssh-error-ui.js'),
         Path('static/js/session-command-launcher.js'),
         Path('static/js/sftp-file-manager.js'),
         Path('static/js/webauthn.js'),
+        Path('static/js/webssh2-shell.js'),
     ]
     referenced_keys = set()
     for source_path in source_paths:
         source = source_path.read_text(encoding='utf-8')
         referenced_keys.update(
             re.findall(
-                r'data-i18n(?:-placeholder|-title|-label|-aria-label)?="([^"]+)"',
+                r'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="([^"]+)"',
                 source,
             )
         )
@@ -334,3 +338,93 @@ def test_connection_state_messages_use_the_active_locale():
         'connection.disconnectedFromServer',
     ):
         assert f"i18n.t('{key}')" in source
+
+
+def test_webssh2_pages_use_explicit_placeholder_and_accessible_text_translations():
+    source = '\n'.join(
+        Path(path).read_text(encoding='utf-8')
+        for path in (
+            'templates/login.html',
+            'templates/register.html',
+            'templates/change_password.html',
+            'templates/security.html',
+        )
+    )
+
+    assert not re.search(
+        r'<input\b[^>]*\bdata-i18n="[^"]+"[^>]*>',
+        source,
+    )
+    assert 'data-i18n-alt="security.totpQrCode"' in source
+
+
+def test_admin_authentication_feature_controls_are_fully_translatable():
+    template = Path('templates/admin.html').read_text(encoding='utf-8')
+    script = '\n'.join(
+        Path(path).read_text(encoding='utf-8')
+        for path in ('static/js/admin.js', 'static/js/security-ui.js')
+    )
+
+    for key in (
+        'admin.ldapDirectory',
+        'admin.ldapCheckHint',
+        'admin.checkConnection',
+        'admin.notChecked',
+        'admin.authenticationFeatures',
+        'admin.authenticationFeaturesHint',
+        'admin.featureStatusNotLoaded',
+        'admin.directoryUsername',
+        'admin.newLocalPasswordAfterUnlinking',
+        'admin.unlinkRestoresLocalAuth',
+    ):
+        assert f'data-i18n="{key}"' in template
+
+    for key in (
+        'admin.featureActive',
+        'admin.deploymentConfiguration',
+        'admin.openSetupGuide',
+        'admin.featureStatusLoaded',
+        'admin.noAuthenticationFeatures',
+        'admin.featureStatusLoading',
+    ):
+        assert f"'{key}'" in script
+
+
+def test_workspace_native_controls_are_fully_translatable():
+    source = Path('templates/index.html').read_text(encoding='utf-8')
+
+    for key in (
+        'workspace.closeBroadcast',
+        'workspace.dropFile',
+        'workspace.dropDestination',
+        'terminal.searchPlaceholder',
+        'terminal.searchPrevious',
+        'terminal.searchNext',
+        'terminal.closeSearch',
+        'workspace.activeSessionFiles',
+        'sessionCommands.panelLabel',
+    ):
+        assert key in source
+
+
+def test_auth_validation_hints_match_the_shared_controller_contract():
+    register = Path('templates/register.html').read_text(encoding='utf-8')
+    change = Path('templates/change_password.html').read_text(encoding='utf-8')
+
+    for field_id in (
+        'registerUsernameHint',
+        'registerPasswordHint',
+        'registerConfirmHint',
+    ):
+        assert f'id="{field_id}"' in register
+    for field_id in (
+        'currentPasswordHint',
+        'newPasswordHint',
+        'confirmPasswordHint',
+    ):
+        assert f'id="{field_id}"' in change
+
+    assert 'function toggleLangDropdown()' not in register
+    assert 'function toggleLangDropdown()' not in Path(
+        'templates/login.html'
+    ).read_text(encoding='utf-8')

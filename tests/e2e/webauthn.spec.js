@@ -62,6 +62,8 @@ test('registers a passkey and signs in with a virtual authenticator', async ({
                 return message;
             }),
         ]);
+        await page.locator('.auth-method-option[data-auth-mode="passkey"]').click();
+        await expect(page.locator('#passkeyLoginMode')).toBeVisible();
         const optionsResponse = page.waitForResponse(
             response => response.url().endsWith('/api/webauthn/auth/options'),
         );

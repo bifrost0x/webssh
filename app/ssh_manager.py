@@ -15,6 +15,7 @@ from .network_policy import (
     resolve_allowed_target,
 )
 from .ssh_key_loader import load_private_key as _load_private_key
+from .ssh_errors import SSHConnectionError
 from .startup_commands import to_terminal_input
 from . import paramiko_channels
 from .quota_manager import (
@@ -27,6 +28,7 @@ from .quota_manager import (
 sessions = {}
 sessions_lock = Lock()
 TMUX_KILL_TIMEOUT = 2.0
+TMUX_PROBE_TIMEOUT = 2.0
 
 
 class TailscaleSSHAuthStrategy(AuthStrategy):
@@ -63,6 +65,41 @@ def _open_exec_channel(transport, command, *, timeout, pty=None):
     finally:
         timeout_guard.cancel()
     return channel
+
+
+def _probe_tmux_session(session):
+    """Return True/False only when the remote tmux state can be confirmed."""
+    client = session.get('client')
+    tmux_session_name = session.get('tmux_session_name')
+    if not client or not tmux_session_name:
+        return None
+
+    probe_channel = None
+    try:
+        transport = client.get_transport()
+        if not transport or not transport.is_active():
+            return None
+        probe_channel = _open_exec_channel(
+            transport,
+            'tmux has-session -t ' + shlex.quote(tmux_session_name),
+            timeout=TMUX_PROBE_TIMEOUT,
+        )
+        probe_channel.recv(1)
+        if not probe_channel.exit_status_ready():
+            return None
+        return probe_channel.recv_exit_status() == 0
+    except Exception as error:
+        log_debug(
+            "Unable to confirm remote tmux session",
+            error_type=type(error).__name__,
+        )
+        return None
+    finally:
+        if probe_channel is not None:
+            try:
+                probe_channel.close()
+            except Exception:
+                pass
 
 def create_ssh_connection(host, port, username, password=None, key_path=None, key_content=None,
                           socketio_instance=None, app=None, user_id=None,
@@ -177,6 +214,17 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     timeout=config.SSH_CONNECT_TIMEOUT,
                 )
                 log_info("Jump host connection established", bastion=proxy_jump_host)
+            except paramiko.BadHostKeyException:
+                log_warning(
+                    "SSH host key changed",
+                    host=f"{proxy_jump_host}:{proxy_jump_port or 22}",
+                    context="jump_host",
+                )
+                return None, SSHConnectionError(
+                    "SSH host key changed",
+                    code="host_key_changed",
+                    context="jump_host",
+                )
             except paramiko.AuthenticationException:
                 return None, "Jump host authentication failed - invalid credentials"
             except Exception as e:
@@ -385,6 +433,17 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
 
         return session_id, None
 
+    except paramiko.BadHostKeyException:
+        log_warning(
+            "SSH host key changed",
+            host=f"{host}:{port}",
+            context="target",
+        )
+        return None, SSHConnectionError(
+            "SSH host key changed",
+            code="host_key_changed",
+            context="target",
+        )
     except paramiko.AuthenticationException:
         return None, "Authentication failed - invalid credentials"
     except ValueError as e:
@@ -459,6 +518,7 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
 
     cached_room = None
     last_db_update = 0
+    persistent_tmux_available = None
 
     try:
         with app.app_context():
@@ -542,17 +602,31 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
     except Exception as e:
         log_error("Error in output reader thread", error=str(e), exc_info=True)
     finally:
+        reader_cancelled = cancel_event is not None and cancel_event.is_set()
+        with sessions_lock:
+            closing_session = sessions.get(session_id)
+        if (
+            not reader_cancelled
+            and closing_session
+            and closing_session.get('use_tmux')
+        ):
+            persistent_tmux_available = _probe_tmux_session(closing_session)
+
         with app.app_context():
             from .models import SSHSession, db
             db_session = SSHSession.query.filter_by(session_id=session_id).first()
             if db_session:
-                db_session.connected = False
+                room = cached_room or f'user_{db_session.user_id}'
+                if db_session.is_persistent and persistent_tmux_available is False:
+                    db.session.delete(db_session)
+                else:
+                    db_session.connected = False
                 db.session.commit()
 
                 socketio_instance.emit('ssh_disconnected', {
                     'session_id': session_id,
                     'reason': 'Connection closed'
-                }, room=cached_room or f'user_{db_session.user_id}')
+                }, room=room)
 
         close_session(session_id)
 
