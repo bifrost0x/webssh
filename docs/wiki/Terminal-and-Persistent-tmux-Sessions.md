@@ -37,12 +37,26 @@ high-impact operation:
 
 WebSSH does not interpret whether a command is safe for every target.
 
-## Focused single-session workspace
+## Focused session workspace
 
 The single-pane layout can place the active session's SFTP browser beside the
 terminal and show Linux resource information alongside notes. On wide desktop
 layouts, the SFTP companion can open for a single connected session; manual
 dismissal is respected for that session.
+
+The context area follows the selected session and keeps Notes, Commands, Files,
+and supported diagnostics within reach. WebSSH probes each capability instead
+of assuming that every SSH target is Linux or provides SFTP. Unsupported tools
+stay unavailable while the core terminal remains usable. Switching sessions
+or resizing the browser preserves the current context without reconnecting SSH.
+
+### Commands for the active session
+
+The Commands context searches the user's Commands and Command Sets, filters
+entries by the detected operating system where applicable, and inserts one
+reviewable line into the active terminal. It does not press Enter. The optional
+`sudo` control prefixes the inserted command; WebSSH never stores or answers a
+sudo password, so any required prompt remains visible in the terminal.
 
 ## Diagnostics
 

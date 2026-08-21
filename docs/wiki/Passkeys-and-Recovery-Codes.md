@@ -1,8 +1,18 @@
-# Passkeys and Recovery Codes
+# Passkeys, Authenticator Apps, and Recovery Codes
 
-Passkeys and recovery codes strengthen local account authentication. LDAP-
-managed accounts cannot use either method because their directory identity is
-exclusive.
+Passkeys and authenticator apps are optional account factors. Recovery Codes
+provide second-factor recovery after a valid primary login. LDAP-managed users
+may enroll these local WebSSH factors after recent directory verification; the
+LDAP password remains exclusively directory-managed and is never stored.
+
+## Capability and activation
+
+The operator first allows each feature in Compose/environment, then an
+administrator activates the ready capability under **Admin → Settings →
+Authentication features**. An Admin toggle cannot override
+`WEBAUTHN_ENABLED=false`, `TOTP_ENABLED=false`, or
+`RECOVERY_CODES_ENABLED=false`. Users who do not enroll and enable MFA retain
+their existing login.
 
 ## Passkey prerequisites
 
@@ -32,7 +42,8 @@ MAX_WEBAUTHN_JSON_SIZE=65536
 
 ## Enroll a passkey
 
-1. Sign in with the local password or a recovery code.
+1. Sign in with the local password or LDAP. If MFA is already enabled, complete
+   another available factor or Recovery after that primary step.
 2. Open **Security**.
 3. Start passkey enrollment.
 4. Complete the authenticator prompt.
@@ -47,10 +58,30 @@ out the account.
 Older WebSSH releases could create non-discoverable credentials. They cannot be
 used by the current username-less flow.
 
-Sign in with a local password or recovery code, open **Security**, and choose
-**Replace legacy passkey**. After current-password confirmation, WebSSH permits
-the same authenticator to create a discoverable replacement. Test the new
-credential before deleting the old record.
+Complete primary login and another available factor, or use Recovery after
+primary verification, open **Security**, and choose **Replace legacy passkey**.
+After recent primary authentication, WebSSH permits the same authenticator to
+create a discoverable replacement. Test the new credential before deleting the
+old record.
+
+## Authenticator apps (TOTP)
+
+Set the deployment ceiling and restart/recreate WebSSH:
+
+```bash
+TOTP_ENABLED=true
+```
+
+Then activate TOTP in the Admin Panel. On **Security**, the user chooses **Add
+authenticator**, confirms the recent primary credential when required, scans
+the locally rendered QR code (or enters the setup key), and verifies one
+six-digit code. The enrollment expires after five minutes. The secret is
+encrypted per user with key material derived from `SECRET_KEY`, is never stored
+in browser local/session storage, and accepted time steps cannot be replayed.
+
+First activation enables MFA and generates a one-time Recovery set. Store it
+before leaving the page. Enabling TOTP remains voluntary; the Admin feature
+toggle makes enrollment available but does not enroll or force users.
 
 ## Recovery codes
 
@@ -76,21 +107,34 @@ differences.
 
 Generating a new set replaces the previous set. Each code is consumed once.
 
-## Recover an account
+## Recover the second factor
 
-Use the recovery option on the login page with the WebSSH username and one
-unused code. After login, replace the lost password or passkey and generate a
-new recovery set.
+First complete the account's local-password or LDAP primary login. When WebSSH
+asks for MFA, select Recovery and enter one unused code. OIDC basic assurance
+can likewise lead to the local factor selection when the linked account enabled
+MFA.
+
+The code creates a restricted recovery session, not a normal login. Only
+`/security`, Passkey/TOTP replacement, explicit MFA disable, logout, and the
+required static resources are available. Normal terminal, SFTP, Admin, and API
+access remains blocked. Enrolling and verifying a replacement factor clears
+the restriction; explicit MFA disable requires typing the account name.
 
 ## Administrator replacement
 
 An administrator can generate a replacement set for a target account only
-after password reauthentication and exact target confirmation. Deliver the new
-set through a trusted channel. The administrator cannot retrieve old codes.
+after action-bound Step-up and exact target confirmation. Deliver the new set
+through a trusted channel. The administrator cannot retrieve old codes.
+
+An administrator can also perform an explicit MFA reset. This deletes the
+target's Passkeys, TOTP authenticators/enrollments, WebAuthn challenges, and
+Recovery Codes, disables MFA, increments the account authentication generation,
+and revokes that target's WebSSH/SSH sessions. The response never returns factor
+secrets. Use this only as a deliberate account-recovery action.
 
 ## Avoid lockout
 
-- Keep at least one local break-glass administrator.
+- Keep at least one local break-glass administrator with two tested factors.
 - Test passkey sign-in after enrollment and origin changes.
 - Keep recovery codes separate from the WebSSH host and data volume.
 - Do not remove the last working factor until its replacement is tested.
@@ -111,9 +155,9 @@ the exact public values and enroll credentials for that relying party.
 
 ### A recovery code fails
 
-Codes are normalized for spaces and case, but are one use only. Confirm the
-username, use an unused code from the latest set, and check that the account is
-not LDAP-managed or locked.
+Codes are normalized for spaces and case, but are one use only. Complete the
+primary login, use an unused code from the latest set, and check that the
+account is not locked and that Recovery is effectively active.
 
 ## Related pages
 

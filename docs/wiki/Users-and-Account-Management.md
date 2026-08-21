@@ -27,7 +27,23 @@ An administrator can:
 - create and restore native backups.
 
 Administrators remain subject to authentication, CSRF, rate limits, target
-confirmation, and reauthentication requirements.
+confirmation, and action-bound Step-up requirements.
+
+## Administrator Step-up
+
+Sensitive mutations require a one-use grant for the exact action and target.
+Examples include user creation and role/lock/delete changes, MFA reset, identity
+linking, authentication-feature policy, audit retention, global host trust, and
+backup/restore operations.
+
+- A local administrator without enabled MFA confirms the current password.
+- An MFA-enabled administrator uses Passkey or TOTP.
+- Sufficiently recent strong OIDC assurance may be reused; otherwise provider
+  reauthentication is required.
+
+The grant is bound to the current server-side authentication session, expires
+after five minutes, and is consumed before route execution. It cannot authorize
+another user or operation and is never persisted in browser storage.
 
 ## First administrator
 
@@ -115,8 +131,11 @@ back into the active namespace.
 
 ## External identity ownership
 
-External identity is always linked to an existing local WebSSH account by an
-administrator.
+External identity resolves to a local WebSSH account. OIDC always requires an
+administrator-created link. LDAP uses the same controlled link by default;
+explicit `LDAP_AUTO_PROVISION=true` can instead create a non-admin account only
+after successful directory authentication and only when no local username or
+stable identity collides.
 
 - OIDC uses the provider's stable issuer and subject. Email alone is never an
   identity key.
@@ -124,8 +143,9 @@ administrator.
   `entryUUID` or `objectGUID`.
 - OIDC and LDAP mappings cannot be combined on one LDAP-managed account.
 - LDAP-managed accounts cannot be administrators.
-- LDAP linking removes local and alternative login factors; unlinking requires
-  a fresh local password.
+- LDAP linking removes the dormant local password and incompatible OIDC mapping;
+  Passkey/TOTP factors remain attached to the WebSSH account and can protect the
+  LDAP primary login. Unlinking requires a fresh local password.
 
 Keep a separate local break-glass administrator before enabling external
 identity.
@@ -136,14 +156,33 @@ Local users can change their password through `/change-password`. Explicit
 logout is a POST action and revokes tracked Socket.IO, SSH, and temporary SFTP
 connections instead of only deleting the browser cookie.
 
-LDAP-managed users authenticate exclusively against the directory and cannot
-use the local password-change, passkey, recovery-code, or OIDC flows.
+LDAP-managed users authenticate their primary credential exclusively against
+the directory and cannot use local password-change or OIDC. After recent LDAP
+verification they can enroll Passkey or TOTP factors and use Recovery Codes for
+the second factor.
+
+## Optional MFA
+
+Passkeys, authenticator apps, and Recovery remain optional per account. Admin
+activation makes a deployment-ready feature available; it does not force every
+user to enroll. Accounts without enabled MFA keep their existing password,
+LDAP, or configured OIDC sign-in. Once enabled on an account, a basic primary
+login continues to an available Passkey, TOTP, or Recovery method.
 
 ## Account recovery
 
-Local accounts can use one-time recovery codes when enabled. Administrators can
-replace a user's recovery set only after reauthentication and exact target
-confirmation. Recovery codes are shown once and stored only as hashes.
+MFA-enabled accounts can use one-time Recovery Codes only after successful
+password or LDAP primary verification. The resulting session remains restricted
+to factor replacement or explicit MFA disable. Administrators can replace a
+user's recovery set only after Step-up and exact target confirmation. Codes are
+shown once and stored only as hashes.
+
+An explicit administrator MFA reset deletes all target Passkeys, TOTP state,
+WebAuthn challenges, and Recovery Codes, disables MFA, advances the target's
+authentication generation, and revokes that account's active WebSSH/SSH access.
+It is distinct from changing a feature policy: enabling or disabling a feature
+does not forcibly kill existing sessions, which continue until their normal
+configured lifetime.
 
 ## Operational checklist
 

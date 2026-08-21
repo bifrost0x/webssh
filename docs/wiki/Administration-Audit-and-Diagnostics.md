@@ -16,9 +16,19 @@ Administrators can:
 
 Disabling or deleting a user revokes live activity, including Socket.IO, SSH, pooled connections, and transfers. Deletion first quarantines the user's data directory and rolls back that move if the database operation fails.
 
-## Recent authentication
+## Administrator step-up
 
-Sensitive operations require a recent local-password confirmation. This limits damage from an unattended authenticated browser session. External identities do not bypass this safeguard; maintain a controlled local administrator credential and recovery process.
+Sensitive Admin mutations require a fresh authorization bound to the current
+server-side authentication session, exact action, exact target, and required
+authentication assurance. Local administrators without MFA confirm their
+password. MFA-enabled administrators use an enrolled Passkey or authenticator
+app (TOTP). LDAP-managed administrators revalidate against LDAP.
+
+Recent sufficient OIDC assurance can be reused. Otherwise WebSSH starts
+provider reauthentication with `prompt=login`, `max_age=0`, and the configured
+`acr_values`. The resulting opaque grant expires after at most five minutes,
+works once, and is never stored in browser local/session storage. A grant for
+one user or action cannot authorize another target or operation.
 
 ## Security audit log
 

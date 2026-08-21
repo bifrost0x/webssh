@@ -16,10 +16,13 @@ Opt in with `docker-compose.ldap.yml`.
 - Usernames are escaped as RFC 4515 filter values.
 - Searches are subtree-scoped, limited to two results, and must resolve to
   exactly one entry.
-- An administrator links a stable directory identity to an existing WebSSH
-  account. There is no automatic provisioning or username-only trust.
-- Linked LDAP users cannot be administrators and cannot fall back to local
-  passwords, passkeys, recovery codes, or OIDC.
+- With the safe default `LDAP_AUTO_PROVISION=false`, an administrator links a
+  stable directory identity to an existing WebSSH account. Explicit opt-in can
+  create a non-admin account only after successful directory authentication;
+  username-only trust is never sufficient.
+- Linked LDAP users cannot be administrators and cannot fall back to a local
+  password or OIDC. After recent directory verification they may enroll local
+  Passkey or TOTP second factors and receive second-factor Recovery Codes.
 - LDAP sessions are periodically revalidated and fail closed.
 
 Keep at least one unlinked local break-glass administrator.
@@ -102,6 +105,12 @@ attribute is not available.
 | `LDAP_LOGIN_RATE_LIMIT` | `5 per minute` | Per-IP login and diagnostic limit |
 
 When LDAP is disabled, WebSSH does not read the secret files.
+
+`LDAP_ENABLED=true` is only the deployment ceiling. After the container starts
+with a valid directory configuration, sign in with the local break-glass
+administrator and activate LDAP under **Admin → Settings → Authentication
+features**. If Compose leaves LDAP disabled, the Admin toggle is locked and
+cannot create a provider at runtime.
 
 ## Populate the secret volume
 
@@ -186,6 +195,9 @@ the Flask app from starting.
    ```
 
 Unsafe URL, secret, CA, filter, attribute, and timeout settings stop startup.
+After readiness succeeds, activate LDAP in the Admin Panel. The login form does
+not appear until deployment allowance, readiness, and Admin activation are all
+true.
 
 For production, apply the production overlay last:
 
@@ -200,24 +212,48 @@ docker compose \
 
 ## Link users
 
+With `LDAP_AUTO_PROVISION=false` (recommended for controlled rollouts):
+
 1. Sign in with the local break-glass administrator.
 2. Open **Admin → Settings → LDAP directory**.
 3. Run **Check connection**. The browser receives only readiness category,
    transport, and provider ID, never secrets.
 4. Create the target standard WebSSH account if it does not exist.
 5. On the Users tab, select **Link LDAP**.
-6. Enter the directory username, administrator password, and exact target
-   WebSSH username.
+6. Complete the administrator Step-up prompt, then enter the directory username
+   and exact target WebSSH username.
 7. Sign out and test **Sign in with LDAP**.
 
 Start with one non-admin pilot.
+
+For larger directories, `LDAP_AUTO_PROVISION=true` creates a non-admin,
+LDAP-managed WebSSH account only after the first successful directory password
+bind. Automatic provisioning never claims an existing local username, never
+creates an administrator, rejects invalid or overlong names without silently
+truncating them, and does not automatically delete stored data when a directory
+account later disappears.
 
 Linking stores the stable provider and subject plus the current DN and directory
 username. A renamed DN can be updated after successful authentication as long as
 the stable ID still matches.
 
-Linking destroys the account's dormant local password and removes passkeys,
-recovery codes, and OIDC mappings. This prevents weaker fallback paths.
+Linking destroys the account's dormant local password and removes an
+incompatible OIDC mapping. Existing local MFA factors remain owned by the same
+WebSSH account and can protect LDAP primary login. The link operation revokes
+the target account's active access so the new identity boundary applies on its
+next login.
+
+## LDAP with optional MFA
+
+LDAP proves the primary credential only. If the WebSSH account has not enabled
+MFA, successful directory verification completes login as before. If the user
+has enabled MFA, WebSSH creates a short-lived pending transaction and offers
+the account's active Passkey, TOTP, and Recovery methods. The LDAP password is
+discarded after the bind and is never stored for the second step.
+
+An LDAP-managed user can enroll a Passkey or authenticator app on **Security**
+after a recent successful directory login. Recovery Codes can then recover the
+second factor, but only after LDAP primary verification succeeds.
 
 ## Session revalidation
 
@@ -234,7 +270,7 @@ browser, Socket.IO, SSH, transfer, and pooled-connection access when:
 
 An LDAP outage therefore signs users out by design.
 
-## Disable LDAP immediately
+## Disable LDAP
 
 Recreate WebSSH from the base file only:
 
@@ -243,13 +279,14 @@ docker compose up -d --force-recreate
 ```
 
 This removes LDAP environment and mounts from the WebSSH container. The named
-secret volume remains detached. Existing LDAP sessions are invalidated, and
-linked users do not regain old passwords.
+secret volume remains detached, new LDAP logins stop, and linked users do not
+regain old passwords. Already open WebSSH/SSH sessions are not forcibly killed
+by this policy change; they end under the normal configured session lifetime.
 
 ## Return one user to local authentication
 
-While LDAP is working, choose **Manage LDAP**, provide the administrator
-password, exact target username, and a new local password, then unlink the
+While LDAP is working, choose **Manage LDAP**, complete administrator Step-up,
+provide the exact target username and a new local password, then unlink the
 identity. The new password establishes a fresh local credential.
 
 ## Remove LDAP secrets
@@ -292,7 +329,9 @@ controller's accepted username flow.
 
 ### LDAP outage signs users out
 
-Restore directory and TLS service. Do not add a password fallback.
+Restore directory and TLS service. Periodic directory revalidation is
+intentionally fail-closed and revokes the affected LDAP-managed account when
+the directory cannot verify it. Do not add a password fallback.
 
 ### Provider ID changed
 

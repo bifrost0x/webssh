@@ -82,11 +82,20 @@ The file workspace supports SFTP sources. SMB is not a supported backend even if
 
 Review the dedicated [LDAP troubleshooting sequence](LDAP-and-Active-Directory#troubleshooting). The most important distinction is whether service bind/search failed, the user did not match filters, TLS validation failed, user credential bind failed, or no enabled local account is linked to the resulting directory identity.
 
-WebSSH intentionally does not auto-provision LDAP users.
+LDAP auto-provisioning is optional and disabled by default with
+`LDAP_AUTO_PROVISION=false`. When explicitly enabled, WebSSH creates only a
+non-admin account after a successful directory bind. Existing local usernames
+are never claimed automatically, ambiguous or colliding identities fail
+closed, and operators should retain a tested local break-glass administrator.
 
 ## OIDC sign-in fails
 
-Verify issuer discovery, exact redirect URI, client secret file permissions, state/nonce lifetime, system clock, and any allowed-subject/domain policy. An email match does not replace the exact issuer-plus-subject identity link.
+Verify issuer discovery, exact redirect URI, client secret file permissions,
+state/nonce lifetime, system clock, and any allowed-subject/domain policy. An
+email match does not replace the exact issuer-plus-subject identity link. For
+MFA or administrator step-up failures, also verify the signed `acr`/`amr`
+claims, configured assurance mappings, and provider support for requested
+`prompt=login`, `max_age=0`, and `acr_values` parameters.
 
 ## Capacity symptoms
 

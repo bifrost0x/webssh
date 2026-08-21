@@ -78,6 +78,19 @@ Profiles use an explicit startup mode:
 
 Existing legacy profile data is migrated additively into this model.
 
+## Commands in an active session
+
+The focused session workspace can search Commands and Command Sets for the
+active terminal. Entries with an operating-system scope are filtered against
+the detected target where possible. Selecting **Insert** writes one visible,
+single-line command to the terminal but does not press Enter, leaving the final
+review and execution to the operator.
+
+The optional **Insert with sudo** control prefixes the inserted command without
+changing the stored library entry. WebSSH does not store or answer a sudo
+password; an interactive prompt remains in the terminal. Multiline entries are
+not inserted through this active-session shortcut.
+
 ## Post-connect behavior
 
 When a profile is assigned a post-connect action, WebSSH waits for the SSH

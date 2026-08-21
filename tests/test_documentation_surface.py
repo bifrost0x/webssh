@@ -94,3 +94,79 @@ def test_wiki_has_no_unresolved_placeholders():
         if forbidden.search(page.read_text(encoding="utf-8")):
             findings.append(page.name)
     assert findings == []
+
+
+def wiki_text(name: str) -> str:
+    """Read one canonical Wiki page as UTF-8 text."""
+    return (WIKI / name).read_text(encoding="utf-8")
+
+
+def test_current_workspace_and_session_flows_are_documented():
+    """The Wiki covers the current focused and capability-aware workspace."""
+    terminal = wiki_text("Terminal-and-Persistent-tmux-Sessions.md")
+    for phrase in (
+        "focused session workspace",
+        "capability",
+        "persistent tmux",
+        "sudo",
+        "manual reconnect",
+        "Files",
+    ):
+        assert phrase.lower() in terminal.lower()
+
+
+def test_current_sftp_workspace_is_documented_without_active_smb_claims():
+    """The file guide is current while keeping SMB explicitly unavailable."""
+    sftp = wiki_text("SFTP-File-Workspace-and-Transfers.md")
+    for phrase in ("source", "independent", "server-to-server", "transfer queue"):
+        assert phrase.lower() in sftp.lower()
+    assert "SMB" in sftp and "Coming soon" in sftp
+    assert "SMB connection is available" not in sftp
+
+
+def test_current_authentication_assurance_is_documented():
+    """The identity guide describes current MFA and Admin step-up contracts."""
+    auth = wiki_text("Authentication-Overview.md")
+    for phrase in (
+        "authentication assurance",
+        "authenticator app",
+        "action-bound",
+        "administrator step-up",
+        "OIDC",
+        "LDAP",
+        "passkey",
+    ):
+        assert phrase.lower() in auth.lower()
+
+
+def test_ldap_provisioning_contract_is_documented():
+    """The Wiki distinguishes safe default linking from explicit provisioning."""
+    ldap = wiki_text("LDAP-and-Active-Directory.md")
+    assert "LDAP_AUTO_PROVISION=false" in ldap
+    assert "LDAP_AUTO_PROVISION=true" in ldap
+    assert "non-admin" in ldap
+    assert "never claims an existing local username" in ldap
+
+
+def test_recovery_codes_are_not_documented_as_generic_password_bypass():
+    """Recovery codes retain their implemented second-factor-only boundary."""
+    recovery = wiki_text("Passkeys-and-Recovery-Codes.md")
+    assert "second-factor recovery" in recovery.lower()
+    assert "alternative password" not in recovery.lower()
+
+
+def test_current_runtime_and_proxy_contracts_are_documented():
+    """The operator guide covers native threading and all supported proxies."""
+    architecture = wiki_text("Architecture-and-Runtime-Lifecycle.md")
+    proxy = wiki_text("Reverse-Proxy-and-Subfolder-Deployment.md")
+    for phrase in ("gthread", "exactly one", "threading", "HTTP reserve"):
+        assert phrase.lower() in architecture.lower()
+    for proxy_name in ("Nginx", "Traefik", "Caddy", "Apache"):
+        assert proxy_name in proxy
+
+
+def test_supported_python_versions_are_documented():
+    """Development docs retain both the support floor and production runtime."""
+    development = wiki_text("Development-and-Testing.md")
+    assert "Python 3.11" in development
+    assert "Python 3.14" in development

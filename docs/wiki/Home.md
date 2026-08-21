@@ -19,12 +19,17 @@ overview, screenshots, release badges, and source code, visit the
 - Persistent remote shells through tmux.
 - Linux session diagnostics for resources, processes, systemd services, and
   Docker containers.
-- Local accounts, optional passkeys, recovery codes, OIDC, and optional
-  LDAP/Active Directory authentication.
+- Local accounts, optional Passkeys and authenticator apps (TOTP), Recovery
+  Codes, OIDC, and optional LDAP/Active Directory authentication with
+  conservative authentication assurance.
 - Administrative user management, structured audit logs, backup and restore,
   and security controls suitable for a trusted self-hosted deployment.
 - A fully local browser runtime: vendored frontend dependencies and no built-in
   telemetry.
+
+The WebSSH 2.0 interface uses a responsive, focused session workspace: terminal,
+Files, Commands, Notes, and supported Linux insights stay aligned with the
+selected SSH session across desktop, tablet, and mobile layouts.
 
 ## Choose your path
 

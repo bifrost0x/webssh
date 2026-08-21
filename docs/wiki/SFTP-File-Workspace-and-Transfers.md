@@ -15,13 +15,21 @@ Each side has independent source tabs and directory state. The workspace starts
 with one file area and can switch to a side-by-side layout for remote-to-remote
 work. A source already open on the opposite side is not silently duplicated.
 
-The SMB control is disabled and is not a supported connection source.
+The SMB action is disabled, labeled **Coming soon**, and is not a supported
+connection source. It opens no SMB connection and generates no SMB network
+activity.
 
 ## Embedded active-session browser
 
 In the single-terminal layout, an embedded SFTP browser follows the active SSH
 session. Its state is separate from the standalone File Workspace, so switching
 terminal sessions does not overwrite independent workspace tabs.
+
+WebSSH probes SFTP availability for the selected session before showing the
+embedded browser. Manual dismissal is retained for that session, and changing
+viewport size keeps the mounted browser state instead of opening another
+connection. Disconnecting the selected SSH session removes only its embedded
+source; independent File Workspace tabs remain intact.
 
 ## File operations
 
@@ -50,9 +58,9 @@ Large file bodies do not travel as base64 Socket.IO messages. Socket.IO creates
 bounded control state and single-use user-bound transfer tokens. HTTP routes
 stream upload, download, and folder archives.
 
-Server-to-server work runs as a bounded cancellable background job. The transfer
-queue tracks progress, errors, cancellation, and conflict choices such as skip
-or overwrite.
+Server-to-server work runs as a bounded cancellable background job. The
+transfer queue tracks progress, errors, cancellation, and conflict choices such
+as skip or overwrite.
 
 Queued and active transfers retain references to their source and destination
 connections. Closing the last quick-connection tab defers disconnect until the

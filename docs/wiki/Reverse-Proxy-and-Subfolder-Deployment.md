@@ -16,7 +16,7 @@ TRUSTED_PROXIES=1
 `TRUSTED_PROXIES` is the number of trusted forwarding layers, not a Boolean.
 Keep the WebSSH backend reachable only through those layers.
 
-## nginx at the domain root
+## Nginx at the domain root
 
 ```nginx
 location / {
@@ -49,6 +49,31 @@ ssh.example.com {
 }
 ```
 
+## Apache at the domain root
+
+Apache httpd 2.4.47 or newer can proxy HTTP and WebSocket upgrades through
+`mod_proxy_http`. Enable `mod_proxy`, `mod_proxy_http`, `mod_headers`, and
+`mod_ssl`, then use a TLS virtual host such as:
+
+```apache
+<VirtualHost *:443>
+    ServerName ssh.example.com
+
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/ssh.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/ssh.example.com/privkey.pem
+
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "https"
+    ProxyPass "/" "http://127.0.0.1:5000/" upgrade=websocket
+    ProxyPassReverse "/" "http://127.0.0.1:5000/"
+</VirtualHost>
+```
+
+Older Apache versions require `mod_proxy_wstunnel` and an explicit WebSocket
+rule. Prefer a supported 2.4.47+ release so HTTP and upgrade traffic share the
+same mapping.
+
 ## Serve WebSSH under a path prefix
 
 For a public URL such as `https://server.example.com/webssh`, configure:
@@ -63,7 +88,7 @@ SESSION_COOKIE_SECURE=true
 The reverse proxy must strip `/webssh` before forwarding the request and send
 the original prefix as `X-Forwarded-Prefix`.
 
-### nginx subfolder
+### Nginx subfolder
 
 ```nginx
 location /webssh/ {
@@ -104,6 +129,25 @@ server.example.com {
     }
 }
 ```
+
+### Apache subfolder
+
+Enable `mod_alias` in addition to the modules used above. Redirect the missing
+trailing slash and forward the public prefix explicitly:
+
+```apache
+RedirectMatch permanent "^/webssh$" "/webssh/"
+
+<Location "/webssh/">
+    RequestHeader set X-Forwarded-Prefix "/webssh"
+</Location>
+
+ProxyPass "/webssh/" "http://127.0.0.1:5000/" upgrade=websocket
+ProxyPassReverse "/webssh/" "http://127.0.0.1:5000/"
+```
+
+Keep the trailing slash on both proxy paths. Set `APPLICATION_ROOT=/webssh` in
+WebSSH as shown above.
 
 ## Containerized proxy
 
