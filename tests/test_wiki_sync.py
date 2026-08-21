@@ -151,6 +151,32 @@ class WikiSyncTests(unittest.TestCase):
 
             self.assertEqual(valuable.read_text(encoding="utf-8"), "keep")
 
+    def test_sync_refuses_external_gitdir_pointer_before_removing_pages(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.make_wiki_source(root)
+            real_repository = root / "real-repository"
+            real_repository.mkdir()
+            subprocess.run(
+                ["git", "init", "--quiet", str(real_repository)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            destination = root / "pointer-checkout"
+            destination.mkdir()
+            (destination / ".git").write_text(
+                f"gitdir: {(real_repository / '.git').as_posix()}\n",
+                encoding="utf-8",
+            )
+            valuable = destination / "valuable.md"
+            valuable.write_text("keep", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Git checkout"):
+                sync_wiki(source, destination)
+
+            self.assertEqual(valuable.read_text(encoding="utf-8"), "keep")
+
     def test_sync_rejects_page_symlinks_before_removing_stale_pages(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

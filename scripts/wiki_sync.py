@@ -70,7 +70,8 @@ def _canonical_pages(source: Path) -> dict[str, Path]:
 
 
 def _require_git_toplevel(destination: Path) -> None:
-    if _is_symlink_or_reparse(destination / ".git"):
+    git_metadata = destination / ".git"
+    if _is_symlink_or_reparse(git_metadata) or not git_metadata.is_dir():
         raise ValueError("Wiki destination must be an existing Git checkout")
     result = subprocess.run(
         ["git", "-C", str(destination), "rev-parse", "--show-toplevel"],
