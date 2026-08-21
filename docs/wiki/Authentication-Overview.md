@@ -21,6 +21,13 @@ upgrade a session silently.
 
 ## Common controls
 
+![WebSSH authentication assurance flow from primary identity through optional MFA and Recovery to administrator step-up](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/authentication-assurance.png?raw=true)
+
+Primary authentication, account MFA, Recovery, and administrator Step-up are
+separate contracts. Recovery never substitutes for the primary credential, and
+an authenticated Admin session still needs a fresh one-use grant for each
+sensitive action and target.
+
 - Flask-Login manages browser authentication.
 - Forms use Flask-WTF CSRF protection.
 - Unknown-user password checks perform dummy bcrypt work.

@@ -4,6 +4,12 @@ WebSSH is a Flask application with authenticated HTTP and Socket.IO interfaces, 
 
 ## Request and connection flow
 
+![WebSSH trust boundaries showing trusted proxy ingress, one process, persisted state, audit, and managed targets](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/system-trust-boundaries.png?raw=true)
+
+Browsers do not connect directly to SSH targets through a hidden peer-to-peer
+path. WebSSH terminates the authenticated application session, checks ownership
+and policy, and then opens the server-side SSH or SFTP connection.
+
 ```text
 Browser
   |-- HTTPS/forms/API --------> Flask routes and blueprints

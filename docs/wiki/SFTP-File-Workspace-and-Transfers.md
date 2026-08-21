@@ -54,6 +54,13 @@ temporary connection.
 
 ## Transfer architecture
 
+![WebSSH realtime session and bulk transfer lifecycle showing transfer records, single-use tokens, HTTP streams, and bounded jobs](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/session-and-transfer-lifecycle.png?raw=true)
+
+The control record retains user and connection ownership while the body path
+uses a short-lived token. This separation keeps large payloads away from the
+Socket.IO terminal channel without weakening cancellation, quota, or lifecycle
+tracking.
+
 Large file bodies do not travel as base64 Socket.IO messages. Socket.IO creates
 bounded control state and single-use user-bound transfer tokens. HTTP routes
 stream upload, download, and folder archives.

@@ -12,6 +12,13 @@ Current archives use format version 2. The verifier also understands legacy form
 
 ## Online backup in the web interface
 
+![WebSSH backup and restore safety flow with administrator step-up, maintenance mode, private staging, validation, and atomic activation](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/backup-restore-safety.png?raw=true)
+
+Backup and restore share the same authorization boundary but use different safe
+paths. A backup coordinates writers before collecting consistent state. A
+restore stays in an instance-specific, quota-bounded staging area until archive
+validation and exact operator confirmation succeed.
+
 An administrator can create a consistent backup while the service is online. SQLite uses its backup API and file writers are coordinated so that the archive represents a coherent point in time.
 
 The completed download is one-time, session-bound, and expires after `BACKUP_DOWNLOAD_TTL` seconds, which defaults to 600. Temporary archive construction occurs outside `DATA_DIR` in an instance-specific namespace.
@@ -25,12 +32,13 @@ Restore is deliberately disruptive and strongly confirmed:
 1. Upload the archive.
 2. Let WebSSH validate format and safety limits.
 3. Review the restore target and warnings.
-4. Complete both confirmations, including the exact `RESTORE` phrase and administrator password.
-5. WebSSH enters maintenance mode and stops accepting new work.
-6. Active sessions and transfers are closed.
-7. An emergency rollback archive is created.
-8. Persistent state is replaced and sessions are invalidated.
-9. The process terminates intentionally so the service manager can start a clean runtime.
+4. Complete the action-bound restore-prepare Step-up and acknowledge the sensitive operation.
+5. Submit the issued session-bound confirmation token, the exact `RESTORE` phrase, and destructive-restore confirmation with a second action-bound Step-up.
+6. WebSSH enters maintenance mode and stops accepting new work.
+7. Active sessions and transfers are closed.
+8. An emergency rollback archive is created.
+9. Persistent state is replaced and sessions are invalidated.
+10. The process terminates intentionally so the service manager can start a clean runtime.
 
 If an interruption occurs during replacement, the restore workflow attempts rollback from the emergency archive. Still take an independent backup before every restore and keep it outside the instance.
 

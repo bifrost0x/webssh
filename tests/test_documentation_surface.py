@@ -1,11 +1,19 @@
 """Contracts for the repository README, canonical Wiki source, and media."""
 
 import re
+import struct
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 WIKI = ROOT / "docs" / "wiki"
+
+DIAGRAM_NAMES = {
+    "system-trust-boundaries",
+    "authentication-assurance",
+    "session-and-transfer-lifecycle",
+    "backup-restore-safety",
+}
 README = ROOT / "README.md"
 
 WIKI_PAGE_NAMES = {
@@ -99,6 +107,46 @@ def test_wiki_has_no_unresolved_placeholders():
 def wiki_text(name: str) -> str:
     """Read one canonical Wiki page as UTF-8 text."""
     return (WIKI / name).read_text(encoding="utf-8")
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    """Read the dimensions from a PNG IHDR header."""
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return struct.unpack(">II", data[16:24])
+
+
+def test_diagram_sources_and_wiki_exports_exist_at_readable_size():
+    """Every Wiki diagram keeps its source and a readable raster export."""
+    directory = ROOT / "docs" / "media" / "diagrams"
+    for name in DIAGRAM_NAMES:
+        html = directory / f"{name}.html"
+        svg = directory / f"{name}.svg"
+        png = directory / f"{name}.png"
+        assert html.is_file() and "<svg" in html.read_text(encoding="utf-8")
+        assert svg.is_file() and "<svg" in svg.read_text(encoding="utf-8")
+        assert png_size(png) == (2880, 1800)
+
+
+def test_current_diagrams_are_embedded_on_the_relevant_wiki_pages():
+    """Each diagram is discoverable from the Wiki topic it explains."""
+    placements = {
+        "system-trust-boundaries.png": (
+            "Home.md",
+            "Architecture-and-Runtime-Lifecycle.md",
+        ),
+        "authentication-assurance.png": ("Authentication-Overview.md",),
+        "session-and-transfer-lifecycle.png": (
+            "Terminal-and-Persistent-tmux-Sessions.md",
+            "SFTP-File-Workspace-and-Transfers.md",
+        ),
+        "backup-restore-safety.png": (
+            "Backup-Restore-and-Secret-Rotation.md",
+        ),
+    }
+    for image, pages in placements.items():
+        for page in pages:
+            assert f"docs/media/diagrams/{image}?raw=true" in wiki_text(page)
 
 
 def test_current_workspace_and_session_flows_are_documented():

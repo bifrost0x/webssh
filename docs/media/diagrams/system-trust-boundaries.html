@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WebSSH system trust boundaries</title>
+  <style>
+    html, body { margin: 0; background: #f4f7fb; }
+    svg { display: block; width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+<!--
+Source brief
+- Verified from: app/__init__.py, app/socket_events.py, app/ssh_manager.py,
+  app/transfer_routes.py, app/network_policy.py, app/audit_logger.py,
+  docker-compose.production.yml, docs/wiki/Architecture-and-Runtime-Lifecycle.md.
+- Pattern/type: secure paved road / architecture.
+- Primary nodes: browser, reverse proxy, Flask/Socket.IO, runtime workers,
+  persisted state, SSH/SFTP targets, optional identity provider, audit log.
+- Boundary claim: clients enter through the trusted proxy and WebSSH; direct
+  browser-to-target access is not a WebSSH path.
+- Font note: WebSSH's named Sora and IBM Plex Mono fonts are not vendored;
+  the portable diagram uses Segoe UI and Cascadia Mono fallbacks.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="system-trust-boundaries-title system-trust-boundaries-desc">
+  <title id="system-trust-boundaries-title">WebSSH system trust boundaries</title>
+  <desc id="system-trust-boundaries-desc">Architecture showing browser traffic entering WebSSH through a trusted reverse proxy, WebSSH enforcing identity and ownership before opening SSH or SFTP connections, and blocked direct access around the application boundary.</desc>
+  <defs>
+    <style>
+      .title{font:700 32px "Segoe UI",Arial,sans-serif;fill:#15283a}.subtitle{font:16px "Segoe UI",Arial,sans-serif;fill:#52677b}.brand{font:700 20px "Segoe UI",Arial,sans-serif;fill:#245f9e}.zone{fill:rgba(36,95,158,.025);stroke:rgba(36,95,158,.28);stroke-width:1.2;stroke-dasharray:8 8}.zone-label{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#52677b}.node{fill:#fff;stroke:#3e5368;stroke-width:1.2}.focal{fill:#eaf2fb;stroke:#245f9e;stroke-width:2}.store{fill:#e8eef5;stroke:#52677b;stroke-width:1.2}.optional{fill:#f4f7fb;stroke:#818c9b;stroke-width:1.2;stroke-dasharray:8 8}.node-title{font:600 16px "Segoe UI",Arial,sans-serif;fill:#15283a}.node-sub{font:12px "Cascadia Mono",Consolas,monospace;fill:#52677b}.tag{font:600 8px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#245f9e}.flow{fill:none;stroke:#52677b;stroke-width:2;marker-end:url(#system-arrow)}.link{fill:none;stroke:#245f9e;stroke-width:2.4;marker-end:url(#system-arrow-link)}.passive{fill:none;stroke:#818c9b;stroke-width:1.6;stroke-dasharray:8 8;marker-end:url(#system-arrow)}.blocked{fill:none;stroke:#b43f3f;stroke-width:2;stroke-dasharray:8 8}.arrow-label{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.08em;fill:#52677b}.arrow-label-blue{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.08em;fill:#245f9e}.legend{font:12px "Segoe UI",Arial,sans-serif;fill:#52677b}.source{font:11px "Cascadia Mono",Consolas,monospace;fill:#818c9b}
+    </style>
+    <marker id="system-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#52677b"/></marker>
+    <marker id="system-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#245f9e"/></marker>
+  </defs>
+
+  <rect width="1440" height="900" fill="#f4f7fb"/>
+  <rect x="0" y="0" width="16" height="900" fill="#245f9e"/>
+  <text class="title" x="56" y="64">System trust boundaries</text>
+  <text class="subtitle" x="56" y="96">One supported path from the browser to owned SSH and SFTP resources</text>
+  <text class="brand" x="1384" y="64" text-anchor="end">WebSSH</text>
+
+  <rect class="zone" x="48" y="144" width="280" height="612" rx="8"/>
+  <rect x="72" y="136" width="120" height="24" fill="#f4f7fb"/>
+  <text class="zone-label" x="80" y="152">CLIENT</text>
+  <rect class="zone" x="376" y="144" width="680" height="612" rx="8"/>
+  <rect x="400" y="136" width="200" height="24" fill="#f4f7fb"/>
+  <text class="zone-label" x="408" y="152">WEBSSH · ONE PROCESS</text>
+  <rect class="zone" x="1104" y="144" width="288" height="612" rx="8"/>
+  <rect x="1128" y="136" width="176" height="24" fill="#f4f7fb"/>
+  <text class="zone-label" x="1136" y="152">MANAGED SYSTEMS</text>
+
+  <!-- Connectors are drawn before nodes. -->
+  <line class="link" x1="288" y1="320" x2="416" y2="320"/>
+  <rect x="324" y="288" width="64" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label-blue" x="356" y="300" text-anchor="middle">HTTPS</text>
+
+  <line class="link" x1="616" y1="272" x2="696" y2="272"/>
+  <rect x="624" y="240" width="64" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label-blue" x="656" y="252" text-anchor="middle">FORWARD</text>
+
+  <path class="flow" d="M 760 328 V 384 Q 760 392 752 392 H 528 Q 520 392 520 400 V 432"/>
+  <rect x="616" y="360" width="64" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label" x="648" y="372" text-anchor="middle">ADMIT</text>
+
+  <line class="flow" x1="816" y1="328" x2="816" y2="432"/>
+  <rect x="832" y="360" width="48" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label" x="856" y="372" text-anchor="middle">STATE</text>
+
+  <path class="link" d="M 616 488 H 1072 Q 1080 488 1080 480 V 344 Q 1080 336 1088 336 H 1144"/>
+  <rect x="880" y="456" width="88" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label-blue" x="924" y="468" text-anchor="middle">SSH · SFTP</text>
+
+  <path class="passive" d="M 936 264 H 1072 Q 1080 264 1080 272 V 548 Q 1080 556 1088 556 H 1144"/>
+  <rect x="992" y="232" width="72" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label" x="1028" y="244" text-anchor="middle">OPTIONAL</text>
+
+  <path class="flow" d="M 696 296 H 664 Q 656 296 656 304 V 668 Q 656 676 664 676 H 696"/>
+  <rect x="592" y="636" width="56" height="16" fill="#f4f7fb"/>
+  <text class="arrow-label" x="620" y="648" text-anchor="middle">AUDIT</text>
+
+  <path class="blocked" d="M 188 376 V 576 Q 188 584 196 584 H 648 a 8 8 0 0 1 16 0 H 1072"/>
+  <line x1="1064" y1="572" x2="1080" y2="596" stroke="#b43f3f" stroke-width="3"/>
+  <line x1="1080" y1="572" x2="1064" y2="596" stroke="#b43f3f" stroke-width="3"/>
+  <rect x="776" y="552" width="248" height="16" fill="#f4f7fb"/>
+  <text x="900" y="564" text-anchor="middle" class="arrow-label" fill="#b43f3f">DIRECT TARGET BYPASS BLOCKED</text>
+
+  <!-- Nodes -->
+  <rect class="node" x="88" y="264" width="200" height="112" rx="8"/>
+  <text class="tag" x="104" y="284">USER</text>
+  <text class="node-title" x="188" y="320" text-anchor="middle">Browser</text>
+  <text class="node-sub" x="188" y="344" text-anchor="middle">terminal · files · admin</text>
+
+  <rect class="node" x="416" y="216" width="200" height="112" rx="8"/>
+  <text class="tag" x="432" y="236">EDGE</text>
+  <text class="node-title" x="516" y="272" text-anchor="middle">Trusted reverse proxy</text>
+  <text class="node-sub" x="516" y="296" text-anchor="middle">TLS · origin · client IP</text>
+
+  <rect class="focal" x="696" y="216" width="240" height="112" rx="8"/>
+  <text class="tag" x="712" y="236">APP</text>
+  <text class="node-title" x="816" y="272" text-anchor="middle">Flask + Socket.IO</text>
+  <text class="node-sub" x="816" y="296" text-anchor="middle">auth · CSRF · ownership</text>
+
+  <rect class="node" x="416" y="432" width="200" height="112" rx="8"/>
+  <text class="tag" x="432" y="452">RUNTIME</text>
+  <text class="node-title" x="516" y="488" text-anchor="middle">Bounded workers</text>
+  <text class="node-sub" x="516" y="512" text-anchor="middle">SSH · SFTP · transfers</text>
+
+  <rect class="store" x="696" y="432" width="240" height="112" rx="8"/>
+  <text class="tag" x="712" y="452">STATE</text>
+  <text class="node-title" x="816" y="488" text-anchor="middle">SQLite + user data</text>
+  <text class="node-sub" x="816" y="512" text-anchor="middle">DATA_DIR · encrypted keys</text>
+
+  <rect class="store" x="696" y="636" width="240" height="80" rx="8"/>
+  <text class="tag" x="712" y="656">LOG</text>
+  <text class="node-title" x="816" y="684" text-anchor="middle">Security audit</text>
+  <text class="node-sub" x="816" y="704" text-anchor="middle">bounded · redacted · rotated</text>
+
+  <rect class="node" x="1144" y="280" width="208" height="112" rx="8"/>
+  <text class="tag" x="1160" y="300">TARGET</text>
+  <text class="node-title" x="1248" y="336" text-anchor="middle">SSH / SFTP hosts</text>
+  <text class="node-sub" x="1248" y="360" text-anchor="middle">host key · network policy</text>
+
+  <rect class="optional" x="1144" y="500" width="208" height="112" rx="8"/>
+  <text class="tag" x="1160" y="520">IDENTITY</text>
+  <text class="node-title" x="1248" y="556" text-anchor="middle">OIDC or LDAP</text>
+  <text class="node-sub" x="1248" y="580" text-anchor="middle">disabled by default</text>
+
+  <line x1="48" y1="812" x2="1392" y2="812" stroke="#afc1d2" stroke-width="1"/>
+  <rect x="64" y="836" width="20" height="12" fill="#eaf2fb" stroke="#245f9e"/>
+  <text class="legend" x="96" y="848">enforcement point</text>
+  <rect x="288" y="836" width="20" height="12" fill="#f4f7fb" stroke="#818c9b" stroke-dasharray="6 4"/>
+  <text class="legend" x="320" y="848">optional integration</text>
+  <line x1="536" y1="844" x2="568" y2="844" stroke="#245f9e" stroke-width="2.4"/>
+  <text class="legend" x="580" y="848">supported data path</text>
+  <line x1="792" y1="844" x2="824" y2="844" stroke="#b43f3f" stroke-width="2" stroke-dasharray="8 8"/>
+  <text class="legend" x="836" y="848">blocked bypass</text>
+  <text class="source" x="1384" y="848" text-anchor="end">current implementation · WebSSH 2.0</text>
+</svg>
+</body>
+</html>

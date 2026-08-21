@@ -47,6 +47,13 @@ selected SSH session across desktop, tablet, and mobile layouts.
 
 ## Deployment model at a glance
 
+![WebSSH trust boundaries from the browser through the single WebSSH process to owned SSH and SFTP targets](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/system-trust-boundaries.png?raw=true)
+
+The supported path keeps authentication, ownership checks, network policy,
+host-key verification, bounded runtime work, persisted state, and audit records
+inside explicit boundaries. Optional OIDC or LDAP identity never bypasses the
+local WebSSH account and resource-ownership model.
+
 The browser connects to WebSSH over HTTP or HTTPS. WebSSH then opens the SSH
 and SFTP connections to target hosts. WebSSH therefore processes terminal
 input/output, file data, and connection credentials while establishing or

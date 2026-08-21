@@ -78,6 +78,12 @@ monitoring or privilege-escalation agent.
 
 ## Browser refresh and reconnect
 
+![WebSSH realtime SSH session and bulk transfer paths with ownership and transport boundaries](https://github.com/bifrost0x/webssh/blob/main/docs/media/diagrams/session-and-transfer-lifecycle.png?raw=true)
+
+Terminal control and output use authenticated Socket.IO events around an owned,
+process-local SSH session. Bulk transfer bodies take the separate bounded HTTP
+path shown below; they are not encoded into terminal events.
+
 The browser can restore UI state for live sessions after refresh without
 injecting terminal input. The underlying SSH transport remains process-local;
 a WebSSH process restart closes a normal SSH session.
