@@ -7,6 +7,14 @@ from .auth import get_user_from_socket, login_manager
 from .audit_logger import log_warning
 
 
+def _socket_authentication_is_valid(user):
+    """Validate that the browser assurance session owns the socket user."""
+    from .auth_assurance import current_authentication_session
+
+    auth_session = current_authentication_session()
+    return auth_session is not None and auth_session.user_id == user.id
+
+
 def admin_required(f):
     """Require an enabled panel and authenticated admin (place above @login_required)."""
     @wraps(f)
@@ -66,9 +74,7 @@ def socket_login_required(f):
             log_warning("Unauthorized socket event attempt", event=f.__name__, sid=socket_sid)
             disconnect()
             return
-        from .auth_assurance import current_authentication_session
-        auth_session = current_authentication_session()
-        if auth_session is None or auth_session.user_id != user.id:
+        if not _socket_authentication_is_valid(user):
             payload = {
                 'success': False,
                 'error': 'Authentication required',

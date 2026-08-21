@@ -5,6 +5,11 @@ from contextlib import contextmanager
 import pytest
 
 from app.storage_errors import StorageCorruptionError
+
+
+pytestmark = pytest.mark.usefixtures('direct_socket_authentication')
+
+
 def create_socket_user(app, username):
     from app.auth import register_socket_session, register_user
     from app.models import db
