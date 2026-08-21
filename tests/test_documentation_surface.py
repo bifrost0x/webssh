@@ -247,8 +247,8 @@ def test_readme_uses_the_new_product_media():
         assert f"assets/{name}" in readme
 
 
-def test_readme_moves_long_form_runbooks_to_the_wiki():
-    """Operational detail lives in the versioned Wiki instead of the README."""
+def test_readme_routes_long_form_runbooks_to_the_published_wiki():
+    """Readers use the live Wiki while its canonical source remains reviewable."""
     readme = README.read_text(encoding="utf-8")
     for removed_heading in (
         "### Environment Variables",
@@ -257,7 +257,9 @@ def test_readme_moves_long_form_runbooks_to_the_wiki():
         "### Project Structure",
     ):
         assert removed_heading not in readme
-    assert "https://github.com/bifrost0x/webssh/wiki/" not in readme
+    live_wiki = "https://github.com/bifrost0x/webssh/wiki"
+    assert f"[WebSSH Wiki]({live_wiki})" in readme
+    assert "[versioned source](docs/wiki/Home.md)" in readme
     for guide in (
         "Quick-Start.md",
         "Production-Deployment.md",
@@ -265,7 +267,7 @@ def test_readme_moves_long_form_runbooks_to_the_wiki():
         "Configuration-Reference.md",
         "Development-and-Testing.md",
     ):
-        assert f"docs/wiki/{guide}" in readme
+        assert f"{live_wiki}/{guide.removesuffix('.md')}" in readme
 
 
 def test_current_diagrams_are_embedded_on_the_relevant_wiki_pages():
