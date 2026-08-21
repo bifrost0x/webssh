@@ -14,6 +14,13 @@ DIAGRAM_NAMES = {
     "session-and-transfer-lifecycle",
     "backup-restore-safety",
 }
+DESKTOP_PRODUCT_CAPTURES = {
+    "workspace-overview.png",
+    "multi-session.png",
+    "sftp-workspace.png",
+    "security-center.png",
+}
+MOBILE_PRODUCT_CAPTURES = {"mobile-workspace.png"}
 README = ROOT / "README.md"
 
 WIKI_PAGE_NAMES = {
@@ -116,6 +123,18 @@ def png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", data[16:24])
 
 
+def gif_metadata(path: Path) -> tuple[int, int, int, int, bool]:
+    """Read GIF canvas size, frame count, duration, and loop marker."""
+    data = path.read_bytes()
+    assert data[:6] in {b"GIF87a", b"GIF89a"}
+    width, height = struct.unpack("<HH", data[6:10])
+    delays = []
+    for match in re.finditer(rb"\x21\xf9\x04", data):
+        payload = match.end()
+        delays.append(struct.unpack("<H", data[payload + 1:payload + 3])[0] * 10)
+    return width, height, len(delays), sum(delays), b"NETSCAPE2.0" in data
+
+
 def test_diagram_sources_and_wiki_exports_exist_at_readable_size():
     """Every Wiki diagram keeps its source and a readable raster export."""
     directory = ROOT / "docs" / "media" / "diagrams"
@@ -126,6 +145,80 @@ def test_diagram_sources_and_wiki_exports_exist_at_readable_size():
         assert html.is_file() and "<svg" in html.read_text(encoding="utf-8")
         assert svg.is_file() and "<svg" in svg.read_text(encoding="utf-8")
         assert png_size(png) == (2880, 1800)
+
+
+def test_current_product_captures_exist_at_readable_size():
+    """README screenshots are current, legible, and consistently exported."""
+    assets = ROOT / "assets"
+    for name in DESKTOP_PRODUCT_CAPTURES:
+        assert png_size(assets / name) == (2560, 1440)
+    for name in MOBILE_PRODUCT_CAPTURES:
+        assert png_size(assets / name) == (1080, 1920)
+
+
+def test_product_tours_are_readable_looping_animations():
+    """README tours are high-resolution, multi-frame, and long enough to read."""
+    expectations = {
+        "webssh-demo.gif": 15_000,
+        "file-editing.gif": 12_000,
+        "command-sets.gif": 12_000,
+    }
+    for name, minimum_duration in expectations.items():
+        width, height, frames, duration, loops = gif_metadata(ROOT / "assets" / name)
+        assert (width, height) == (1280, 720)
+        assert frames >= 25
+        assert duration >= minimum_duration
+        assert loops
+    assert "assets/command-sets.gif?raw=true" in wiki_text(
+        "Profiles-Jump-Hosts-and-Commands.md"
+    )
+
+
+def test_readme_is_a_compact_project_entry_point():
+    """The repository landing page stays concise enough to scan on GitHub."""
+    lines = README.read_text(encoding="utf-8").splitlines()
+    assert 200 <= len(lines) <= 400
+
+
+def test_readme_has_the_approved_information_architecture():
+    """The README routes readers through product, setup, safety, and docs."""
+    readme = README.read_text(encoding="utf-8")
+    for heading in (
+        "## Why WebSSH",
+        "## Features",
+        "## Screenshots",
+        "## Quick Start",
+        "## Security Boundary",
+        "## Documentation",
+        "## Contributing and Support",
+    ):
+        assert heading in readme
+
+
+def test_readme_uses_the_new_product_media():
+    """The compact README presents every current product capture."""
+    readme = README.read_text(encoding="utf-8")
+    for name in (
+        "webssh-demo.gif",
+        "workspace-overview.png",
+        "multi-session.png",
+        "sftp-workspace.png",
+        "security-center.png",
+        "mobile-workspace.png",
+    ):
+        assert f"assets/{name}" in readme
+
+
+def test_readme_moves_long_form_runbooks_to_the_wiki():
+    """Operational detail lives in the versioned Wiki instead of the README."""
+    readme = README.read_text(encoding="utf-8")
+    for removed_heading in (
+        "### Environment Variables",
+        "### Reverse Proxy Setup",
+        "### CLI Backup, Restore, and Secret Rotation",
+        "### Project Structure",
+    ):
+        assert removed_heading not in readme
 
 
 def test_current_diagrams_are_embedded_on_the_relevant_wiki_pages():

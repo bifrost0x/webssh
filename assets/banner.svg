@@ -1,11 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180" width="600" height="180">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 180" width="600" height="180" role="img" aria-labelledby="title description">
+  <title id="title">WebSSH</title>
+  <desc id="description">WebSSH terminal logo in Blueprint Steel colors</desc>
   <defs>
     <linearGradient id="termGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#10B981"/>
       <stop offset="100%" style="stop-color:#059669"/>
     </linearGradient>
   </defs>
-  
+
+  <rect x="10" y="10" width="580" height="160" rx="24" fill="#0b1118" stroke="#245f9e" stroke-width="2"/>
+
   <!-- Terminal icon -->
   <rect x="30" y="30" width="120" height="120" rx="12" fill="#0f172a"/>
   <circle cx="52" cy="52" r="5" fill="#ef4444"/>
