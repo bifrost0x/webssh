@@ -275,16 +275,28 @@ An LDAP outage therefore signs users out by design.
 
 ## Disable LDAP
 
-Recreate WebSSH from the base file only:
+Omit only `docker-compose.ldap.yml` when recreating WebSSH. For a homelab
+deployment, use the base file:
 
 ```bash
-docker compose up -d --force-recreate
+docker compose \
+  -f docker-compose.yml \
+  up -d --force-recreate
 ```
 
-This removes LDAP environment and mounts from the WebSSH container. The named
-secret volume remains detached, new LDAP logins stop, and linked users do not
-regain old passwords. Already open WebSSH/SSH sessions are not forcibly killed
-by this policy change; they end under the normal configured session lifetime.
+For a production deployment, retain the production overlay:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.production.yml \
+  up -d --force-recreate
+```
+
+This removes LDAP environment and mounts without dropping the production
+security profile. The named secret volume remains detached, new LDAP logins
+stop, and linked users do not regain old passwords. Container recreation closes
+open WebSSH and SSH sessions, so schedule this change as maintenance.
 
 ## Return one user to local authentication
 

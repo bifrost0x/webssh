@@ -257,6 +257,15 @@ def test_readme_moves_long_form_runbooks_to_the_wiki():
         "### Project Structure",
     ):
         assert removed_heading not in readme
+    assert "https://github.com/bifrost0x/webssh/wiki/" not in readme
+    for guide in (
+        "Quick-Start.md",
+        "Production-Deployment.md",
+        "Security-Model-and-Hardening.md",
+        "Configuration-Reference.md",
+        "Development-and-Testing.md",
+    ):
+        assert f"docs/wiki/{guide}" in readme
 
 
 def test_current_diagrams_are_embedded_on_the_relevant_wiki_pages():

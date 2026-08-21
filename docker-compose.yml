@@ -49,7 +49,7 @@ services:
       # prefix and forwards it via the X-Forwarded-Prefix header.
       # Leave commented to run at the root — behavior is unchanged when unset.
       # See the Wiki page "Reverse Proxy and Subfolder Deployment":
-      # https://github.com/bifrost0x/webssh/wiki/Reverse-Proxy-and-Subfolder-Deployment
+      # https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Reverse-Proxy-and-Subfolder-Deployment.md
       # - APPLICATION_ROOT=/webssh
 
       # === Homelab HTTP compatibility ===

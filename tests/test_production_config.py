@@ -547,7 +547,15 @@ def test_wiki_documents_complete_ldap_compose_quickstart():
         '-f docker-compose.yml -f docker-compose.ldap.yml '
         '-f docker-compose.production.yml up -d'
     ) in normalized
-    assert 'docker compose up -d --force-recreate' in normalized
+    assert (
+        'docker compose -f docker-compose.yml '
+        'up -d --force-recreate'
+    ) in normalized
+    assert (
+        'docker compose -f docker-compose.yml '
+        '-f docker-compose.production.yml '
+        'up -d --force-recreate'
+    ) in normalized
 
 
 def test_disposable_ldap_lab_binds_published_test_service_to_loopback():
