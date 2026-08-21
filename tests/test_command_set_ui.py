@@ -63,8 +63,11 @@ def test_commands_workspace_unifies_library_and_command_sets():
     ):
         assert f'id="{element_id}"' in template
     assert 'role="tablist"' in template
-    assert template.count('role="tab"') == 2
-    assert template.count('role="tabpanel"') == 2
+    assert len(re.findall(r'class="command-workspace-tab(?:\s|")', template)) == 2
+    assert re.search(r'id="commandLibraryTab"[^>]*role="tab"', template)
+    assert re.search(r'id="commandSetsTab"[^>]*role="tab"', template)
+    assert re.search(r'id="commandLibraryPanel"[^>]*role="tabpanel"', template)
+    assert re.search(r'id="commandSetsPanel"[^>]*role="tabpanel"', template)
     assert template.index('id="commandSetsTab"') < template.index('id="commandLibraryTab"')
     assert 'data-os="linux"' in template
     assert 'data-os="windows"' in template

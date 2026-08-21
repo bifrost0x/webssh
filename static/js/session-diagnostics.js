@@ -36,6 +36,15 @@
         return Number.isFinite(number) && number >= 0 ? number : null;
     }
 
+    function canOpenDiagnostics(state, session) {
+        return Boolean(state?.sessionId && session?.connected);
+    }
+
+    function contextState(state, session, requestedOpen) {
+        const available = canOpenDiagnostics(state, session);
+        return { available, open: Boolean(available && requestedOpen) };
+    }
+
     function boundedPercent(value) {
         const number = finiteNumber(value);
         return number === null ? null : Math.max(0, Math.min(100, number));
@@ -354,7 +363,8 @@
         const chartModule = options.chartModule || windowRef?.SessionDiagnosticsCharts;
         const byId = id => documentRef.getElementById(id);
         const elements = {
-            trigger: byId('sessionDiagnosticsToggle'), overlay: byId('sessionDiagnosticsOverlay'),
+            trigger: byId('contextDiagnosticsTab'), overlay: byId('sessionDiagnosticsOverlay'),
+            mount: byId('contextDiagnosticsPanel'),
             drawer: documentRef.querySelector?.('.session-diagnostics-drawer'),
             backdrop: byId('sessionDiagnosticsBackdrop'), close: byId('sessionDiagnosticsClose'),
             refresh: byId('sessionDiagnosticsRefresh'), lastUpdated: byId('sessionDiagnosticsLastUpdated'),
@@ -388,11 +398,15 @@
             elements[`${key}Bar`] = byId(`sessionDiagnostics${title}Bar`);
             elements[`${key}Sparkline`] = byId(`sessionDiagnostics${title}Sparkline`);
         });
-        if (!elements.trigger || !elements.overlay || !elements.close) return null;
+        if (!elements.trigger || !elements.overlay || !elements.mount) return null;
+
+        elements.mount.appendChild(elements.overlay);
+        elements.drawer?.setAttribute('role', 'region');
+        elements.drawer?.removeAttribute?.('aria-modal');
+        if (elements.close) elements.close.hidden = true;
+        if (elements.backdrop) elements.backdrop.hidden = true;
 
         let open = false;
-        let activeSessionId = null;
-        let previousFocus = null;
         let latestState = {};
         let latestSession = null;
         let latestInventoryState = {};
@@ -425,21 +439,14 @@
         }
         const writeClipboard = options.writeClipboard || defaultWriteClipboard;
 
-        function setOpen(nextOpen, restoreFocus = true) {
+        function setOpen(nextOpen) {
             const normalized = Boolean(nextOpen && !elements.trigger.disabled);
             if (open === normalized) return;
             open = normalized;
             elements.overlay.classList.toggle('hidden', !open);
             elements.overlay.setAttribute('aria-hidden', String(!open));
-            elements.trigger.setAttribute('aria-expanded', String(open));
-            documentRef.body?.classList.toggle('session-diagnostics-open', open);
             if (open) {
-                previousFocus = documentRef.activeElement;
-                elements.close.focus();
                 scheduleRedraw();
-            } else if (restoreFocus) {
-                const focusTarget = previousFocus && documentRef.contains(previousFocus) ? previousFocus : elements.trigger;
-                focusTarget?.focus?.();
             }
             onOpenChange(open);
         }
@@ -633,13 +640,14 @@
             latestState = state || {};
             latestSession = session || null;
             latestInventoryState = inventoryState || {};
-            const nextSessionId = state?.sessionId || null;
-            if (activeSessionId && activeSessionId !== nextSessionId && open) setOpen(false, false);
-            activeSessionId = nextSessionId;
             latestModel = buildViewModel(latestState, latestSession, latestInventoryState, filters);
             const model = latestModel;
-            elements.trigger.disabled = !model.available;
-            if (!model.available && open) setOpen(false, false);
+            const context = contextState(latestState, latestSession, open);
+            elements.trigger.disabled = !context.available;
+            windowRef?.workspaceLayoutController?.setContextAvailability?.(
+                'diagnostics', context.available
+            );
+            if (!context.open && open) setOpen(false);
             elements.host.textContent = model.host;
             elements.os.textContent = model.os || '';
             elements.os.hidden = !model.os;
@@ -696,31 +704,6 @@
             render(latestState, latestSession, latestInventoryState);
         }
 
-        function handleKeydown(event) {
-            if (!open) return;
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                setOpen(false);
-                return;
-            }
-            if (event.key !== 'Tab') return;
-            const focusable = Array.from(elements.drawer?.querySelectorAll?.(
-                'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-            ) || []).filter(element => !element.hidden && !element.closest?.('[hidden]'));
-            if (!focusable.length) return;
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (event.shiftKey && documentRef.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && documentRef.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        }
-
-        const handleTrigger = () => setOpen(!open);
-        const handleClose = () => setOpen(false);
         const handleRefresh = () => onRefreshInventory();
         const handleSystemdSearch = event => { filters.systemdQuery = event.target.value; rerenderLocal(); };
         const handleDockerSearch = event => { filters.dockerQuery = event.target.value; rerenderLocal(); };
@@ -730,13 +713,9 @@
             filterHandlers.set(button, handler);
             button.addEventListener('click', handler);
         });
-        elements.trigger.addEventListener('click', handleTrigger);
-        elements.close.addEventListener('click', handleClose);
         elements.refresh?.addEventListener('click', handleRefresh);
-        elements.backdrop?.addEventListener('click', handleClose);
         elements.systemdSearch?.addEventListener('input', handleSystemdSearch);
         elements.dockerSearch?.addEventListener('input', handleDockerSearch);
-        documentRef.addEventListener('keydown', handleKeydown);
         windowRef?.addEventListener?.('themeChanged', scheduleRedraw);
         const ResizeObserverCtor = options.ResizeObserver || windowRef?.ResizeObserver;
         const resizeObserver = ResizeObserverCtor ? new ResizeObserverCtor(scheduleRedraw) : null;
@@ -747,17 +726,14 @@
             render,
             redraw: scheduleRedraw,
             isOpen: () => open,
+            setOpen,
             close: () => setOpen(false),
             destroy() {
-                setOpen(false, false);
-                elements.trigger.removeEventListener('click', handleTrigger);
-                elements.close.removeEventListener('click', handleClose);
+                setOpen(false);
                 elements.refresh?.removeEventListener('click', handleRefresh);
-                elements.backdrop?.removeEventListener('click', handleClose);
                 elements.systemdSearch?.removeEventListener('input', handleSystemdSearch);
                 elements.dockerSearch?.removeEventListener('input', handleDockerSearch);
                 filterHandlers.forEach((handler, button) => button.removeEventListener('click', handler));
-                documentRef.removeEventListener('keydown', handleKeydown);
                 windowRef?.removeEventListener?.('themeChanged', scheduleRedraw);
                 resizeObserver?.disconnect?.();
                 if (redrawFrame !== null) {
@@ -768,5 +744,5 @@
         };
     }
 
-    return { buildViewModel, createController, formatRate };
+    return { buildViewModel, canOpenDiagnostics, contextState, createController, formatRate };
 }));

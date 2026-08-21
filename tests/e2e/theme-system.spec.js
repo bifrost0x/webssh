@@ -199,7 +199,7 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     await page.getByRole('combobox', { name: 'Theme' }).selectOption('paper');
     await expect.poll(() => page.evaluate(() => localStorage.getItem('websshTheme')))
         .toBe('paper');
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: 'Account menu' }).click();
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: 'Logout' }).click();

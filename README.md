@@ -90,7 +90,11 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Command Palette** - Fuzzy command launcher (Ctrl+K)
 
 <p align="center">
-  <img src="assets/session-workspace.png" alt="Single-session workspace with SSH terminal, embedded SFTP browser, live Linux server statistics, and notepad" width="1100">
+  <img src="assets/session-workspace.png" alt="Single-session workspace with SSH terminal and the embedded Files context" width="1100">
+</p>
+
+<p align="center">
+  <img src="assets/session-commands-context.png" alt="Single-session workspace with the Commands context for safe command insertion" width="1100">
 </p>
 
 <p align="center">

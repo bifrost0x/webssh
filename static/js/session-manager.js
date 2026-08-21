@@ -900,15 +900,14 @@ const SessionManager = {
 
         if (sessionId) {
             setTimeout(() => {
-                TerminalManager.fitTerminal(sessionId);
-                const size = TerminalManager.getTerminalSize(sessionId);
-                if (size && window.socket) {
-                    window.socket.emit('ssh_resize', {
-                        session_id: sessionId,
-                        rows: size.rows,
-                        cols: size.cols
-                    });
-                }
+                TerminalManager.fitAndSyncVisibleTerminals({
+                    socket: window.socket,
+                    isConnected: candidateId => (
+                        candidateId === sessionId
+                        && Boolean(this.sessions[sessionId]?.connected)
+                    ),
+                    force: true,
+                });
             }, 50);
         }
         this.notifyWorkspaceChange();

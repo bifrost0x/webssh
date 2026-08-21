@@ -11,7 +11,8 @@ test('renders hostile inventory only as DOM text with unique service action name
     const hostileUnit = '<img src=x onerror=alert(1)>.service';
     const rendered = await page.evaluate(({ hostileUnit }) => {
         const ids = [
-            'sessionDiagnosticsToggle', 'sessionDiagnosticsOverlay',
+            'contextDiagnosticsTab', 'contextDiagnosticsPanel',
+            'sessionDiagnosticsOverlay',
             'sessionDiagnosticsBackdrop', 'sessionDiagnosticsClose',
             'sessionDiagnosticsRefresh', 'sessionDiagnosticsLastUpdated',
             'sessionDiagnosticsHost', 'sessionDiagnosticsOs',
@@ -41,7 +42,7 @@ test('renders hostile inventory only as DOM text with unique service action name
             });
         });
         const tags = {
-            sessionDiagnosticsToggle: 'button', sessionDiagnosticsClose: 'button',
+            contextDiagnosticsTab: 'button', sessionDiagnosticsClose: 'button',
             sessionDiagnosticsRefresh: 'button', sessionDiagnosticsBackdrop: 'button',
             sessionDiagnosticsSystemdSearch: 'input', sessionDiagnosticsDockerSearch: 'input',
             sessionDiagnosticsPermissionList: 'ul',

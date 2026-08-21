@@ -19,6 +19,21 @@
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    function labelResponsiveTableRows(table) {
+        if (!table) { return; }
+        const labels = Array.from(table.querySelectorAll('thead th'))
+            .map(header => header.textContent.trim());
+        table.querySelectorAll('tbody tr').forEach(row => {
+            Array.from(row.children).forEach((cell, index) => {
+                if (cell.colSpan > 1) {
+                    delete cell.dataset.label;
+                    return;
+                }
+                cell.dataset.label = labels[index] || '';
+            });
+        });
+    }
+
     function notify(message, type) {
         const container = document.getElementById('notificationContainer');
         if (!container) { return; }
@@ -308,6 +323,7 @@
                 `<td>${userActionsHtml(u)}</td>`;
             body.appendChild(tr);
         });
+        labelResponsiveTableRows(document.getElementById('adminUsersTable'));
     }
 
     async function loadUsers() {
@@ -685,6 +701,7 @@
                 `<td class="admin-message">${escapeHtml(e.message || '')}</td>`;
             body.appendChild(tr);
         });
+        labelResponsiveTableRows(document.getElementById('adminAuditTable'));
     }
 
     function updateAuditPageInfo() {
@@ -1262,6 +1279,7 @@
                 row.lastElementChild.appendChild(button);
                 body.appendChild(row);
             });
+            labelResponsiveTableRows(body.closest('table'));
         } catch (err) {
             notify(err.message, 'error');
         }

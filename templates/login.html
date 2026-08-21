@@ -9,29 +9,46 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=3">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=5">
 </head>
 <body data-theme="glass" data-use-theme-preference>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
 
-    <div class="language-selector">
-        <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
-            <span id="currentLangFlag" class="language-code">EN</span>
-            <span id="currentLangName">English</span>
-        </button>
-        <div class="lang-dropdown" id="langDropdown"></div>
-    </div>
+    <div class="auth-shell">
+        <header class="auth-shell-header">
+            <a class="auth-shell-brand" href="{{ url_for('login') }}" aria-label="WebSSH sign in">
+                <span class="material-icons" aria-hidden="true">terminal</span>
+                <span><strong>WebSSH</strong><small>Secure workspace</small></span>
+            </a>
+            <div class="language-selector">
+                <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
+                    <span id="currentLangFlag" class="language-code">EN</span>
+                    <span id="currentLangName">English</span>
+                    <span class="material-icons" aria-hidden="true">expand_more</span>
+                </button>
+                <div class="lang-dropdown" id="langDropdown"></div>
+            </div>
+        </header>
 
-    <div class="glow-orb glow-orb-1"></div>
-    <div class="glow-orb glow-orb-2"></div>
-    <div class="glow-orb glow-orb-3"></div>
+        <div class="auth-shell-content">
+            <aside class="auth-brand-panel" aria-label="WebSSH capabilities">
+                <span class="auth-brand-eyebrow">Self-hosted operations</span>
+                <h2>One focused place for SSH and SFTP.</h2>
+                <p>Connect to your infrastructure from a browser while keeping deployment and access policy under your control.</p>
+                <ul class="auth-capability-list">
+                    <li><span class="material-icons" aria-hidden="true">terminal</span><span><strong>Session workspace</strong><small>Terminals, splits, and persistent tmux sessions</small></span></li>
+                    <li><span class="material-icons" aria-hidden="true">folder_open</span><span><strong>Integrated file access</strong><small>SFTP stays scoped to the active SSH session</small></span></li>
+                    <li><span class="material-icons" aria-hidden="true">verified_user</span><span><strong>Explicit trust</strong><small>Per-user host keys and controlled authentication</small></span></li>
+                </ul>
+            </aside>
 
-    <div class="auth-container">
+            <main class="auth-form-panel">
+            <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
-                <div class="logo"><span class="material-icons" aria-hidden="true">terminal</span></div>
-                <h1 data-i18n="app.title">WebSSH</h1>
-                <p data-i18n="auth.signInPrompt">Sign in to your account</p>
+                <span class="auth-form-eyebrow">Sign in</span>
+                <h1 data-i18n="auth.signInPrompt">Access your SSH workspace</h1>
+                <p>Use the identity source configured for this WebSSH instance.</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -137,16 +154,18 @@
             </form>
             {% endif %}
             </div>
+            <div class="auth-alternatives">
             {% if webauthn_enabled and (not mfa_required or 'passkey' in mfa_methods) %}
-            <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
+            <button type="button" class="auth-provider-button" id="passkeyLoginBtn" data-i18n="auth.signInWithPasskey">
                 Sign in with passkey
             </button>
             {% endif %}
             {% if oidc_enabled and not mfa_required %}
-            <a class="btn-primary" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}" style="display:block;text-align:center;margin-top:12px;text-decoration:none;" data-i18n="auth.signInWithIdentityProvider">
+            <a class="auth-provider-button" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}" data-i18n="auth.signInWithIdentityProvider">
                 Sign in with identity provider
             </a>
             {% endif %}
+            </div>
             <div class="auth-footer{% if mfa_required %} hidden{% endif %}">
                 {% if registration_enabled %}
                 <span data-i18n="auth.noAccount">Don't have an account?</span>
@@ -155,9 +174,12 @@
             </div>
             </section>
         </div>
+            </div>
+            </main>
+        </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=18"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>

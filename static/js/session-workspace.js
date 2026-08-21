@@ -140,7 +140,6 @@
         const filesPanel = options.filesPanel;
         const insights = options.insights || {};
         const render = options.render || (() => {});
-        const isDesktop = options.isDesktop || (() => true);
         const isWideDesktop = options.isWideDesktop || (() => false);
 
         let layout = 1;
@@ -155,7 +154,6 @@
         function canOpenSftp() {
             return Boolean(
                 layout === 1
-                && isDesktop()
                 && sessionId
                 && session?.connected
                 && ['available', 'inconclusive'].includes(sftpCapability)
@@ -174,7 +172,6 @@
         function state() {
             const sftpProbeNeeded = Boolean(
                 layout === 1
-                && isDesktop()
                 && sessionId
                 && session?.connected
                 && ['unknown', 'probing'].includes(sftpCapability)
@@ -237,7 +234,7 @@
                 if (previousLayout === 1 && layout !== 1 && previousSessionId) {
                     sftpPreferences.set(previousSessionId, 'closed');
                 }
-                if (layout !== 1 || !isDesktop() || !connected) {
+                if (layout !== 1 || !connected) {
                     if (sftpOpen && !connected && sessionId) {
                         filesPanel?.setDisconnected?.(sessionId);
                     }
@@ -263,6 +260,18 @@
                     renderState();
                     return false;
                 }
+                if (!canOpenSftp()) {
+                    renderState();
+                    return false;
+                }
+                sftpPreferences.set(sessionId, 'open');
+                openSftp();
+                renderState();
+                return true;
+            },
+
+            openSftpPanel() {
+                if (sftpOpen) return true;
                 if (!canOpenSftp()) {
                     renderState();
                     return false;

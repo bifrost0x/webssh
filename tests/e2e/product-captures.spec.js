@@ -445,9 +445,7 @@ async function seedDemoWorkspace(page) {
         );
 
         const notepad = document.getElementById('sessionNotepad');
-        const notepadPanel = document.getElementById('notepadPanel');
-        notepadPanel.classList.remove('collapsed');
-        document.getElementById('workspace').style.setProperty('--notepad-width', '320px');
+        window.workspaceLayoutController.setNotesOpen(true);
         notepad.value = [
             'Release checklist',
             '',
@@ -813,9 +811,9 @@ test('captures six current Command Sets animation frames without remote actions'
     await seedCommandSetAnimationCatalog(page);
 
     expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
-    await expect(page.locator('header')).not.toContainText('E2E');
+    await expect(page.locator('header.header')).not.toContainText('E2E');
     await expect(page.locator('main')).not.toContainText('E2E');
-    await expect(page.locator('header')).not.toContainText('.local');
+    await expect(page.locator('header.header')).not.toContainText('.local');
     await expect(page.locator('main')).not.toContainText('.local');
     await captureCssFrame(page, frameDirectory, '01-saved-connections.png');
 
@@ -889,9 +887,9 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await expect(page.locator('#sessionTabs')).toContainText('Database Bastion');
     await expect(page.locator('#notepadPanel')).toContainText('Notepad');
     await expect(page.locator('#sessionNotepad')).toHaveValue(/edge-01\.example/);
-    await expect(page.locator('header')).not.toContainText('E2E');
+    await expect(page.locator('header.header')).not.toContainText('E2E');
     await expect(page.locator('main')).not.toContainText('E2E');
-    await expect(page.locator('header')).not.toContainText('.local');
+    await expect(page.locator('header.header')).not.toContainText('.local');
     await expect(page.locator('main')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
     await assertWorkspaceIsContained(page);

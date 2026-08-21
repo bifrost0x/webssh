@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=5">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
     <header class="header">
@@ -43,7 +43,7 @@
                 <button class="btn btn-secondary" id="adminRefreshUsers" data-i18n="admin.refresh">Refresh</button>
             </div>
             <div class="admin-table-wrap">
-                <table class="admin-table" id="adminUsersTable">
+                <table class="admin-table admin-responsive-table" id="adminUsersTable">
                     <thead>
                         <tr>
                             <th data-i18n="admin.colId">ID</th>
@@ -74,7 +74,7 @@
                 <button class="btn btn-secondary" id="auditExportBtn" data-i18n="admin.exportJsonl">Export JSONL</button>
             </div>
             <div class="admin-table-wrap">
-                <table class="admin-table" id="adminAuditTable">
+                <table class="admin-table admin-responsive-table" id="adminAuditTable">
                     <thead>
                         <tr>
                             <th data-i18n="audit.timestamp">Timestamp</th>
@@ -137,7 +137,7 @@
                     <button class="btn btn-secondary" id="globalHostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
                 </div>
                 <div class="admin-table-wrap">
-                    <table class="admin-table">
+                    <table class="admin-table admin-responsive-table">
                         <thead><tr><th data-i18n="security.host">Host</th><th data-i18n="security.status">Status</th><th data-i18n="security.algorithm">Algorithm</th><th data-i18n="security.fingerprint">Fingerprint</th><th data-i18n="security.action">Action</th></tr></thead>
                         <tbody id="globalHostKeyList"></tbody>
                     </table>
@@ -328,9 +328,9 @@
 
     <div id="notificationContainer" class="notification-container"></div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=18"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=1"></script>
 </body>
 </html>

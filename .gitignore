@@ -15,6 +15,10 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+.tmp-e2e*/
+.tmp-uv*/
+.uv-python*/
+.venv*/
 
 # Environment variables
 .env

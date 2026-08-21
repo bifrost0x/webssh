@@ -36,6 +36,63 @@ test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => 
     await expect(page.locator('#securityActionConfirmation')).toHaveValue('');
 });
 
+test('admin navigation and users become readable cards on a mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await login(page);
+    await page.goto('/admin');
+
+    const navigation = await page.locator('.admin-tabs').evaluate(element => {
+        const bounds = [...element.querySelectorAll('.admin-tab')].map(tab => {
+            const rect = tab.getBoundingClientRect();
+            return { left: rect.left, right: rect.right };
+        });
+        return {
+            display: getComputedStyle(element).display,
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            bounds,
+            viewportWidth: window.innerWidth,
+        };
+    });
+    expect(navigation.display).toBe('grid');
+    expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth);
+    for (const bounds of navigation.bounds) {
+        expect(bounds.left).toBeGreaterThanOrEqual(0);
+        expect(bounds.right).toBeLessThanOrEqual(navigation.viewportWidth);
+    }
+
+    const row = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
+    await expect(row).toBeVisible();
+    const state = await row.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const cells = [...element.querySelectorAll('td')];
+        const actions = element.querySelector('.admin-actions')?.getBoundingClientRect();
+        return {
+            display: getComputedStyle(element).display,
+            labels: cells.map(cell => cell.dataset.label || ''),
+            bounds: { left: bounds.left, right: bounds.right },
+            actions: actions ? { left: actions.left, right: actions.right } : null,
+            viewportWidth: window.innerWidth,
+        };
+    });
+
+    expect(state.display).toBe('grid');
+    expect(state.labels).toEqual([
+        'ID',
+        'User',
+        'Role',
+        'Status',
+        'Created',
+        'Last login',
+        'Actions',
+    ]);
+    expect(state.bounds.left).toBeGreaterThanOrEqual(0);
+    expect(state.bounds.right).toBeLessThanOrEqual(state.viewportWidth);
+    expect(state.actions).not.toBeNull();
+    expect(state.actions.left).toBeGreaterThanOrEqual(0);
+    expect(state.actions.right).toBeLessThanOrEqual(state.viewportWidth);
+});
+
 test('a delayed recovery response cannot populate another user modal', async ({ page }) => {
     await login(page);
     await page.goto('/admin');

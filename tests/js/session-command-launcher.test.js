@@ -71,7 +71,6 @@ test('inserts exact text into the bound connected session without Enter', () => 
         getCommandSets: () => commandSets,
         emitInput: (sessionId, text) => emissions.push({ sessionId, text }),
         focusSession: sessionId => events.push(['focus', sessionId]),
-        close: () => events.push(['close']),
         notify: (message, type) => events.push(['notify', message, type]),
         insertedMessage: sessionName => `Inserted into ${sessionName}`,
     });
@@ -85,7 +84,6 @@ test('inserts exact text into the bound connected session without Enter', () => 
     }]);
     assert.equal(/[\r\n]/.test(emissions[0].text), false);
     assert.deepEqual(events, [
-        ['close'],
         ['focus', 'session-a'],
         ['notify', 'Inserted into Production Edge', 'success'],
     ]);
@@ -192,12 +190,28 @@ test('mounts with the real top-level const manager pattern', () => {
             this.attributes = {};
             this.className = '';
             this.listeners = {};
+            this.disabled = false;
+            this.hidden = false;
             this.classList = {
                 add: (...names) => {
                     const classes = new Set(this.className.split(/\s+/).filter(Boolean));
                     names.forEach(name => classes.add(name));
                     this.className = [...classes].join(' ');
                 },
+                remove: (...names) => {
+                    const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+                    names.forEach(name => classes.delete(name));
+                    this.className = [...classes].join(' ');
+                },
+                toggle: (name, force) => {
+                    const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+                    const enabled = force === undefined ? !classes.has(name) : Boolean(force);
+                    if (enabled) classes.add(name);
+                    else classes.delete(name);
+                    this.className = [...classes].join(' ');
+                    return enabled;
+                },
+                contains: name => this.className.split(/\s+/).includes(name),
             };
         }
 
@@ -264,20 +278,38 @@ test('mounts with the real top-level const manager pattern', () => {
         }
     }
 
-    const pane = new FakeElement('div');
-    pane.dataset.paneIndex = '0';
+    const trigger = new FakeElement('button');
+    const panel = new FakeElement('aside');
+    const mount = new FakeElement('div');
+    const workspace = new FakeElement('main');
+    panel.hidden = true;
+    panel.appendChild(mount);
+    const elements = {
+        contextCommandsTab: trigger,
+        sessionCommandsPanel: panel,
+        sessionCommandsMount: mount,
+        workspace,
+    };
+    const documentListeners = {};
     const document = {
-        addEventListener() {},
+        addEventListener(type, handler) { documentListeners[type] = handler; },
+        dispatchEvent(event) { documentListeners[event.type]?.(event); },
         createElement: tagName => new FakeElement(tagName),
-        querySelector: selector => (
-            selector === '.terminal-pane[data-pane-index="0"]' ? pane : null
-        ),
+        getElementById: id => elements[id] || null,
+        querySelector: () => null,
         querySelectorAll: () => [],
     };
     const context = vm.createContext({
         document,
         addEventListener() {},
         setTimeout: callback => callback(),
+        Event: class Event { constructor(type) { this.type = type; } },
+        CustomEvent: class CustomEvent {
+            constructor(type, options = {}) {
+                this.type = type;
+                this.detail = options.detail;
+            }
+        },
     });
     context.window = context;
     vm.runInContext(`
@@ -298,11 +330,18 @@ test('mounts with the real top-level const manager pattern', () => {
             }],
         };
         const TerminalManager = { terminals: {} };
-        window.CommandSetManager = { commandSets: [] };
+        window.CommandSetManager = {
+            commandSets: [],
+            managementOpens: 0,
+            openManagement() { this.managementOpens += 1; },
+        };
         window.socket = {
             emissions: [],
             on() {},
             emit(event, payload) { this.emissions.push([event, payload]); },
+        };
+        window.workspaceLayoutController = {
+            getState: () => ({ activeContext: null }),
         };
     `, context);
     const source = fs.readFileSync(
@@ -313,19 +352,16 @@ test('mounts with the real top-level const manager pattern', () => {
     vm.runInContext(source, context);
     context.SessionCommandLauncher.init();
 
-    assert.equal(
-        pane.children.some(child => child.className === 'session-command-launcher'),
-        true
-    );
+    assert.equal(trigger.disabled, false);
+    assert.equal(mount.children.length, 0);
     const entries = context.SessionCommandLauncher.controller.entries();
     assert.equal(entries.length, 1);
     assert.equal(entries[0].id, 'status');
 
-    const container = pane.children.find(
-        child => child.className === 'session-command-launcher'
-    );
-    const trigger = container.children[0];
-    context.SessionCommandLauncher.open('real-session', container, trigger);
+    document.dispatchEvent(new context.CustomEvent('workspace-context-change', {
+        detail: { activeContext: 'commands' },
+    }));
+    assert.equal(panel.hidden, false);
     const sudoInput = context.SessionCommandLauncher.popup.querySelector(
         '.session-command-sudo-input'
     );
@@ -348,4 +384,12 @@ test('mounts with the real top-level const manager pattern', () => {
         context.socket.emissions[0][1].data,
         'sudo systemctl status webssh'
     );
+    assert.equal(panel.hidden, false);
+    assert.ok(context.SessionCommandLauncher.popup);
+
+    const manage = context.SessionCommandLauncher.popup.findByText('Manage Commands');
+    manage.listeners.click();
+    assert.equal(context.CommandSetManager.managementOpens, 1);
+    assert.equal(panel.hidden, false);
+    assert.ok(context.SessionCommandLauncher.popup);
 });

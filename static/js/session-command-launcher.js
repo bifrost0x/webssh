@@ -135,7 +135,6 @@
                 }
 
                 dependencies.emitInput?.(sessionId, insertText);
-                dependencies.close?.();
                 dependencies.focusSession?.(sessionId);
                 const label = sessionLabel(session, sessionId);
                 const message = dependencies.insertedMessage
@@ -154,7 +153,10 @@
         sessionId: null,
         searchQuery: '',
         trigger: null,
+        panel: null,
+        mount: null,
         popup: null,
+        activeSessionId: null,
         initialized: false,
         useSudo: false,
 
@@ -167,6 +169,10 @@
             const document = root.document;
             if (!document || this.initialized) return;
             this.initialized = true;
+            this.trigger = document.getElementById('contextCommandsTab');
+            this.panel = document.getElementById('sessionCommandsPanel');
+            this.mount = document.getElementById('sessionCommandsMount');
+            if (!this.trigger || !this.panel || !this.mount) return;
             this.controller = createSessionCommandController({
                 getSession: sessionId => getSessionManager()?.getSession(sessionId),
                 getCommands: () => getCommandLibrary()?.commands || [],
@@ -175,7 +181,6 @@
                     session_id: sessionId,
                     data,
                 }),
-                close: () => this.close(),
                 focusSession: sessionId => getTerminalManager()?.terminals?.[sessionId]?.focus(),
                 notify: (message, type) => root.showNotification?.(message, type),
                 insertedMessage: label => this.t(
@@ -192,107 +197,77 @@
             root.addEventListener?.('languageChanged', () => this.sync());
             root.socket?.on?.('commands_list', () => root.setTimeout?.(() => this.render(), 0));
             root.socket?.on?.('command_sets_list', () => root.setTimeout?.(() => this.render(), 0));
-            document.addEventListener('click', event => {
-                if (this.popup && !event.target.closest('.session-command-launcher')) {
-                    this.close(false);
-                }
+            document.addEventListener('workspace-context-change', event => {
+                const active = event.detail?.activeContext === 'commands';
+                this.setDrawerOpen(active);
+                if (active) this.open(this.activeSessionId);
             });
-            document.addEventListener('keydown', event => {
-                if (event.key === 'Escape' && this.popup) {
-                    event.preventDefault();
-                    this.close(true);
+            document.addEventListener('session-command-request-close', () => {
+                if (root.workspaceLayoutController?.getState?.().activeContext === 'commands') {
+                    root.workspaceLayoutController.closeContext('programmatic');
                 }
             });
             this.sync();
+            if (root.workspaceLayoutController?.getState?.().activeContext === 'commands') {
+                this.setDrawerOpen(true);
+                this.open(this.activeSessionId);
+            }
         },
 
         sync() {
-            const document = root.document;
-            if (!document) return;
-            this.close(false);
-            document.querySelectorAll('.session-command-launcher').forEach(node => node.remove());
-
             const sessionManager = getSessionManager();
             const paneIndex = sessionManager?.getActivePaneIndex?.();
             const sessionId = sessionManager?.paneAssignments?.[paneIndex];
             const session = sessionId ? sessionManager.getSession(sessionId) : null;
-            if (!sessionId || !session?.connected) return;
-
-            const pane = document.querySelector(
-                `.terminal-pane[data-pane-index="${paneIndex}"]`
-            );
-            if (!pane) return;
-
-            const container = document.createElement('div');
-            container.className = 'session-command-launcher';
-            container.addEventListener('click', event => event.stopPropagation());
-
-            const trigger = document.createElement('button');
-            trigger.type = 'button';
-            trigger.className = 'session-command-trigger';
-            trigger.setAttribute('aria-haspopup', 'dialog');
-            trigger.setAttribute('aria-expanded', 'false');
-            const label = this.t('sessionCommands.open', 'Insert Commands');
-            trigger.setAttribute('aria-label', label);
-            trigger.setAttribute('title', label);
-
-            const icon = document.createElement('span');
-            icon.className = 'material-icons';
-            icon.setAttribute('aria-hidden', 'true');
-            icon.textContent = 'terminal';
-            const text = document.createElement('span');
-            text.textContent = this.t('sessionCommands.button', 'Commands');
-            trigger.append(icon, text);
-            trigger.addEventListener('click', () => {
-                if (this.popup) this.close(true);
-                else this.open(sessionId, container, trigger);
-            });
-
-            container.appendChild(trigger);
-            pane.appendChild(container);
-            this.trigger = trigger;
+            const connected = Boolean(sessionId && session?.connected);
+            this.activeSessionId = connected ? sessionId : null;
+            this.trigger.disabled = false;
+            if (this.popup && this.sessionId !== this.activeSessionId) {
+                this.sessionId = this.activeSessionId;
+                this.render();
+            }
         },
 
-        open(sessionId, container, trigger) {
+        setDrawerOpen(open) {
+            const normalized = Boolean(open);
+            this.panel.hidden = !normalized;
+            this.panel.setAttribute('aria-hidden', String(!normalized));
+        },
+
+        open(sessionId) {
             const session = getSessionManager()?.getSession(sessionId);
-            if (!session?.connected) return;
-            this.sessionId = sessionId;
+            this.sessionId = session?.connected ? sessionId : null;
             this.searchQuery = '';
             this.useSudo = false;
-            this.trigger = trigger;
-            trigger.setAttribute('aria-expanded', 'true');
+            this.setDrawerOpen(true);
 
             const popup = root.document.createElement('section');
             popup.className = 'session-command-popover';
-            popup.setAttribute('role', 'dialog');
-            popup.setAttribute('aria-modal', 'false');
+            popup.setAttribute('role', 'region');
             popup.setAttribute('aria-label', this.t('sessionCommands.title', 'Insert Commands'));
-            container.appendChild(popup);
+            this.mount.replaceChildren(popup);
             this.popup = popup;
             this.render();
             root.setTimeout?.(() => popup.querySelector('input')?.focus(), 0);
         },
 
         close(restoreFocus = false) {
-            const trigger = this.trigger;
             this.popup?.remove();
+            this.mount?.replaceChildren();
             this.popup = null;
             this.sessionId = null;
             this.searchQuery = '';
             this.useSudo = false;
-            trigger?.setAttribute('aria-expanded', 'false');
-            if (restoreFocus) trigger?.focus();
+            if (this.panel) this.setDrawerOpen(false);
+            if (restoreFocus) this.trigger?.focus();
         },
 
         render() {
-            if (!this.popup || !this.sessionId) return;
+            if (!this.popup) return;
             const document = root.document;
             const popup = this.popup;
             const session = getSessionManager()?.getSession(this.sessionId);
-            if (!session?.connected) {
-                this.close(false);
-                return;
-            }
+            const canInsert = Boolean(session?.connected);
             popup.replaceChildren();
 
             const header = document.createElement('header');
@@ -301,22 +276,15 @@
             const heading = document.createElement('h3');
             heading.textContent = this.t('sessionCommands.title', 'Insert Commands');
             const target = document.createElement('p');
-            target.textContent = this.t(
-                'sessionCommands.target',
-                'Target: {session}'
-            ).replace('{session}', sessionLabel(session, this.sessionId));
+            target.textContent = canInsert
+                ? this.t('sessionCommands.target', 'Target: {session}')
+                    .replace('{session}', sessionLabel(session, this.sessionId))
+                : this.t(
+                    'sessionCommands.noActiveSession',
+                    'Connect an SSH session to enable insertion.'
+                );
             headingWrap.append(heading, target);
-            const close = document.createElement('button');
-            close.type = 'button';
-            close.className = 'session-command-close';
-            close.setAttribute('aria-label', this.t('common.close', 'Close'));
-            const closeIcon = document.createElement('span');
-            closeIcon.className = 'material-icons';
-            closeIcon.setAttribute('aria-hidden', 'true');
-            closeIcon.textContent = 'close';
-            close.appendChild(closeIcon);
-            close.addEventListener('click', () => this.close(true));
-            header.append(headingWrap, close);
+            header.appendChild(headingWrap);
 
             const search = document.createElement('input');
             search.type = 'search';
@@ -362,8 +330,8 @@
                 empty.textContent = this.t('sessionCommands.noResults', 'No matching entries.');
                 list.appendChild(empty);
             } else {
-                this.renderGroup(list, entries, 'set', this.t('sessionCommands.sets', 'Command Sets'));
-                this.renderGroup(list, entries, 'command', this.t('sessionCommands.commands', 'Commands'));
+                this.renderGroup(list, entries, 'set', this.t('sessionCommands.sets', 'Command Sets'), canInsert);
+                this.renderGroup(list, entries, 'command', this.t('sessionCommands.commands', 'Commands'), canInsert);
             }
 
             const footer = document.createElement('footer');
@@ -378,14 +346,13 @@
             manage.className = 'btn btn-secondary btn-small';
             manage.textContent = this.t('sessionCommands.manage', 'Manage Commands');
             manage.addEventListener('click', () => {
-                this.close(false);
                 root.CommandSetManager?.openManagement();
             });
             footer.append(hint, manage);
             popup.append(header, search, sudoOption, list, footer);
         },
 
-        renderGroup(parent, entries, type, label) {
+        renderGroup(parent, entries, type, label, canInsert = false) {
             const matching = entries.filter(entry => entry.type === type);
             if (!matching.length) return;
             const document = root.document;
@@ -397,7 +364,7 @@
 
             matching.forEach(entry => {
                 const insertText = insertTextFor(entry, this.useSudo);
-                const available = entry.available
+                const available = canInsert && entry.available
                     && Boolean(insertText)
                     && !hasLineBreak(insertText);
                 const row = document.createElement('article');
@@ -426,7 +393,12 @@
                             'sessionCommands.multilineUnavailable',
                             'Multiline entries cannot be inserted safely.'
                         )
-                        : this.t('sessionCommands.unavailable', 'Entry is unavailable.');
+                        : (!canInsert
+                            ? this.t(
+                                'sessionCommands.noActiveSession',
+                                'Connect an SSH session to enable insertion.'
+                            )
+                            : this.t('sessionCommands.unavailable', 'Entry is unavailable.'));
                     insert.setAttribute('title', reason);
                     const reasonText = document.createElement('small');
                     reasonText.textContent = reason;

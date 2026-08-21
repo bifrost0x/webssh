@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=5">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}">
     <header class="header">
@@ -183,7 +183,7 @@
         </div>
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=18"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>
 </body>

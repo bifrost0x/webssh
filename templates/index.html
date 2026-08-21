@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=22">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=7">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=5">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -100,10 +100,6 @@
                     <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane">2</button>
                     <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane">4</button>
                 </div>
-                <button class="tab-row-icon-btn session-sftp-toggle" id="sessionSftpToggleBtn" type="button" aria-pressed="false" aria-label="Show SFTP beside terminal" title="Show SFTP beside terminal" disabled>
-                    <span class="material-icons" aria-hidden="true">folder_open</span>
-                </button>
-                <div class="tab-row-divider"></div>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
@@ -147,100 +143,92 @@
         <div class="workspace" id="workspace">
             <div class="terminal-area">
                 <div class="session-main-split" id="sessionMainSplit">
-                <div class="terminals-container" id="terminalsContainer">
-                    <div class="terminal-grid split-1" id="terminalGrid"></div>
-                    <div class="drop-overlay hidden" id="dropOverlay">
-                        <div class="drop-overlay-content">
-                            <div class="drop-title">Drop file to upload</div>
-                            <div class="drop-subtitle">Release to choose destination path</div>
+                    <div class="terminals-container" id="terminalsContainer">
+                        <div class="terminal-grid split-1" id="terminalGrid"></div>
+                        <div class="drop-overlay hidden" id="dropOverlay">
+                            <div class="drop-overlay-content">
+                                <div class="drop-title">Drop file to upload</div>
+                                <div class="drop-subtitle">Release to choose destination path</div>
+                            </div>
+                        </div>
+                        <div class="terminal-search-bar hidden" id="terminalSearchBar">
+                            <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." autocomplete="off" />
+                            <span class="search-count" id="terminalSearchCount"></span>
+                            <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)">▲</button>
+                            <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)">▼</button>
+                            <button class="search-btn search-close material-icons" id="terminalSearchClose" title="Close (Escape)" aria-label="Close search">close</button>
                         </div>
                     </div>
-                    <div class="terminal-search-bar hidden" id="terminalSearchBar">
-                        <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." autocomplete="off" />
-                        <span class="search-count" id="terminalSearchCount"></span>
-                        <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)">▲</button>
-                        <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)">▼</button>
-                        <button class="search-btn search-close material-icons" id="terminalSearchClose" title="Close (Escape)" aria-label="Close search">close</button>
-                    </div>
-                </div>
-                <aside class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files">
-                    <div class="session-panel-header">
-                        <div>
-                            <div class="session-panel-eyebrow">Active session</div>
-                            <div class="session-panel-title"><span class="material-icons" aria-hidden="true">folder_open</span> SFTP</div>
-                        </div>
-                        <button class="session-panel-close material-icons" id="sessionFilesCloseBtn" type="button" aria-label="Close SFTP split" title="Close SFTP split">close</button>
-                    </div>
-                    <div class="session-files-mount" id="sessionFilesMount"></div>
-                </aside>
                 </div>
             </div>
-            <div class="resize-handle" id="resizeHandle" title="Drag to resize">
-                <div class="resize-handle-line"></div>
-                <button id="notepadToggle" class="notepad-toggle-btn" aria-label="Toggle notepad" title="Toggle notepad">◀</button>
-            </div>
-            <aside class="notepad-panel" id="notepadPanel">
-                <section class="session-context-card" id="sessionContextCard" aria-labelledby="sessionContextTitle">
-                    <div class="session-context-heading">
-                        <div>
-                            <span class="session-panel-eyebrow">Active session</span>
-                            <h2 id="sessionContextTitle">No active session</h2>
-                        </div>
-                        <span class="session-context-state" id="sessionContextState">Offline</span>
+
+            <button class="context-workspace-launcher material-icons" id="contextWorkspaceLauncher" type="button" aria-expanded="false" aria-controls="contextWorkspace" aria-label="Open session tools" title="Open session tools">dock_to_right</button>
+            <button class="context-workspace-backdrop" id="contextWorkspaceBackdrop" type="button" aria-label="Close session tools" aria-hidden="true"></button>
+            <aside class="context-workspace" id="contextWorkspace" aria-label="Session tools" aria-hidden="true" hidden>
+                <div class="context-workspace-header">
+                    <div class="context-workspace-tabs" id="contextWorkspaceTabs" role="tablist" aria-label="Session tools">
+                        <button class="context-workspace-tab" id="contextFilesTab" type="button" role="tab" data-workspace-context="files" aria-selected="false" aria-controls="contextFilesPanel" disabled>
+                            <span class="material-icons" aria-hidden="true">folder_open</span>
+                            <span data-i18n="workspaceContext.files">Files</span>
+                        </button>
+                        <button class="context-workspace-tab" id="contextCommandsTab" type="button" role="tab" data-workspace-context="commands" aria-selected="false" aria-controls="contextCommandsPanel">
+                            <span class="material-icons" aria-hidden="true">terminal</span>
+                            <span data-i18n="workspaceContext.commands">Commands</span>
+                        </button>
+                        <button class="context-workspace-tab" id="contextDiagnosticsTab" type="button" role="tab" data-workspace-context="diagnostics" aria-selected="false" aria-controls="contextDiagnosticsPanel" disabled>
+                            <span class="material-icons" aria-hidden="true">monitor_heart</span>
+                            <span data-i18n="workspaceContext.diagnostics">Diagnostics</span>
+                        </button>
+                        <button class="context-workspace-tab" id="contextNotesTab" type="button" role="tab" data-workspace-context="notes" aria-selected="false" aria-controls="contextNotesPanel">
+                            <span class="material-icons" aria-hidden="true">edit_note</span>
+                            <span data-i18n="workspaceContext.notes">Notes</span>
+                        </button>
                     </div>
-                    <dl class="session-context-details">
-                        <div><dt>Target</dt><dd id="sessionContextHost">—</dd></div>
-                        <div><dt>Remote user</dt><dd id="sessionContextUser">—</dd></div>
-                        <div><dt>Host trust</dt><dd id="sessionContextTrust">No connected host</dd></div>
-                        <div><dt>Persistence</dt><dd id="sessionContextPersistence">Not active</dd></div>
-                    </dl>
-                </section>
-                <div class="session-tool-tabs" id="sessionToolTabs" role="toolbar" aria-label="Session tools">
-                    <button type="button" data-session-tool="files" aria-pressed="false"><span class="material-icons" aria-hidden="true">folder_open</span>Files</button>
-                    <button type="button" data-session-tool="commands" aria-pressed="false"><span class="material-icons" aria-hidden="true">code</span>Commands</button>
-                    <button type="button" data-session-tool="diagnostics" aria-pressed="false"><span class="material-icons" aria-hidden="true">monitor_heart</span>Diagnostics</button>
-                    <button type="button" data-session-tool="notes" aria-pressed="true" class="active"><span class="material-icons" aria-hidden="true">edit_note</span>Notes</button>
+                    <button class="context-workspace-close material-icons" id="contextWorkspaceClose" type="button" aria-label="Close session tools" title="Close session tools">close</button>
                 </div>
-                <section class="session-insights-card" id="sessionInsightsCard" aria-live="polite" hidden>
-                    <div class="session-insights-heading">
-                        <div>
-                            <div class="session-panel-eyebrow">Live system telemetry</div>
-                            <div class="session-insights-host" id="sessionInsightsHost">No active session</div>
+
+                <div class="context-workspace-panels">
+                    <section class="context-workspace-panel" id="contextFilesPanel" role="tabpanel" aria-labelledby="contextFilesTab" aria-hidden="true" hidden>
+                        <div class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files">
+                            <div class="session-panel-header">
+                                <div>
+                                    <div class="session-panel-eyebrow" data-i18n="workspaceContext.activeSession">Active session</div>
+                                    <div class="session-panel-title"><span class="material-icons" aria-hidden="true">folder_open</span> SFTP</div>
+                                </div>
+                            </div>
+                            <div class="session-files-mount" id="sessionFilesMount"></div>
                         </div>
-                        <span class="session-insights-state" id="sessionInsightsState">Offline</span>
-                    </div>
-                    <div class="session-insights-grid" id="sessionCpuResource" hidden>
-                        <div class="session-cpu-gauge" id="sessionCpuGauge" style="--value: 0">
-                            <div><strong id="sessionCpuValue">--</strong><span>CPU</span></div>
+                    </section>
+
+                    <section class="context-workspace-panel" id="contextCommandsPanel" role="tabpanel" aria-labelledby="contextCommandsTab" aria-hidden="true" hidden>
+                        <div class="session-commands-panel" id="sessionCommandsPanel" aria-label="Session commands">
+                            <div class="session-command-launcher" id="sessionCommandsMount"></div>
                         </div>
-                        <canvas class="session-cpu-chart" id="sessionCpuChart" width="180" height="72" aria-label="Recent CPU activity"></canvas>
-                    </div>
-                    <div class="session-resource" id="sessionRamResource" hidden>
-                        <div><span>RAM</span><strong id="sessionRamValue">--</strong></div>
-                        <div class="session-resource-track"><span id="sessionRamBar"></span></div>
-                    </div>
-                    <div class="session-resource" id="sessionDiskResource" hidden>
-                        <div><span>Disk /</span><strong id="sessionDiskValue">--</strong></div>
-                        <div class="session-resource-track"><span id="sessionDiskBar"></span></div>
-                    </div>
-                    <div class="session-insights-meta" id="sessionInsightsMeta" hidden>
-                        <span id="sessionOsValue" hidden></span>
-                        <span id="sessionUptimeValue" hidden></span>
-                    </div>
-                    <button class="session-diagnostics-toggle" id="sessionDiagnosticsToggle" type="button" aria-expanded="false" aria-controls="sessionDiagnosticsOverlay" disabled>
-                        <span class="material-icons" aria-hidden="true">monitor_heart</span>
-                        <span>Open diagnostics</span>
-                    </button>
-                </section>
-                <div class="notepad-section">
-                <div class="notepad-header">
-                    <div class="notepad-title-row">
-                        <div class="notepad-title">Notepad</div>
-                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
-                    </div>
-                    <div class="notepad-meta">Personal scratchpad</div>
-                </div>
-                <textarea id="sessionNotepad" class="notepad-input" placeholder="Write notes, commands, or snippets here..."></textarea>
+                    </section>
+
+                    <section class="context-workspace-panel" id="contextDiagnosticsPanel" role="tabpanel" aria-labelledby="contextDiagnosticsTab" aria-hidden="true" hidden></section>
+
+                    <section class="context-workspace-panel" id="contextNotesPanel" role="tabpanel" aria-labelledby="contextNotesTab" aria-hidden="true" hidden>
+                        <div class="notepad-panel" id="notepadPanel" aria-labelledby="notepadTitle">
+                            <div class="workspace-drawer-header">
+                                <div>
+                                    <span class="session-panel-eyebrow" data-i18n="workspaceContext.personalWorkspace">Personal workspace</span>
+                                    <h2 id="notepadTitle" data-i18n="workspaceContext.notes">Notes</h2>
+                                    <p data-i18n="workspaceContext.notesHint">Keep commands and reminders close to the active session.</p>
+                                </div>
+                            </div>
+                            <div class="notepad-section">
+                                <div class="notepad-header">
+                                    <div class="notepad-title-row">
+                                        <div class="notepad-title" data-i18n="workspaceContext.notepad">Notepad</div>
+                                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
+                                    </div>
+                                    <div class="notepad-meta" data-i18n="workspaceContext.scratchpad">Personal scratchpad</div>
+                                </div>
+                                <textarea id="sessionNotepad" class="notepad-input" data-i18n-placeholder="workspaceContext.notesPlaceholder" placeholder="Write notes, commands, or snippets here..."></textarea>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </aside>
         </div>
@@ -1316,16 +1304,16 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=17"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=18"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/session-runtime-inventory.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-diagnostics-charts.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=7"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=9"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>
@@ -1333,9 +1321,10 @@
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
-    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=8"></script>
-    <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=9"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=9"></script>
+    <script src="{{ url_for('static', filename='js/workspace-layout-controller.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=13"></script>
@@ -1343,12 +1332,12 @@
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=13"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=14"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=15"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {

@@ -1497,165 +1497,6 @@
         });
     }
 
-    function setupResizeHandle() {
-        const handle = document.getElementById('resizeHandle');
-        const workspace = document.getElementById('workspace');
-        const terminalArea = workspace.querySelector('.terminal-area');
-        const notepadPanel = document.getElementById('notepadPanel');
-
-        if (!handle || !workspace || !terminalArea || !notepadPanel) {
-            return;
-        }
-
-        let isResizing = false;
-        let startX = 0;
-        let startNotepadWidth = 0;
-
-        const saveLayout = (notepadWidth) => {
-            localStorage.setItem('workspace-notepad-width', String(Math.round(notepadWidth)));
-        };
-
-        const loadLayout = () => {
-            const notepadWidth = parseFloat(localStorage.getItem('workspace-notepad-width'));
-            if (!Number.isNaN(notepadWidth) && notepadWidth > 0) {
-                workspace.style.setProperty('--notepad-width', `${notepadWidth}px`);
-            }
-        };
-
-        const startResize = (e) => {
-            if (e.target.closest('.notepad-toggle-btn')) {
-                return;
-            }
-
-            isResizing = true;
-            startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-            startNotepadWidth = notepadPanel.offsetWidth;
-
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-
-            if (e.pointerId !== undefined) {
-                handle.setPointerCapture(e.pointerId);
-            }
-
-            e.preventDefault();
-        };
-
-        const resize = (e) => {
-            if (!isResizing) {
-                return;
-            }
-
-            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-            const deltaX = clientX - startX;
-            const workspaceWidth = workspace.offsetWidth;
-
-            let newNotepadWidth = startNotepadWidth - deltaX;
-
-            const minNotepadWidth = 180;
-            const maxNotepadWidth = workspaceWidth * 0.6;
-            const minTerminalWidth = workspaceWidth * 0.3;
-
-            newNotepadWidth = Math.max(minNotepadWidth, Math.min(maxNotepadWidth, newNotepadWidth));
-            let newTerminalWidth = workspaceWidth - newNotepadWidth;
-
-            if (newTerminalWidth < minTerminalWidth) {
-                newTerminalWidth = minTerminalWidth;
-                newNotepadWidth = workspaceWidth - minTerminalWidth;
-            }
-
-            workspace.style.setProperty('--notepad-width', `${newNotepadWidth}px`);
-
-            if (SessionManager.hasAnySessions()) {
-                const activeSessionId = SessionManager.getActiveSession();
-                if (activeSessionId) {
-                    setTimeout(() => {
-                        TerminalManager.fitTerminal(activeSessionId);
-                        const size = TerminalManager.getTerminalSize(activeSessionId);
-                        if (size && window.socket) {
-                            window.socket.emit('ssh_resize', {
-                                session_id: activeSessionId,
-                                rows: size.rows,
-                                cols: size.cols
-                            });
-                        }
-                    }, 50);
-                }
-            }
-
-            e.preventDefault();
-        };
-
-        const stopResize = () => {
-            if (!isResizing) {
-                return;
-            }
-
-            isResizing = false;
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-
-            const notepadWidth = notepadPanel.getBoundingClientRect().width;
-            if (!Number.isNaN(notepadWidth) && notepadWidth > 0) {
-                saveLayout(notepadWidth);
-            }
-        };
-
-        handle.addEventListener('pointerdown', startResize);
-        document.addEventListener('pointermove', resize);
-        document.addEventListener('pointerup', stopResize);
-        document.addEventListener('pointercancel', stopResize);
-
-        handle.style.touchAction = 'none';
-
-        loadLayout();
-
-        const notepadToggle = document.getElementById('notepadToggle');
-        if (notepadToggle && notepadPanel) {
-            const initiallyCollapsed = localStorage.getItem('notepadCollapsed') === 'true';
-            if (initiallyCollapsed) {
-                notepadPanel.classList.add('collapsed');
-                notepadToggle.textContent = '▶';
-            }
-            notepadToggle.setAttribute('aria-expanded', String(!initiallyCollapsed));
-            notepadToggle.addEventListener('pointerdown', (e) => {
-                e.stopPropagation();
-            });
-            notepadToggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                notepadPanel.classList.toggle('collapsed');
-                const isCollapsed = notepadPanel.classList.contains('collapsed');
-                notepadToggle.textContent = isCollapsed ? '▶' : '◀';
-                notepadToggle.setAttribute('aria-expanded', String(!isCollapsed));
-                localStorage.setItem('notepadCollapsed', isCollapsed);
-                setTimeout(() => {
-                    if (window.TerminalManager) {
-                        TerminalManager.fitAllTerminals();
-                    }
-                }, 300);
-            });
-        }
-
-        handle.addEventListener('dblclick', (e) => {
-            if (e.target.closest('.notepad-toggle-btn')) {
-                return;
-            }
-
-            workspace.style.removeProperty('--notepad-width');
-            localStorage.removeItem('workspace-notepad-width');
-            showNotification('Layout reset to default', 'info');
-
-            if (SessionManager.hasAnySessions()) {
-                const activeSessionId = SessionManager.getActiveSession();
-                if (activeSessionId) {
-                    setTimeout(() => {
-                        TerminalManager.fitTerminal(activeSessionId);
-                    }, 50);
-                }
-            }
-        });
-    }
-
     function setupDropUpload() {
         const overlay = document.getElementById('dropOverlay');
         const form = document.getElementById('dropUploadForm');
@@ -2007,6 +1848,14 @@
         }
 
         SessionManager.init();
+        window.workspaceLayoutController = window.WorkspaceLayoutController?.createController({
+            window,
+            document,
+            socket: window.socket,
+            terminalManager: TerminalManager,
+            sessionManager: SessionManager,
+        });
+        window.workspaceLayoutController?.init();
 
         CommandWorkspace.init();
         CommandLibrary.init();
@@ -2411,7 +2260,6 @@
         setupDropUpload();
         setupSplitControls();
         setupNotepad();
-        setupResizeHandle();
         TerminalSearch.init();
         FilePreview.init();
         window.sessionWorkspace = window.SessionWorkspaceUI?.init({

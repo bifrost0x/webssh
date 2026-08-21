@@ -2,8 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-    buildSessionContext,
-    toolAction
+    buildSessionContext
 } = require('../../static/js/webssh2-shell.js');
 
 test('session context is explicit and never invents connection data', () => {
@@ -35,12 +34,4 @@ test('session context is explicit and never invents connection data', () => {
         persistence: 'tmux · ops-main',
         transport: 'SSH via bastion.example'
     });
-});
-
-test('drawer tool tabs delegate to existing product controls', () => {
-    assert.equal(toolAction('files'), 'sessionSftpToggleBtn');
-    assert.equal(toolAction('commands'), 'commandLibraryBtn');
-    assert.equal(toolAction('diagnostics'), 'sessionDiagnosticsToggle');
-    assert.equal(toolAction('notes'), 'notepadToggle');
-    assert.equal(toolAction('unknown'), null);
 });

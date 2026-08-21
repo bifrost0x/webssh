@@ -219,6 +219,42 @@ test('returns an unavailable model without telemetry or a connected session', ()
     assert.deepEqual(model.permissionNotices, []);
 });
 
+test('keeps diagnostics openable for a connected session before the first sample', () => {
+    assert.equal(
+        diagnostics.canOpenDiagnostics(
+            { status: 'loading', sessionId: 'session-a', stats: null },
+            { connected: true },
+        ),
+        true,
+    );
+    assert.equal(
+        diagnostics.canOpenDiagnostics(
+            { status: 'disconnected', sessionId: 'session-a', stats: null },
+            { connected: false },
+        ),
+        false,
+    );
+});
+
+test('keeps the embedded diagnostics context available only for a connected session', () => {
+    assert.deepEqual(
+        diagnostics.contextState(
+            { status: 'loading', sessionId: 'session-a', stats: null },
+            { connected: true },
+            true,
+        ),
+        { available: true, open: true },
+    );
+    assert.deepEqual(
+        diagnostics.contextState(
+            { status: 'disconnected', sessionId: 'session-a', stats: null },
+            { connected: false },
+            true,
+        ),
+        { available: false, open: false },
+    );
+});
+
 test('partial telemetry omits empty diagnostic cards and pressure chart', () => {
     const model = diagnostics.buildViewModel({
         status: 'ready',
