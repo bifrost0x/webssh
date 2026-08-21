@@ -32,7 +32,7 @@ Keep at least one unlinked local break-glass administrator.
 Collect these values from the directory administrator:
 
 1. An LDAP server DNS name covered by the server certificate.
-2. `ldap://host:389` with StartTLS or `ldaps://host:636`.
+2. `ldap://host:389` with mandatory StartTLS or `ldaps://host:636`.
 3. The user search base DN.
 4. A read-only bind DN and password.
 5. A PEM CA bundle containing the issuer chain needed by WebSSH.
@@ -43,6 +43,9 @@ Collect these values from the directory administrator:
 
 DNS and system time must work inside the WebSSH container. Do not use an IP
 address when the certificate contains only a DNS name.
+
+For example, use `ldap://ldap.example.com:389` with mandatory StartTLS or
+`ldaps://ldap.example.com:636` for TLS from connection start.
 
 ## Configure the Compose overlay
 

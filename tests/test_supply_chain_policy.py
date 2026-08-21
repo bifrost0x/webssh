@@ -241,15 +241,23 @@ def test_runtime_image_removes_python_packaging_tooling():
 
 
 def test_docker_exec_cli_examples_load_the_persisted_secret():
-    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-    exec_lines = [
-        line.strip()
-        for line in readme.splitlines()
-        if 'exec webssh' in line and 'flask ' in line
-    ]
+    wiki = ROOT / 'docs' / 'wiki'
+    documentation = '\n'.join(
+        (wiki / name).read_text(encoding='utf-8')
+        for name in (
+            'Quick-Start.md',
+            'Production-Deployment.md',
+            'Users-and-Account-Management.md',
+        )
+    )
+    commands = re.findall(
+        r'docker compose(?:(?!```)[\s\S])*?exec webssh'
+        r'(?:(?!```)[\s\S])*?flask [^\n]+',
+        documentation,
+    )
 
-    assert exec_lines
-    assert all('/app/entrypoint.sh flask ' in line for line in exec_lines)
+    assert commands
+    assert all('/app/entrypoint.sh flask ' in command for command in commands)
 
 
 def test_production_compose_override_documents_its_minimum_version():
@@ -259,10 +267,9 @@ def test_production_compose_override_documents_its_minimum_version():
     if '!override' not in overlay:
         return
 
-    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-    production_quickstart = readme.split(
-        '### Docker Compose (Production)', 1
-    )[1].split('\n### ', 1)[0]
+    production_quickstart = (
+        ROOT / 'docs' / 'wiki' / 'Production-Deployment.md'
+    ).read_text(encoding='utf-8')
 
     assert '2.24.4' in production_quickstart
     assert re.search(
@@ -353,13 +360,21 @@ def test_dependabot_vendor_refresh_executes_only_trusted_automation_scripts():
     assert snapshot < checkout < verification < generation
 
 
-def test_readme_describes_current_transfer_and_log_rotation_contracts():
-    readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+def test_wiki_describes_current_transfer_and_log_rotation_contracts():
+    wiki = ROOT / 'docs' / 'wiki'
+    transfers = (
+        wiki / 'SFTP-File-Workspace-and-Transfers.md'
+    ).read_text(encoding='utf-8')
+    audit = (
+        wiki / 'Administration-Audit-and-Diagnostics.md'
+    ).read_text(encoding='utf-8')
 
-    assert '`/api/upload`' not in readme
-    assert '`/api/transfers/<token>/upload`' in readme
-    assert '`/api/transfers/<token>/download`' in readme
-    assert 'does not rotate them itself' not in readme
+    assert '`/api/upload`' not in transfers
+    assert '/api/transfers/<token>/upload' in transfers
+    assert '/api/transfers/<token>/download' in transfers
+    assert 'AUDIT_LOG_MAX_BYTES' in audit
+    assert 'AUDIT_LOG_BACKUP_COUNT' in audit
+    assert 'does not rotate them itself' not in audit
 
 
 def test_trivy_suppressions_are_justified_and_expire():

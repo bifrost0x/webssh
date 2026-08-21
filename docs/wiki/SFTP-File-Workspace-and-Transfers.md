@@ -65,6 +65,12 @@ Large file bodies do not travel as base64 Socket.IO messages. Socket.IO creates
 bounded control state and single-use user-bound transfer tokens. HTTP routes
 stream upload, download, and folder archives.
 
+The body routes are:
+
+- `POST /api/transfers/<token>/upload` for streamed uploads;
+- `GET /api/transfers/<token>/download` for streamed file downloads;
+- `GET /api/transfers/<token>/folder-download` for bounded folder archives.
+
 Server-to-server work runs as a bounded cancellable background job. The
 transfer queue tracks progress, errors, cancellation, and conflict choices such
 as skip or overwrite.

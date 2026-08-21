@@ -147,6 +147,44 @@ def test_diagram_sources_and_wiki_exports_exist_at_readable_size():
         assert png_size(png) == (2880, 1800)
 
 
+def test_transfer_diagram_distinguishes_browser_and_background_paths():
+    """Only browser body transfers use the single-use HTTP-token path."""
+    source = (
+        ROOT
+        / "docs"
+        / "media"
+        / "diagrams"
+        / "session-and-transfer-lifecycle.html"
+    ).read_text(encoding="utf-8")
+    for phrase in (
+        "Browser uploads/downloads",
+        "server-to-server copies",
+        "Single-use HTTP token",
+        "no browser HTTP token",
+        "Bounded cancellable job",
+    ):
+        assert phrase in source
+
+
+def test_backup_diagram_keeps_online_backup_out_of_maintenance_mode():
+    """Online backup uses a snapshot barrier; maintenance belongs to restore."""
+    source = (
+        ROOT
+        / "docs"
+        / "media"
+        / "diagrams"
+        / "backup-restore-safety.html"
+    ).read_text(encoding="utf-8")
+    backup_nodes = source.split("<!-- Backup nodes -->", 1)[1].split(
+        "<!-- Restore nodes -->", 1
+    )[0]
+    restore_nodes = source.split("<!-- Restore nodes -->", 1)[1]
+    assert "Snapshot barrier" in backup_nodes
+    assert "service stays online" in backup_nodes
+    assert "Maintenance mode" not in backup_nodes
+    assert "maintenance mode" in restore_nodes
+
+
 def test_current_product_captures_exist_at_readable_size():
     """README screenshots are current, legible, and consistently exported."""
     assets = ROOT / "assets"

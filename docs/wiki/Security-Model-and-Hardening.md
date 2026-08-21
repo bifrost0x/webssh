@@ -66,7 +66,11 @@ Do not train users to accept changed keys as routine. Validate the remote host's
 - Passkeys: keep recovery codes offline and revoke lost authenticators promptly.
 - Tailscale SSH: use tight WebSSH-user, target, and remote-user allowlists; the node identity is shared.
 
-LDAP/AD authentication does not copy directory passwords into WebSSH and does not automatically create local accounts. Authentication is denied unless a local account and explicit directory link already exist.
+LDAP/AD authentication does not copy directory passwords into WebSSH. With the
+secure default `LDAP_AUTO_PROVISION=false`, authentication requires an existing
+local account and explicit directory link. Explicit
+`LDAP_AUTO_PROVISION=true` may create only a non-admin account after a
+successful verified LDAP bind and never claims an existing local username.
 
 ## Data at rest and backups
 

@@ -80,6 +80,37 @@ Profiles use an explicit startup mode:
 
 Existing legacy profile data is migrated additively into this model.
 
+The connection form exposes these modes under **Run after connecting** and
+shows an exact preview before the SSH connection starts. Free text can remain
+inside a set or be moved into the command library with **Save as library
+command**. Library steps use the referenced command's current parameters by
+default; an explicit override may replace them, including with an intentionally
+empty value.
+
+**Run commands with sudo** is opt-in for new command sets. WebSSH prefixes each
+non-empty resolved command line unless it already starts with `sudo`; blank and
+comment-only lines remain unchanged. Existing command sets and sets created by
+legacy conversion keep their saved behavior. WebSSH does not store or answer a
+sudo password, so the remote account's normal prompt remains visible. The
+resolved command text has a maximum 4096 characters.
+
+Profiles and command sets can be created, inspected, updated, or deleted
+without opening an SSH connection. A command set cannot be deleted while a
+profile references it, and a library command cannot be deleted while a set or
+profile references it. The interface identifies the references that must be
+changed first.
+
+After a new SSH connection succeeds, WebSSH resolves the latest referenced
+definitions on the server. Command-set steps are joined with `&&` only between
+steps. Line breaks and shell control flow inside a free-text step remain
+unchanged. Reattaching to an existing persistent tmux session does not run them
+again.
+
+Profiles containing former free-text startup commands keep working after an
+update. They can be converted into a named set while the legacy startup
+commands remain stored as a fallback. No additional environment variable,
+Compose setting, frontend build, or external service is required.
+
 ## Commands in an active session
 
 The focused session workspace can search Commands and Command Sets for the

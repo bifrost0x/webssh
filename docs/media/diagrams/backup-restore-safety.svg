@@ -13,7 +13,7 @@
   <rect width="1440" height="900" fill="#f4f7fb"/>
   <rect x="0" y="0" width="16" height="900" fill="#245f9e"/>
   <text class="title" x="56" y="64">Backup and restore safety</text>
-  <text class="subtitle" x="56" y="96">Authorization, maintenance, bounded staging, validation, and atomic activation</text>
+  <text class="subtitle" x="56" y="96">Authorization, consistent snapshots, bounded staging, and atomic restore</text>
   <text class="brand" x="1384" y="64" text-anchor="end">WebSSH</text>
 
   <rect class="band" x="48" y="468" width="640" height="288" rx="8"/>
@@ -65,10 +65,10 @@
 
   <!-- Backup nodes -->
   <rect class="node" x="72" y="528" width="152" height="112" rx="8"/>
-  <text class="tag" x="88" y="548">QUIESCE</text>
-  <text class="node-title" x="148" y="580" text-anchor="middle">Maintenance mode</text>
-  <text class="node-sub" x="148" y="604" text-anchor="middle">close admission</text>
-  <text class="node-sub" x="148" y="624" text-anchor="middle">bound active work</text>
+  <text class="tag" x="88" y="548">COORDINATE</text>
+  <text class="node-title" x="148" y="580" text-anchor="middle">Snapshot barrier</text>
+  <text class="node-sub" x="148" y="604" text-anchor="middle">coordinate writers</text>
+  <text class="node-sub" x="148" y="624" text-anchor="middle">service stays online</text>
 
   <rect class="node" x="264" y="528" width="176" height="112" rx="8"/>
   <text class="tag" x="280" y="548">SNAPSHOT</text>
@@ -80,7 +80,7 @@
   <text class="tag" x="496" y="548">ARCHIVE</text>
   <text class="node-title" x="568" y="580" text-anchor="middle">Manifested backup</text>
   <text class="node-sub" x="568" y="604" text-anchor="middle">private temporary path</text>
-  <text class="node-sub" x="568" y="624" text-anchor="middle">resume after completion</text>
+  <text class="node-sub" x="568" y="624" text-anchor="middle">single-use download</text>
 
   <!-- Restore nodes -->
   <rect class="node" x="760" y="528" width="192" height="112" rx="8"/>

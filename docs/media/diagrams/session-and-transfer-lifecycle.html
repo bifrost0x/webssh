@@ -14,13 +14,14 @@ Source brief
   app/binary_transfer.py, app/runtime_lifecycle.py, app/sftp_handler.py.
 - Type: architecture with two ordered lifecycle bands.
 - Claim: terminal data uses authenticated Socket.IO control and a process-local
-  SSH session; bulk bodies use user-bound single-use HTTP tokens and bounded
-  streaming/background jobs. File bodies do not use Socket.IO.
+  SSH session. Browser uploads/downloads use user-bound single-use HTTP tokens
+  and bounded streaming; server-to-server copies use a bounded background job.
+  File bodies do not use Socket.IO.
 - Omitted: individual event names, numeric defaults, preview/editor operations.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="session-transfer-title session-transfer-desc">
   <title id="session-transfer-title">WebSSH session and transfer lifecycle</title>
-  <desc id="session-transfer-desc">Two-path architecture showing realtime terminal traffic through authenticated Socket.IO and process-local SSH state, while bulk transfers use owned control records, single-use HTTP tokens, and bounded streaming or background jobs.</desc>
+  <desc id="session-transfer-desc">Architecture showing realtime terminal traffic through authenticated Socket.IO and process-local SSH state. Browser uploads and downloads use owned transfer records, single-use HTTP tokens, and bounded streams; server-to-server copies branch to a bounded background job without a browser HTTP token.</desc>
   <defs>
     <style>
       .title{font:700 32px "Segoe UI",Arial,sans-serif;fill:#15283a}.subtitle{font:16px "Segoe UI",Arial,sans-serif;fill:#52677b}.brand{font:700 20px "Segoe UI",Arial,sans-serif;fill:#245f9e}.band{fill:rgba(36,95,158,.025);stroke:#afc1d2;stroke-width:1.2}.band-label{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#52677b}.node{fill:#fff;stroke:#3e5368;stroke-width:1.2}.focal{fill:#eaf2fb;stroke:#245f9e;stroke-width:2}.store{fill:#e8eef5;stroke:#52677b;stroke-width:1.2}.node-title{font:600 16px "Segoe UI",Arial,sans-serif;fill:#15283a}.node-sub{font:11px "Cascadia Mono",Consolas,monospace;fill:#52677b}.tag{font:600 8px "Cascadia Mono",Consolas,monospace;letter-spacing:.12em;fill:#245f9e}.flow{fill:none;stroke:#52677b;stroke-width:2;marker-end:url(#lifecycle-arrow)}.accent{fill:none;stroke:#245f9e;stroke-width:2.4;marker-end:url(#lifecycle-arrow-link)}.passive{fill:none;stroke:#818c9b;stroke-width:1.6;stroke-dasharray:8 8;marker-end:url(#lifecycle-arrow)}.blocked{fill:none;stroke:#b43f3f;stroke-width:2;stroke-dasharray:8 8}.label{font:600 11px "Cascadia Mono",Consolas,monospace;letter-spacing:.06em;fill:#52677b}.legend{font:12px "Segoe UI",Arial,sans-serif;fill:#52677b}.source{font:11px "Cascadia Mono",Consolas,monospace;fill:#818c9b}
@@ -38,9 +39,9 @@ Source brief
   <rect class="band" x="48" y="148" width="1344" height="248" rx="8"/>
   <rect x="72" y="140" width="224" height="24" fill="#f4f7fb"/>
   <text class="band-label" x="80" y="156">REALTIME SSH SESSION</text>
-  <rect class="band" x="48" y="500" width="1344" height="248" rx="8"/>
-  <rect x="72" y="492" width="184" height="24" fill="#f4f7fb"/>
-  <text class="band-label" x="80" y="508">BULK TRANSFER</text>
+  <rect class="band" x="48" y="488" width="1344" height="276" rx="8"/>
+  <rect x="72" y="480" width="184" height="24" fill="#f4f7fb"/>
+  <text class="band-label" x="80" y="496">BULK TRANSFER</text>
 
   <!-- Realtime connectors -->
   <line class="flow" x1="288" y1="276" x2="360" y2="276"/>
@@ -50,18 +51,23 @@ Source brief
   <text class="label" x="1016" y="256" text-anchor="middle">TERMINAL I/O</text>
 
   <!-- Ownership link from the live SSH state to transfer control. -->
-  <path class="passive" d="M 800 332 V 452 Q 800 460 792 460 H 476 Q 468 460 468 468 V 548"/>
+  <path class="passive" d="M 800 332 V 452 Q 800 460 792 460 H 440 Q 432 460 432 468 V 568"/>
   <rect x="584" y="428" width="120" height="16" fill="#f4f7fb"/>
   <text class="label" x="644" y="440" text-anchor="middle">OWNED SESSION</text>
 
-  <!-- Bulk transfer connectors -->
-  <line class="flow" x1="288" y1="604" x2="360" y2="604"/>
-  <line class="flow" x1="576" y1="604" x2="680" y2="604"/>
-  <line class="accent" x1="896" y1="604" x2="960" y2="604"/>
-  <line class="accent" x1="1128" y1="604" x2="1152" y2="604"/>
+  <!-- Browser transfer path: control record, one-use token, HTTP body. -->
+  <path class="flow" d="M 272 560 H 304 Q 312 560 312 568 V 600 Q 312 608 320 608 H 336"/>
+  <path class="flow" d="M 528 604 H 560 Q 568 604 568 596 V 568 Q 568 560 576 560 H 592"/>
+  <line class="accent" x1="784" y1="560" x2="848" y2="560"/>
+  <path class="accent" d="M 1040 560 H 1080 Q 1088 560 1088 568 V 600 Q 1088 608 1096 608 H 1120"/>
+
+  <!-- Server-to-server path: the control record starts a bounded job. -->
+  <path class="flow" d="M 272 696 H 304 Q 312 696 312 688 V 656 Q 312 648 320 648 H 336"/>
+  <path class="accent" d="M 528 644 H 664 Q 672 644 672 652 V 688 Q 672 696 680 696 H 720"/>
+  <path class="accent" d="M 976 696 H 1080 Q 1088 696 1088 688 V 656 Q 1088 648 1096 648 H 1120"/>
 
   <!-- Explicitly blocked file-body path into Socket.IO. -->
-  <path class="blocked" d="M 180 548 V 444 Q 180 436 188 436 H 468 V 360"/>
+  <path class="blocked" d="M 172 520 V 444 Q 172 436 180 436 H 468 V 360"/>
   <line x1="456" y1="364" x2="480" y2="348" stroke="#b43f3f" stroke-width="3"/>
   <line x1="456" y1="348" x2="480" y2="364" stroke="#b43f3f" stroke-width="3"/>
   <rect x="248" y="404" width="232" height="16" fill="#f4f7fb"/>
@@ -89,31 +95,40 @@ Source brief
   <text class="node-sub" x="1232" y="300" text-anchor="middle">host key · shell · SFTP</text>
 
   <!-- Nodes: transfer -->
-  <rect class="node" x="72" y="548" width="216" height="112" rx="8"/>
-  <text class="tag" x="88" y="568">REQUEST</text>
-  <text class="node-title" x="180" y="604" text-anchor="middle">Upload / download / copy</text>
-  <text class="node-sub" x="180" y="628" text-anchor="middle">user chooses owned sources</text>
+  <rect class="node" x="72" y="520" width="200" height="80" rx="8"/>
+  <text class="tag" x="88" y="540">BROWSER</text>
+  <text class="node-title" x="172" y="568" text-anchor="middle">Upload / download</text>
+  <text class="node-sub" x="172" y="588" text-anchor="middle">browser file body</text>
 
-  <rect class="store" x="360" y="548" width="216" height="112" rx="8"/>
-  <text class="tag" x="376" y="568">CONTROL</text>
-  <text class="node-title" x="468" y="604" text-anchor="middle">Transfer record</text>
-  <text class="node-sub" x="468" y="628" text-anchor="middle">quota · progress · cancel</text>
+  <rect class="node" x="72" y="656" width="200" height="80" rx="8"/>
+  <text class="tag" x="88" y="676">CONTROL</text>
+  <text class="node-title" x="172" y="704" text-anchor="middle">Server-to-server copy</text>
+  <text class="node-sub" x="172" y="724" text-anchor="middle">owned source + destination</text>
 
-  <rect class="node" x="680" y="548" width="216" height="112" rx="8"/>
-  <text class="tag" x="696" y="568">TOKEN</text>
-  <text class="node-title" x="788" y="604" text-anchor="middle">Single-use HTTP token</text>
-  <text class="node-sub" x="788" y="628" text-anchor="middle">user-bound · short-lived</text>
+  <rect class="store" x="336" y="568" width="192" height="112" rx="8"/>
+  <text class="tag" x="352" y="588">OWNERSHIP</text>
+  <text class="node-title" x="432" y="624" text-anchor="middle">Transfer record</text>
+  <text class="node-sub" x="432" y="648" text-anchor="middle">quota · progress · cancel</text>
 
-  <rect class="focal" x="960" y="548" width="168" height="112" rx="8"/>
-  <text class="tag" x="976" y="568">BODY</text>
-  <text class="node-title" x="1044" y="596" text-anchor="middle">Stream or job</text>
-  <text class="node-sub" x="1044" y="620" text-anchor="middle">HTTP stream</text>
-  <text class="node-sub" x="1044" y="640" text-anchor="middle">bounded background copy</text>
+  <rect class="node" x="592" y="520" width="192" height="80" rx="8"/>
+  <text class="tag" x="608" y="540">BROWSER TOKEN</text>
+  <text class="node-title" x="688" y="568" text-anchor="middle">Single-use HTTP token</text>
+  <text class="node-sub" x="688" y="588" text-anchor="middle">user-bound · short-lived</text>
 
-  <rect class="node" x="1152" y="548" width="200" height="112" rx="8"/>
-  <text class="tag" x="1168" y="568">REMOTE</text>
-  <text class="node-title" x="1252" y="604" text-anchor="middle">Owned SFTP side</text>
-  <text class="node-sub" x="1252" y="628" text-anchor="middle">source or destination</text>
+  <rect class="focal" x="848" y="520" width="192" height="80" rx="8"/>
+  <text class="tag" x="864" y="540">BODY</text>
+  <text class="node-title" x="944" y="568" text-anchor="middle">Bounded HTTP stream</text>
+  <text class="node-sub" x="944" y="588" text-anchor="middle">upload · download · archive</text>
+
+  <rect class="focal" x="720" y="656" width="256" height="80" rx="8"/>
+  <text class="tag" x="736" y="676">BACKGROUND</text>
+  <text class="node-title" x="848" y="704" text-anchor="middle">Bounded cancellable job</text>
+  <text class="node-sub" x="848" y="724" text-anchor="middle">no browser HTTP token</text>
+
+  <rect class="node" x="1120" y="568" width="232" height="112" rx="8"/>
+  <text class="tag" x="1136" y="588">REMOTE</text>
+  <text class="node-title" x="1236" y="624" text-anchor="middle">Owned SFTP side</text>
+  <text class="node-sub" x="1236" y="648" text-anchor="middle">source or destination</text>
 
   <line x1="48" y1="812" x2="1392" y2="812" stroke="#afc1d2" stroke-width="1"/>
   <line x1="64" y1="844" x2="96" y2="844" stroke="#245f9e" stroke-width="2.4"/>
