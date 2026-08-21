@@ -129,6 +129,8 @@ def test_wiki_sync_is_main_only_and_uses_the_repository_token():
     assert 'GH_TOKEN: ${{ github.token }}' in workflow
     assert 'secrets.' not in workflow
     assert 'scripts/wiki_sync.py' in workflow
+    for markdown_pathspec in ('*.md', '*.markdown', '*.mdown', '*.mkdn'):
+        assert markdown_pathspec in workflow
     assert workflow.count('git/ref/heads/main') >= 3
     assert '${{ runner.temp }}' not in workflow
     assert '"$RUNNER_TEMP/webssh-wiki"' in workflow

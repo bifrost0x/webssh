@@ -45,6 +45,12 @@ class WikiSyncTests(unittest.TestCase):
             (destination / "Rogue.markdown").write_text(
                 "# Rogue\n", encoding="utf-8"
             )
+            (destination / "Rogue.mdown").write_text(
+                "# Rogue\n", encoding="utf-8"
+            )
+            (destination / "Legacy.mkdn").write_text(
+                "# Legacy\n", encoding="utf-8"
+            )
             (destination / "attachment.png").write_bytes(b"keep")
             temporary_attachment = destination / ".Home.md.wiki-sync.tmp"
             temporary_attachment.write_bytes(b"keep temporary attachment")
@@ -64,7 +70,7 @@ class WikiSyncTests(unittest.TestCase):
                 temporary_attachment.read_bytes(), b"keep temporary attachment"
             )
             self.assertEqual(result.copied, 4)
-            self.assertEqual(result.removed, 2)
+            self.assertEqual(result.removed, 4)
 
     def test_sync_rejects_non_markdown_source_artifacts(self):
         with TemporaryDirectory() as directory:
@@ -109,6 +115,34 @@ class WikiSyncTests(unittest.TestCase):
             destination = root / "fake-checkout"
             destination.mkdir()
             (destination / ".git").write_text("not Git metadata", encoding="utf-8")
+            valuable = destination / "valuable.md"
+            valuable.write_text("keep", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Git checkout"):
+                sync_wiki(source, destination)
+
+            self.assertEqual(valuable.read_text(encoding="utf-8"), "keep")
+
+    def test_sync_refuses_symlinked_git_metadata_before_removing_pages(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.make_wiki_source(root)
+            real_repository = root / "real-repository"
+            real_repository.mkdir()
+            subprocess.run(
+                ["git", "init", "--quiet", str(real_repository)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            destination = root / "linked-checkout"
+            destination.mkdir()
+            try:
+                (destination / ".git").symlink_to(
+                    real_repository / ".git", target_is_directory=True
+                )
+            except OSError as exc:
+                self.skipTest(f"symlinks unavailable: {exc}")
             valuable = destination / "valuable.md"
             valuable.write_text("keep", encoding="utf-8")
 

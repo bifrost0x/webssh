@@ -7,12 +7,13 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import tempfile
 
 
 REQUIRED_PAGES = {"Home.md", "_Sidebar.md", "_Footer.md"}
-PUBLISHED_PAGE_SUFFIXES = {".md", ".markdown"}
+PUBLISHED_PAGE_SUFFIXES = {".md", ".markdown", ".mdown", ".mkdn"}
 
 
 @dataclass(frozen=True)
@@ -22,9 +23,20 @@ class SyncResult:
     unchanged: int
 
 
+def _is_symlink_or_reparse(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return path.is_symlink() or bool(
+        getattr(metadata, "st_file_attributes", 0) & reparse_flag
+    )
+
+
 def _existing_directory(path: Path, label: str) -> Path:
-    if path.is_symlink():
-        raise ValueError(f"{label} must not be a symbolic link")
+    if _is_symlink_or_reparse(path):
+        raise ValueError(f"{label} must not be a symbolic link or reparse point")
     try:
         resolved = path.resolve(strict=True)
     except FileNotFoundError as exc:
@@ -37,7 +49,11 @@ def _existing_directory(path: Path, label: str) -> Path:
 def _canonical_pages(source: Path) -> dict[str, Path]:
     pages: dict[str, Path] = {}
     for entry in source.iterdir():
-        if entry.is_symlink() or not entry.is_file() or entry.suffix != ".md":
+        if (
+            _is_symlink_or_reparse(entry)
+            or not entry.is_file()
+            or entry.suffix != ".md"
+        ):
             raise ValueError(
                 "The canonical Wiki source may contain Markdown files only: "
                 f"{entry.name}"
@@ -54,6 +70,8 @@ def _canonical_pages(source: Path) -> dict[str, Path]:
 
 
 def _require_git_toplevel(destination: Path) -> None:
+    if _is_symlink_or_reparse(destination / ".git"):
+        raise ValueError("Wiki destination must be an existing Git checkout")
     result = subprocess.run(
         ["git", "-C", str(destination), "rev-parse", "--show-toplevel"],
         check=False,
@@ -77,7 +95,7 @@ def _published_pages(destination: Path) -> dict[str, Path]:
     for entry in destination.iterdir():
         if entry.suffix.lower() not in PUBLISHED_PAGE_SUFFIXES:
             continue
-        if entry.is_symlink():
+        if _is_symlink_or_reparse(entry):
             raise ValueError(
                 f"Wiki destination page must not be a symbolic link: {entry.name}"
             )
@@ -101,7 +119,7 @@ def _copy_page(source: Path, destination: Path) -> None:
             shutil.copyfileobj(input_file, output)
             output.flush()
             os.fsync(output.fileno())
-        if destination.is_symlink() or (
+        if _is_symlink_or_reparse(destination) or (
             destination.exists() and not destination.is_file()
         ):
             raise ValueError(
@@ -140,7 +158,7 @@ def sync_wiki(source: Path | str, destination: Path | str) -> SyncResult:
     unchanged = 0
     for name, source_page in sorted(pages.items()):
         destination_page = destination_path / name
-        if destination_page.is_symlink():
+        if _is_symlink_or_reparse(destination_page):
             raise ValueError(
                 f"Wiki destination page must not be a symbolic link: {name}"
             )
