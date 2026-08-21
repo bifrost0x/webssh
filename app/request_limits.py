@@ -14,6 +14,7 @@ _JSON_BLUEPRINTS = frozenset({
     "oidc",
     "recovery",
     "transfers",
+    "totp",
     "webauthn",
 })
 _STREAMING_ENDPOINTS = frozenset({
@@ -23,7 +24,7 @@ _STREAMING_ENDPOINTS = frozenset({
 
 
 def _policy_for_request():
-    if request.blueprint == "recovery":
+    if request.blueprint in {"recovery", "totp"}:
         limit = config.MAX_RECOVERY_JSON_SIZE
     elif request.blueprint == "webauthn":
         limit = config.MAX_WEBAUTHN_JSON_SIZE

@@ -9,9 +9,12 @@ env/
 ENV/
 .venv*/
 .uv-cache*/
+.uv-python*/
 .task*/
 .test-tmp/
 .e2e-tmp/
+.tmp-e2e*/
+.runtime-*/
 .test-run.tmp/
 .worktrees/
 

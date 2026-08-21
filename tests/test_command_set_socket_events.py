@@ -5,6 +5,11 @@ from contextlib import contextmanager
 import pytest
 
 from app.storage_errors import StorageCorruptionError
+
+
+pytestmark = pytest.mark.usefixtures('direct_socket_authentication')
+
+
 def create_socket_user(app, username):
     from app.auth import register_socket_session, register_user
     from app.models import db
@@ -689,6 +694,59 @@ def test_saved_jump_host_id_is_resolved_live_before_network(app, monkeypatch):
     assert emitted == [(
         'ssh_error',
         {'error': 'local stop', 'client_request_id': None},
+    )]
+
+
+def test_ssh_connect_emits_stable_host_key_change_code(app, monkeypatch):
+    from flask import request
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'host_key_change_payload')
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda host, port, username, **_kwargs: (
+            host, int(port), username, None
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (
+            None,
+            ssh_manager.SSHConnectionError(
+                'SSH host key changed',
+                code='host_key_changed',
+                context='target',
+            ),
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'target.example',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'client_request_id': 'host-key-request',
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {
+            'error': 'SSH host key changed',
+            'client_request_id': 'host-key-request',
+            'code': 'host_key_changed',
+            'context': 'target',
+        },
     )]
 
 

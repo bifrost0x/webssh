@@ -22,6 +22,10 @@ dnspython==2.8.0
 redis>=8.0,<9
 # Compatibility: WebAuthn 3 keeps the reviewed ceremony and PQC-capable verification APIs.
 webauthn>=3.0,<4
+# Compatibility: PyOTP 2.10 provides the reviewed RFC 6238 verification API.
+PyOTP>=2.10,<3
+# Compatibility: qrcode 8.2 provides local SVG QR generation without Pillow.
+qrcode>=8.2,<9
 # Compatibility: Authlib 1.7 is qualified for OIDC discovery, PKCE, state, nonce, and token validation.
 Authlib>=1.7,<2
 # Compatibility: Authlib's Flask client uses the reviewed Requests 2.x transport API.

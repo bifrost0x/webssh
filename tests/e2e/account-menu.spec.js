@@ -34,19 +34,19 @@ test('account menu exposes workspace pulse and persists close confirmation', asy
     await expect(dropdown).toBeHidden();
     await expect(page.locator('#settingsThemeSelect')).toHaveValue('glass');
     await expect(page.locator('#settingsLanguageSelect')).not.toHaveValue('');
-    await expect(page.locator('#scrollbackInput')).toHaveValue('150');
-    await expect(closeConfirmation).toBeChecked();
+    await expect(page.locator('#scrollbackInput')).toHaveValue('500');
+    await expect(closeConfirmation).not.toBeChecked();
 
-    await closeConfirmation.uncheck();
+    await closeConfirmation.check();
     await expect(closeConfirmation).not.toBeDisabled();
-    await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'false');
+    await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'true');
 
     await page.reload();
-    await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'false');
+    await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'true');
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
-    await expect(closeConfirmation).not.toBeChecked();
-    await closeConfirmation.check();
+    await expect(closeConfirmation).toBeChecked();
+    await closeConfirmation.uncheck();
     await expect(closeConfirmation).not.toBeDisabled();
     await page.locator('#closeSettingsModal').click();
     await expect(page.locator('#accountBtnHeader')).toBeFocused();

@@ -268,7 +268,7 @@ def main():
             'DEBUG': 'False',
             'HOST': '127.0.0.1',
             'PORT': os.environ.get('WEBSSH_E2E_PORT', '4173'),
-            'REGISTRATION_ENABLED': 'False',
+            'REGISTRATION_ENABLED': 'True',
             'RATELIMIT_STORAGE_URL': 'memory://',
             'RATELIMIT_LOGIN_LIMIT': '100 per minute',
             'CORS_ORIGINS': (
@@ -282,6 +282,7 @@ def main():
                 'http://localhost:'
                 + os.environ.get('WEBSSH_E2E_PORT', '4173')
             ),
+            'TOTP_ENABLED': 'true',
             'OIDC_ENABLED': 'true',
             'OIDC_ISSUER': 'https://issuer.example',
             'OIDC_CLIENT_ID': 'webssh-e2e',
@@ -301,7 +302,7 @@ def main():
 
         app = create_app()
         with app.app_context():
-            from app.models import OIDCIdentity, db
+            from app.models import OIDCIdentity, SecurityFeatureState, db
 
             admin, error = register_user('e2e_admin', 'browser-password')
             if error:
@@ -310,12 +311,20 @@ def main():
             user, error = register_user('e2e_user', 'browser-password')
             if error:
                 raise RuntimeError(error)
-            if not admin.is_admin or user.is_admin:
+            mfa_user, error = register_user('e2e_mfa', 'browser-password')
+            if error:
+                raise RuntimeError(error)
+            if not admin.is_admin or user.is_admin or mfa_user.is_admin:
                 raise RuntimeError('E2E user roles were not seeded deterministically')
             db.session.add(OIDCIdentity(
                 user_id=user.id,
                 issuer='https://issuer.example',
                 subject='existing-e2e-subject',
+            ))
+            db.session.add(SecurityFeatureState(
+                feature='totp',
+                enabled=True,
+                updated_by=admin.id,
             ))
             db.session.commit()
             key = _seed_launcher_profiles(admin, user)

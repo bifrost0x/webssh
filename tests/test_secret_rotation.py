@@ -8,6 +8,7 @@ import pytest
 
 from app.backup_manager import verify_backup
 from app.key_encryption import _derive_key
+from app.mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
 from app.secret_rotation import SecretRotationError, rotate_secret
 
 
@@ -129,6 +130,145 @@ def test_rotate_secret_reencrypts_every_key_and_publishes_secret_last(tmp_path):
         assert Fernet(_derive_key(new_secret, user_id)).decrypt(
             path.read_bytes()
         ) == plaintext
+
+
+def test_rotation_reencrypts_active_and_pending_totp_secrets(tmp_path):
+    data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
+    active_secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    pending_secret = 'KRSXG5DSNFXGOIDBKRSXG5DSNFXGOIDB'
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        database.execute(
+            'CREATE TABLE totp_authenticators ('
+            'id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, '
+            'encrypted_secret BLOB NOT NULL)'
+        )
+        database.execute(
+            'CREATE TABLE totp_enrollments ('
+            'id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, '
+            'encrypted_secret BLOB NOT NULL)'
+        )
+        database.execute(
+            'INSERT INTO totp_authenticators VALUES (1, 1, ?)',
+            (encrypt_totp_secret(1, active_secret, master_secret=old_secret),),
+        )
+        database.execute(
+            'INSERT INTO totp_enrollments VALUES (2, 2, ?)',
+            (encrypt_totp_secret(2, pending_secret, master_secret=old_secret),),
+        )
+        database.commit()
+    finally:
+        database.close()
+
+    report = rotate_secret(old_secret, new_secret, data_dir)
+
+    assert report.rotated_totp_secrets == 2
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        active_ciphertext = database.execute(
+            'SELECT encrypted_secret FROM totp_authenticators WHERE id = 1'
+        ).fetchone()[0]
+        pending_ciphertext = database.execute(
+            'SELECT encrypted_secret FROM totp_enrollments WHERE id = 2'
+        ).fetchone()[0]
+    finally:
+        database.close()
+    assert decrypt_totp_secret(
+        1, active_ciphertext, master_secret=new_secret
+    ) == active_secret
+    assert decrypt_totp_secret(
+        2, pending_ciphertext, master_secret=new_secret
+    ) == pending_secret
+
+
+def test_corrupt_totp_ciphertext_aborts_rotation_before_replacement(tmp_path):
+    data_dir, old_secret, new_secret, plaintexts = _rotation_data(tmp_path)
+    originals = {
+        relative_path: (data_dir / relative_path).read_bytes()
+        for relative_path in plaintexts
+    }
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        database.execute(
+            'CREATE TABLE totp_authenticators ('
+            'id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, '
+            'encrypted_secret BLOB NOT NULL)'
+        )
+        database.execute(
+            'INSERT INTO totp_authenticators VALUES (1, 1, ?)',
+            (b'corrupt-ciphertext',),
+        )
+        database.commit()
+    finally:
+        database.close()
+
+    with pytest.raises(SecretRotationError, match='TOTP'):
+        rotate_secret(old_secret, new_secret, data_dir)
+
+    assert (data_dir / 'secret_key').read_text(encoding='utf-8') == old_secret + '\n'
+    assert {
+        relative_path: (data_dir / relative_path).read_bytes()
+        for relative_path in plaintexts
+    } == originals
+
+
+def test_secret_publish_failure_rolls_back_staged_totp_ciphertext(
+    tmp_path,
+    monkeypatch,
+):
+    from app import secret_rotation
+
+    data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
+    plaintext = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    original_ciphertext = encrypt_totp_secret(
+        1,
+        plaintext,
+        master_secret=old_secret,
+    )
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        database.execute(
+            'CREATE TABLE totp_authenticators ('
+            'id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, '
+            'encrypted_secret BLOB NOT NULL)'
+        )
+        database.execute(
+            'INSERT INTO totp_authenticators VALUES (1, 1, ?)',
+            (original_ciphertext,),
+        )
+        database.commit()
+    finally:
+        database.close()
+
+    secret_path = data_dir / 'secret_key'
+    original_write = secret_rotation.atomic_write_bytes
+
+    def fail_new_secret(path, payload, mode=0o600):
+        if (
+            Path(path) == secret_path
+            and payload == (new_secret + '\n').encode('utf-8')
+        ):
+            raise OSError('forced secret publish failure')
+        return original_write(path, payload, mode)
+
+    monkeypatch.setattr(secret_rotation, 'atomic_write_bytes', fail_new_secret)
+
+    with pytest.raises(OSError, match='forced secret publish failure'):
+        rotate_secret(old_secret, new_secret, data_dir)
+
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        stored = database.execute(
+            'SELECT encrypted_secret FROM totp_authenticators WHERE id = 1'
+        ).fetchone()[0]
+    finally:
+        database.close()
+    assert stored == original_ciphertext
+    assert decrypt_totp_secret(
+        1,
+        stored,
+        master_secret=old_secret,
+    ) == plaintext
 
 
 def test_rotation_staging_failure_keeps_old_secret_and_all_ciphertexts(

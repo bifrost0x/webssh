@@ -13,15 +13,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=14">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <h1 class="app-title"><span data-i18n="admin.title">Admin Panel</span> ⚙️</h1>
+                <h1 class="app-title"><span class="material-icons" aria-hidden="true">admin_panel_settings</span><span data-i18n="admin.title">Admin Center</span></h1>
             </div>
             <div class="header-buttons">
-                <a class="btn btn-secondary" href="{{ url_for('index') }}">← <span data-i18n="admin.backToApp">Back to Terminal</span></a>
+                <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Terminal</span></a>
             </div>
         </div>
     </header>
@@ -42,7 +43,7 @@
                 <button class="btn btn-secondary" id="adminRefreshUsers" data-i18n="admin.refresh">Refresh</button>
             </div>
             <div class="admin-table-wrap">
-                <table class="admin-table" id="adminUsersTable">
+                <table class="admin-table admin-responsive-table" id="adminUsersTable">
                     <thead>
                         <tr>
                             <th data-i18n="admin.colId">ID</th>
@@ -73,7 +74,7 @@
                 <button class="btn btn-secondary" id="auditExportBtn" data-i18n="admin.exportJsonl">Export JSONL</button>
             </div>
             <div class="admin-table-wrap">
-                <table class="admin-table" id="adminAuditTable">
+                <table class="admin-table admin-responsive-table" id="adminAuditTable">
                     <thead>
                         <tr>
                             <th data-i18n="audit.timestamp">Timestamp</th>
@@ -94,13 +95,14 @@
 
         {% endif %}
         <section class="admin-panel hidden" id="tab-settings">
+            <div class="admin-settings-grid">
             {% if ldap_enabled %}
             <div class="admin-setting-row" id="ldapStatusPanel">
-                <h2>LDAP directory</h2>
-                <p class="admin-muted">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
+                <h2 data-i18n="admin.ldapDirectory">LDAP directory</h2>
+                <p class="admin-muted" data-i18n="admin.ldapCheckHint">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
                 <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
-                    <button class="btn btn-secondary" id="ldapStatusCheck">Check connection</button>
-                    <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite">Not checked</span>
+                    <button class="btn btn-secondary" id="ldapStatusCheck" data-i18n="admin.checkConnection">Check connection</button>
+                    <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.notChecked">Not checked</span>
                 </div>
             </div>
             {% endif %}
@@ -111,8 +113,14 @@
                 </label>
                 <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
             </div>
+            <div class="admin-setting-row admin-auth-features">
+                <h2 data-i18n="admin.authenticationFeatures">Authentication features</h2>
+                <p class="admin-muted" data-i18n="admin.authenticationFeaturesHint">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
+                <div id="securityFeatureList" style="margin-top:14px;"></div>
+                <p id="securityFeatureStatus" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</p>
+            </div>
             {% if audit_export_enabled %}
-            <div class="admin-setting-row" style="margin-top:16px;">
+            <div class="admin-setting-row admin-audit-retention">
                 <label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label>
                 <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
                     <input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5">
@@ -121,6 +129,7 @@
                 <p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p>
             </div>
             {% endif %}
+            </div>
             {% if host_key_management_enabled %}
             <div class="admin-setting-row" style="margin-top:16px;max-width:none;">
                 <div class="admin-toolbar">
@@ -128,7 +137,7 @@
                     <button class="btn btn-secondary" id="globalHostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
                 </div>
                 <div class="admin-table-wrap">
-                    <table class="admin-table">
+                    <table class="admin-table admin-responsive-table">
                         <thead><tr><th data-i18n="security.host">Host</th><th data-i18n="security.status">Status</th><th data-i18n="security.algorithm">Algorithm</th><th data-i18n="security.fingerprint">Fingerprint</th><th data-i18n="security.action">Action</th></tr></thead>
                         <tbody id="globalHostKeyList"></tbody>
                     </table>
@@ -190,7 +199,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="addUserModalTitle" data-i18n="admin.addUser">Add User</h2>
-                <button type="button" class="close" id="closeAddUser" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeAddUser" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -214,17 +223,13 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="securityActionTitle" data-i18n="admin.accountRecovery">Account recovery</h2>
-                <button type="button" class="close" id="closeSecurityAction" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeSecurityAction" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p id="securityActionHint" class="admin-muted"></p>
                 <div class="form-group hidden" id="securityActionOidcListGroup">
                     <label data-i18n="admin.linkedOidcIdentities">Linked OIDC identities</label>
                     <div id="securityActionOidcList" class="admin-oidc-list" aria-live="polite"></div>
-                </div>
-                <div class="form-group">
-                    <label for="securityActionPassword" data-i18n="admin.administratorPassword">Your administrator password</label>
-                    <input type="password" id="securityActionPassword" class="form-control" autocomplete="current-password">
                 </div>
                 <div class="form-group">
                     <label for="securityActionConfirmation" data-i18n="admin.confirmTargetUsername">Type the target username to confirm</label>
@@ -235,13 +240,13 @@
                     <input type="text" id="securityActionSubject" class="form-control" autocomplete="off">
                 </div>
                 <div class="form-group hidden" id="securityActionDirectoryUsernameGroup">
-                    <label for="securityActionDirectoryUsername">Directory username</label>
+                    <label for="securityActionDirectoryUsername" data-i18n="admin.directoryUsername">Directory username</label>
                     <input type="text" id="securityActionDirectoryUsername" class="form-control" autocomplete="off">
                 </div>
                 <div class="form-group hidden" id="securityActionNewPasswordGroup">
-                    <label for="securityActionNewPassword">New local password after unlinking</label>
+                    <label for="securityActionNewPassword" data-i18n="admin.newLocalPasswordAfterUnlinking">New local password after unlinking</label>
                     <input type="password" id="securityActionNewPassword" class="form-control" autocomplete="new-password">
-                    <p class="admin-muted">Unlinking restores local authentication and therefore requires a fresh password.</p>
+                    <p class="admin-muted" data-i18n="admin.unlinkRestoresLocalAuth">Unlinking restores local authentication and therefore requires a fresh password.</p>
                 </div>
                 <button class="btn btn-primary" id="submitSecurityAction" data-i18n="admin.continue">Continue</button>
                 <div class="form-group hidden" id="securityActionResultGroup" style="margin-top:16px;">
@@ -254,11 +259,35 @@
     </div>
     {% endif %}
 
+    <div class="modal modal-small" id="stepUpModal" role="dialog" aria-modal="true" aria-labelledby="stepUpTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="stepUpTitle" data-i18n="admin.additionalAuthentication">Additional authentication</h2>
+                <button type="button" class="close material-icons" id="stepUpCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <p class="admin-muted" data-i18n="admin.stepUpHint">Confirm this sensitive administrator action. The authorization is valid for this action only.</p>
+                <div class="form-group hidden" id="stepUpPasswordGroup">
+                    <label for="stepUpPassword" data-i18n="admin.administratorPassword">Administrator password</label>
+                    <input type="password" id="stepUpPassword" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group hidden" id="stepUpTotpGroup">
+                    <label for="stepUpTotp" data-i18n="security.authenticatorCode">Authenticator code</label>
+                    <input type="text" id="stepUpTotp" class="form-control" inputmode="numeric" autocomplete="one-time-code" maxlength="16">
+                </div>
+                <div class="admin-toolbar">
+                    <button type="button" class="btn btn-secondary" id="stepUpCancelButton" data-i18n="common.cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="stepUpSubmit" data-i18n="admin.continue">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal modal-small" id="restoreFirstConfirmModal" role="dialog" aria-modal="true" aria-labelledby="restoreFirstConfirmTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="restoreFirstConfirmTitle" data-i18n="backup.firstConfirm">Confirm restore impact</h2>
-                <button type="button" class="close" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="restoreFirstCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p data-i18n="backup.restoreWarning">Restore replaces the complete persistent state, invalidates all sessions, enters maintenance mode, and restarts WebSSH.</p>
@@ -278,16 +307,12 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="restoreSecondConfirmTitle" data-i18n="backup.secondConfirm">Final destructive confirmation</h2>
-                <button type="button" class="close" id="restoreSecondCancel" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="restoreSecondCancel" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
                     <label for="restorePhrase" data-i18n="backup.typeRestore">Type RESTORE</label>
                     <input type="text" id="restorePhrase" class="form-control" autocomplete="off">
-                </div>
-                <div class="form-group">
-                    <label for="restorePassword" data-i18n="backup.password">Administrator password</label>
-                    <input type="password" id="restorePassword" class="form-control" autocomplete="current-password">
                 </div>
                 <label class="admin-checkbox">
                     <input type="checkbox" id="restoreFinalAcknowledge">
@@ -303,9 +328,9 @@
 
     <div id="notificationContainer" class="notification-container"></div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=2"></script>
 </body>
 </html>

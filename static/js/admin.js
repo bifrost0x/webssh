@@ -19,6 +19,21 @@
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    function labelResponsiveTableRows(table) {
+        if (!table) { return; }
+        const labels = Array.from(table.querySelectorAll('thead th'))
+            .map(header => header.textContent.trim());
+        table.querySelectorAll('tbody tr').forEach(row => {
+            Array.from(row.children).forEach((cell, index) => {
+                if (cell.colSpan > 1) {
+                    delete cell.dataset.label;
+                    return;
+                }
+                cell.dataset.label = labels[index] || '';
+            });
+        });
+    }
+
     function notify(message, type) {
         const container = document.getElementById('notificationContainer');
         if (!container) { return; }
@@ -44,9 +59,190 @@
         try { data = await res.json(); } catch { /* ignore */ }
         if (!res.ok) {
             const msg = (data && data.error) ? data.error : ('Request failed (' + res.status + ')');
-            throw new Error(msg);
+            const error = new Error(msg);
+            error.status = res.status;
+            error.code = data && data.code;
+            throw error;
         }
         return data;
+    }
+
+    function decodeBase64url(value) {
+        const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+        const raw = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+        return Uint8Array.from(raw, character => character.charCodeAt(0));
+    }
+
+    function encodeBase64url(value) {
+        const raw = String.fromCharCode.apply(null, new Uint8Array(value));
+        return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function decodePasskeyOptions(options) {
+        options.challenge = decodeBase64url(options.challenge);
+        (options.allowCredentials || []).forEach(item => {
+            item.id = decodeBase64url(item.id);
+        });
+        return options;
+    }
+
+    function serializePasskey(credential) {
+        return {
+            id: credential.id,
+            rawId: encodeBase64url(credential.rawId),
+            type: credential.type,
+            authenticatorAttachment: credential.authenticatorAttachment,
+            clientExtensionResults: credential.getClientExtensionResults(),
+            response: {
+                clientDataJSON: encodeBase64url(credential.response.clientDataJSON),
+                authenticatorData: encodeBase64url(credential.response.authenticatorData),
+                signature: encodeBase64url(credential.response.signature),
+                userHandle: credential.response.userHandle
+                    ? encodeBase64url(credential.response.userHandle)
+                    : null
+            }
+        };
+    }
+
+    let stepUpGeneration = 0;
+    let activeStepUpPrompt = null;
+
+    function closeStepUpPrompt(error, value) {
+        const pending = activeStepUpPrompt;
+        activeStepUpPrompt = null;
+        const modal = document.getElementById('stepUpModal');
+        modal?.classList.remove('show');
+        modal?.setAttribute('aria-hidden', 'true');
+        ['stepUpPassword', 'stepUpTotp'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) { input.value = ''; }
+        });
+        if (!pending) { return; }
+        if (error) { pending.reject(error); } else { pending.resolve(value); }
+    }
+
+    function requestStepUpValue(method) {
+        if (activeStepUpPrompt) {
+            closeStepUpPrompt(new Error('Additional authentication was replaced'));
+        }
+        const password = method === 'password';
+        document.getElementById('stepUpPasswordGroup')?.classList.toggle('hidden', !password);
+        document.getElementById('stepUpTotpGroup')?.classList.toggle('hidden', password);
+        const modal = document.getElementById('stepUpModal');
+        modal?.classList.add('show');
+        modal?.setAttribute('aria-hidden', 'false');
+        setTimeout(() => document.getElementById(
+            password ? 'stepUpPassword' : 'stepUpTotp'
+        )?.focus(), 0);
+        return new Promise((resolve, reject) => {
+            activeStepUpPrompt = { method, resolve, reject };
+        });
+    }
+
+    function initStepUpDialog() {
+        const cancel = () => {
+            stepUpGeneration += 1;
+            closeStepUpPrompt(new Error('Additional authentication was cancelled'));
+        };
+        document.getElementById('stepUpCancel')?.addEventListener('click', cancel);
+        document.getElementById('stepUpCancelButton')?.addEventListener('click', cancel);
+        document.getElementById('stepUpModal')?.addEventListener('click', event => {
+            if (event.target.id === 'stepUpModal') { cancel(); }
+        });
+        document.getElementById('stepUpSubmit')?.addEventListener('click', () => {
+            if (!activeStepUpPrompt) { return; }
+            const field = document.getElementById(
+                activeStepUpPrompt.method === 'password'
+                    ? 'stepUpPassword'
+                    : 'stepUpTotp'
+            );
+            const value = field?.value || '';
+            if (!value) {
+                field?.focus();
+                return;
+            }
+            closeStepUpPrompt(null, value);
+        });
+    }
+
+    function cancelPendingStepUp() {
+        stepUpGeneration += 1;
+        closeStepUpPrompt(new Error('Additional authentication was cancelled'));
+    }
+
+    async function oidcStepUp(action, target, generation) {
+        const started = await api('/api/step-up/oidc/start', {
+            method: 'POST',
+            body: { action, target, continuation: '/admin' }
+        });
+        const popup = window.open(started.authorization_url, 'webssh-oidc-step-up', 'popup,width=720,height=760');
+        if (!popup) { throw new Error('Allow the OIDC authentication popup and try again'); }
+        const deadline = Date.now() + 300000;
+        while (Date.now() < deadline && generation === stepUpGeneration) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const response = await fetch(APP_ROOT + '/api/step-up/oidc/result', {
+                headers: { 'Accept': 'application/json', 'X-CSRFToken': CSRF }
+            });
+            if (response.ok) {
+                const result = await response.json();
+                popup.close();
+                return result.grant;
+            }
+            if (response.status !== 404) {
+                popup.close();
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || 'OIDC authentication failed');
+            }
+            if (popup.closed) { break; }
+        }
+        popup.close();
+        throw new Error('Additional authentication was cancelled or expired');
+    }
+
+    async function acquireStepUp(action, target) {
+        const generation = stepUpGeneration;
+        const intent = await api('/api/step-up/intents', {
+            method: 'POST', body: { action, target }
+        });
+        if (intent.grant) { return intent.grant; }
+        const methods = intent.methods || [intent.method];
+        if (methods.includes('passkey') && window.PublicKeyCredential) {
+            const options = decodePasskeyOptions(await api('/api/step-up/passkey/options', {
+                method: 'POST', body: { action, target }
+            }));
+            const credential = await navigator.credentials.get({ publicKey: options });
+            const result = await api('/api/step-up/passkey/verify', {
+                method: 'POST', body: { credential: serializePasskey(credential) }
+            });
+            if (generation !== stepUpGeneration) {
+                throw new Error('Additional authentication was cancelled');
+            }
+            return result.grant;
+        }
+        if (methods.includes('totp')) {
+            const code = await requestStepUpValue('totp');
+            const result = await api('/api/step-up/totp', {
+                method: 'POST', body: { action, target, code }
+            });
+            return result.grant;
+        }
+        if (methods.includes('oidc')) {
+            return oidcStepUp(action, target, generation);
+        }
+        const password = await requestStepUpValue('password');
+        const result = await api('/api/step-up/password', {
+            method: 'POST', body: { action, target, password }
+        });
+        return result.grant;
+    }
+
+    async function stepUpApi(action, target, path, options) {
+        const grant = await acquireStepUp(action, target);
+        const opts = Object.assign({}, options || {});
+        opts.headers = Object.assign({}, opts.headers || {}, {
+            'X-WebSSH-Step-Up': grant
+        });
+        return api(path, opts);
     }
 
     function fmtDate(iso) {
@@ -97,6 +293,9 @@
             const label = u.ldap_managed ? 'Manage LDAP' : 'Link LDAP';
             parts.push(`<button class="btn btn-secondary" data-act="ldap-link">${escapeHtml(label)}</button>`);
         }
+        if (u.mfa_enabled) {
+            parts.push(`<button class="btn btn-secondary" data-act="mfa-reset">${escapeHtml(t('admin.mfaReset', 'Reset MFA'))}</button>`);
+        }
         parts.push(`<button class="btn btn-danger" data-act="delete" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.delete', 'Delete'))}</button>`);
         return `<div class="admin-actions">${parts.join('')}</div>`;
     }
@@ -124,6 +323,7 @@
                 `<td>${userActionsHtml(u)}</td>`;
             body.appendChild(tr);
         });
+        labelResponsiveTableRows(document.getElementById('adminUsersTable'));
     }
 
     async function loadUsers() {
@@ -137,7 +337,17 @@
 
     async function doUserAction(userId, action) {
         try {
-            await api(`/admin/api/users/${userId}/${action}`, { method: 'POST' });
+            if (action === 'mfa-reset') {
+                const row = document.querySelector(`tr[data-user-id="${CSS.escape(String(userId))}"]`);
+                const username = row?.dataset.username || '';
+                const confirmation = window.prompt(`Type ${username} to reset every MFA factor`);
+                if (confirmation === null) { return; }
+                await stepUpApi('user.mfa_reset', userId, `/admin/api/users/${userId}/mfa`, {
+                    method: 'DELETE', body: { confirm_username: confirmation }
+                });
+            } else {
+                await stepUpApi('user.manage', `${userId}:${action}`, `/admin/api/users/${userId}/${action}`, { method: 'POST' });
+            }
             await loadUsers();
             notify(t('admin.actionDone', 'Done'), 'success');
         } catch (e) {
@@ -151,14 +361,14 @@
     let currentLdapIdentityId = null;
 
     function clearSecurityReauthentication() {
-        ['securityActionPassword', 'securityActionConfirmation'].forEach(id => {
+        ['securityActionConfirmation'].forEach(id => {
             const field = document.getElementById(id);
             if (field) { field.value = ''; }
         });
     }
 
     function clearSecurityActionFields() {
-        ['securityActionPassword', 'securityActionConfirmation', 'securityActionSubject', 'securityActionDirectoryUsername', 'securityActionNewPassword', 'securityActionResult']
+        ['securityActionConfirmation', 'securityActionSubject', 'securityActionDirectoryUsername', 'securityActionNewPassword', 'securityActionResult']
             .forEach(id => {
                 const field = document.getElementById(id);
                 if (field) { field.value = ''; }
@@ -174,6 +384,7 @@
     }
 
     function closeSecurityAction() {
+        cancelPendingStepUp();
         securityRequests.close();
         const modal = document.getElementById('securityActionModal');
         modal?.classList.remove('show');
@@ -192,12 +403,16 @@
         const result = document.getElementById('ldapStatusResult');
         if (!button || !result) { return; }
         button.disabled = true;
-        result.textContent = 'Checking...';
+        result.textContent = t('admin.ldapChecking', 'Checking...');
         try {
             const data = await api('/admin/api/ldap/status');
-            result.textContent = `Ready (${data.transport}, provider ${data.provider})`;
+            result.textContent = t(
+                'admin.ldapReady',
+                'Ready ({transport}, provider {provider})'
+            ).replace('{transport}', data.transport)
+                .replace('{provider}', data.provider);
         } catch (e) {
-            result.textContent = 'Unavailable';
+            result.textContent = t('admin.unavailable', 'Unavailable');
             notify(e.message, 'error');
         } finally {
             button.disabled = false;
@@ -220,7 +435,9 @@
                 usernameField.disabled = Boolean(identity);
             }
             document.getElementById('securityActionNewPasswordGroup')?.classList.toggle('hidden', !identity);
-            document.getElementById('submitSecurityAction').textContent = identity ? 'Unlink LDAP' : 'Link LDAP';
+            document.getElementById('submitSecurityAction').textContent = identity
+                ? t('admin.ldapUnlink', 'Unlink LDAP')
+                : t('admin.ldapLink', 'Link LDAP');
         } catch (e) {
             if (securityRequests.isCurrent(requestState)) { notify(e.message, 'error'); }
         } finally {
@@ -281,16 +498,19 @@
         const isOidc = mode === 'oidc-link';
         const isLdap = mode === 'ldap-link';
         document.getElementById('securityActionTitle').textContent = isLdap
-            ? 'Manage LDAP identity'
+            ? t('admin.ldapManage', 'Manage LDAP identity')
             : isOidc
             ? t('admin.oidcManage', 'Manage OIDC identities')
             : t('admin.generateRecoveryCodes', 'Generate recovery codes');
         document.getElementById('securityActionHint').textContent = isLdap
-            ? `Link ${username} to exactly one verified directory identity. LDAP accounts cannot use local fallback authentication.`
+            ? t(
+                'admin.ldapManageHint',
+                'Link {username} to exactly one verified directory identity. LDAP accounts cannot use local fallback authentication.'
+            ).replace('{username}', username)
             : isOidc
             ? t(
                 'admin.oidcManageHint',
-                'Manage stable provider subjects for {username}. Enter your password and the target username before linking or unlinking.'
+                'Manage stable provider subjects for {username}. Confirm the target username before linking or unlinking.'
             ).replace('{username}', username)
             : t(
                 'admin.recoveryGenerateHint',
@@ -302,7 +522,7 @@
         document.getElementById('securityActionOidcListGroup')?.classList.toggle('hidden', !isOidc);
         document.getElementById('securityActionResultGroup')?.classList.add('hidden');
         document.getElementById('submitSecurityAction').textContent = isLdap
-            ? 'Link LDAP'
+            ? t('admin.ldapLink', 'Link LDAP')
             : isOidc
             ? t('admin.oidcLinkIdentity', 'Link OIDC identity')
             : t('admin.continue', 'Continue');
@@ -311,7 +531,7 @@
         modal?.setAttribute('aria-hidden', 'false');
         if (isOidc) { loadOidcIdentities(); }
         if (isLdap) { loadLdapIdentity(); }
-        document.getElementById('securityActionPassword')?.focus();
+        document.getElementById('securityActionConfirmation')?.focus();
     }
 
     async function unlinkOidcIdentity(identityId) {
@@ -321,12 +541,13 @@
         const requestState = securityRequests.begin('action');
         if (!requestState) { return; }
         const body = {
-            password: document.getElementById('securityActionPassword').value,
             confirm_username: document.getElementById('securityActionConfirmation').value.trim()
         };
         setSecurityActionPending(true);
         try {
-            await api(
+            await stepUpApi(
+                'oidc.unlink',
+                `${requestState.context.userId}:${identityId}`,
                 `/admin/api/users/${requestState.context.userId}/oidc-identities/${identityId}`,
                 { method: 'DELETE', body }
             );
@@ -352,26 +573,31 @@
         const requestState = securityRequests.begin('action');
         if (!requestState) { return; }
         const body = {
-            password: document.getElementById('securityActionPassword').value,
             confirm_username: document.getElementById('securityActionConfirmation').value.trim()
         };
         let path = `/admin/api/users/${requestState.context.userId}/recovery`;
+        let stepUpAction = 'recovery.reset';
+        let stepUpTarget = requestState.context.userId;
         if (requestState.context.mode === 'oidc-link') {
             body.subject = document.getElementById('securityActionSubject').value.trim();
             path = `/admin/api/users/${requestState.context.userId}/oidc-link`;
+            stepUpAction = 'oidc.link';
         } else if (requestState.context.mode === 'ldap-link') {
             body.directory_username = document.getElementById('securityActionDirectoryUsername').value.trim();
             if (currentLdapIdentityId) {
                 body.new_password = document.getElementById('securityActionNewPassword').value;
                 path = `/admin/api/users/${requestState.context.userId}/ldap-identities/${currentLdapIdentityId}`;
+                stepUpAction = 'ldap.unlink';
+                stepUpTarget = `${requestState.context.userId}:${currentLdapIdentityId}`;
             } else {
                 path = `/admin/api/users/${requestState.context.userId}/ldap-link`;
+                stepUpAction = 'ldap.link';
             }
         }
         setSecurityActionPending(true);
         try {
             const method = requestState.context.mode === 'ldap-link' && currentLdapIdentityId ? 'DELETE' : 'POST';
-            const result = await api(path, { method, body });
+            const result = await stepUpApi(stepUpAction, stepUpTarget, path, { method, body });
             if (!securityRequests.isCurrent(requestState)) { return; }
             clearSecurityReauthentication();
             if (requestState.context.mode === 'recovery') {
@@ -383,7 +609,12 @@
                 document.getElementById('securityActionSubject').value = '';
                 await loadOidcIdentities();
             } else {
-                notify(currentLdapIdentityId ? 'LDAP identity unlinked' : 'LDAP identity linked', 'success');
+                notify(
+                    currentLdapIdentityId
+                        ? t('admin.ldapUnlinked', 'LDAP identity unlinked')
+                        : t('admin.ldapLinked', 'LDAP identity linked'),
+                    'success'
+                );
                 currentLdapIdentityId = null;
                 closeSecurityAction();
                 await loadUsers();
@@ -449,7 +680,9 @@
             const password = document.getElementById('newPassword').value;
             const isAdmin = document.getElementById('newIsAdmin').checked;
             try {
-                await api('/admin/api/users', { method: 'POST', body: { username, password, is_admin: isAdmin } });
+                await stepUpApi('user.create', username, '/admin/api/users', {
+                    method: 'POST', body: { username, password, is_admin: isAdmin }
+                });
                 close();
                 document.getElementById('newUsername').value = '';
                 document.getElementById('newPassword').value = '';
@@ -482,6 +715,7 @@
                 `<td class="admin-message">${escapeHtml(e.message || '')}</td>`;
             body.appendChild(tr);
         });
+        labelResponsiveTableRows(document.getElementById('adminAuditTable'));
     }
 
     function updateAuditPageInfo() {
@@ -553,6 +787,89 @@
     }
 
     // ---- Settings ----
+    const SECURITY_FEATURE_LABELS = Object.freeze({
+        passkey: ['admin.featurePasskeys', 'Passkeys'],
+        totp: ['admin.featureTotp', 'Authenticator apps (TOTP)'],
+        oidc: ['admin.featureOidc', 'OpenID Connect (OIDC)'],
+        ldap: ['admin.featureLdap', 'LDAP directory login'],
+        recovery: ['admin.featureRecovery', 'Recovery codes']
+    });
+    let securityFeatureSnapshot = [];
+
+    function securityFeatureLabel(name) {
+        const definition = SECURITY_FEATURE_LABELS[name];
+        return definition ? t(...definition) : name;
+    }
+
+    function renderSecurityFeatures(features) {
+        const list = document.getElementById('securityFeatureList');
+        const status = document.getElementById('securityFeatureStatus');
+        if (!list || !status) { return; }
+        securityFeatureSnapshot = Array.isArray(features) ? features : [];
+        list.textContent = '';
+        for (const feature of securityFeatureSnapshot) {
+            const state = window.WebSSHSecurityUI.featureToggleState(feature);
+            const row = document.createElement('div');
+            row.style.marginTop = '12px';
+
+            const label = document.createElement('label');
+            label.className = 'admin-checkbox';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.dataset.securityFeature = state.name;
+            input.checked = state.checked;
+            input.disabled = state.disabled;
+            const title = document.createElement('strong');
+            const labelText = securityFeatureLabel(state.name);
+            title.textContent = labelText;
+            label.append(input, title);
+
+            const reason = document.createElement('p');
+            reason.className = 'admin-muted';
+            reason.textContent = window.WebSSHSecurityUI.featureStatusReason(
+                feature,
+                labelText,
+                t
+            );
+            row.append(label, reason);
+            if (['oidc', 'ldap'].includes(state.name)) {
+                const configuration = document.createElement('p');
+                configuration.className = 'admin-muted';
+                configuration.append(t(
+                    'admin.deploymentConfiguration',
+                    'Deployment configuration'
+                ), ': ');
+                const keys = document.createElement('code');
+                keys.textContent = (feature.configuration_keys || []).join(', ');
+                configuration.append(keys, ' · ');
+                const guide = document.createElement('a');
+                guide.href = feature.documentation_url;
+                guide.target = '_blank';
+                guide.rel = 'noopener noreferrer';
+                guide.textContent = t('admin.openSetupGuide', 'Open setup guide');
+                configuration.appendChild(guide);
+                row.appendChild(configuration);
+            }
+            list.appendChild(row);
+        }
+        status.textContent = securityFeatureSnapshot.length
+            ? t('admin.featureStatusLoaded', 'Feature status loaded')
+            : t('admin.noAuthenticationFeatures', 'No authentication features reported');
+    }
+
+    async function loadSecurityFeatures() {
+        const status = document.getElementById('securityFeatureStatus');
+        if (!status) { return; }
+        status.textContent = t('admin.featureStatusLoading', 'Loading feature status…');
+        try {
+            const data = await api('/admin/api/security-features');
+            renderSecurityFeatures(data.features || []);
+        } catch (e) {
+            status.textContent = e.message;
+            notify(e.message, 'error');
+        }
+    }
+
     async function loadSettings() {
         try {
             const data = await api('/admin/api/settings');
@@ -560,14 +877,46 @@
         } catch (e) {
             notify(e.message, 'error');
         }
+        await loadSecurityFeatures();
     }
 
     function initSettings() {
         document.getElementById('ldapStatusCheck')?.addEventListener('click', checkLdapStatus);
+        document.getElementById('securityFeatureList')?.addEventListener('change', async (event) => {
+            const target = event.target;
+            if (!target.matches('input[data-security-feature]')) { return; }
+            const featureName = target.dataset.securityFeature;
+            const enabling = target.checked;
+            if (!enabling && !window.confirm(
+                window.WebSSHSecurityUI.featureDisableWarning(
+                    { name: featureName },
+                    securityFeatureLabel(featureName),
+                    t
+                )
+            )) {
+                target.checked = true;
+                return;
+            }
+            target.disabled = true;
+            try {
+                await stepUpApi('security_feature.update', featureName, `/admin/api/security-features/${encodeURIComponent(featureName)}`, {
+                    method: 'POST',
+                    body: {
+                        enabled: enabling,
+                        confirm_session_fallback: !enabling
+                    }
+                });
+                notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+            } catch (err) {
+                notify(err.message, 'error');
+            } finally {
+                await loadSecurityFeatures();
+            }
+        });
         document.getElementById('settingRegistration')?.addEventListener('change', async (e) => {
             const target = e.target;
             try {
-                const data = await api('/admin/api/settings', {
+                const data = await stepUpApi('settings.update', 'global', '/admin/api/settings', {
                     method: 'POST',
                     body: { registration_enabled: target.checked }
                 });
@@ -581,7 +930,7 @@
         document.getElementById('auditRetentionSave')?.addEventListener('click', async () => {
             const value = Number(document.getElementById('auditRetention').value);
             try {
-                const data = await api('/admin/api/audit/retention', {
+                const data = await stepUpApi('audit.retention', 'global', '/admin/api/audit/retention', {
                     method: 'POST',
                     body: { backup_count: value }
                 });
@@ -672,7 +1021,7 @@
         backupState.createdOperationId = null;
         setBackupStatus('backupCreateStatus', t('backup.creating', 'Creating and verifying backup...'));
         try {
-            const record = await api('/admin/api/backups', { method: 'POST' });
+            const record = await stepUpApi('backup.create', 'new', '/admin/api/backups', { method: 'POST' });
             backupState.createdOperationId = record.operation_id;
             const generation = ++backupState.createPollGeneration;
             pollBackupOperation(record.operation_id, generation, 'createPollGeneration', (update, pending) => {
@@ -699,30 +1048,37 @@
         }
     }
 
-    function downloadBackup() {
+    async function downloadBackup() {
         const operationId = backupState.createdOperationId;
         const button = document.getElementById('backupDownloadBtn');
         if (!operationId) { return; }
         button.disabled = true;
-        const form = document.createElement('form');
-        const frame = document.createElement('iframe');
-        frame.name = `backup-download-${Date.now()}`;
-        frame.hidden = true;
-        form.method = 'POST';
-        form.action = `${APP_ROOT}/admin/api/backups/${operationId}/download`;
-        form.target = frame.name;
-        form.hidden = true;
-        const csrf = document.createElement('input');
-        csrf.type = 'hidden';
-        csrf.name = 'csrf_token';
-        csrf.value = CSRF;
-        form.appendChild(csrf);
-        document.body.appendChild(frame);
-        document.body.appendChild(form);
-        form.submit();
-        form.remove();
-        backupState.createdOperationId = null;
-        setBackupStatus('backupCreateStatus', t('backup.downloaded', 'Download started; the server copy is one-time use.'));
+        try {
+            const grant = await acquireStepUp('backup.download', operationId);
+            const response = await fetch(`${APP_ROOT}/admin/api/backups/${operationId}/download`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/zip',
+                    'X-CSRFToken': CSRF,
+                    'X-WebSSH-Step-Up': grant
+                }
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || `Download failed (${response.status})`);
+            }
+            const url = URL.createObjectURL(await response.blob());
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'webssh-backup.zip';
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            backupState.createdOperationId = null;
+            setBackupStatus('backupCreateStatus', t('backup.downloaded', 'Download started; the server copy is one-time use.'));
+        } catch (error) {
+            button.disabled = false;
+            notify(error.message, 'error');
+        }
     }
 
     function renderBackupSummary(summary) {
@@ -769,12 +1125,14 @@
         document.getElementById('backupRestoreBtn').disabled = true;
         setBackupStatus('backupUploadStatus', t('backup.verifying', 'Uploading and verifying backup...'));
         try {
+            const grant = await acquireStepUp('backup.upload', 'upload');
             const response = await fetch(`${APP_ROOT}/admin/api/backups/upload`, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/zip',
-                    'X-CSRFToken': CSRF
+                    'X-CSRFToken': CSRF,
+                    'X-WebSSH-Step-Up': grant
                 },
                 body: file
             });
@@ -819,7 +1177,7 @@
         document.getElementById('restoreFirstAcknowledge').checked = false;
         document.getElementById('restoreFinalAcknowledge').checked = false;
         document.getElementById('restorePhrase').value = '';
-        document.getElementById('restorePassword').value = '';
+        cancelPendingStepUp();
         backupState.confirmationToken = null;
     }
 
@@ -829,7 +1187,9 @@
             return;
         }
         try {
-            const result = await api(
+            const result = await stepUpApi(
+                'backup.restore_prepare',
+                backupState.uploadedOperationId,
                 `/admin/api/backups/${backupState.uploadedOperationId}/restore/prepare`,
                 {
                     method: 'POST',
@@ -846,15 +1206,15 @@
     }
 
     async function startRestore() {
-        const password = document.getElementById('restorePassword');
         const body = {
             confirmation_token: backupState.confirmationToken,
             confirmation_phrase: document.getElementById('restorePhrase').value,
-            password: password.value,
             confirm_destructive_restore: document.getElementById('restoreFinalAcknowledge').checked
         };
         try {
-            await api(
+            await stepUpApi(
+                'backup.restore',
+                backupState.uploadedOperationId,
                 `/admin/api/backups/${backupState.uploadedOperationId}/restore`,
                 { method: 'POST', body }
             );
@@ -868,9 +1228,6 @@
             restoreStatusFlow.poll();
         } catch (error) {
             notify(error.message, 'error');
-        } finally {
-            password.value = '';
-            body.password = '';
         }
     }
 
@@ -946,12 +1303,13 @@
                             t
                         )
                     )) { return; }
-                    await api(`/admin/api/host-keys/${entry.id}`, { method: 'DELETE' });
+                    await stepUpApi('host_key.global_delete', entry.id, `/admin/api/host-keys/${entry.id}`, { method: 'DELETE' });
                     await loadGlobalHostKeys();
                 });
                 row.lastElementChild.appendChild(button);
                 body.appendChild(row);
             });
+            labelResponsiveTableRows(body.closest('table'));
         } catch (err) {
             notify(err.message, 'error');
         }
@@ -959,6 +1317,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         if (window.i18n && i18n.updatePageText) { i18n.updatePageText(); }
+        initStepUpDialog();
         initTabs();
         initUsers();
         initAudit();
@@ -966,5 +1325,8 @@
         initBackupRestore();
         loadUsers();
         loadGlobalHostKeys();
+        window.addEventListener('languageChanged', () => {
+            renderSecurityFeatures(securityFeatureSnapshot);
+        });
     });
 })();

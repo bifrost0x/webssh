@@ -15,6 +15,11 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+.tmp-e2e*/
+.runtime-*/
+.tmp-uv*/
+.uv-python*/
+.venv*/
 
 # Environment variables
 .env
@@ -42,6 +47,7 @@ Thumbs.db
 
 # Secrets & keys (defense-in-depth; primary copies live under data/, already
 # ignored — these catch stray copies that land outside DATA_DIR)
+secrets/
 secret_key
 known_hosts
 *.pem

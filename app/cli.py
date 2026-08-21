@@ -8,7 +8,7 @@ import click
 from flask import current_app
 
 import config
-from .audit_logger import audit_logger, log_warning
+from .audit_logger import audit_logger, log_warning, sanitize_audit_details
 from .auth import (
     user_creation_transaction,
     validate_new_user,
@@ -19,7 +19,7 @@ from .models import User, db
 def _audit_operation(event, **details):
     audit_logger.info(
         event,
-        extra={'extra_data': details},
+        extra={'extra_data': sanitize_audit_details(details)},
     )
 
 
@@ -309,7 +309,8 @@ def rotate_secret_key(confirm_offline):
         rotated_keys=report.rotated_keys,
     )
     click.echo(
-        f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys. '
+        f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys and '
+        f'{report.rotated_totp_secrets} TOTP secrets. '
         f'Verified backup: {report.backup_path}'
     )
     click.echo(

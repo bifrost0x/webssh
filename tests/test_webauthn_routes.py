@@ -5,10 +5,16 @@ import io
 import json
 import logging
 import re
+import time
 from types import SimpleNamespace
 
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Response
+
+from tests.step_up_helpers import (
+    account_password_step_up_headers,
+    mint_account_step_up_headers,
+)
 
 
 def _create_user(app, username="passkey_user"):
@@ -42,12 +48,12 @@ def test_webauthn_routes_are_hidden_when_disabled(app, client):
     assert response.status_code == 404
 
 
-def test_registration_options_require_current_password_and_exact_rp(
+def test_registration_options_require_account_grant_and_exact_rp(
     app, client, monkeypatch
 ):
     import config
 
-    _create_user(app)
+    user_id = _create_user(app)
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
@@ -58,12 +64,19 @@ def test_registration_options_require_current_password_and_exact_rp(
         "/api/webauthn/register/options",
         json={"password": "wrong"},
     )
+    headers, _verified = account_password_step_up_headers(
+        client,
+        "passkey.enroll",
+        user_id,
+    )
     accepted = client.post(
         "/api/webauthn/register/options",
-        json={"password": "password123"},
+        json={},
+        headers=headers,
     )
 
-    assert rejected.status_code == 403
+    assert rejected.status_code == 409
+    assert rejected.get_json()["code"] == "security_ui_upgrade_required"
     assert accepted.status_code == 200
     options = accepted.get_json()
     assert options["rp"]["id"] == "localhost"
@@ -74,21 +87,70 @@ def test_registration_options_require_current_password_and_exact_rp(
     assert base64.urlsafe_b64decode(options["challenge"] + "==")
 
 
-def test_registration_options_rate_limit_before_bcrypt(
+def test_ldap_user_can_request_passkey_registration_options(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from flask import g
+    from app import ldap_session
+    from app.models import LDAPIdentity, User, db
+
+    user_id = _create_user(app, "ldap_passkey_user")
+    _login(client, "ldap_passkey_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_admin = False
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider="default",
+            subject="ldap-passkey-subject",
+            directory_username="ldap_passkey_user",
+            distinguished_name="uid=ldap_passkey_user,dc=example,dc=com",
+        ))
+        db.session.commit()
+    g.pop("_login_user", None)
+    db.session.expire_all()
+    with client.session_transaction() as browser_session:
+        browser_session["_ldap_verified_at"] = int(time.time())
+    monkeypatch.setattr(config, "LDAP_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
+    monkeypatch.setattr(ldap_session, "revalidate_user", lambda _user: True)
+
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "passkey.enroll",
+        user_id,
+        method="ldap",
+    )
+
+    response = client.post(
+        "/api/webauthn/register/options",
+        json={},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["user"]["name"] == "ldap_passkey_user"
+
+
+def test_registration_options_do_not_repeat_bcrypt_after_account_step_up(
     app, client, monkeypatch
 ):
     import config
-    import app.webauthn_routes as webauthn_routes
     from app.models import User
 
-    _create_user(app)
+    user_id = _create_user(app)
     _login(client)
     monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
-    monkeypatch.setattr(
-        webauthn_routes,
-        "check_reauth_rate_limit",
-        lambda *_args, **_kwargs: True,
-        raising=False,
+    headers, _verified = account_password_step_up_headers(
+        client,
+        "passkey.enroll",
+        user_id,
     )
     monkeypatch.setattr(
         User,
@@ -100,11 +162,11 @@ def test_registration_options_rate_limit_before_bcrypt(
 
     response = client.post(
         "/api/webauthn/register/options",
-        json={"password": "password123"},
+        json={},
+        headers=headers,
     )
 
-    assert response.status_code == 429
-    assert response.get_json() == {"error": "Too many password attempts"}
+    assert response.status_code == 200
 
 
 def test_authentication_options_are_username_less(
@@ -200,18 +262,89 @@ def test_existing_credentials_have_a_password_authenticated_upgrade_path(
     monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
 
+    headers, _verified = account_password_step_up_headers(
+        client,
+        "passkey.enroll",
+        user_id,
+    )
+
     response = client.post(
         "/api/webauthn/register/options",
         json={
-            "password": "password123",
             "legacy_upgrade": True,
         },
+        headers=headers,
     )
 
     assert response.status_code == 200
     options = response.get_json()
     assert options["authenticatorSelection"]["residentKey"] == "required"
     assert options["excludeCredentials"] == []
+
+
+def test_parallel_passkey_enrollments_keep_independent_challenges(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+
+    user_id = _create_user(app, "parallel_passkey_enroll")
+    _login(client, "parallel_passkey_enroll")
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_registration_response",
+        lambda **kwargs: SimpleNamespace(
+            credential_id=str(kwargs["credential"]["id"]).encode(),
+            credential_public_key=b"public-key",
+            sign_count=0,
+        ),
+    )
+
+    first_headers, _verified = account_password_step_up_headers(
+        client,
+        "passkey.enroll",
+        user_id,
+    )
+    first = client.post(
+        "/api/webauthn/register/options",
+        json={},
+        headers=first_headers,
+    ).get_json()
+    second_headers, _verified = account_password_step_up_headers(
+        client,
+        "passkey.enroll",
+        user_id,
+    )
+    second = client.post(
+        "/api/webauthn/register/options",
+        json={},
+        headers=second_headers,
+    ).get_json()
+
+    assert first["ceremony"] != second["ceremony"]
+    first_result = client.post(
+        "/api/webauthn/register/verify",
+        json={
+            "ceremony": first["ceremony"],
+            "credential": {"id": "first-credential", "response": {}},
+        },
+    )
+    second_result = client.post(
+        "/api/webauthn/register/verify",
+        json={
+            "ceremony": second["ceremony"],
+            "credential": {"id": "second-credential", "response": {}},
+        },
+    )
+
+    assert first_result.status_code == 201
+    assert second_result.status_code == 201
 
 
 def test_webauthn_registration_commit_failure_is_not_a_duplicate(
@@ -248,7 +381,10 @@ def test_webauthn_registration_commit_failure_is_not_a_duplicate(
 
     response = client.post(
         "/api/webauthn/register/verify",
-        json={"credential": {"response": {"transports": []}}},
+        json={
+            "ceremony": "test-registration-ceremony",
+            "credential": {"response": {"transports": []}},
+        },
     )
 
     assert response.status_code == 503
@@ -299,13 +435,74 @@ def test_registration_verify_rechecks_passkey_limit_before_storage(
 
     response = client.post(
         "/api/webauthn/register/verify",
-        json={"credential": {"response": {"transports": []}}},
+        json={
+            "ceremony": "test-registration-ceremony",
+            "credential": {"response": {"transports": []}},
+        },
     )
 
     assert response.status_code == 409
     assert response.get_json() == {"error": "Passkey limit reached"}
     with app.app_context():
         assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 10
+
+
+def test_verified_passkey_replacement_releases_recovery_session(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import AuthenticationSession, User, db
+    from app.recovery_service import generate_codes
+
+    user_id = _create_user(app, "passkey_recovery_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        recovery_code = generate_codes(user_id, count=1)[0]
+        db.session.commit()
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_RP_NAME", "WebSSH Test")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    assert client.post(
+        "/login",
+        data={"username": "passkey_recovery_user", "password": "password123"},
+    ).status_code == 200
+    assert client.post(
+        "/api/auth/recovery",
+        json={"code": recovery_code},
+    ).status_code == 200
+    options = client.post(
+        "/api/webauthn/register/options",
+        json={"password": "password123"},
+    )
+    assert options.status_code == 200
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_registration_response",
+        lambda **_kwargs: SimpleNamespace(
+            credential_id=b"replacement-passkey",
+            credential_public_key=b"public-key",
+            sign_count=0,
+        ),
+    )
+
+    verified = client.post(
+        "/api/webauthn/register/verify",
+        json={
+            "ceremony": options.get_json()["ceremony"],
+            "credential": {"response": {"transports": []}},
+        },
+    )
+
+    assert verified.status_code == 201
+    assert client.get("/").status_code == 200
+    with app.app_context():
+        row = AuthenticationSession.query.one()
+        assert row.methods_json == '["password","passkey"]'
 
 
 def test_authentication_resolves_account_from_discoverable_credential(
@@ -347,11 +544,205 @@ def test_authentication_resolves_account_from_discoverable_credential(
     assert verified.status_code == 200
     assert verified.get_json() == {"ok": True}
     with client.session_transaction() as browser_session:
-        assert browser_session["_user_id"] == f"{user_id}:0"
+        assert browser_session["_user_id"].startswith(f"{user_id}:0:")
     with app.app_context():
+        from app.models import AuthenticationSession
+
         row = WebAuthnCredential.query.one()
         assert row.sign_count == 5
         assert row.last_used_at is not None
+        auth_session = AuthenticationSession.query.one()
+        assert auth_session.assurance == "PHISHING_RESISTANT"
+        assert auth_session.methods_json == '["passkey"]'
+
+
+def test_ldap_user_can_sign_in_directly_with_owned_passkey(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        AuthenticationSession,
+        LDAPIdentity,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "ldap_direct_passkey")
+    credential_id = b"ldap-direct-passkey-credential"
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.is_admin = False
+        db.session.add_all((
+            LDAPIdentity(
+                user_id=user_id,
+                provider="default",
+                subject="ldap-direct-passkey-subject",
+                directory_username="ldap_direct_passkey",
+                distinguished_name="uid=ldap_direct_passkey,dc=example,dc=com",
+            ),
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=credential_id,
+                public_key=b"verified-public-key",
+                sign_count=0,
+                transports="[]",
+                name="LDAP direct passkey",
+            ),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, "LDAP_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+
+    assert client.post("/api/webauthn/auth/options", json={}).status_code == 200
+    encoded_id = base64.urlsafe_b64encode(credential_id).decode().rstrip("=")
+    verified = client.post(
+        "/api/webauthn/auth/verify",
+        json={"credential": {"id": encoded_id}},
+    )
+
+    assert verified.status_code == 200
+    with app.app_context():
+        auth_session = AuthenticationSession.query.one()
+        assert auth_session.user_id == user_id
+        assert auth_session.assurance == "PHISHING_RESISTANT"
+
+
+def test_passkey_completes_pending_password_mfa(app, client, monkeypatch):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        AuthenticationSession,
+        PendingAuthentication,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "passkey_mfa_user")
+    credential_id = b"passkey-mfa-credential"
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=credential_id,
+            public_key=b"verified-public-key",
+            sign_count=0,
+            transports="[]",
+            name="MFA passkey",
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+    primary = client.post(
+        "/login",
+        data={"username": "passkey_mfa_user", "password": "password123"},
+    )
+    assert primary.status_code == 200
+
+    options = client.post("/api/webauthn/auth/options", json={})
+    encoded_id = base64.urlsafe_b64encode(credential_id).decode().rstrip("=")
+    verified = client.post(
+        "/api/webauthn/auth/verify",
+        json={"credential": {"id": encoded_id}},
+    )
+
+    assert options.status_code == 200
+    assert verified.status_code == 200
+    with client.session_transaction() as browser_session:
+        assert "_pending_authentication" not in browser_session
+        assert browser_session["_user_id"].startswith(f"{user_id}:0:")
+    with app.app_context():
+        assert PendingAuthentication.query.count() == 0
+        auth_session = AuthenticationSession.query.one()
+        assert auth_session.assurance == "PHISHING_RESISTANT"
+        assert auth_session.methods_json == '["password","passkey"]'
+
+
+def test_passkey_mfa_rejects_a_different_accounts_credential(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        AuthenticationSession,
+        PendingAuthentication,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "pending_owner")
+    other_id = _create_user(app, "credential_owner")
+    owner_credential = b"pending-owner-credential"
+    other_credential = b"different-owner-credential"
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        db.session.add_all((
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=owner_credential,
+                public_key=b"owner-key",
+                sign_count=0,
+                transports="[]",
+                name="Owner passkey",
+            ),
+            WebAuthnCredential(
+                user_id=other_id,
+                credential_id=other_credential,
+                public_key=b"other-key",
+                sign_count=0,
+                transports="[]",
+                name="Other passkey",
+            ),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setattr(config, "WEBAUTHN_ORIGIN", "https://localhost")
+    monkeypatch.setattr(
+        webauthn_routes,
+        "verify_authentication_response",
+        lambda **_kwargs: SimpleNamespace(new_sign_count=1),
+    )
+    assert client.post(
+        "/login",
+        data={"username": "pending_owner", "password": "password123"},
+    ).status_code == 200
+    assert client.post("/api/webauthn/auth/options", json={}).status_code == 200
+    encoded_id = base64.urlsafe_b64encode(other_credential).decode().rstrip("=")
+
+    rejected = client.post(
+        "/api/webauthn/auth/verify",
+        json={"credential": {"id": encoded_id}},
+    )
+
+    assert rejected.status_code == 401
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
+    with app.app_context():
+        assert AuthenticationSession.query.count() == 0
+        assert PendingAuthentication.query.filter_by(user_id=user_id).count() == 1
 
 
 def test_webauthn_auth_verify_rejects_oversized_json_before_challenge(

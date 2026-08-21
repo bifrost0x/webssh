@@ -4,6 +4,104 @@ const test = require('node:test');
 const diagnostics = require('../../static/js/session-diagnostics.js');
 
 
+function fakeElement(tagName = 'div') {
+    const classes = new Set();
+    const attributes = new Map();
+    const listeners = new Map();
+    return {
+        tagName: tagName.toUpperCase(),
+        children: [],
+        parentNode: null,
+        hidden: false,
+        disabled: false,
+        textContent: '',
+        dataset: {},
+        classList: {
+            add(...values) { values.forEach(value => classes.add(value)); },
+            remove(...values) { values.forEach(value => classes.delete(value)); },
+            contains(value) { return classes.has(value); },
+            toggle(value, force) {
+                const next = force === undefined ? !classes.has(value) : Boolean(force);
+                if (next) classes.add(value);
+                else classes.delete(value);
+                return next;
+            },
+        },
+        appendChild(child) {
+            child.parentNode?.removeChild?.(child);
+            child.parentNode = this;
+            this.children.push(child);
+            return child;
+        },
+        removeChild(child) {
+            this.children = this.children.filter(candidate => candidate !== child);
+            child.parentNode = null;
+        },
+        setAttribute(name, value) { attributes.set(name, String(value)); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+        removeAttribute(name) { attributes.delete(name); },
+        addEventListener(type, handler) { listeners.set(type, handler); },
+        removeEventListener(type, handler) {
+            if (listeners.get(type) === handler) listeners.delete(type);
+        },
+        click() { listeners.get('click')?.({ target: this }); },
+        querySelectorAll() { return []; },
+    };
+}
+
+
+function createDiagnosticsLayoutHarness() {
+    const ids = new Map();
+    const body = fakeElement('body');
+    const mount = fakeElement('section');
+    const overlay = fakeElement('div');
+    const drawer = fakeElement('section');
+    const trigger = fakeElement('button');
+    const backdrop = fakeElement('button');
+    const close = fakeElement('button');
+    const expand = fakeElement('button');
+    const refresh = fakeElement('button');
+    overlay.classList.add('hidden');
+    overlay.appendChild(backdrop);
+    overlay.appendChild(drawer);
+    drawer.appendChild(expand);
+    drawer.appendChild(close);
+    mount.appendChild(overlay);
+    body.appendChild(mount);
+    [
+        ['contextDiagnosticsTab', trigger],
+        ['contextDiagnosticsPanel', mount],
+        ['sessionDiagnosticsOverlay', overlay],
+        ['sessionDiagnosticsBackdrop', backdrop],
+        ['sessionDiagnosticsClose', close],
+        ['sessionDiagnosticsExpand', expand],
+        ['sessionDiagnosticsRefresh', refresh],
+    ].forEach(([id, element]) => ids.set(id, element));
+    const documentRef = {
+        body,
+        createElement: fakeElement,
+        getElementById(id) { return ids.get(id) || null; },
+        querySelector(selector) {
+            return selector === '.session-diagnostics-drawer' ? drawer : null;
+        },
+    };
+    const windowRef = {
+        document: documentRef,
+        addEventListener() {},
+        removeEventListener() {},
+        requestAnimationFrame(callback) { callback(); return 1; },
+        cancelAnimationFrame() {},
+    };
+    return {
+        body, mount, overlay, drawer, trigger, backdrop, close, expand,
+        controller: diagnostics.createController({
+            document: documentRef,
+            window: windowRef,
+        }),
+    };
+}
+
+
 function coreState(extraStats = {}, history = []) {
     return {
         status: 'ready',
@@ -219,6 +317,70 @@ test('returns an unavailable model without telemetry or a connected session', ()
     assert.deepEqual(model.permissionNotices, []);
 });
 
+test('translates generated diagnostics copy without changing remote values', () => {
+    const translated = {
+        'workspace.noActiveSession': 'Keine aktive Sitzung',
+        'diagnostics.statusLive': 'Live-Daten',
+        'diagnostics.currentUtilization': 'Aktuelle Auslastung',
+        'diagnostics.showingServices': '{returned} von {total} Diensten',
+        'diagnostics.showingContainers': '{returned} von {total} Containern',
+        'diagnostics.permissionDocker': 'Docker-Zugriff eingeschränkt',
+        'diagnostics.severityNormal': 'Normalbereich',
+    };
+    const translate = key => translated[key] || key;
+    const denied = inventoryState({ permissionDenied: ['docker'] });
+    const model = diagnostics.buildViewModel(
+        coreState(),
+        null,
+        denied,
+        {},
+        translate,
+    );
+
+    assert.equal(model.host, 'Keine aktive Sitzung');
+    assert.equal(model.status, 'Live-Daten');
+    assert.equal(model.resources.cpu.detail, 'Aktuelle Auslastung');
+    assert.equal(model.resources.cpu.severityLabel, 'Normalbereich');
+    assert.equal(model.systemd.truncationLabel, '4 von 5 Diensten');
+    assert.deepEqual(model.permissionNotices, ['Docker-Zugriff eingeschränkt']);
+});
+
+test('keeps diagnostics openable for a connected session before the first sample', () => {
+    assert.equal(
+        diagnostics.canOpenDiagnostics(
+            { status: 'loading', sessionId: 'session-a', stats: null },
+            { connected: true },
+        ),
+        true,
+    );
+    assert.equal(
+        diagnostics.canOpenDiagnostics(
+            { status: 'disconnected', sessionId: 'session-a', stats: null },
+            { connected: false },
+        ),
+        false,
+    );
+});
+
+test('keeps the embedded diagnostics context available only for a connected session', () => {
+    assert.deepEqual(
+        diagnostics.contextState(
+            { status: 'loading', sessionId: 'session-a', stats: null },
+            { connected: true },
+            true,
+        ),
+        { available: true, open: true },
+    );
+    assert.deepEqual(
+        diagnostics.contextState(
+            { status: 'disconnected', sessionId: 'session-a', stats: null },
+            { connected: false },
+            true,
+        ),
+        { available: false, open: false },
+    );
+});
+
 test('partial telemetry omits empty diagnostic cards and pressure chart', () => {
     const model = diagnostics.buildViewModel({
         status: 'ready',
@@ -234,4 +396,30 @@ test('partial telemetry omits empty diagnostic cards and pressure chart', () => 
     assert.equal(model.resources.cpu, null);
     assert.equal(model.resources.memory.percent, 75);
     assert.equal(model.hasPressureHistory, false);
+});
+
+test('expands embedded diagnostics into the existing right-side overlay and restores it', () => {
+    const harness = createDiagnosticsLayoutHarness();
+    harness.trigger.disabled = false;
+    harness.controller.setOpen(true);
+
+    harness.expand.click();
+
+    assert.equal(harness.overlay.parentNode, harness.body);
+    assert.equal(harness.body.classList.contains('session-diagnostics-open'), true);
+    assert.equal(harness.drawer.getAttribute('role'), 'dialog');
+    assert.equal(harness.drawer.getAttribute('aria-modal'), 'true');
+    assert.equal(harness.backdrop.hidden, false);
+    assert.equal(harness.close.hidden, false);
+    assert.equal(harness.controller.isExpanded(), true);
+
+    harness.close.click();
+
+    assert.equal(harness.overlay.parentNode, harness.mount);
+    assert.equal(harness.body.classList.contains('session-diagnostics-open'), false);
+    assert.equal(harness.drawer.getAttribute('role'), 'region');
+    assert.equal(harness.drawer.getAttribute('aria-modal'), null);
+    assert.equal(harness.backdrop.hidden, true);
+    assert.equal(harness.close.hidden, true);
+    assert.equal(harness.controller.isExpanded(), false);
 });

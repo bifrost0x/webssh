@@ -21,13 +21,29 @@
     };
 
     window.showNotification = function(message, type = 'info', duration) {
+        const presentation = typeof message === 'object' && message !== null
+            ? message
+            : { message, type, duration };
         const container = document.getElementById('notificationContainer');
         const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
+        const notificationType = presentation.type || type;
+        notification.className = `notification notification-${notificationType}`;
+        notification.setAttribute('role', notificationType === 'error' ? 'alert' : 'status');
+        const copy = document.createElement('span');
+        copy.className = 'notification-copy';
+        copy.textContent = String(presentation.message || '');
+        notification.appendChild(copy);
+        if (presentation.action?.label && presentation.action?.url) {
+            const action = document.createElement('a');
+            action.className = 'notification-action';
+            action.href = presentation.action.url;
+            action.textContent = presentation.action.label;
+            notification.appendChild(action);
+        }
         container.appendChild(notification);
 
-        const timeout = duration || (type === 'success' || type === 'info' ? 2000 : 3000);
+        const timeout = presentation.duration
+            || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
         setTimeout(() => {
             notification.classList.add('fade-out');
             setTimeout(() => notification.remove(), 300);
@@ -953,7 +969,12 @@
     });
 
     socket.on('ssh_error', (data) => {
-        showNotification(`SSH Error: ${data.error}`, 'error');
+        const presentation = window.SSHErrorUI?.describeSSHError?.(
+            data,
+            key => window.i18n?.t?.(key),
+            APP_ROOT,
+        ) || { message: `SSH Error: ${data.error}`, type: 'error' };
+        showNotification(presentation);
 
         if (connectTimer) {
             clearInterval(connectTimer);
@@ -1280,50 +1301,50 @@
         hostInput.addEventListener('input', () => {
             const value = hostInput.value.trim();
             const isValid = value && (hostnamePattern.test(value) || ipPattern.test(value));
-            setFieldState(hostInput, hostHint, isValid ? '✓ Valid host' : 'Hostname or IP required', isValid);
+            setFieldState(hostInput, hostHint, isValid ? 'Valid host' : 'Hostname or IP required', isValid);
         });
 
         portInput.addEventListener('input', () => {
             const value = parseInt(portInput.value, 10);
             const isValid = value >= 1 && value <= 65535;
-            setFieldState(portInput, portHint, isValid ? '✓ Valid port' : 'Port 1-65535', isValid);
+            setFieldState(portInput, portHint, isValid ? 'Valid port' : 'Port 1-65535', isValid);
         });
 
         userInput.addEventListener('input', () => {
             const value = userInput.value.trim();
             const isValid = usernamePattern.test(value);
-            setFieldState(userInput, userHint, isValid ? '✓ Valid username' : '1-32 chars, a-z 0-9 _ -', isValid);
+            setFieldState(userInput, userHint, isValid ? 'Valid username' : '1-32 chars, a-z 0-9 _ -', isValid);
         });
 
         if (passwordInput) {
             passwordInput.addEventListener('input', () => {
                 const value = passwordInput.value;
                 const isValid = value.length > 0;
-                setFieldState(passwordInput, passHint, isValid ? '✓ Ready' : 'Password required', isValid);
+                setFieldState(passwordInput, passHint, isValid ? 'Ready' : 'Password required', isValid);
             });
         }
 
         if (keySelect) {
             keySelect.addEventListener('change', () => {
                 const value = keySelect.value;
-                setFieldState(keySelect, keyHint, value ? '✓ Key selected' : 'Select a key', Boolean(value));
+                setFieldState(keySelect, keyHint, value ? 'Key selected' : 'Select a key', Boolean(value));
             });
         }
 
         if (profileNameInput) {
             profileNameInput.addEventListener('input', () => {
                 const value = profileNameInput.value.trim();
-                setFieldState(profileNameInput, profileHint, value ? '✓ Saved name' : '', value ? true : null);
+                setFieldState(profileNameInput, profileHint, value ? 'Saved name' : '', value ? true : null);
             });
         }
 
         if (authTypeSelect) {
             authTypeSelect.addEventListener('change', () => {
                 if (authTypeSelect.value === 'password' && passwordInput) {
-                    setFieldState(passwordInput, passHint, passwordInput.value ? '✓ Ready' : 'Password required', Boolean(passwordInput.value));
+                    setFieldState(passwordInput, passHint, passwordInput.value ? 'Ready' : 'Password required', Boolean(passwordInput.value));
                 }
                 if (authTypeSelect.value === 'key' && keySelect) {
-                    setFieldState(keySelect, keyHint, keySelect.value ? '✓ Key selected' : 'Select a key', Boolean(keySelect.value));
+                    setFieldState(keySelect, keyHint, keySelect.value ? 'Key selected' : 'Select a key', Boolean(keySelect.value));
                 }
             });
         }
@@ -1465,7 +1486,7 @@
                 saveStatus.textContent = 'Saving...';
                 saveStatus.className = 'notepad-save-status saving';
             } else if (status === 'saved') {
-                saveStatus.textContent = '✓ Saved';
+                saveStatus.textContent = 'Saved';
                 saveStatus.className = 'notepad-save-status saved';
                 setTimeout(() => {
                     saveStatus.className = 'notepad-save-status';
@@ -1494,165 +1515,6 @@
                     updateSaveStatus('saved');
                 }
             }, 300);
-        });
-    }
-
-    function setupResizeHandle() {
-        const handle = document.getElementById('resizeHandle');
-        const workspace = document.getElementById('workspace');
-        const terminalArea = workspace.querySelector('.terminal-area');
-        const notepadPanel = document.getElementById('notepadPanel');
-
-        if (!handle || !workspace || !terminalArea || !notepadPanel) {
-            return;
-        }
-
-        let isResizing = false;
-        let startX = 0;
-        let startNotepadWidth = 0;
-
-        const saveLayout = (notepadWidth) => {
-            localStorage.setItem('workspace-notepad-width', String(Math.round(notepadWidth)));
-        };
-
-        const loadLayout = () => {
-            const notepadWidth = parseFloat(localStorage.getItem('workspace-notepad-width'));
-            if (!Number.isNaN(notepadWidth) && notepadWidth > 0) {
-                workspace.style.setProperty('--notepad-width', `${notepadWidth}px`);
-            }
-        };
-
-        const startResize = (e) => {
-            if (e.target.closest('.notepad-toggle-btn')) {
-                return;
-            }
-
-            isResizing = true;
-            startX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-            startNotepadWidth = notepadPanel.offsetWidth;
-
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-
-            if (e.pointerId !== undefined) {
-                handle.setPointerCapture(e.pointerId);
-            }
-
-            e.preventDefault();
-        };
-
-        const resize = (e) => {
-            if (!isResizing) {
-                return;
-            }
-
-            const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-            const deltaX = clientX - startX;
-            const workspaceWidth = workspace.offsetWidth;
-
-            let newNotepadWidth = startNotepadWidth - deltaX;
-
-            const minNotepadWidth = 180;
-            const maxNotepadWidth = workspaceWidth * 0.6;
-            const minTerminalWidth = workspaceWidth * 0.3;
-
-            newNotepadWidth = Math.max(minNotepadWidth, Math.min(maxNotepadWidth, newNotepadWidth));
-            let newTerminalWidth = workspaceWidth - newNotepadWidth;
-
-            if (newTerminalWidth < minTerminalWidth) {
-                newTerminalWidth = minTerminalWidth;
-                newNotepadWidth = workspaceWidth - minTerminalWidth;
-            }
-
-            workspace.style.setProperty('--notepad-width', `${newNotepadWidth}px`);
-
-            if (SessionManager.hasAnySessions()) {
-                const activeSessionId = SessionManager.getActiveSession();
-                if (activeSessionId) {
-                    setTimeout(() => {
-                        TerminalManager.fitTerminal(activeSessionId);
-                        const size = TerminalManager.getTerminalSize(activeSessionId);
-                        if (size && window.socket) {
-                            window.socket.emit('ssh_resize', {
-                                session_id: activeSessionId,
-                                rows: size.rows,
-                                cols: size.cols
-                            });
-                        }
-                    }, 50);
-                }
-            }
-
-            e.preventDefault();
-        };
-
-        const stopResize = () => {
-            if (!isResizing) {
-                return;
-            }
-
-            isResizing = false;
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-
-            const notepadWidth = notepadPanel.getBoundingClientRect().width;
-            if (!Number.isNaN(notepadWidth) && notepadWidth > 0) {
-                saveLayout(notepadWidth);
-            }
-        };
-
-        handle.addEventListener('pointerdown', startResize);
-        document.addEventListener('pointermove', resize);
-        document.addEventListener('pointerup', stopResize);
-        document.addEventListener('pointercancel', stopResize);
-
-        handle.style.touchAction = 'none';
-
-        loadLayout();
-
-        const notepadToggle = document.getElementById('notepadToggle');
-        if (notepadToggle && notepadPanel) {
-            const initiallyCollapsed = localStorage.getItem('notepadCollapsed') === 'true';
-            if (initiallyCollapsed) {
-                notepadPanel.classList.add('collapsed');
-                notepadToggle.textContent = '▶';
-            }
-            notepadToggle.setAttribute('aria-expanded', String(!initiallyCollapsed));
-            notepadToggle.addEventListener('pointerdown', (e) => {
-                e.stopPropagation();
-            });
-            notepadToggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                notepadPanel.classList.toggle('collapsed');
-                const isCollapsed = notepadPanel.classList.contains('collapsed');
-                notepadToggle.textContent = isCollapsed ? '▶' : '◀';
-                notepadToggle.setAttribute('aria-expanded', String(!isCollapsed));
-                localStorage.setItem('notepadCollapsed', isCollapsed);
-                setTimeout(() => {
-                    if (window.TerminalManager) {
-                        TerminalManager.fitAllTerminals();
-                    }
-                }, 300);
-            });
-        }
-
-        handle.addEventListener('dblclick', (e) => {
-            if (e.target.closest('.notepad-toggle-btn')) {
-                return;
-            }
-
-            workspace.style.removeProperty('--notepad-width');
-            localStorage.removeItem('workspace-notepad-width');
-            showNotification('Layout reset to default', 'info');
-
-            if (SessionManager.hasAnySessions()) {
-                const activeSessionId = SessionManager.getActiveSession();
-                if (activeSessionId) {
-                    setTimeout(() => {
-                        TerminalManager.fitTerminal(activeSessionId);
-                    }, 50);
-                }
-            }
         });
     }
 
@@ -2007,6 +1869,14 @@
         }
 
         SessionManager.init();
+        window.workspaceLayoutController = window.WorkspaceLayoutController?.createController({
+            window,
+            document,
+            socket: window.socket,
+            terminalManager: TerminalManager,
+            sessionManager: SessionManager,
+        });
+        window.workspaceLayoutController?.init();
 
         CommandWorkspace.init();
         CommandLibrary.init();
@@ -2235,7 +2105,7 @@
         // Scrollback lines setting
         const scrollbackInput = document.getElementById('scrollbackInput');
         if (scrollbackInput) {
-            const savedScrollback = localStorage.getItem('terminalScrollback') || '150';
+            const savedScrollback = localStorage.getItem('terminalScrollback') || '500';
             scrollbackInput.value = savedScrollback;
             scrollbackInput.addEventListener('change', () => {
                 let val = parseInt(scrollbackInput.value, 10);
@@ -2285,6 +2155,46 @@
                             );
                         }
                         confirmSessionCloseInput.disabled = false;
+                    },
+                );
+            });
+        }
+
+        const disconnectSessionActionSelect = document.getElementById('disconnectSessionActionSelect');
+        if (disconnectSessionActionSelect) {
+            disconnectSessionActionSelect.value = SessionManager.disconnectSessionAction;
+            disconnectSessionActionSelect.addEventListener('change', () => {
+                const previousValue = SessionManager.disconnectSessionAction;
+                const requestedValue = disconnectSessionActionSelect.value;
+                disconnectSessionActionSelect.disabled = true;
+
+                if (!window.socket || !['retry', 'close'].includes(requestedValue)) {
+                    disconnectSessionActionSelect.value = previousValue;
+                    disconnectSessionActionSelect.disabled = false;
+                    showNotification(
+                        window.i18n ? i18n.t('settings.saveFailed') : 'Failed to save setting',
+                        'error',
+                    );
+                    return;
+                }
+
+                window.socket.emit(
+                    'set_disconnect_session_action',
+                    { action: requestedValue },
+                    response => {
+                        const savedValue = response?.disconnect_session_action;
+                        if (response?.success && ['retry', 'close'].includes(savedValue)) {
+                            SessionManager.disconnectSessionAction = savedValue;
+                            document.body.dataset.disconnectSessionAction = savedValue;
+                            disconnectSessionActionSelect.value = savedValue;
+                        } else {
+                            disconnectSessionActionSelect.value = previousValue;
+                            showNotification(
+                                window.i18n ? i18n.t('settings.saveFailed') : 'Failed to save setting',
+                                'error',
+                            );
+                        }
+                        disconnectSessionActionSelect.disabled = false;
                     },
                 );
             });
@@ -2400,7 +2310,7 @@
             if (!menu || !menuBtn) {
                 return;
             }
-            if (!e.target.closest('.header-buttons') && e.target !== menuBtn) {
+            if (!e.target.closest('.header-buttons') && !menuBtn.contains(e.target)) {
                 menu.classList.remove('is-open');
             }
         });
@@ -2411,7 +2321,6 @@
         setupDropUpload();
         setupSplitControls();
         setupNotepad();
-        setupResizeHandle();
         TerminalSearch.init();
         FilePreview.init();
         window.sessionWorkspace = window.SessionWorkspaceUI?.init({

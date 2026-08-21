@@ -90,7 +90,11 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Command Palette** - Fuzzy command launcher (Ctrl+K)
 
 <p align="center">
-  <img src="assets/session-workspace.png" alt="Single-session workspace with SSH terminal, embedded SFTP browser, live Linux server statistics, and notepad" width="1100">
+  <img src="assets/session-workspace.png" alt="Single-session workspace with SSH terminal and the embedded Files context" width="1100">
+</p>
+
+<p align="center">
+  <img src="assets/session-commands-context.png" alt="Single-session workspace with the Commands context for safe command insertion" width="1100">
 </p>
 
 <p align="center">
@@ -137,9 +141,11 @@ WebSSH is a secure, self-hosted workspace for SSH terminals and SFTP file operat
 - **Host Key Auditing** - Persistent `known_hosts` policy with change detection
 - **Host Trust Center** - Users can inspect and revoke their SSH trust records; administrators manage the global trust store
 - **Passkeys** - Optional username-less WebAuthn sign-in with discoverable credentials and a safe legacy-passkey replacement flow
+- **Authenticator Apps** - Optional TOTP-based MFA with encrypted secrets, replay protection, and one-time recovery codes
 - **LDAP / Active Directory** - Optional fail-closed LDAP or LDAPS sign-in with explicit stable-identity linking, strict TLS verification, and an opt-in Compose overlay
 - **Recovery Codes** - One-time account recovery codes stored only as hashes
 - **OpenID Connect** - Optional authorization-code flow with PKCE and explicit administrator linking by stable issuer and subject
+- **Administrator Step-up** - Sensitive Admin actions require a one-use authorization bound to the current login session, exact action, and exact target
 - **Audit Logging & Export** - Structured JSON logs for auth, SSH, and file events, plus bounded administrator export and configurable retention
 - **Session Ownership Checks** - Guards against cross-user session hijacking
 - **Resource Quotas** - Global and per-user limits for SSH sessions, temporary connections, transfers, background jobs, and temporary disk use
@@ -483,9 +489,10 @@ docker build -t webssh:local .
 | `WEBAUTHN_RP_ID` | With WebAuthn | `localhost` | Exact relying-party domain, without scheme or port |
 | `WEBAUTHN_RP_NAME` | No | `WebSSH` | Name shown by the authenticator |
 | `WEBAUTHN_ORIGIN` | With WebAuthn | `https://localhost` | Exact public browser origin, including scheme and optional port |
+| `TOTP_ENABLED` | No | `false` | Allow authenticator-app enrollment; an administrator must also activate TOTP before it is visible to users |
 | `MAX_WEBAUTHN_JSON_SIZE` | No | `65536` | JSON request limit for WebAuthn endpoints in bytes; values above the hard 65536-byte ceiling are capped |
 | `HOST_KEY_MANAGEMENT_ENABLED` | No | `true` | Enable user and administrator host-key inventory and deletion routes |
-| `RECOVERY_CODES_ENABLED` | No | `true` | Enable recovery-code generation and alternative login |
+| `RECOVERY_CODES_ENABLED` | No | `true` | Enable recovery-code generation and second-factor recovery after valid primary authentication |
 | `MAX_RECOVERY_JSON_SIZE` | No | `4096` | JSON request limit for recovery-code endpoints in bytes; values above the hard 4096-byte ceiling are capped |
 | `AUDIT_EXPORT_ENABLED` | No | `true` | Enable administrator audit viewer, bounded export, and retention controls |
 | `OIDC_ENABLED` | No | `false` | Enable the optional authorization-code flow with PKCE |
@@ -496,6 +503,12 @@ docker build -t webssh:local .
 | `OIDC_ALLOWED_SUBJECTS` | No | - | Optional comma-separated subject allowlist |
 | `OIDC_ALLOWED_DOMAINS` | No | - | Optional comma-separated email-domain policy; identity linking still uses issuer and subject only |
 | `OIDC_LOGIN_RATE_LIMIT` | No | `10 per minute` | Per-IP rate limit for starting OIDC login |
+| `OIDC_MFA_AMR_VALUES` | No | - | Exact signed `amr` values that this provider documents as MFA; comma-separated and provider-specific |
+| `OIDC_MFA_ACR_VALUES` | No | - | Exact signed `acr` values that this provider documents as MFA |
+| `OIDC_PHISHING_RESISTANT_AMR_VALUES` | No | - | Exact signed `amr` values accepted as phishing-resistant authentication |
+| `OIDC_PHISHING_RESISTANT_ACR_VALUES` | No | - | Exact signed `acr` values accepted as phishing-resistant authentication |
+| `OIDC_STEP_UP_ACR_VALUES` | No | - | Provider-specific `acr_values` requested during administrator reauthentication |
+| `STEP_UP_MAX_AGE_SECONDS` | No | `300` | Maximum age of recent strong authentication reused for an administrator action (60-900); issued grants remain one-use and expire after five minutes |
 | `LDAP_ENABLED` | No | `false` | Enable optional LDAP/LDAPS authentication; the provided `docker-compose.ldap.yml` overlay sets this to `true` |
 | `LDAP_AUTO_PROVISION` | No | `false` | Create a non-admin LDAP-managed account after the first successful directory sign-in; existing local usernames are never claimed automatically |
 | `LDAP_PROVIDER_ID` | With LDAP | `default` | Stable local identifier for this directory; do not change it after linking users |
@@ -539,12 +552,63 @@ docker build -t webssh:local .
 | `BACKUP_MAX_COMPRESSION_RATIO` | No | `200` | Maximum decompressed-to-compressed ratio for one backup member |
 | `BACKUP_MAX_MANIFEST_SIZE` | No | `10485760` | Maximum decompressed manifest size (10 MiB) |
 
-Passkeys, OIDC, host trust, recovery codes, and audit retention are managed
-from the Security and Admin pages. Recovery codes are shown once and stored
-only as hashes. OIDC never auto-links by email: an administrator must link the
-provider's stable `(issuer, subject)` identity to an existing local account.
-When OIDC runs in Docker, mount the client-secret file read-only and point
-`OIDC_CLIENT_SECRET_FILE` at its path inside the container.
+Passkeys, authenticator apps, OIDC, LDAP, recovery, host trust, and audit
+retention are managed from the Security and Admin pages. Authentication
+features have three independent states: the deployment configuration allows
+the capability, startup validation reports it ready, and an administrator
+activates it. A feature is usable only when all three are true. Therefore an
+Admin toggle cannot enable OIDC, LDAP, Passkeys, or TOTP when the corresponding
+Compose/environment configuration is absent; the UI keeps that toggle locked
+and explains why. This preserves a normal Docker homelab: operators opt in to
+the capability through Compose and then decide when users may use it.
+
+The bundled Compose files expose the TOTP capability to the Admin page by
+default, but do not activate it for users. A fresh installation still requires
+an explicit Admin decision before authenticator enrollment appears. Existing
+`SecurityFeatureState` decisions are preserved, and an explicit
+`TOTP_ENABLED=false` remains a deployment-level kill switch.
+
+Changing a feature policy affects new login and enrollment attempts. It does
+not forcibly terminate an already authenticated browser session or an active
+SSH session. The user can continue working until the session reaches its normal
+idle/lifetime limit. Explicit account actions such as lock, delete, or an
+administrator MFA reset retain their documented revocation behavior.
+
+MFA is optional per account. Users who do not enroll a factor keep the existing
+password, LDAP, or sufficiently configured OIDC login. Once a user enables MFA,
+a basic password or LDAP verification becomes the primary step and WebSSH asks
+for one of that account's available Passkeys or TOTP authenticators. Recovery
+Codes are shown once, stored only as hashes, and can be used only after a valid
+primary login. A recovered session is restricted to `/security`, factor
+replacement, explicit MFA disable, and logout until the account is repaired.
+
+OIDC never auto-links by email: an administrator must link the provider's
+stable `(issuer, subject)` identity to an existing local account. WebSSH trusts
+MFA or phishing-resistant OIDC assurance only when a signed `amr` or `acr`
+claim exactly matches an operator-configured value. Missing, malformed, or
+unmapped claims remain basic assurance. `OIDC_STEP_UP_ACR_VALUES` requests the
+provider's own step-up policy with `prompt=login` and `max_age=0`; push approval
+is available only when the configured provider/app performs it and returns the
+documented signed assurance claim. WebSSH does not send mobile push messages
+itself. When OIDC runs in Docker, mount the client-secret file read-only and
+point `OIDC_CLIENT_SECRET_FILE` at its path inside the container.
+
+Sensitive administrator mutations use action-bound step-up authorization. A
+non-MFA local administrator confirms the current password; an MFA-enabled
+administrator uses a Passkey or TOTP; OIDC can reuse sufficiently recent signed
+assurance or open provider reauthentication. The resulting opaque grant is
+bound to the current server-side authentication session, exact action, exact
+target and assurance level, is consumed before the action runs, and cannot be
+reused for another user or operation. The browser keeps it only in the active
+JavaScript call and never in local or session storage.
+
+Sensitive account-factor changes use the same narrow grant contract without
+mixing account and administrator permissions. A local session confirms with
+the WebSSH password, an LDAP session performs a fresh directory bind, and an
+OIDC session reauthenticates at its provider. WebSSH never asks an OIDC user for
+the unrelated local fallback password. MFA-enabled accounts may choose an
+available Passkey or TOTP authenticator; each grant is bound to the exact
+factor action and target and is consumed once.
 
 #### Enable LDAP or LDAPS with Docker Compose
 
@@ -637,10 +701,11 @@ troubleshooting, rollback details, and the disposable local test laboratory.
 Passkey sign-in uses username-less discoverable credentials so the
 authentication-options endpoint does not reveal whether an account exists.
 Passkeys created by an older release as non-discoverable credentials cannot be
-used by this flow; sign in with the local password or a recovery code and
-use **Replace legacy passkey** on the Security page. After current-password
-confirmation, that path deliberately permits the same authenticator to create
-a discoverable replacement. Test it before deleting the old record.
+used by this flow. Complete the normal primary login and another available MFA
+factor, or use a Recovery Code after primary verification, then use **Replace
+legacy passkey** on the Security page. After recent primary authentication,
+that path deliberately permits the same authenticator to create a discoverable
+replacement. Test it before deleting the old record.
 
 JSONL audit exports begin with a `webssh_audit_export` metadata record. Its
 `truncated`, `scanned`, and `scan_limit` fields state whether the export reached

@@ -48,8 +48,11 @@ Instead, report vulnerabilities via:
 | CSRF Protection | Flask-WTF tokens on all forms |
 | Rate Limiting | 5 login attempts per minute per IP |
 | Passkeys | Optional WebAuthn with exact RP ID/origin checks, user verification, and one-use server-side challenges |
-| Recovery | Single-use codes hashed at rest; administrator regeneration requires reauthentication and target confirmation |
-| OIDC | Optional authorization-code flow with PKCE, nonce/state validation, and explicit issuer/subject linking |
+| TOTP | Optional authenticator-app MFA with per-user encrypted secrets, bounded enrollment, and replay-safe time-step consumption |
+| Recovery | Single-use codes hashed at rest; usable only after valid primary authentication and restricted until factor replacement or explicit MFA disable |
+| LDAP | Optional StartTLS/LDAPS authentication with certificate verification, stable directory identities, and fail-closed session revalidation |
+| OIDC | Optional authorization-code flow with PKCE, nonce/state validation, explicit issuer/subject linking, and operator-defined signed `acr`/`amr` assurance |
+| Admin Step-up | One-use five-minute grants bound to the current authentication session, exact action, exact target, and required assurance |
 
 ### Data Protection
 
@@ -160,6 +163,43 @@ Instead, report vulnerabilities via:
     persisted file. Rotate secrets owned by an external secret manager through
     that manager and a separately controlled key migration.
 
+11. **Keep a tested local break-glass administrator**
+    OIDC and LDAP remain deployment-gated and can fail independently of
+    WebSSH. Keep at least one local administrator with a strong password and
+    tested Passkey or TOTP factor. Store its Recovery Codes offline. Enabling a
+    provider in the Admin Panel is impossible unless the matching deployment
+    configuration was present and validated at startup.
+
+### Optional MFA and assurance
+
+MFA is not globally mandatory. An account continues to use its existing login
+until that user enrolls a Passkey or authenticator app and explicitly enables
+MFA. LDAP users can enroll local WebSSH factors after a recent directory login;
+their directory password is neither retained nor converted into a local
+password.
+
+OIDC authentication is basic assurance unless a signed claim exactly matches
+the provider-specific `OIDC_MFA_*` or `OIDC_PHISHING_RESISTANT_*` configuration.
+Do not copy claim values from another provider. Verify the provider's token
+contract and Conditional Access/authentication policy, then test both positive
+and negative claims. Mobile push is an identity-provider capability, not a
+WebSSH push service. Administrator provider reauthentication requests
+`prompt=login`, `max_age=0`, and configured `OIDC_STEP_UP_ACR_VALUES`.
+
+Recovery Codes do not replace the primary credential. After a successful
+password or LDAP primary step, one code creates a restricted recovery session.
+Only the Security page, replacement-factor enrollment, explicit MFA disable,
+logout, and required static resources are available. A code is atomically
+consumed and cannot be replayed.
+
+Sensitive administrator mutations require action-bound step-up. Grants are
+opaque, stored only as hashes server-side, consumed before route execution,
+and never stored in browser local/session storage. A rule or feature-toggle
+change does not kill existing browser or SSH sessions: affected users receive
+the new policy on later authentication/enrollment, while active SSH work ends
+through the normal configured session lifetime. Explicit account lock, delete,
+and MFA-reset operations still revoke the target account as documented.
+
 ### Container Security
 
 The Docker image runs as non-root user (`appuser`) with:
@@ -189,8 +229,9 @@ upgrade. No persistent-data rollback or format rewrite is required.
 |------------|-------------|------------|
 | In-Memory Rate Limiting | Bypassed with multiple workers | Use single worker (default) |
 | TOFU Host Keys | First connection auto-accepted | Review logs for new host keys |
-| Optional identity features | WebAuthn and OIDC are disabled by default | Configure exact public origins and keep local administrator recovery tested before enabling OIDC |
-| No LDAP | LDAP is not implemented | Use local accounts or the optional reviewed OIDC integration |
+| Optional identity features | Passkeys, TOTP, OIDC, and LDAP require both deployment allowance and Admin activation | Configure exact origins/provider settings, validate readiness, and keep local administrator recovery tested before activation |
+| OIDC claim semantics vary | `acr` and `amr` do not have universal assurance meanings | Allowlist only values documented and tested for the configured provider; otherwise WebSSH treats the login as basic assurance |
+| In-process live sessions | Active SSH state requires exactly one WebSSH worker | Keep the documented single `gthread` worker and use the normal session lifetime instead of policy-triggered mass termination |
 
 ## Security Audit
 

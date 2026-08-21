@@ -5,31 +5,100 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
-    <title>Login - Web SSH Terminal</title>
+    <meta name="webauthn-configured-origin" content="{{ webauthn_origin }}">
+    <meta name="webauthn-rp-id" content="{{ webauthn_rp_id }}">
+    <title data-i18n="auth.loginPageTitle">Sign in · WebSSH</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=14">
 </head>
 <body data-theme="glass" data-use-theme-preference>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
 
-    <div class="language-selector">
-        <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
-            <span id="currentLangFlag">🇬🇧</span>
-            <span id="currentLangName">English</span>
-        </button>
-        <div class="lang-dropdown" id="langDropdown"></div>
-    </div>
+    <div class="auth-shell">
+        <header class="auth-utility-bar">
+            <div class="auth-instance-state">
+                <span class="auth-status-dot" aria-hidden="true"></span>
+                <span data-i18n="auth.instanceStatus">WebSSH instance</span>
+                <strong data-i18n="auth.signInAvailable">Sign-in available</strong>
+            </div>
+            <div class="language-selector">
+                <button class="lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdown">
+                    <span class="material-icons" aria-hidden="true">language</span>
+                    <span id="currentLangFlag" class="language-code">EN</span>
+                    <span id="currentLangName">English</span>
+                    <span class="material-icons" aria-hidden="true">expand_more</span>
+                </button>
+                <div class="lang-dropdown" id="langDropdown"></div>
+            </div>
+        </header>
 
-    <div class="glow-orb glow-orb-1"></div>
-    <div class="glow-orb glow-orb-2"></div>
-    <div class="glow-orb glow-orb-3"></div>
-
-    <div class="auth-container">
+        <main class="auth-shell-content">
+            <section class="auth-access-dock">
+                <div class="auth-context-panel">
+                    <div class="auth-brand-lockup">
+                        <div class="auth-product-brand">
+                            <img class="auth-product-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}" alt="WebSSH">
+                        </div>
+                        <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
+                    </div>
+                    <div class="auth-context-copy">
+                        {% if mfa_required %}
+                        <span class="auth-brand-eyebrow" data-i18n="auth.verificationOverviewEyebrow">Confirm sign-in</span>
+                        <h1 data-i18n="auth.verificationOverviewTitle">Confirm that it is really you.</h1>
+                        <p data-i18n="auth.verificationOverviewHint">Use one of your available factors for this second step. A recovery code opens a restricted session where you renew your account protection.</p>
+                        <ul class="auth-path-list" aria-label="Available verification methods" data-i18n-aria-label="auth.availableVerificationMethods">
+                            {% if 'totp' in mfa_methods %}
+                            <li data-auth-path="totp">
+                                <span class="material-icons" aria-hidden="true">phonelink_lock</span>
+                                <span><strong data-i18n="security.methodTotp">Authenticator app</strong><small data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</small></span>
+                            </li>
+                            {% endif %}
+                            {% if 'passkey' in mfa_methods %}
+                            <li data-auth-path="passkey">
+                                <span class="material-icons" aria-hidden="true">key</span>
+                                <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.passkeyAccessHint">Use a Passkey registered to your account</small></span>
+                            </li>
+                            {% endif %}
+                            {% if 'recovery' in mfa_methods %}
+                            <li data-auth-path="recovery">
+                                <span class="material-icons" aria-hidden="true">lock_reset</span>
+                                <span><strong data-i18n="security.methodRecoveryCode">Recovery code</strong><small data-i18n="auth.recoveryAccessHint">One-time access followed by factor repair</small></span>
+                            </li>
+                            {% endif %}
+                        </ul>
+                        {% else %}
+                        <span class="auth-brand-eyebrow" data-i18n="auth.welcomeToWebssh">Welcome to WebSSH</span>
+                        <h1 data-i18n="auth.serverControlCenter">The control center for your servers.</h1>
+                        <ul class="auth-product-pillars" aria-label="WebSSH product areas" data-i18n-aria-label="auth.productAreas">
+                            <li data-product-area="ssh-workspaces">
+                                <span class="material-icons" aria-hidden="true">terminal</span>
+                                <strong data-i18n="navigation.sshWorkspaces">SSH Workspaces</strong>
+                            </li>
+                            <li data-product-area="file-manager">
+                                <span class="material-icons" aria-hidden="true">folder_open</span>
+                                <strong data-i18n="files.fileManager">File Manager</strong>
+                            </li>
+                            <li data-product-area="hosts">
+                                <span class="material-icons" aria-hidden="true">dns</span>
+                                <strong data-i18n="connectionAssets.hosts">Hosts</strong>
+                            </li>
+                            <li data-product-area="commands">
+                                <span class="material-icons" aria-hidden="true">code</span>
+                                <strong data-i18n="commands.workspace">Commands</strong>
+                            </li>
+                        </ul>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="auth-form-panel">
+            <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
-                <div class="logo">🖥️</div>
-                <h1 data-i18n="app.title">Web SSH Terminal</h1>
-                <p data-i18n="auth.signInPrompt">Sign in to your account</p>
+                <span class="auth-form-eyebrow" data-i18n="auth.login">Sign in</span>
+                <h1 data-i18n="auth.signInPrompt">Access your SSH workspace</h1>
+                <p data-i18n="auth.signInSourceHint">Use the identity source configured for this WebSSH instance.</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -41,14 +110,62 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
+            <div id="authNotificationContainer" class="auth-notification-container" aria-live="polite" aria-atomic="true"></div>
 
             {% set selected_auth_source = auth_source if auth_source in ('local', 'ldap') else ('ldap' if ldap_enabled else 'local') %}
-            <section id="passwordLoginMode" class="login-mode">
+            {% if mfa_required and 'totp' in mfa_methods %}
+            <section id="totpMfaPanel" class="login-mode">
+                <h2 data-i18n="auth.twoFactorAuthentication">Two-factor authentication</h2>
+                <p data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</p>
+                <div class="form-group">
+                    <label for="totpMfaCode" data-i18n="security.authenticatorCode">Authenticator code</label>
+                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
+                </div>
+                <div class="alert alert-error hidden" id="totpMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitTotpMfa" data-i18n="auth.verifyCode">Verify code</button>
+            </section>
+            {% endif %}
+            {% if mfa_required and 'recovery' in mfa_methods %}
+            <section id="recoveryMfaPanel" class="login-mode">
+                <h2 data-i18n="auth.useRecoveryCode">Use a recovery code</h2>
+                <p data-i18n="auth.recoverySessionHint">This creates a restricted session where you must add a replacement factor or explicitly disable MFA.</p>
+                <div class="form-group">
+                    <label for="recoveryMfaCode" data-i18n="auth.recoveryCode">Recovery code</label>
+                    <input type="text" id="recoveryMfaCode" class="form-control" autocomplete="one-time-code">
+                </div>
+                <div class="alert alert-error hidden" id="recoveryMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitRecoveryMfa" data-i18n="auth.continueWithRecoveryCode">Continue with recovery code</button>
+            </section>
+            {% endif %}
+            {% if not mfa_required %}
+            <div class="auth-method-switcher" role="tablist" aria-label="Choose how to sign in" data-i18n-aria-label="auth.chooseSignInMethod">
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="password" aria-selected="true" aria-controls="passwordLoginMode">
+                    <span class="material-icons" aria-hidden="true">person</span>
+                    <span><strong data-i18n="auth.localOrDirectory">Local / Directory</strong><small data-i18n="auth.usernameAndPassword">Username and password</small></span>
+                </button>
+                {% if webauthn_enabled %}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="passkey" aria-selected="false" aria-controls="passkeyLoginMode">
+                    <span class="material-icons" aria-hidden="true">key</span>
+                    <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.deviceAuthentication">Device authentication</small></span>
+                </button>
+                {% endif %}
+                {% if oidc_enabled %}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="oidc" aria-selected="false" aria-controls="oidcLoginMode">
+                    <span class="material-icons" aria-hidden="true">verified_user</span>
+                    <span><strong data-i18n="security.methodOidc">Identity provider</strong><small data-i18n="auth.organizationSso">SSO with your organization</small></span>
+                </button>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div class="auth-credentials-zone">
+            <section id="passwordLoginMode" class="login-mode{% if mfa_required %} hidden{% endif %}" data-auth-mode-panel="password" aria-hidden="{{ 'true' if mfa_required else 'false' }}">
+            <div id="passwordAuthenticationForms"{% if mfa_required %} class="hidden"{% endif %}>
             {% if ldap_enabled %}
             <div class="form-group">
-                <label for="authenticationSource">Authentication Source</label>
+                <label for="authenticationSource" data-i18n="auth.authenticationSource">Authentication source</label>
                 <select id="authenticationSource" class="form-control" aria-controls="localLoginForm ldapLoginForm">
-                    <option value="local"{% if selected_auth_source == 'local' %} selected{% endif %}>Local account</option>
+                    <option value="local"{% if selected_auth_source == 'local' %} selected{% endif %} data-i18n="auth.localAccount">Local account</option>
                     <option value="ldap"{% if selected_auth_source == 'ldap' %} selected{% endif %}>{{ ldap_provider_id }}</option>
                 </select>
             </div>
@@ -59,9 +176,9 @@
                 <div class="form-group">
                     <label for="username" data-i18n="auth.username">Username</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">👤</span>
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
                         <input type="text" id="username" name="username" class="form-control"
-                               data-i18n="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} autofocus{% endif %}>
+                               data-i18n-placeholder="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} autofocus{% endif %}>
                     </div>
                     <div class="field-hint" id="loginUsernameHint"></div>
                 </div>
@@ -69,10 +186,10 @@
                 <div class="form-group">
                     <label for="password" data-i18n="auth.password">Password</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">🔒</span>
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="password" name="password" class="form-control"
-                               data-i18n="auth.password" placeholder="Password" required>
-                        <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                               data-i18n-placeholder="auth.password" placeholder="Password" required>
+                        <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                     <div class="field-hint" id="loginPasswordHint"></div>
                 </div>
@@ -83,7 +200,7 @@
                 </div>
 
                 <button type="submit" class="btn-primary">
-                    <span data-i18n="auth.login">Sign In</span> ✨
+                    <span data-i18n="auth.login">Sign In</span>
                 </button>
             </form>
 
@@ -91,109 +208,59 @@
             <form method="POST" action="{{ url_for('ldap.ldap_login') }}" id="ldapLoginForm" class="auth-source-form{% if selected_auth_source != 'ldap' %} hidden{% endif %}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
-                    <label for="ldapUsername">Directory username</label>
+                    <label for="ldapUsername" data-i18n="auth.directoryUsername">Directory username</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">&#128100;</span>
-                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" required{% if selected_auth_source == 'ldap' %} autofocus{% endif %}>
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
+                        <input type="text" id="ldapUsername" name="username" class="form-control" autocomplete="username" data-i18n-placeholder="auth.directoryUsername" placeholder="Directory username" required{% if selected_auth_source == 'ldap' %} autofocus{% endif %}>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="ldapPassword">Directory password</label>
+                    <label for="ldapPassword" data-i18n="security.directoryPassword">Directory password</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">&#128274;</span>
-                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" required>
-                        <button type="button" class="password-toggle" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">&#128065;&#65039;</button>
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
+                        <input type="password" id="ldapPassword" name="password" class="form-control" autocomplete="current-password" data-i18n-placeholder="security.directoryPassword" placeholder="Directory password" required>
+                        <button type="button" class="password-toggle material-icons" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                 </div>
                 {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
-                <button type="submit" class="btn-primary">Sign in</button>
+                <button type="submit" class="btn-primary" data-i18n="auth.login">Sign in</button>
             </form>
             {% endif %}
-            {% if webauthn_enabled %}
-            <button type="button" class="btn-primary" id="passkeyLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithPasskey">
-                Sign in with passkey
-            </button>
-            {% endif %}
-            {% if oidc_enabled %}
-            <a class="btn-primary" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}" style="display:block;text-align:center;margin-top:12px;text-decoration:none;" data-i18n="auth.signInWithIdentityProvider">
-                Sign in with identity provider
-            </a>
-            {% endif %}
-            {% if recovery_codes_enabled %}
-            <button type="button" class="btn-primary" id="recoveryLoginBtn" style="margin-top:12px;" data-i18n="auth.signInWithRecoveryCode">
-                Sign in with recovery code
-            </button>
-            <div id="recoveryLoginPanel" class="hidden" style="margin-top:12px;">
-                <div class="form-group">
-                    <label for="recoveryUsername" data-i18n="auth.username">Username</label>
-                    <input type="text" id="recoveryUsername" class="form-control" autocomplete="username" data-i18n-placeholder="auth.username" placeholder="Username">
                 </div>
-                <div class="form-group">
-                    <label for="recoveryCode" data-i18n="auth.recoveryCode">Recovery code</label>
-                    <input type="text" id="recoveryCode" class="form-control" autocomplete="one-time-code" data-i18n-placeholder="auth.recoveryCode" placeholder="Recovery code">
-                </div>
-                <button type="button" class="btn-primary" id="submitRecoveryLogin" data-i18n="auth.useRecoveryCode">
-                    Use recovery code
-                </button>
+            </section>
+            {% if webauthn_enabled and (not mfa_required or 'passkey' in mfa_methods) %}
+            <section id="passkeyLoginMode" class="login-mode auth-provider-mode{% if not mfa_required %} hidden{% endif %}" data-auth-mode-panel="passkey" aria-hidden="{{ 'false' if mfa_required else 'true' }}">
+                <span class="auth-provider-mode-icon material-icons" aria-hidden="true">key</span>
+                <h2 data-i18n="auth.passkeyPrompt">Use a Passkey</h2>
+                <p data-i18n="auth.passkeyPromptHint">Authenticate with a Passkey saved on this device or another nearby device.</p>
+                <button type="button" class="auth-provider-button" id="passkeyLoginBtn"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="auth.signInWithPasskey">Sign in with passkey</span></button>
+            </section>
+            {% endif %}
+            {% if oidc_enabled and not mfa_required %}
+            <section id="oidcLoginMode" class="login-mode auth-provider-mode hidden" data-auth-mode-panel="oidc" aria-hidden="true">
+                <span class="auth-provider-mode-icon material-icons" aria-hidden="true">verified_user</span>
+                <h2 data-i18n="auth.identityProviderPrompt">Continue with your identity provider</h2>
+                <p data-i18n="auth.identityProviderPromptHint">WebSSH redirects you to the configured provider. Provider credentials are never entered here.</p>
+                <a class="auth-provider-button" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}"><span class="material-icons" aria-hidden="true">verified_user</span><span data-i18n="auth.signInWithIdentityProvider">Sign in with identity provider</span></a>
+            </section>
+            {% endif %}
             </div>
-            {% endif %}
-
-            <div class="auth-footer">
+            <div class="auth-footer{% if mfa_required %} hidden{% endif %}">
                 {% if registration_enabled %}
                 <span data-i18n="auth.noAccount">Don't have an account?</span>
                 <a href="{{ url_for('register') }}" data-i18n="auth.registerHere">Register here</a>
                 {% endif %}
             </div>
-            </section>
         </div>
+            </div>
+            </div>
+            </section>
+        </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}"></script>
-    <script>
-        function toggleLangDropdown() {
-            document.getElementById('langDropdown').classList.toggle('show');
-        }
-
-        function initLanguageSelector() {
-            const dropdown = document.getElementById('langDropdown');
-            const languages = i18n.getLanguages();
-            const currentLang = i18n.getLanguage();
-
-            dropdown.innerHTML = '';
-            languages.forEach(lang => {
-                const option = document.createElement('div');
-                option.className = 'lang-option' + (lang.code === currentLang ? ' active' : '');
-                option.innerHTML = `${lang.flag} ${lang.name}`;
-                option.onclick = () => {
-                    i18n.setLanguage(lang.code);
-                    updateCurrentLang(lang);
-                    toggleLangDropdown();
-                };
-                dropdown.appendChild(option);
-            });
-
-            const current = languages.find(l => l.code === currentLang);
-            if (current) {
-                updateCurrentLang(current);
-            }
-        }
-
-        function updateCurrentLang(lang) {
-            document.getElementById('currentLangFlag').textContent = lang.flag;
-            document.getElementById('currentLangName').textContent = lang.name;
-        }
-
-        window.addEventListener('click', (e) => {
-            if (!e.target.closest('.language-selector')) {
-                document.getElementById('langDropdown').classList.remove('show');
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initLanguageSelector();
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=2"></script>
 </body>
 </html>

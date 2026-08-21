@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
 from flask_socketio import SocketIO
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
@@ -49,8 +49,8 @@ def _initialize_persistent_storage(app):
     initialize_file_logging(config.DATA_DIR)
     with app.app_context():
         db.create_all()
-        from .models import ensure_user_columns, ensure_ssh_session_columns
-        ensure_user_columns()
+        from .models import ensure_security_columns, ensure_ssh_session_columns
+        ensure_security_columns()
         ensure_ssh_session_columns()
         from .auth import ensure_initial_admin, sync_admin_users
         ensure_initial_admin()
@@ -115,6 +115,8 @@ def create_app(
 
     @app.context_processor
     def inject_url_prefix():
+        from .security_features import feature_is_active
+
         registration_available = (
             is_registration_enabled()
             or is_bootstrap_registration_available()
@@ -125,15 +127,18 @@ def create_app(
             'tmux_enabled': config.TMUX_ENABLED,
             'tmux_default': config.TMUX_DEFAULT,
             'admin_panel_enabled': config.ADMIN_PANEL_ENABLED,
-            'webauthn_enabled': config.WEBAUTHN_ENABLED,
-            'oidc_enabled': config.OIDC_ENABLED,
-            'ldap_enabled': config.LDAP_ENABLED,
+            'webauthn_enabled': feature_is_active('passkey'),
+            'webauthn_origin': config.WEBAUTHN_ORIGIN,
+            'webauthn_rp_id': config.WEBAUTHN_RP_ID,
+            'totp_enabled': feature_is_active('totp'),
+            'oidc_enabled': feature_is_active('oidc'),
+            'ldap_enabled': feature_is_active('ldap'),
             'ldap_provider_id': config.LDAP_PROVIDER_ID,
             'ldap_managed': bool(
                 current_user.is_authenticated
                 and current_user.is_ldap_managed
             ),
-            'recovery_codes_enabled': config.RECOVERY_CODES_ENABLED,
+            'recovery_codes_enabled': feature_is_active('recovery'),
             'host_key_management_enabled': (
                 config.HOST_KEY_MANAGEMENT_ENABLED
             ),
@@ -205,6 +210,34 @@ def create_app(
             elif stored_epoch != epoch:
                 logout_user()
                 session.clear()
+                return redirect(url_for('login', next=request.path))
+        if initialize_storage and current_user.is_authenticated:
+            from .auth_assurance import current_authentication_session
+
+            auth_session = current_authentication_session()
+            if auth_session is None:
+                username = current_user.username
+                logout_user()
+                session.clear()
+                log_warning(
+                    'Authentication session rejected',
+                    user=username,
+                )
+                return redirect(url_for('login', next=request.path))
+            from .auth_assurance import (
+                recovery_route_allowed,
+                recovery_session_required,
+            )
+            if (
+                recovery_session_required(auth_session)
+                and not recovery_route_allowed(request.path, request.method)
+            ):
+                if request.path.startswith('/api/'):
+                    return jsonify({
+                        'error': 'A replacement factor or explicit MFA disable is required',
+                        'code': 'recovery_required',
+                    }), 403
+                abort(403)
 
     trusted_proxies = config.TRUSTED_PROXIES
     if trusted_proxies > 0:
@@ -237,31 +270,57 @@ def create_app(
     from .request_limits import init_request_limits
     from .webauthn_routes import webauthn_blueprint
     init_request_limits(app)
+
+    @app.before_request
+    def enforce_security_feature_gate():
+        from .security_features import feature_is_active, request_feature_name
+
+        feature_name = request_feature_name(request.path)
+        if feature_name is not None and not feature_is_active(feature_name):
+            abort(404)
+
     csrf.init_app(app)
     from .cli import register_cli
     from .audit_export import audit_export_blueprint
     from .admin_backup import admin_backup_blueprint
+    from .account_step_up_routes import account_step_up_blueprint
     from .health import health_blueprint
     from .host_key_routes import host_key_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
     from .recovery_routes import recovery_blueprint
+    from .step_up_routes import step_up_blueprint
+    from .totp_routes import totp_blueprint
     from .transfer_routes import transfer_blueprint, transfer_manager
     register_cli(app)
+    oidc_ready = not config.OIDC_ENABLED
     if initialize_oidc:
         init_oidc(app)
+        if config.OIDC_ENABLED:
+            oidc_ready = True
     app.register_blueprint(audit_export_blueprint)
+    app.register_blueprint(account_step_up_blueprint)
     app.register_blueprint(admin_backup_blueprint)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(host_key_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)
+    app.register_blueprint(step_up_blueprint)
+    app.register_blueprint(totp_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
+    ldap_ready = not config.LDAP_ENABLED
     if config.LDAP_ENABLED:
         from .ldap_routes import ldap_blueprint
         from .ldap_service import validate_runtime_files
         validate_runtime_files()
         app.register_blueprint(ldap_blueprint)
+        ldap_ready = True
+    from .security_features import initialize_feature_readiness
+    initialize_feature_readiness(
+        app,
+        oidc_ready=oidc_ready,
+        ldap_ready=ldap_ready,
+    )
     if initialize_storage:
         _initialize_persistent_storage(app)
     if start_runtime:
@@ -334,6 +393,7 @@ def create_app(
     def setup_background_tasks():
         """Setup background tasks like session cleanup."""
         from .auth import cleanup_inactive_socket_sessions
+        from .models import cleanup_expired_security_rows
         from .ssh_manager import cleanup_idle_sessions
         lifecycle = app.extensions['runtime_lifecycle']
 
@@ -342,8 +402,14 @@ def create_app(
                 try:
                     with app.app_context():
                         deleted = cleanup_inactive_socket_sessions(timeout_minutes=30)
+                        security_deleted = cleanup_expired_security_rows()
                         if deleted > 0:
                             log_info(f"Cleaned up {deleted} inactive sessions")
+                        if security_deleted > 0:
+                            log_info(
+                                "Cleaned up expired authentication state",
+                                count=security_deleted,
+                            )
                 except Exception as e:
                     log_error("Session cleanup error", error=str(e))
 
@@ -400,7 +466,11 @@ def create_app(
                 current_user,
                 app.config['SECRET_KEY'],
             ),
-            confirm_session_close=settings.get('confirm_session_close', True),
+            confirm_session_close=settings.get('confirm_session_close', False),
+            disconnect_session_action=settings.get(
+                'disconnect_session_action',
+                'retry',
+            ),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
         )
 
@@ -428,11 +498,39 @@ def create_app(
             password = request.form.get('password')
             user, error = authenticate_user(username, password)
             if user:
+                from .auth_assurance import (
+                    AssuranceLevel,
+                    available_mfa_methods,
+                    begin_authentication,
+                    browser_session_binding,
+                    consume_pending,
+                    finalize_login,
+                )
+
                 session.clear()
                 remember_me = request.form.get('remember') == 'on'
-                login_user(user, remember=remember_me)
-                log_login_attempt(username, True, client_ip, request.user_agent.string)
-                return redirect(url_for('index'))
+                binding = browser_session_binding()
+                token = begin_authentication(
+                    user,
+                    'password',
+                    assurance=AssuranceLevel.BASIC,
+                    session_binding=binding,
+                    remember=remember_me,
+                    continuation=request.args.get('next', '/'),
+                )
+                if user.mfa_enabled:
+                    methods = available_mfa_methods(user)
+                    session['_pending_authentication'] = token
+                    return render_template(
+                        'login.html',
+                        auth_source='local',
+                        mfa_required=True,
+                        pending_token=token,
+                        mfa_methods=methods,
+                    )
+                pending = consume_pending(token, binding)
+                finalize_login(pending, methods=['password'])
+                return redirect(pending.continuation)
             else:
                 log_login_attempt(username, False, client_ip, request.user_agent.string)
                 flash(error, 'error')
@@ -474,8 +572,26 @@ def create_app(
                     first_user_only=not ongoing_registration,
                 )
                 if user:
+                    from .auth_assurance import (
+                        AssuranceLevel,
+                        begin_authentication,
+                        browser_session_binding,
+                        consume_pending,
+                        finalize_login,
+                    )
+
                     session.clear()
-                    login_user(user)
+                    binding = browser_session_binding()
+                    token = begin_authentication(
+                        user,
+                        'password',
+                        assurance=AssuranceLevel.BASIC,
+                        session_binding=binding,
+                        remember=False,
+                        continuation='/',
+                    )
+                    pending = consume_pending(token, binding)
+                    finalize_login(pending, methods=['password'])
                     log_registration(username, True, client_ip)
                     flash('Account created successfully!', 'success')
                     return redirect(url_for('index'))
@@ -488,11 +604,22 @@ def create_app(
     @login_required
     def logout():
         from . import user_lifecycle
+        from .auth_assurance import delete_current_authentication_session
 
         user_id = current_user.id
         log_logout(current_user.username, get_client_ip())
+        try:
+            delete_current_authentication_session()
+        except Exception as exc:
+            db.session.rollback()
+            log_warning(
+                'Authentication session deletion failed during logout',
+                user_id=user_id,
+                error=type(exc).__name__,
+            )
         user_lifecycle.revoke_user_access(user_id, socketio)
         logout_user()
+        session.clear()
         return redirect(url_for('login'))
 
     @app.route('/change-password', methods=['GET', 'POST'])
@@ -547,14 +674,53 @@ def create_app(
     @app.route('/security')
     @login_required
     def security_center():
+        from .auth_assurance import (
+            authentication_methods,
+            current_authentication_session,
+            recovery_session_required,
+        )
+
         settings = get_user_settings(current_user.id)
+        auth_session = current_authentication_session()
+        method_labels = {
+            'password': 'WebSSH password',
+            'ldap': 'LDAP directory',
+            'oidc': 'Identity provider (OIDC)',
+            'passkey': 'Passkey',
+            'totp': 'Authenticator app',
+            'recovery_code': 'Recovery code',
+        }
+        method_i18n_keys = {
+            'password': 'security.methodPassword',
+            'ldap': 'security.methodLdap',
+            'oidc': 'security.methodOidc',
+            'passkey': 'security.methodPasskey',
+            'totp': 'security.methodTotp',
+            'recovery_code': 'security.methodRecoveryCode',
+        }
+        methods = authentication_methods(auth_session)
+        primary_method = methods[0] if methods else 'password'
         return render_template(
             'security.html',
             username=current_user.username,
             theme=settings.get('theme', 'glass'),
+            recovery_mode=recovery_session_required(auth_session),
+            authentication_methods=tuple(
+                {
+                    'id': method,
+                    'label': method_labels.get(method, method),
+                    'i18n_key': method_i18n_keys.get(
+                        method,
+                        'security.methodUnknown',
+                    ),
+                }
+                for method in (methods or ('password',))
+            ),
+            authentication_primary_method=primary_method,
+            account_mfa_enabled=bool(current_user.mfa_enabled),
         )
 
-    from .decorators import admin_required
+    from .decorators import admin_required, step_up_required
     from .models import User
     from .audit_logger import read_audit_logs
 
@@ -564,6 +730,7 @@ def create_app(
             'username': u.username,
             'is_admin': bool(u.is_admin),
             'is_locked': bool(u.is_locked),
+            'mfa_enabled': bool(u.mfa_enabled),
             'ldap_managed': bool(u.is_ldap_managed),
             'created_at': u.created_at.isoformat() if u.created_at else None,
             'last_login': u.last_login.isoformat() if u.last_login else None,
@@ -587,6 +754,10 @@ def create_app(
     @app.route('/admin/api/users', methods=['POST'])
     @admin_required
     @login_required
+    @step_up_required(
+        'user.create',
+        lambda: str((request.get_json(silent=True) or {}).get('username') or ''),
+    )
     def admin_create_user():
         data = request.get_json(silent=True) or {}
         username = (data.get('username') or '').strip()
@@ -605,6 +776,10 @@ def create_app(
     @app.route('/admin/api/users/<int:user_id>/<action>', methods=['POST'])
     @admin_required
     @login_required
+    @step_up_required(
+        'user.manage',
+        lambda user_id, action: f'{user_id}:{action}',
+    )
     def admin_user_action(user_id, action):
         from . import user_lifecycle
 
@@ -671,6 +846,42 @@ def create_app(
                  user=target.username, action=action)
         return jsonify({'user': _user_to_dict(target)})
 
+    @app.route('/admin/api/users/<int:user_id>/mfa', methods=['DELETE'])
+    @admin_required
+    @login_required
+    @step_up_required('user.mfa_reset', lambda user_id: user_id)
+    def admin_reset_user_mfa(user_id):
+        from . import user_lifecycle
+        from .models import (
+            RecoveryCode,
+            TOTPAuthenticator,
+            TOTPEnrollment,
+            WebAuthnChallenge,
+            WebAuthnCredential,
+        )
+
+        data = request.get_json(silent=True) or {}
+        target = db.session.get(User, user_id)
+        if target is None:
+            return jsonify({'error': 'User not found'}), 404
+        if data.get('confirm_username') != target.username:
+            return jsonify({'error': 'Target confirmation does not match'}), 400
+        WebAuthnCredential.query.filter_by(user_id=target.id).delete()
+        WebAuthnChallenge.query.filter_by(user_id=target.id).delete()
+        TOTPAuthenticator.query.filter_by(user_id=target.id).delete()
+        TOTPEnrollment.query.filter_by(user_id=target.id).delete()
+        RecoveryCode.query.filter_by(user_id=target.id).delete()
+        target.mfa_enabled = False
+        target.auth_generation = int(target.auth_generation or 0) + 1
+        db.session.commit()
+        user_lifecycle.revoke_user_access(target.id, socketio)
+        log_warning(
+            'Admin reset user MFA',
+            admin=current_user.username,
+            user=target.username,
+        )
+        return jsonify({'ok': True})
+
     @app.route('/admin/api/audit', methods=['GET'])
     @admin_required
     @login_required
@@ -696,6 +907,7 @@ def create_app(
     @app.route('/admin/api/settings', methods=['POST'])
     @admin_required
     @login_required
+    @step_up_required('settings.update', 'global')
     def admin_set_settings():
         data = request.get_json(silent=True) or {}
         if 'registration_enabled' in data:
@@ -717,5 +929,74 @@ def create_app(
             log_info("Admin changed registration setting",
                      admin=current_user.username, registration_enabled=val)
         return jsonify({'registration_enabled': is_registration_enabled()})
+
+    @app.route('/admin/api/security-features', methods=['GET'])
+    @admin_required
+    @login_required
+    def admin_get_security_features():
+        from .security_features import all_feature_statuses
+
+        return jsonify({
+            'features': [
+                status.to_dict() for status in all_feature_statuses()
+            ],
+        })
+
+    @app.route(
+        '/admin/api/security-features/<feature_name>',
+        methods=['POST'],
+    )
+    @admin_required
+    @login_required
+    @step_up_required(
+        'security_feature.update',
+        lambda feature_name: feature_name,
+    )
+    def admin_set_security_feature(feature_name):
+        from .security_features import (
+            FeatureUnavailable,
+            UnknownSecurityFeature,
+            feature_status,
+            set_feature_active,
+        )
+
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
+            return jsonify({'error': 'enabled must be a boolean'}), 400
+        try:
+            current_status = feature_status(feature_name)
+            if (
+                current_status.active
+                and data['enabled'] is False
+                and data.get('confirm_session_fallback') is not True
+            ):
+                log_warning(
+                    'Security feature change needs fallback confirmation',
+                    admin=current_user.username,
+                    feature=feature_name,
+                )
+                return jsonify({
+                    'error': 'Explicit confirmation is required',
+                    'code': 'session_fallback_confirmation_required',
+                    'message': (
+                        'Existing browser, SSH, and tmux sessions will not be '
+                        'terminated. New logins and factor ceremonies will '
+                        'follow the disabled rule immediately.'
+                    ),
+                    'feature': current_status.to_dict(),
+                }), 409
+            status = set_feature_active(
+                feature_name,
+                data['enabled'],
+                current_user.id,
+            )
+        except UnknownSecurityFeature:
+            abort(404)
+        except FeatureUnavailable as exc:
+            return jsonify({
+                'error': exc.status.reason,
+                'feature': exc.status.to_dict(),
+            }), 409
+        return jsonify({'feature': status.to_dict()})
 
     return app

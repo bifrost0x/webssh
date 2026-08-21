@@ -2,6 +2,8 @@
 
 import pytest
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 ADMIN_REQUESTS = (
     pytest.param('get', '/admin', None, id='admin-page'),
@@ -26,6 +28,18 @@ ADMIN_REQUESTS = (
         {'registration_enabled': True},
         id='set-settings',
     ),
+    pytest.param(
+        'get',
+        '/admin/api/security-features',
+        None,
+        id='get-security-features',
+    ),
+    pytest.param(
+        'post',
+        '/admin/api/security-features/totp',
+        {'enabled': False},
+        id='set-security-feature',
+    ),
 )
 
 ADMIN_RULE_PATHS = (
@@ -34,6 +48,11 @@ ADMIN_RULE_PATHS = (
     pytest.param('/admin/api/users/1/lock', id='user-action'),
     pytest.param('/admin/api/audit', id='audit-log'),
     pytest.param('/admin/api/settings', id='settings'),
+    pytest.param('/admin/api/security-features', id='security-features'),
+    pytest.param(
+        '/admin/api/security-features/totp',
+        id='security-feature',
+    ),
 )
 
 
@@ -82,12 +101,29 @@ def _prepare_role(app, client, role):
     return target_id
 
 
-def _admin_request(client, method, path, data, target_id):
+def _admin_request(client, method, path, data, target_id, headers=None):
     request = getattr(client, method)
     path = path.format(target_id=target_id)
     if data is None:
-        return request(path)
-    return request(path, json=data)
+        return request(path, headers=headers)
+    return request(path, json=data, headers=headers)
+
+
+def _mutation_step_up(client, path, data, target_id):
+    resolved = path.format(target_id=target_id)
+    if resolved == '/admin/api/users':
+        return password_step_up_headers(client, 'user.create', data['username'])[0]
+    if resolved.endswith('/unlock'):
+        return password_step_up_headers(
+            client, 'user.manage', f'{target_id}:unlock'
+        )[0]
+    if resolved == '/admin/api/settings':
+        return password_step_up_headers(client, 'settings.update', 'global')[0]
+    if resolved.endswith('/security-features/totp'):
+        return password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0]
+    return None
 
 
 @pytest.mark.parametrize('role', ('anonymous', 'normal', 'locked', 'admin'))
@@ -190,6 +226,20 @@ def test_enabled_admin_routes_redirect_locked_users(app, client, method, path, d
             200,
             id='set-settings',
         ),
+        pytest.param(
+            'get',
+            '/admin/api/security-features',
+            None,
+            200,
+            id='get-security-features',
+        ),
+        pytest.param(
+            'post',
+            '/admin/api/security-features/totp',
+            {'enabled': False},
+            200,
+            id='set-security-feature',
+        ),
     ),
 )
 def test_enabled_admin_routes_allow_administrators(
@@ -197,7 +247,12 @@ def test_enabled_admin_routes_allow_administrators(
 ):
     target_id = _prepare_role(app, client, 'admin')
 
-    response = _admin_request(client, method, path, data, target_id)
+    headers = (
+        _mutation_step_up(client, path, data, target_id)
+        if method == 'post'
+        else None
+    )
+    response = _admin_request(client, method, path, data, target_id, headers)
 
     assert response.status_code == expected_status
 
@@ -216,6 +271,9 @@ def test_admin_settings_rejects_non_boolean_without_overwriting(
     response = client.post(
         '/admin/api/settings',
         json={'registration_enabled': 'true'},
+        headers=password_step_up_headers(
+            client, 'settings.update', 'global'
+        )[0],
     )
 
     assert response.status_code == 400
@@ -247,6 +305,9 @@ def test_production_profile_rejects_enabling_registration(
     response = client.post(
         '/admin/api/settings',
         json={'registration_enabled': True},
+        headers=password_step_up_headers(
+            client, 'settings.update', 'global'
+        )[0],
     )
 
     assert response.status_code == 400
@@ -254,6 +315,215 @@ def test_production_profile_rejects_enabling_registration(
         'error': 'Registration cannot be enabled in the production profile'
     }
     assert not path.exists()
+
+
+def test_security_feature_status_exposes_all_supported_gates(app, client):
+    _prepare_role(app, client, 'admin')
+
+    response = client.get('/admin/api/security-features')
+
+    assert response.status_code == 200
+    features = response.get_json()['features']
+    assert [feature['name'] for feature in features] == [
+        'passkey',
+        'totp',
+        'oidc',
+        'ldap',
+        'recovery',
+    ]
+    assert all(set(feature) == {
+        'name',
+        'deployment_allowed',
+        'ready',
+        'admin_enabled',
+        'active',
+        'reason',
+        'configuration_keys',
+        'documentation_url',
+    } for feature in features)
+
+
+def test_admin_page_includes_security_feature_controls(app, client):
+    _prepare_role(app, client, 'admin')
+
+    response = client.get('/admin')
+
+    assert response.status_code == 200
+    assert b'id="securityFeatureList"' in response.data
+    assert b'id="securityFeatureStatus"' in response.data
+
+
+def test_security_feature_enable_returns_same_unavailable_reason_as_status(
+    app,
+    client,
+):
+    _prepare_role(app, client, 'admin')
+    before = client.get('/admin/api/security-features').get_json()
+    oidc_before = next(
+        feature for feature in before['features']
+        if feature['name'] == 'oidc'
+    )
+
+    response = client.post(
+        '/admin/api/security-features/oidc',
+        json={'enabled': True},
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'oidc'
+        )[0],
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {
+        'error': oidc_before['reason'],
+        'feature': oidc_before,
+    }
+
+
+def test_security_feature_update_requires_a_boolean(app, client):
+    from app.models import SecurityFeatureState
+
+    _prepare_role(app, client, 'admin')
+
+    response = client.post(
+        '/admin/api/security-features/totp',
+        json={'enabled': 'true'},
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0],
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'enabled must be a boolean'}
+    with app.app_context():
+        assert SecurityFeatureState.query.filter_by(feature='totp').first() is None
+
+
+def test_security_feature_update_activates_ready_totp(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TOTP_ENABLED', True)
+    app.extensions.setdefault('security_feature_readiness', {})['totp'] = (
+        True,
+        None,
+    )
+
+    response = client.post(
+        '/admin/api/security-features/totp',
+        json={'enabled': True},
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0],
+    )
+
+    assert response.status_code == 200
+    feature = response.get_json()['feature']
+    assert feature['admin_enabled'] is True
+    assert feature['active'] is True
+    assert feature['reason'] is None
+
+
+def test_disabling_active_feature_requires_session_fallback_confirmation(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import SecurityFeatureState, db
+
+    _prepare_role(app, client, 'admin')
+    monkeypatch.setattr(config, 'TOTP_ENABLED', True)
+    app.extensions.setdefault('security_feature_readiness', {})['totp'] = (
+        True,
+        None,
+    )
+    with app.app_context():
+        db.session.add(SecurityFeatureState(feature='totp', enabled=True))
+        db.session.commit()
+
+    rejected = client.post(
+        '/admin/api/security-features/totp',
+        json={'enabled': False},
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0],
+    )
+    accepted = client.post(
+        '/admin/api/security-features/totp',
+        json={
+            'enabled': False,
+            'confirm_session_fallback': True,
+        },
+        headers=password_step_up_headers(
+            client, 'security_feature.update', 'totp'
+        )[0],
+    )
+
+    assert rejected.status_code == 409
+    assert rejected.get_json()['code'] == 'session_fallback_confirmation_required'
+    assert 'not be terminated' in rejected.get_json()['message']
+    assert accepted.status_code == 200
+    assert accepted.get_json()['feature']['active'] is False
+
+
+def test_admin_mfa_reset_removes_all_factors_and_revokes_target(
+    app, client, monkeypatch
+):
+    from app import user_lifecycle
+    from app.models import (
+        RecoveryCode,
+        TOTPAuthenticator,
+        TOTPEnrollment,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    target_id = _prepare_role(app, client, 'admin')
+    with app.app_context():
+        target = db.session.get(User, target_id)
+        original_generation = target.auth_generation
+        target.mfa_enabled = True
+        db.session.add_all((
+            WebAuthnCredential(
+                user_id=target_id,
+                credential_id=b'reset-passkey',
+                public_key=b'public-key',
+                transports='[]',
+            ),
+            RecoveryCode(user_id=target_id, code_hash=b'r' * 32),
+        ))
+        db.session.commit()
+    revoked = []
+    monkeypatch.setattr(
+        user_lifecycle,
+        'revoke_user_access',
+        lambda user_id, socketio_instance=None: revoked.append(user_id),
+    )
+    headers = password_step_up_headers(
+        client, 'user.mfa_reset', target_id
+    )[0]
+
+    response = client.delete(
+        f'/admin/api/users/{target_id}/mfa',
+        json={'confirm_username': 'targetuser'},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert revoked == [target_id]
+    with app.app_context():
+        target = db.session.get(User, target_id)
+        assert target.mfa_enabled is False
+        assert target.auth_generation == original_generation + 1
+        assert WebAuthnCredential.query.filter_by(user_id=target_id).count() == 0
+        assert RecoveryCode.query.filter_by(user_id=target_id).count() == 0
+        assert TOTPAuthenticator.query.filter_by(user_id=target_id).count() == 0
+        assert TOTPEnrollment.query.filter_by(user_id=target_id).count() == 0
 
 
 def test_disabled_panel_hides_admin_navigation(app, client, monkeypatch):

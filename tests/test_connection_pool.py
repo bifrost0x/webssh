@@ -492,6 +492,29 @@ def test_pool_authentication_failure_returns_existing_message(monkeypatch):
     assert clients.append_sockets[0].closed is True
 
 
+def test_pool_host_key_change_returns_structured_fail_closed_error(monkeypatch):
+    pool = make_pool()
+    clients = install_ssh_client(
+        monkeypatch,
+        paramiko.BadHostKeyException(
+            'target.example',
+            paramiko.RSAKey.generate(1024),
+            paramiko.RSAKey.generate(1024),
+        ),
+    )
+
+    connection_id, error = create_connection(pool, password='secret')
+
+    assert connection_id is None
+    assert isinstance(error, ssh_manager.SSHConnectionError)
+    assert str(error) == 'SSH host key changed'
+    assert error.code == 'host_key_changed'
+    assert error.context == 'target'
+    assert pool.connections == {}
+    assert clients[0].closed is True
+    assert clients.append_sockets[0].closed is True
+
+
 def test_pool_reserves_before_network_and_enforces_concurrent_limit(monkeypatch):
     pool = make_pool(global_limit=2, per_user_limit=1)
     clients = install_ssh_client(monkeypatch)

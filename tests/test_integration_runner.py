@@ -11,6 +11,15 @@ from tests.integration import test_paramiko5_openssh
 from tests.integration import test_paramiko5_socketio
 
 
+@pytest.fixture(autouse=True)
+def isolated_runner_runtime(monkeypatch, tmp_path):
+    """Keep runner unit tests away from an active disposable SSH lab."""
+    project_root = tmp_path / "project"
+    runtime_dir = project_root / "tests/integration/paramiko5/runtime"
+    monkeypatch.setattr(run_integration_tests, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(run_integration_tests, "RUNTIME_DIR", runtime_dir)
+
+
 def test_runner_main_has_the_documented_int_result():
     assert inspect.signature(run_integration_tests.main).return_annotation is int
 

@@ -731,3 +731,25 @@ def test_ssh_exception_keeps_detail_in_server_log_only(monkeypatch):
         'SSH connection failed',
         {'host': 'target.example:22', 'error': 'server-marker'},
     )]
+
+
+def test_changed_target_host_key_returns_stable_fail_closed_error(monkeypatch):
+    expected = paramiko.RSAKey.generate(1024)
+    presented = paramiko.RSAKey.generate(1024)
+    clients = install_ssh_clients(
+        monkeypatch,
+        paramiko.BadHostKeyException(
+            'target.example',
+            presented,
+            expected,
+        ),
+    )
+
+    session_id, error = connect_target(password='secret')
+
+    assert session_id is None
+    assert str(error) == 'SSH host key changed'
+    assert error.code == 'host_key_changed'
+    assert error.context == 'target'
+    assert clients[0].closed is True
+    assert clients.opened_sockets[0].closed is True

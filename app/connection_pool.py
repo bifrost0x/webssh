@@ -20,6 +20,7 @@ import config
 from .host_key_store import HostKeyStore
 from .network_policy import open_validated_socket, resolve_allowed_target
 from .ssh_key_loader import load_private_key as _load_private_key
+from .ssh_errors import SSHConnectionError
 from .paramiko_channels import open_sftp_client
 from .audit_logger import log_info, log_warning, log_error, log_debug
 from .quota_manager import (
@@ -179,6 +180,16 @@ class TemporaryConnectionPool:
             log_info(f"Temporary connection created: {conn_id}", user=username, host=f"{host}:{port}")
             return conn_id, None
 
+        except paramiko.BadHostKeyException:
+            log_warning(
+                "Pool SSH host key changed",
+                host=f"{host}:{port}",
+            )
+            return None, SSHConnectionError(
+                "SSH host key changed",
+                code="host_key_changed",
+                context="target",
+            )
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"
         except ValueError as e:

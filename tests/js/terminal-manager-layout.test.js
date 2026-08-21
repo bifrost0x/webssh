@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 global.window = {
     addEventListener() {},
@@ -10,6 +12,24 @@ global.navigator = {};
 
 require('../../static/js/terminal-manager.js');
 const TerminalManager = global.window.TerminalManager;
+
+test('new terminals use 500 scrollback lines when no preference is stored', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/terminal-manager.js'),
+        'utf8',
+    );
+
+    assert.match(
+        source,
+        /localStorage\.getItem\('terminalScrollback'\) \|\| '500'/,
+    );
+});
+
+test('virtual keyboard detection follows visual viewport occlusion, not browser resize history', () => {
+    assert.equal(TerminalManager.isVirtualKeyboardVisible(640, 640), false);
+    assert.equal(TerminalManager.isVirtualKeyboardVisible(420, 640), true);
+    assert.equal(TerminalManager.isVirtualKeyboardVisible(0, 640), false);
+});
 
 function terminalInWrapper(unassigned) {
     return {
@@ -60,6 +80,126 @@ test('fitAllTerminals does not reflow unassigned hidden sessions', () => {
 
     assert.deepEqual({ cols: visible.cols, rows: visible.rows }, { cols: 100, rows: 32 });
     assert.deepEqual({ cols: hidden.cols, rows: hidden.rows }, { cols: 120, rows: 40 });
+});
+
+test('fitAndSyncVisibleTerminals reports changed connected PTY dimensions once', () => {
+    const visible = terminalInWrapper(false);
+    const emitted = [];
+    const socket = {
+        emit(name, payload) {
+            emitted.push([name, payload]);
+        },
+    };
+    TerminalManager.sessionTerminals = {
+        visibleSession: ['visibleTerminal'],
+    };
+    TerminalManager.terminals = {
+        visibleTerminal: visible,
+    };
+    TerminalManager.fitAddons = {
+        visibleTerminal: {
+            fit() {
+                visible.cols = 96;
+                visible.rows = 32;
+            },
+        },
+    };
+    TerminalManager.syncedSizes = {};
+
+    const result = TerminalManager.fitAndSyncVisibleTerminals({
+        socket,
+        isConnected: id => id === 'visibleSession',
+    });
+    TerminalManager.fitAndSyncVisibleTerminals({
+        socket,
+        isConnected: () => true,
+    });
+
+    assert.deepEqual(result, [{
+        sessionId: 'visibleSession',
+        rows: 32,
+        cols: 96,
+    }]);
+    assert.deepEqual(emitted, [['ssh_resize', {
+        session_id: 'visibleSession',
+        rows: 32,
+        cols: 96,
+    }]]);
+});
+
+test('session pane activation delegates forced PTY synchronization to TerminalManager', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/session-manager.js'),
+        'utf8',
+    );
+    const setActivePane = source.slice(
+        source.indexOf('    setActivePane(paneIndex) {'),
+        source.indexOf('    focusActivePane() {'),
+    );
+
+    assert.match(setActivePane, /fitAndSyncVisibleTerminals/);
+    assert.match(setActivePane, /force:\s*true/);
+    assert.doesNotMatch(setActivePane, /socket\.emit\('ssh_resize'/);
+});
+
+test('session workspace panel changes synchronize visible remote PTYs', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/session-workspace-ui.js'),
+        'utf8',
+    );
+    const render = source.slice(
+        source.indexOf('            render(state) {'),
+        source.indexOf('        function sync()'),
+    );
+
+    assert.match(render, /fitAndSyncVisibleTerminals/);
+    assert.doesNotMatch(render, /fitAllTerminals/);
+});
+
+test('session workspace renders Files availability before enabling its context', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/session-workspace-ui.js'),
+        'utf8',
+    );
+    const render = source.slice(
+        source.indexOf('            render(state) {'),
+        source.indexOf('        function sync()'),
+    );
+
+    const visibilityRender = render.indexOf(
+        "elements.filesPanel.classList.toggle('hidden', !state.filesAvailable)",
+    );
+    const availabilityUpdate = render.indexOf(
+        "root.workspaceLayoutController?.setContextAvailability?.(",
+    );
+
+    assert.notEqual(visibilityRender, -1);
+    assert.notEqual(availabilityUpdate, -1);
+    assert.ok(
+        visibilityRender < availabilityUpdate,
+        'a nested Files activation must not be overwritten by stale availability state',
+    );
+});
+
+test('active Files context rebinds SFTP after every active-session update', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '../../static/js/session-workspace-ui.js'),
+        'utf8',
+    );
+    const sync = source.slice(
+        source.indexOf('        function sync()'),
+        source.indexOf("        documentRef.addEventListener('session-sftp-request-close'"),
+    );
+
+    const coordinatorUpdate = sync.indexOf('coordinator.update({');
+    const contextSync = sync.indexOf('syncContextControllers();');
+
+    assert.notEqual(coordinatorUpdate, -1);
+    assert.notEqual(contextSync, -1);
+    assert.ok(
+        coordinatorUpdate < contextSync,
+        'Files must reopen or follow the current capable session after state changes',
+    );
 });
 
 test('font size changes update hidden options without fitting hidden terminals', () => {

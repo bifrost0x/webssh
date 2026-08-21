@@ -10,6 +10,14 @@ const TerminalManager = {
     sequencedOutput: {},
     sequencedOutputSizes: {},
     lastOutputSequences: {},
+    syncedSizes: {},
+
+    isVirtualKeyboardVisible(visualViewportHeight, layoutViewportHeight) {
+        if (visualViewportHeight <= 0 || layoutViewportHeight <= 0) {
+            return false;
+        }
+        return (visualViewportHeight / layoutViewportHeight) < 0.75;
+    },
     maxTranscriptSize: 200000,
 
     getCssVar(name, fallback = '') {
@@ -87,7 +95,7 @@ const TerminalManager = {
         const key = terminalKey || sessionId;
         const monoFont = this.getMonoFont();
         const theme = this.buildTheme();
-        const scrollbackLines = parseInt(localStorage.getItem('terminalScrollback') || '150', 10);
+        const scrollbackLines = parseInt(localStorage.getItem('terminalScrollback') || '500', 10);
         const terminal = new Terminal({
             cursorBlink: true,
             fontSize: this.getResponsiveFontSize(),
@@ -368,6 +376,65 @@ const TerminalManager = {
         });
     },
 
+    hasVisibleTerminal(sessionId) {
+        const terminalKeys = this.sessionTerminals[sessionId] || [];
+        return terminalKeys.some(key => {
+            const terminal = this.terminals[key];
+            const wrapper = terminal?.element?.closest?.('.terminal-wrapper');
+            return Boolean(terminal && !wrapper?.classList.contains('unassigned'));
+        });
+    },
+
+    getVisibleTerminalSize(sessionId) {
+        const terminalKeys = this.sessionTerminals[sessionId] || [];
+        for (const key of terminalKeys) {
+            const terminal = this.terminals[key];
+            const wrapper = terminal?.element?.closest?.('.terminal-wrapper');
+            if (terminal && !wrapper?.classList.contains('unassigned')) {
+                return { rows: terminal.rows, cols: terminal.cols };
+            }
+        }
+        return null;
+    },
+
+    fitAndSyncVisibleTerminals({
+        socket,
+        isConnected = () => true,
+        force = false,
+    } = {}) {
+        const synchronized = [];
+        Object.keys(this.sessionTerminals).forEach(sessionId => {
+            if (!isConnected(sessionId) || !this.hasVisibleTerminal(sessionId)) {
+                return;
+            }
+            this.fitTerminal(sessionId);
+            const size = this.getVisibleTerminalSize(sessionId);
+            const previous = this.syncedSizes[sessionId];
+            if (!size || (
+                !force
+                && previous?.rows === size.rows
+                && previous?.cols === size.cols
+            )) {
+                return;
+            }
+            if (!socket?.emit) {
+                return;
+            }
+            socket.emit('ssh_resize', {
+                session_id: sessionId,
+                rows: size.rows,
+                cols: size.cols,
+            });
+            this.syncedSizes[sessionId] = { rows: size.rows, cols: size.cols };
+            synchronized.push({ sessionId, rows: size.rows, cols: size.cols });
+        });
+        return synchronized;
+    },
+
+    clearSyncedSize(sessionId) {
+        delete this.syncedSizes[sessionId];
+    },
+
     getTerminalSize(sessionId) {
         const terminalKeys = this.sessionTerminals[sessionId] || [];
         const terminal = terminalKeys.length > 0 ? this.terminals[terminalKeys[0]] : null;
@@ -391,6 +458,7 @@ const TerminalManager = {
         delete this.sequencedOutput[sessionId];
         delete this.sequencedOutputSizes[sessionId];
         delete this.lastOutputSequences[sessionId];
+        this.clearSyncedSize(sessionId);
     },
 
     setupScrollbar(container, terminal, terminalKey) {
@@ -624,14 +692,14 @@ window.addEventListener('orientationchange', () => {
 });
 
 if (window.visualViewport) {
-    const initialHeight = window.visualViewport.height;
     let keyboardVisible = false;
 
     window.visualViewport.addEventListener('resize', () => {
         const currentHeight = window.visualViewport.height;
-        const heightRatio = currentHeight / initialHeight;
-
-        const newKeyboardVisible = heightRatio < 0.75;
+        const newKeyboardVisible = TerminalManager.isVirtualKeyboardVisible(
+            currentHeight,
+            window.innerHeight,
+        );
 
         if (newKeyboardVisible !== keyboardVisible) {
             keyboardVisible = newKeyboardVisible;

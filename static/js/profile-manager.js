@@ -289,9 +289,9 @@ const ProfileManager = {
         empty.className = 'pane-empty profile-launcher';
 
         const icon = document.createElement('div');
-        icon.className = 'pane-empty-icon';
+        icon.className = 'pane-empty-icon material-icons';
         icon.setAttribute('aria-hidden', 'true');
-        icon.textContent = '💻';
+        icon.textContent = 'dns';
         empty.appendChild(icon);
 
         const profiles = this.profilesLoaded ? this.profiles : [];

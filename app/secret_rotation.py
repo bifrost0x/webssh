@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import stat
 import tempfile
 import uuid
@@ -15,6 +16,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .backup_manager import create_backup
 from .key_encryption import _derive_key, is_encrypted, key_operation_lock
+from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
 from .storage_migrations import CURRENT_STORAGE_VERSIONS, migrate_document
 from .storage_utils import atomic_write_bytes
 
@@ -27,6 +29,7 @@ class SecretRotationError(ValueError):
 class RotationReport:
     rotated_keys: int
     backup_path: Path
+    rotated_totp_secrets: int = 0
 
 
 _MIGRATION_BACKUP_PATTERN = re.compile(
@@ -229,6 +232,65 @@ def _rollback_key_files(originals):
         raise RuntimeError('secret rotation rollback failed') from rollback_error
 
 
+def _stage_totp_rotation(connection, old_secret, new_secret):
+    """Lock and stage every active or pending TOTP ciphertext."""
+    connection.execute('BEGIN IMMEDIATE')
+    available_tables = {
+        row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    staged = []
+    for table in ('totp_authenticators', 'totp_enrollments'):
+        if table not in available_tables:
+            continue
+        try:
+            rows = connection.execute(
+                f'SELECT id, user_id, encrypted_secret FROM {table}'
+            ).fetchall()
+        except sqlite3.DatabaseError as exc:
+            raise SecretRotationError(
+                'TOTP storage schema is invalid'
+            ) from exc
+        for row_id, user_id, ciphertext in rows:
+            try:
+                plaintext = decrypt_totp_secret(
+                    user_id,
+                    ciphertext,
+                    master_secret=old_secret,
+                )
+                replacement = encrypt_totp_secret(
+                    user_id,
+                    plaintext,
+                    master_secret=new_secret,
+                )
+                verified = decrypt_totp_secret(
+                    user_id,
+                    replacement,
+                    master_secret=new_secret,
+                )
+            except Exception as exc:
+                raise SecretRotationError(
+                    'TOTP secret could not be decrypted and verified'
+                ) from exc
+            if not hmac.compare_digest(plaintext, verified):
+                raise SecretRotationError(
+                    'staged TOTP secret verification failed'
+                )
+            staged.append((table, int(row_id), replacement))
+    return staged
+
+
+def _apply_staged_totp_rotation(connection, staged):
+    for table, row_id, ciphertext in staged:
+        cursor = connection.execute(
+            f'UPDATE {table} SET encrypted_secret = ? WHERE id = ?',
+            (sqlite3.Binary(ciphertext), row_id),
+        )
+        if cursor.rowcount != 1:
+            raise SecretRotationError('TOTP storage changed during rotation')
+
+
 def _rotate_secret_locked(old_secret, new_secret, data_dir):
     _validate_secret(old_secret, 'old')
     _validate_secret(new_secret, 'new')
@@ -259,80 +321,100 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
         backup_path = _rotation_backup_path(data_dir)
         create_backup(data_dir, backup_path)
 
-        with tempfile.TemporaryDirectory(
-            dir=data_dir.parent,
-            prefix='.webssh-secret-rotation-',
-        ) as temporary_directory:
-            stage = Path(temporary_directory)
-            staged_files = {}
-            for index, (user_id, path) in enumerate(key_files):
-                staged = stage / f'{index}.key'
-                payload = _reencrypt_key(
-                    old_secret,
-                    new_secret,
-                    user_id,
-                    originals[path],
-                )
-                _write_staged_key(staged, payload)
-                try:
-                    staged_plaintext = Fernet(
-                        _derive_key(new_secret, user_id)
-                    ).decrypt(staged.read_bytes())
-                    original_plaintext = Fernet(
-                        _derive_key(old_secret, user_id)
-                    ).decrypt(originals[path])
-                except InvalidToken as exc:
-                    raise SecretRotationError(
-                        'staged SSH key verification failed'
-                    ) from exc
-                if not hmac.compare_digest(
-                    staged_plaintext,
-                    original_plaintext,
-                ):
-                    raise SecretRotationError(
-                        'staged SSH key verification failed'
+        database_path = data_dir / 'app.db'
+        connection = sqlite3.connect(database_path, timeout=30)
+        try:
+            staged_totp = _stage_totp_rotation(
+                connection,
+                old_secret,
+                new_secret,
+            )
+            with tempfile.TemporaryDirectory(
+                dir=data_dir.parent,
+                prefix='.webssh-secret-rotation-',
+            ) as temporary_directory:
+                stage = Path(temporary_directory)
+                staged_files = {}
+                for index, (user_id, path) in enumerate(key_files):
+                    staged = stage / f'{index}.key'
+                    payload = _reencrypt_key(
+                        old_secret,
+                        new_secret,
+                        user_id,
+                        originals[path],
                     )
-                staged_files[path] = staged
+                    _write_staged_key(staged, payload)
+                    try:
+                        staged_plaintext = Fernet(
+                            _derive_key(new_secret, user_id)
+                        ).decrypt(staged.read_bytes())
+                        original_plaintext = Fernet(
+                            _derive_key(old_secret, user_id)
+                        ).decrypt(originals[path])
+                    except InvalidToken as exc:
+                        raise SecretRotationError(
+                            'staged SSH key verification failed'
+                        ) from exc
+                    if not hmac.compare_digest(
+                        staged_plaintext,
+                        original_plaintext,
+                    ):
+                        raise SecretRotationError(
+                            'staged SSH key verification failed'
+                        )
+                    staged_files[path] = staged
 
-            committed = False
-            try:
-                for path, staged in staged_files.items():
-                    atomic_write_bytes(
-                        path,
-                        staged.read_bytes(),
-                        mode=0o600,
-                    )
-                atomic_write_bytes(
-                    secret_path,
-                    (new_secret + '\n').encode('utf-8'),
-                    mode=0o600,
-                )
-                if _read_persisted_secret(secret_path) != new_secret:
-                    raise SecretRotationError(
-                        'new persisted secret verification failed'
-                    )
-                committed = True
-            finally:
-                if not committed:
-                    rollback_error = None
-                    try:
-                        _rollback_key_files(originals)
-                    except Exception as exc:
-                        rollback_error = exc
-                    try:
+                committed = False
+                try:
+                    _apply_staged_totp_rotation(connection, staged_totp)
+                    for path, staged in staged_files.items():
                         atomic_write_bytes(
-                            secret_path,
-                            (old_secret + '\n').encode('utf-8'),
+                            path,
+                            staged.read_bytes(),
                             mode=0o600,
                         )
-                    except Exception as exc:
-                        rollback_error = rollback_error or exc
-                    if rollback_error is not None:
-                        raise RuntimeError(
-                            'secret rotation rollback failed'
-                        ) from rollback_error
+                    atomic_write_bytes(
+                        secret_path,
+                        (new_secret + '\n').encode('utf-8'),
+                        mode=0o600,
+                    )
+                    if _read_persisted_secret(secret_path) != new_secret:
+                        raise SecretRotationError(
+                            'new persisted secret verification failed'
+                        )
+                    connection.commit()
+                    committed = True
+                finally:
+                    if not committed:
+                        rollback_error = None
+                        try:
+                            connection.rollback()
+                        except Exception as exc:
+                            rollback_error = exc
+                        try:
+                            _rollback_key_files(originals)
+                        except Exception as exc:
+                            rollback_error = rollback_error or exc
+                        try:
+                            atomic_write_bytes(
+                                secret_path,
+                                (old_secret + '\n').encode('utf-8'),
+                                mode=0o600,
+                            )
+                        except Exception as exc:
+                            rollback_error = rollback_error or exc
+                        if rollback_error is not None:
+                            raise RuntimeError(
+                                'secret rotation rollback failed'
+                            ) from rollback_error
+        finally:
+            connection.close()
 
-    return RotationReport(len(key_files), backup_path)
+    return RotationReport(
+        rotated_keys=len(key_files),
+        backup_path=backup_path,
+        rotated_totp_secrets=len(staged_totp),
+    )
 
 
 def rotate_secret(old_secret, new_secret, data_dir):

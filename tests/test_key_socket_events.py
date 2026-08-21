@@ -1,6 +1,11 @@
 """Socket contracts for safe SSH key upload and metadata rename."""
 
+import pytest
+
 from flask import request
+
+
+pytestmark = pytest.mark.usefixtures('direct_socket_authentication')
 
 
 def create_socket_user(app, username):

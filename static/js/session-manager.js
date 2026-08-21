@@ -6,7 +6,10 @@ const SessionManager = {
     layout: 1,
     paneAssignments: [],
     activePaneIndex: 0,
-    confirmSessionClose: document.body?.dataset.confirmSessionClose !== 'false',
+    confirmSessionClose: document.body?.dataset.confirmSessionClose === 'true',
+    disconnectSessionAction: ['retry', 'close'].includes(
+        document.body?.dataset.disconnectSessionAction
+    ) ? document.body.dataset.disconnectSessionAction : 'retry',
 
     init() {
         if (window.socket) {
@@ -43,7 +46,8 @@ const SessionManager = {
             username: data.username,
             auth_type: data.auth_type,
             via_jump: data.via_jump,
-            display_name: data.display_name
+            display_name: data.display_name,
+            restored: true,
         };
 
         // Seed the authoritative snapshot before terminal attachment. Any live
@@ -162,6 +166,7 @@ const SessionManager = {
             port,
             username,
             connected: true,
+            hostKeyVerified: true,
             terminalId,
             os: 'all',
             displayName: storedName || null,
@@ -169,7 +174,8 @@ const SessionManager = {
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
             keyId: sessionData.key_id || null,
-            authType: sessionData.auth_type || 'password'
+            authType: sessionData.auth_type || 'password',
+            restored: sessionData.restored === true,
         };
 
         this.createSessionTab(session_id);
@@ -193,8 +199,8 @@ const SessionManager = {
         this.renderTabLabelContent(tabLabel, sessionId);
 
         const tabEdit = document.createElement('span');
-        tabEdit.className = 'tab-edit';
-        tabEdit.innerHTML = '✎';
+        tabEdit.className = 'tab-edit material-icons';
+        tabEdit.textContent = 'edit';
         const renameLabel = window.i18n ? i18n.t('session.rename') : 'Rename session';
         tabEdit.setAttribute('aria-label', renameLabel);
         tabEdit.setAttribute('title', renameLabel);
@@ -202,9 +208,9 @@ const SessionManager = {
         tabEdit.dataset.i18nTitle = 'session.rename';
 
         const tabClose = document.createElement('span');
-        tabClose.className = 'tab-close';
+        tabClose.className = 'tab-close material-icons';
         tabClose.dataset.sessionId = sessionId;
-        tabClose.innerHTML = '&times;';
+        tabClose.textContent = 'close';
         tabClose.setAttribute('aria-label', window.i18n ? i18n.t('session.close') : 'Close session');
         tabClose.dataset.i18nAriaLabel = 'session.close';
 
@@ -213,21 +219,21 @@ const SessionManager = {
         const sess = this.sessions[sessionId];
         if (sess && sess.viaJump) {
             const jumpBadge = document.createElement('span');
-            jumpBadge.className = 'tab-jump-badge';
-            jumpBadge.textContent = '🛰️';
+            jumpBadge.className = 'tab-jump-badge material-icons';
+            jumpBadge.textContent = 'alt_route';
             jumpBadge.title = 'via ' + sess.viaJump;
             tab.appendChild(jumpBadge);
         }
         if (sess && sess.useTmux) {
             const tmuxBadge = document.createElement('span');
-            tmuxBadge.className = 'tab-tmux-badge';
-            tmuxBadge.textContent = '📌';
+            tmuxBadge.className = 'tab-tmux-badge material-icons';
+            tmuxBadge.textContent = 'push_pin';
             tmuxBadge.title = 'Persistent tmux session' + (sess.tmuxSessionName ? ': ' + sess.tmuxSessionName : '');
             tab.appendChild(tmuxBadge);
         }
         const tabReconnect = document.createElement('span');
-        tabReconnect.className = 'tab-reconnect';
-        tabReconnect.innerHTML = '⟳';
+        tabReconnect.className = 'tab-reconnect material-icons';
+        tabReconnect.textContent = 'refresh';
         tabReconnect.setAttribute('aria-label', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
         tabReconnect.setAttribute('title', window.i18n ? i18n.t('session.reconnect') : 'Reconnect');
         tabReconnect.dataset.i18nAriaLabel = 'session.reconnect';
@@ -493,6 +499,17 @@ const SessionManager = {
             this.sessions[sessionId].connected = (status === 'connected');
         }
 
+        if (
+            status === 'disconnected'
+            && this.disconnectSessionAction === 'close'
+            && !this.sessions[sessionId]?.isPersistentCandidate
+            && !this.sessions[sessionId]?.useTmux
+            && !this.sessions[sessionId]?.tmuxSessionName
+        ) {
+            this.removeSessionUI(sessionId);
+            return;
+        }
+
         if (status === 'disconnected') {
             this.showReconnectOverlay(sessionId);
         } else if (status === 'connected') {
@@ -517,7 +534,8 @@ const SessionManager = {
         const tabClose = document.createElement('span');
         tabClose.className = 'tab-close';
         tabClose.dataset.pendingId = requestId;
-        tabClose.innerHTML = '&times;';
+        tabClose.classList.add('material-icons');
+        tabClose.textContent = 'close';
         tabClose.setAttribute('aria-label', 'Cancel connection');
 
         tab.appendChild(statusDot);
@@ -898,15 +916,14 @@ const SessionManager = {
 
         if (sessionId) {
             setTimeout(() => {
-                TerminalManager.fitTerminal(sessionId);
-                const size = TerminalManager.getTerminalSize(sessionId);
-                if (size && window.socket) {
-                    window.socket.emit('ssh_resize', {
-                        session_id: sessionId,
-                        rows: size.rows,
-                        cols: size.cols
-                    });
-                }
+                TerminalManager.fitAndSyncVisibleTerminals({
+                    socket: window.socket,
+                    isConnected: candidateId => (
+                        candidateId === sessionId
+                        && Boolean(this.sessions[sessionId]?.connected)
+                    ),
+                    force: true,
+                });
             }, 50);
         }
         this.notifyWorkspaceChange();
@@ -994,17 +1011,34 @@ const SessionManager = {
                 card.appendChild(tmuxInfo);
             }
 
-            const button = document.createElement('button');
-            button.className = 'btn btn-primary';
-            button.dataset.sessionId = sessionId;
-            button.dataset.i18n = isPersistent ? 'session.reconnect' : 'session.retry';
-            button.textContent = isPersistent
+            const actions = document.createElement('div');
+            actions.className = 'session-overlay-actions';
+
+            const retryButton = document.createElement('button');
+            retryButton.className = 'btn btn-primary';
+            retryButton.dataset.sessionId = sessionId;
+            retryButton.dataset.i18n = isPersistent ? 'session.reconnect' : 'session.retry';
+            retryButton.textContent = isPersistent
                 ? (window.i18n ? i18n.t('session.reconnect') : 'Reconnect')
                 : (window.i18n ? i18n.t('session.retry') : 'Retry');
-            button.addEventListener('click', () => {
+            retryButton.addEventListener('click', () => {
                 this.prefillConnectionForm(sessionId);
             });
-            card.appendChild(button);
+
+            const closeButton = document.createElement('button');
+            closeButton.className = 'btn btn-secondary session-overlay-close-tab';
+            closeButton.dataset.sessionId = sessionId;
+            closeButton.dataset.i18n = 'session.closeTab';
+            closeButton.textContent = window.i18n
+                ? i18n.t('session.closeTab')
+                : 'Close tab';
+            closeButton.addEventListener('click', () => {
+                this.closeSession(sessionId);
+            });
+
+            actions.appendChild(retryButton);
+            actions.appendChild(closeButton);
+            card.appendChild(actions);
 
             overlay.appendChild(card);
             container.appendChild(overlay);

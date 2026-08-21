@@ -1,36 +1,135 @@
 const { test, expect } = require('playwright/test');
 const { login } = require('./helpers');
 
-test('login recovery remains reachable in a 720px-high viewport', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/login');
-    const initialCardTop = await page.locator('.auth-card').evaluate(
-        element => element.getBoundingClientRect().top
-    );
-    await page.locator('#recoveryLoginBtn').click();
-
-    const submit = page.locator('#submitRecoveryLogin');
-    await submit.scrollIntoViewIfNeeded();
-    await expect(submit).toBeVisible();
-    const layout = await page.evaluate(() => {
-        const rect = document.querySelector('#submitRecoveryLogin').getBoundingClientRect();
+async function authGeometry(page) {
+    return page.evaluate(() => {
+        const dock = document.querySelector('.auth-access-dock');
+        const dockRect = dock.getBoundingClientRect();
+        const contextRect = document.querySelector('.auth-context-panel')
+            ?.getBoundingClientRect();
+        const formRect = document.querySelector('.auth-form-panel')
+            ?.getBoundingClientRect();
+        const visibleChildren = Array.from(dock.querySelectorAll('*')).filter(element => {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && rect.width > 0
+                && rect.height > 0;
+        });
+        const escapedChildren = visibleChildren.filter(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.left < dockRect.left - 1
+                || rect.right > dockRect.right + 1;
+        }).map(element => ({
+            id: element.id,
+            className: element.className,
+            text: element.textContent.trim().slice(0, 80),
+        }));
         return {
-            viewportHeight: window.innerHeight,
-            bodyClientHeight: document.body.clientHeight,
-            bodyScrollHeight: document.body.scrollHeight,
-            submitTop: rect.top,
-            submitBottom: rect.bottom,
-            htmlOverflowY: getComputedStyle(document.documentElement).overflowY,
-            bodyOverflowY: getComputedStyle(document.body).overflowY,
+            viewportWidth: innerWidth,
+            viewportHeight: innerHeight,
+            documentWidth: document.documentElement.scrollWidth,
+            bodyWidth: document.body.scrollWidth,
+            documentHeight: document.documentElement.scrollHeight,
+            bodyHeight: document.body.scrollHeight,
+            dock: {
+                left: dockRect.left,
+                right: dockRect.right,
+                top: dockRect.top,
+                bottom: dockRect.bottom,
+                width: dockRect.width,
+                height: dockRect.height,
+            },
+            context: contextRect ? {
+                left: contextRect.left,
+                right: contextRect.right,
+                top: contextRect.top,
+                bottom: contextRect.bottom,
+                width: contextRect.width,
+            } : null,
+            form: formRect ? {
+                left: formRect.left,
+                right: formRect.right,
+                top: formRect.top,
+                bottom: formRect.bottom,
+                width: formRect.width,
+            } : null,
+            escapedChildren,
         };
     });
+}
 
-    expect(layout.bodyScrollHeight).toBeGreaterThan(layout.bodyClientHeight);
-    expect(initialCardTop).toBeGreaterThanOrEqual(0);
-    expect(layout.submitTop).toBeGreaterThanOrEqual(0);
-    expect(layout.submitBottom).toBeLessThanOrEqual(layout.viewportHeight);
-    expect(layout.htmlOverflowY).not.toBe('hidden');
-    expect(layout.bodyOverflowY).not.toBe('hidden');
+async function expectAuthContained(page, { allowVerticalScroll = false } = {}) {
+    const layout = await authGeometry(page);
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.dock.left).toBeGreaterThanOrEqual(0);
+    expect(layout.dock.right).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.escapedChildren).toEqual([]);
+    if (!allowVerticalScroll) {
+        expect(layout.dock.top).toBeGreaterThanOrEqual(0);
+        expect(layout.dock.bottom).toBeLessThanOrEqual(layout.viewportHeight);
+        expect(layout.documentHeight).toBeLessThanOrEqual(layout.viewportHeight);
+        expect(layout.bodyHeight).toBeLessThanOrEqual(layout.viewportHeight);
+    }
+    return layout;
+}
+
+test('authentication family fits a 1280x720 viewport without page scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    await page.goto('/login');
+    await expect(page.locator('#localLoginForm')).toBeVisible();
+    await expectAuthContained(page);
+
+    await page.goto('/register');
+    await expect(page.locator('#registerForm')).toBeVisible();
+    await expectAuthContained(page);
+
+    await login(page);
+    await page.goto('/change-password');
+    await expect(page.locator('#changePasswordForm')).toBeVisible();
+    await expectAuthContained(page);
+});
+
+test('auth workbench uses seventy percent of desktop width and keeps two clear columns', async ({ page }) => {
+    await page.setViewportSize({ width: 3440, height: 1440 });
+    await page.goto('/login');
+
+    const layout = await expectAuthContained(page);
+    expect(layout.dock.width / layout.viewportWidth).toBeGreaterThanOrEqual(0.69);
+    expect(layout.dock.width / layout.viewportWidth).toBeLessThanOrEqual(0.71);
+    expect(layout.dock.height / layout.viewportHeight).toBeGreaterThanOrEqual(0.69);
+    expect(layout.dock.height / layout.viewportHeight).toBeLessThanOrEqual(0.71);
+    expect(layout.context).not.toBeNull();
+    expect(layout.form).not.toBeNull();
+    expect(layout.context.right).toBeLessThanOrEqual(layout.form.left + 1);
+    expect(layout.context.width).toBeGreaterThanOrEqual(layout.dock.width * 0.34);
+    expect(layout.form.width).toBeGreaterThanOrEqual(layout.dock.width * 0.5);
+    await expect(page.locator('.auth-product-logo')).toBeVisible();
+    await expect(page.locator('.auth-product-version')).toHaveCount(0);
+    await expect(page.locator('[data-auth-mode="password"]')).toBeVisible();
+    await expect(page.locator('[data-auth-mode="passkey"]')).toBeVisible();
+    await expect(page.locator('[data-auth-mode="oidc"]')).toBeVisible();
+});
+
+test('mobile login keeps every sign-in method and the primary action in the first viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.goto('/login');
+    await expectAuthContained(page);
+    await expect(page.locator('.auth-product-logo')).toBeVisible();
+    await expect(page.locator('.auth-context-copy')).toBeHidden();
+    const signInMethods = page.locator('.auth-method-option');
+    await expect(signInMethods).toHaveCount(3);
+    for (const method of await signInMethods.all()) {
+        await expect(method).toBeVisible();
+    }
+    await expect(page.locator('#localLoginForm .btn-primary')).toBeVisible();
+
+    await page.goto('/register');
+    await expectAuthContained(page, { allowVerticalScroll: true });
 });
 
 test('admin remains horizontally contained on a 390px viewport', async ({ page }) => {
@@ -94,9 +193,9 @@ test('new login, security, and admin controls honor the stored locale', async ({
     await page.evaluate(() => localStorage.setItem('language', 'de'));
     await page.reload();
 
-    await expect(page.locator('#passkeyLoginBtn')).toHaveText('Mit Passkey anmelden');
-    await expect(page.locator('#oidcLoginBtn')).toHaveText('Mit Identitätsanbieter anmelden');
-    await expect(page.locator('#recoveryLoginBtn')).toHaveText('Mit Wiederherstellungscode anmelden');
+    await expect(page.locator('#passkeyLoginBtn')).toContainText('Mit Passkey anmelden');
+    await expect(page.locator('#oidcLoginBtn')).toContainText('Mit Identitätsanbieter anmelden');
+    await expect(page.locator('#recoveryLoginBtn')).toHaveCount(0);
 
     await login(page);
     await page.goto('/security');
@@ -106,6 +205,12 @@ test('new login, security, and admin controls honor the stored locale', async ({
     await expect(page.locator('#recoveryGenerateBtn')).toHaveText(
         'Wiederherstellungscodes erstellen'
     );
+    await page.locator('#passkeyAddBtn').click();
+    await expect(page.locator('#securityConfirmationTitle')).toHaveText(
+        'Sicherheitsaktion bestätigen'
+    );
+    await expect(page.locator('#securityConfirmationSubmit')).toHaveText('Weiter');
+    await page.locator('#securityConfirmationCancel').click();
 
     await page.goto('/admin');
     await page.locator('.admin-tab[data-tab="settings"]').click();

@@ -159,6 +159,15 @@ def _non_negative_int_env(name, default):
     return value
 
 
+def _csv_env(name):
+    """Parse a comma-separated environment variable into an immutable set."""
+    return frozenset(
+        value.strip()
+        for value in os.environ.get(name, '').split(',')
+        if value.strip()
+    )
+
+
 LDAP_CONNECT_TIMEOUT = _bounded_int_env(
     'LDAP_CONNECT_TIMEOUT', 5, 1, 15
 )
@@ -167,6 +176,19 @@ LDAP_OPERATION_TIMEOUT = _bounded_int_env(
 )
 LDAP_SESSION_REVALIDATION_SECONDS = _bounded_int_env(
     'LDAP_SESSION_REVALIDATION_SECONDS', 300, 60, 3600
+)
+TOTP_ENABLED = os.environ.get('TOTP_ENABLED', 'false').lower() == 'true'
+OIDC_MFA_AMR_VALUES = _csv_env('OIDC_MFA_AMR_VALUES')
+OIDC_MFA_ACR_VALUES = _csv_env('OIDC_MFA_ACR_VALUES')
+OIDC_PHISHING_RESISTANT_AMR_VALUES = _csv_env(
+    'OIDC_PHISHING_RESISTANT_AMR_VALUES'
+)
+OIDC_PHISHING_RESISTANT_ACR_VALUES = _csv_env(
+    'OIDC_PHISHING_RESISTANT_ACR_VALUES'
+)
+OIDC_STEP_UP_ACR_VALUES = _csv_env('OIDC_STEP_UP_ACR_VALUES')
+STEP_UP_MAX_AGE_SECONDS = _bounded_int_env(
+    'STEP_UP_MAX_AGE_SECONDS', 300, 60, 900
 )
 
 
@@ -330,11 +352,6 @@ SOCKETIO_MAX_MESSAGE_SIZE = MAX_EDITOR_FILE_SIZE * 6 + 64 * 1024
 # Admin panel: comma-separated usernames granted admin on startup.
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
 ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
-
-
-def _csv_env(name):
-    """Parse a comma-separated environment variable into an immutable set."""
-    return frozenset(value.strip() for value in os.environ.get(name, '').split(',') if value.strip())
 
 
 # Tailscale SSH uses the WebSSH node's shared tailnet identity. Keep it disabled

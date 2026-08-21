@@ -125,6 +125,18 @@ def db_session(app):
         yield db.session
 
 
+@pytest.fixture
+def direct_socket_authentication(monkeypatch):
+    """Keep direct handler unit tests focused below the transport boundary."""
+    from app import decorators
+
+    monkeypatch.setattr(
+        decorators,
+        '_socket_authentication_is_valid',
+        lambda _user: True,
+    )
+
+
 def _serialize_private_key(private_key, private_format,
                            encryption=serialization.NoEncryption()):
     return private_key.private_bytes(

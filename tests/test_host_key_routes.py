@@ -2,6 +2,8 @@
 
 import paramiko
 
+from tests.step_up_helpers import password_step_up_headers
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -103,7 +105,13 @@ def test_admin_can_manage_global_host_keys_without_raw_key_material(app, client)
     assert entries[0]["fingerprint"].startswith("SHA256:")
     assert "ssh-rsa " not in listed.get_data(as_text=True)
 
-    deleted = client.delete(f"/admin/api/host-keys/{entries[0]['id']}")
+    entry_id = entries[0]["id"]
+    deleted = client.delete(
+        f"/admin/api/host-keys/{entry_id}",
+        headers=password_step_up_headers(
+            client, "host_key.global_delete", entry_id
+        )[0],
+    )
 
     assert deleted.status_code == 200
     assert client.get("/admin/api/host-keys").get_json()["entries"] == []

@@ -4,31 +4,72 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="app-root" content="{{ url_prefix }}">
-    <title>Register - Web SSH Terminal</title>
+    <title data-i18n="auth.registerPageTitle">Create account · WebSSH</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=14">
 </head>
 <body data-theme="glass" data-use-theme-preference>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
 
-    <div class="language-selector">
-        <button class="lang-btn" id="langBtn" onclick="toggleLangDropdown()">
-            <span id="currentLangFlag">🇬🇧</span>
-            <span id="currentLangName">English</span>
-        </button>
-        <div class="lang-dropdown" id="langDropdown"></div>
-    </div>
+    <div class="auth-shell">
+        <header class="auth-utility-bar">
+            <div class="auth-instance-state">
+                <span class="auth-status-dot" aria-hidden="true"></span>
+                <span data-i18n="auth.localRegistration">Local registration</span>
+                <strong data-i18n="auth.registrationAvailable">Available on this instance</strong>
+            </div>
+            <div class="language-selector">
+                <button class="lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdown">
+                    <span class="material-icons" aria-hidden="true">language</span>
+                    <span id="currentLangFlag" class="language-code">EN</span>
+                    <span id="currentLangName">English</span>
+                    <span class="material-icons" aria-hidden="true">expand_more</span>
+                </button>
+                <div class="lang-dropdown" id="langDropdown"></div>
+            </div>
+        </header>
 
-    <div class="glow-orb glow-orb-1"></div>
-    <div class="glow-orb glow-orb-2"></div>
-    <div class="glow-orb glow-orb-3"></div>
-
-    <div class="auth-container">
+        <main class="auth-shell-content">
+            <section class="auth-access-dock">
+                <div class="auth-context-panel">
+                    <div class="auth-brand-lockup">
+                        <a class="auth-product-brand" href="{{ url_for('login') }}" aria-label="WebSSH sign in" data-i18n-aria-label="auth.websshSignIn">
+                            <img class="auth-product-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}" alt="WebSSH">
+                        </a>
+                        <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
+                    </div>
+                    <div class="auth-context-copy">
+                        <span class="auth-brand-eyebrow" data-i18n="auth.welcomeToWebssh">Welcome to WebSSH</span>
+                        <h1 data-i18n="auth.serverControlCenter">The control center for your servers.</h1>
+                        <ul class="auth-product-pillars" aria-label="WebSSH product areas" data-i18n-aria-label="auth.productAreas">
+                            <li data-product-area="ssh-workspaces">
+                                <span class="material-icons" aria-hidden="true">terminal</span>
+                                <strong data-i18n="navigation.sshWorkspaces">SSH Workspaces</strong>
+                            </li>
+                            <li data-product-area="file-manager">
+                                <span class="material-icons" aria-hidden="true">folder_open</span>
+                                <strong data-i18n="files.fileManager">File Manager</strong>
+                            </li>
+                            <li data-product-area="hosts">
+                                <span class="material-icons" aria-hidden="true">dns</span>
+                                <strong data-i18n="connectionAssets.hosts">Hosts</strong>
+                            </li>
+                            <li data-product-area="commands">
+                                <span class="material-icons" aria-hidden="true">code</span>
+                                <strong data-i18n="commands.workspace">Commands</strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="auth-form-panel">
+            <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
-                <div class="logo">🖥️</div>
-                <h1 data-i18n="auth.register">Create Account</h1>
-                <p data-i18n="auth.registerPrompt">Join us and start your journey</p>
+                <span class="auth-form-eyebrow" data-i18n="auth.registration">Registration</span>
+                <h1 data-i18n="auth.registerPrompt">Create a local WebSSH account</h1>
+                <p data-i18n="auth.registrationHint">Choose credentials for this instance. You can add stronger factors after sign-in.</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -41,130 +82,61 @@
                 {% endif %}
             {% endwith %}
 
+            <div class="auth-credentials-zone">
             <form method="POST" action="{{ url_for('register') }}" id="registerForm">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="form-group">
                     <label for="username" data-i18n="auth.username">Username</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">👤</span>
+                        <span class="input-icon material-icons" aria-hidden="true">person</span>
                         <input type="text" id="username" name="username" class="form-control"
-                               data-i18n="auth.username" placeholder="Username" required autofocus
+                               data-i18n-placeholder="auth.username" placeholder="Username" required autofocus
                                pattern="[a-zA-Z0-9_]{3,32}"
-                               title="3-32 characters, letters, numbers, and underscore only">
+                               title="3-32 characters, letters, numbers, and underscore only" data-i18n-title="auth.usernameRules">
                     </div>
-                    <div class="field-hint" id="usernameHint"></div>
+                    <div class="field-hint" id="registerUsernameHint"></div>
                 </div>
 
                 <div class="form-group">
                     <label for="password" data-i18n="auth.password">Password</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">🔒</span>
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="password" name="password" class="form-control"
-                               data-i18n="auth.password" placeholder="Password" required minlength="8">
-                        <button type="button" class="password-toggle" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                               data-i18n-placeholder="auth.password" placeholder="Password" required minlength="8">
+                        <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
-                    <div class="field-hint" data-i18n="auth.passwordHint">Minimum 8 characters</div>
+                    <div class="field-hint" id="registerPasswordHint" data-i18n="auth.passwordHint">Minimum 8 characters</div>
                 </div>
 
                 <div class="form-group">
                     <label for="confirm_password" data-i18n="auth.confirmPassword">Confirm Password</label>
                     <div class="input-wrapper">
-                        <span class="input-icon">🔒</span>
+                        <span class="input-icon material-icons" aria-hidden="true">lock</span>
                         <input type="password" id="confirm_password" name="confirm_password" class="form-control"
-                               data-i18n="auth.confirmPassword" placeholder="Confirm Password" required>
-                        <button type="button" class="password-toggle" data-target="confirm_password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                               data-i18n-placeholder="auth.confirmPassword" placeholder="Confirm Password" required>
+                        <button type="button" class="password-toggle material-icons" data-target="confirm_password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
-                    <div class="password-match-indicator" id="passwordMatchIndicator"></div>
+                    <div class="field-hint" id="registerConfirmHint"></div>
                 </div>
 
                 <button type="submit" class="btn-primary" id="submitBtn">
-                    <span data-i18n="auth.createAccount">Create Account</span> 🚀
+                    <span data-i18n="auth.createAccount">Create Account</span>
                 </button>
             </form>
+            </div>
 
             <div class="auth-footer">
                 <span data-i18n="auth.haveAccount">Already have an account?</span>
                 <a href="{{ url_for('login') }}" data-i18n="auth.loginHere">Sign in here</a>
             </div>
         </div>
+            </div>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
-    <script>
-        function toggleLangDropdown() {
-            document.getElementById('langDropdown').classList.toggle('show');
-        }
-
-        function initLanguageSelector() {
-            const dropdown = document.getElementById('langDropdown');
-            const languages = i18n.getLanguages();
-            const currentLang = i18n.getLanguage();
-
-            dropdown.innerHTML = '';
-            languages.forEach(lang => {
-                const option = document.createElement('div');
-                option.className = 'lang-option' + (lang.code === currentLang ? ' active' : '');
-                option.innerHTML = `${lang.flag} ${lang.name}`;
-                option.onclick = () => {
-                    i18n.setLanguage(lang.code);
-                    updateCurrentLang(lang);
-                    toggleLangDropdown();
-                };
-                dropdown.appendChild(option);
-            });
-
-            const current = languages.find(l => l.code === currentLang);
-            if (current) {
-                updateCurrentLang(current);
-            }
-        }
-
-        function updateCurrentLang(lang) {
-            document.getElementById('currentLangFlag').textContent = lang.flag;
-            document.getElementById('currentLangName').textContent = lang.name;
-        }
-
-        function checkPasswordMatch() {
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirm_password').value;
-            const indicator = document.getElementById('passwordMatchIndicator');
-
-            if (confirmPassword.length === 0) {
-                indicator.textContent = '';
-                indicator.className = 'password-match-indicator';
-                return true;
-            }
-
-            if (password === confirmPassword) {
-                indicator.innerHTML = '✓ ' + (i18n.t('auth.passwordsMatch') || 'Passwords match');
-                indicator.className = 'password-match-indicator match';
-                return true;
-            } else {
-                indicator.innerHTML = '✗ ' + (i18n.t('auth.passwordsNoMatch') || 'Passwords do not match');
-                indicator.className = 'password-match-indicator no-match';
-                return false;
-            }
-        }
-
-        document.getElementById('registerForm').addEventListener('submit', (e) => {
-            if (!checkPasswordMatch()) {
-                e.preventDefault();
-                document.getElementById('confirm_password').focus();
-            }
-        });
-
-        window.addEventListener('click', (e) => {
-            if (!e.target.closest('.language-selector')) {
-                document.getElementById('langDropdown').classList.remove('show');
-            }
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            initLanguageSelector();
-            document.getElementById('password').addEventListener('input', checkPasswordMatch);
-            document.getElementById('confirm_password').addEventListener('input', checkPasswordMatch);
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/auth.js') }}?v=4"></script>
 </body>
 </html>

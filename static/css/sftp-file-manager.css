@@ -226,7 +226,7 @@
 }
 
 .fm-pane.drop-target.ssh::after {
-    content: '🖥️ Drop here (SSH Server)';
+    content: 'Drop here · SSH server';
     background: var(--success-color, #48bb78);
 }
 

@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import inspect, text
+
+
+pytestmark = pytest.mark.usefixtures('direct_socket_authentication')
 
 
 def _set_policy(monkeypatch, *, enabled=True, users=(), targets=(), remote_users=()):

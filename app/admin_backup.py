@@ -26,7 +26,7 @@ from .backup_manager import (
     verify_backup,
 )
 from .backup_operations import backup_operations
-from .decorators import admin_required
+from .decorators import admin_required, step_up_required
 from .online_backup import create_online_backup
 from . import socketio
 
@@ -150,6 +150,7 @@ def add_backup_headers(response):
 @admin_backup_blueprint.post('/admin/api/backups')
 @admin_required
 @login_required
+@step_up_required('backup.create', 'new')
 def create_backup_operation():
     if _rate_limited('backup_create', config.RATELIMIT_BACKUP_CREATE):
         return jsonify({'error': 'Too many backup requests'}), 429
@@ -233,6 +234,7 @@ def backup_operation_status(operation_id):
 @admin_backup_blueprint.post('/admin/api/backups/<operation_id>/download')
 @admin_required
 @login_required
+@step_up_required('backup.download', lambda operation_id: operation_id)
 def download_backup(operation_id):
     if _rate_limited('backup_download', config.RATELIMIT_BACKUP_DOWNLOAD):
         return jsonify({'error': 'Too many backup download requests'}), 429
@@ -294,6 +296,7 @@ def _stream_upload(destination: Path):
 @admin_backup_blueprint.post('/admin/api/backups/upload')
 @admin_required
 @login_required
+@step_up_required('backup.upload', 'upload')
 def upload_backup():
     if _rate_limited('backup_upload', config.RATELIMIT_BACKUP_UPLOAD):
         return jsonify({'error': 'Too many backup upload requests'}), 429
@@ -376,6 +379,7 @@ def upload_backup():
 @admin_backup_blueprint.post('/admin/api/backups/<operation_id>/cancel')
 @admin_required
 @login_required
+@step_up_required('backup.cancel', lambda operation_id: operation_id)
 def cancel_backup_operation(operation_id):
     try:
         record = backup_operations.get(
@@ -397,6 +401,7 @@ def cancel_backup_operation(operation_id):
 )
 @admin_required
 @login_required
+@step_up_required('backup.restore_prepare', lambda operation_id: operation_id)
 def prepare_restore(operation_id):
     data = request.get_json(silent=True) or {}
     if data.get('acknowledge_sensitive_restore') is not True:
@@ -428,26 +433,16 @@ def prepare_restore(operation_id):
 @admin_backup_blueprint.post('/admin/api/backups/<operation_id>/restore')
 @admin_required
 @login_required
+@step_up_required('backup.restore', lambda operation_id: operation_id)
 def restore_uploaded_backup(operation_id):
     if _rate_limited('backup_restore', config.RATELIMIT_BACKUP_RESTORE):
         return jsonify({'error': 'Too many restore attempts'}), 429
     data = request.get_json(silent=True) or {}
-    password = data.get('password')
     if (
         data.get('confirm_destructive_restore') is not True
         or data.get('confirmation_phrase') != 'RESTORE'
-        or not isinstance(password, str)
     ):
         return jsonify({'error': 'Explicit restore confirmation is required'}), 400
-    from .auth import password_exceeds_bcrypt_limit
-    if password_exceeds_bcrypt_limit(password) or not current_user.check_password(password):
-        log_security_event(
-            'RESTORE_REAUTH_FAILED',
-            level=logging.WARNING,
-            user=current_user.username,
-            ip=request.remote_addr or 'unknown',
-        )
-        return jsonify({'error': 'Password confirmation failed'}), 403
     try:
         record = backup_operations.get(
             operation_id, current_user.id, _admin_session_id()

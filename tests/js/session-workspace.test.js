@@ -12,6 +12,9 @@ function createHarness(options = {}) {
         open(id, session) { calls.push(['files.open', id, session.host]); },
         follow(id, session) { calls.push(['files.follow', id, session.host]); },
         close() { calls.push(['files.close']); },
+        setStatus(status, session) {
+            calls.push(['files.status', status, session?.host || null]);
+        },
         setDisconnected(id) { calls.push(['files.disconnected', id]); },
     };
     const insights = {
@@ -192,6 +195,7 @@ test('closes SFTP for an unavailable session and restores it for the capable ses
     assert.deepEqual(calls, [
         ['insights.session', 'cisco', true],
         ['files.close'],
+        ['files.status', 'unavailable', 'switch'],
     ]);
 
     calls.length = 0;
@@ -250,6 +254,7 @@ test('keeps manual SFTP visibility preferences isolated per session', () => {
     assert.deepEqual(calls, [
         ['insights.session', 'cisco', true],
         ['files.close'],
+        ['files.status', 'unavailable', 'switch'],
     ]);
 
     calls.length = 0;
@@ -282,15 +287,40 @@ test('opens embedded SFTP only for a connected session in layout 1', () => {
     assert.equal(coordinator.getState().sftpOpen, true);
 });
 
-test('refuses SFTP without a connected session or on a narrow viewport', () => {
+test('refuses SFTP without a connected session but keeps Files usable on narrow viewports', () => {
     const { coordinator } = createHarness();
     coordinator.update({ layout: 1, sessionId: null, session: null });
     assert.equal(coordinator.toggleSftp(), false);
 
-    const filesPanel = { open() { throw new Error('must not open'); }, close() {} };
+    let openedSessionId = null;
+    const filesPanel = { open(id) { openedSessionId = id; }, close() {} };
     const narrow = createCoordinator({ filesPanel, insights: {}, isDesktop: () => false });
-    narrow.update({ layout: 1, sessionId: 's1', session: { connected: true } });
-    assert.equal(narrow.toggleSftp(), false);
+    narrow.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { connected: true },
+        sftpCapability: 'available',
+    });
+    assert.equal(narrow.toggleSftp(), true);
+    assert.equal(openedSessionId, 's1');
+});
+
+test('opening the Files context is idempotent and tab changes do not close SFTP', () => {
+    const { coordinator, calls } = createHarness();
+    coordinator.update({
+        layout: 1,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sftpCapability: 'available',
+    });
+
+    assert.equal(coordinator.openSftpPanel(), true);
+    assert.equal(coordinator.openSftpPanel(), true);
+    assert.deepEqual(
+        calls.filter(call => call[0] === 'files.open'),
+        [['files.open', 's1', 'alpha']],
+    );
+    assert.equal(coordinator.getState().sftpOpen, true);
 });
 
 test('follows the active session only when the new session is capable and open', () => {
@@ -318,7 +348,7 @@ test('follows the active session only when the new session is capable and open',
     ]);
 });
 
-test('switching to 2 or 4 closes SFTP and returning to 1 keeps it closed', () => {
+test('keeps SFTP open in split layouts and follows the active capable session', () => {
     const { coordinator, calls } = createHarness();
     coordinator.update({
         layout: 1,
@@ -329,11 +359,42 @@ test('switching to 2 or 4 closes SFTP and returning to 1 keeps it closed', () =>
     coordinator.toggleSftp();
     calls.length = 0;
 
-    coordinator.update({ layout: 2, sessionId: 's1', session: { host: 'alpha', connected: true } });
-    coordinator.update({ layout: 1, sessionId: 's1', session: { host: 'alpha', connected: true } });
+    coordinator.update({
+        layout: 2,
+        sessionId: 's1',
+        session: { host: 'alpha', connected: true },
+        sftpCapability: 'available',
+    });
+    coordinator.update({
+        layout: 4,
+        sessionId: 's2',
+        session: { host: 'beta', connected: true },
+        sftpCapability: 'available',
+    });
 
-    assert.deepEqual(calls.filter(call => call[0].startsWith('files.')), [['files.close']]);
+    assert.deepEqual(calls.filter(call => call[0].startsWith('files.')), [
+        ['files.follow', 's2', 'beta'],
+    ]);
+    assert.equal(coordinator.getState().layout, 4);
+    assert.equal(coordinator.getState().sftpOpen, true);
+});
+
+test('keeps Files reachable in split layouts when active session has no SFTP', () => {
+    const { coordinator, calls } = createHarness();
+
+    coordinator.update({
+        layout: 4,
+        sessionId: 'switch',
+        session: { host: 'switch.example', connected: true },
+        sftpCapability: 'unavailable',
+    });
+
+    assert.equal(coordinator.getState().filesAvailable, true);
+    assert.equal(coordinator.getState().sftpEnabled, false);
     assert.equal(coordinator.getState().sftpOpen, false);
+    assert.deepEqual(calls.filter(call => call[0].startsWith('files.')), [
+        ['files.status', 'unavailable', 'switch.example'],
+    ]);
 });
 
 test('disconnect closes SFTP and marks insights disconnected', () => {

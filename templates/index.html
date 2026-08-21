@@ -19,33 +19,38 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=22">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=14">
 </head>
-<body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-connection-history-scope="{{ connection_history_scope }}">
+<body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
 
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <h1 class="app-title" data-i18n="app.title">Web SSH Terminal</h1>
-                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu">☰</button>
+                <a class="app-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.websshWorkspaces">
+                    <img class="app-brand-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}" alt="" aria-hidden="true">
+                    <span><small data-i18n="brand.tagline">Your shell. Your rules.</small></span>
+                </a>
+                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu" data-i18n-aria-label="navigation.toggleMenu"><span class="material-icons" aria-hidden="true">menu</span></button>
             </div>
             <div class="header-buttons">
-                <button id="newConnectionBtn" class="btn btn-primary"><span data-i18n="connection.newConnection">Quick Connect</span> ✨</button>
+                <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
+                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
+                    <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button id="commandLibraryBtn" class="global-nav-item" type="button"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
+                </nav>
 
-                <div class="header-group" role="group" aria-label="Tools">
-                    <button id="fileTransferBtn" class="btn btn-secondary" onclick="openFileManager()"><span data-i18n="files.fileManager">File Manager</span> 📁</button>
-                    <button id="commandLibraryBtn" class="btn btn-secondary"><span data-i18n="commands.workspace">Commands</span> 📚</button>
-                    <button id="manageProfilesBtn" class="btn btn-secondary" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts"><span data-i18n="connectionAssets.hosts">Hosts</span> 🗂️</button>
-                </div>
+                <button id="newConnectionBtn" class="btn btn-primary quick-connect-btn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
 
                 <span class="header-divider" aria-hidden="true"></span>
 
                 <div class="account-selector">
                     <button class="btn btn-secondary account-btn-header" id="accountBtnHeader" onclick="toggleAccountDropdownHeader(event)" aria-label="Account menu" data-i18n-aria-label="account.menu" aria-haspopup="true" aria-expanded="false" aria-controls="accountDropdownHeader">
-                        <span class="account-avatar" aria-hidden="true">👤</span>
+                        <span class="account-avatar material-icons" aria-hidden="true">person</span>
                         <span class="account-name">{{ current_user.username }}</span>
-                        <span class="account-caret" aria-hidden="true">▾</span>
+                        <span class="account-caret material-icons" aria-hidden="true">expand_more</span>
                     </button>
                     <div class="account-dropdown-header" id="accountDropdownHeader">
                         <div class="account-profile-card" id="accountProfileCard">
@@ -75,13 +80,13 @@
                         </section>
 
                         <div class="account-divider" role="separator"></div>
-                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🎛️</span> <span data-i18n="settings.title">Settings</span></button>
-                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon" aria-hidden="true">🛡️</span> <span data-i18n="security.title">Security</span></a>
-                        <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">⌨️</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
-                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon" aria-hidden="true">⚙️</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
+                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">tune</span> <span data-i18n="settings.title">Settings</span></button>
+                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon material-icons" aria-hidden="true">shield</span> <span data-i18n="security.title">Security</span></a>
+                        <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
+                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon material-icons" aria-hidden="true">admin_panel_settings</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
 
                         <div class="account-divider" role="separator"></div>
-                        <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon" aria-hidden="true">🚪</span> <span data-i18n="auth.logout">Logout</span></button>
+                        <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">logout</span> <span data-i18n="auth.logout">Logout</span></button>
                     </div>
                 </div>
             </div>
@@ -95,18 +100,14 @@
                     <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane">2</button>
                     <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane">4</button>
                 </div>
-                <button class="tab-row-icon-btn session-sftp-toggle" id="sessionSftpToggleBtn" type="button" aria-pressed="false" aria-label="Show SFTP beside terminal" title="Show SFTP beside terminal" disabled>
-                    <span class="material-icons" aria-hidden="true">folder_open</span>
-                </button>
-                <div class="tab-row-divider"></div>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
-                    <span aria-hidden="true">📡</span>
+                    <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
                 <button class="tab-row-icon-btn" id="saveTranscriptBtn" title="Save Transcript" aria-label="Save transcript">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><rect x="8" y="4" width="8" height="5"></rect><rect x="8" y="15" width="8" height="4" rx="1"></rect></svg>
                 </button>
                 <div class="tab-row-divider"></div>
-                <button class="btn-new-tab" id="newTabBtn" title="Quick Connect" data-i18n-title="connection.newConnection" aria-label="Quick Connect" data-i18n-aria-label="connection.newConnection">+</button>
+                <button class="btn-new-tab material-icons" id="newTabBtn" title="Quick Connect" data-i18n-title="connection.newConnection" aria-label="Quick Connect" data-i18n-aria-label="connection.newConnection">add</button>
             </div>
         </div>
     </header>
@@ -127,7 +128,7 @@
         </div>
         <div class="broadcast-bar hidden" id="broadcastBar">
             <span class="broadcast-bar-label">
-                <span class="broadcast-bar-icon" aria-hidden="true">📡</span>
+                <span class="broadcast-bar-icon material-icons" aria-hidden="true">cell_tower</span>
                 <span data-i18n="broadcast.barLabel">Broadcast to</span>
                 <strong id="broadcastCount">0</strong>
                 <span data-i18n="broadcast.sessions">sessions</span>
@@ -137,111 +138,138 @@
                    placeholder="Type a command — sent to all open sessions on Enter"
                    maxlength="4096" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <button class="btn btn-primary" id="broadcastSendBtn" type="button"><span data-i18n="broadcast.send">Send to all</span></button>
-            <button class="btn btn-secondary broadcast-close" id="broadcastCloseBtn" type="button" aria-label="Close broadcast">&times;</button>
+            <button class="btn btn-secondary broadcast-close material-icons" id="broadcastCloseBtn" type="button" aria-label="Close broadcast" data-i18n-aria-label="workspace.closeBroadcast">close</button>
         </div>
         <div class="workspace" id="workspace">
             <div class="terminal-area">
                 <div class="session-main-split" id="sessionMainSplit">
-                <div class="terminals-container" id="terminalsContainer">
-                    <div class="terminal-grid split-1" id="terminalGrid"></div>
-                    <div class="drop-overlay hidden" id="dropOverlay">
-                        <div class="drop-overlay-content">
-                            <div class="drop-title">Drop file to upload</div>
-                            <div class="drop-subtitle">Release to choose destination path</div>
+                    <div class="terminals-container" id="terminalsContainer">
+                        <div class="terminal-grid split-1" id="terminalGrid"></div>
+                        <div class="drop-overlay hidden" id="dropOverlay">
+                            <div class="drop-overlay-content">
+                                <div class="drop-title" data-i18n="workspace.dropFile">Drop file to upload</div>
+                                <div class="drop-subtitle" data-i18n="workspace.dropDestination">Release to choose destination path</div>
+                            </div>
+                        </div>
+                        <div class="terminal-search-bar hidden" id="terminalSearchBar">
+                            <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." data-i18n-placeholder="terminal.searchPlaceholder" autocomplete="off" />
+                            <span class="search-count" id="terminalSearchCount"></span>
+                            <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)" aria-label="Previous search result" data-i18n-title="terminal.searchPrevious" data-i18n-aria-label="terminal.searchPrevious">▲</button>
+                            <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)" aria-label="Next search result" data-i18n-title="terminal.searchNext" data-i18n-aria-label="terminal.searchNext">▼</button>
+                            <button class="search-btn search-close material-icons" id="terminalSearchClose" title="Close (Escape)" aria-label="Close search" data-i18n-title="terminal.closeSearch" data-i18n-aria-label="terminal.closeSearch">close</button>
                         </div>
                     </div>
-                    <div class="terminal-search-bar hidden" id="terminalSearchBar">
-                        <input type="text" id="terminalSearchInput" placeholder="Search in terminal..." autocomplete="off" />
-                        <span class="search-count" id="terminalSearchCount"></span>
-                        <button class="search-btn search-prev" id="terminalSearchPrev" title="Previous (Shift+Enter)">▲</button>
-                        <button class="search-btn search-next" id="terminalSearchNext" title="Next (Enter)">▼</button>
-                        <button class="search-btn search-close" id="terminalSearchClose" title="Close (Escape)">✕</button>
-                    </div>
-                </div>
-                <aside class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files">
-                    <div class="session-panel-header">
-                        <div>
-                            <div class="session-panel-eyebrow">Active session</div>
-                            <div class="session-panel-title"><span class="material-icons" aria-hidden="true">folder_open</span> SFTP</div>
-                        </div>
-                        <button class="session-panel-close" id="sessionFilesCloseBtn" type="button" aria-label="Close SFTP split" title="Close SFTP split">&times;</button>
-                    </div>
-                    <div class="session-files-mount" id="sessionFilesMount"></div>
-                </aside>
                 </div>
             </div>
-            <div class="resize-handle" id="resizeHandle" title="Drag to resize">
-                <div class="resize-handle-line"></div>
-                <button id="notepadToggle" class="notepad-toggle-btn" aria-label="Toggle notepad" title="Toggle notepad">◀</button>
-            </div>
-            <aside class="notepad-panel" id="notepadPanel">
-                <section class="session-insights-card" id="sessionInsightsCard" aria-live="polite" hidden>
-                    <div class="session-insights-heading">
-                        <div>
-                            <div class="session-panel-eyebrow">Live system telemetry</div>
-                            <div class="session-insights-host" id="sessionInsightsHost">No active session</div>
-                        </div>
-                        <span class="session-insights-state" id="sessionInsightsState">Offline</span>
+
+            <button class="context-workspace-launcher" id="contextWorkspaceLauncher" type="button" aria-expanded="false" aria-controls="contextWorkspace" aria-label="Open session tools" title="Open session tools" data-i18n-aria-label="workspace.openTools" data-i18n-title="workspace.openTools"><span class="material-icons" aria-hidden="true">dock_to_right</span><span data-i18n="workspace.tools">Tools</span></button>
+            <button class="context-workspace-backdrop" id="contextWorkspaceBackdrop" type="button" aria-label="Close session tools" data-i18n-aria-label="workspace.closeTools" aria-hidden="true"></button>
+            <aside class="context-workspace" id="contextWorkspace" aria-label="Session tools" data-i18n-aria-label="workspace.sessionTools" aria-hidden="true" hidden>
+                <div class="context-workspace-resizer" id="contextWorkspaceResizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize session tools" title="Drag to resize session tools" data-i18n-aria-label="workspace.resizeTools" data-i18n-title="workspace.resizeToolsHint"></div>
+                <div class="context-workspace-header">
+                    <div class="context-workspace-tabs" id="contextWorkspaceTabs" role="tablist" aria-label="Session tools" data-i18n-aria-label="workspace.sessionTools">
+                        <button class="context-workspace-tab" id="contextFilesTab" type="button" role="tab" data-workspace-context="files" aria-selected="false" aria-controls="contextFilesPanel" disabled>
+                            <span class="material-icons" aria-hidden="true">folder_open</span>
+                            <span data-i18n="workspaceContext.files">Files</span>
+                        </button>
+                        <button class="context-workspace-tab" id="contextCommandsTab" type="button" role="tab" data-workspace-context="commands" aria-selected="false" aria-controls="contextCommandsPanel">
+                            <span class="material-icons" aria-hidden="true">terminal</span>
+                            <span data-i18n="workspaceContext.commands">Commands</span>
+                        </button>
+                        <button class="context-workspace-tab" id="contextDiagnosticsTab" type="button" role="tab" data-workspace-context="diagnostics" aria-selected="false" aria-controls="contextDiagnosticsPanel" disabled>
+                            <span class="material-icons" aria-hidden="true">monitor_heart</span>
+                            <span data-i18n="workspaceContext.diagnostics">Diagnostics</span>
+                        </button>
+                        <button class="context-workspace-tab" id="contextNotesTab" type="button" role="tab" data-workspace-context="notes" aria-selected="false" aria-controls="contextNotesPanel">
+                            <span class="material-icons" aria-hidden="true">edit_note</span>
+                            <span data-i18n="workspaceContext.notes">Notes</span>
+                        </button>
                     </div>
-                    <div class="session-insights-grid" id="sessionCpuResource" hidden>
-                        <div class="session-cpu-gauge" id="sessionCpuGauge" style="--value: 0">
-                            <div><strong id="sessionCpuValue">--</strong><span>CPU</span></div>
-                        </div>
-                        <canvas class="session-cpu-chart" id="sessionCpuChart" width="180" height="72" aria-label="Recent CPU activity"></canvas>
-                    </div>
-                    <div class="session-resource" id="sessionRamResource" hidden>
-                        <div><span>RAM</span><strong id="sessionRamValue">--</strong></div>
-                        <div class="session-resource-track"><span id="sessionRamBar"></span></div>
-                    </div>
-                    <div class="session-resource" id="sessionDiskResource" hidden>
-                        <div><span>Disk /</span><strong id="sessionDiskValue">--</strong></div>
-                        <div class="session-resource-track"><span id="sessionDiskBar"></span></div>
-                    </div>
-                    <div class="session-insights-meta" id="sessionInsightsMeta" hidden>
-                        <span id="sessionOsValue" hidden></span>
-                        <span id="sessionUptimeValue" hidden></span>
-                    </div>
-                    <button class="session-diagnostics-toggle" id="sessionDiagnosticsToggle" type="button" aria-expanded="false" aria-controls="sessionDiagnosticsOverlay" disabled>
-                        <span class="material-icons" aria-hidden="true">monitor_heart</span>
-                        <span>Open diagnostics</span>
-                    </button>
-                </section>
-                <div class="notepad-section">
-                <div class="notepad-header">
-                    <div class="notepad-title-row">
-                        <div class="notepad-title">Notepad</div>
-                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
-                    </div>
-                    <div class="notepad-meta">Personal scratchpad</div>
+                    <button class="context-workspace-close material-icons" id="contextWorkspaceClose" type="button" aria-label="Close session tools" title="Close session tools" data-i18n-aria-label="workspace.closeTools" data-i18n-title="workspace.closeTools">close</button>
                 </div>
-                <textarea id="sessionNotepad" class="notepad-input" placeholder="Write notes, commands, or snippets here..."></textarea>
+
+                <div class="context-workspace-panels">
+                    <section class="context-workspace-panel" id="contextFilesPanel" role="tabpanel" aria-labelledby="contextFilesTab" aria-hidden="true" hidden>
+                        <div class="session-files-panel hidden" id="sessionFilesPanel" aria-label="Active session files" data-i18n-aria-label="workspace.activeSessionFiles">
+                            <div class="session-panel-header">
+                                <div>
+                                    <div class="session-panel-eyebrow" data-i18n="workspaceContext.activeSession">Active session</div>
+                                    <div class="session-panel-title"><span class="material-icons" aria-hidden="true">folder_open</span> SFTP</div>
+                                </div>
+                            </div>
+                            <div class="session-files-mount" id="sessionFilesMount"></div>
+                            <div class="session-files-status" id="sessionFilesStatus" role="status" aria-live="polite" hidden></div>
+                        </div>
+                    </section>
+
+                    <section class="context-workspace-panel" id="contextCommandsPanel" role="tabpanel" aria-labelledby="contextCommandsTab" aria-hidden="true" hidden>
+                        <div class="session-commands-panel" id="sessionCommandsPanel" aria-label="Session commands" data-i18n-aria-label="sessionCommands.panelLabel">
+                            <div class="session-command-launcher" id="sessionCommandsMount"></div>
+                        </div>
+                    </section>
+
+                    <section class="context-workspace-panel" id="contextDiagnosticsPanel" role="tabpanel" aria-labelledby="contextDiagnosticsTab" aria-hidden="true" hidden></section>
+
+                    <section class="context-workspace-panel" id="contextNotesPanel" role="tabpanel" aria-labelledby="contextNotesTab" aria-hidden="true" hidden>
+                        <div class="notepad-panel" id="notepadPanel" aria-labelledby="notepadTitle">
+                            <div class="workspace-drawer-header">
+                                <div>
+                                    <span class="session-panel-eyebrow" data-i18n="workspaceContext.personalWorkspace">Personal workspace</span>
+                                    <h2 id="notepadTitle" data-i18n="workspaceContext.notes">Notes</h2>
+                                    <p data-i18n="workspaceContext.notesHint">Keep commands and reminders close to the active session.</p>
+                                </div>
+                            </div>
+                            <div class="notepad-section">
+                                <div class="notepad-header">
+                                    <div class="notepad-title-row">
+                                        <div class="notepad-title" data-i18n="workspaceContext.notepad">Notepad</div>
+                                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
+                                    </div>
+                                    <div class="notepad-meta" data-i18n="workspaceContext.scratchpad">Personal scratchpad</div>
+                                </div>
+                                <textarea id="sessionNotepad" class="notepad-input" data-i18n-placeholder="workspaceContext.notesPlaceholder" placeholder="Write notes, commands, or snippets here..."></textarea>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </aside>
         </div>
     </main>
+    <footer class="workspace-status-bar" id="workspaceStatusBar" aria-label="Workspace status" data-i18n-aria-label="workspace.status">
+        <span class="workspace-status-state" id="workspaceStatusState" data-i18n="workspace.noActiveSession">No active session</span>
+        <span><strong data-i18n="workspace.target">Target</strong> <span id="workspaceStatusTarget">—</span></span>
+        <span id="workspaceStatusTransport">SSH</span>
+        <span id="workspaceStatusTrust" data-i18n="workspace.noConnectedHost">No connected host</span>
+        <span id="workspaceStatusPersistence" data-i18n="workspace.notActive">Not active</span>
+        <span class="workspace-status-spacer"></span>
+        <span><span class="material-icons" aria-hidden="true">sync_alt</span> <span data-i18n="workspace.transfers">Transfers</span></span>
+    </footer>
 
     <div class="session-diagnostics-overlay hidden" id="sessionDiagnosticsOverlay" aria-hidden="true">
         <div class="session-diagnostics-backdrop" id="sessionDiagnosticsBackdrop"></div>
         <section class="session-diagnostics-drawer" role="dialog" aria-modal="true" aria-labelledby="sessionDiagnosticsTitle">
             <div class="session-diagnostics-header">
                 <div>
-                    <div class="session-panel-eyebrow">Active session</div>
-                    <h2 id="sessionDiagnosticsTitle">Session diagnostics</h2>
+                    <div class="session-panel-eyebrow" data-i18n="diagnostics.activeSession">Active session</div>
+                    <h2 id="sessionDiagnosticsTitle" data-i18n="diagnostics.title">Session diagnostics</h2>
                     <div class="session-diagnostics-hostline">
-                        <span id="sessionDiagnosticsHost">No active session</span>
+                        <span id="sessionDiagnosticsHost" data-i18n="workspace.noActiveSession">No active session</span>
                         <span id="sessionDiagnosticsOs" hidden></span>
                     </div>
                 </div>
                 <div class="session-diagnostics-header-actions">
                     <div class="session-diagnostics-refresh-meta">
-                        <span class="session-insights-state disconnected" id="sessionDiagnosticsState">Offline</span>
-                        <span id="sessionDiagnosticsLastUpdated">Inventory not loaded</span>
+                        <span class="session-insights-state disconnected" id="sessionDiagnosticsState" data-i18n="diagnostics.statusOffline">Offline</span>
+                        <span id="sessionDiagnosticsLastUpdated" data-i18n="diagnostics.inventoryNotLoaded">Inventory not loaded</span>
                     </div>
-                    <button class="session-diagnostics-refresh" id="sessionDiagnosticsRefresh" type="button" aria-label="Refresh runtime inventory" title="Refresh runtime inventory">
-                        <span class="material-icons" aria-hidden="true">refresh</span>
-                        <span>Refresh</span>
+                    <button class="session-diagnostics-expand" id="sessionDiagnosticsExpand" type="button" aria-label="Expand diagnostics" title="Expand diagnostics" aria-pressed="false" data-i18n-aria-label="diagnostics.expand" data-i18n-title="diagnostics.expand">
+                        <span class="material-icons" aria-hidden="true">open_in_full</span>
                     </button>
-                    <button class="session-diagnostics-close" id="sessionDiagnosticsClose" type="button" aria-label="Close server diagnostics" title="Close server diagnostics">&times;</button>
+                    <button class="session-diagnostics-refresh" id="sessionDiagnosticsRefresh" type="button" aria-label="Refresh runtime inventory" title="Refresh runtime inventory" data-i18n-aria-label="diagnostics.refreshInventory" data-i18n-title="diagnostics.refreshInventory">
+                        <span class="material-icons" aria-hidden="true">refresh</span>
+                        <span data-i18n="admin.refresh">Refresh</span>
+                    </button>
+                    <button class="session-diagnostics-close material-icons" id="sessionDiagnosticsClose" type="button" aria-label="Close server diagnostics" title="Close server diagnostics" data-i18n-aria-label="diagnostics.close" data-i18n-title="diagnostics.close">close</button>
                 </div>
             </div>
 
@@ -249,95 +277,95 @@
                 <aside class="session-diagnostics-permissions" id="sessionDiagnosticsPermissions" aria-live="polite" hidden>
                     <span class="material-icons" aria-hidden="true">lock</span>
                     <div>
-                        <strong>Limited by permissions</strong>
+                        <strong data-i18n="diagnostics.limitedPermissions">Limited by permissions</strong>
                         <ul id="sessionDiagnosticsPermissionList"></ul>
                     </div>
                 </aside>
 
                 <div class="session-diagnostics-primary-grid">
                     <article class="session-diagnostics-primary-card" id="sessionDiagnosticsCpuMetric" hidden>
-                        <div class="session-diagnostics-card-heading"><span>CPU</span><span class="session-severity-label" id="sessionDiagnosticsCpuSeverity">Normal</span></div>
+                        <div class="session-diagnostics-card-heading"><span data-i18n="diagnostics.cpu">CPU</span><span class="session-severity-label" id="sessionDiagnosticsCpuSeverity">Normal</span></div>
                         <strong id="sessionDiagnosticsCpuValue">--</strong>
-                        <small id="sessionDiagnosticsCpuDetail">Current utilization</small>
+                        <small id="sessionDiagnosticsCpuDetail" data-i18n="diagnostics.currentUtilization">Current utilization</small>
                         <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsCpuBar"></span></div>
-                        <canvas id="sessionDiagnosticsCpuSparkline" width="240" height="64" aria-label="Recent CPU utilization trend"></canvas>
+                        <canvas id="sessionDiagnosticsCpuSparkline" width="240" height="64" aria-label="Recent CPU utilization trend" data-i18n-aria-label="diagnostics.cpuTrend"></canvas>
                     </article>
                     <article class="session-diagnostics-primary-card" id="sessionDiagnosticsMemoryMetric" hidden>
-                        <div class="session-diagnostics-card-heading"><span>Memory</span><span class="session-severity-label" id="sessionDiagnosticsMemorySeverity">Normal</span></div>
+                        <div class="session-diagnostics-card-heading"><span data-i18n="diagnostics.memory">Memory</span><span class="session-severity-label" id="sessionDiagnosticsMemorySeverity">Normal</span></div>
                         <strong id="sessionDiagnosticsMemoryValue">--</strong>
                         <small id="sessionDiagnosticsMemoryDetail"></small>
                         <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsMemoryBar"></span></div>
-                        <canvas id="sessionDiagnosticsMemorySparkline" width="240" height="64" aria-label="Recent memory utilization trend"></canvas>
+                        <canvas id="sessionDiagnosticsMemorySparkline" width="240" height="64" aria-label="Recent memory utilization trend" data-i18n-aria-label="diagnostics.memoryTrend"></canvas>
                     </article>
                     <article class="session-diagnostics-primary-card" id="sessionDiagnosticsDiskMetric" hidden>
-                        <div class="session-diagnostics-card-heading"><span>Root disk</span><span class="session-severity-label" id="sessionDiagnosticsDiskSeverity">Normal</span></div>
+                        <div class="session-diagnostics-card-heading"><span data-i18n="diagnostics.rootDisk">Root disk</span><span class="session-severity-label" id="sessionDiagnosticsDiskSeverity">Normal</span></div>
                         <strong id="sessionDiagnosticsDiskValue">--</strong>
                         <small id="sessionDiagnosticsDiskDetail"></small>
                         <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsDiskBar"></span></div>
-                        <canvas id="sessionDiagnosticsDiskSparkline" width="240" height="64" aria-label="Recent root disk utilization trend"></canvas>
+                        <canvas id="sessionDiagnosticsDiskSparkline" width="240" height="64" aria-label="Recent root disk utilization trend" data-i18n-aria-label="diagnostics.diskTrend"></canvas>
                     </article>
                     <article class="session-diagnostics-primary-card" id="sessionDiagnosticsLoadMetric" hidden>
-                        <div class="session-diagnostics-card-heading"><span>Normalized load</span><span class="session-severity-label" id="sessionDiagnosticsLoadSeverity">Normal</span></div>
+                        <div class="session-diagnostics-card-heading"><span data-i18n="diagnostics.normalizedLoad">Normalized load</span><span class="session-severity-label" id="sessionDiagnosticsLoadSeverity">Normal</span></div>
                         <strong id="sessionDiagnosticsLoadValue">--</strong>
                         <small id="sessionDiagnosticsLoadDetail"></small>
                         <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsLoadBar"></span></div>
-                        <canvas id="sessionDiagnosticsLoadSparkline" width="240" height="64" aria-label="Recent normalized load trend"></canvas>
+                        <canvas id="sessionDiagnosticsLoadSparkline" width="240" height="64" aria-label="Recent normalized load trend" data-i18n-aria-label="diagnostics.loadTrend"></canvas>
                     </article>
                 </div>
 
                 <div class="session-diagnostics-chart-grid">
                     <section class="session-diagnostics-section session-diagnostics-chart-panel" id="sessionDiagnosticsPressureSection" hidden>
                         <div class="session-diagnostics-section-heading">
-                            <div><span class="material-icons" aria-hidden="true">monitor_heart</span><h3>System pressure</h3></div>
-                            <span>Last 150 samples</span>
+                            <div><span class="material-icons" aria-hidden="true">monitor_heart</span><h3 data-i18n="diagnostics.systemPressure">System pressure</h3></div>
+                            <span data-i18n="diagnostics.lastSamples">Last 150 samples</span>
                         </div>
                         <div class="session-chart-legend" aria-hidden="true">
-                            <span class="cpu">CPU</span><span class="memory">Memory</span><span class="load">Normalized load</span>
+                            <span class="cpu" data-i18n="diagnostics.cpu">CPU</span><span class="memory" data-i18n="diagnostics.memory">Memory</span><span class="load" data-i18n="diagnostics.normalizedLoad">Normalized load</span>
                         </div>
-                        <canvas id="sessionDiagnosticsPressureChart" width="560" height="220" aria-label="System pressure history for CPU, memory, and normalized load"></canvas>
+                        <canvas id="sessionDiagnosticsPressureChart" width="560" height="220" aria-label="System pressure history for CPU, memory, and normalized load" data-i18n-aria-label="diagnostics.systemPressureTrend"></canvas>
                     </section>
                     <section class="session-diagnostics-section session-diagnostics-chart-panel" id="sessionDiagnosticsNetworkSection" hidden>
                         <div class="session-diagnostics-section-heading">
-                            <div><span class="material-icons" aria-hidden="true">swap_vert</span><h3>Network throughput</h3></div>
-                            <span>Auto-scaled</span>
+                            <div><span class="material-icons" aria-hidden="true">swap_vert</span><h3 data-i18n="diagnostics.networkThroughput">Network throughput</h3></div>
+                            <span data-i18n="diagnostics.autoScaled">Auto-scaled</span>
                         </div>
                         <div class="session-chart-legend">
-                            <span class="received">Received <strong id="sessionDiagnosticsNetworkReceived">--</strong></span>
-                            <span class="transmitted">Sent <strong id="sessionDiagnosticsNetworkTransmitted">--</strong></span>
+                            <span class="received"><span data-i18n="diagnostics.received">Received</span> <strong id="sessionDiagnosticsNetworkReceived">--</strong></span>
+                            <span class="transmitted"><span data-i18n="diagnostics.sent">Sent</span> <strong id="sessionDiagnosticsNetworkTransmitted">--</strong></span>
                         </div>
-                        <canvas id="sessionDiagnosticsNetworkChart" width="560" height="220" aria-label="Network throughput history for received and transmitted bytes per second"></canvas>
+                        <canvas id="sessionDiagnosticsNetworkChart" width="560" height="220" aria-label="Network throughput history for received and transmitted bytes per second" data-i18n-aria-label="diagnostics.networkTrend"></canvas>
                     </section>
                 </div>
 
-                <section class="session-diagnostics-secondary" aria-label="Secondary server facts">
+                <section class="session-diagnostics-secondary" aria-label="Secondary server facts" data-i18n-aria-label="diagnostics.secondaryFacts">
                     <article id="sessionDiagnosticsSwapMetric" hidden>
-                        <span>Swap</span><strong id="sessionDiagnosticsSwapValue">--</strong><small id="sessionDiagnosticsSwapDetail"></small>
+                        <span data-i18n="diagnostics.swap">Swap</span><strong id="sessionDiagnosticsSwapValue">--</strong><small id="sessionDiagnosticsSwapDetail"></small>
                         <div class="session-diagnostics-bar" role="presentation"><span id="sessionDiagnosticsSwapBar"></span></div>
                     </article>
-                    <article id="sessionDiagnosticsUptimeMetric" hidden><span>Uptime</span><strong id="sessionDiagnosticsUptimeValue">--</strong></article>
-                    <article id="sessionDiagnosticsProcessMetric" hidden><span>Processes</span><strong id="sessionDiagnosticsProcessValue">--</strong><small id="sessionDiagnosticsProcessDetail"></small></article>
+                    <article id="sessionDiagnosticsUptimeMetric" hidden><span data-i18n="diagnostics.uptime">Uptime</span><strong id="sessionDiagnosticsUptimeValue">--</strong></article>
+                    <article id="sessionDiagnosticsProcessMetric" hidden><span data-i18n="diagnostics.processes">Processes</span><strong id="sessionDiagnosticsProcessValue">--</strong><small id="sessionDiagnosticsProcessDetail"></small></article>
                 </section>
 
                 <section class="session-diagnostics-section" id="sessionDiagnosticsProcessesSection" hidden>
                     <div class="session-diagnostics-section-heading">
                         <div>
                             <span class="material-icons" aria-hidden="true">memory</span>
-                            <h3>What is using this server?</h3>
+                            <h3 data-i18n="diagnostics.topProcesses">What is using this server?</h3>
                         </div>
-                        <span>Top 5 per view</span>
+                        <span data-i18n="diagnostics.topFive">Top 5 per view</span>
                     </div>
                     <div class="session-process-grids">
                         <div class="session-process-panel" id="sessionDiagnosticsCpuProcessesPanel">
-                            <h4>Top CPU</h4>
+                            <h4 data-i18n="diagnostics.topCpu">Top CPU</h4>
                             <table>
-                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>CPU usage</th></tr></thead>
+                                <thead><tr><th data-i18n="commands.command">Command</th><th data-i18n="diagnostics.user">User</th><th>PID</th><th data-i18n="diagnostics.cpuUsage">CPU usage</th></tr></thead>
                                 <tbody id="sessionDiagnosticsCpuProcesses"></tbody>
                             </table>
                         </div>
                         <div class="session-process-panel" id="sessionDiagnosticsMemoryProcessesPanel">
-                            <h4>Top memory</h4>
+                            <h4 data-i18n="diagnostics.topMemory">Top memory</h4>
                             <table>
-                                <thead><tr><th>Command</th><th>User</th><th>PID</th><th>Memory usage</th></tr></thead>
+                                <thead><tr><th data-i18n="commands.command">Command</th><th data-i18n="diagnostics.user">User</th><th>PID</th><th data-i18n="diagnostics.memoryUsage">Memory usage</th></tr></thead>
                                 <tbody id="sessionDiagnosticsMemoryProcesses"></tbody>
                             </table>
                         </div>
@@ -346,31 +374,31 @@
 
                 <section class="session-diagnostics-section session-inventory-section" id="sessionDiagnosticsSystemdSection" hidden>
                     <div class="session-diagnostics-section-heading">
-                        <div><span class="material-icons" aria-hidden="true">settings_suggest</span><h3>systemd services</h3></div>
+                        <div><span class="material-icons" aria-hidden="true">settings_suggest</span><h3 data-i18n="diagnostics.systemdServices">systemd services</h3></div>
                         <span id="sessionDiagnosticsSystemdState"></span>
                     </div>
                     <div class="session-inventory-toolbar">
                         <label class="session-inventory-search" for="sessionDiagnosticsSystemdSearch">
                             <span class="material-icons" aria-hidden="true">search</span>
-                            <input id="sessionDiagnosticsSystemdSearch" type="search" placeholder="Search services" autocomplete="off">
+                            <input id="sessionDiagnosticsSystemdSearch" type="search" placeholder="Search services" data-i18n-placeholder="diagnostics.searchServices" autocomplete="off">
                         </label>
-                        <div class="session-inventory-filters" aria-label="Filter services by state">
-                            <button type="button" data-systemd-filter="all" aria-pressed="true">All</button>
-                            <button type="button" data-systemd-filter="active" aria-pressed="false">Active</button>
-                            <button type="button" data-systemd-filter="failed" aria-pressed="false">Failed</button>
-                            <button type="button" data-systemd-filter="inactive" aria-pressed="false">Inactive</button>
+                        <div class="session-inventory-filters" aria-label="Filter services by state" data-i18n-aria-label="diagnostics.filterServices">
+                            <button type="button" data-systemd-filter="all" aria-pressed="true" data-i18n="diagnostics.all">All</button>
+                            <button type="button" data-systemd-filter="active" aria-pressed="false" data-i18n="diagnostics.active">Active</button>
+                            <button type="button" data-systemd-filter="failed" aria-pressed="false" data-i18n="diagnostics.failed">Failed</button>
+                            <button type="button" data-systemd-filter="inactive" aria-pressed="false" data-i18n="diagnostics.inactive">Inactive</button>
                         </div>
                     </div>
                     <div class="session-inventory-summary">
                         <strong id="sessionDiagnosticsSystemdCounts"></strong>
                         <span id="sessionDiagnosticsSystemdTruncation"></span>
-                        <div class="session-inventory-distribution" id="sessionDiagnosticsSystemdDistribution" aria-label="systemd service state distribution">
+                        <div class="session-inventory-distribution" id="sessionDiagnosticsSystemdDistribution" aria-label="systemd service state distribution" data-i18n-aria-label="diagnostics.serviceDistribution">
                             <span class="active"></span><span class="failed"></span><span class="inactive"></span>
                         </div>
                     </div>
                     <div class="session-inventory-table-wrap">
                         <table class="session-inventory-table">
-                            <thead><tr><th>Unit</th><th>Load</th><th>State / substate</th><th>Description</th><th>Copy command</th></tr></thead>
+                            <thead><tr><th data-i18n="diagnostics.unit">Unit</th><th data-i18n="diagnostics.load">Load</th><th data-i18n="diagnostics.stateSubstate">State / substate</th><th data-i18n="commands.description">Description</th><th data-i18n="diagnostics.copyCommand">Copy command</th></tr></thead>
                             <tbody id="sessionDiagnosticsSystemdServices"></tbody>
                         </table>
                     </div>
@@ -384,18 +412,18 @@
                     <div class="session-inventory-toolbar">
                         <label class="session-inventory-search" for="sessionDiagnosticsDockerSearch">
                             <span class="material-icons" aria-hidden="true">search</span>
-                            <input id="sessionDiagnosticsDockerSearch" type="search" placeholder="Search containers" autocomplete="off">
+                            <input id="sessionDiagnosticsDockerSearch" type="search" placeholder="Search containers" data-i18n-placeholder="diagnostics.searchContainers" autocomplete="off">
                         </label>
                     </div>
                     <div class="session-inventory-summary">
                         <span id="sessionDiagnosticsDockerTruncation"></span>
-                        <div class="session-inventory-distribution" id="sessionDiagnosticsDockerDistribution" aria-label="Docker container state distribution">
+                        <div class="session-inventory-distribution" id="sessionDiagnosticsDockerDistribution" aria-label="Docker container state distribution" data-i18n-aria-label="diagnostics.containerDistribution">
                             <span class="running"></span><span class="stopped"></span>
                         </div>
                     </div>
                     <div class="session-inventory-table-wrap">
                         <table class="session-inventory-table">
-                            <thead><tr><th>Container</th><th>Status</th></tr></thead>
+                            <thead><tr><th data-i18n="diagnostics.container">Container</th><th data-i18n="diagnostics.status">Status</th></tr></thead>
                             <tbody id="sessionDiagnosticsDockerContainers"></tbody>
                         </table>
                     </div>
@@ -410,7 +438,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="connectionModalTitle" data-i18n="connection.newSSHConnection">Quick Connect</h2>
-                <button type="button" class="close" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeConnectionModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <form id="connectionForm" class="quick-connect-form">
@@ -477,7 +505,7 @@
                         <label for="passwordInput" data-i18n="auth.password">Password *</label>
                         <div class="input-wrapper with-toggle">
                             <input type="password" id="passwordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
-                            <button type="button" class="password-toggle" data-target="passwordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                            <button type="button" class="password-toggle material-icons" data-target="passwordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                         </div>
                         <div class="field-hint" id="passwordHint"></div>
                     </div>
@@ -533,7 +561,7 @@
                         <label for="jumpHostPasswordInput" data-i18n="connection.jumpHostPassword">Jump Host Password</label>
                         <div class="input-wrapper with-toggle">
                             <input type="password" id="jumpHostPasswordInput" class="form-control" data-i18n-placeholder="auth.password" placeholder="Password">
-                            <button type="button" class="password-toggle" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">👁️</button>
+                            <button type="button" class="password-toggle material-icons" data-target="jumpHostPasswordInput" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                         </div>
                         <div class="field-hint" data-i18n="connection.jumpHostPasswordHint">This bastion uses password auth — enter its password (never stored).</div>
                     </div>
@@ -624,7 +652,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="settingsTitle" data-i18n="settings.title">Settings</h2>
-                <button type="button" class="close" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body settings-modal-body">
                 <section class="settings-section manager-card" aria-labelledby="settingsAppearanceTitle">
@@ -675,6 +703,14 @@
                             <small data-i18n="settings.closeConfirmationHint">Show a confirmation before closing an SSH tab.</small>
                         </span>
                     </label>
+                    <div class="settings-field">
+                        <label for="disconnectSessionActionSelect" data-i18n="settings.disconnectBehavior">When an SSH connection ends</label>
+                        <select id="disconnectSessionActionSelect" class="form-control">
+                            <option value="retry" data-i18n="settings.disconnectRetry">Keep the tab open and offer Retry</option>
+                            <option value="close" data-i18n="settings.disconnectClose">Close the tab and switch to another session</option>
+                        </select>
+                        <small class="settings-field-hint" data-i18n="settings.disconnectBehaviorHint">Controls what happens after exit, logout, or an unexpected disconnect.</small>
+                    </div>
                 </section>
             </div>
         </div>
@@ -684,7 +720,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="profileManagementTitle" data-i18n="connectionAssets.hosts">Hosts</h2>
-                <button type="button" class="close" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeProfileManagementModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body profile-management-modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -837,7 +873,7 @@
                     <span class="material-icons" aria-hidden="true">folder_off</span>
                     <h2 id="profileMoveConfirmationTitle" data-i18n="profiles.groupRemovalTitle">Remove empty group?</h2>
                 </div>
-                <button type="button" class="close profile-confirmation-close" id="closeProfileMoveConfirmation" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close profile-confirmation-close material-icons" id="closeProfileMoveConfirmation" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <p id="profileMoveConfirmationDescription" class="profile-confirmation-lead" data-i18n="profiles.groupRemovalLead">This is the last connection in the group.</p>
@@ -864,7 +900,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="keyManagementTitle" data-i18n="keys.manageSSHKeys">Manage SSH Keys</h2>
-                <button type="button" class="close" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeKeyModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -909,7 +945,7 @@
         <div class="modal-content command-workspace-content command-set-modal-content">
             <div class="modal-header">
                 <h2 id="commandWorkspaceTitle" data-i18n="commands.workspace">Commands</h2>
-                <button type="button" class="close" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="command-workspace-tabs" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
                 <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
@@ -919,7 +955,7 @@
                 <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
                     <div class="command-toolbar">
                         <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
-                        <button class="btn btn-primary" id="addCommandBtn"><span data-i18n="commands.addCommand">Add Command</span> ➕</button>
+                        <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
                     </div>
                     <div class="os-filter-toolbar">
                         <span data-i18n="commands.filterByOs">Filter by OS:</span>
@@ -943,8 +979,8 @@
                         <div class="commands-table-body" id="commandsList"></div>
                     </div>
                     <div class="command-help">
-                        <p>💡 <strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Click ▶️ to insert command into terminal.</span></p>
-                        <p>🔒 <span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
+                        <p><span class="material-icons" aria-hidden="true">lightbulb</span><strong data-i18n="common.tip">Tip</strong>: <span data-i18n="commands.helpTip">Press F1 to open this library anytime. Use the run action to insert a command into the terminal.</span></p>
+                        <p><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="commands.helpSystem">System commands (gray background) are read-only. User commands can be edited or deleted.</span></p>
                     </div>
                 </section>
 
@@ -1013,7 +1049,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="jumpHostManagementTitle" data-i18n="jumphosts.manage">Manage Jump Hosts</h2>
-                <button type="button" class="close" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeJumpHostModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
@@ -1081,7 +1117,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandFormTitle" data-i18n="commands.addCommand">Add New Command</h2>
-                <button type="button" class="close" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeCommandFormModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <form id="commandForm">
@@ -1134,7 +1170,8 @@
                             <span data-i18n="common.cancel">Cancel</span>
                         </button>
                         <button type="submit" class="btn btn-primary">
-                            <span data-i18n="common.save">Save</span> ✅
+                            <span class="material-icons" aria-hidden="true">save</span>
+                            <span data-i18n="common.save">Save</span>
                         </button>
                     </div>
                 </form>
@@ -1146,7 +1183,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="commandPaletteTitle" data-i18n="palette.title">Command Palette</h2>
-                <button type="button" class="close" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeCommandPaletteModal" aria-label="Close command palette" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <input type="text" id="commandPaletteInput" class="form-control" data-i18n-placeholder="palette.searchPlaceholder" placeholder="Search actions, hosts, and sessions..." autocomplete="off">
@@ -1159,7 +1196,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="shortcutsTitle" data-i18n="shortcuts.title">Keyboard Shortcuts</h2>
-                <button type="button" class="close" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeShortcutsModal" aria-label="Close shortcuts" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="shortcuts-list" id="shortcutsList"></div>
@@ -1171,7 +1208,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="dropUploadTitle" data-i18n="dropUpload.title">Upload File</h2>
-                <button type="button" class="close" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeDropUploadModal" aria-label="Close upload dialog" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <form id="dropUploadForm">
@@ -1196,7 +1233,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="paneAssignmentTitle" data-i18n="panes.assignTitle">Assign Sessions to Panes</h2>
-                <button type="button" class="close" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closePaneAssignmentModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
             <div class="modal-body">
                 <div class="pane-assignment-info">
@@ -1234,7 +1271,7 @@
                     <button class="btn btn-icon" id="previewRefreshBtn" title="Refresh" data-i18n-title="preview.refresh">
                         <span class="material-icons">refresh</span>
                     </button>
-                <button type="button" class="close" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                <button type="button" class="close material-icons" id="closeFilePreviewModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
                 </div>
             </div>
             <div class="modal-body preview-modal-body">
@@ -1280,16 +1317,17 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=17"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/session-runtime-inventory.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-diagnostics-charts.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=7"></script>
+    <script src="{{ url_for('static', filename='js/session-diagnostics.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=9"></script>
+    <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=11"></script>
     <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>
@@ -1297,8 +1335,10 @@
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
-    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=7"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=11"></script>
+    <script src="{{ url_for('static', filename='js/workspace-layout-controller.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=13"></script>
@@ -1306,12 +1346,12 @@
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=13"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=14"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=14"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=18"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {
@@ -1431,6 +1471,10 @@
         document.addEventListener('DOMContentLoaded', () => {
             initThemeSelectorHeader();
             initLanguageSelectorHeader();
+            window.webssh2Shell = window.WebSSH2Shell?.init({
+                sessionManager: SessionManager,
+                document,
+            });
             window.accountWorkspacePulse = window.AccountWorkspacePulseModule?.createAccountWorkspacePulse({
                 sessionManager: SessionManager,
                 document,

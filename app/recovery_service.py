@@ -42,23 +42,26 @@ def _equalize_verification_cost(candidate):
     )
 
 
-def generate_codes(user_id, *, count=10):
+def _replace_codes_uncommitted(user_id, *, count=10):
     if type(count) is not int or not 1 <= count <= _MAX_RECOVERY_CODES:
         raise ValueError("Recovery code count must be between 1 and 20")
+    RecoveryCode.query.filter_by(user_id=user_id).delete()
+    plaintext = []
+    for _ in range(count):
+        raw = secrets.token_hex(10).upper()
+        code = "-".join(
+            raw[index:index + 4] for index in range(0, 20, 4)
+        )
+        plaintext.append(code)
+        db.session.add(
+            RecoveryCode(user_id=user_id, code_hash=_hash(code))
+        )
+    return plaintext
+
+
+def generate_codes(user_id, *, count=10):
     with _recovery_lock:
-        RecoveryCode.query.filter_by(user_id=user_id).delete()
-        plaintext = []
-        for _ in range(count):
-            raw = secrets.token_hex(10).upper()
-            code = "-".join(
-                raw[index:index + 4] for index in range(0, 20, 4)
-            )
-            plaintext.append(
-                code
-            )
-            db.session.add(
-                RecoveryCode(user_id=user_id, code_hash=_hash(code))
-            )
+        plaintext = _replace_codes_uncommitted(user_id, count=count)
         db.session.commit()
     return plaintext
 

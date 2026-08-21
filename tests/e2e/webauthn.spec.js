@@ -20,17 +20,12 @@ test('registers a passkey and signs in with a virtual authenticator', async ({
     try {
         const origin = `http://localhost:${process.env.WEBSSH_E2E_PORT || '4173'}`;
         await page.goto(origin + '/login');
-        await page.locator('#username').fill('e2e_admin');
+        await page.locator('#username').fill('e2e_user');
         await page.locator('#password').fill('browser-password');
         await page.locator('form button[type="submit"]').click();
         await expect(page).toHaveURL(/\/$/);
 
         await page.goto(origin + '/security');
-        const prompts = ['browser-password', 'E2E passkey'];
-        const handleRegistrationPrompt = async dialog => {
-            await dialog.accept(prompts.shift() || '');
-        };
-        page.on('dialog', handleRegistrationPrompt);
         const ceremony = Promise.race([
             page.locator('#passkeyList').getByText('E2E passkey').waitFor()
                 .then(() => 'registered'),
@@ -39,8 +34,15 @@ test('registers a passkey and signs in with a virtual authenticator', async ({
             page.waitForEvent('pageerror').then(error => error.message),
         ]);
         await page.locator('#passkeyAddBtn').click();
+        await expect(page.locator('#securityConfirmationModal')).toHaveClass(/show/);
+        await expect(page.locator('#securityConfirmationLabelGroup')).not.toHaveClass(/hidden/);
+        await page.locator('#securityConfirmationLabel').fill('E2E passkey');
+        await page.locator('#securityConfirmationSubmit').click();
+
+        await expect(page.locator('#securityConfirmationPasswordGroup')).not.toHaveClass(/hidden/);
+        await page.locator('#securityConfirmationPassword').fill('browser-password');
+        await page.locator('#securityConfirmationSubmit').click();
         expect(await ceremony).toBe('registered');
-        page.off('dialog', handleRegistrationPrompt);
 
         const logoutStatus = await page.evaluate(async () => {
             const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -60,6 +62,8 @@ test('registers a passkey and signs in with a virtual authenticator', async ({
                 return message;
             }),
         ]);
+        await page.locator('.auth-method-option[data-auth-mode="passkey"]').click();
+        await expect(page.locator('#passkeyLoginMode')).toBeVisible();
         const optionsResponse = page.waitForResponse(
             response => response.url().endsWith('/api/webauthn/auth/options'),
         );

@@ -7,8 +7,21 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from tests.step_up_helpers import password_step_up_headers
 
-def _create_user(app, username, password="password123", *, is_admin=False):
+
+def _step_up(client, action, target):
+    return password_step_up_headers(client, action, target)[0]
+
+
+def _create_user(
+    app,
+    username,
+    password="password123",
+    *,
+    is_admin=False,
+    mfa_enabled=False,
+):
     from app.auth import register_user
     from app.models import db
 
@@ -16,6 +29,7 @@ def _create_user(app, username, password="password123", *, is_admin=False):
         user, error = register_user(username, password)
         assert error is None
         user.is_admin = is_admin
+        user.mfa_enabled = mfa_enabled
         db.session.commit()
         return user.id
 
@@ -167,7 +181,10 @@ def test_failed_local_login_keeps_local_source_selected(
     )
 
     assert response.status_code == 200
-    assert b'<option value="local" selected>Local account</option>' in response.data
+    assert (
+        b'<option value="local" selected '
+        b'data-i18n="auth.localAccount">Local account</option>'
+    ) in response.data
     assert b'id="localLoginForm" class="auth-source-form"' in response.data
     assert b'id="ldapLoginForm" class="auth-source-form hidden"' in response.data
 
@@ -218,6 +235,75 @@ def test_ldap_login_accepts_only_matching_explicit_identity(
         assert row.directory_username == "alice-renamed"
         assert row.distinguished_name == identity.distinguished_name
         assert row.last_verified_at is not None
+
+
+def test_ldap_password_stays_pending_when_user_enabled_mfa(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import (
+        AuthenticationSession,
+        LDAPIdentity,
+        PendingAuthentication,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "ldap_mfa_user", mfa_enabled=True)
+    with app.app_context():
+        db.session.add_all((
+            LDAPIdentity(
+                user_id=user_id,
+                provider="default",
+                subject="stable-ldap-mfa-id",
+                directory_username="ldap_mfa_user",
+                distinguished_name=(
+                    "uid=ldap_mfa_user,ou=people,dc=example,dc=com"
+                ),
+            ),
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=b"ldap-mfa-credential",
+                public_key=b"public-key",
+                sign_count=0,
+                transports="[]",
+                name="LDAP passkey",
+            ),
+        ))
+        db.session.commit()
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="stable-ldap-mfa-id",
+        distinguished_name=(
+            "uid=ldap_mfa_user,ou=people,dc=example,dc=com"
+        ),
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    import config
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+
+    response = client.post(
+        "/login/ldap",
+        data={
+            "username": "ldap_mfa_user",
+            "password": "directory-password",
+        },
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "mfa_required": True,
+        "methods": ["passkey"],
+        "ok": True,
+    }
+    with client.session_transaction() as browser_session:
+        assert "_user_id" not in browser_session
+        assert browser_session.get("_pending_authentication")
+    with app.app_context():
+        assert PendingAuthentication.query.count() == 1
+        assert AuthenticationSession.query.count() == 0
 
 
 def test_ldap_login_auto_provisions_verified_non_admin_identity(
@@ -408,10 +494,11 @@ def test_local_registration_serializes_casefold_check_across_connections(app):
             password_hash,
             is_admin,
             is_locked,
-            auth_generation
-        ) VALUES (?, ?, ?, ?, ?)
+            auth_generation,
+            mfa_enabled
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("Alice", "unused", False, False, 0),
+        ("Alice", "unused", False, False, 0, False),
     )
     completed = Event()
     result = {}
@@ -640,29 +727,28 @@ def test_admin_link_is_explicit_reauthenticated_and_cannot_convert_admin(
     )
     assert login.status_code == 302
 
-    wrong_password = client.post(
-        f"/admin/api/users/{target_id}/ldap-link",
-        json={
-            "password": "wrong",
-            "confirm_username": "alice",
-            "directory_username": "alice",
-        },
+    _headers, wrong_password = password_step_up_headers(
+        client,
+        "ldap.link",
+        target_id,
+        password="wrong",
+        expected_status=403,
     )
     linked = client.post(
         f"/admin/api/users/{target_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "alice",
             "directory_username": "alice",
         },
+        headers=_step_up(client, "ldap.link", target_id),
     )
     admin_rejected = client.post(
         f"/admin/api/users/{second_admin_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "second_admin",
             "directory_username": "second_admin",
         },
+        headers=_step_up(client, "ldap.link", second_admin_id),
     )
 
     assert wrong_password.status_code == 403
@@ -673,6 +759,67 @@ def test_admin_link_is_explicit_reauthenticated_and_cannot_convert_admin(
         assert row.user_id == target_id
         assert row.directory_username == "alice"
         assert row.subject == "stable-alice-id"
+
+
+def test_admin_ldap_link_preserves_native_factors_but_removes_oidc(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import (
+        OIDCIdentity,
+        RecoveryCode,
+        WebAuthnCredential,
+        db,
+    )
+
+    _create_user(app, "local_admin", is_admin=True)
+    target_id = _create_user(app, "factor_user")
+    with app.app_context():
+        db.session.add_all((
+            WebAuthnCredential(
+                user_id=target_id,
+                credential_id=b"preserved-credential",
+                public_key=b"public-key",
+                sign_count=0,
+                transports="[]",
+                name="Preserved passkey",
+            ),
+            RecoveryCode(user_id=target_id, code_hash=b"r" * 32),
+            OIDCIdentity(
+                user_id=target_id,
+                issuer="https://issuer.example",
+                subject="oidc-subject",
+            ),
+        ))
+        db.session.commit()
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="stable-factor-id",
+        distinguished_name="uid=factor_user,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    assert client.post(
+        "/login",
+        data={"username": "local_admin", "password": "password123"},
+    ).status_code == 302
+
+    linked = client.post(
+        f"/admin/api/users/{target_id}/ldap-link",
+        json={
+            "confirm_username": "factor_user",
+            "directory_username": "factor_user",
+        },
+        headers=_step_up(client, "ldap.link", target_id),
+    )
+
+    assert linked.status_code == 201
+    with app.app_context():
+        assert WebAuthnCredential.query.filter_by(
+            user_id=target_id,
+        ).count() == 1
+        assert RecoveryCode.query.filter_by(user_id=target_id).count() == 1
+        assert OIDCIdentity.query.filter_by(user_id=target_id).count() == 0
 
 
 def test_admin_link_invalidates_an_existing_local_browser_session(
@@ -706,10 +853,10 @@ def test_admin_link_invalidates_an_existing_local_browser_session(
     linked = client.post(
         f"/admin/api/users/{target_id}/ldap-link",
         json={
-            "password": "password123",
             "confirm_username": "alice",
             "directory_username": "alice",
         },
+        headers=_step_up(client, "ldap.link", target_id),
     )
     assert linked.status_code == 201
     linked.close()
@@ -745,6 +892,7 @@ def test_admin_ldap_link_rejects_oversized_json_before_reauthentication(
         f"/admin/api/users/{target_id}/ldap-link",
         data=b'{"padding":"' + (b"x" * 5000) + b'"}',
         content_type="application/json",
+        headers=_step_up(client, "ldap.link", target_id),
     )
 
     assert response.status_code == 413
@@ -791,17 +939,21 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
     missing_password = client.delete(
         f"/admin/api/users/{target_id}/ldap-identities/{identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "alice",
         },
+        headers=_step_up(
+            client, "ldap.unlink", f"{target_id}:{identity_id}"
+        ),
     )
     unlinked = client.delete(
         f"/admin/api/users/{target_id}/ldap-identities/{identity_id}",
         json={
-            "password": "password123",
             "confirm_username": "alice",
             "new_password": "new-local-password-123",
         },
+        headers=_step_up(
+            client, "ldap.unlink", f"{target_id}:{identity_id}"
+        ),
     )
 
     assert missing_password.status_code == 400
@@ -816,7 +968,7 @@ def test_admin_unlink_requires_a_new_local_password_and_revokes_access(
         )
 
 
-def test_linked_user_cannot_use_recovery_code_or_change_password(
+def test_linked_user_cannot_use_recovery_code_without_primary_authentication(
     app,
     client,
     monkeypatch,
@@ -856,7 +1008,7 @@ def test_linked_user_cannot_use_recovery_code_or_change_password(
     )
     password_change = client.get("/change-password")
 
-    assert recovery.status_code == 401
+    assert recovery.status_code == 400
     assert login.status_code == 302
     assert password_change.status_code == 403, password_change.headers.get(
         "Location"
@@ -884,7 +1036,10 @@ def test_linked_user_cannot_be_promoted_to_admin(app, client):
         data={"username": "local_admin", "password": "password123"},
     ).status_code == 302
 
-    response = client.post(f"/admin/api/users/{target_id}/promote")
+    response = client.post(
+        f"/admin/api/users/{target_id}/promote",
+        headers=_step_up(client, "user.manage", f"{target_id}:promote"),
+    )
 
     assert response.status_code == 400
     with app.app_context():

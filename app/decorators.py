@@ -7,6 +7,14 @@ from .auth import get_user_from_socket, login_manager
 from .audit_logger import log_warning
 
 
+def _socket_authentication_is_valid(user):
+    """Validate that the browser assurance session owns the socket user."""
+    from .auth_assurance import current_authentication_session
+
+    auth_session = current_authentication_session()
+    return auth_session is not None and auth_session.user_id == user.id
+
+
 def admin_required(f):
     """Require an enabled panel and authenticated admin (place above @login_required)."""
     @wraps(f)
@@ -23,6 +31,14 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+# Kept in this module as the public decorator import without creating an
+# auth/decorator import cycle during application startup.
+def step_up_required(action, target):
+    from .step_up import step_up_required as implementation
+
+    return implementation(action, target)
+
 def socket_login_required(f):
     """
     Decorator to require authentication for socket events.
@@ -30,8 +46,9 @@ def socket_login_required(f):
     This decorator:
     1. Gets the SocketIO session ID from the request
     2. Looks up the authenticated user for this socket
-    3. Disconnects if no authenticated user found
-    4. Injects 'current_user' parameter into the decorated function
+    3. Revalidates the server-side browser authentication session
+    4. Disconnects if either authentication boundary is no longer valid
+    5. Injects 'current_user' parameter into the decorated function
 
     Usage:
         @socketio.on('some_event')
@@ -57,6 +74,21 @@ def socket_login_required(f):
             log_warning("Unauthorized socket event attempt", event=f.__name__, sid=socket_sid)
             disconnect()
             return
+        if not _socket_authentication_is_valid(user):
+            payload = {
+                'success': False,
+                'error': 'Authentication required',
+                'code': 'authentication_required',
+            }
+            log_warning(
+                "Socket authentication assurance rejected",
+                event=f.__name__,
+                user_id=user.id,
+                sid=socket_sid,
+            )
+            emit('error', payload)
+            disconnect()
+            return payload
         kwargs['current_user'] = user
         return f(*args, **kwargs)
 

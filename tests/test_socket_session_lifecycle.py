@@ -2,6 +2,7 @@ import importlib
 import os
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -210,6 +211,43 @@ def test_connect_fails_closed_if_created_session_disappears(app, monkeypatch):
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
+
+
+@pytest.mark.parametrize('auth_session_state', ('expired', 'deleted'))
+def test_socket_event_revalidates_server_authentication_session(
+        app, monkeypatch, auth_session_state):
+    from app import socket_events
+    from app.models import AuthenticationSession, SocketSession, db
+
+    socket_client, user_id = _authenticated_socket(
+        app,
+        f'auth_session_{auth_session_state}',
+    )
+    profile_loads = []
+    monkeypatch.setattr(
+        socket_events.profile_manager,
+        'load_profiles',
+        lambda loaded_user_id: profile_loads.append(loaded_user_id) or [],
+    )
+
+    with app.app_context():
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).one()
+        if auth_session_state == 'expired':
+            auth_session.expires_at = (
+                datetime.now(timezone.utc) - timedelta(seconds=1)
+            )
+        else:
+            db.session.delete(auth_session)
+        db.session.commit()
+
+    socket_client.emit('list_profiles')
+
+    assert not socket_client.is_connected()
+    assert profile_loads == []
+    with app.app_context():
+        assert SocketSession.query.filter_by(user_id=user_id).count() == 0
 
 
 def test_last_socket_disconnect_cancels_user_transfers(app, monkeypatch):

@@ -893,7 +893,7 @@ class SFTPFileManager {
             <div class="modal-content fm-qc-modal">
                 <div class="modal-header">
                     <h2 id="fmQcModalTitle" data-i18n="fm.qc.title">Connect to Server</h2>
-                    <button type="button" class="close" id="fmQcClose" aria-label="Close" data-i18n-aria-label="common.close">&times;</button>
+                    <button type="button" class="close material-icons" id="fmQcClose" aria-label="Close" data-i18n-aria-label="common.close">close</button>
                 </div>
                 <div class="modal-body">
                     <form id="fmQcForm">
@@ -1279,7 +1279,15 @@ class SFTPFileManager {
         });
 
         this.socket.on('quick_connect_error', (data) => {
-            this.showNotification(`${this.t('fm.qc.connectionFailed', 'Connection failed')}: ${data.error}`, 'error');
+            const presentation = window.SSHErrorUI?.describeSSHError?.(
+                data,
+                key => this.t(key, key),
+                window.APP_ROOT || '',
+            );
+            this.showNotification(
+                presentation || `${this.t('fm.qc.connectionFailed', 'Connection failed')}: ${data.error}`,
+                'error'
+            );
             const btn = document.getElementById('fmQcConnectBtn');
             if (btn) {
                 btn.disabled = false;
@@ -3106,8 +3114,8 @@ class SFTPFileManager {
         switch (transfer.status) {
             case 'pending': return this.t('fm.waiting', 'Waiting...');
             case 'active': return `${transfer.progress}%`;
-            case 'complete': return `✓ ${this.t('fm.done', 'Done')}`;
-            case 'error': return `✗ ${this.t('fm.failed', 'Failed')}`;
+            case 'complete': return this.t('fm.done', 'Done');
+            case 'error': return this.t('fm.failed', 'Failed');
             default: return '';
         }
     }
@@ -3138,7 +3146,7 @@ class SFTPFileManager {
             }
             return `
                 <div class="fm-context-item ${item.danger ? 'danger' : ''}" data-action="${item.action}">
-                    <span class="fm-context-icon">${item.icon}</span> ${item.text}
+                    <span class="fm-context-icon material-icons" aria-hidden="true">${item.icon}</span> ${item.text}
                 </div>
             `;
         }).join('');
@@ -3163,31 +3171,31 @@ class SFTPFileManager {
 
         if (file) {
             if (file.is_dir) {
-                items.push({ action: 'open', icon: '📂', text: this.t('fm.ctx.open', 'Open') });
+                items.push({ action: 'open', icon: 'folder_open', text: this.t('fm.ctx.open', 'Open') });
                 if (state.type === 'ssh' || state.type === 'quick-connect') {
-                    items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
+                    items.push({ action: 'download', icon: 'download', text: this.t('fm.ctx.download', 'Download') });
                 }
             } else if (state.type === 'ssh' || state.type === 'quick-connect') {
-                items.push({ action: 'preview', icon: '👁️', text: this.t('fm.ctx.preview', 'Preview') });
-                items.push({ action: 'download', icon: '⬇️', text: this.t('fm.ctx.download', 'Download') });
+                items.push({ action: 'preview', icon: 'visibility', text: this.t('fm.ctx.preview', 'Preview') });
+                items.push({ action: 'download', icon: 'download', text: this.t('fm.ctx.download', 'Download') });
             }
             const otherPane = pane === 'left' ? 'right' : 'left';
             const canTransfer = this.displayMode === 'modal'
                 && !this.isMobile()
                 && this.canTransferBetweenPanes(pane, otherPane);
             if (canTransfer) {
-                items.push({ action: 'transfer', icon: '↔️', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
+                items.push({ action: 'transfer', icon: 'swap_horiz', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
             }
             items.push({ divider: true });
-            items.push({ action: 'rename', icon: '✏️', text: this.t('fm.rename', 'Rename') });
+            items.push({ action: 'rename', icon: 'edit', text: this.t('fm.rename', 'Rename') });
         }
 
-        items.push({ action: 'newfolder', icon: '📁', text: this.t('fm.newFolder', 'New Folder') });
-        items.push({ action: 'refresh', icon: '↻', text: this.t('fm.refresh', 'Refresh') });
+        items.push({ action: 'newfolder', icon: 'create_new_folder', text: this.t('fm.newFolder', 'New Folder') });
+        items.push({ action: 'refresh', icon: 'refresh', text: this.t('fm.refresh', 'Refresh') });
 
         if (file) {
             items.push({ divider: true });
-            items.push({ action: 'delete', icon: '🗑️', text: this.t('fm.delete', 'Delete'), danger: true });
+            items.push({ action: 'delete', icon: 'delete', text: this.t('fm.delete', 'Delete'), danger: true });
         }
         return items;
     }
