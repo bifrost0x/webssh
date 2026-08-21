@@ -115,6 +115,34 @@ def test_node_workflows_use_current_lts():
         assert "node-version: '22'" not in text, workflow
 
 
+def test_wiki_sync_is_main_only_and_uses_the_repository_token():
+    workflow = (WORKFLOWS / 'wiki-sync.yml').read_text(encoding='utf-8')
+
+    assert 'pull_request:' not in workflow
+    assert re.search(r'push:\s*\n\s+branches:\s*\n\s+- main\b', workflow)
+    assert "if: github.ref == 'refs/heads/main'" in workflow
+    assert re.search(r'permissions:\s*\n\s+contents:\s+write\b', workflow)
+    assert re.search(r'concurrency:.*?queue:\s+max\b', workflow, re.DOTALL)
+    assert 'persist-credentials: false' in workflow
+    assert 'actions/setup-python@' in workflow
+    assert "python-version: '3.11'" in workflow
+    assert 'GH_TOKEN: ${{ github.token }}' in workflow
+    assert 'secrets.' not in workflow
+    assert 'scripts/wiki_sync.py' in workflow
+    for markdown_pathspec in ('*.md', '*.markdown', '*.mdown', '*.mkdn'):
+        assert markdown_pathspec in workflow
+    assert workflow.count('git/ref/heads/main') >= 3
+    assert '${{ runner.temp }}' not in workflow
+    assert '"$RUNNER_TEMP/webssh-wiki"' in workflow
+    assert 'push origin HEAD' in workflow
+
+    publish = workflow.split('- name: Publish changed Wiki pages', 1)[1]
+    commit = publish.index(' commit -m ')
+    final_main_check = publish.rindex('git/ref/heads/main')
+    push = publish.index(' push origin HEAD')
+    assert commit < final_main_check < push
+
+
 def test_container_build_inputs_and_ci_services_are_digest_pinned():
     dockerfiles = [
         ROOT / 'Dockerfile',

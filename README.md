@@ -169,8 +169,8 @@ unchanged. Use the production overlay, an HTTPS reverse proxy, exact origins,
 secure cookies, disabled browser registration, internal-target blocking, and
 explicit trusted-proxy settings.
 
-Read the [Quick Start](docs/wiki/Quick-Start.md) or
-the complete [Production Deployment](docs/wiki/Production-Deployment.md)
+Read the [Quick Start](https://github.com/bifrost0x/webssh/wiki/Quick-Start) or
+the complete [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment)
 guide before accepting users.
 
 ## Security Boundary
@@ -200,7 +200,7 @@ Keep these deployment contracts intact:
 - Backups can contain the persisted application secret and encrypted private
   keys together. Protect and test them accordingly.
 
-See the [Security Model and Hardening](docs/wiki/Security-Model-and-Hardening.md)
+See the [Security Model and Hardening](https://github.com/bifrost0x/webssh/wiki/Security-Model-and-Hardening)
 guide and the project's [security policy](SECURITY.md) before exposing WebSSH
 to untrusted networks.
 
@@ -208,21 +208,23 @@ to untrusted networks.
 
 The README is the project entry point. Detailed installation, operation,
 security, authentication, recovery, and development guidance lives in the
-[WebSSH Wiki](docs/wiki/Home.md).
+[WebSSH Wiki](https://github.com/bifrost0x/webssh/wiki). Its
+[versioned source](docs/wiki/Home.md) is reviewed with the code through pull
+requests and published automatically after changes reach `main`.
 
 | Goal | Guide |
 |---|---|
-| Install with Docker | [Docker and Docker Compose](docs/wiki/Docker-and-Docker-Compose.md) |
-| Deploy behind HTTPS | [Production Deployment](docs/wiki/Production-Deployment.md) |
-| Configure every setting | [Configuration Reference](docs/wiki/Configuration-Reference.md) |
-| Connect and verify hosts | [SSH Connections and Host Keys](docs/wiki/SSH-Connections-and-Host-Keys.md) |
-| Use terminal and tmux sessions | [Terminal and Persistent tmux Sessions](docs/wiki/Terminal-and-Persistent-tmux-Sessions.md) |
-| Work with files and transfers | [SFTP File Workspace and Transfers](docs/wiki/SFTP-File-Workspace-and-Transfers.md) |
-| Configure authentication | [Authentication Overview](docs/wiki/Authentication-Overview.md) |
-| Run backup or restore | [Backup, Restore and Secret Rotation](docs/wiki/Backup-Restore-and-Secret-Rotation.md) |
-| Troubleshoot health checks | [Health Checks and Troubleshooting](docs/wiki/Health-Checks-and-Troubleshooting.md) |
-| Understand the runtime | [Architecture and Runtime Lifecycle](docs/wiki/Architecture-and-Runtime-Lifecycle.md) |
-| Develop and test locally | [Development and Testing](docs/wiki/Development-and-Testing.md) |
+| Install with Docker | [Docker and Docker Compose](https://github.com/bifrost0x/webssh/wiki/Docker-and-Docker-Compose) |
+| Deploy behind HTTPS | [Production Deployment](https://github.com/bifrost0x/webssh/wiki/Production-Deployment) |
+| Configure every setting | [Configuration Reference](https://github.com/bifrost0x/webssh/wiki/Configuration-Reference) |
+| Connect and verify hosts | [SSH Connections and Host Keys](https://github.com/bifrost0x/webssh/wiki/SSH-Connections-and-Host-Keys) |
+| Use terminal and tmux sessions | [Terminal and Persistent tmux Sessions](https://github.com/bifrost0x/webssh/wiki/Terminal-and-Persistent-tmux-Sessions) |
+| Work with files and transfers | [SFTP File Workspace and Transfers](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers) |
+| Configure authentication | [Authentication Overview](https://github.com/bifrost0x/webssh/wiki/Authentication-Overview) |
+| Run backup or restore | [Backup, Restore and Secret Rotation](https://github.com/bifrost0x/webssh/wiki/Backup-Restore-and-Secret-Rotation) |
+| Troubleshoot health checks | [Health Checks and Troubleshooting](https://github.com/bifrost0x/webssh/wiki/Health-Checks-and-Troubleshooting) |
+| Understand the runtime | [Architecture and Runtime Lifecycle](https://github.com/bifrost0x/webssh/wiki/Architecture-and-Runtime-Lifecycle) |
+| Develop and test locally | [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing) |
 
 Additional project views:
 
@@ -236,7 +238,7 @@ Bug reports and focused pull requests are welcome. For feature proposals and
 architecture ideas, start with [GitHub Discussions](https://github.com/bifrost0x/webssh/discussions)
 so the security and runtime boundaries can be reviewed before implementation.
 
-- Read [Development and Testing](docs/wiki/Development-and-Testing.md).
+- Read [Development and Testing](https://github.com/bifrost0x/webssh/wiki/Development-and-Testing).
 - Use [Issues](https://github.com/bifrost0x/webssh/issues) for reproducible bugs.
 - Report vulnerabilities privately through
   [GitHub Security Advisories](https://github.com/bifrost0x/webssh/security/advisories/new).

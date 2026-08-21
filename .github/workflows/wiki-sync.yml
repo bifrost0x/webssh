@@ -1,0 +1,94 @@
+name: Wiki Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/wiki/**
+      - scripts/wiki_sync.py
+      - .github/workflows/wiki-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki-sync
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout canonical Wiki source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up supported Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Configure repository authentication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh auth setup-git
+
+      - name: Check whether this is still the current main revision
+        id: current-main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_main=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "Skipping superseded revision $GITHUB_SHA; main is $current_main."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Clone the live Wiki
+        if: steps.current-main.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git clone "https://github.com/${GITHUB_REPOSITORY}.wiki.git" "$RUNNER_TEMP/webssh-wiki"
+
+      - name: Mirror versioned Wiki pages
+        if: steps.current-main.outputs.publish == 'true'
+        run: python scripts/wiki_sync.py docs/wiki "$RUNNER_TEMP/webssh-wiki"
+
+      - name: Publish changed Wiki pages
+        if: steps.current-main.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_main=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "Skipping superseded revision $GITHUB_SHA; main is $current_main."
+            exit 0
+          fi
+
+          git -C "$RUNNER_TEMP/webssh-wiki" diff --check
+          git -C "$RUNNER_TEMP/webssh-wiki" add --all -- \
+            '*.md' '*.markdown' '*.mdown' '*.mkdn'
+          if git -C "$RUNNER_TEMP/webssh-wiki" diff --cached --quiet; then
+            echo "The live Wiki already matches docs/wiki."
+            exit 0
+          fi
+
+          git -C "$RUNNER_TEMP/webssh-wiki" config user.name "github-actions[bot]"
+          git -C "$RUNNER_TEMP/webssh-wiki" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$RUNNER_TEMP/webssh-wiki" commit -m "docs: sync wiki from ${GITHUB_SHA:0:12}"
+
+          current_main=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "Skipping superseded revision $GITHUB_SHA; main is $current_main."
+            exit 0
+          fi
+          git -C "$RUNNER_TEMP/webssh-wiki" push origin HEAD
