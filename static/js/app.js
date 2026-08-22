@@ -2292,6 +2292,7 @@
                     TerminalSearch.close();
                 } else {
                     document.querySelectorAll('.modal.show').forEach(modal => {
+                        if (modal.id === 'sftpFileManager') return;
                         window.ModalManager.close(modal);
                     });
                 }

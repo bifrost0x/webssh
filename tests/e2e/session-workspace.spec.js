@@ -798,6 +798,30 @@ test('closing the full File Manager restores the active embedded Files context',
     await assertNoExternalRequests(page);
 });
 
+test('Escape closes the source launcher before restoring embedded Files', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#sessionFilesPanel #fmLeftList .fm-file-item')).toHaveCount(5);
+
+    await page.locator('#fileTransferBtn').click();
+    await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
+    await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#fmSourceLauncher')).not.toHaveClass(/show/);
+    await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#sftpFileManager')).not.toHaveClass(/show/);
+    await expect(page.locator('#contextFilesTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#sessionFilesPanel #fmLeftBadge')).toHaveText('ops@edge-01.example');
+    await expect(page.locator('#sessionFilesPanel #fmLeftList .fm-file-item')).toHaveCount(5);
+    await assertNoExternalRequests(page);
+});
+
 test('partial telemetry shows only metrics returned by the device', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page, { partialMetrics: true, sftpAvailable: false });
