@@ -1,4 +1,4 @@
-# Requires Docker Compose 2.24.4 or newer for the !override tag below.
+# Public reverse-proxy overlay. Requires Docker Compose 2.24.4 or newer.
 services:
   webssh:
     ports: !override

@@ -1,119 +1,86 @@
-##############################################
-# Web SSH Terminal - Homelab Docker Compose
-#
-# No .env file needed - edit values directly below
-#
-# BEFORE RUNNING:
-# 1. SECRET_KEY is optional — auto-generated & persisted on first run.
-# 2. Set CORS_ORIGINS to your domain (e.g. https://ssh.example.com)
-#    For homelab without TLS: http://your-server-ip:5000
-#    For wildcard (insecure): CORS_ORIGINS=* and ALLOW_CORS_WILDCARD=true
-##############################################
+# WebSSH for trusted homelab networks. Start with: docker compose up -d
+# No .env file is required. For public deployments, also use
+# docker-compose.production.yml as described in the README.
 
 services:
   webssh:
     image: ghcr.io/bifrost0x/webssh:latest
     container_name: webssh
     restart: unless-stopped
-    # Longer than the 30 s maximum in RUNTIME_SHUTDOWN_GRACE_SECONDS, so the
-    # lifecycle signal gate can cancel bounded work before Docker sends KILL.
+    # Allows the app's bounded shutdown (maximum 30s) to finish.
     stop_grace_period: 40s
     ports:
       - "5000:5000"
     environment:
-      # This default file intentionally preserves HTTP-friendly homelab
-      # compatibility. For an Internet-facing deployment, layer
-      # docker-compose.production.yml on top.
+      # Active homelab settings
       - DEPLOYMENT_PROFILE=homelab
-
-      # === SECRET_KEY: OPTIONAL ===
-      # Left unset, a strong key is auto-generated on first run and persisted to
-      # the data volume below (/app/data/secret_key). Set it explicitly only if
-      # an external secret-management policy requires it or you are restoring
-      # data on another host. Multiple app replicas are not supported because
-      # live SSH state remains process-local:
-      #   - SECRET_KEY=<paste output of: openssl rand -hex 32>
-
-      # === CORS: Wildcard default for homelab use ===
-      # For production: replace * with your domain (e.g. https://ssh.example.com)
-      # and remove ALLOW_CORS_WILDCARD
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
-
-      # === Set to 1 if behind reverse proxy (Traefik, nginx, etc.) ===
       - TRUSTED_PROXIES=0
-
-      # === Subfolder deployment (optional) ===
-      # Set when serving the app under a URL subpath, e.g. https://server.local/webssh
-      # Requires: TRUSTED_PROXIES=1 above AND a reverse proxy that strips the
-      # prefix and forwards it via the X-Forwarded-Prefix header.
-      # Leave commented to run at the root — behavior is unchanged when unset.
-      # See the Wiki page "Reverse Proxy and Subfolder Deployment":
-      # https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Reverse-Proxy-and-Subfolder-Deployment.md
-      # - APPLICATION_ROOT=/webssh
-
-      # === Homelab HTTP compatibility ===
       - SESSION_COOKIE_SECURE=false
 
-      # === First account and registration ===
-      # A fresh homelab install automatically opens /register. Exactly the
-      # first browser-created account becomes administrator; the one-time
-      # bootstrap closes as soon as that account exists.
-      # Uncomment to require the create-admin CLI even on a fresh homelab:
-      # - BOOTSTRAP_REGISTRATION_ENABLED=false
-      # Uncomment to keep normal self-registration open for additional users.
-      # It can also be toggled later from the Admin Panel.
-      # - REGISTRATION_ENABLED=true
-
-      # === Persistent remote sessions via tmux ===
-      # tmux must be installed on the remote SSH host. If it is unavailable,
-      # WebSSH automatically falls back to a regular shell.
+      # Persistent sessions; falls back when tmux is unavailable remotely.
       - TMUX_ENABLED=true
       - TMUX_DEFAULT=true
       - TMUX_SESSION_PREFIX=webssh
 
-      # === Tailscale SSH (optional, shared node identity) ===
-      # Disabled by default. See docs/tailscale-ssh.md for the required
-      # authorization controls and a persistent Tailscale sidecar example.
-      # Before enabling, configure narrow target and remote-user allowlists.
+      # Authentication capabilities and safe assurance defaults
+      # TOTP is available to Admin, but users cannot enroll until Admin enables it.
+      # Set TOTP_ENABLED=false only as a deployment-level kill switch.
+      - TOTP_ENABLED=${TOTP_ENABLED:-true}
+      # Keep OIDC assurance lists empty unless the provider documents its
+      # signed acr/amr values explicitly.
+      - OIDC_MFA_AMR_VALUES=${OIDC_MFA_AMR_VALUES:-}
+      - OIDC_MFA_ACR_VALUES=${OIDC_MFA_ACR_VALUES:-}
+      - OIDC_PHISHING_RESISTANT_AMR_VALUES=${OIDC_PHISHING_RESISTANT_AMR_VALUES:-}
+      - OIDC_PHISHING_RESISTANT_ACR_VALUES=${OIDC_PHISHING_RESISTANT_ACR_VALUES:-}
+      - OIDC_STEP_UP_ACR_VALUES=${OIDC_STEP_UP_ACR_VALUES:-}
+      - STEP_UP_MAX_AGE_SECONDS=${STEP_UP_MAX_AGE_SECONDS:-300}
+
+      # Optional configuration
+
+      # Secret override; generated and persisted when omitted.
+      # - SECRET_KEY=<paste output of: openssl rand -hex 32>
+
+      # Serve WebSSH from a reverse-proxy subfolder.
+      # Requires TRUSTED_PROXIES=1; see the Wiki page about subfolder deployment.
+      # - APPLICATION_ROOT=/webssh
+
+      # Registration: the first browser-created account becomes administrator.
+      # Optionally require CLI bootstrap or keep registration open afterwards.
+      # - BOOTSTRAP_REGISTRATION_ENABLED=false
+      # - REGISTRATION_ENABLED=true
+
+      # Optional feature: Tailscale SSH through the shared node identity.
+      # Configure narrow allowlists; see docs/tailscale-ssh.md.
       # - TAILSCALE_SSH_ENABLED=true
       # - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
       # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
       # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
 
-      # === Built-in security features ===
-      # Host-key management, recovery codes, and audit export/retention are
-      # enabled by default. Uncomment only when intentionally disabling one.
+      # Enabled by default: host-key management, recovery codes, audit export.
+      # The false switches disable them; internal-target blocking is opt-in.
       # - HOST_KEY_MANAGEMENT_ENABLED=false
       # - RECOVERY_CODES_ENABLED=false
       # - AUDIT_EXPORT_ENABLED=false
-      # Internal-target blocking is useful for exposed multi-user deployments,
-      # but remains off here because homelabs commonly connect to private IPs.
       # - BLOCK_INTERNAL_SSH=true
 
-      # === Native web backup and restore ===
-      # Always available to administrators. Restore always requires two
-      # confirmations plus the current administrator password. Temporary
-      # snapshots and uploaded archives use an instance-specific namespace
-      # outside /app/data and expire.
-      # Override operational limits only when the defaults do not fit.
+      # Admin backup and restore is built in; these only tune its limits.
       # - BACKUP_UPLOAD_MAX_SIZE=1073741824
       # - BACKUP_OPERATION_TIMEOUT=1800
       # - BACKUP_DOWNLOAD_TTL=600
       # - BACKUP_TEMP_DIR=/tmp/webssh-backup-operations
 
-      # === Passkeys and OIDC (optional, disabled by default) ===
-      # Passkeys require the exact public browser domain and origin.
+      # Optional feature: Passkeys. Set the exact public domain and origin.
       # - WEBAUTHN_ENABLED=true
       # - WEBAUTHN_RP_ID=ssh.example.com
       # - WEBAUTHN_RP_NAME=WebSSH
       # - WEBAUTHN_ORIGIN=https://ssh.example.com
-      # TOTP is available to the Admin feature gate by default. It remains
-      # inactive until an administrator enables it; an explicit false is a
-      # deployment-level kill switch and remains supported for upgrades.
-      - TOTP_ENABLED=${TOTP_ENABLED:-true}
-      # OIDC additionally requires a read-only client-secret file mounted into
-      # the container. Accounts are linked by issuer + subject in Admin.
+
+      # Optional feature: sign in through an OpenID Connect identity provider.
+      # Register WebSSH there, mount its client secret read-only, then set the
+      # issuer, client ID, secret-file path, and exact callback URL below.
+      # An administrator links provider identities to WebSSH accounts.
       # - OIDC_ENABLED=true
       # - OIDC_ISSUER=https://idp.example.com
       # - OIDC_CLIENT_ID=webssh
@@ -122,29 +89,14 @@ services:
       # - OIDC_ALLOWED_SUBJECTS=
       # - OIDC_ALLOWED_DOMAINS=example.com
       # - OIDC_LOGIN_RATE_LIMIT=10 per minute
-      # Provider-specific assurance values stay empty unless the provider's
-      # signed acr/amr contract explicitly documents them.
-      - OIDC_MFA_AMR_VALUES=${OIDC_MFA_AMR_VALUES:-}
-      - OIDC_MFA_ACR_VALUES=${OIDC_MFA_ACR_VALUES:-}
-      - OIDC_PHISHING_RESISTANT_AMR_VALUES=${OIDC_PHISHING_RESISTANT_AMR_VALUES:-}
-      - OIDC_PHISHING_RESISTANT_ACR_VALUES=${OIDC_PHISHING_RESISTANT_ACR_VALUES:-}
-      - OIDC_STEP_UP_ACR_VALUES=${OIDC_STEP_UP_ACR_VALUES:-}
-      - STEP_UP_MAX_AGE_SECONDS=${STEP_UP_MAX_AGE_SECONDS:-300}
 
-      # === Optional: Usually no changes needed ===
-      # The image already supplies DEBUG=false, HOST=0.0.0.0, PORT=5000, and
-      # DATA_DIR=/app/data. Leave those defaults untouched for normal use.
-      # Native gthread runtime: keep one worker. Socket admission leaves
-      # request threads available for HTTP routes and file transfers.
+      # Capacity tuning (not required for normal use; keep one worker).
       # - GUNICORN_THREADS=64
       # - MAX_SOCKET_CONNECTIONS=48
       # - MAX_SOCKET_CONNECTIONS_PER_USER=8
 
-      # === Redis-backed rate limiting (optional) ===
-      # Uncomment the two lines below AND the redis service section at the
-      # bottom of this file to preserve counters across app restarts while
-      # Redis keeps running. The app must still use exactly one worker because
-      # live SSH state remains in-process.
+      # Optional feature: persistent rate-limit counters in Redis.
+      # Also uncomment depends_on and the Redis service below.
       # - RATELIMIT_STORAGE_URL=redis://redis:6379/0
     # depends_on:
     #   - redis
@@ -157,12 +109,11 @@ services:
       retries: 3
       start_period: 10s
 
-  # Redis (optional - uncomment for external rate-limit counters)
+  # Optional Redis service for persistent rate-limit counters.
   # redis:
   #   image: redis:7-alpine
   #   container_name: webssh-redis
   #   restart: unless-stopped
-  #   # Only expose to the internal Docker network; no host port needed.
   #   command: ["redis-server", "--save", "", "--appendonly", "no"]
 
 volumes:

@@ -1,5 +1,6 @@
 """Account step-up HTTP contracts select the current login method."""
 
+from datetime import datetime, timedelta, timezone
 import time
 from types import SimpleNamespace
 
@@ -41,6 +42,26 @@ def _set_login_methods(app, client, user_id, methods):
         db.session.commit()
 
 
+def _set_passkey_login(app, client, user_id, *, strong_authenticated_at):
+    from app.auth_assurance import authentication_session_for_token
+    from app.models import User, as_naive_utc, db
+
+    with client.session_transaction() as browser:
+        opaque = browser["_auth_session"]
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        row = authentication_session_for_token(
+            opaque,
+            user_id,
+            user.auth_generation,
+        )
+        assert row is not None
+        row.methods_json = '["passkey"]'
+        row.assurance = "PHISHING_RESISTANT"
+        row.strong_authenticated_at = as_naive_utc(strong_authenticated_at)
+        db.session.commit()
+
+
 def test_local_account_intent_uses_password_and_returns_bound_grant(
     app,
     client,
@@ -71,6 +92,84 @@ def test_local_account_intent_uses_password_and_returns_bound_grant(
         assert StepUpIntent.query.one().status == "completed"
         grant = StepUpGrant.query.one()
         assert grant.action == "recovery.rotate"
+
+
+def test_recent_passkey_login_authorizes_initial_totp_enrollment(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import SecurityFeatureState, db
+
+    monkeypatch.setattr(config, "TOTP_ENABLED", True)
+    app.extensions["security_feature_readiness"]["totp"] = (True, None)
+    user_id = _create_and_login(app, client, "passkey_totp_enrollment")
+    _set_passkey_login(
+        app,
+        client,
+        user_id,
+        strong_authenticated_at=datetime.now(timezone.utc),
+    )
+    with app.app_context():
+        db.session.add(SecurityFeatureState(feature="totp", enabled=True))
+        db.session.commit()
+
+    started = client.post("/api/account/step-up/intents", json={
+        "action": "totp.enroll",
+        "target": user_id,
+    })
+
+    assert started.status_code == 200
+    body = started.get_json()
+    assert body["method"] == "recent"
+    assert isinstance(body["grant"], str) and body["grant"]
+
+
+def test_stale_passkey_login_offers_passkey_for_initial_totp_enrollment(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import SecurityFeatureState, WebAuthnCredential, db
+
+    monkeypatch.setattr(config, "TOTP_ENABLED", True)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    app.extensions["security_feature_readiness"]["totp"] = (True, None)
+    app.extensions["security_feature_readiness"]["passkey"] = (True, None)
+    user_id = _create_and_login(app, client, "stale_passkey_totp")
+    _set_passkey_login(
+        app,
+        client,
+        user_id,
+        strong_authenticated_at=(
+            datetime.now(timezone.utc)
+            - timedelta(seconds=config.STEP_UP_MAX_AGE_SECONDS + 1)
+        ),
+    )
+    with app.app_context():
+        db.session.add(SecurityFeatureState(feature="totp", enabled=True))
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=b"stale-passkey-totp-enrollment",
+            public_key=b"public-key",
+            sign_count=0,
+            transports="[]",
+        ))
+        db.session.commit()
+
+    started = client.post("/api/account/step-up/intents", json={
+        "action": "totp.enroll",
+        "target": user_id,
+    })
+
+    assert started.status_code == 200
+    body = started.get_json()
+    assert body["required_assurance"] == "BASIC"
+    assert body["preferred_method"] == "passkey"
+    assert body["methods"] == ["passkey"]
+    assert isinstance(body["intent"], str) and body["intent"]
 
 
 def test_account_password_rate_limit_runs_before_bcrypt(
