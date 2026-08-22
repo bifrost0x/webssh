@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
 from flask_socketio import SocketIO
-from flask_login import logout_user, login_required, current_user
+from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
@@ -18,6 +18,7 @@ from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
 from .runtime_lifecycle import RuntimeLifecycle
 from .browser_identity import connection_history_scope
+from .auth_assurance import clear_browser_authentication
 
 socketio = SocketIO(
     async_mode=config.SOCKETIO_ASYNC_MODE,
@@ -173,8 +174,7 @@ def create_app(
 
             user_id = current_user.id
             user_lifecycle.revoke_user_access(user_id, socketio)
-            logout_user()
-            session.clear()
+            clear_browser_authentication()
             return redirect(url_for('login'))
         if (
             current_user.is_authenticated
@@ -197,8 +197,7 @@ def create_app(
                     error=type(exc).__name__,
                 )
                 user_lifecycle.revoke_user_access(user_id, socketio)
-                logout_user()
-                session.clear()
+                clear_browser_authentication()
                 return redirect(url_for('login'))
             session['_ldap_verified_at'] = int(time.time())
         if initialize_storage and current_user.is_authenticated:
@@ -208,8 +207,7 @@ def create_app(
             if stored_epoch is None:
                 session['_auth_epoch'] = epoch
             elif stored_epoch != epoch:
-                logout_user()
-                session.clear()
+                clear_browser_authentication()
                 return redirect(url_for('login', next=request.path))
         if initialize_storage and current_user.is_authenticated:
             from .auth_assurance import current_authentication_session
@@ -217,8 +215,7 @@ def create_app(
             auth_session = current_authentication_session()
             if auth_session is None:
                 username = current_user.username
-                logout_user()
-                session.clear()
+                clear_browser_authentication()
                 log_warning(
                     'Authentication session rejected',
                     user=username,
@@ -618,8 +615,7 @@ def create_app(
                 error=type(exc).__name__,
             )
         user_lifecycle.revoke_user_access(user_id, socketio)
-        logout_user()
-        session.clear()
+        clear_browser_authentication()
         return redirect(url_for('login'))
 
     @app.route('/change-password', methods=['GET', 'POST'])
