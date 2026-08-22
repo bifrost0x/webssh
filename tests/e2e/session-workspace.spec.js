@@ -96,6 +96,10 @@ async function seedLinuxSession(page, options = {}) {
                 // Socket callbacks are not part of the observability requests under test.
             }
             window.__workspaceEvents.push({ event, payload: recordedPayload });
+            if (event === 'list_profiles') {
+                deliver('profiles_list', { profiles: [] });
+                return window.socket;
+            }
             if (payload?.session_id === 'workspace-cisco') {
                 if (event === 'probe_session_sftp') {
                     deliver('session_sftp_capability', {
@@ -769,6 +773,28 @@ test('Files context follows session capability and stays mounted while tools swi
     await filesTab.click();
     await expect(panel).toBeVisible();
     await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await assertNoExternalRequests(page);
+});
+
+test('closing the full File Manager restores the active embedded Files context', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#sessionFilesPanel #fmLeftList .fm-file-item')).toHaveCount(5);
+
+    await page.locator('#fileTransferBtn').click();
+    await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
+    await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
+    await page.locator('[data-source-key="ssh:workspace-linux"]').click();
+    await expect(page.locator('#sftpFileManager #fmLeftList .fm-file-item')).toHaveCount(5);
+    await page.locator('#fmClose').click();
+
+    await expect(page.locator('#sftpFileManager')).not.toHaveClass(/show/);
+    await expect(page.locator('#contextFilesTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#sessionFilesPanel #fmLeftBadge')).toHaveText('ops@edge-01.example');
+    await expect(page.locator('#sessionFilesPanel #fmLeftList .fm-file-item')).toHaveCount(5);
     await assertNoExternalRequests(page);
 });
 

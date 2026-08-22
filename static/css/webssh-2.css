@@ -1,5 +1,13 @@
 /* WebSSH product shell and shared calm infrastructure styling. */
 :root {
+    --ws2-radius-sm: 5px;
+    --ws2-radius: 8px;
+    --ws2-radius-lg: 12px;
+    --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+body {
     --ws2-canvas: var(--bg-primary);
     --ws2-surface: var(--bg-secondary);
     --ws2-panel: var(--bg-tertiary);
@@ -7,6 +15,7 @@
     --ws2-border: var(--border-color);
     --ws2-border-strong: var(--border-hover);
     --ws2-text: var(--text-primary);
+    --ws2-text-primary: var(--text-primary);
     --ws2-text-secondary: var(--text-secondary);
     --ws2-text-muted: var(--text-muted);
     --ws2-accent: var(--accent-primary);
@@ -15,15 +24,7 @@
     --ws2-warning: var(--warning-color);
     --ws2-danger: var(--error-color);
     --ws2-focus: color-mix(in srgb, var(--accent-primary) 76%, white);
-    --ws2-radius-sm: 5px;
-    --ws2-radius: 8px;
-    --ws2-radius-lg: 12px;
     --ws2-shadow: 0 12px 32px rgb(0 0 0 / 32%);
-    --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-mono: "IBM Plex Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-}
-
-body {
     background: var(--ws2-canvas);
     color: var(--ws2-text);
     letter-spacing: 0;

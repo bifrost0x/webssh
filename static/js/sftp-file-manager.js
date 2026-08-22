@@ -6,6 +6,8 @@ class SFTPFileManager {
         this.isOpen = false;
         this.displayMode = 'closed';
         this.embeddedContainer = null;
+        this.embeddedTarget = null;
+        this.suspendedEmbeddedTarget = null;
 
         this.initializeWorkspaceState();
 
@@ -1444,8 +1446,7 @@ class SFTPFileManager {
 
     open() {
         if (this.displayMode === 'embedded') {
-            window.dispatchEvent?.(new CustomEvent('session-sftp-request-close'));
-            if (this.displayMode === 'embedded') this.closeEmbedded();
+            this.suspendEmbedded();
         }
         this.isOpen = true;
         this.displayMode = 'modal';
@@ -1479,6 +1480,8 @@ class SFTPFileManager {
             this.closeEmbedded();
             return;
         }
+        const embeddedTarget = this.suspendedEmbeddedTarget;
+        this.suspendedEmbeddedTarget = null;
         this.isOpen = false;
         this.displayMode = 'closed';
         this.closeSourceLauncher();
@@ -1505,11 +1508,22 @@ class SFTPFileManager {
             this.uploadProgressNotification.remove();
             this.uploadProgressNotification = null;
         }
+
+        if (embeddedTarget) {
+            void this.openEmbedded(
+                embeddedTarget.container,
+                embeddedTarget.sessionId,
+                embeddedTarget.session,
+            );
+        }
     }
 
     async openEmbedded(container, sessionId, session = {}) {
         if (!container || !sessionId) return false;
-        if (this.displayMode === 'modal') this.close();
+        if (this.displayMode === 'modal') {
+            this.suspendedEmbeddedTarget = null;
+            this.close();
+        }
 
         this.enterEmbeddedPaneState();
         this.isOpen = true;
@@ -1526,6 +1540,11 @@ class SFTPFileManager {
             id: sessionId,
             connected: session.connected !== false,
         };
+        this.embeddedTarget = {
+            container,
+            sessionId,
+            session: sessionRecord,
+        };
         const index = this.availableSessions.findIndex(item => item.id === sessionId);
         if (index >= 0) this.availableSessions[index] = sessionRecord;
         else this.availableSessions.push(sessionRecord);
@@ -1536,20 +1555,60 @@ class SFTPFileManager {
     }
 
     async followEmbedded(sessionId, session = {}) {
-        if (this.displayMode !== 'embedded' || !sessionId) return false;
+        if (!sessionId) return false;
+        if (this.displayMode === 'modal' && this.suspendedEmbeddedTarget) {
+            const sessionRecord = {
+                ...session,
+                id: sessionId,
+                connected: session.connected !== false,
+            };
+            this.suspendedEmbeddedTarget = {
+                ...this.suspendedEmbeddedTarget,
+                sessionId,
+                session: sessionRecord,
+            };
+            this.embeddedTarget = this.suspendedEmbeddedTarget;
+            return true;
+        }
+        if (this.displayMode !== 'embedded') return false;
         if (this.panes.left.sessionId === sessionId) {
             this.panes.left.hostInfo = {
                 host: session.host,
                 username: session.username,
                 port: session.port,
             };
+            if (this.embeddedTarget) {
+                this.embeddedTarget = {
+                    ...this.embeddedTarget,
+                    session: {
+                        ...this.embeddedTarget.session,
+                        ...session,
+                        id: sessionId,
+                    },
+                };
+            }
             this.updatePaneBadge('left');
             return true;
         }
         return this.openEmbedded(this.embeddedContainer, sessionId, session);
     }
 
-    closeEmbedded() {
+    suspendEmbedded() {
+        if (this.displayMode !== 'embedded') return false;
+        const sessionId = this.panes.left.sessionId;
+        const session = this.availableSessions.find(item => item.id === sessionId)
+            || this.embeddedTarget?.session
+            || { id: sessionId, ...this.panes.left.hostInfo, connected: true };
+        this.suspendedEmbeddedTarget = {
+            container: this.embeddedContainer,
+            sessionId,
+            session,
+        };
+        this.detachEmbedded();
+        return true;
+    }
+
+    detachEmbedded() {
         if (this.displayMode !== 'embedded') return;
         this.closeContextMenu();
         this.resetPane('left');
@@ -1561,15 +1620,26 @@ class SFTPFileManager {
         this.restoreStandalonePaneState();
     }
 
+    closeEmbedded() {
+        this.suspendedEmbeddedTarget = null;
+        this.embeddedTarget = null;
+        this.detachEmbedded();
+    }
+
     isEmbeddedOpen() {
         return this.displayMode === 'embedded';
     }
 
     handleEmbeddedDisconnect(sessionId) {
+        if (this.suspendedEmbeddedTarget?.sessionId === sessionId) {
+            this.suspendedEmbeddedTarget = null;
+            this.embeddedTarget = null;
+        }
         if (
             this.displayMode === 'embedded'
             && this.panes.left.sessionId === sessionId
         ) {
+            this.embeddedTarget = null;
             this.resetPane('left');
         }
     }
