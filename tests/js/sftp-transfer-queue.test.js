@@ -1081,31 +1081,133 @@ test('embedded drag and drop uses the existing directory upload path', () => {
     assert.equal(uploaded.target, manager.panes.left);
 });
 
-test('opening the full modal closes embedded mode before restoring dual-pane UI', () => {
+test('the full modal suspends embedded Files and restores it when closed', async () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     let closed = 0;
     let shown = 0;
+    let hidden = 0;
+    let dispatched = 0;
+    let restored = null;
+    const embeddedContainer = {};
+    const embeddedSession = {
+        id: 'session-a', username: 'ops', host: 'edge.example', port: 22, connected: true,
+    };
     Object.assign(manager, {
-        displayMode: 'embedded', isOpen: true, modal: { style: {}, classList: classList() },
+        displayMode: 'embedded', isOpen: true, embeddedContainer,
+        availableSessions: [embeddedSession],
+        panes: {
+            left: { sessionId: 'session-a', path: '/', selected: new Set() },
+            right: { sessionId: null, path: '/', selected: new Set() },
+        },
+        modal: { style: {}, classList: classList() },
         closeEmbedded() { closed += 1; this.displayMode = 'closed'; this.isOpen = false; },
+        suspendEmbedded() {
+            this.suspendedEmbeddedTarget = {
+                container: this.embeddedContainer,
+                sessionId: this.panes.left.sessionId,
+                session: this.availableSessions[0],
+            };
+            this.displayMode = 'closed';
+            this.isOpen = false;
+        },
+        openEmbedded(container, sessionId, session) {
+            restored = { container, sessionId, session };
+            this.displayMode = 'embedded';
+            this.isOpen = true;
+            return Promise.resolve(true);
+        },
         updateSessionLists() {}, restoreLastSources() {}, applyTranslations() {},
         loadWorkspaceProfiles() {}, updatePathInput() {}, updatePaneBadge() {}, renderPane() {},
-        renderWorkspaceChrome() {}, openSourceLauncher() {},
+        renderWorkspaceChrome() {}, openSourceLauncher() {}, closeSourceLauncher() {},
+        closeContextMenu() {},
         isMobile() { return false; }, setActivePane() {}, updateMobilePaneTabs() {},
     });
-    global.window.ModalManager = { open() { shown += 1; } };
-    global.window.dispatchEvent = () => {};
+    global.window.ModalManager = {
+        open() { shown += 1; },
+        close() { hidden += 1; },
+    };
+    global.window.dispatchEvent = () => { dispatched += 1; };
     const originalGetElementById = global.document.getElementById;
     global.document.getElementById = () => ({ style: {}, classList: classList(), value: '' });
 
     manager.open();
 
-    assert.equal(closed, 1);
+    assert.equal(closed, 0);
+    assert.equal(dispatched, 0);
     assert.equal(shown, 1);
     assert.equal(manager.displayMode, 'modal');
+    manager.close();
+    await Promise.resolve();
+
+    assert.equal(hidden, 1);
+    assert.deepEqual(restored, {
+        container: embeddedContainer,
+        sessionId: 'session-a',
+        session: embeddedSession,
+    });
+    assert.equal(manager.displayMode, 'embedded');
     global.document.getElementById = originalGetElementById;
     delete global.window.ModalManager;
+});
+
+test('manual embedded close cancels a pending restore while the modal is open', () => {
+    const target = { container: {}, sessionId: 'session-a', session: { id: 'session-a' } };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        displayMode: 'modal',
+        embeddedTarget: target,
+        suspendedEmbeddedTarget: target,
+    });
+
+    manager.closeEmbedded();
+
+    assert.equal(manager.embeddedTarget, null);
+    assert.equal(manager.suspendedEmbeddedTarget, null);
+    assert.equal(manager.displayMode, 'modal');
+});
+
+test('active session changes replace the pending embedded restore target', async () => {
+    const container = {};
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        displayMode: 'modal',
+        embeddedTarget: null,
+        suspendedEmbeddedTarget: {
+            container, sessionId: 'session-a', session: { id: 'session-a' },
+        },
+    });
+
+    const followed = await manager.followEmbedded('session-b', {
+        username: 'deploy', host: 'next.example', port: 2222, connected: true,
+    });
+
+    assert.equal(followed, true);
+    assert.deepEqual(manager.suspendedEmbeddedTarget, {
+        container,
+        sessionId: 'session-b',
+        session: {
+            id: 'session-b', username: 'deploy', host: 'next.example', port: 2222, connected: true,
+        },
+    });
+    assert.equal(manager.embeddedTarget, manager.suspendedEmbeddedTarget);
+});
+
+test('disconnect cancels only the matching pending embedded restore target', () => {
+    const target = { container: {}, sessionId: 'session-a', session: { id: 'session-a' } };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        displayMode: 'modal',
+        embeddedTarget: target,
+        suspendedEmbeddedTarget: target,
+    });
+
+    manager.handleEmbeddedDisconnect('session-b');
+    assert.equal(manager.suspendedEmbeddedTarget, target);
+
+    manager.handleEmbeddedDisconnect('session-a');
+    assert.equal(manager.embeddedTarget, null);
+    assert.equal(manager.suspendedEmbeddedTarget, null);
 });
 
 test('generic transfer failures are localized before entering the queue', () => {

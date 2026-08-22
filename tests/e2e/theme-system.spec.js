@@ -110,6 +110,16 @@ async function readThemeState(page) {
                     bodyStyle.getPropertyValue('--text-muted').trim(),
                     bodyStyle.getPropertyValue('--bg-secondary').trim(),
                 ),
+                settingsLabel: getComputedStyle(
+                    document.querySelector('#settingsModal .settings-field label'),
+                ).color,
+                primaryText: rgb(bodyStyle.getPropertyValue('--text-primary').trim()),
+                settingsLabelContrast: contrast(
+                    getComputedStyle(
+                        document.querySelector('#settingsModal .settings-field label'),
+                    ).color,
+                    bodyStyle.getPropertyValue('--bg-secondary').trim(),
+                ),
             },
         };
     });
@@ -168,6 +178,9 @@ test('Paper Ops uses a tinted Blueprint Steel canvas instead of white surfaces',
     expect(state.colors.secondaryBlueBias).toBeGreaterThanOrEqual(8);
     expect(state.background.opacity).toBeGreaterThanOrEqual(0.17);
     expect(state.colors.mutedContrast).toBeGreaterThanOrEqual(4.5);
+    expect(state.colors.settingsLabelContrast).toBeGreaterThanOrEqual(4.5);
+    expect(state.colors.settingsLabel.match(/[\d.]+/g).map(Number).slice(0, 3))
+        .toEqual(state.colors.primaryText);
 });
 
 test('professional themes use restrained local backgrounds', async ({ page }) => {

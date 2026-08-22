@@ -43,13 +43,13 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/session-workspace.js'": '?v=9',
         "filename='js/session-manager.js'": '?v=11',
         "filename='js/terminal-manager.js'": '?v=10',
-        "filename='js/sftp-file-manager.js'": '?v=14',
+        "filename='js/sftp-file-manager.js'": '?v=15',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
         "filename='js/session-command-launcher.js'": '?v=5',
         "filename='js/connection-history.js'": '?v=2',
-        "filename='js/app.js'": '?v=18',
+        "filename='js/app.js'": '?v=19',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
