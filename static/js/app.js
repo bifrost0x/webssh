@@ -1673,7 +1673,7 @@
         }
 
         const actions = [
-            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => document.getElementById('newConnectionBtn').click() },
+            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => openConnectionModalForPane(getDefaultPaneIndex()) },
             { id: 'command-library', labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { id: 'file-transfer', labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
             { id: 'manage-keys', labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
@@ -1891,14 +1891,10 @@
             window.JumpHostManager.load();
         }
 
-        document.getElementById('newConnectionBtn').addEventListener('click', () => {
-            openConnectionModalForPane(getDefaultPaneIndex());
-        });
-
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {
             newTabBtn.addEventListener('click', () => {
-                document.getElementById('newConnectionBtn').click();
+                openConnectionModalForPane(getDefaultPaneIndex());
             });
         }
 
@@ -2263,7 +2259,7 @@
 
             if (e.ctrlKey && e.shiftKey && e.key === 'N') {
                 e.preventDefault();
-                document.getElementById('newConnectionBtn').click();
+                openConnectionModalForPane(getDefaultPaneIndex());
             }
 
             if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {

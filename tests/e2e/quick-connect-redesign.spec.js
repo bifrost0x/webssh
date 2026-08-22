@@ -15,6 +15,34 @@ test.afterEach(async ({ page }) => {
     await assertNoExternalRequests(page);
 });
 
+test('keeps Quick Connect in the workspace without a duplicate header action', async ({ page }) => {
+    await expect(page.locator('#newConnectionBtn')).toHaveCount(0);
+
+    const newTab = page.locator('#newTabBtn');
+    const centralLauncher = page.locator('.profile-launcher-new');
+    await expect(newTab).toBeVisible();
+    await expect(centralLauncher).toBeVisible();
+
+    await newTab.click();
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+    await page.locator('#cancelConnectionBtn').click();
+
+    await centralLauncher.click();
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+    await page.locator('#cancelConnectionBtn').click();
+
+    await page.keyboard.press('Control+Shift+N');
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+    await page.locator('#cancelConnectionBtn').click();
+
+    await page.keyboard.press('Control+k');
+    await page.locator('#commandPaletteInput').fill('Quick Connect');
+    await page.locator(
+        '.palette-item[data-palette-kind="action"][data-palette-id="quick-connect"]',
+    ).click();
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+});
+
 test('presents a focused two-column quick connect without a saved-profile picker', async ({ page }) => {
     await page.evaluate(() => {
         for (let index = 0; index < 7; index += 1) {
@@ -23,7 +51,7 @@ test('presents a focused two-column quick connect without a saved-profile picker
             );
         }
     });
-    await page.locator('#newConnectionBtn').click();
+    await page.locator('#newTabBtn').click();
 
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(page.locator('#connectionDetailsCard')).toBeVisible();
@@ -86,7 +114,7 @@ test('presents a focused two-column quick connect without a saved-profile picker
 });
 
 test('uses the requested connection details and advanced settings hierarchy', async ({ page }) => {
-    await page.locator('#newConnectionBtn').click();
+    await page.locator('#newTabBtn').click();
 
     const hierarchy = await page.locator('#connectionModal').evaluate(modal => {
         const detailsContent = modal.querySelector('.quick-connect-details-content');
@@ -135,7 +163,7 @@ test('keeps modal actions fixed while expanded content scrolls inside', async ({
             );
         }
     });
-    await page.locator('#newConnectionBtn').click();
+    await page.locator('#newTabBtn').click();
     await page.locator('#connectionAdvancedSettings > summary').click();
 
     const before = await page.locator('#connectionModal').evaluate(modal => {
@@ -201,8 +229,7 @@ test.describe('mobile quick connect', () => {
                 'mobile.internal', 22, 'mobile'
             );
         });
-        await page.locator('#mobileMenuBtn').click();
-        await page.locator('#newConnectionBtn').click();
+        await page.locator('#newTabBtn').click();
 
         const geometry = await page.locator('#connectionModal').evaluate(modal => {
             const details = modal.querySelector('#connectionDetailsCard')

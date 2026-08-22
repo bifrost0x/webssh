@@ -113,3 +113,15 @@ test('exposes every modal close control as a keyboard-focusable button', async (
         expect(control.tabIndex).toBeGreaterThanOrEqual(0);
     }
 });
+
+test('renders modal close controls with the Material Icons font', async ({ page }) => {
+    const fontFamilies = await page.locator('.modal-header .close.material-icons')
+        .evaluateAll(elements => elements.map(
+            element => getComputedStyle(element).fontFamily,
+        ));
+
+    expect(fontFamilies.length).toBeGreaterThan(0);
+    for (const fontFamily of fontFamilies) {
+        expect(fontFamily).toContain('Material Icons');
+    }
+});

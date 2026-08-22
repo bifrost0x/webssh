@@ -112,6 +112,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
     for path in ("/", "/security", "/admin", "/change-password"):
         response = client.get(path)
         assert response.status_code == 200
+        assert b'css/style.css?v=23' in response.data
         assert b'css/webssh-2.css?v=15' in response.data
         assert b'js/i18n.js?v=22' in response.data
 
@@ -119,6 +120,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
     for path in ("/login", "/register"):
         response = client.get(path)
         assert response.status_code == 200
+        assert b'css/style.css?v=23' in response.data
         assert b'css/webssh-2.css?v=15' in response.data
         assert b'js/i18n.js?v=22' in response.data
 
