@@ -244,6 +244,15 @@ def _session_lifetime(remember):
     return timedelta(seconds=max(1, int(value)))
 
 
+def clear_browser_authentication():
+    """Clear browser auth state while preserving remember-cookie removal."""
+    logout_user()
+    clear_remember_cookie = session.get('_remember') == 'clear'
+    session.clear()
+    if clear_remember_cookie:
+        session['_remember'] = 'clear'
+
+
 def finalize_login(pending, *, methods, strong_authenticated_at=None):
     """Create the sole authenticated browser-session record."""
     if not isinstance(pending, PendingAuthentication):
@@ -313,8 +322,7 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
-        logout_user()
-        session.clear()
+        clear_browser_authentication()
         raise AuthenticationFinalizationError(
             'authentication session could not be stored'
         ) from exc

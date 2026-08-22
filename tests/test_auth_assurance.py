@@ -341,6 +341,28 @@ def test_remember_cookie_restores_the_bound_authentication_session(app, client):
         assert browser_session.get('_auth_session')
 
 
+def test_legacy_remember_cookie_is_cleared_before_login_redirect(app, client):
+    from flask_login.utils import encode_cookie
+    from app.models import User, db
+
+    user_id = _create_user(app, 'legacyremembered')
+    with app.app_context():
+        legacy_identifier = db.session.get(User, user_id).get_id()
+        legacy_cookie = encode_cookie(legacy_identifier)
+
+    client.set_cookie('remember_token', legacy_cookie)
+
+    rejected = client.get('/')
+
+    assert rejected.status_code == 302
+    assert '/login?next=' in rejected.headers['Location']
+    assert client.get_cookie('remember_token') is None
+
+    login = client.get(rejected.headers['Location'])
+
+    assert login.status_code == 200
+
+
 def test_request_guard_rejects_invalid_server_side_sessions(
     app,
     client,
@@ -430,12 +452,15 @@ def test_logout_deletes_current_authentication_session(app, client):
     assert client.post('/login', data={
         'username': 'logoutassurance',
         'password': 'password123',
+        'remember': 'on',
     }).status_code == 302
+    assert client.get_cookie('remember_token') is not None
     with app.app_context():
         assert AuthenticationSession.query.count() == 1
 
     response = client.post('/logout')
 
     assert response.status_code == 302
+    assert client.get_cookie('remember_token') is None
     with app.app_context():
         assert AuthenticationSession.query.count() == 0
