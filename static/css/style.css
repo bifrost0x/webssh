@@ -2437,7 +2437,6 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     border: 0;
     background: transparent;
     font-size: 28px;
-    font-family: inherit;
     color: var(--text-secondary);
     cursor: pointer;
     line-height: 1;
