@@ -131,6 +131,11 @@ def _allowed_methods(user, auth_session, required_assurance):
         return ["ldap"]
     if "password" in methods and not user.is_ldap_managed:
         return ["password"]
+    if (
+        "passkey" in methods
+        and "passkey" in available_mfa_methods(user)
+    ):
+        return ["passkey"]
     return []
 
 
@@ -205,13 +210,13 @@ def create_intent():
             if user.mfa_enabled else AssuranceLevel.BASIC.value
         )
         methods = _allowed_methods(user, auth_session, required)
-        if not methods:
+        recent = recent_strong_assurance(auth_session)
+        if not methods and recent is None:
             return _error("step_up_failed", 403)
         token, intent = create_account_step_up_intent(
             auth_session, action, target
         )
-        recent = recent_strong_assurance(auth_session)
-        if required == AssuranceLevel.MFA.value and recent is not None:
+        if recent is not None:
             return _complete_intent(
                 token, auth_session, recent.value, "recent"
             )
