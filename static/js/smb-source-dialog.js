@@ -176,8 +176,13 @@
         }
 
         close({ cancelAttempt = true } = {}) {
-            if (cancelAttempt && this.pending && this.socket) {
-                this.socket.emit('smb_quick_connect_cancel', {
+            if (
+                cancelAttempt
+                && this.pending
+                && this.socket?.connected === true
+                && typeof this.socket?.volatile?.emit === 'function'
+            ) {
+                this.socket.volatile.emit('smb_quick_connect_cancel', {
                     request_id: this.pending.requestId,
                 });
             }
@@ -466,11 +471,27 @@
                 return false;
             }
 
+            if (
+                this.socket.connected !== true
+                || typeof this.socket?.volatile?.emit !== 'function'
+            ) {
+                this.elements.password.value = '';
+                this.setStatus(
+                    this.t(
+                        'smb.error.disconnected',
+                        'Connection to WebSSH was lost. Reconnect and try again.',
+                    ),
+                    'error',
+                );
+                this.elements.password.focus?.();
+                return false;
+            }
+
             const requestId = this.requestIdFactory();
             this.pending = { requestId, pane: this.pane };
             this.setBusy(true);
             this.setStatus(this.t('smb.connecting', 'Connecting securely…'), 'pending');
-            this.socket.emit('smb_quick_connect', {
+            this.socket.volatile.emit('smb_quick_connect', {
                 request_id: requestId,
                 ...values,
             });

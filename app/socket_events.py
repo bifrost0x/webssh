@@ -14,7 +14,7 @@ from .models import db, SSHSession, SocketSession
 from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_ssh_connection, log_ssh_disconnect,
-                              log_file_upload, log_file_download,
+                              log_file_source_operation,
                               log_key_upload, log_key_rename, log_key_replace,
                               log_key_delete,
                               log_tailscale_ssh_usage)
@@ -38,6 +38,7 @@ from .file_sources import (
     FileCapability,
     FileSourceKind,
     FileSourceUnavailable,
+    file_source_audit_identity,
     file_source_resolver,
     make_source_id,
     parse_source_id,
@@ -143,6 +144,51 @@ def _file_source_unavailable_payload(**context):
         'code': FileSourceUnavailable.public_code,
         **context,
     }
+
+
+def _audit_file_source_operation(
+    user,
+    source,
+    *,
+    operation,
+    result,
+    path,
+    size=0,
+    destination=None,
+    destination_path=None,
+    ip_address=None,
+):
+    """Record target metadata without ever accepting SMB credentials."""
+    try:
+        identity = file_source_audit_identity(source)
+        destination_identity = (
+            file_source_audit_identity(destination)
+            if destination is not None else {}
+        )
+        log_file_source_operation(
+            username=user.username,
+            operation=operation,
+            result=result,
+            filename=posixpath.basename(str(path).rstrip('/')) or '/',
+            size=size,
+            ip_address=(
+                request.remote_addr if ip_address is None else ip_address
+            ),
+            destination_target_host=destination_identity.get('target_host'),
+            destination_share=destination_identity.get('share'),
+            destination_filename=(
+                posixpath.basename(str(destination_path).rstrip('/')) or '/'
+                if destination_path is not None else None
+            ),
+            **identity,
+        )
+    except Exception as error:
+        log_error(
+            'File source audit failed',
+            operation=operation,
+            result=result,
+            exception_type=type(error).__name__,
+        )
 
 
 class _CombinedCancellation:
@@ -2033,6 +2079,9 @@ def handle_download_file_binary(data, current_user=None):
 
         try:
             source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.PREVIEW
+            )
             binary_data, error = file_service.read_binary_preview(
                 source_id,
                 user_id=current_user.id,
@@ -2044,6 +2093,13 @@ def handle_download_file_binary(data, current_user=None):
             return
 
         if error:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='binary_preview',
+                result='FAILED',
+                path=remote_path,
+            )
             emit('error', {'error': f'Download failed: {error}', **context})
         else:
             import os
@@ -2059,8 +2115,14 @@ def handle_download_file_binary(data, current_user=None):
                 'for_preview': True,
                 'encoding': 'base64'
             })
-            log_file_download(current_user.username, target_host='via-sftp', filename=filename,
-                            size=len(binary_data), success=True, ip_address=request.remote_addr)
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='binary_preview',
+                result='COMPLETED',
+                path=remote_path,
+                size=len(binary_data),
+            )
 
     except Exception:
         emit('error', {
@@ -2619,6 +2681,9 @@ def handle_create_directory(data, current_user=None):
 
         try:
             source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.MKDIR
+            )
             success, error = file_service.create_directory(
                 source_id,
                 user_id=current_user.id,
@@ -2629,11 +2694,25 @@ def handle_create_directory(data, current_user=None):
             return
 
         if error:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='mkdir',
+                result='FAILED',
+                path=remote_path,
+            )
             emit('error', {
                 'error': f'Failed to create directory: {error}',
                 **context,
             })
         else:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='mkdir',
+                result='COMPLETED',
+                path=remote_path,
+            )
             emit('directory_created', {'path': remote_path, **identity})
 
     except Exception as e:
@@ -2670,6 +2749,9 @@ def handle_rename_file(data, current_user=None):
 
         try:
             source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.RENAME
+            )
             success, error = file_service.rename(
                 source_id,
                 user_id=current_user.id,
@@ -2681,8 +2763,26 @@ def handle_rename_file(data, current_user=None):
             return
 
         if error:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='rename',
+                result='FAILED',
+                path=old_path,
+                destination=source,
+                destination_path=new_path,
+            )
             emit('error', {'error': f'Failed to rename: {error}', **context})
         else:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='rename',
+                result='COMPLETED',
+                path=old_path,
+                destination=source,
+                destination_path=new_path,
+            )
             emit('file_renamed', {
                 'old_path': old_path,
                 'new_path': new_path,
@@ -2719,6 +2819,9 @@ def handle_delete_item(data, current_user=None):
 
         try:
             source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.DELETE
+            )
             success, error = file_service.delete(
                 source_id,
                 user_id=current_user.id,
@@ -2729,8 +2832,22 @@ def handle_delete_item(data, current_user=None):
             return
 
         if error:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='delete',
+                result='FAILED',
+                path=path,
+            )
             emit('error', {'error': f'Failed to delete: {error}', **context})
         else:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='delete',
+                result='COMPLETED',
+                path=path,
+            )
             emit('item_deleted', {'path': path, **identity})
             log_info(f"Deleted: {path}", user=current_user.username)
 
@@ -3060,6 +3177,9 @@ def handle_save_file(data, current_user=None):
 
         try:
             source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.EDIT
+            )
             success, error = file_service.write_file_text(
                 source_id,
                 user_id=current_user.id,
@@ -3067,28 +3187,45 @@ def handle_save_file(data, current_user=None):
                 content=content,
                 encoding=encoding,
                 newline=newline,
-                allow_non_atomic=payload.get('allow_non_atomic') is True,
             )
         except FileSourceUnavailable:
             emit('error', _file_source_unavailable_payload(**context))
             return
         except NonAtomicOverwriteRequired:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='edit_save',
+                result='ATOMIC_REPLACE_UNAVAILABLE',
+                path=path,
+                size=len(content_bytes),
+            )
             emit('error', {
-                'error': 'Atomic replacement needs delete permission. '
-                         'A direct overwrite is less resilient to interruption.',
+                'error': 'Atomic replacement is unavailable for this SMB account.',
                 'code': 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
-                'can_retry_non_atomic': True,
                 **context,
             })
             return
 
         if error:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='edit_save',
+                result='FAILED',
+                path=path,
+                size=len(content_bytes),
+            )
             emit('error', {'error': f'Save failed: {error}', **context})
         else:
-            import os
-            log_file_upload(current_user.username, target_host='via-file-manager-edit',
-                            filename=os.path.basename(path), size=len(content_bytes),
-                            success=True, ip_address=request.remote_addr)
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='edit_save',
+                result='COMPLETED',
+                path=path,
+                size=len(content_bytes),
+            )
             emit('file_saved', {'path': path, **identity})
 
     except Exception as e:
@@ -3200,6 +3337,52 @@ def handle_transfer_server_to_server(data, current_user=None):
                 **response_context,
             }
 
+        try:
+            source_audit_identity = file_source_audit_identity(source)
+            destination_audit_identity = file_source_audit_identity(destination)
+        except Exception as error:
+            source_audit_identity = None
+            destination_audit_identity = None
+            log_error(
+                'S2S audit identity unavailable',
+                exception_type=type(error).__name__,
+            )
+        audit_username = current_user.username
+        audit_ip = request.remote_addr
+
+        def audit_s2s(result, size=0):
+            if source_audit_identity is None:
+                return
+            try:
+                log_file_source_operation(
+                    username=audit_username,
+                    operation='server_to_server_copy',
+                    result=result,
+                    filename=(
+                        posixpath.basename(
+                            str(requested_source_path).rstrip('/')
+                        ) or '/'
+                    ),
+                    size=size,
+                    ip_address=audit_ip,
+                    destination_target_host=(
+                        destination_audit_identity['target_host']
+                    ),
+                    destination_share=destination_audit_identity['share'],
+                    destination_filename=(
+                        posixpath.basename(
+                            str(requested_dest_path).rstrip('/')
+                        ) or '/'
+                    ),
+                    **source_audit_identity,
+                )
+            except Exception as error:
+                log_error(
+                    'S2S transfer audit failed',
+                    result=result,
+                    exception_type=type(error).__name__,
+                )
+
         if hasattr(source, 'backend') and hasattr(destination, 'backend'):
             source_path = source.backend.normalize_path(requested_source_path)
             dest_path = destination.backend.normalize_path(requested_dest_path)
@@ -3258,6 +3441,7 @@ def handle_transfer_server_to_server(data, current_user=None):
             cancel_event = _CombinedCancellation(
                 record.cancel_event, lifecycle_cancel_event
             )
+            transferred = 0
             try:
                 active_source = file_service.resolve(
                     source_id,
@@ -3304,7 +3488,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                             'status': 'transferring',
                         }, room=user_room)
 
-                    copy_remote_entry(
+                    transfer_result = copy_remote_entry(
                         active_source,
                         source_path,
                         active_destination,
@@ -3318,6 +3502,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                         progress=report_progress,
                         chunk_size=config.CHUNK_SIZE,
                     )
+                    transferred = transfer_result.bytes_transferred
                     success, error = True, None
                 else:
                     success, error = sftp_handler.transfer_server_to_server(
@@ -3338,6 +3523,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 if success and _terminalize(
                     record, user_id, 'completed', manager=transfer_manager
                 ):
+                    audit_s2s('COMPLETED', transferred)
                     socketio.emit('s2s_transfer_complete', {
                         **response_context,
                         'transfer_id': transfer_id,
@@ -3350,6 +3536,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 elif error and _terminalize(
                     record, user_id, 'failed', manager=transfer_manager
                 ):
+                    audit_s2s('FAILED', transferred)
                     log_error(
                         'S2S transfer failed',
                         user_id=user_id,
@@ -3365,6 +3552,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 if _terminalize(
                     record, user_id, 'cancelled', manager=transfer_manager
                 ):
+                    audit_s2s('CANCELLED', transferred)
                     socketio.emit('s2s_transfer_error', {
                         **response_context,
                         'transfer_id': transfer_id,
@@ -3374,6 +3562,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 if _terminalize(
                     record, user_id, 'failed', manager=transfer_manager
                 ):
+                    audit_s2s('FAILED', transferred)
                     log_error(
                         'S2S transfer crashed',
                         user_id=user_id,

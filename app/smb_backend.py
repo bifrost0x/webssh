@@ -25,7 +25,7 @@ class FileConflict(SMBBackendError):
 
 
 class NonAtomicOverwriteRequired(SMBBackendError):
-    """Atomic SMB replacement was denied but a direct overwrite may work."""
+    """Atomic SMB replacement is unavailable for this target."""
 
 
 class _MemberBudget:
@@ -65,6 +65,12 @@ class SMBBackend:
 
     def _unc(self, actual, value):
         return self._path(value).to_unc(actual.target_ip, actual.share)
+
+    @staticmethod
+    def _mutable_path(path):
+        if not path.segments:
+            raise SMBBackendError('Share root cannot be modified')
+        return path
 
     @staticmethod
     def _is_not_found(exc):
@@ -233,7 +239,7 @@ class SMBBackend:
     def mkdir(self, source, path):
         try:
             actual = self._owned_source(source)
-            smb_path = self._path(path)
+            smb_path = self._mutable_path(self._path(path))
             with actual.lock:
                 self._validate_path_components(
                     actual, smb_path, include_leaf=False
@@ -249,10 +255,10 @@ class SMBBackend:
     def rename(self, source, old_path, new_path, *, replace=False):
         try:
             actual = self._owned_source(source)
-            old_unc = self._unc(actual, old_path)
-            new_unc = self._unc(actual, new_path)
-            old_smb_path = self._path(old_path)
-            new_smb_path = self._path(new_path)
+            old_smb_path = self._mutable_path(self._path(old_path))
+            new_smb_path = self._mutable_path(self._path(new_path))
+            old_unc = old_smb_path.to_unc(actual.target_ip, actual.share)
+            new_unc = new_smb_path.to_unc(actual.target_ip, actual.share)
             with actual.lock:
                 self._validate_path_components(actual, old_smb_path)
                 self._validate_path_components(
@@ -282,8 +288,8 @@ class SMBBackend:
             return False, 'Operation cancelled'
         try:
             actual = self._owned_source(source)
-            unc = self._unc(actual, path)
-            smb_path = self._path(path)
+            smb_path = self._mutable_path(self._path(path))
+            unc = smb_path.to_unc(actual.target_ip, actual.share)
             with actual.lock:
                 self._validate_path_components(actual, smb_path)
                 file_stat = actual.session.invoke(
@@ -666,41 +672,17 @@ class SMBBackend:
                 data = text.encode('utf-8')
             if len(data) > config.MAX_EDITOR_FILE_SIZE:
                 raise SMBBackendError('File too large to edit')
-            try:
-                with self.open_atomic_writer(
-                    source,
-                    path,
-                    replace=True,
-                    cancel_event=None,
-                ) as remote_file:
-                    self._write_all(remote_file, data)
-            except NonAtomicOverwriteRequired:
-                if allow_non_atomic is not True:
-                    raise
-                actual = self._owned_source(source)
-                destination_unc = self._unc(actual, path)
-                destination = self._path(path)
-                with actual.lock:
-                    self._validate_path_components(actual, destination)
-                    file_stat = actual.session.invoke(
-                        'stat',
-                        destination_unc,
-                        follow_symlinks=False,
-                    )
-                    if self._is_reparse(file_stat):
-                        raise SMBBackendError(
-                            'Reparse points are not supported'
-                        )
-                    if self._is_directory(file_stat):
-                        raise SMBBackendError('File is not writable')
-                    remote_file = actual.session.invoke(
-                        'open_file_no_follow',
-                        destination_unc,
-                        mode='wb',
-                        buffering=0,
-                    )
-                    with remote_file:
-                        self._write_all(remote_file, data)
+            # ``allow_non_atomic`` is retained only for compatibility with old
+            # clients.  SMB editor saves always fail closed when the server
+            # cannot replace the destination atomically.
+            del allow_non_atomic
+            with self.open_atomic_writer(
+                source,
+                path,
+                replace=True,
+                cancel_event=None,
+            ) as remote_file:
+                self._write_all(remote_file, data)
             return True, None
         except NonAtomicOverwriteRequired:
             raise

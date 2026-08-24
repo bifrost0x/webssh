@@ -16,7 +16,7 @@ function field(value = '') {
     };
 }
 
-function harness({ enabled = true } = {}) {
+function harness({ enabled = true, socketConnected = true } = {}) {
     const emitted = [];
     const connected = [];
     const closed = [];
@@ -37,13 +37,19 @@ function harness({ enabled = true } = {}) {
         status: { textContent: '', dataset: {} },
     };
     let requestNumber = 0;
+    const volatileEmitted = [];
+    const socket = {
+        connected: socketConnected,
+        emit(name, payload) { emitted.push([name, payload]); },
+        on(name, handler) { handlers[name] = handler; },
+        volatile: {
+            emit(name, payload) { volatileEmitted.push([name, payload]); },
+        },
+    };
     const dialog = new SMBSourceDialog({
         enabled,
         elements,
-        socket: {
-            emit(name, payload) { emitted.push([name, payload]); },
-            on(name, handler) { handlers[name] = handler; },
-        },
+        socket,
         requestIdFactory() {
             requestNumber += 1;
             return `smb-ui-${requestNumber}`;
@@ -53,7 +59,9 @@ function harness({ enabled = true } = {}) {
         onConnected(result) { connected.push(result); },
         t(_key, fallback) { return fallback; },
     });
-    return { dialog, elements, emitted, connected, closed, handlers };
+    return {
+        dialog, elements, emitted, volatileEmitted, connected, closed, handlers,
+    };
 }
 
 function validValues() {
@@ -67,14 +75,15 @@ function validValues() {
 }
 
 test('submit clears password and emits exactly one correlated request', () => {
-    const { dialog, elements, emitted } = harness();
+    const { dialog, elements, emitted, volatileEmitted } = harness();
     dialog.open({ pane: 'right' });
     dialog.setValues(validValues());
 
     assert.equal(dialog.submit(), true);
     assert.equal(dialog.submit(), false);
     assert.equal(elements.password.value, '');
-    assert.deepEqual(emitted, [[
+    assert.deepEqual(emitted, []);
+    assert.deepEqual(volatileEmitted, [[
         'smb_quick_connect',
         {
             request_id: 'smb-ui-1',
@@ -85,6 +94,20 @@ test('submit clears password and emits exactly one correlated request', () => {
             password: 'Secret-Sentinel-42!',
         },
     ]]);
+});
+
+test('offline submit clears the password and never buffers credentials', () => {
+    const { dialog, elements, emitted, volatileEmitted } = harness({
+        socketConnected: false,
+    });
+    dialog.open({ pane: 'right' });
+    dialog.setValues(validValues());
+
+    assert.equal(dialog.submit(), false);
+    assert.equal(elements.password.value, '');
+    assert.deepEqual(emitted, []);
+    assert.deepEqual(volatileEmitted, []);
+    assert.equal(dialog.pending, null);
 });
 
 test('disabled feature and invalid fields emit no network event', () => {
@@ -101,7 +124,7 @@ test('disabled feature and invalid fields emit no network event', () => {
 });
 
 test('close cancels the exact attempt, clears password and returns focus', () => {
-    const { dialog, elements, emitted, closed } = harness();
+    const { dialog, elements, volatileEmitted, closed } = harness();
     const returnFocus = field();
     dialog.open({ pane: 'left', returnFocus });
     dialog.setValues(validValues());
@@ -109,7 +132,7 @@ test('close cancels the exact attempt, clears password and returns focus', () =>
 
     dialog.close({ cancelAttempt: true });
 
-    assert.deepEqual(emitted[1], [
+    assert.deepEqual(volatileEmitted[1], [
         'smb_quick_connect_cancel',
         { request_id: 'smb-ui-1' },
     ]);
@@ -119,7 +142,7 @@ test('close cancels the exact attempt, clears password and returns focus', () =>
 });
 
 test('stale responses are ignored and success trusts only server descriptor', () => {
-    const { dialog, emitted, connected } = harness();
+    const { dialog, volatileEmitted, connected } = harness();
     dialog.open({ pane: 'right' });
     dialog.setValues(validValues());
     dialog.submit();
@@ -139,7 +162,7 @@ test('stale responses are ignored and success trusts only server descriptor', ()
     }), false);
     assert.deepEqual(connected, []);
     assert.equal(dialog.handleSuccess({
-        request_id: emitted[0][1].request_id, file_source: descriptor,
+        request_id: volatileEmitted[0][1].request_id, file_source: descriptor,
     }), true);
     assert.deepEqual(connected, [{ pane: 'right', descriptor }]);
 });
@@ -235,7 +258,7 @@ test('updating and deleting a saved share stay correlated by request and server 
 });
 
 test('a delayed save response cannot bind the current password to another endpoint', () => {
-    const { dialog, elements, emitted, handlers } = harness();
+    const { dialog, elements, emitted, volatileEmitted, handlers } = harness();
     dialog.open({ pane: 'left' });
     dialog.setValues({
         host: 'a.example',
@@ -274,7 +297,7 @@ test('a delayed save response cannot bind the current password to another endpoi
     assert.equal(elements.username.value, 'bob');
     assert.equal(elements.password.value, 'B-only-secret');
     assert.equal(dialog.submit(), true);
-    assert.deepEqual(emitted.at(-1), [
+    assert.deepEqual(volatileEmitted.at(-1), [
         'smb_quick_connect',
         {
             request_id: 'smb-ui-2',

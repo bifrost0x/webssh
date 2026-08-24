@@ -76,7 +76,9 @@ exact `SMB_ALLOWED_TARGETS` server allowlist. WebSSH fixes SMB connections to
 TCP 445 and requires SMB 3.1.1, signing, encryption, and secure negotiation;
 the current authentication mode is NTLM. Guest access, DFS, Kerberos, and
 automatic reconnect are not supported. SMB credentials are used for one
-temporary connection and are never stored by WebSSH.
+temporary connection. Passwords and authentication secrets are never stored by
+WebSSH. Users may save non-secret, per-user share definitions containing a
+display name, host, share, domain, and username.
 Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
 use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
 files and directories without following reparse points and validates existing

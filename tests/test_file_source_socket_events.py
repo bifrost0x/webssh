@@ -23,13 +23,15 @@ class ListingBackend:
 
 
 def make_source(source_id, capabilities, backend, *, kind='sftp'):
+    endpoint = 'host.test/Share' if kind == 'smb' else 'host.test:22'
+    protocol = 'SMB 3.1.1' if kind == 'smb' else 'SFTP'
     return ResolvedFileSource(
         descriptor=FileSourceDescriptor(
             source_id=source_id,
             kind=kind,
             label='Owned source',
-            endpoint='host.test:22',
-            protocol='SFTP',
+            endpoint=endpoint,
+            protocol=protocol,
             capabilities=capabilities,
             ephemeral=False,
             security={},
@@ -195,7 +197,7 @@ def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatc
     emitted, user = capture(monkeypatch)
     monkeypatch.setattr(
         socket_events,
-        'log_file_upload',
+        'log_file_source_operation',
         lambda *_args, **_kwargs: None,
     )
     backend = OperationBackend()
@@ -293,18 +295,19 @@ def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatc
     )
 
 
-def test_smb_editor_requires_structured_explicit_non_atomic_consent(
+def test_smb_editor_fails_closed_when_atomic_replace_is_unavailable(
     app,
     monkeypatch,
 ):
     emitted, user = capture(monkeypatch)
+    audit_calls = []
     monkeypatch.setattr(
         socket_events,
-        'log_file_upload',
-        lambda *_args, **_kwargs: None,
+        'log_file_source_operation',
+        lambda **details: audit_calls.append(details),
     )
 
-    class ConsentBackend(OperationBackend):
+    class AtomicOnlyBackend(OperationBackend):
         def write_file_text(
             self,
             source,
@@ -316,13 +319,11 @@ def test_smb_editor_requires_structured_explicit_non_atomic_consent(
             allow_non_atomic=False,
         ):
             self.calls.append(('save', allow_non_atomic))
-            if allow_non_atomic is not True:
-                raise NonAtomicOverwriteRequired(
-                    'Atomic replacement requires delete permission'
-                )
-            return True, None
+            raise NonAtomicOverwriteRequired(
+                'Atomic replacement requires delete permission'
+            )
 
-    backend = ConsentBackend()
+    backend = AtomicOnlyBackend()
     source = make_source(
         'smb-quick:owned',
         tuple(FileCapability),
@@ -345,29 +346,33 @@ def test_smb_editor_requires_structured_explicit_non_atomic_consent(
 
     with app.test_request_context('/socket.io'):
         socket_events.handle_save_file.__wrapped__(
-            {**common, 'allow_non_atomic': 'true'},
-            current_user=user,
-        )
-        socket_events.handle_save_file.__wrapped__(
             {**common, 'allow_non_atomic': True},
             current_user=user,
         )
 
-    assert backend.calls == [('save', False), ('save', True)]
+    assert backend.calls == [('save', False)]
+    assert len(audit_calls) == 1
+    assert audit_calls[0] == {
+        'username': 'operator',
+        'operation': 'edit_save',
+        'result': 'ATOMIC_REPLACE_UNAVAILABLE',
+        'filename': 'note.txt',
+        'size': len(b'saved'),
+        'ip_address': None,
+        'destination_target_host': None,
+        'destination_share': None,
+        'destination_filename': None,
+        'source_kind': 'smb',
+        'target_host': 'host.test',
+        'share': 'Share',
+    }
     assert emitted[0] == ('error', {
-        'error': 'Atomic replacement needs delete permission. '
-                 'A direct overwrite is less resilient to interruption.',
+        'error': 'Atomic replacement is unavailable for this SMB account.',
         'code': 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
-        'can_retry_non_atomic': True,
         'operation': 'save_file',
         'source_id': 'smb-quick:owned',
         'request_id': 'save:smb:1',
         'path': '/note.txt',
-    })
-    assert emitted[1] == ('file_saved', {
-        'path': '/note.txt',
-        'source_id': 'smb-quick:owned',
-        'request_id': 'save:smb:1',
     })
 
 

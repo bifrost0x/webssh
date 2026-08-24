@@ -257,7 +257,7 @@ test('saved SMB shares persist without passwords and reopen from the source laun
     await assertNoExternalRequests(page);
 });
 
-test('SMB editor asks once before using an explicit direct overwrite', async ({ page }) => {
+test('SMB editor fails closed when atomic replacement is unavailable', async ({ page }) => {
     await login(page);
 
     const state = await page.evaluate(() => {
@@ -287,21 +287,23 @@ test('SMB editor asks once before using an explicit direct overwrite', async ({ 
             source_id: 'smb-quick:e2eowned',
             request_id: preview.currentSaveRequestId,
             path: '/report.txt',
-            error: 'Atomic replacement needs delete permission. '
-                + 'A direct overwrite is less resilient to interruption.',
+            error: 'Atomic replacement is unavailable for this SMB account.',
             code: 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
-            can_retry_non_atomic: true,
         });
-        preview.saveEdit();
 
-        return { emitted, confirmations };
+        return {
+            emitted,
+            confirmations,
+            status: document.getElementById('editorStatus').textContent,
+        };
     });
 
-    expect(state.confirmations).toBe(1);
-    expect(state.emitted).toHaveLength(3);
-    expect(state.emitted[0].allow_non_atomic).toBe(false);
-    expect(state.emitted[1].allow_non_atomic).toBe(true);
-    expect(state.emitted[2].allow_non_atomic).toBe(true);
+    expect(state.confirmations).toBe(0);
+    expect(state.emitted).toHaveLength(1);
+    expect(state.emitted[0]).not.toHaveProperty('allow_non_atomic');
+    expect(state.status).toBe(
+        'Atomic replacement is unavailable for this SMB account.',
+    );
     await assertNoExternalRequests(page);
 });
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import posixpath
+import threading
 
 import config
 
@@ -58,6 +60,49 @@ class TransferBudget:
         self.bytes_used += count
         if self.bytes_used > self.max_bytes:
             raise RemoteTransferLimitExceeded('Transfer size limit exceeded')
+
+
+_SOURCE_LOCKS_GUARD = threading.Lock()
+_SOURCE_LOCKS = {}
+
+
+@contextmanager
+def _ordered_source_locks(source_ids, cancel_event):
+    """Serialize transfers touching the same sources in canonical order."""
+    source_ids = tuple(source_ids)
+    if not source_ids or any(
+        not isinstance(source_id, str) or not source_id
+        for source_id in source_ids
+    ):
+        raise RemoteTransferError('Invalid file source')
+    canonical_ids = tuple(sorted(set(source_ids)))
+
+    with _SOURCE_LOCKS_GUARD:
+        entries = []
+        for source_id in canonical_ids:
+            entry = _SOURCE_LOCKS.get(source_id)
+            if entry is None:
+                entry = [threading.Lock(), 0]
+                _SOURCE_LOCKS[source_id] = entry
+            entry[1] += 1
+            entries.append((source_id, entry))
+
+    acquired = []
+    try:
+        for _source_id, entry in entries:
+            while not entry[0].acquire(timeout=0.1):
+                _check_cancelled(cancel_event)
+            acquired.append(entry[0])
+            _check_cancelled(cancel_event)
+        yield
+    finally:
+        for lock in reversed(acquired):
+            lock.release()
+        with _SOURCE_LOCKS_GUARD:
+            for source_id, entry in entries:
+                entry[1] -= 1
+                if entry[1] == 0:
+                    _SOURCE_LOCKS.pop(source_id, None)
 
 
 @dataclass(frozen=True)
@@ -189,7 +234,7 @@ def _ensure_directory(destination, path):
         raise RemoteTransferError('Destination directory unavailable')
 
 
-def copy_remote_entry(
+def _copy_remote_entry_locked(
     source,
     source_path,
     destination,
@@ -201,7 +246,7 @@ def copy_remote_entry(
     *,
     chunk_size=None,
 ):
-    """Copy one file or directory through bounded backend streams."""
+    """Copy one file or directory while its source set is admitted."""
     if not isinstance(budget, TransferBudget):
         raise ValueError('budget must be a TransferBudget')
     if conflict_policy not in {'error', 'replace'}:
@@ -312,3 +357,33 @@ def copy_remote_entry(
         budget.members_used,
         digest.hexdigest(),
     )
+
+
+def copy_remote_entry(
+    source,
+    source_path,
+    destination,
+    destination_path,
+    conflict_policy,
+    budget,
+    cancel_event,
+    progress,
+    *,
+    chunk_size=None,
+):
+    """Copy one entry after deadlock-safe admission for both file sources."""
+    with _ordered_source_locks(
+        (source.source_id, destination.source_id),
+        cancel_event,
+    ):
+        return _copy_remote_entry_locked(
+            source,
+            source_path,
+            destination,
+            destination_path,
+            conflict_policy,
+            budget,
+            cancel_event,
+            progress,
+            chunk_size=chunk_size,
+        )

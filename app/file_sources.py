@@ -175,6 +175,25 @@ class ResolvedFileSource:
         return kind
 
 
+def file_source_audit_identity(source) -> dict[str, str | None]:
+    """Return credential-free, structured target fields for audit records."""
+    descriptor = source.descriptor
+    if descriptor.kind == 'smb':
+        target_host, separator, share = descriptor.endpoint.rpartition('/')
+        if not separator or not target_host or not share:
+            raise _unavailable()
+        return {
+            'source_kind': 'smb',
+            'target_host': target_host,
+            'share': share,
+        }
+    return {
+        'source_kind': 'sftp',
+        'target_host': descriptor.endpoint,
+        'share': None,
+    }
+
+
 SourceLookup = Callable[[str, str], FileSourceDescriptor | None]
 SourceHoldAcquirer = Callable[[str, str], Callable[[], None] | None]
 

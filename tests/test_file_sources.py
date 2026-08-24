@@ -92,6 +92,33 @@ def test_descriptor_exposes_only_public_fields_and_freezes_nested_values():
         source.label = 'changed'
 
 
+def test_smb_audit_identity_separates_host_and_share_without_credentials():
+    from app.file_sources import file_source_audit_identity
+
+    smb_descriptor = FileSourceDescriptor(
+        source_id='smb-quick:owned',
+        kind='smb',
+        label='Docs on nas.example',
+        endpoint='nas.example/Docs',
+        protocol='SMB 3.1.1',
+        capabilities=(FileCapability.READ,),
+        ephemeral=True,
+        security={'encrypted': True},
+    )
+
+    identity = file_source_audit_identity(
+        SimpleNamespace(descriptor=smb_descriptor)
+    )
+
+    assert identity == {
+        'source_kind': 'smb',
+        'target_host': 'nas.example',
+        'share': 'Docs',
+    }
+    assert 'username' not in identity
+    assert 'password' not in identity
+
+
 def test_resolver_returns_owned_source_with_registered_backend():
     backend = object()
 

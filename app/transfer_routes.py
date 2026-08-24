@@ -18,10 +18,11 @@ from flask_login import current_user, login_required
 
 import config
 from . import sftp_handler
-from .audit_logger import log_error, log_file_download, log_file_upload
+from .audit_logger import log_error, log_file_source_operation
 from .file_sources import (
     FileCapability,
     FileSourceUnavailable,
+    file_source_audit_identity,
     file_source_resolver,
 )
 from .file_service import file_service
@@ -140,6 +141,36 @@ def read_bounded_remote(remote_file, *, chunk_size, max_bytes, cancelled=None):
 
 def _transfer_backend(source):
     return getattr(source, 'backend', None)
+
+
+def _audit_transfer_source(
+    source,
+    *,
+    username,
+    ip_address,
+    operation,
+    result,
+    filename,
+    size,
+):
+    result = str(result).upper()
+    try:
+        log_file_source_operation(
+            username=username,
+            operation=operation,
+            result=result,
+            filename=filename,
+            size=size,
+            ip_address=ip_address,
+            **file_source_audit_identity(source),
+        )
+    except Exception as error:
+        log_error(
+            'File source transfer audit failed',
+            operation=operation,
+            result=result,
+            exception_type=type(error).__name__,
+        )
 
 
 def _write_all_remote(remote_file, chunk):
@@ -320,9 +351,20 @@ def _content_disposition(filename):
 @login_required
 def download_transfer(token):
     record, user_id, source = _consume(token, 'download')
+    audit_username = current_user.username
+    audit_ip = request.remote_addr
     finish = _request_finalizer(record, user_id)
     remote_path = record.metadata.get('remote_path')
     if not remote_path:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='download',
+            result='FAILED',
+            filename=record.metadata.get('filename'),
+            size=0,
+        )
         finish('failed')
         abort(404)
 
@@ -341,9 +383,27 @@ def download_transfer(token):
                 raise FolderUnavailable()
             size = int(file_stat.get('size', 0))
     except Exception:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='download',
+            result='FAILED',
+            filename=record.metadata.get('filename'),
+            size=0,
+        )
         finish('failed')
         abort(404)
     if size > config.MAX_DOWNLOAD_SIZE:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='download',
+            result='LIMIT_EXCEEDED',
+            filename=record.metadata.get('filename'),
+            size=size,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 413
 
@@ -373,11 +433,6 @@ def download_transfer(token):
                         remote_file, record, user_id, size
                     )
             outcome = 'completed'
-            log_file_download(
-                current_user.username, target_host='via-sftp',
-                filename=record.metadata['filename'], size=transferred,
-                success=True, ip_address=request.remote_addr,
-            )
         except (GeneratorExit, TransferCancelled):
             outcome = 'cancelled'
             raise
@@ -386,6 +441,15 @@ def download_transfer(token):
                       exception_type=type(error).__name__)
             raise
         finally:
+            _audit_transfer_source(
+                source,
+                username=audit_username,
+                ip_address=audit_ip,
+                operation='download',
+                result=outcome,
+                filename=record.metadata['filename'],
+                size=transferred,
+            )
             finish(outcome)
 
     response = Response(stream_with_context(generate()), mimetype='application/octet-stream')
@@ -569,6 +633,8 @@ def _build_backend_zip_to_disk(
 def download_folder_transfer(token):
     """Download a directory without routing archive bytes through Socket.IO."""
     record, user_id, source = _consume(token, 'download')
+    audit_username = current_user.username
+    audit_ip = request.remote_addr
     metadata = record.metadata
     remote_path = metadata.get('remote_path', '')
     folder_name = posixpath.basename(remote_path.rstrip('/')) or 'download'
@@ -600,6 +666,15 @@ def download_folder_transfer(token):
 
     finish = _request_finalizer(record, user_id, cleanup_resources)
     if not metadata.get('archive') or not remote_path:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='folder_download',
+            result='FAILED',
+            filename=f'{folder_name}.zip',
+            size=0,
+        )
         finish('failed')
         abort(404)
 
@@ -698,6 +773,11 @@ def download_folder_transfer(token):
                             temp_reservation = None
                         raise
     except FolderUnavailable:
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='FAILED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         abort(404)
     except (
@@ -705,17 +785,37 @@ def download_folder_transfer(token):
         sftp_handler.TransferMemberLimitExceeded,
         RemoteTransferLimitExceeded,
     ):
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='LIMIT_EXCEEDED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 413
     except (sftp_handler.TransferCancelled, RemoteTransferCancelled):
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='CANCELLED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('cancelled')
         return jsonify({'error': 'Transfer unavailable'}), 409
     except RemoteTransferError:
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='FAILED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 500
     except Exception as error:
         log_error('Folder download preparation failed', user_id=user_id,
                   exception_type=type(error).__name__)
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='FAILED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 500
 
@@ -752,14 +852,6 @@ def download_folder_transfer(token):
                         )
                         yield chunk
             outcome = 'completed'
-            log_file_download(
-                current_user.username,
-                target_host='via-sftp-folder',
-                filename=f'{folder_name}.zip',
-                size=transferred,
-                success=True,
-                ip_address=request.remote_addr,
-            )
         except (GeneratorExit, sftp_handler.TransferCancelled):
             outcome = 'cancelled'
             raise
@@ -768,6 +860,15 @@ def download_folder_transfer(token):
                       exception_type=type(error).__name__)
             raise
         finally:
+            _audit_transfer_source(
+                source,
+                username=audit_username,
+                ip_address=audit_ip,
+                operation='folder_download',
+                result=outcome,
+                filename=f'{folder_name}.zip',
+                size=transferred,
+            )
             finish(outcome)
 
     response = Response(
@@ -785,12 +886,19 @@ def download_folder_transfer(token):
 @transfer_blueprint.route('/api/transfers/<token>/upload', methods=['POST'])
 @login_required
 def upload_transfer(token):
-    record, user_id, _source = _consume(token, 'upload')
+    record, user_id, source = _consume(token, 'upload')
+    audit_username = current_user.username
+    audit_ip = request.remote_addr
     try:
         if (
             request.content_length is None
             or request.content_length > config.MAX_UPLOAD_SIZE
         ):
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='LIMIT_EXCEEDED',
+                filename=record.metadata.get('filename'), size=0,
+            )
             _terminalize(record, user_id, 'failed')
             return jsonify({'error': 'Transfer unavailable'}), 413
 
@@ -823,23 +931,42 @@ def upload_transfer(token):
                     ),
                 )
         except sftp_handler.TransferCancelled:
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='CANCELLED',
+                filename=record.metadata.get('filename'), size=transferred,
+            )
             _terminalize(record, user_id, 'cancelled')
             return jsonify({'error': 'Transfer unavailable'}), 409
         except sftp_handler.UploadSizeExceeded:
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='LIMIT_EXCEEDED',
+                filename=record.metadata.get('filename'), size=transferred,
+            )
             _terminalize(record, user_id, 'failed')
             return jsonify({'error': 'Transfer unavailable'}), 413
         except Exception as error:
             log_error('HTTP upload failed', user_id=user_id,
                       exception_type=type(error).__name__)
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='FAILED',
+                filename=record.metadata.get('filename'), size=transferred,
+            )
             _terminalize(record, user_id, 'failed')
             return jsonify({'error': 'Transfer unavailable'}), 500
 
         if not _terminalize(record, user_id, 'completed'):
             return jsonify({'error': 'Transfer unavailable'}), 500
-        log_file_upload(
-            current_user.username, target_host='via-sftp',
-            filename=record.metadata['filename'], size=transferred,
-            success=True, ip_address=request.remote_addr,
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='upload',
+            result='COMPLETED',
+            filename=record.metadata['filename'],
+            size=transferred,
         )
         return jsonify({'success': True}), 200
     finally:

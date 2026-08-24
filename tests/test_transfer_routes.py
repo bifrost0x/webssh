@@ -196,7 +196,16 @@ def test_smb_download_streams_only_through_resolved_backend(
                 yield remote
 
     resolved = SimpleNamespace(
-        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+        handle_id='smb-handle',
+        backend=Backend(),
+        source_id='smb-quick:owned',
+        descriptor=SimpleNamespace(kind='smb', endpoint='nas.example/Docs'),
+    )
+    audit_calls = []
+    monkeypatch.setattr(
+        transfer_routes,
+        'log_file_source_operation',
+        lambda **details: audit_calls.append(details),
     )
     monkeypatch.setattr(
         transfer_routes.file_service, 'resolve',
@@ -222,6 +231,17 @@ def test_smb_download_streams_only_through_resolved_backend(
     assert response.data == payload
     assert max(remote.read_sizes) <= app.config['CHUNK_SIZE']
     assert manager._records == {}
+    assert audit_calls == [{
+        'username': 'smb_download_user',
+        'operation': 'download',
+        'result': 'COMPLETED',
+        'filename': 'report.bin',
+        'size': len(payload),
+        'ip_address': '127.0.0.1',
+        'source_kind': 'smb',
+        'target_host': 'nas.example',
+        'share': 'Docs',
+    }]
 
 
 def test_smb_upload_uses_atomic_backend_writer_and_bounded_request_reads(

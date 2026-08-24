@@ -123,16 +123,21 @@ def run_checks():
             )
         with backend.open_reader(source, protected_path) as remote_file:
             assert remote_file.read() == protected_original
-        assert backend.write_file_text(
-            source,
-            protected_path,
-            'direct overwrite accepted',
-            encoding='utf-8',
-            newline='lf',
-            allow_non_atomic=True,
-        ) == (True, None)
+        try:
+            backend.write_file_text(
+                source,
+                protected_path,
+                'legacy direct overwrite request',
+                encoding='utf-8',
+                newline='lf',
+                allow_non_atomic=True,
+            )
+        except NonAtomicOverwriteRequired:
+            pass
+        else:
+            raise AssertionError('legacy consent bypassed atomic replacement')
         with backend.open_reader(source, protected_path) as remote_file:
-            assert remote_file.read() == b'direct overwrite accepted'
+            assert remote_file.read() == protected_original
 
         assert backend.mkdir(source, '/recursive-source') == (True, None)
         assert backend.mkdir(source, '/recursive-source/nested') == (True, None)

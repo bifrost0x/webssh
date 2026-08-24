@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from io import BytesIO
 from types import SimpleNamespace
-from threading import Event
+from threading import Barrier, BrokenBarrierError, Event, Lock, Thread
 import hashlib
 
 import pytest
@@ -254,3 +254,75 @@ def test_same_source_and_path_is_rejected_as_a_noop_conflict():
             budget=TransferBudget(max_bytes=10, max_members=1),
             cancel_event=Event(), progress=None, chunk_size=2,
         )
+
+
+def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    rendezvous = Barrier(2)
+    source_locks = {'source-a': Lock(), 'source-b': Lock()}
+    payloads = {'source-a': b'a', 'source-b': b'b'}
+    completed = []
+
+    class LockingBackend:
+        def normalize_path(self, path):
+            return path
+
+        def stat(self, source, _path, *, follow_links=False):
+            assert follow_links is False
+            return {
+                'size': len(payloads[source.handle_id]),
+                'is_dir': False,
+                'is_symlink': False,
+            }, None
+
+        @contextmanager
+        def open_reader(self, source, _path):
+            with source_locks[source.handle_id]:
+                try:
+                    rendezvous.wait(timeout=0.2)
+                except BrokenBarrierError:
+                    pass
+                yield _BoundedReader(payloads[source.handle_id])
+
+        @contextmanager
+        def open_atomic_writer(
+            self, source, _path, *, replace, cancel_event,
+        ):
+            assert replace is True
+            with source_locks[source.handle_id]:
+                yield _PartialWriter()
+
+    backend = LockingBackend()
+    source_a = SimpleNamespace(
+        source_id='smb-quick:source-a', handle_id='source-a', backend=backend,
+    )
+    source_b = SimpleNamespace(
+        source_id='smb-quick:source-b', handle_id='source-b', backend=backend,
+    )
+
+    def run(source, destination):
+        copy_remote_entry(
+            source,
+            '/source.bin',
+            destination,
+            '/target.bin',
+            conflict_policy='replace',
+            budget=TransferBudget(max_bytes=10, max_members=1),
+            cancel_event=Event(),
+            progress=None,
+            chunk_size=2,
+        )
+        completed.append((source.source_id, destination.source_id))
+
+    threads = [
+        Thread(target=run, args=(source_a, source_b), daemon=True),
+        Thread(target=run, args=(source_b, source_a), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=1)
+
+    assert not any(thread.is_alive() for thread in threads)
+    assert len(completed) == 2

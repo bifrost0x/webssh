@@ -26,9 +26,11 @@ authentication mode is NTLM. Guest or null sessions, DFS, Kerberos,
 administrative shares, reparse-point traversal, and automatic reconnect are
 not supported.
 
-The SMB dialog sends credentials only for the requested temporary connection;
-they are never stored by WebSSH. Closing its final tab closes the connection
-after any dependent transfer finishes. An application restart also removes all
+The SMB dialog sends the password only for the requested temporary connection;
+passwords and authentication secrets are never stored by WebSSH. Users may save
+non-secret, per-user share definitions containing a display name, host, share,
+domain, and username. Closing a source's final tab closes the connection after
+any dependent transfer finishes. An application restart also removes all active
 SMB sources.
 
 Browser TLS and SMB encryption protect different links. TLS covers the browser

@@ -368,7 +368,6 @@
         dirty: false,
         editEncoding: 'utf-8',
         editNewline: 'lf',
-        nonAtomicOverwriteConsents: new Set(),
         maxEditFileSize: 5 * 1024 * 1024,
         _beforeUnloadHandler: null,
 
@@ -646,25 +645,6 @@
             }
             if (data?.operation === 'save_file'
                     && this.matchesResponse(data, this.currentSaveRequestId)) {
-                if (
-                    data.code === 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED'
-                    && data.can_retry_non_atomic === true
-                    && !this.nonAtomicOverwriteConsents.has(this.currentSourceId)
-                ) {
-                    const warning = window.i18n
-                        ? i18n.t('editor.smbDirectOverwriteWarning')
-                        : 'This SMB account can write the file but cannot replace it atomically. '
-                            + 'A direct overwrite can leave the file incomplete if the connection '
-                            + 'is interrupted. Allow direct overwrite for this connection?';
-                    if (window.confirm(warning)) {
-                        this.nonAtomicOverwriteConsents.add(this.currentSourceId);
-                        this.saveEdit();
-                    } else {
-                        const status = document.getElementById('editorStatus');
-                        if (status) status.textContent = data.error || 'Save cancelled';
-                    }
-                    return true;
-                }
                 const status = document.getElementById('editorStatus');
                 if (status) status.textContent = data.error || 'Save failed';
                 showNotification(data.error || 'Save failed', 'error');
@@ -874,9 +854,6 @@
                 content: textarea.value,
                 encoding: this.editEncoding,
                 newline: this.editNewline,
-                allow_non_atomic: this.nonAtomicOverwriteConsents.has(
-                    this.currentSourceId
-                ),
                 request_id: this.currentSaveRequestId,
             });
         },

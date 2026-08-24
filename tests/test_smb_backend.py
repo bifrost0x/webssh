@@ -304,72 +304,34 @@ def test_atomic_replace_permission_failure_requires_explicit_non_atomic_consent(
     assert open_modes == ['xb']
 
 
-def test_explicit_non_atomic_consent_retries_with_direct_overwrite():
+def test_legacy_non_atomic_consent_never_truncates_the_destination():
     backend, source, session = _fixture()
     atomic_writer = _Writable()
-    direct_writer = _PartialWritable()
 
     def open_file(_path, *, mode, **_kwargs):
         if mode == 'xb':
             return atomic_writer
-        if mode == 'wb':
-            return direct_writer
-        raise AssertionError(f'unexpected mode: {mode}')
+        raise AssertionError('editor must never open the destination with wb')
 
     session.responses['open_file'] = open_file
     session.responses['open_file_no_follow'] = open_file
     session.responses['replace'] = SMBProtocolError('PERMISSION_DENIED')
 
-    success, error = backend.write_file_text(
-        source,
-        '/report.txt',
-        'new',
-        encoding='utf-8',
-        newline='lf',
-        allow_non_atomic=True,
-    )
+    with pytest.raises(NonAtomicOverwriteRequired):
+        backend.write_file_text(
+            source,
+            '/report.txt',
+            'new',
+            encoding='utf-8',
+            newline='lf',
+            allow_non_atomic=True,
+        )
 
-    assert success is True
-    assert error is None
-    assert direct_writer.saved == b'new'
-    assert [
-        kwargs['mode']
+    assert all(
+        kwargs['mode'] != 'wb'
         for name, _args, kwargs in session.calls
         if name in {'open_file', 'open_file_no_follow'}
-    ] == ['xb', 'wb']
-    assert any(
-        name == 'open_file_no_follow' and kwargs['mode'] == 'wb'
-        for name, _args, kwargs in session.calls
     )
-
-
-def test_direct_overwrite_refuses_reparse_target_even_with_consent():
-    backend, source, session = _fixture()
-    atomic_writer = _Writable()
-
-    def open_file(_path, *, mode, **_kwargs):
-        if mode == 'xb':
-            return atomic_writer
-        raise AssertionError('direct overwrite must not open a reparse point')
-
-    session.responses['open_file'] = open_file
-    session.responses['replace'] = SMBProtocolError('PERMISSION_DENIED')
-    session.responses['stat'] = _Stat(attributes=0x400)
-
-    success, error = backend.write_file_text(
-        source,
-        '/report.txt',
-        'new',
-        encoding='utf-8',
-        newline='lf',
-        allow_non_atomic=True,
-    )
-
-    assert success is False
-    assert error == 'Reparse points are not supported'
-    assert next(
-        kwargs for name, _args, kwargs in session.calls if name == 'stat'
-    )['follow_symlinks'] is False
 
 
 def test_non_permission_replace_failure_never_uses_direct_overwrite():
@@ -415,6 +377,27 @@ def test_cancelled_atomic_write_cleans_only_generated_temp():
         for name, args, _kwargs in session.calls
         if name == 'remove'
     )
+
+
+def test_share_root_mutations_are_rejected_before_remote_io():
+    backend, source, session = _fixture()
+
+    assert backend.mkdir(source, '/') == (False, 'Share root cannot be modified')
+    assert backend.rename(source, '/', '/renamed') == (
+        False, 'Share root cannot be modified'
+    )
+    assert backend.rename(source, '/old', '/') == (
+        False, 'Share root cannot be modified'
+    )
+    assert backend.delete(
+        source,
+        '/',
+        recursive=True,
+        budget=_MemberBudget(10),
+        cancel_event=Event(),
+    ) == (False, 'Share root cannot be modified')
+
+    assert session.calls == []
 
 
 def test_preview_rejects_growth_beyond_limit():
