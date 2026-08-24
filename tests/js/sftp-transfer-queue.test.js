@@ -21,6 +21,47 @@ function classList() {
     };
 }
 
+const ALL_FILE_CAPABILITIES = [
+    'list', 'read', 'write', 'mkdir', 'rename', 'delete',
+    'preview', 'edit', 'recursive', 'remote-transfer',
+];
+
+function fileSource(sourceId, overrides = {}) {
+    return {
+        sourceId,
+        kind: 'sftp',
+        label: sourceId,
+        endpoint: 'example.test:22',
+        protocol: 'SFTP',
+        capabilities: [...ALL_FILE_CAPABILITIES],
+        ephemeral: sourceId.startsWith('sftp-quick:'),
+        security: { hostKeyVerified: true },
+        ...overrides,
+    };
+}
+
+function serverFileSource(sourceId, overrides = {}) {
+    const normalized = fileSource(sourceId, overrides);
+    return {
+        source_id: normalized.sourceId,
+        kind: normalized.kind,
+        label: normalized.label,
+        endpoint: normalized.endpoint,
+        protocol: normalized.protocol,
+        capabilities: normalized.capabilities,
+        ephemeral: normalized.ephemeral,
+        security: { host_key_verified: normalized.security.hostKeyVerified },
+    };
+}
+
+function filePane(manager, sourceId, overrides = {}) {
+    return {
+        ...manager.createEmptyPaneState(),
+        source: fileSource(sourceId),
+        ...overrides,
+    };
+}
+
 test('standalone workspace starts in one pane with independent empty states', () => {
     const manager = Object.create(SFTPFileManager.prototype);
 
@@ -31,6 +72,113 @@ test('standalone workspace starts in one pane with independent empty states', ()
     assert.notEqual(manager.panes.left, manager.panes.right);
     assert.equal(manager.workspace.getActiveTab('left'), null);
     assert.equal(manager.workspace.getActiveTab('right'), null);
+});
+
+test('pane state has one canonical source and no legacy identity fields', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+
+    const state = manager.createEmptyPaneState();
+
+    assert.equal(state.source, null);
+    assert.equal(Object.hasOwn(state, 'type'), false);
+    assert.equal(Object.hasOwn(state, 'sessionId'), false);
+    assert.equal(Object.hasOwn(state, 'connectionId'), false);
+});
+
+test('source descriptor normalization is the only snake case boundary', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+
+    const source = manager.normalizeSourceDescriptor({
+        source_id: 'sftp-quick:quick-a',
+        kind: 'sftp',
+        label: 'deploy@stage.example',
+        endpoint: 'stage.example:22',
+        protocol: 'SFTP',
+        capabilities: ['list', 'read'],
+        ephemeral: true,
+        security: { host_key_verified: true },
+    });
+
+    assert.deepEqual(source, {
+        sourceId: 'sftp-quick:quick-a',
+        kind: 'sftp',
+        label: 'deploy@stage.example',
+        endpoint: 'stage.example:22',
+        protocol: 'SFTP',
+        capabilities: ['list', 'read'],
+        ephemeral: true,
+        security: { hostKeyVerified: true },
+    });
+
+    const untrustedSecurity = manager.normalizeSourceDescriptor({
+        source_id: 'sftp-quick:quick-b',
+        kind: 'sftp',
+        label: 'deploy@stage.example',
+        endpoint: 'stage.example:22',
+        protocol: 'SFTP',
+        capabilities: ['list'],
+        ephemeral: true,
+        security: { host_key_verified: 'false' },
+    });
+    assert.deepEqual(untrustedSecurity.security, {});
+    assert.equal(manager.sourceDescriptorForSession({ id: 'legacy-only' }), null);
+});
+
+test('S2S events must match transfer id source ids and request id', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.transferQueue = [{
+        id: 'transfer-a',
+        type: 's2s',
+        sourceIds: ['sftp-session:source', 'sftp-session:destination'],
+        requestId: 'workspace:remote-transfer:1',
+    }];
+    manager.pendingS2SRequests = new Map([[
+        'workspace:remote-transfer:2',
+        {
+            sourceId: 'sftp-session:source',
+            destinationSourceId: 'sftp-session:destination',
+        },
+    ]]);
+
+    const context = {
+        source_id: 'sftp-session:source',
+        destination_source_id: 'sftp-session:destination',
+    };
+    assert.equal(manager.matchesS2SResponse({
+        ...context,
+        transfer_id: 'transfer-a',
+        request_id: 'workspace:remote-transfer:1',
+    }), true);
+    assert.equal(manager.matchesS2SResponse({
+        ...context,
+        transfer_id: 'transfer-a',
+        request_id: 'workspace:remote-transfer:stale',
+    }), false);
+    assert.equal(manager.matchesS2SResponse({
+        ...context,
+        transfer_id: 'early-transfer',
+        request_id: 'workspace:remote-transfer:2',
+    }), true);
+    assert.equal(manager.matchesS2SResponse({
+        ...context,
+        destination_source_id: 'sftp-session:other',
+        transfer_id: 'early-transfer',
+        request_id: 'workspace:remote-transfer:2',
+    }), false);
+});
+
+test('actions depend on server supplied capabilities, not source kind', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = manager.createEmptyPaneState();
+    state.source = {
+        sourceId: 'sftp-session:a',
+        kind: 'sftp',
+        capabilities: ['list', 'read'],
+    };
+
+    assert.equal(manager.sourceCan(state, 'read'), true);
+    assert.equal(manager.sourceCan(state, 'write'), false);
+    assert.equal(manager.getPaneSourceId(state), 'sftp-session:a');
 });
 
 test('transfer queue toggle keeps icon and accessibility state in sync', () => {
@@ -65,31 +213,35 @@ test('transfer queue toggle keeps icon and accessibility state in sync', () => {
 test('embedded pane state cannot overwrite standalone workspace tabs', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    const standaloneState = {
-        ...manager.createEmptyPaneState(),
-        type: 'ssh', sessionId: 'workspace-session', path: '/srv/workspace',
-    };
-    const tab = manager.workspace.openTab('left', {
-        key: 'ssh:workspace-session', type: 'ssh', label: 'Workspace', sessionId: 'workspace-session',
-    }, standaloneState);
+    const standaloneState = filePane(
+        manager,
+        'sftp-session:workspace-session',
+        { path: '/srv/workspace' },
+    );
+    const tab = manager.workspace.openTab(
+        'left',
+        fileSource('sftp-session:workspace-session', { label: 'Workspace' }),
+        standaloneState,
+    );
     manager.syncPaneFromWorkspace('left');
 
     manager.enterEmbeddedPaneState();
-    manager.panes.left.sessionId = 'embedded-session';
+    manager.panes.left.source = fileSource('sftp-session:embedded-session');
     manager.panes.left.path = '/srv/embedded';
     manager.restoreStandalonePaneState();
 
     assert.equal(manager.panes.left, tab.paneState);
-    assert.equal(manager.panes.left.sessionId, 'workspace-session');
+    assert.equal(manager.getPaneSourceId('left'), 'sftp-session:workspace-session');
     assert.equal(manager.panes.left.path, '/srv/workspace');
 });
 
 test('split layout preserves tabs and requests a source only for an empty pane', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    const tab = manager.workspace.openTab('left', {
-        key: 'ssh:left', type: 'ssh', label: 'Left', sessionId: 'left',
-    }, manager.createEmptyPaneState());
+    const tab = manager.workspace.openTab(
+        'left', fileSource('sftp-session:left', { label: 'Left' }),
+        manager.createEmptyPaneState(),
+    );
     manager.syncPaneFromWorkspace('left');
     const launcherTargets = [];
     Object.assign(manager, {
@@ -108,9 +260,10 @@ test('split layout preserves tabs and requests a source only for an empty pane',
 test('cancelling the empty-side launcher keeps the populated side active', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    manager.workspace.openTab('left', {
-        key: 'ssh:left', type: 'ssh', label: 'Left', sessionId: 'left',
-    }, manager.createEmptyPaneState());
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:left', { label: 'Left' }),
+        manager.createEmptyPaneState(),
+    );
     manager.syncPaneFromWorkspace('left');
     const previousDocument = global.document;
     const launcher = {
@@ -154,12 +307,14 @@ test('cancelling the empty-side launcher keeps the populated side active', () =>
 test('split layout moves the active second tab into the empty right side', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    const first = manager.workspace.openTab('left', {
-        key: 'ssh:first', type: 'ssh', label: 'First', sessionId: 'first',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', path: '/srv/first' });
-    const second = manager.workspace.openTab('left', {
-        key: 'ssh:second', type: 'ssh', label: 'Second', sessionId: 'second',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', path: '/srv/second' });
+    const first = manager.workspace.openTab(
+        'left', fileSource('sftp-session:first', { label: 'First' }),
+        filePane(manager, 'sftp-session:first', { path: '/srv/first' }),
+    );
+    const second = manager.workspace.openTab(
+        'left', fileSource('sftp-session:second', { label: 'Second' }),
+        filePane(manager, 'sftp-session:second', { path: '/srv/second' }),
+    );
     manager.syncPaneFromWorkspace('left');
     const launcherTargets = [];
     Object.assign(manager, {
@@ -189,9 +344,15 @@ test('source catalog preserves SFTP sources without an SMB preview', () => {
     Object.assign(manager, {
         availableSessions: [{
             id: 'session-a', username: 'ops', host: 'edge.example', port: 22, connected: true,
+            file_source: serverFileSource('sftp-session:session-a', {
+                label: 'ops@edge.example', endpoint: 'edge.example:22',
+            }),
         }],
         quickConnections: [{
             connectionId: 'quick-a', username: 'deploy', host: 'stage.example', port: 2222,
+            file_source: serverFileSource('sftp-quick:quick-a', {
+                label: 'deploy@stage.example', endpoint: 'stage.example:2222',
+            }),
         }],
         qcProfiles: [{
             id: 7, name: 'Database', username: 'dba', host: 'db.example', port: 22,
@@ -204,14 +365,16 @@ test('source catalog preserves SFTP sources without an SMB preview', () => {
     assert.deepEqual(groups.map(group => group.id), ['active', 'saved', 'quick']);
 
     assert.deepEqual(groups[0].items[0], {
-        key: 'ssh:session-a', type: 'ssh', label: 'ops@edge.example',
-        endpoint: 'edge.example:22', protocol: 'SFTP', status: 'Connected',
-        security: 'SSH host key trusted', sessionId: 'session-a',
+        ...fileSource('sftp-session:session-a', {
+            label: 'ops@edge.example', endpoint: 'edge.example:22',
+        }),
+        key: 'sftp-session:session-a', status: 'Connected',
+        securityLabel: 'SSH host key trusted',
     });
     assert.equal(groups[1].items[0].profileId, 7);
     assert.equal(groups[1].items[0].password, undefined);
-    assert.equal(groups[2].items[0].connectionId, 'quick-a');
-    assert.equal(groups.flatMap(group => group.items).some(source => source.type === 'smb'), false);
+    assert.equal(groups[2].items[0].sourceId, 'sftp-quick:quick-a');
+    assert.equal(groups.flatMap(group => group.items).some(source => source.kind === 'smb'), false);
 });
 
 test('source launcher shows a useful empty state when no connection is open', () => {
@@ -251,26 +414,26 @@ test('opening an SFTP source creates a real tab in only the targeted pane', asyn
         setActivePane(pane) { this.activePane = pane; },
     });
 
-    const tab = await manager.openWorkspaceSource('right', {
-        key: 'ssh:session-a', type: 'ssh', label: 'Production', endpoint: 'edge.example:22',
-        protocol: 'SFTP', status: 'Connected', security: 'SSH host key trusted',
-        sessionId: 'session-a',
-    });
+    const tab = await manager.openWorkspaceSource(
+        'right',
+        fileSource('sftp-session:session-a', {
+            label: 'Production', endpoint: 'edge.example:22',
+        }),
+    );
 
     assert.equal(manager.workspace.getActiveTab('right'), tab);
     assert.equal(manager.workspace.getActiveTab('left'), null);
     assert.equal(manager.panes.right, tab.paneState);
-    assert.deepEqual(sourceChanges, [['right', 'ssh:session-a']]);
+    assert.deepEqual(sourceChanges, [['right', 'sftp-session:session-a']]);
 });
 
 test('closing the final tab for a quick connection disconnects and removes that source', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     const emitted = [];
-    const source = {
-        key: 'quick:quick-a', type: 'ssh', label: 'deploy@stage.example',
-        connectionId: 'quick-a',
-    };
+    const source = fileSource('sftp-quick:quick-a', {
+        label: 'deploy@stage.example',
+    });
     const leftTab = manager.workspace.openTab('left', source, manager.createEmptyPaneState());
     const rightTab = manager.workspace.openTab('right', source, manager.createEmptyPaneState());
     manager.syncPaneFromWorkspace('left');
@@ -296,17 +459,17 @@ test('closing the final quick source defers disconnect until its transfer is ter
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     const emitted = [];
-    const source = {
-        key: 'quick:quick-a', type: 'ssh', label: 'deploy@stage.example',
-        connectionId: 'quick-a',
-    };
+    const source = fileSource('sftp-quick:quick-a', {
+        label: 'deploy@stage.example',
+    });
     const tab = manager.workspace.openTab('left', source, manager.createEmptyPaneState());
     manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
         displayMode: 'modal',
         quickConnections: [{ connectionId: 'quick-a', username: 'deploy', host: 'stage.example' }],
         transferQueue: [{
-            id: 'upload-a', type: 'upload', status: 'pending', sessionId: 'quick-a',
+            id: 'upload-a', type: 'upload', status: 'pending',
+            sourceId: 'sftp-quick:quick-a',
         }],
         activeTransfers: new Map(),
         socket: { emit(event, payload) { emitted.push([event, payload]); } },
@@ -329,10 +492,9 @@ test('server copy retains a quick connection while its acknowledgement is pendin
     manager.initializeWorkspaceState();
     const emitted = [];
     let acknowledgeTransfer;
-    const source = {
-        key: 'quick:quick-a', type: 'ssh', label: 'deploy@stage.example',
-        connectionId: 'quick-a',
-    };
+    const source = fileSource('sftp-quick:quick-a', {
+        label: 'deploy@stage.example',
+    });
     const tab = manager.workspace.openTab('left', source, manager.createEmptyPaneState());
     manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
@@ -354,8 +516,8 @@ test('server copy retains a quick connection while its acknowledgement is pendin
     });
 
     const transfer = manager.transferSSHtoSSH(
-        '/source/file.bin', { connectionId: 'quick-a' },
-        '/target/file.bin', { sessionId: 'target-session' },
+        '/source/file.bin', filePane(manager, 'sftp-quick:quick-a'),
+        '/target/file.bin', filePane(manager, 'sftp-session:target-session'),
         { name: 'file.bin', is_dir: false, size: 10 },
     );
     manager.closeSourceTab('left', tab.id);
@@ -370,9 +532,10 @@ test('closing a regular SSH source tab never disconnects the terminal session', 
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     const emitted = [];
-    const tab = manager.workspace.openTab('left', {
-        key: 'ssh:session-a', type: 'ssh', label: 'Production', sessionId: 'session-a',
-    }, manager.createEmptyPaneState());
+    const tab = manager.workspace.openTab(
+        'left', fileSource('sftp-session:session-a', { label: 'Production' }),
+        manager.createEmptyPaneState(),
+    );
     manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
         displayMode: 'modal', quickConnections: [],
@@ -399,24 +562,93 @@ test('disabled SMB sources never invoke a connection path', async () => {
     assert.equal(manager.workspace.getActiveTab('left'), null);
 });
 
+test('SMB launcher obeys the server feature flag before opening the dialog', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    let opened = 0;
+    Object.assign(manager, {
+        smbEnabled: false,
+        sourceLauncherPane: 'right',
+        smbSourceDialog: { open() { opened += 1; return true; } },
+        closeSourceLauncher() {},
+    });
+
+    assert.equal(manager.openSMBSourceDialog(), false);
+    assert.equal(opened, 0);
+
+    manager.smbEnabled = true;
+    assert.equal(manager.openSMBSourceDialog(), true);
+    assert.equal(opened, 1);
+});
+
+test('SMB success opens only the server supplied descriptor in the target pane', async () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const opened = [];
+    Object.assign(manager, {
+        smbSources: [],
+        normalizeSourceDescriptor: SFTPFileManager.prototype.normalizeSourceDescriptor,
+        async openWorkspaceSource(pane, source) { opened.push([pane, source]); },
+        t(_key, fallback) { return fallback; },
+        sourceSecurityLabel: SFTPFileManager.prototype.sourceSecurityLabel,
+        showNotification() {},
+    });
+    const descriptor = serverFileSource('smb-quick:server-issued', {
+        kind: 'smb', label: 'Docs on nas.example', endpoint: 'nas.example/Docs',
+        protocol: 'SMB 3.1.1', security: { encrypted: true },
+    });
+
+    assert.equal(await manager.handleSMBSourceConnected({
+        pane: 'right', descriptor,
+    }), true);
+    assert.equal(manager.smbSources.length, 1);
+    assert.equal(opened[0][0], 'right');
+    assert.equal(opened[0][1].sourceId, 'smb-quick:server-issued');
+    assert.equal(opened[0][1].endpoint, 'nas.example/Docs');
+});
+
+test('closing the final SMB tab uses the generic owned-source disconnect', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const emitted = [];
+    const source = fileSource('smb-quick:owned', {
+        kind: 'smb', ephemeral: true, protocol: 'SMB 3.1.1',
+    });
+    const tab = manager.workspace.openTab('left', source, manager.createEmptyPaneState());
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal', quickConnections: [], smbSources: [source],
+        socket: { emit(event, payload) { emitted.push([event, payload]); } },
+        updatePathInput() {}, updatePaneBadge() {}, renderPane() {}, renderWorkspaceChrome() {},
+        openSourceLauncher() {}, updateSessionLists() {},
+    });
+
+    manager.closeSourceTab('left', tab.id);
+
+    assert.deepEqual(emitted, [[
+        'file_source_disconnect', { source_id: 'smb-quick:owned' },
+    ]]);
+    assert.deepEqual(manager.smbSources, []);
+});
+
 test('a correlated listing updates an inactive source tab without replacing the visible tab', () => {
     const listeners = {};
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    const inactiveState = {
-        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-a', loading: true,
+    const inactiveState = filePane(manager, 'sftp-session:session-a', {
+        loading: true,
         pendingDirectoryRequestId: 'left:directory:1', pendingDirectoryPath: '/srv/a',
-    };
-    const activeState = {
-        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-b', path: '/srv/b',
+    });
+    const activeState = filePane(manager, 'sftp-session:session-b', {
+        path: '/srv/b',
         files: [{ name: 'visible.txt' }],
-    };
-    manager.workspace.openTab('left', {
-        key: 'ssh:session-a', type: 'ssh', label: 'A', sessionId: 'session-a',
-    }, inactiveState);
-    const activeTab = manager.workspace.openTab('left', {
-        key: 'ssh:session-b', type: 'ssh', label: 'B', sessionId: 'session-b',
-    }, activeState);
+    });
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:session-a', { label: 'A' }),
+        inactiveState,
+    );
+    const activeTab = manager.workspace.openTab(
+        'left', fileSource('sftp-session:session-b', { label: 'B' }),
+        activeState,
+    );
     manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
         socket: { on(event, callback) { listeners[event] = callback; } },
@@ -428,7 +660,7 @@ test('a correlated listing updates an inactive source tab without replacing the 
     manager.setupSocketListeners();
 
     listeners.directory_listing({
-        session_id: 'session-a', request_id: 'left:directory:1', path: '/srv/a',
+        source_id: 'sftp-session:session-a', request_id: 'left:directory:1', path: '/srv/a',
         files: [{ name: 'late.txt' }],
     });
 
@@ -463,15 +695,18 @@ test('single-pane workspace can activate either side even on a narrow viewport',
 test('disconnect removes every matching workspace tab instead of leaving a green stale source', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    manager.workspace.openTab('left', {
-        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
-    const survivor = manager.workspace.openTab('left', {
-        key: 'ssh:alive', type: 'ssh', label: 'Alive', sessionId: 'alive',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'alive' });
-    manager.workspace.openTab('right', {
-        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:gone', { label: 'Gone' }),
+        filePane(manager, 'sftp-session:gone'),
+    );
+    const survivor = manager.workspace.openTab(
+        'left', fileSource('sftp-session:alive', { label: 'Alive' }),
+        filePane(manager, 'sftp-session:alive'),
+    );
+    manager.workspace.openTab(
+        'right', fileSource('sftp-session:gone', { label: 'Gone' }),
+        filePane(manager, 'sftp-session:gone'),
+    );
     manager.syncPaneFromWorkspace('left');
     manager.syncPaneFromWorkspace('right');
     Object.assign(manager, {
@@ -482,7 +717,7 @@ test('disconnect removes every matching workspace tab instead of leaving a green
 
     manager.handleSessionDisconnected('gone');
 
-    assert.deepEqual(manager.workspace.getTabs('left').map(tab => tab.source.sessionId), ['alive']);
+    assert.deepEqual(manager.workspace.getTabs('left').map(tab => tab.source.sourceId), ['sftp-session:alive']);
     assert.equal(manager.workspace.getActiveTab('left'), survivor);
     assert.equal(manager.workspace.getTabs('right').length, 0);
 });
@@ -490,15 +725,18 @@ test('disconnect removes every matching workspace tab instead of leaving a green
 test('disconnect removes matching workspace tabs while the file manager is closed', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    manager.workspace.openTab('left', {
-        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
-    const survivor = manager.workspace.openTab('left', {
-        key: 'ssh:alive', type: 'ssh', label: 'Alive', sessionId: 'alive',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'alive' });
-    manager.workspace.openTab('right', {
-        key: 'ssh:gone', type: 'ssh', label: 'Gone', sessionId: 'gone',
-    }, { ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'gone' });
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:gone', { label: 'Gone' }),
+        filePane(manager, 'sftp-session:gone'),
+    );
+    const survivor = manager.workspace.openTab(
+        'left', fileSource('sftp-session:alive', { label: 'Alive' }),
+        filePane(manager, 'sftp-session:alive'),
+    );
+    manager.workspace.openTab(
+        'right', fileSource('sftp-session:gone', { label: 'Gone' }),
+        filePane(manager, 'sftp-session:gone'),
+    );
     manager.syncPaneFromWorkspace('left');
     manager.syncPaneFromWorkspace('right');
     Object.assign(manager, {
@@ -510,7 +748,7 @@ test('disconnect removes matching workspace tabs while the file manager is close
 
     manager.handleSessionDisconnected('gone');
 
-    assert.deepEqual(manager.workspace.getTabs('left').map(tab => tab.source.sessionId), ['alive']);
+    assert.deepEqual(manager.workspace.getTabs('left').map(tab => tab.source.sourceId), ['sftp-session:alive']);
     assert.equal(manager.workspace.getActiveTab('left'), survivor);
     assert.equal(manager.workspace.getTabs('right').length, 0);
 });
@@ -533,7 +771,7 @@ test('embedded mode mounts the existing manager body as one remote pane', async 
         actionSheet: {},
         displayMode: 'closed',
         isOpen: false,
-        panes: { left: { sessionId: null }, right: { sessionId: null } },
+        panes: { left: { source: null }, right: { source: null } },
         updateSessionLists() {},
         applyTranslations() {},
         setActivePane(pane) { this.activePane = pane; },
@@ -550,7 +788,7 @@ test('embedded mode mounts the existing manager body as one remote pane', async 
     assert.equal(manager.activePane, 'left');
     assert.equal(body.classList.contains('fm-embedded-mode'), true);
     assert.deepEqual(mount.children, [body]);
-    assert.deepEqual(manager.sourceChange, { pane: 'left', source: 'ssh:session-a' });
+    assert.deepEqual(manager.sourceChange, { pane: 'left', source: 'sftp-session:session-a' });
 });
 
 test('closing embedded mode restores the full manager body for modal use', () => {
@@ -589,7 +827,7 @@ test('embedded context menu keeps single-pane actions and omits transfer', () =>
 
     const actions = manager.getContextMenuItems(
         { name: 'config.yml', is_dir: false },
-        { type: 'ssh' },
+        { source: fileSource('sftp-session:session-a') },
     ).filter(item => item.action).map(item => item.action);
 
     assert.deepEqual(actions, [
@@ -638,15 +876,12 @@ test('Tab never activates the hidden second pane in embedded mode', () => {
 test('resetPane clears the home directory and pending requests from the previous session', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.panes = {
-        left: {
-            ...manager.createEmptyPaneState(),
-            type: 'ssh',
-            sessionId: 'session-a',
+        left: filePane(manager, 'sftp-session:session-a', {
             homePath: '/home/user-a',
             pendingDirectoryRequestId: 'left:4',
             pendingDirectoryPath: '/srv/a',
             pendingHomeRequestId: 'left:3',
-        },
+        }),
     };
     Object.assign(manager, {
         updatePathInput() {}, updatePaneBadge() {}, renderPane() {}, capitalize(value) { return value; },
@@ -667,16 +902,13 @@ test('stale directory and home responses cannot overwrite a newer request', () =
         socket: { on(event, callback) { listeners[event] = callback; } },
         isOpen: true,
         panes: {
-            left: {
-                ...manager.createEmptyPaneState(),
-                type: 'ssh',
-                sessionId: 'session-a',
+            left: filePane(manager, 'sftp-session:session-a', {
                 path: '/new',
                 files: [{ name: 'new.txt' }],
                 pendingDirectoryRequestId: 'left:2',
                 pendingDirectoryPath: '/new',
                 pendingHomeRequestId: 'left:home:2',
-            },
+            }),
             right: manager.createEmptyPaneState(),
         },
         updatePathInput() {}, renderPane() {}, navigatePaneTo() { assert.fail('stale home path used'); },
@@ -684,10 +916,10 @@ test('stale directory and home responses cannot overwrite a newer request', () =
     manager.setupSocketListeners();
 
     listeners.directory_listing({
-        session_id: 'session-a', request_id: 'left:1', path: '/old', files: [{ name: 'old.txt' }],
+        source_id: 'sftp-session:session-a', request_id: 'left:1', path: '/old', files: [{ name: 'old.txt' }],
     });
     listeners.home_directory({
-        session_id: 'session-a', request_id: 'left:home:1', path: '/home/old-user',
+        source_id: 'sftp-session:session-a', request_id: 'left:home:1', path: '/home/old-user',
     });
 
     assert.equal(manager.panes.left.path, '/new');
@@ -703,14 +935,13 @@ test('a valid late home response cannot replace a newer manual navigation', () =
         socket: { on(event, callback) { listeners[event] = callback; } },
         isOpen: true,
         panes: {
-            left: {
-                ...manager.createEmptyPaneState(),
-                type: 'ssh', sessionId: 'session-a', path: '/',
+            left: filePane(manager, 'sftp-session:session-a', {
+                path: '/',
                 pendingHomeRequestId: 'left:home:1',
                 pendingDirectoryRequestId: 'left:directory:2',
                 pendingDirectoryPath: '/srv/manual',
                 autoHomeEligible: false,
-            },
+            }),
             right: manager.createEmptyPaneState(),
         },
         navigatePaneTo(_pane, path) { navigated = path; },
@@ -718,7 +949,7 @@ test('a valid late home response cannot replace a newer manual navigation', () =
     manager.setupSocketListeners();
 
     listeners.home_directory({
-        session_id: 'session-a', request_id: 'left:home:1', path: '/home/operator',
+        source_id: 'sftp-session:session-a', request_id: 'left:home:1', path: '/home/operator',
     });
 
     assert.equal(manager.panes.left.homePath, '/home/operator');
@@ -731,21 +962,20 @@ test('file manager claims only the exact correlated listing error', () => {
     Object.assign(manager, {
         isOpen: true,
         panes: {
-            left: {
-                ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-a',
+            left: filePane(manager, 'sftp-session:session-a', {
                 pendingDirectoryRequestId: 'left:directory:9', pendingDirectoryPath: '/srv/current',
-            },
+            }),
             right: manager.createEmptyPaneState(),
         },
     });
 
     assert.equal(manager.handlesSocketError({ error: 'generic' }), false);
     assert.equal(manager.handlesSocketError({
-        operation: 'list_directory', session_id: 'session-a',
+        operation: 'list_directory', source_id: 'sftp-session:session-a',
         request_id: 'left:directory:8', path: '/srv/old',
     }), false);
     assert.equal(manager.handlesSocketError({
-        operation: 'list_directory', session_id: 'session-a',
+        operation: 'list_directory', source_id: 'sftp-session:session-a',
         request_id: 'left:directory:9', path: '/srv/current',
     }), true);
 });
@@ -759,10 +989,10 @@ test('only the correlated list-directory error changes a loading SFTP pane', () 
         socket: { on(event, callback) { listeners[event] = callback; } },
         isOpen: true,
         panes: {
-            left: {
-                ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'session-a', loading: true,
+            left: filePane(manager, 'sftp-session:session-a', {
+                loading: true,
                 pendingDirectoryRequestId: 'left:7', pendingDirectoryPath: '/srv/current',
-            },
+            }),
             right: manager.createEmptyPaneState(),
         },
         renderPane() { renders += 1; },
@@ -772,7 +1002,7 @@ test('only the correlated list-directory error changes a loading SFTP pane', () 
 
     listeners.error({ error: 'Unrelated profile error' });
     listeners.error({
-        error: 'Stale listing failed', operation: 'list_directory', session_id: 'session-a',
+        error: 'Stale listing failed', operation: 'list_directory', source_id: 'sftp-session:session-a',
         request_id: 'left:6', path: '/srv/old',
     });
     assert.equal(manager.panes.left.loading, true);
@@ -780,7 +1010,7 @@ test('only the correlated list-directory error changes a loading SFTP pane', () 
     assert.equal(notifications, 0);
 
     listeners.error({
-        error: 'Listing failed', operation: 'list_directory', session_id: 'session-a',
+        error: 'Listing failed', operation: 'list_directory', source_id: 'sftp-session:session-a',
         request_id: 'left:7', path: '/srv/current',
     });
     assert.equal(manager.panes.left.loading, false);
@@ -799,7 +1029,7 @@ test('embedded pane keeps the existing navigation and preview code paths', () =>
         displayMode: 'embedded',
         panes: {
             left: {
-                type: 'ssh', sessionId: 'session-a', connectionId: null, path: '/srv',
+                source: fileSource('sftp-session:session-a'), path: '/srv',
                 files: [{ name: 'releases', is_dir: true }, { name: 'README.md', is_dir: false }],
             },
         },
@@ -812,7 +1042,7 @@ test('embedded pane keeps the existing navigation and preview code paths', () =>
 
     assert.deepEqual(calls, [
         ['directory', 'left', 'releases'],
-        ['preview', 'session-a', '/srv/README.md', 'README.md'],
+        ['preview', 'sftp-session:session-a', '/srv/README.md', 'README.md'],
     ]);
     delete global.window.FilePreview;
 });
@@ -825,7 +1055,7 @@ test('embedded pane keeps ctrl and shift selection plus folder download', () => 
         activePane: 'left',
         panes: {
             left: {
-                type: 'ssh', sessionId: 'session-a', connectionId: null, path: '/srv',
+                source: fileSource('sftp-session:session-a'), path: '/srv',
                 files: [
                     { name: 'one.txt', is_dir: false },
                     { name: 'two.txt', is_dir: false },
@@ -930,15 +1160,11 @@ test('context menu offers transfer only when another connected file area exists'
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     const file = { name: 'release.tar.gz', is_dir: false };
-    const leftState = {
-        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'left', files: [file],
-    };
-    const rightState = {
-        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'right',
-    };
-    manager.workspace.openTab('left', {
-        key: 'ssh:left', type: 'ssh', label: 'Left', sessionId: 'left',
-    }, leftState);
+    const leftState = filePane(manager, 'sftp-session:left', { files: [file] });
+    const rightState = filePane(manager, 'sftp-session:right');
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:left', { label: 'Left' }), leftState,
+    );
     Object.assign(manager, {
         displayMode: 'modal',
         isMobile() { return false; },
@@ -948,9 +1174,9 @@ test('context menu offers transfer only when another connected file area exists'
     let actions = manager.getContextMenuItems(file, leftState, 'left').map(item => item.action);
     assert.equal(actions.includes('transfer'), false);
 
-    manager.workspace.openTab('right', {
-        key: 'ssh:right', type: 'ssh', label: 'Right', sessionId: 'right',
-    }, rightState);
+    manager.workspace.openTab(
+        'right', fileSource('sftp-session:right', { label: 'Right' }), rightState,
+    );
     manager.workspace.setLayout('split');
     manager.syncPaneFromWorkspace('left');
     manager.syncPaneFromWorkspace('right');
@@ -962,21 +1188,19 @@ test('transfer availability rejects identical connections and unfinished targets
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     manager.workspace.setLayout('split');
-    const leftState = {
-        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'shared',
+    const leftState = filePane(manager, 'sftp-session:shared', {
         loading: false, error: null, path: '/source', selected: new Set([0]),
-    };
-    const rightState = {
-        ...manager.createEmptyPaneState(), type: 'ssh', sessionId: 'shared',
+    });
+    const rightState = filePane(manager, 'sftp-session:shared', {
         loading: false, error: null, path: '/target',
-    };
-    manager.workspace.openTab('left', { type: 'ssh', sessionId: 'shared' }, leftState);
-    manager.workspace.openTab('right', { type: 'ssh', sessionId: 'shared' }, rightState);
+    });
+    manager.workspace.openTab('left', fileSource('sftp-session:shared'), leftState);
+    manager.workspace.openTab('right', fileSource('sftp-session:shared'), rightState);
     manager.panes = { left: leftState, right: rightState };
 
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), false);
 
-    rightState.sessionId = 'target';
+    rightState.source = fileSource('sftp-session:target');
     rightState.loading = true;
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), false);
 
@@ -1032,10 +1256,12 @@ test('file checkbox markup is keyboard accessible and double click never opens t
     Object.assign(manager, {
         panes: {
             left: {
-                type: 'ssh', path: '/', selected: new Set(),
+                source: fileSource('sftp-session:session-a'), path: '/', selected: new Set(),
                 files: [{ name: 'readme.txt', is_dir: false, size: 1 }],
             },
         },
+        workspace: { layout: 'single' },
+        displayMode: 'embedded',
         escapeHtml(value) { return String(value); },
         updatePaneStatus() {},
         t(_key, fallback) { return fallback; },
@@ -1064,7 +1290,7 @@ test('embedded drag and drop uses the existing directory upload path', () => {
     Object.assign(manager, {
         displayMode: 'embedded',
         panes: {
-            left: { type: 'ssh', sessionId: 'session-a', connectionId: null, path: '/srv' },
+            left: { source: fileSource('sftp-session:session-a'), path: '/srv' },
         },
         draggedItems: [], dragSource: null,
         uploadDesktopItemsToSSH(entries, target) { uploaded = { entries, target }; },
@@ -1097,15 +1323,15 @@ test('the full modal suspends embedded Files and restores it when closed', async
         displayMode: 'embedded', isOpen: true, embeddedContainer,
         availableSessions: [embeddedSession],
         panes: {
-            left: { sessionId: 'session-a', path: '/', selected: new Set() },
-            right: { sessionId: null, path: '/', selected: new Set() },
+            left: { source: fileSource('sftp-session:session-a'), path: '/', selected: new Set() },
+            right: { source: null, path: '/', selected: new Set() },
         },
         modal: { style: {}, classList: classList() },
         closeEmbedded() { closed += 1; this.displayMode = 'closed'; this.isOpen = false; },
         suspendEmbedded() {
             this.suspendedEmbeddedTarget = {
                 container: this.embeddedContainer,
-                sessionId: this.panes.left.sessionId,
+                sessionId: this.embeddedTarget?.sessionId || 'session-a',
                 session: this.availableSessions[0],
             };
             this.displayMode = 'closed';
@@ -1248,11 +1474,14 @@ test('mobile uploads use tokenized transfers with joined target paths', () => {
     Object.assign(manager, {
         activePane: 'left',
         panes: {
-            left: { type: 'ssh', sessionId: 'mobile-session', connectionId: null, path: '/incoming/reports' },
+            left: {
+                source: fileSource('sftp-session:mobile-session'),
+                path: '/incoming/reports',
+            },
         },
         getTransferClient: () => ({
-            uploadFile(file, remotePath, sessionId) {
-                uploadRequests.push({ file, remotePath, sessionId });
+            uploadFile(file, remotePath, sourceId) {
+                uploadRequests.push({ file, remotePath, sourceId });
                 return `mobile-${file.name}`;
             },
         }),
@@ -1275,8 +1504,8 @@ test('mobile uploads use tokenized transfers with joined target paths', () => {
     }
 
     assert.deepEqual(uploadRequests, [
-        { file: files[0], remotePath: '/joined/incoming/reports/first report.txt', sessionId: 'mobile-session' },
-        { file: files[1], remotePath: '/joined/incoming/reports/archive.zip', sessionId: 'mobile-session' },
+        { file: files[0], remotePath: '/joined/incoming/reports/first report.txt', sourceId: 'sftp-session:mobile-session' },
+        { file: files[1], remotePath: '/joined/incoming/reports/archive.zip', sourceId: 'sftp-session:mobile-session' },
     ]);
     assert.deepEqual(joinCalls, [
         { basePath: '/incoming/reports', filename: 'first report.txt' },
@@ -1284,12 +1513,12 @@ test('mobile uploads use tokenized transfers with joined target paths', () => {
     ]);
     assert.equal(queued.length, 2);
     assert.equal(queued[0].id, 'mobile-first report.txt');
-    assert.equal(queued[0].sessionId, 'mobile-session');
+    assert.equal(queued[0].sourceId, 'sftp-session:mobile-session');
     assert.equal(queued[0].batchId, queued[1].batchId);
     assert.equal(typeof queued[0].batchId, 'string');
     assert.notEqual(queued[0].batchId, '');
     assert.equal(queued[1].id, 'mobile-archive.zip');
-    assert.equal(queued[1].sessionId, 'mobile-session');
+    assert.equal(queued[1].sourceId, 'sftp-session:mobile-session');
     assert.equal(fetchCalls, 0);
     assert.equal(input.value, '');
 });
@@ -1309,13 +1538,15 @@ test('remote filenames never enter attributes even when they contain quote and e
     Object.assign(manager, {
         panes: {
             left: {
-                type: 'ssh', path: '/', selected: new Set(),
+                source: fileSource('sftp-session:session-a'), path: '/', selected: new Set(),
                 files: [{
                     name: 'quote" onmouseover="globalThis.injected=1',
                     is_dir: false, size: 1, permissions: '-rw-------',
                 }],
             },
         },
+        workspace: { layout: 'single' },
+        displayMode: 'embedded',
         escapeHtml(value) {
             return String(value)
                 .replaceAll('&', '&amp;')
@@ -1357,20 +1588,65 @@ test('directory creation events do not refresh panes in the middle of an upload 
     Object.assign(manager, {
         socket: { on(event, callback) { listeners[event] = callback; } },
         uploadBatches: new Map([['batch', {}]]),
-        refreshBothPanes() { refreshes += 1; },
+        pendingOperationRequests: new Map([
+            ['upload:create:1', {
+                sourceId: 'sftp-session:upload', operation: 'create_directory',
+            }],
+            ['manual:create:2', {
+                sourceId: 'sftp-session:manual', operation: 'create_directory',
+            }],
+        ]),
+        refreshSource() { refreshes += 1; },
         showNotification() { notifications += 1; },
         t(_key, fallback) { return fallback; },
     });
     manager.setupSocketListeners();
 
-    listeners.directory_created({ path: '/incoming/reports' });
+    listeners.directory_created({
+        source_id: 'sftp-session:upload', request_id: 'upload:create:1',
+        path: '/incoming/reports',
+    });
     assert.equal(refreshes, 0);
     assert.equal(notifications, 0);
 
     manager.uploadBatches.clear();
-    listeners.directory_created({ path: '/manual-folder' });
+    listeners.directory_created({
+        source_id: 'sftp-session:manual', request_id: 'manual:create:2',
+        path: '/manual-folder',
+    });
     assert.equal(refreshes, 1);
     assert.equal(notifications, 1);
+});
+
+test('mutation responses must match both source and request before changing UI', () => {
+    const listeners = {};
+    let refreshes = 0;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        uploadBatches: new Map(),
+        pendingOperationRequests: new Map([['workspace:rename:1', {
+            sourceId: 'sftp-session:current', operation: 'rename_file',
+        }]]),
+        refreshSource() { refreshes += 1; },
+        showNotification() {},
+        t(_key, fallback) { return fallback; },
+    });
+    manager.setupSocketListeners();
+
+    listeners.file_renamed({
+        source_id: 'sftp-session:stale', request_id: 'workspace:rename:1',
+    });
+    listeners.file_renamed({
+        source_id: 'sftp-session:current', request_id: 'workspace:rename:stale',
+    });
+    assert.equal(refreshes, 0);
+
+    listeners.file_renamed({
+        source_id: 'sftp-session:current', request_id: 'workspace:rename:1',
+    });
+    assert.equal(refreshes, 1);
+    assert.equal(manager.pendingOperationRequests.size, 0);
 });
 
 test('upload batch finishes on complete error and cancel then refreshes its session pane once', async () => {
@@ -1385,8 +1661,8 @@ test('upload batch finishes on complete error and cancel then refreshes its sess
         activeTransfers: new Map(),
         isTransferring: false,
         panes: {
-            left: { sessionId: 'batch-session', connectionId: null },
-            right: { sessionId: 'other-session', connectionId: null },
+            left: { source: fileSource('sftp-session:batch-session') },
+            right: { source: fileSource('sftp-session:other-session') },
         },
         renderTransferQueue() {},
         processTransferQueue() {},
@@ -1396,10 +1672,10 @@ test('upload batch finishes on complete error and cancel then refreshes its sess
         refreshPane(pane) { refreshed.push(pane); },
     });
     manager.getTransferClient();
-    const batch = manager.startUploadBatch(3, 'batch-session');
-    manager.queueTransfer({ id: 'done', type: 'upload', sessionId: 'batch-session', batchId: batch.id });
-    manager.queueTransfer({ id: 'failed', type: 'upload', sessionId: 'batch-session', batchId: batch.id });
-    manager.queueTransfer({ id: 'cancelled', type: 'upload', sessionId: 'batch-session', batchId: batch.id });
+    const batch = manager.startUploadBatch(3, 'sftp-session:batch-session');
+    manager.queueTransfer({ id: 'done', type: 'upload', sourceId: 'sftp-session:batch-session', batchId: batch.id });
+    manager.queueTransfer({ id: 'failed', type: 'upload', sourceId: 'sftp-session:batch-session', batchId: batch.id });
+    manager.queueTransfer({ id: 'cancelled', type: 'upload', sourceId: 'sftp-session:batch-session', batchId: batch.id });
 
     listeners.complete({ transferId: 'done' });
     listeners.error({ transferId: 'failed', error: 'no space' });
@@ -1423,23 +1699,17 @@ test('upload completion refreshes its original tab after another tab becomes act
     const emitted = [];
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    const destinationState = {
-        ...manager.createEmptyPaneState(),
-        type: 'ssh',
-        sessionId: 'upload-session',
+    const destinationState = filePane(manager, 'sftp-session:upload-session', {
         path: '/srv/upload',
-    };
-    manager.workspace.openTab('left', {
-        key: 'ssh:upload-session', type: 'ssh', label: 'Upload', sessionId: 'upload-session',
-    }, destinationState);
-    manager.workspace.openTab('left', {
-        key: 'ssh:other-session', type: 'ssh', label: 'Other', sessionId: 'other-session',
-    }, {
-        ...manager.createEmptyPaneState(),
-        type: 'ssh',
-        sessionId: 'other-session',
-        path: '/srv/other',
     });
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:upload-session', { label: 'Upload' }),
+        destinationState,
+    );
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:other-session', { label: 'Other' }),
+        filePane(manager, 'sftp-session:other-session', { path: '/srv/other' }),
+    );
     manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
         displayMode: 'modal',
@@ -1450,10 +1720,10 @@ test('upload completion refreshes its original tab after another tab becomes act
         showUploadComplete() {},
     });
 
-    const batch = manager.startUploadBatch(1, 'upload-session', destinationState);
+    const batch = manager.startUploadBatch(1, 'sftp-session:upload-session', destinationState);
     manager.recordUploadTerminal({
         type: 'upload',
-        sessionId: 'upload-session',
+        sourceId: 'sftp-session:upload-session',
         batchId: batch.id,
     }, 'complete');
     await Promise.resolve();
@@ -1463,7 +1733,7 @@ test('upload completion refreshes its original tab after another tab becomes act
     assert.deepEqual(emitted, [{
         event: 'list_directory',
         payload: {
-            session_id: 'upload-session',
+            source_id: 'sftp-session:upload-session',
             remote_path: '/srv/upload',
             request_id: 'left:directory:1',
         },
@@ -1476,24 +1746,18 @@ test('upload completion refreshes and caches its original tab while the workspac
     const listeners = {};
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
-    const destinationState = {
-        ...manager.createEmptyPaneState(),
-        type: 'ssh',
-        sessionId: 'upload-session',
+    const destinationState = filePane(manager, 'sftp-session:upload-session', {
         path: '/srv/upload',
         files: [{ name: 'old.txt' }],
-    };
-    manager.workspace.openTab('left', {
-        key: 'ssh:upload-session', type: 'ssh', label: 'Upload', sessionId: 'upload-session',
-    }, destinationState);
-    manager.workspace.openTab('left', {
-        key: 'ssh:other-session', type: 'ssh', label: 'Other', sessionId: 'other-session',
-    }, {
-        ...manager.createEmptyPaneState(),
-        type: 'ssh',
-        sessionId: 'other-session',
-        path: '/srv/other',
     });
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:upload-session', { label: 'Upload' }),
+        destinationState,
+    );
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:other-session', { label: 'Other' }),
+        filePane(manager, 'sftp-session:other-session', { path: '/srv/other' }),
+    );
     manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
         displayMode: 'closed',
@@ -1509,10 +1773,10 @@ test('upload completion refreshes and caches its original tab while the workspac
     });
     manager.setupSocketListeners();
 
-    const batch = manager.startUploadBatch(1, 'upload-session', destinationState);
+    const batch = manager.startUploadBatch(1, 'sftp-session:upload-session', destinationState);
     manager.recordUploadTerminal({
         type: 'upload',
-        sessionId: 'upload-session',
+        sourceId: 'sftp-session:upload-session',
         batchId: batch.id,
     }, 'complete');
     await Promise.resolve();
@@ -1521,14 +1785,14 @@ test('upload completion refreshes and caches its original tab while the workspac
     assert.deepEqual(emitted, [{
         event: 'list_directory',
         payload: {
-            session_id: 'upload-session',
+            source_id: 'sftp-session:upload-session',
             remote_path: '/srv/upload',
             request_id: 'left:directory:1',
         },
     }]);
 
     listeners.directory_listing({
-        session_id: 'upload-session',
+        source_id: 'sftp-session:upload-session',
         request_id: 'left:directory:1',
         path: '/srv/upload',
         files: [{ name: 'new.txt' }],
@@ -1567,14 +1831,14 @@ test('directory upload batches consume every readEntries page before fixing the 
             batchTotal = total;
             return { id: 'paged-batch' };
         },
-        uploadSingleFileToSSH(file, basePath, sessionId, batchId) {
-            uploaded.push({ name: file.name, basePath, sessionId, batchId });
+        uploadSingleFileToSSH(file, basePath, sourceId, batchId) {
+            uploaded.push({ name: file.name, basePath, sourceId, batchId });
         },
     });
 
     await manager.uploadDesktopItemsToSSH(
         [directory],
-        { sessionId: 'paged-session', path: '/incoming' },
+        { source: fileSource('sftp-session:paged-session'), path: '/incoming' },
     );
 
     assert.equal(batchTotal, 2);
@@ -1714,8 +1978,8 @@ test('folder downloads queue the HTTP transfer id without a binary socket event'
     Object.assign(manager, {
         socket: { emit(event) { socketEvents.push(event); } },
         getTransferClient: () => ({
-            downloadFolder(path, sessionId) {
-                requested = { path, sessionId };
+            downloadFolder(path, sourceId) {
+                requested = { path, sourceId };
                 return 'folder-local-id';
             },
         }),
@@ -1724,11 +1988,11 @@ test('folder downloads queue the HTTP transfer id without a binary socket event'
         t(_key, fallback) { return fallback; },
     });
 
-    manager.downloadFolderToBrowser('session', '/remote/reports', 'reports');
+    manager.downloadFolderToBrowser('sftp-session:session', '/remote/reports', 'reports');
 
-    assert.deepEqual(requested, { path: '/remote/reports', sessionId: 'session' });
+    assert.deepEqual(requested, { path: '/remote/reports', sourceId: 'sftp-session:session' });
     assert.equal(queued.id, 'folder-local-id');
-    assert.equal(queued.sessionId, 'session');
+    assert.equal(queued.sourceId, 'sftp-session:session');
     assert.equal(socketEvents.includes('download_folder_binary'), false);
 });
 
@@ -1739,7 +2003,13 @@ test('server copies queue the server-owned cancellable transfer id', async () =>
     Object.assign(manager, {
         socket: { emit(event, payload, ack) {
             request = { event, payload };
-            ack({ success: true, transfer_id: 'server-transfer-id' });
+            ack({
+                success: true,
+                transfer_id: 'server-transfer-id',
+                source_id: payload.source_id,
+                destination_source_id: payload.destination_source_id,
+                request_id: payload.request_id,
+            });
         } },
         queueTransfer(transfer) { queued = transfer; },
         showNotification() {},
@@ -1747,8 +2017,8 @@ test('server copies queue the server-owned cancellable transfer id', async () =>
     });
 
     const terminal = manager.transferSSHtoSSH(
-        '/source/file.bin', { sessionId: 'source-session' },
-        '/target/file.bin', { sessionId: 'target-session' },
+        '/source/file.bin', filePane(manager, 'sftp-session:source-session'),
+        '/target/file.bin', filePane(manager, 'sftp-session:target-session'),
         { name: 'file.bin', is_dir: false, size: 10 },
     );
     await Promise.resolve();
@@ -1756,7 +2026,9 @@ test('server copies queue the server-owned cancellable transfer id', async () =>
     assert.equal(request.event, 'transfer_server_to_server');
     assert.equal(request.payload.transfer_id, undefined);
     assert.equal(queued.id, 'server-transfer-id');
-    assert.deepEqual(queued.connectionIds, ['source-session', 'target-session']);
+    assert.deepEqual(queued.sourceIds, [
+        'sftp-session:source-session', 'sftp-session:target-session',
+    ]);
     manager.resolveS2STerminal('server-transfer-id', 'complete');
     await terminal;
 });
@@ -1770,7 +2042,7 @@ test('three selected server copies start only after the previous transfer is ter
         activePane: 'left',
         panes: {
             left: {
-                type: 'ssh', sessionId: 'source-session', path: '/source',
+                source: fileSource('sftp-session:source-session'), path: '/source',
                 files: [
                     { name: 'first.bin', is_dir: false, size: 1 },
                     { name: 'second.bin', is_dir: false, size: 2 },
@@ -1779,7 +2051,7 @@ test('three selected server copies start only after the previous transfer is ter
                 selected: new Set([0, 1, 2]),
             },
             right: {
-                type: 'ssh', sessionId: 'target-session', path: '/target',
+                source: fileSource('sftp-session:target-session'), path: '/target',
                 files: [], selected: new Set(),
             },
         },
@@ -1791,7 +2063,13 @@ test('three selected server copies start only after the previous transfer is ter
                 assert.equal(event, 'transfer_server_to_server');
                 const id = `server-${requests.length + 1}`;
                 requests.push({ id, sourcePath: payload.source_path });
-                acknowledgement({ success: true, transfer_id: id });
+                acknowledgement({
+                    success: true,
+                    transfer_id: id,
+                    source_id: payload.source_id,
+                    destination_source_id: payload.destination_source_id,
+                    request_id: payload.request_id,
+                });
             },
         },
         renderTransferQueue() {},
@@ -1799,12 +2077,12 @@ test('three selected server copies start only after the previous transfer is ter
         showNotification() {},
         t(_key, fallback) { return fallback; },
     });
-    manager.workspace.openTab('left', {
-        type: 'ssh', sessionId: 'source-session',
-    }, manager.panes.left);
-    manager.workspace.openTab('right', {
-        type: 'ssh', sessionId: 'target-session',
-    }, manager.panes.right);
+    manager.workspace.openTab(
+        'left', fileSource('sftp-session:source-session'), manager.panes.left,
+    );
+    manager.workspace.openTab(
+        'right', fileSource('sftp-session:target-session'), manager.panes.right,
+    );
     manager.workspace.setLayout('split');
 
     const execution = manager.executeTransfer();
@@ -1843,9 +2121,15 @@ test('an S2S terminal event received before its acknowledgement cannot strand th
         activeTransfers: new Map(),
         isTransferring: false,
         socket: {
-            emit(_event, _payload, acknowledgement) {
-                manager.completeS2STransfer({ transfer_id: 'fast-transfer' });
-                acknowledgement({ success: true, transfer_id: 'fast-transfer' });
+            emit(_event, payload, acknowledgement) {
+                const context = {
+                    transfer_id: 'fast-transfer',
+                    source_id: payload.source_id,
+                    destination_source_id: payload.destination_source_id,
+                    request_id: payload.request_id,
+                };
+                manager.completeS2STransfer(context);
+                acknowledgement({ success: true, ...context });
             },
         },
         renderTransferQueue() {},
@@ -1856,8 +2140,8 @@ test('an S2S terminal event received before its acknowledgement cannot strand th
 
     let settled = false;
     const transfer = manager.transferSSHtoSSH(
-        '/source/fast.bin', { sessionId: 'source-session' },
-        '/target/fast.bin', { sessionId: 'target-session' },
+        '/source/fast.bin', filePane(manager, 'sftp-session:source-session'),
+        '/target/fast.bin', filePane(manager, 'sftp-session:target-session'),
         { name: 'fast.bin', is_dir: false, size: 1 },
     ).then(() => { settled = true; });
     await new Promise(resolve => setImmediate(resolve));

@@ -2,16 +2,15 @@
     const PANES = new Set(['left', 'right']);
     const LAYOUTS = new Set(['single', 'split']);
     const SOURCE_FIELDS = [
-        'key',
-        'type',
+        'sourceId',
+        'kind',
         'label',
         'endpoint',
         'protocol',
+        'capabilities',
+        'ephemeral',
         'status',
         'security',
-        'profileId',
-        'sessionId',
-        'connectionId',
     ];
 
     class FileWorkspaceState {
@@ -40,6 +39,14 @@
             SOURCE_FIELDS.forEach(field => {
                 normalized[field] = source[field] ?? null;
             });
+            normalized.capabilities = Array.isArray(normalized.capabilities)
+                ? [...normalized.capabilities]
+                : [];
+            normalized.ephemeral = normalized.ephemeral === true;
+            normalized.security = normalized.security
+                && typeof normalized.security === 'object'
+                ? { ...normalized.security }
+                : {};
             return normalized;
         }
 

@@ -1,4 +1,5 @@
 import logging
+import inspect
 
 
 def test_security_event_redacts_sensitive_details(caplog):
@@ -57,3 +58,39 @@ def test_cli_audit_redacts_sensitive_nested_details(caplog):
     }
     assert exposed_token not in repr(record.extra_data)
     assert exposed_password_hash not in repr(record.extra_data)
+
+
+def test_file_source_audit_uses_structured_smb_target_without_credentials(
+    caplog,
+):
+    from app.audit_logger import log_file_source_operation
+
+    caplog.set_level(logging.INFO, logger="security_audit")
+    log_file_source_operation(
+        username='audit-user',
+        operation='download',
+        result='COMPLETED',
+        source_kind='smb',
+        target_host='nas.example',
+        share='Docs',
+        filename='report.txt',
+        size=42,
+        ip_address='127.0.0.1',
+    )
+
+    record = next(
+        item for item in caplog.records
+        if item.name == 'security_audit'
+        and item.getMessage().startswith('FILE_SOURCE_OPERATION')
+    )
+    message = record.getMessage()
+    assert 'operation=download' in message
+    assert 'result=COMPLETED' in message
+    assert 'source_kind=smb' in message
+    assert 'target_host=nas.example' in message
+    assert 'share=Docs' in message
+    assert 'filename=report.txt' in message
+    assert 'size=42' in message
+    assert 'password' not in inspect.signature(
+        log_file_source_operation
+    ).parameters

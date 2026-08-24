@@ -174,6 +174,8 @@ class TemporaryConnectionPool:
                     'port': port,
                     'username': username,
                     'quota_reservation': reservation,
+                    'hold_count': 0,
+                    'close_requested': False,
                 }
                 connection_stored = True
 
@@ -275,18 +277,88 @@ class TemporaryConnectionPool:
         Returns:
             bool: True if connection was closed, False if not found
         """
-        detached = self._detach_connections(
-            lambda candidate_id, _conn: candidate_id == connection_id
-        )
-        self._close_detached_connections(detached)
-        return bool(detached)
+        return self.request_close(connection_id) != 'unavailable'
 
-    def _detach_connections(self, predicate=None):
+    def acquire_hold(self, connection_id, user_id):
+        """Keep one owned connection alive for an in-flight transfer."""
+        if isinstance(user_id, bool) or user_id is None:
+            return False
+        canonical_user_id = str(user_id)
+        with self.lock:
+            conn = self.connections.get(connection_id)
+            if (
+                conn is None
+                or str(conn.get('user_id')) != canonical_user_id
+                or conn.get('close_requested', False)
+            ):
+                return False
+            conn['hold_count'] = conn.get('hold_count', 0) + 1
+            return True
+
+    def release_hold(self, connection_id, user_id):
+        """Release one owned hold and finish a previously deferred close."""
+        if isinstance(user_id, bool) or user_id is None:
+            return False
+        canonical_user_id = str(user_id)
+        detached = []
+        with self.lock:
+            conn = self.connections.get(connection_id)
+            if (
+                conn is None
+                or str(conn.get('user_id')) != canonical_user_id
+                or conn.get('hold_count', 0) <= 0
+            ):
+                return False
+            conn['hold_count'] -= 1
+            if (
+                conn['hold_count'] == 0
+                and conn.get('close_requested', False)
+            ):
+                detached.append((connection_id, self.connections.pop(
+                    connection_id
+                )))
+        self._close_detached_connections(detached)
+        return True
+
+    def request_close(self, connection_id, user_id=None):
+        """Close now, or defer until owned in-flight transfer holds end."""
+        if user_id is not None:
+            if isinstance(user_id, bool):
+                return 'unavailable'
+            canonical_user_id = str(user_id)
+        else:
+            canonical_user_id = None
+
+        detached = []
+        with self.lock:
+            conn = self.connections.get(connection_id)
+            if (
+                conn is None
+                or (
+                    canonical_user_id is not None
+                    and str(conn.get('user_id')) != canonical_user_id
+                )
+            ):
+                return 'unavailable'
+            if conn.get('hold_count', 0) > 0:
+                conn['close_requested'] = True
+                return 'deferred'
+            detached.append((connection_id, self.connections.pop(
+                connection_id
+            )))
+
+        self._close_detached_connections(detached)
+        return 'closed'
+
+    def _detach_connections(self, predicate=None, *, defer_held=False):
         """Atomically remove matching records before any blocking cleanup."""
         with self.lock:
             detached = []
             for connection_id, conn in list(self.connections.items()):
                 if predicate is None or predicate(connection_id, conn):
+                    if defer_held and conn.get('hold_count', 0) > 0:
+                        conn['close_requested'] = True
+                        continue
                     detached.append((connection_id, self.connections.pop(
                         connection_id
                     )))
@@ -328,7 +400,8 @@ class TemporaryConnectionPool:
         expired = self._detach_connections(
             lambda _connection_id, conn: (
                 current_time - conn['last_used'] > self.cleanup_interval
-            )
+            ),
+            defer_held=True,
         )
         self._close_detached_connections(expired)
 
@@ -390,7 +463,11 @@ class TemporaryConnectionPool:
 
     def close_all_user_connections(self, user_id):
         """
-        Close all connections for a specific user.
+        Immediately close all connections for a revoked user.
+
+        Account revocation is a stronger boundary than an ordinary tab close
+        or idle cleanup.  It must interrupt held remote I/O instead of waiting
+        for a cooperative transfer finalizer.
 
         Args:
             user_id (str): User ID
@@ -399,7 +476,7 @@ class TemporaryConnectionPool:
             int: Number of connections closed
         """
         detached = self._detach_connections(
-            lambda _connection_id, conn: conn['user_id'] == user_id
+            lambda _connection_id, conn: conn['user_id'] == user_id,
         )
         self._close_detached_connections(detached)
         return len(detached)

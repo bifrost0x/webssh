@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=23">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=9">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=12">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=8">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=15">
 </head>
@@ -1248,6 +1248,82 @@
         </div>
     </div>
 
+    <div class="modal modal-small smb-source-modal" id="smbSourceModal" role="dialog" aria-modal="true" aria-labelledby="smbSourceTitle" aria-describedby="smbSourceDescription" aria-hidden="true" data-enabled="{{ 'true' if smb_enabled else 'false' }}">
+        <div class="modal-content fm-qc-modal smb-source-shell">
+            <div class="modal-header">
+                <h2 id="smbSourceTitle" data-i18n="smb.title">Connect SMB share</h2>
+                <button type="button" class="close material-icons" id="smbSourceClose" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body smb-source-body">
+                <p id="smbSourceDescription" class="smb-source-description" data-i18n="smb.description">Open an encrypted SMB 3.1.1 file source.</p>
+                <form id="smbSourceForm" class="smb-source-form" novalidate>
+                    <div class="form-group">
+                        <label for="smbSourceSaved" data-i18n="smb.savedShares">Saved SMB shares</label>
+                        <div class="smb-saved-control">
+                            <select id="smbSourceSaved" class="form-control">
+                                <option value="" data-i18n="smb.enterManually">-- Enter manually --</option>
+                            </select>
+                            <button type="button" class="btn btn-secondary material-icons" id="smbSourceDeleteSaved" aria-label="Delete saved SMB share" data-i18n-aria-label="smb.deleteSaved" disabled>delete</button>
+                        </div>
+                    </div>
+
+                    <div class="fm-qc-divider">
+                        <span data-i18n="smb.connectionDetails">connection details</span>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label for="smbSourceHost" data-i18n="smb.host">Server</label>
+                            <input type="text" class="form-control" id="smbSourceHost" maxlength="253" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="hostname or IP" required>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="smbSourceShare" data-i18n="smb.share">Share</label>
+                            <input type="text" class="form-control" id="smbSourceShare" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Docs" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="smbSourceDomain" data-i18n="smb.domain">Domain (optional)</label>
+                            <input type="text" class="form-control" id="smbSourceDomain" maxlength="255" autocomplete="off" autocapitalize="characters" spellcheck="false">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="smbSourceUsername" data-i18n="smb.username">Username</label>
+                            <input type="text" class="form-control" id="smbSourceUsername" maxlength="256" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="smbSourcePassword" data-i18n="smb.password">Password</label>
+                        <div class="input-wrapper with-toggle">
+                            <input type="password" class="form-control" id="smbSourcePassword" maxlength="4096" autocomplete="off" required>
+                            <button type="button" class="password-toggle" id="smbSourcePasswordToggle" aria-label="Toggle password visibility" data-i18n-aria-label="smb.togglePassword">
+                                <span class="material-icons" aria-hidden="true">visibility</span>
+                            </button>
+                        </div>
+                        <small data-i18n="smb.passwordHint">Used only for this connection and never saved.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="smbSourceName" data-i18n="smb.name">Connection name (for saving)</label>
+                        <input type="text" class="form-control" id="smbSourceName" maxlength="128" autocomplete="off" placeholder="Team files">
+                    </div>
+
+                    <div class="smb-source-security-note">
+                        <span class="material-icons" aria-hidden="true">verified_user</span>
+                        <span data-i18n="smb.securityCompact">SMB 3.1.1, signing and encryption are required.</span>
+                    </div>
+                    <div id="smbSourceStatus" class="smb-source-status" role="status" aria-live="polite"></div>
+                    <div class="form-actions smb-source-actions">
+                        <button type="button" class="btn btn-secondary" id="smbSourceCancel" data-i18n="common.cancel">Cancel</button>
+                        <button type="button" class="btn btn-secondary" id="smbSourceSave" data-i18n="smb.save">Save</button>
+                        <button type="submit" class="btn btn-primary" id="smbSourceConnect" data-i18n="smb.connect">Connect</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <div class="modal modal-xlarge" id="filePreviewModal" role="dialog" aria-modal="true" aria-labelledby="filePreviewTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
@@ -1315,10 +1391,10 @@
     <script src="{{ url_for('static', filename='vendor/highlight/highlight.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/socketio/socket.io.min.js') }}"></script>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=22"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=24"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
-    <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-insights.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/session-runtime-inventory.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/session-diagnostics-charts.js') }}?v=1"></script>
@@ -1326,7 +1402,7 @@
     <script src="{{ url_for('static', filename='js/session-files-panel.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-workspace.js') }}?v=9"></script>
     <script src="{{ url_for('static', filename='js/session-workspace-ui.js') }}?v=11"></script>
-    <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/drag-drop-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/command-set-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=5"></script>
@@ -1334,7 +1410,7 @@
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=10"></script>
-    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=11"></script>
+    <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=12"></script>
     <script src="{{ url_for('static', filename='js/workspace-layout-controller.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
@@ -1346,10 +1422,11 @@
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=15"></script>
+    <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/smb-source-dialog.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=19"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=22"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {

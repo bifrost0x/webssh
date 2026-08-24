@@ -5,22 +5,37 @@ import re
 import secrets
 import shlex
 import stat
+import tempfile
 import threading
 import time
 import unicodedata
 from urllib.parse import quote
+import zipfile
+from pathlib import Path
 
 from flask import Blueprint, Response, abort, jsonify, request, stream_with_context
 from flask_login import current_user, login_required
 
 import config
-from . import connection_pool, sftp_handler
-from .audit_logger import log_error, log_file_download, log_file_upload
-from .models import SSHSession
+from . import sftp_handler
+from .audit_logger import log_error, log_file_source_operation
+from .file_sources import (
+    FileCapability,
+    FileSourceUnavailable,
+    file_source_audit_identity,
+    file_source_resolver,
+)
+from .file_service import file_service
 from . import ssh_manager
 from .quota_manager import QuotaKind, quota_manager
 from .transfer_manager import InvalidTransferToken, TransferManager
 from .runtime_lifecycle import RuntimeShuttingDown
+from .remote_transfer import (
+    RemoteTransferCancelled,
+    RemoteTransferError,
+    RemoteTransferLimitExceeded,
+    TransferBudget,
+)
 
 
 TRANSFER_CHUNK_SIZE = config.CHUNK_SIZE
@@ -46,45 +61,67 @@ def _current_user_id():
     return str(current_user.id)
 
 
-def session_is_owned(session_id, user_id):
-    """Fail closed for both normal SSH sessions and Quick Connections."""
-    if not session_id or user_id is None:
-        return False
-    user_id = str(user_id)
-    with ssh_manager.sessions_lock:
-        session = ssh_manager.sessions.get(session_id)
-        if session is not None and session.get('user_id') is not None:
-            return str(session['user_id']) == user_id
-    persisted = SSHSession.query.filter_by(session_id=session_id).first()
-    if persisted is not None:
-        return str(persisted.user_id) == user_id
-    connection = connection_pool.temp_connection_pool.get_connection_info(session_id)
-    return bool(connection and str(connection.get('user_id')) == user_id)
+def _transfer_capabilities(direction, *, archive=False):
+    if direction == 'download':
+        capabilities = [FileCapability.READ]
+        if archive:
+            capabilities.append(FileCapability.RECURSIVE)
+        return tuple(capabilities)
+    if direction == 'upload':
+        return (FileCapability.WRITE,)
+    raise FileSourceUnavailable()
 
 
-def prepare_transfer(user_id, direction, session_id, remote_path, owner_sid=None,
+def _resolve_transfer_source(record, user_id):
+    source = None
+    for capability in _transfer_capabilities(
+        record.direction,
+        archive=bool(record.metadata.get('archive')),
+    ):
+        source = file_service.resolve(record.source_id, user_id, capability)
+    return source
+
+
+def prepare_transfer(user_id, direction, source_id, remote_path, owner_sid=None,
                      archive=False):
     """Validate a socket control request before giving out a one-use token."""
     if (
         owner_sid is None
         or direction not in {'upload', 'download'}
-        or not session_is_owned(session_id, user_id)
     ):
         return None
-    safe_path = sftp_handler.sanitize_path(remote_path)
-    if safe_path is None or safe_path in {'', '.'}:
+    try:
+        source = None
+        for capability in _transfer_capabilities(
+            direction,
+            archive=bool(archive),
+        ):
+            source = file_service.resolve(source_id, user_id, capability)
+        backend = _transfer_backend(source)
+        if backend is None:
+            safe_path = sftp_handler.sanitize_path(remote_path)
+        else:
+            safe_path = backend.normalize_path(remote_path)
+        if safe_path is None or safe_path in {'', '.'}:
+            return None
+        source_holds = file_source_resolver.acquire_transfer_holds(
+            user_id,
+            (source_id,),
+        )
+        return transfer_manager.create(
+            user_id=user_id,
+            source_id=source_id,
+            direction=direction,
+            owner_sid=owner_sid,
+            source_holds=source_holds,
+            metadata={
+                'remote_path': safe_path,
+                'filename': posixpath.basename(safe_path),
+                'archive': bool(archive),
+            },
+        )
+    except (FileSourceUnavailable, RuntimeShuttingDown, ValueError):
         return None
-    return transfer_manager.create(
-        user_id=user_id,
-        session_id=session_id,
-        direction=direction,
-        owner_sid=owner_sid,
-        metadata={
-            'remote_path': safe_path,
-            'filename': posixpath.basename(safe_path),
-            'archive': bool(archive),
-        },
-    )
 
 
 def read_bounded_remote(remote_file, *, chunk_size, max_bytes, cancelled=None):
@@ -100,6 +137,109 @@ def read_bounded_remote(remote_file, *, chunk_size, max_bytes, cancelled=None):
         if total > max_bytes:
             raise DownloadLimitExceeded()
         yield chunk
+
+
+def _transfer_backend(source):
+    return getattr(source, 'backend', None)
+
+
+def _audit_transfer_source(
+    source,
+    *,
+    username,
+    ip_address,
+    operation,
+    result,
+    filename,
+    size,
+):
+    result = str(result).upper()
+    try:
+        log_file_source_operation(
+            username=username,
+            operation=operation,
+            result=result,
+            filename=filename,
+            size=size,
+            ip_address=ip_address,
+            **file_source_audit_identity(source),
+        )
+    except Exception as error:
+        log_error(
+            'File source transfer audit failed',
+            operation=operation,
+            result=result,
+            exception_type=type(error).__name__,
+        )
+
+
+def _write_all_remote(remote_file, chunk):
+    view = memoryview(chunk)
+    offset = 0
+    while offset < len(view):
+        written = remote_file.write(view[offset:])
+        if written is None:
+            written = len(view) - offset
+        if isinstance(written, bool) or not isinstance(written, int) or written <= 0:
+            raise OSError('remote write made no progress')
+        offset += written
+
+
+def _upload_to_backend(
+    source,
+    remote_path,
+    input_stream,
+    *,
+    chunk_size,
+    max_bytes,
+    cancel_event,
+    cancelled,
+    progress,
+):
+    transferred = 0
+    backend = _transfer_backend(source)
+    if backend is None:
+        raise ValueError('resolved source has no backend')
+    with backend.open_atomic_writer(
+        source,
+        remote_path,
+        replace=False,
+        cancel_event=cancel_event,
+    ) as remote_file:
+        while True:
+            if cancelled():
+                raise sftp_handler.TransferCancelled()
+            chunk = input_stream.read(chunk_size)
+            if not chunk:
+                break
+            transferred += len(chunk)
+            if transferred > max_bytes:
+                raise sftp_handler.UploadSizeExceeded()
+            _write_all_remote(remote_file, chunk)
+            progress(transferred)
+        if cancelled():
+            raise sftp_handler.TransferCancelled()
+    return transferred
+
+
+def _stream_download_chunks(remote_file, record, user_id, size):
+    transferred = 0
+    for chunk in read_bounded_remote(
+        remote_file,
+        chunk_size=TRANSFER_CHUNK_SIZE,
+        max_bytes=config.MAX_DOWNLOAD_SIZE,
+        cancelled=record.cancel_event.is_set,
+    ):
+        transferred += len(chunk)
+        from . import socketio
+        socketio.emit('transfer_progress', {
+            'transfer_id': record.transfer_id,
+            'direction': 'download',
+            'transferred': transferred,
+            'total': size,
+        }, room=f'user_{user_id}')
+        yield chunk
+    return transferred
 
 
 def _unavailable(record=None, user_id=None):
@@ -120,11 +260,13 @@ def _consume(token, expected_direction):
         _unavailable()
     if record.direction != expected_direction:
         _unavailable(record, user_id)
-    # This is deliberately repeated after token consumption.  Session ownership
-    # can change between the socket preparation request and the HTTP request.
-    if not session_is_owned(record.session_id, user_id):
+    # This is deliberately repeated after token consumption. Ownership and
+    # capabilities can change between the Socket control request and HTTP.
+    try:
+        source = _resolve_transfer_source(record, user_id)
+    except FileSourceUnavailable:
         _unavailable(record, user_id)
-    return record, user_id
+    return record, user_id, source
 
 
 def _terminalize(record, user_id, outcome, manager=None):
@@ -181,7 +323,10 @@ def _request_finalizer(record, user_id, cleanup=None):
             try:
                 _terminalize(record, user_id, outcome)
             finally:
-                record.request_done_event.set()
+                try:
+                    record.release_source_holds()
+                finally:
+                    record.request_done_event.set()
 
     return finish
 
@@ -205,24 +350,60 @@ def _content_disposition(filename):
 @transfer_blueprint.route('/api/transfers/<token>/download', methods=['GET'])
 @login_required
 def download_transfer(token):
-    record, user_id = _consume(token, 'download')
+    record, user_id, source = _consume(token, 'download')
+    audit_username = current_user.username
+    audit_ip = request.remote_addr
     finish = _request_finalizer(record, user_id)
     remote_path = record.metadata.get('remote_path')
     if not remote_path:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='download',
+            result='FAILED',
+            filename=record.metadata.get('filename'),
+            size=0,
+        )
         finish('failed')
         abort(404)
 
-    # Validate ownership before headers and before touching the remote endpoint.
-    if not session_is_owned(record.session_id, user_id):
-        finish('failed')
-        abort(404)
     try:
-        with sftp_handler.sftp_session(record.session_id) as (sftp, _source):
-            size = sftp.stat(remote_path).st_size
+        backend = _transfer_backend(source)
+        if backend is None:
+            with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
+                size = sftp.stat(remote_path).st_size
+        else:
+            file_stat, error = backend.stat(
+                source,
+                remote_path,
+                follow_links=False,
+            )
+            if error or not file_stat or file_stat.get('is_dir'):
+                raise FolderUnavailable()
+            size = int(file_stat.get('size', 0))
     except Exception:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='download',
+            result='FAILED',
+            filename=record.metadata.get('filename'),
+            size=0,
+        )
         finish('failed')
         abort(404)
     if size > config.MAX_DOWNLOAD_SIZE:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='download',
+            result='LIMIT_EXCEEDED',
+            filename=record.metadata.get('filename'),
+            size=size,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 413
 
@@ -232,31 +413,26 @@ def download_transfer(token):
         try:
             # Recheck directly before remote I/O because response iteration starts
             # after headers have been constructed.
-            if not session_is_owned(record.session_id, user_id):
-                return
-            with sftp_handler.sftp_session(record.session_id) as (sftp, _source):
-                with sftp.file(remote_path, 'rb') as remote_file:
-                    for chunk in read_bounded_remote(
-                        remote_file,
-                        chunk_size=TRANSFER_CHUNK_SIZE,
-                        max_bytes=config.MAX_DOWNLOAD_SIZE,
-                        cancelled=record.cancel_event.is_set,
-                    ):
-                        transferred += len(chunk)
-                        from . import socketio
-                        socketio.emit('transfer_progress', {
-                            'transfer_id': record.transfer_id,
-                            'direction': 'download',
-                            'transferred': transferred,
-                            'total': size,
-                        }, room=f'user_{user_id}')
-                        yield chunk
+            active_source = _resolve_transfer_source(record, user_id)
+            backend = _transfer_backend(active_source)
+            if backend is None:
+                reader_context = sftp_handler.sftp_session(
+                    active_source.handle_id
+                )
+                with reader_context as (sftp, _source):
+                    with sftp.file(remote_path, 'rb') as remote_file:
+                        transferred = yield from _stream_download_chunks(
+                            remote_file, record, user_id, size
+                        )
+            else:
+                with backend.open_reader(
+                    active_source,
+                    remote_path,
+                ) as remote_file:
+                    transferred = yield from _stream_download_chunks(
+                        remote_file, record, user_id, size
+                    )
             outcome = 'completed'
-            log_file_download(
-                current_user.username, target_host='via-sftp',
-                filename=record.metadata['filename'], size=transferred,
-                success=True, ip_address=request.remote_addr,
-            )
         except (GeneratorExit, TransferCancelled):
             outcome = 'cancelled'
             raise
@@ -265,6 +441,15 @@ def download_transfer(token):
                       exception_type=type(error).__name__)
             raise
         finally:
+            _audit_transfer_source(
+                source,
+                username=audit_username,
+                ip_address=audit_ip,
+                operation='download',
+                result=outcome,
+                filename=record.metadata['filename'],
+                size=transferred,
+            )
             finish(outcome)
 
     response = Response(stream_with_context(generate()), mimetype='application/octet-stream')
@@ -342,11 +527,114 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
     return archive_path, size
 
 
+def _build_backend_zip_to_disk(
+    source,
+    remote_folder,
+    folder_name,
+    *,
+    cancel_event,
+    max_bytes,
+    chunk_size,
+    temp_dir,
+):
+    """Build a bounded local ZIP through only the FileBackend contract."""
+    temp_directory = Path(temp_dir)
+    temp_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(
+        suffix='.zip',
+        delete=False,
+        dir=temp_directory,
+    )
+    archive_path = Path(temporary.name)
+    temporary.close()
+    archive_path.chmod(0o600)
+    budget = TransferBudget(
+        max_bytes=max_bytes,
+        max_members=config.MAX_TRANSFER_MEMBERS,
+    )
+    root = remote_folder.rstrip('/')
+
+    try:
+        entries = list(source.backend.iter_tree(
+            source,
+            remote_folder,
+            budget=budget,
+            cancel_event=cancel_event,
+            follow_links=False,
+        ))
+        if any(entry.get('is_symlink') for entry in entries):
+            raise RemoteTransferError('Reparse points are not supported')
+        declared_total = 0
+        for entry in entries:
+            if entry.get('is_dir'):
+                continue
+            size = int(entry.get('size', 0))
+            if size < 0:
+                raise RemoteTransferLimitExceeded('Invalid remote file size')
+            declared_total += size
+            if declared_total > max_bytes:
+                raise RemoteTransferLimitExceeded(
+                    'Folder exceeds transfer size limit'
+                )
+
+        transferred = 0
+        with zipfile.ZipFile(
+            archive_path,
+            'w',
+            zipfile.ZIP_DEFLATED,
+            compresslevel=6,
+        ) as archive:
+            for entry in entries:
+                if cancel_event.is_set():
+                    raise RemoteTransferCancelled('Transfer cancelled')
+                entry_path = entry.get('path')
+                if (
+                    not isinstance(entry_path, str)
+                    or not entry_path.startswith(root + '/')
+                ):
+                    raise RemoteTransferError('Unsafe recursive source path')
+                relative = entry_path[len(root) + 1:]
+                archive_name = posixpath.join(folder_name, relative)
+                if entry.get('is_dir'):
+                    archive.writestr(archive_name.rstrip('/') + '/', b'')
+                    continue
+                with source.backend.open_reader(source, entry_path) as reader:
+                    with archive.open(archive_name, 'w') as archive_member:
+                        while True:
+                            if cancel_event.is_set():
+                                raise RemoteTransferCancelled(
+                                    'Transfer cancelled'
+                                )
+                            chunk = reader.read(chunk_size)
+                            if not chunk:
+                                break
+                            transferred += len(chunk)
+                            if transferred > max_bytes:
+                                raise RemoteTransferLimitExceeded(
+                                    'Folder exceeds transfer size limit'
+                                )
+                            archive_member.write(chunk)
+                if archive_path.stat().st_size > max_bytes:
+                    raise RemoteTransferLimitExceeded(
+                        'Archive exceeds transfer size limit'
+                    )
+        if archive_path.stat().st_size > max_bytes:
+            raise RemoteTransferLimitExceeded(
+                'Archive exceeds transfer size limit'
+            )
+        return archive_path
+    except Exception:
+        archive_path.unlink(missing_ok=True)
+        raise
+
+
 @transfer_blueprint.route('/api/transfers/<token>/folder-download', methods=['GET'])
 @login_required
 def download_folder_transfer(token):
     """Download a directory without routing archive bytes through Socket.IO."""
-    record, user_id = _consume(token, 'download')
+    record, user_id, source = _consume(token, 'download')
+    audit_username = current_user.username
+    audit_ip = request.remote_addr
     metadata = record.metadata
     remote_path = metadata.get('remote_path', '')
     folder_name = posixpath.basename(remote_path.rstrip('/')) or 'download'
@@ -358,7 +646,7 @@ def download_folder_transfer(token):
     def cleanup_resources():
         if remote_archive is not None:
             try:
-                with sftp_handler.sftp_session(record.session_id) as (sftp, _source):
+                with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
                     sftp.remove(remote_archive)
             except Exception as error:
                 log_error('Remote ZIP cleanup failed', user_id=user_id,
@@ -378,79 +666,156 @@ def download_folder_transfer(token):
 
     finish = _request_finalizer(record, user_id, cleanup_resources)
     if not metadata.get('archive') or not remote_path:
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='folder_download',
+            result='FAILED',
+            filename=f'{folder_name}.zip',
+            size=0,
+        )
         finish('failed')
         abort(404)
 
     try:
-        with sftp_handler.sftp_session(record.session_id) as (sftp, _source):
-            remote_stat = sftp.stat(remote_path)
-            if not stat.S_ISDIR(remote_stat.st_mode):
-                raise FolderUnavailable()
-            _declared_size, has_symlink = sftp_handler.inspect_remote_tree(
-                sftp,
+        backend = _transfer_backend(source)
+        if backend is not None:
+            remote_stat, stat_error = backend.stat(
+                source,
                 remote_path,
-                cancel_event=record.cancel_event,
-                max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                follow_links=False,
             )
-            remote_result = None
-            if not has_symlink:
-                try:
-                    remote_result = _remote_zip_path(
-                        sftp,
-                        sftp_handler.get_ssh_client(record.session_id),
-                        remote_path,
-                        record.cancel_event,
-                    )
-                except (
-                    sftp_handler.TransferSizeExceeded,
-                    sftp_handler.TransferMemberLimitExceeded,
-                    sftp_handler.TransferCancelled,
-                ):
-                    raise
-                except Exception:
-                    remote_result = None
-            if remote_result is not None:
-                remote_archive, archive_size = remote_result
-            else:
-                temp_reservation = quota_manager.reserve(
-                    QuotaKind.TEMP_BYTES,
-                    user_id,
-                    config.MAX_ZIP_DOWNLOAD_SIZE,
+            if (
+                stat_error
+                or remote_stat is None
+                or not remote_stat.get('is_dir')
+                or remote_stat.get('is_symlink')
+            ):
+                raise FolderUnavailable()
+            temp_reservation = quota_manager.reserve(
+                QuotaKind.TEMP_BYTES,
+                user_id,
+                config.MAX_ZIP_DOWNLOAD_SIZE,
+            )
+            try:
+                local_archive = _build_backend_zip_to_disk(
+                    source,
+                    remote_path,
+                    folder_name,
+                    cancel_event=record.cancel_event,
+                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                    chunk_size=TRANSFER_CHUNK_SIZE,
+                    temp_dir=config.TRANSFER_TEMP_DIR,
                 )
+                archive_size = local_archive.stat().st_size
+            except Exception:
                 try:
-                    local_archive = sftp_handler.build_fallback_zip_to_disk(
-                        sftp,
-                        remote_path,
-                        folder_name,
-                        cancel_event=record.cancel_event,
-                        max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                        chunk_size=TRANSFER_CHUNK_SIZE,
-                        temp_dir=config.TRANSFER_TEMP_DIR,
-                    )
-                    archive_size = local_archive.stat().st_size
-                except Exception:
+                    if local_archive is not None:
+                        local_archive.unlink(missing_ok=True)
+                finally:
+                    temp_reservation.release()
+                    temp_reservation = None
+                raise
+        else:
+            with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
+                remote_stat = sftp.stat(remote_path)
+                if not stat.S_ISDIR(remote_stat.st_mode):
+                    raise FolderUnavailable()
+                _declared_size, has_symlink = sftp_handler.inspect_remote_tree(
+                    sftp,
+                    remote_path,
+                    cancel_event=record.cancel_event,
+                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                )
+                remote_result = None
+                if not has_symlink:
                     try:
-                        if local_archive is not None:
-                            local_archive.unlink(missing_ok=True)
-                    finally:
-                        temp_reservation.release()
-                        temp_reservation = None
-                    raise
+                        remote_result = _remote_zip_path(
+                            sftp,
+                            sftp_handler.get_ssh_client(source.handle_id),
+                            remote_path,
+                            record.cancel_event,
+                        )
+                    except (
+                        sftp_handler.TransferSizeExceeded,
+                        sftp_handler.TransferMemberLimitExceeded,
+                        sftp_handler.TransferCancelled,
+                    ):
+                        raise
+                    except Exception:
+                        remote_result = None
+                if remote_result is not None:
+                    remote_archive, archive_size = remote_result
+                else:
+                    temp_reservation = quota_manager.reserve(
+                        QuotaKind.TEMP_BYTES,
+                        user_id,
+                        config.MAX_ZIP_DOWNLOAD_SIZE,
+                    )
+                    try:
+                        local_archive = sftp_handler.build_fallback_zip_to_disk(
+                            sftp,
+                            remote_path,
+                            folder_name,
+                            cancel_event=record.cancel_event,
+                            max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                            chunk_size=TRANSFER_CHUNK_SIZE,
+                            temp_dir=config.TRANSFER_TEMP_DIR,
+                        )
+                        archive_size = local_archive.stat().st_size
+                    except Exception:
+                        try:
+                            if local_archive is not None:
+                                local_archive.unlink(missing_ok=True)
+                        finally:
+                            temp_reservation.release()
+                            temp_reservation = None
+                        raise
     except FolderUnavailable:
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='FAILED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         abort(404)
     except (
         sftp_handler.TransferSizeExceeded,
         sftp_handler.TransferMemberLimitExceeded,
+        RemoteTransferLimitExceeded,
     ):
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='LIMIT_EXCEEDED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 413
-    except sftp_handler.TransferCancelled:
+    except (sftp_handler.TransferCancelled, RemoteTransferCancelled):
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='CANCELLED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('cancelled')
         return jsonify({'error': 'Transfer unavailable'}), 409
+    except RemoteTransferError:
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='FAILED',
+            filename=f'{folder_name}.zip', size=0,
+        )
+        finish('failed')
+        return jsonify({'error': 'Transfer unavailable'}), 500
     except Exception as error:
         log_error('Folder download preparation failed', user_id=user_id,
                   exception_type=type(error).__name__)
+        _audit_transfer_source(
+            source, username=audit_username, ip_address=audit_ip,
+            operation='folder_download', result='FAILED',
+            filename=f'{folder_name}.zip', size=0,
+        )
         finish('failed')
         return jsonify({'error': 'Transfer unavailable'}), 500
 
@@ -459,7 +824,8 @@ def download_folder_transfer(token):
         transferred = 0
         try:
             if remote_archive is not None:
-                with sftp_handler.sftp_session(record.session_id) as (sftp, _source):
+                active_source = _resolve_transfer_source(record, user_id)
+                with sftp_handler.sftp_session(active_source.handle_id) as (sftp, _source):
                     with sftp.file(remote_archive, 'rb') as remote_file:
                         for chunk in sftp_handler.stream_remote_zip(
                             remote_file,
@@ -486,14 +852,6 @@ def download_folder_transfer(token):
                         )
                         yield chunk
             outcome = 'completed'
-            log_file_download(
-                current_user.username,
-                target_host='via-sftp-folder',
-                filename=f'{folder_name}.zip',
-                size=transferred,
-                success=True,
-                ip_address=request.remote_addr,
-            )
         except (GeneratorExit, sftp_handler.TransferCancelled):
             outcome = 'cancelled'
             raise
@@ -502,6 +860,15 @@ def download_folder_transfer(token):
                       exception_type=type(error).__name__)
             raise
         finally:
+            _audit_transfer_source(
+                source,
+                username=audit_username,
+                ip_address=audit_ip,
+                operation='folder_download',
+                result=outcome,
+                filename=f'{folder_name}.zip',
+                size=transferred,
+            )
             finish(outcome)
 
     response = Response(
@@ -519,52 +886,94 @@ def download_folder_transfer(token):
 @transfer_blueprint.route('/api/transfers/<token>/upload', methods=['POST'])
 @login_required
 def upload_transfer(token):
-    record, user_id = _consume(token, 'upload')
+    record, user_id, source = _consume(token, 'upload')
+    audit_username = current_user.username
+    audit_ip = request.remote_addr
     try:
-        if not session_is_owned(record.session_id, user_id):
-            _unavailable(record, user_id)
         if (
             request.content_length is None
             or request.content_length > config.MAX_UPLOAD_SIZE
         ):
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='LIMIT_EXCEEDED',
+                filename=record.metadata.get('filename'), size=0,
+            )
             _terminalize(record, user_id, 'failed')
             return jsonify({'error': 'Transfer unavailable'}), 413
 
         transferred = 0
         try:
-            transferred = sftp_handler.upload_request_stream(
-                record.session_id,
-                record.metadata['remote_path'],
-                request.stream,
-                chunk_size=TRANSFER_CHUNK_SIZE,
-                max_bytes=config.MAX_UPLOAD_SIZE,
-                cancelled=record.cancel_event.is_set,
-                progress=lambda count: _emit_upload_progress(
-                    record, user_id, count
-                ),
-            )
+            active_source = _resolve_transfer_source(record, user_id)
+            if _transfer_backend(active_source) is None:
+                transferred = sftp_handler.upload_request_stream(
+                    active_source.handle_id,
+                    record.metadata['remote_path'],
+                    request.stream,
+                    chunk_size=TRANSFER_CHUNK_SIZE,
+                    max_bytes=config.MAX_UPLOAD_SIZE,
+                    cancelled=record.cancel_event.is_set,
+                    progress=lambda count: _emit_upload_progress(
+                        record, user_id, count
+                    ),
+                )
+            else:
+                transferred = _upload_to_backend(
+                    active_source,
+                    record.metadata['remote_path'],
+                    request.stream,
+                    chunk_size=TRANSFER_CHUNK_SIZE,
+                    max_bytes=config.MAX_UPLOAD_SIZE,
+                    cancel_event=record.cancel_event,
+                    cancelled=record.cancel_event.is_set,
+                    progress=lambda count: _emit_upload_progress(
+                        record, user_id, count
+                    ),
+                )
         except sftp_handler.TransferCancelled:
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='CANCELLED',
+                filename=record.metadata.get('filename'), size=transferred,
+            )
             _terminalize(record, user_id, 'cancelled')
             return jsonify({'error': 'Transfer unavailable'}), 409
         except sftp_handler.UploadSizeExceeded:
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='LIMIT_EXCEEDED',
+                filename=record.metadata.get('filename'), size=transferred,
+            )
             _terminalize(record, user_id, 'failed')
             return jsonify({'error': 'Transfer unavailable'}), 413
         except Exception as error:
             log_error('HTTP upload failed', user_id=user_id,
                       exception_type=type(error).__name__)
+            _audit_transfer_source(
+                source, username=audit_username, ip_address=audit_ip,
+                operation='upload', result='FAILED',
+                filename=record.metadata.get('filename'), size=transferred,
+            )
             _terminalize(record, user_id, 'failed')
             return jsonify({'error': 'Transfer unavailable'}), 500
 
         if not _terminalize(record, user_id, 'completed'):
             return jsonify({'error': 'Transfer unavailable'}), 500
-        log_file_upload(
-            current_user.username, target_host='via-sftp',
-            filename=record.metadata['filename'], size=transferred,
-            success=True, ip_address=request.remote_addr,
+        _audit_transfer_source(
+            source,
+            username=audit_username,
+            ip_address=audit_ip,
+            operation='upload',
+            result='COMPLETED',
+            filename=record.metadata['filename'],
+            size=transferred,
         )
         return jsonify({'success': True}), 200
     finally:
-        record.request_done_event.set()
+        try:
+            record.release_source_holds()
+        finally:
+            record.request_done_event.set()
 
 
 def _emit_upload_progress(record, user_id, transferred):

@@ -76,7 +76,9 @@ Bulk transfers use HTTP, so proxy body-size, buffering, and timeout settings can
 - quick-connection lifetime and remote idle timeouts;
 - upload size and editor-content limits.
 
-The file workspace supports SFTP sources. SMB is not a supported backend even if a disabled placeholder appears in the interface.
+The file workspace supports SFTP sources and opt-in SMB sources. If the SMB
+control is disabled, confirm that `SMB_ENABLED=true` and a non-empty exact
+`SMB_ALLOWED_TARGETS` allowlist reach the container. SMB remains default-off.
 
 ## LDAP/AD sign-in fails
 

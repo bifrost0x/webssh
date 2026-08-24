@@ -114,7 +114,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         assert response.status_code == 200
         assert b'css/style.css?v=23' in response.data
         assert b'css/webssh-2.css?v=15' in response.data
-        assert b'js/i18n.js?v=22' in response.data
+        assert b'js/i18n.js?v=24' in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
@@ -122,7 +122,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         assert response.status_code == 200
         assert b'css/style.css?v=23' in response.data
         assert b'css/webssh-2.css?v=15' in response.data
-        assert b'js/i18n.js?v=22' in response.data
+        assert b'js/i18n.js?v=24' in response.data
 
 
 def test_authentication_pages_use_the_shared_professional_auth_shell():

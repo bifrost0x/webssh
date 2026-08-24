@@ -11,11 +11,17 @@ async function openWorkspaceWithSources(page) {
         window.socket.emit = function captureWorkspaceEvent(event, ...args) {
             const payload = args[0];
             const acknowledgement = args.find(value => typeof value === 'function');
-            const sessionId = payload?.session_id || payload?.source_session_id || payload?.dest_session_id;
-            if (String(sessionId || '').startsWith('workspace-')) {
+            const sourceIds = [payload?.source_id, payload?.destination_source_id];
+            if (sourceIds.some(value => String(value || '').includes(':workspace-'))) {
                 window.__fileWorkspaceEvents.push({ event, payload });
                 if (typeof acknowledgement === 'function') {
-                    acknowledgement({ success: true, transfer_id: 'workspace-transfer' });
+                    acknowledgement({
+                        success: true,
+                        transfer_id: 'workspace-transfer',
+                        source_id: payload.source_id,
+                        destination_source_id: payload.destination_source_id,
+                        request_id: payload.request_id,
+                    });
                 }
                 return window.socket;
             }
@@ -23,8 +29,26 @@ async function openWorkspaceWithSources(page) {
         };
         openFileManager();
         window.sftpFileManager.availableSessions = [
-            { id: 'workspace-source', displayName: 'prod-web-01', username: 'ops', host: 'edge.example', port: 22, connected: true },
-            { id: 'workspace-target', displayName: 'release archive', username: 'backup', host: 'archive.example', port: 22, connected: true },
+            {
+                id: 'workspace-source', displayName: 'prod-web-01', username: 'ops',
+                host: 'edge.example', port: 22, connected: true,
+                file_source: {
+                    source_id: 'sftp-session:workspace-source', kind: 'sftp',
+                    label: 'prod-web-01', endpoint: 'edge.example:22', protocol: 'SFTP',
+                    capabilities: ['list', 'read', 'write', 'mkdir', 'rename', 'delete', 'preview', 'edit', 'recursive', 'remote-transfer'],
+                    ephemeral: false, security: { host_key_verified: true },
+                },
+            },
+            {
+                id: 'workspace-target', displayName: 'release archive', username: 'backup',
+                host: 'archive.example', port: 22, connected: true,
+                file_source: {
+                    source_id: 'sftp-session:workspace-target', kind: 'sftp',
+                    label: 'release archive', endpoint: 'archive.example:22', protocol: 'SFTP',
+                    capabilities: ['list', 'read', 'write', 'mkdir', 'rename', 'delete', 'preview', 'edit', 'recursive', 'remote-transfer'],
+                    ephemeral: false, security: { host_key_verified: true },
+                },
+            },
         ];
         window.sftpFileManager.renderSourceLauncher();
     });
@@ -62,7 +86,7 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect(page.locator('.fm-source-secondary-groups')).toHaveCount(0);
     await expect(page.locator('#fmNewSftpSource')).toBeEnabled();
     await expect(page.locator('#fmNewSmbSource')).toBeDisabled();
-    await expect(page.locator('#fmNewSmbSource')).toContainText('Coming soon');
+    await expect(page.locator('#fmNewSmbSource')).toContainText('Disabled by administrator');
     await expect(page.locator('#fmSourceSearch')).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(page.locator('#fmSourceLauncherClose')).toBeFocused();
@@ -86,7 +110,7 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
         return sourceRowsFit && sourceContentFits;
     })).toBe(true);
 
-    await page.locator('[data-source-key="ssh:workspace-source"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await expect(page.locator('#fmLeftTabs .fm-source-tab')).toHaveCount(1);
     await expect(page.locator('#fmLeftTabs')).toContainText('prod-web-01');
     await expect(page.locator('#fmSourceLauncher')).not.toHaveClass(/show/);
@@ -95,7 +119,7 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-split/);
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await expect(page.locator('#fmSourceLauncherPane')).toHaveText('Right side');
-    await page.locator('[data-source-key="ssh:workspace-target"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
     await expect(page.locator('#fmRightTabs .fm-source-tab')).toHaveCount(1);
     await expect(page.locator('#fmRightTabs')).toContainText('release archive');
     await expect(page.locator('[data-source-target="left"]')).toHaveAttribute('aria-label', 'Open source: Left side');
@@ -218,9 +242,9 @@ test('empty panes guide source selection and mobile split keeps both panes reach
     await leftEmptyAction.click();
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
 
-    await page.locator('[data-source-key="ssh:workspace-source"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.locator('#fmLayoutSplit').click();
-    await page.locator('[data-source-key="ssh:workspace-target"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
     await page.setViewportSize({ width: 390, height: 844 });
 
     const mobilePaneTabs = page.locator('#fmPaneTabs');
@@ -238,7 +262,7 @@ test('empty panes guide source selection and mobile split keeps both panes reach
 
 test('file checkboxes support additive selection and select all', async ({ page }) => {
     await openWorkspaceWithSources(page);
-    await page.locator('[data-source-key="ssh:workspace-source"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.evaluate(() => {
         const manager = window.sftpFileManager;
         Object.assign(manager.panes.left, {
@@ -288,9 +312,9 @@ test('file checkboxes support additive selection and select all', async ({ page 
 test('splitting two single-view tabs distributes them across both file areas', async ({ page }) => {
     await openWorkspaceWithSources(page);
 
-    await page.locator('[data-source-key="ssh:workspace-source"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.locator('[data-source-target="left"]').click();
-    await page.locator('[data-source-key="ssh:workspace-target"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
     await expect(page.locator('#fmLeftTabs .fm-source-tab')).toHaveCount(2);
 
     await page.locator('#fmLayoutSplit').click();

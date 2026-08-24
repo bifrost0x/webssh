@@ -75,6 +75,16 @@ and context navigation no longer compete in one toolbar.
 - At 832 × 946 the access dock collapsed to one 796 px content column inside an 800 px surface; document and viewport widths both remained 832 px. The language menu measured 168 px, stayed inside the utility bar's right edge, used the dark surface color, and rendered at z-index 120 above the dock.
 - The brand tagline now forms one centered lockup with the WebSSH logo instead of anchoring the lower-left panel edge. At 3440 × 1440, the brand lockup and welcome content form one vertically centered stack whose center matches the panel center exactly; their former 285 px empty separation is reduced to a controlled 48 px. The measured logo-to-tagline gap is 7 px on desktop and 3 px at the 832 × 946 compact breakpoint; both centers remain aligned and the compact document has no horizontal overflow.
 
+## SMB File Manager QA (2026-08-24)
+
+- The opt-in SMB source dialog is contained at 1440 × 1024, 900 × 900, 768 × 1024, and 390 × 844. Its shell and fixed action footer remain inside the viewport without document-level horizontal overflow.
+- The disabled state cannot open the dialog or emit an SMB connection request.
+- Connect requests clear the password field immediately. Authentication failure returns focus to the empty password field, and browser storage contains no SMB credential value.
+- Escape on mobile cancels the exact correlated request, clears the password, closes only the SMB dialog, restores the source launcher, and returns focus to the SMB source action.
+- The SMB dialog remains above the File Manager surface. A successful response opens only the server-provided source descriptor and renders its encrypted SMB 3.1.1 endpoint in the selected pane.
+- SMB-specific Playwright coverage: 4/4 passed. The complete browser suite passed with no failed tests before the final containment case was added; no product code changed afterward.
+- Current regression evidence: Python 3.14 2,037 passed and 33 skipped; JavaScript 300 passed; disposable OpenSSH/SFTP integration 27 passed; disposable SMB integration passed; dependency locks, vendored assets, JavaScript lint, container build, and `git diff --check` passed.
+
 ## Regression evidence
 
 - Python 3.14 broad run: 1,806 passed and 33 skipped with one upstream Flask-Login deprecation warning; two stale test-only cache-version and responsive-breakpoint expectations were corrected, then both affected modules passed 45/45.

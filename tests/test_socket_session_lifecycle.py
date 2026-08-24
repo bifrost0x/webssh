@@ -3,11 +3,13 @@ import os
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
 from app import socketio, ssh_manager
 from app.auth import register_user
+from app.file_sources import SourceHoldSet
 
 
 @pytest.fixture(scope='module')
@@ -301,16 +303,27 @@ def test_disconnect_cancels_only_transfers_prepared_by_that_socket(app, monkeypa
     manager = TransferManager()
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
     monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
-    monkeypatch.setattr(transfer_routes, 'session_is_owned', lambda *_args: True)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: SimpleNamespace(handle_id='owned-session'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
 
     first_result = first_socket.emit('prepare_transfer', {
         'direction': 'upload',
-        'session_id': 'owned-session',
+        'source_id': 'sftp-session:owned-session',
+        'request_id': 'prepare-first-transfer',
         'remote_path': '/remote/first.bin',
     }, callback=True)
     second_result = second_socket.emit('prepare_transfer', {
         'direction': 'download',
-        'session_id': 'owned-session',
+        'source_id': 'sftp-session:owned-session',
+        'request_id': 'prepare-second-transfer',
         'remote_path': '/remote/second.bin',
     }, callback=True)
     first_record = manager._records[first_result['transfer_id']]

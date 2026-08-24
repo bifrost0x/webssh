@@ -1,23 +1,43 @@
-# SFTP File Workspace and Transfers
+# SFTP and SMB File Workspace and Transfers
 
-The File Workspace uses SFTP over SSH. It can reuse active terminal sessions,
-open saved SSH hosts, or create temporary SFTP-only connections.
+The File Workspace uses SFTP over SSH and can optionally open temporary SMB
+shares. SFTP can reuse active terminal sessions, open saved SSH hosts, or
+create temporary SFTP-only connections.
 
 ## Sources and tabs
 
-The source launcher offers supported SFTP sources:
+The source launcher offers:
 
 - an active SSH session;
 - a saved SSH profile;
-- a new SFTP quick connection.
+- a new SFTP quick connection;
+- an ephemeral SMB share when the administrator enables SMB.
 
 Each side has independent source tabs and directory state. The workspace starts
 with one file area and can switch to a side-by-side layout for remote-to-remote
 work. A source already open on the opposite side is not silently duplicated.
 
-The SMB action is disabled, labeled **Coming soon**, and is not a supported
-connection source. It opens no SMB connection and generates no SMB network
-activity.
+SMB is opt-in and remains disabled with `SMB_ENABLED=false`. Enabling it
+requires a non-empty `SMB_ALLOWED_TARGETS` list containing exact server
+hostnames or IP addresses. The server field is resolved and checked against
+that allowlist before a connection is opened. SMB always uses TCP 445 and
+requires SMB 3.1.1, signing, encryption, and secure negotiation. The current
+authentication mode is NTLM. Guest or null sessions, DFS, Kerberos,
+administrative shares, reparse-point traversal, and automatic reconnect are
+not supported.
+
+The SMB dialog sends the password only for the requested temporary connection;
+passwords and authentication secrets are never stored by WebSSH. Users may save
+non-secret, per-user share definitions containing a display name, host, share,
+domain, and username. Closing a source's final tab closes the connection after
+any dependent transfer finishes. An application restart also removes all active
+SMB sources.
+
+Browser TLS and SMB encryption protect different links. TLS covers the browser
+to WebSSH, while SMB encryption covers WebSSH to the share. The WebSSH process
+must handle the submitted credentials and file contents, so deploy it on a
+trusted host and allowlist only trusted SMB servers. This is not end-to-end
+encryption between the browser and the share.
 
 ## Embedded active-session browser
 
@@ -49,8 +69,9 @@ Supported operations include:
 - inline text editing and save;
 - selection and context-menu actions.
 
-All operations authenticate the WebSSH user and verify ownership of the SSH or
-temporary connection.
+All operations authenticate the WebSSH user, resolve the opaque source ID
+server-side, verify source ownership, and enforce the named capability before
+touching SFTP or SMB.
 
 ## Transfer architecture
 
@@ -107,8 +128,8 @@ host filesystem paths.
 ## Preview and editor safety
 
 Preview loads only bounded content. Tail mode limits requested line count. The
-editor refuses files above its size cap and saves through the existing owned
-SFTP session.
+editor refuses files above its size cap and saves through the resolved, owned
+file source.
 
 Treat remote content as untrusted. Previewing or editing a file does not make
 its commands safe to execute.
@@ -116,8 +137,9 @@ its commands safe to execute.
 ## Server-to-server copy
 
 Open source and destination in the two file areas, select items, and start the
-copy. The server reads from one SFTP connection and writes to the other without
-routing the entire payload through the browser.
+copy. The server reads from one SFTP or SMB source and writes to the other
+without routing the entire payload through the browser. The same bounded engine
+covers SFTP-to-SFTP, SFTP-to-SMB, SMB-to-SFTP, and SMB-to-SMB copies.
 
 Both connections remain owned by the same WebSSH user, both count against
 capacity, and cancellation is tied to the server-owned transfer record.

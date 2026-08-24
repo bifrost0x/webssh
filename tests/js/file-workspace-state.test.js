@@ -22,12 +22,13 @@ test('opening tabs keeps independent pane state and strips credential fields', (
     const rightState = { path: '/srv/archive', selected: new Set() };
 
     const leftTab = workspace.openTab('left', {
-        key: 'ssh:session-a', type: 'ssh', label: 'Production', protocol: 'SFTP',
-        sessionId: 'session-a', password: 'must-not-survive', keyMaterial: 'private',
+        sourceId: 'sftp-session:session-a', kind: 'sftp', label: 'Production',
+        protocol: 'SFTP', capabilities: ['list'], ephemeral: false,
+        password: 'must-not-survive', keyMaterial: 'private',
     }, leftState);
     const rightTab = workspace.openTab('right', {
-        key: 'ssh:session-b', type: 'ssh', label: 'Archive', protocol: 'SFTP',
-        sessionId: 'session-b',
+        sourceId: 'sftp-session:session-b', kind: 'sftp', label: 'Archive',
+        protocol: 'SFTP', capabilities: ['list'], ephemeral: false,
     }, rightState);
 
     assert.equal(workspace.getActiveTab('left'), leftTab);
@@ -37,8 +38,8 @@ test('opening tabs keeps independent pane state and strips credential fields', (
     assert.equal(leftTab.source.password, undefined);
     assert.equal(leftTab.source.keyMaterial, undefined);
     assert.deepEqual(Object.keys(leftTab.source).sort(), [
-        'connectionId', 'endpoint', 'key', 'label', 'profileId', 'protocol',
-        'security', 'sessionId', 'status', 'type',
+        'capabilities', 'endpoint', 'ephemeral', 'kind', 'label', 'protocol',
+        'security', 'sourceId', 'status',
     ]);
 });
 

@@ -2626,3 +2626,143 @@
         display: none;
     }
 }
+/* SMB quick connection mirrors the compact SFTP connection dialog. */
+.smb-source-modal {
+    z-index: 26000;
+}
+
+.smb-source-modal .smb-source-shell {
+    width: min(450px, calc(100vw - 24px));
+    max-width: 450px;
+    max-height: calc(100dvh - 24px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.smb-source-body {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.smb-source-description {
+    margin: 0 0 14px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.smb-source-modal .form-control {
+    width: 100%;
+}
+
+.smb-source-modal .form-row {
+    display: flex;
+    gap: 12px;
+}
+
+.smb-source-modal .flex-1 {
+    flex: 1;
+}
+
+.smb-source-modal .flex-2 {
+    flex: 2;
+}
+
+.smb-saved-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    gap: 8px;
+}
+
+.smb-saved-control #smbSourceDeleteSaved {
+    min-width: 42px;
+    padding: 0;
+}
+
+.smb-source-modal .input-wrapper.with-toggle {
+    position: relative;
+}
+
+.smb-source-modal .input-wrapper.with-toggle input {
+    padding-right: 40px;
+}
+
+.smb-source-modal .password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    display: flex;
+    padding: 4px;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transform: translateY(-50%);
+}
+
+.smb-source-modal .form-group small {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.smb-source-security-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 12px;
+    padding: 9px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-active);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.smb-source-security-note .material-icons {
+    color: var(--primary-color);
+    font-size: 18px;
+}
+
+.smb-source-status {
+    min-height: 1.35em;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+.smb-source-status[data-state="error"] {
+    color: var(--danger-color);
+}
+
+.smb-source-status[data-state="pending"] {
+    color: var(--primary-color);
+}
+
+.smb-source-status[data-state="success"] {
+    color: var(--success-color);
+}
+
+.smb-source-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+@media (max-width: 520px) {
+    .smb-source-modal .form-row {
+        display: block;
+    }
+
+    .smb-source-actions {
+        flex-wrap: wrap;
+    }
+
+    .smb-source-actions .btn {
+        min-height: 44px;
+        flex: 1 1 96px;
+    }
+}

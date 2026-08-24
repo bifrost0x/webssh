@@ -24,6 +24,7 @@ STORE_DOCUMENTS = {
     'keys': {'keys': []},
     'settings': {'theme': 'glass'},
     'app_settings': {'registration_enabled': True},
+    'smb_shares': {'smb_shares': []},
 }
 
 

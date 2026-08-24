@@ -305,13 +305,32 @@ def test_current_workspace_and_session_flows_are_documented():
         assert phrase.lower() in terminal.lower()
 
 
-def test_current_sftp_workspace_is_documented_without_active_smb_claims():
-    """The file guide is current while keeping SMB explicitly unavailable."""
+def test_file_workspace_documents_secure_opt_in_smb_boundary():
+    """The public docs state every non-optional SMB security boundary."""
     sftp = wiki_text("SFTP-File-Workspace-and-Transfers.md")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for phrase in ("source", "independent", "server-to-server", "transfer queue"):
         assert phrase.lower() in sftp.lower()
-    assert "SMB" in sftp and "Coming soon" in sftp
-    assert "SMB connection is available" not in sftp
+    for text in (sftp, readme):
+        for phrase in (
+            "SMB_ENABLED=false",
+            "SMB_ALLOWED_TARGETS",
+            "SMB 3.1.1",
+            "TCP 445",
+            "signing",
+            "encryption",
+            "NTLM",
+            "never stored",
+            "guest",
+            "DFS",
+            "Kerberos",
+            "automatic reconnect",
+            "browser",
+            "WebSSH process",
+            "file contents",
+        ):
+            assert phrase.lower() in text.lower()
+        assert "Coming soon" not in text
 
 
 def test_current_authentication_assurance_is_documented():

@@ -89,13 +89,13 @@ class TestUserAccessRevocation:
             other = _create_user('transfer_other')
             target_record = transfer_manager.create(
                 user_id=target.id,
-                session_id='target-session',
+                source_id='sftp-session:target-session',
                 direction='download',
                 metadata={},
             )
             other_record = transfer_manager.create(
                 user_id=other.id,
-                session_id='other-session',
+                source_id='sftp-session:other-session',
                 direction='download',
                 metadata={},
             )
@@ -176,6 +176,7 @@ class TestUserAccessRevocation:
                 'sockets': 1,
                 'ssh_sessions': 1,
                 'pool_connections': 2,
+                'smb_sources': 0,
                 'errors': [],
             }
 

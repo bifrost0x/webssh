@@ -50,10 +50,17 @@ test('uploads the File directly over HTTP after socket metadata preparation', as
     let request;
     global.fetch = async (url, options) => { request = { url, options }; return { ok: true }; };
     const client = new BinaryTransferClient(socket);
-    client.uploadFile({ name: 'large.bin', size: 9 }, '/remote/large.bin', 'session');
+    client.uploadFile(
+        { name: 'large.bin', size: 9 },
+        '/remote/large.bin',
+        'sftp-session:session',
+    );
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(emitted[0][0], 'prepare_transfer');
+    assert.equal(emitted[0][1].source_id, 'sftp-session:session');
+    assert.match(emitted[0][1].request_id, /^transfer_/);
+    assert.equal(Object.hasOwn(emitted[0][1], 'session_id'), false);
     assert.equal(request.url, '/api/transfers/token/upload');
     assert.equal(request.options.body.name, 'large.bin');
     assert.equal(request.options.headers['X-CSRFToken'], 'csrf');
@@ -87,6 +94,7 @@ test('folder downloads use archive metadata and native HTTP navigation', async (
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(emitted[0][0], 'prepare_transfer');
+    assert.equal(emitted[0][1].source_id, 'sftp-session:session');
     assert.equal(emitted[0][1].archive, true);
     assert.equal(clicked, true);
 });

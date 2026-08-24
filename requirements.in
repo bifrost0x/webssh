@@ -5,6 +5,8 @@ Werkzeug==3.1.8
 Flask-SocketIO==5.6.1
 python-socketio==5.16.4
 paramiko==5.0.0
+# Security contract: SMB support is qualified only against this exact API and protocol behavior.
+smbprotocol==1.17.0
 # Compatibility: cryptography 50 fixes CVE-2026-69247 while retaining the reviewed Fernet, PBKDF2, and key-loading APIs.
 cryptography>=50.0,<51
 python-dotenv==1.2.3

@@ -2,7 +2,7 @@ from flask_socketio import emit, join_room, disconnect
 from flask import request, current_app, url_for
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
-               session_insights, runtime_inventory)
+               session_insights, runtime_inventory, smb_share_manager)
 from .decorators import socket_login_required
 from .auth import (
     check_socket_rate_limit,
@@ -14,7 +14,7 @@ from .models import db, SSHSession, SocketSession
 from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_ssh_connection, log_ssh_disconnect,
-                              log_file_upload, log_file_download,
+                              log_file_source_operation,
                               log_key_upload, log_key_rename, log_key_replace,
                               log_key_delete,
                               log_tailscale_ssh_usage)
@@ -29,8 +29,25 @@ from . import binary_transfer, connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
+from .remote_transfer import (
+    RemoteTransferCancelled,
+    TransferBudget,
+    copy_remote_entry,
+)
+from .file_sources import (
+    FileCapability,
+    FileSourceKind,
+    FileSourceUnavailable,
+    file_source_audit_identity,
+    file_source_resolver,
+    make_source_id,
+    parse_source_id,
+)
+from .file_service import file_service
+from .smb_backend import NonAtomicOverwriteRequired
 import posixpath
 import re
+import threading
 import time
 import config
 
@@ -38,6 +55,140 @@ import config
 STORAGE_ERROR_MESSAGE = (
     'Stored data is unreadable. Please restore or remove it.'
 )
+
+
+_SMB_REQUEST_ID = re.compile(r'[A-Za-z0-9:._-]{1,128}')
+_SMB_CONNECT_CODES = frozenset({
+    'AUTHENTICATION_REQUIRED',
+    'CONNECTION_FAILED',
+    'CONNECT_CANCELLED',
+    'DIALECT_REQUIRED',
+    'ENCRYPTION_REQUIRED',
+    'INVALID_REQUEST',
+    'QUOTA_EXCEEDED',
+    'RUNTIME_SHUTTING_DOWN',
+    'SOURCE_UNAVAILABLE',
+    'TARGET_NOT_ALLOWED',
+})
+_smb_attempts_lock = threading.RLock()
+_smb_attempts = {}
+
+
+def _smb_request_id(payload):
+    if not isinstance(payload, dict):
+        return ''
+    request_id = payload.get('request_id')
+    if not isinstance(request_id, str) or not _SMB_REQUEST_ID.fullmatch(
+        request_id
+    ):
+        return ''
+    return request_id
+
+
+def _smb_pool():
+    # Keep the optional protocol stack out of the feature-disabled path.
+    from .smb_pool import smb_connection_pool
+
+    return smb_connection_pool
+
+
+def _cancel_smb_attempts_for_socket(user_id, socket_sid):
+    handles = []
+    with _smb_attempts_lock:
+        for (owner_id, owner_sid, _request_id), attempt in tuple(
+            _smb_attempts.items()
+        ):
+            if owner_id != str(user_id) or owner_sid != socket_sid:
+                continue
+            attempt['cancel_event'].set()
+            if attempt.get('handle') is not None:
+                handles.append(attempt['handle'])
+    for handle in handles:
+        handle.cancel()
+
+
+def _file_request_identity(payload):
+    request_id = payload.get('request_id')
+    if (
+        not isinstance(request_id, str)
+        or not re.fullmatch(r'[A-Za-z0-9:._-]{1,128}', request_id)
+    ):
+        request_id = None
+    return {
+        'source_id': payload.get('source_id'),
+        'request_id': request_id,
+    }
+
+
+def _file_request_source_id(payload, user_id):
+    source_id = payload.get('source_id')
+    if source_id:
+        return source_id
+    raise FileSourceUnavailable()
+
+
+def _valid_file_request(identity):
+    return bool(identity.get('source_id') and identity.get('request_id'))
+
+
+def _public_file_source(source_id, user_id):
+    return file_source_resolver.resolve(
+        source_id,
+        user_id,
+    ).descriptor.to_public_dict()
+
+
+def _file_source_unavailable_payload(**context):
+    return {
+        'error': 'File source unavailable',
+        'code': FileSourceUnavailable.public_code,
+        **context,
+    }
+
+
+def _audit_file_source_operation(
+    user,
+    source,
+    *,
+    operation,
+    result,
+    path,
+    size=0,
+    destination=None,
+    destination_path=None,
+    ip_address=None,
+):
+    """Record target metadata without ever accepting SMB credentials."""
+    try:
+        identity = file_source_audit_identity(source)
+        destination_identity = (
+            file_source_audit_identity(destination)
+            if destination is not None else {}
+        )
+        log_file_source_operation(
+            username=user.username,
+            operation=operation,
+            result=result,
+            filename=posixpath.basename(str(path).rstrip('/')) or '/',
+            size=size,
+            ip_address=(
+                request.remote_addr if ip_address is None else ip_address
+            ),
+            destination_target_host=destination_identity.get('target_host'),
+            destination_share=destination_identity.get('share'),
+            destination_filename=(
+                posixpath.basename(str(destination_path).rstrip('/')) or '/'
+                if destination_path is not None else None
+            ),
+            **identity,
+        )
+    except Exception as error:
+        log_error(
+            'File source audit failed',
+            operation=operation,
+            result=result,
+            exception_type=type(error).__name__,
+        )
 
 
 class _CombinedCancellation:
@@ -229,6 +380,8 @@ def handle_disconnect():
             sid=socket_sid,
         )
 
+        _cancel_smb_attempts_for_socket(user_id, socket_sid)
+
         try:
             transfer_manager.cancel_all_for_socket(user_id, socket_sid)
         except Exception as error:
@@ -255,6 +408,15 @@ def handle_disconnect():
             closed = connection_pool.temp_connection_pool.close_all_user_connections(str(user_id))
             if closed > 0:
                 log_info(f"Cleaned up {closed} Quick Connect connection(s) for {username}")
+            from . import smb_pool
+
+            smb_closed = smb_pool.smb_connection_pool.close_all_user_sources(
+                str(user_id)
+            )
+            if smb_closed > 0:
+                log_info(
+                    f"Cleaned up {smb_closed} SMB source(s) for {username}"
+                )
             log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
 def restore_user_sessions(user_id):
@@ -288,6 +450,10 @@ def restore_user_sessions(user_id):
                 'display_name': db_session.display_name,
                 'buffered_output': buffered_output,
                 'output_sequence': output_sequence,
+                'file_source': _public_file_source(
+                    make_source_id(FileSourceKind.SFTP_SESSION, session_id),
+                    user_id,
+                ),
             }, room=room)
             log_info(f"Restored SSH session {session_id}", user_id=user_id, room=room)
         else:
@@ -559,7 +725,11 @@ def handle_ssh_connect(data, current_user=None):
                 'key_id': key_id if use_tmux else None,
                 'auth_type': auth_type,
                 'tmux_session_name': created_tmux_name,
-                'display_name': display_name
+                'display_name': display_name,
+                'file_source': _public_file_source(
+                    make_source_id(FileSourceKind.SFTP_SESSION, session_id),
+                    current_user.id,
+                ),
             })
             log_ssh_connection(current_user.username, host, port, True, request.remote_addr)
 
@@ -1135,35 +1305,36 @@ def handle_list_directory(data, current_user=None):
     _t0 = _time.time()
     try:
         payload = data if isinstance(data, dict) else {}
-        session_id = payload.get('session_id')
+        identity = _file_request_identity(payload)
+        source_id = identity.get('source_id')
         remote_path = payload.get('remote_path', '.')
-        request_id = payload.get('request_id')
         request_context = {
             'operation': 'list_directory',
-            'session_id': session_id,
+            **identity,
             'path': remote_path,
-            'request_id': request_id,
         }
 
-        if not session_id:
-            emit('error', {'error': 'Session ID required', **request_context})
+        if not _valid_file_request(identity):
+            emit('error', {
+                'error': 'Source ID and request ID required',
+                **request_context,
+            })
             return
 
-        authorized = False
-        if verify_session_ownership(session_id, current_user.id):
-            authorized = True
-        else:
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if conn_info and conn_info['user_id'] == str(current_user.id):
-                authorized = True
-
-        _t1 = _time.time()
-        if not authorized:
-            log_warning("list_directory unauthorized", session_id=session_id, user=current_user.username)
-            emit('error', {'error': 'Unauthorized access to session', **request_context})
+        try:
+            _t1 = _time.time()
+            files, error = file_service.list_directory(
+                source_id,
+                user_id=current_user.id,
+                path=remote_path,
+            )
+        except FileSourceUnavailable:
+            log_warning(
+                'File source unavailable for directory listing',
+                user_id=current_user.id,
+            )
+            emit('error', _file_source_unavailable_payload(**request_context))
             return
-
-        files, error = sftp_handler.list_directory(session_id, remote_path)
         _t2 = _time.time()
 
         if error:
@@ -1174,10 +1345,9 @@ def handle_list_directory(data, current_user=None):
             log_info("list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('directory_listing', {
-                'session_id': session_id,
+                **identity,
                 'path': remote_path,
                 'files': files,
-                'request_id': request_id,
             })
 
     except Exception as e:
@@ -1185,9 +1355,8 @@ def handle_list_directory(data, current_user=None):
         emit('error', {
             'error': 'Failed to list directory',
             'operation': 'list_directory',
-            'session_id': payload.get('session_id'),
+            **_file_request_identity(payload),
             'path': payload.get('remote_path', '.'),
-            'request_id': payload.get('request_id'),
         })
 
 @socketio.on('set_theme')
@@ -1665,21 +1834,11 @@ def verify_session_ownership(session_id, user_id):
     Checks in-memory sessions first (fast path), then falls back to database.
     The DB query is done outside the lock to avoid blocking the SSH output reader.
     """
-    if not session_id or not user_id:
+    try:
+        source_id = make_source_id(FileSourceKind.SFTP_SESSION, session_id)
+    except FileSourceUnavailable:
         return False
-
-    user_id_str = str(user_id)
-
-    with ssh_manager.sessions_lock:
-        session = ssh_manager.sessions.get(session_id)
-        if session and session.get('user_id') is not None:
-            return str(session.get('user_id')) == user_id_str
-
-    ssh_session = SSHSession.query.filter_by(session_id=session_id).first()
-    if ssh_session is not None:
-        return str(ssh_session.user_id) == user_id_str
-
-    return False
+    return file_source_resolver.owns(source_id, user_id)
 
 
 @socketio.on('request_session_insights')
@@ -1822,18 +1981,30 @@ def handle_request_session_runtime_inventory(data, current_user=None):
 @socket_login_required
 def handle_prepare_transfer(data, current_user=None):
     """Issue only metadata for a later bounded HTTP transfer."""
+    payload = data if isinstance(data, dict) else {}
+    identity = _file_request_identity(payload)
     try:
-        direction = data.get('direction') if isinstance(data, dict) else None
-        session_id = data.get('session_id') if isinstance(data, dict) else None
-        remote_path = data.get('remote_path') if isinstance(data, dict) else None
-        archive = bool(data.get('archive')) if isinstance(data, dict) else False
+        if not _valid_file_request(identity):
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **identity,
+            }
+        direction = payload.get('direction')
+        remote_path = payload.get('remote_path')
+        archive = bool(payload.get('archive'))
+        source_id = _file_request_source_id(payload, current_user.id)
         record = prepare_transfer(
-            current_user.id, direction, session_id, remote_path,
+            current_user.id, direction, source_id, remote_path,
             owner_sid=getattr(request, 'sid', None),
             archive=archive,
         )
         if record is None:
-            return {'success': False, 'error': 'Transfer unavailable'}
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **identity,
+            }
         if direction == 'upload':
             endpoint = 'transfers.upload_transfer'
         elif archive:
@@ -1850,11 +2021,16 @@ def handle_prepare_transfer(data, current_user=None):
             'url': transfer_url,
             'expires_at': record.expires_at,
             'direction': direction,
+            **identity,
         }
     except Exception as error:
         log_error('Transfer preparation failed', user_id=current_user.id,
                   exception_type=type(error).__name__)
-        return {'success': False, 'error': 'Transfer unavailable'}
+        return {
+            'success': False,
+            'error': 'Transfer unavailable',
+            **identity,
+        }
 
 
 @socketio.on('cancel_transfer')
@@ -1880,29 +2056,51 @@ def handle_cancel_transfer(data, current_user=None):
 def handle_download_file_binary(data, current_user=None):
     """Handle binary file download (no base64 encoding)."""
     try:
-        session_id = data.get('session_id')
-        remote_path = data.get('remote_path')
-        for_preview = data.get('for_preview', False)
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        remote_path = payload.get('remote_path')
+        for_preview = payload.get('for_preview', False)
+        context = {
+            'operation': 'download_file_binary',
+            **identity,
+            'path': remote_path,
+        }
 
-        if not all([session_id, remote_path]) or not for_preview:
-            emit('error', {'error': 'Missing required fields for binary download'})
+        if (
+            not _valid_file_request(identity)
+            or not remote_path
+            or not for_preview
+        ):
+            emit('error', {
+                'error': 'Missing required fields for binary download',
+                **context,
+            })
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session/connection'})
-                return
-
-        binary_data, error = binary_transfer.handle_binary_download(
-            session_id=session_id,
-            remote_path=remote_path,
-            socketio_instance=None,
-            max_size=config.MAX_EDITOR_FILE_SIZE,
-        )
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.PREVIEW
+            )
+            binary_data, error = file_service.read_binary_preview(
+                source_id,
+                user_id=current_user.id,
+                path=remote_path,
+                max_size=config.MAX_EDITOR_FILE_SIZE,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
 
         if error:
-            emit('error', {'error': f'Download failed: {error}'})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='binary_preview',
+                result='FAILED',
+                path=remote_path,
+            )
+            emit('error', {'error': f'Download failed: {error}', **context})
         else:
             import os
             import base64
@@ -1910,18 +2108,423 @@ def handle_download_file_binary(data, current_user=None):
 
             encoded_data = base64.b64encode(binary_data).decode('ascii')
             emit('file_download_ready_binary', {
-                'session_id': session_id,
+                **identity,
                 'filename': filename,
                 'file_data': encoded_data,
                 'size': len(binary_data),
                 'for_preview': True,
                 'encoding': 'base64'
             })
-            log_file_download(current_user.username, target_host='via-sftp', filename=filename,
-                            size=len(binary_data), success=True, ip_address=request.remote_addr)
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='binary_preview',
+                result='COMPLETED',
+                path=remote_path,
+                size=len(binary_data),
+            )
 
     except Exception:
-        emit('error', {'error': 'Download failed'})
+        emit('error', {
+            'error': 'Download failed',
+            'operation': 'download_file_binary',
+            **_file_request_identity(payload),
+            'path': payload.get('remote_path'),
+        })
+
+def _smb_share_error(action, error, request_id='', code=None):
+    payload = {
+        'action': action,
+        'error': error,
+        'request_id': request_id,
+    }
+    if code:
+        payload['code'] = code
+    emit('smb_share_error', payload)
+    return {
+        'success': False,
+        'error': error,
+        'request_id': request_id,
+    }
+
+
+def _emit_smb_shares_list(current_user):
+    shares = smb_share_manager.load_smb_shares(current_user.id)
+    payload = {'smb_shares': shares}
+    emit('smb_shares_list', payload)
+    return payload
+
+
+@socketio.on('list_smb_shares')
+@socket_login_required
+def handle_list_smb_shares(_data=None, current_user=None):
+    """Return saved SMB definitions without credentials."""
+    if not config.SMB_ENABLED:
+        return _smb_share_error(
+            'list', 'SMB is disabled', code='SMB_DISABLED'
+        )
+    if check_socket_rate_limit(
+        current_user.id,
+        'smb_share_list',
+        config.SMB_SHARE_LIST_RATELIMIT,
+    ):
+        return _smb_share_error(
+            'list',
+            'Too many saved SMB share requests',
+            code='RATE_LIMITED',
+        )
+    try:
+        return _emit_smb_shares_list(current_user)
+    except StorageCorruptionError as error:
+        return _emit_storage_error(error, current_user)
+    except Exception as error:
+        log_error(
+            'Failed to load SMB shares',
+            user_id=current_user.id,
+            exception_type=type(error).__name__,
+        )
+        return _smb_share_error('list', 'Failed to load SMB shares')
+
+
+@socketio.on('save_smb_share')
+@socket_login_required
+def handle_save_smb_share(data, current_user=None):
+    """Create or update one non-secret SMB connection definition."""
+    request_id = _smb_request_id(data)
+    if not config.SMB_ENABLED:
+        return _smb_share_error(
+            'save',
+            'SMB is disabled',
+            request_id,
+            code='SMB_DISABLED',
+        )
+    if not request_id:
+        return _smb_share_error(
+            'save', 'Valid request ID required', code='INVALID_REQUEST'
+        )
+    if check_socket_rate_limit(
+        current_user.id,
+        'smb_share_mutation',
+        config.SMB_SHARE_MUTATION_RATELIMIT,
+    ):
+        return _smb_share_error(
+            'save',
+            'Too many saved SMB share changes',
+            request_id,
+            code='RATE_LIMITED',
+        )
+    try:
+        share, error = smb_share_manager.upsert_smb_share(
+            current_user.id,
+            data if isinstance(data, dict) else {},
+        )
+        if error:
+            return _smb_share_error('save', error, request_id)
+        payload = {
+            'success': True,
+            'request_id': request_id,
+            'share': share,
+        }
+        emit('smb_share_saved', payload)
+        _emit_smb_shares_list(current_user)
+        log_info(
+            'SMB share definition saved',
+            user_id=current_user.id,
+            share_id=share['id'],
+        )
+        return payload
+    except StorageCorruptionError as error:
+        storage_error = _storage_error_payload(
+            error, user_id=current_user.id
+        )
+        return _smb_share_error(
+            'save', storage_error['error'], request_id, code='storage_error'
+        )
+    except Exception as error:
+        log_error(
+            'Failed to save SMB share',
+            user_id=current_user.id,
+            exception_type=type(error).__name__,
+        )
+        return _smb_share_error(
+            'save', 'Failed to save SMB share', request_id
+        )
+
+
+@socketio.on('delete_smb_share')
+@socket_login_required
+def handle_delete_smb_share(data, current_user=None):
+    """Delete one saved SMB definition owned by the current user."""
+    payload = data if isinstance(data, dict) else {}
+    request_id = _smb_request_id(payload)
+    if not config.SMB_ENABLED:
+        return _smb_share_error(
+            'delete',
+            'SMB is disabled',
+            request_id,
+            code='SMB_DISABLED',
+        )
+    if not request_id:
+        return _smb_share_error(
+            'delete', 'Valid request ID required', code='INVALID_REQUEST'
+        )
+    if check_socket_rate_limit(
+        current_user.id,
+        'smb_share_mutation',
+        config.SMB_SHARE_MUTATION_RATELIMIT,
+    ):
+        return _smb_share_error(
+            'delete',
+            'Too many saved SMB share changes',
+            request_id,
+            code='RATE_LIMITED',
+        )
+    share_id = payload.get('share_id')
+    if not isinstance(share_id, str) or not share_id:
+        return _smb_share_error(
+            'delete', 'SMB share ID required', request_id
+        )
+    try:
+        success, error = smb_share_manager.delete_smb_share(
+            current_user.id,
+            share_id,
+        )
+        if error:
+            return _smb_share_error('delete', error, request_id)
+        result = {
+            'success': success,
+            'request_id': request_id,
+            'share_id': share_id,
+        }
+        emit('smb_share_deleted', result)
+        _emit_smb_shares_list(current_user)
+        log_info(
+            'SMB share definition deleted',
+            user_id=current_user.id,
+            share_id=share_id,
+        )
+        return result
+    except StorageCorruptionError as error:
+        storage_error = _storage_error_payload(
+            error, user_id=current_user.id
+        )
+        return _smb_share_error(
+            'delete', storage_error['error'], request_id, code='storage_error'
+        )
+    except Exception as error:
+        log_error(
+            'Failed to delete SMB share',
+            user_id=current_user.id,
+            exception_type=type(error).__name__,
+        )
+        return _smb_share_error(
+            'delete', 'Failed to delete SMB share', request_id
+        )
+
+
+@socketio.on('smb_quick_connect')
+@socket_login_required
+def handle_smb_quick_connect(data, current_user=None):
+    """Open one encrypted SMB 3.1.1 source for the current browser socket."""
+    request_id = _smb_request_id(data)
+    if not config.SMB_ENABLED:
+        emit(
+            'smb_quick_connect_error',
+            {'request_id': request_id, 'code': 'SMB_DISABLED'},
+        )
+        return
+
+    payload = data if isinstance(data, dict) else {}
+    if not request_id:
+        emit(
+            'smb_quick_connect_error',
+            {'request_id': '', 'code': 'INVALID_REQUEST'},
+        )
+        return
+    if check_socket_rate_limit(
+        current_user.id,
+        'smb_connect',
+        config.SMB_CONNECT_RATELIMIT,
+    ):
+        emit(
+            'smb_quick_connect_error',
+            {'request_id': request_id, 'code': 'RATE_LIMITED'},
+        )
+        return
+
+    try:
+        from .smb_paths import SMBShareName
+
+        host = canonicalize_hostname(payload.get('host'))
+        share = str(SMBShareName.parse(payload.get('share')))
+        username = payload.get('username')
+        password = payload.get('password')
+        domain = payload.get('domain', '')
+        if (
+            not isinstance(username, str)
+            or not username
+            or len(username) > 256
+            or any(ord(character) < 32 for character in username)
+            or not isinstance(password, str)
+            or not password
+            or len(password) > 4096
+            or any(ord(character) < 32 for character in password)
+            or not isinstance(domain, str)
+            or len(domain) > 255
+            or any(ord(character) < 32 for character in domain)
+        ):
+            raise ValueError('Invalid SMB connection input')
+    except (TypeError, ValueError):
+        emit(
+            'smb_quick_connect_error',
+            {'request_id': request_id, 'code': 'INVALID_REQUEST'},
+        )
+        return
+
+    lifecycle = current_app.extensions.get('runtime_lifecycle')
+    if lifecycle is None or not lifecycle.accepting_work():
+        password = None
+        emit(
+            'smb_quick_connect_error',
+            {'request_id': request_id, 'code': 'RUNTIME_SHUTTING_DOWN'},
+        )
+        return
+
+    database_user_id = current_user.id
+    user_id = str(database_user_id)
+    socket_sid = request.sid
+    attempt_key = (user_id, socket_sid, request_id)
+    attempt = {
+        'cancel_event': threading.Event(),
+        'handle': None,
+    }
+    with _smb_attempts_lock:
+        if attempt_key in _smb_attempts:
+            password = None
+            emit(
+                'smb_quick_connect_error',
+                {'request_id': request_id, 'code': 'REQUEST_IN_PROGRESS'},
+            )
+            return
+        _smb_attempts[attempt_key] = attempt
+
+    app = current_app._get_current_object()
+    pool = _smb_pool()
+    credential_box = {'password': password}
+
+    def connect_smb(lifecycle_cancel_event):
+        local_password = credential_box.pop('password', None)
+        cancellation = _CombinedCancellation(
+            attempt['cancel_event'],
+            lifecycle_cancel_event,
+        )
+        descriptor = None
+        try:
+            descriptor = pool.create_source(
+                host=host,
+                share=share,
+                domain=domain,
+                username=username,
+                password=local_password,
+                user_id=user_id,
+                cancel_event=cancellation,
+            )
+            with app.app_context():
+                socket_is_live = SocketSession.query.filter_by(
+                    socket_sid=socket_sid,
+                    user_id=database_user_id,
+                ).first() is not None
+            with _smb_attempts_lock:
+                attempt_is_live = _smb_attempts.get(attempt_key) is attempt
+            if (
+                cancellation.is_set()
+                or not attempt_is_live
+                or not socket_is_live
+            ):
+                pool.request_close(descriptor.source_id, user_id)
+                return
+            socketio.emit(
+                'smb_quick_connect_success',
+                {
+                    'request_id': request_id,
+                    'file_source': descriptor.to_public_dict(),
+                },
+                room=socket_sid,
+            )
+            log_info(
+                'SMB source connected',
+                user_id=user_id,
+                host=host,
+                share=share,
+            )
+        except Exception as error:
+            code = getattr(error, 'public_code', 'CONNECTION_FAILED')
+            if code not in _SMB_CONNECT_CODES:
+                code = 'CONNECTION_FAILED'
+            if not cancellation.is_set():
+                socketio.emit(
+                    'smb_quick_connect_error',
+                    {'request_id': request_id, 'code': code},
+                    room=socket_sid,
+                )
+            log_warning(
+                'SMB source connection failed',
+                user_id=user_id,
+                host=host,
+                share=share,
+                result_code=code,
+                exception_type=type(error).__name__,
+            )
+        finally:
+            local_password = None
+            with _smb_attempts_lock:
+                if _smb_attempts.get(attempt_key) is attempt:
+                    _smb_attempts.pop(attempt_key, None)
+
+    try:
+        handle = lifecycle.start_job(
+            'smb_quick_connect',
+            connect_smb,
+            owner_id=user_id,
+        )
+        attempt['handle'] = handle
+        if attempt['cancel_event'].is_set():
+            handle.cancel()
+    except Exception as error:
+        credential_box.clear()
+        with _smb_attempts_lock:
+            if _smb_attempts.get(attempt_key) is attempt:
+                _smb_attempts.pop(attempt_key, None)
+        emit(
+            'smb_quick_connect_error',
+            {'request_id': request_id, 'code': 'RUNTIME_SHUTTING_DOWN'},
+        )
+        log_warning(
+            'SMB source job rejected',
+            user_id=user_id,
+            exception_type=type(error).__name__,
+        )
+    finally:
+        password = None
+
+
+@socketio.on('smb_quick_connect_cancel')
+@socket_login_required
+def handle_smb_quick_connect_cancel(data, current_user=None):
+    """Cancel only the matching user's SMB attempt on this socket."""
+    request_id = _smb_request_id(data)
+    if not request_id:
+        return
+    attempt_key = (str(current_user.id), request.sid, request_id)
+    with _smb_attempts_lock:
+        attempt = _smb_attempts.get(attempt_key)
+        if attempt is None:
+            return
+        attempt['cancel_event'].set()
+        handle = attempt.get('handle')
+    if handle is not None:
+        handle.cancel()
+
 
 @socketio.on('quick_connect')
 @socket_login_required
@@ -1984,7 +2587,11 @@ def handle_quick_connect(data, current_user=None):
                 'connection_id': connection_id,
                 'host': host,
                 'port': port,
-                'username': username
+                'username': username,
+                'file_source': _public_file_source(
+                    make_source_id(FileSourceKind.SFTP_QUICK, connection_id),
+                    current_user.id,
+                ),
             })
             log_info(f"Quick connection created: {connection_id}", user=current_user.username, host=host)
 
@@ -2006,14 +2613,15 @@ def handle_quick_disconnect(data, current_user=None):
             emit('error', {'error': 'Connection ID required'})
             return
 
-        conn_info = connection_pool.temp_connection_pool.get_connection_info(connection_id)
-        if not conn_info or conn_info['user_id'] != str(current_user.id):
+        result = connection_pool.temp_connection_pool.request_close(
+            connection_id,
+            current_user.id,
+        )
+        if result == 'unavailable':
             emit('error', {'error': 'Unauthorized access to connection'})
             return
 
-        success = connection_pool.temp_connection_pool.close_connection(connection_id)
-
-        if success:
+        if result in {'closed', 'deferred'}:
             emit('quick_disconnect_success', {'connection_id': connection_id})
         else:
             emit('error', {'error': 'Connection not found'})
@@ -2022,95 +2630,235 @@ def handle_quick_disconnect(data, current_user=None):
         log_error("Quick disconnect failed", error=str(e))
         emit('error', {'error': 'Disconnect failed'})
 
+
+@socketio.on('file_source_disconnect')
+@socket_login_required
+def handle_file_source_disconnect(data, current_user=None):
+    """Close an owned ephemeral source without revealing foreign sources."""
+    payload = data if isinstance(data, dict) else {}
+    source_id = payload.get('source_id')
+    try:
+        kind, handle_id = parse_source_id(source_id)
+    except Exception:
+        emit('error', _file_source_unavailable_payload(source_id=source_id))
+        return
+
+    if kind is FileSourceKind.SFTP_QUICK:
+        result = connection_pool.temp_connection_pool.request_close(
+            handle_id,
+            current_user.id,
+        )
+    elif kind is FileSourceKind.SMB_QUICK:
+        result = _smb_pool().request_close(source_id, current_user.id)
+    else:
+        result = 'unavailable'
+
+    if result in {'closed', 'deferred'}:
+        emit(
+            'file_source_disconnect_success',
+            {'source_id': source_id},
+        )
+        return
+    emit('error', _file_source_unavailable_payload(source_id=source_id))
+
 @socketio.on('create_directory')
 @socket_login_required
 def handle_create_directory(data, current_user=None):
     """Create a directory on remote server."""
     try:
-        session_id = data.get('session_id')
-        remote_path = data.get('remote_path')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        remote_path = payload.get('remote_path')
+        context = {
+            'operation': 'create_directory',
+            **identity,
+            'path': remote_path,
+        }
 
-        if not all([session_id, remote_path]):
-            emit('error', {'error': 'Missing required fields'})
+        if not _valid_file_request(identity) or not remote_path:
+            emit('error', {'error': 'Missing required fields', **context})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
-
-        success, error = sftp_handler.create_directory(session_id, remote_path)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.MKDIR
+            )
+            success, error = file_service.create_directory(
+                source_id,
+                user_id=current_user.id,
+                path=remote_path,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
 
         if error:
-            emit('error', {'error': f'Failed to create directory: {error}'})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='mkdir',
+                result='FAILED',
+                path=remote_path,
+            )
+            emit('error', {
+                'error': f'Failed to create directory: {error}',
+                **context,
+            })
         else:
-            emit('directory_created', {'path': remote_path})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='mkdir',
+                result='COMPLETED',
+                path=remote_path,
+            )
+            emit('directory_created', {'path': remote_path, **identity})
 
     except Exception as e:
         log_error("Create directory failed", error=str(e))
-        emit('error', {'error': 'Failed to create directory'})
+        emit('error', {
+            'error': 'Failed to create directory',
+            'operation': 'create_directory',
+            **_file_request_identity(payload),
+            'path': payload.get('remote_path'),
+        })
 
 @socketio.on('rename_file')
 @socket_login_required
 def handle_rename_file(data, current_user=None):
     """Rename a file or directory on remote server."""
     try:
-        session_id = data.get('session_id')
-        old_path = data.get('old_path')
-        new_path = data.get('new_path')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        old_path = payload.get('old_path')
+        new_path = payload.get('new_path')
+        context = {
+            'operation': 'rename_file',
+            **identity,
+            'path': old_path,
+        }
 
-        if not all([session_id, old_path, new_path]):
-            emit('error', {'error': 'Missing required fields'})
+        if (
+            not _valid_file_request(identity)
+            or not old_path
+            or not new_path
+        ):
+            emit('error', {'error': 'Missing required fields', **context})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
-
-        success, error = sftp_handler.rename_item(session_id, old_path, new_path)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.RENAME
+            )
+            success, error = file_service.rename(
+                source_id,
+                user_id=current_user.id,
+                old_path=old_path,
+                new_path=new_path,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
 
         if error:
-            emit('error', {'error': f'Failed to rename: {error}'})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='rename',
+                result='FAILED',
+                path=old_path,
+                destination=source,
+                destination_path=new_path,
+            )
+            emit('error', {'error': f'Failed to rename: {error}', **context})
         else:
-            emit('file_renamed', {'old_path': old_path, 'new_path': new_path})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='rename',
+                result='COMPLETED',
+                path=old_path,
+                destination=source,
+                destination_path=new_path,
+            )
+            emit('file_renamed', {
+                'old_path': old_path,
+                'new_path': new_path,
+                **identity,
+            })
             log_info(f"Renamed: {old_path} -> {new_path}", user=current_user.username)
 
     except Exception as e:
         log_error("Rename failed", error=str(e))
-        emit('error', {'error': 'Failed to rename'})
+        emit('error', {
+            'error': 'Failed to rename',
+            'operation': 'rename_file',
+            **_file_request_identity(payload),
+            'path': payload.get('old_path'),
+        })
 
 @socketio.on('delete_item')
 @socket_login_required
 def handle_delete_item(data, current_user=None):
     """Delete a file or directory (recursive) on remote server."""
     try:
-        session_id = data.get('session_id')
-        path = data.get('path')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        path = payload.get('path')
+        context = {
+            'operation': 'delete_item',
+            **identity,
+            'path': path,
+        }
 
-        if not all([session_id, path]):
-            emit('error', {'error': 'Missing required fields'})
+        if not _valid_file_request(identity) or not path:
+            emit('error', {'error': 'Missing required fields', **context})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
-
-        success, error = sftp_handler.delete_directory_recursive(session_id, path)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.DELETE
+            )
+            success, error = file_service.delete(
+                source_id,
+                user_id=current_user.id,
+                path=path,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
 
         if error:
-            emit('error', {'error': f'Failed to delete: {error}'})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='delete',
+                result='FAILED',
+                path=path,
+            )
+            emit('error', {'error': f'Failed to delete: {error}', **context})
         else:
-            emit('item_deleted', {'path': path})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='delete',
+                result='COMPLETED',
+                path=path,
+            )
+            emit('item_deleted', {'path': path, **identity})
             log_info(f"Deleted: {path}", user=current_user.username)
 
     except Exception as e:
         log_error("Delete failed", error=str(e))
-        emit('error', {'error': 'Failed to delete'})
+        emit('error', {
+            'error': 'Failed to delete',
+            'operation': 'delete_item',
+            **_file_request_identity(payload),
+            'path': payload.get('path'),
+        })
 
 @socketio.on('get_home_directory')
 @socket_login_required
@@ -2120,26 +2868,29 @@ def handle_get_home_directory(data, current_user=None):
     _t0 = _time.time()
     try:
         payload = data if isinstance(data, dict) else {}
-        session_id = payload.get('session_id')
-        request_id = payload.get('request_id')
+        identity = _file_request_identity(payload)
         request_context = {
             'operation': 'get_home_directory',
-            'session_id': session_id,
-            'request_id': request_id,
+            **identity,
         }
 
-        if not session_id:
-            emit('error', {'error': 'Session ID required', **request_context})
+        if not _valid_file_request(identity):
+            emit('error', {
+                'error': 'Source ID and request ID required',
+                **request_context,
+            })
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access', **request_context})
-                return
-
-        _t1 = _time.time()
-        home_path, error = sftp_handler.get_home_directory(session_id)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            _t1 = _time.time()
+            home_path, error = file_service.get_home_directory(
+                source_id,
+                user_id=current_user.id,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**request_context))
+            return
         _t2 = _time.time()
 
         if error:
@@ -2150,9 +2901,8 @@ def handle_get_home_directory(data, current_user=None):
             log_info("get_home_directory OK", path=home_path,
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
             emit('home_directory', {
-                'session_id': session_id,
+                **identity,
                 'path': home_path,
-                'request_id': request_id,
             })
 
     except Exception as e:
@@ -2161,8 +2911,7 @@ def handle_get_home_directory(data, current_user=None):
         emit('error', {
             'error': 'Failed to get home directory',
             'operation': 'get_home_directory',
-            'session_id': payload.get('session_id'),
-            'request_id': payload.get('request_id'),
+            **_file_request_identity(payload),
         })
 
 @socketio.on('check_exists')
@@ -2170,58 +2919,89 @@ def handle_get_home_directory(data, current_user=None):
 def handle_check_exists(data, current_user=None):
     """Check if a file or directory exists on remote server."""
     try:
-        session_id = data.get('session_id')
-        path = data.get('path')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        path = payload.get('path')
+        context = {
+            'operation': 'check_exists',
+            **identity,
+            'path': path,
+        }
 
-        if not all([session_id, path]):
-            emit('error', {'error': 'Missing required fields'})
+        if not _valid_file_request(identity) or not path:
+            emit('error', {'error': 'Missing required fields', **context})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
-
-        result, error = sftp_handler.check_exists(session_id, path)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            result, error = file_service.check_exists(
+                source_id,
+                user_id=current_user.id,
+                path=path,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
 
         if error:
-            emit('error', {'error': f'Failed to check: {error}'})
+            emit('error', {'error': f'Failed to check: {error}', **context})
         else:
-            emit('file_exists_result', {'path': path, **result})
+            emit('file_exists_result', {'path': path, **result, **identity})
 
     except Exception as e:
         log_error("Check exists failed", error=str(e))
-        emit('error', {'error': 'Failed to check file'})
+        emit('error', {
+            'error': 'Failed to check file',
+            'operation': 'check_exists',
+            **_file_request_identity(payload),
+            'path': payload.get('path'),
+        })
 
 @socketio.on('get_file_stat')
 @socket_login_required
 def handle_get_file_stat(data, current_user=None):
     """Get detailed file statistics."""
     try:
-        session_id = data.get('session_id')
-        path = data.get('path')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        path = payload.get('path')
+        context = {
+            'operation': 'get_file_stat',
+            **identity,
+            'path': path,
+        }
 
-        if not all([session_id, path]):
-            emit('error', {'error': 'Missing required fields'})
+        if not _valid_file_request(identity) or not path:
+            emit('error', {'error': 'Missing required fields', **context})
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
-
-        result, error = sftp_handler.get_file_stat(session_id, path)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            result, error = file_service.get_file_stat(
+                source_id,
+                user_id=current_user.id,
+                path=path,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
 
         if error:
-            emit('error', {'error': f'Failed to get file info: {error}'})
+            emit('error', {
+                'error': f'Failed to get file info: {error}',
+                **context,
+            })
         else:
-            emit('file_stat_result', result)
+            emit('file_stat_result', {**result, **identity})
 
     except Exception as e:
         log_error("Get file stat failed", error=str(e))
-        emit('error', {'error': 'Failed to get file info'})
+        emit('error', {
+            'error': 'Failed to get file info',
+            'operation': 'get_file_stat',
+            **_file_request_identity(payload),
+            'path': payload.get('path'),
+        })
 
 @socketio.on('preview_file')
 @socket_login_required
@@ -2231,19 +3011,28 @@ def handle_preview_file(data, current_user=None):
     Supports text files, code files, and log files with tail mode.
     """
     try:
-        session_id = data.get('session_id')
-        path = data.get('path')
-        max_bytes = data.get('max_bytes', 512000)
-        offset = data.get('offset', 0)
-        tail_lines = data.get('tail_lines')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        path = payload.get('path')
+        max_bytes = payload.get('max_bytes', 512000)
+        offset = payload.get('offset', 0)
+        tail_lines = payload.get('tail_lines')
+        context = {
+            'operation': 'preview_file',
+            **identity,
+            'path': path,
+        }
 
-        if not all([session_id, path]):
-            emit('error', {'error': 'Missing required fields'})
+        if not _valid_file_request(identity) or not path:
+            emit('preview_error', {
+                'error': 'Missing required fields',
+                **context,
+            })
             return
 
         try:
             max_bytes, offset, tail_lines = (
-                sftp_handler.normalize_file_preview_options(
+                file_service.normalize_preview_options(
                     max_bytes=max_bytes,
                     offset=offset,
                     tail_lines=tail_lines,
@@ -2252,116 +3041,201 @@ def handle_preview_file(data, current_user=None):
         except ValueError as exc:
             emit('preview_error', {
                 'error': f'Invalid preview options: {exc}',
-                'path': path,
+                **context,
             })
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access'})
-                return
-
-        result, error = sftp_handler.read_file_preview(
-            session_id=session_id,
-            path=path,
-            max_bytes=max_bytes,
-            offset=offset,
-            tail_lines=tail_lines
-        )
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            result, error = file_service.read_file_preview(
+                source_id,
+                user_id=current_user.id,
+                path=path,
+                max_bytes=max_bytes,
+                offset=offset,
+                tail_lines=tail_lines,
+            )
+        except FileSourceUnavailable:
+            emit('preview_error', _file_source_unavailable_payload(
+                **context,
+            ))
+            return
 
         if error:
-            emit('preview_error', {'error': f'Failed to read file: {error}', 'path': path})
+            emit('preview_error', {
+                'error': f'Failed to read file: {error}',
+                **context,
+            })
         else:
             import os
             result['filename'] = os.path.basename(path)
             result['path'] = path
+            result.update(identity)
             emit('preview_data', result)
 
     except Exception as e:
         log_error("Preview failed", error=str(e))
-        emit('preview_error', {'error': 'Preview failed', 'path': data.get('path', '')})
+        emit('preview_error', {
+            'error': 'Preview failed',
+            'operation': 'preview_file',
+            **_file_request_identity(payload),
+            'path': payload.get('path', ''),
+        })
 
 @socketio.on('open_file_for_edit')
 @socket_login_required
 def handle_open_file_for_edit(data, current_user=None):
     """Load a full text file for inline editing (no truncation, text only)."""
     try:
-        session_id = data.get('session_id')
-        path = data.get('path')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        path = payload.get('path')
+        context = {
+            'operation': 'open_file_for_edit',
+            **identity,
+            'path': path or '',
+        }
 
-        if not all([session_id, path]):
-            emit('edit_error', {'error': 'Missing required fields', 'path': path or ''})
+        if not _valid_file_request(identity) or not path:
+            emit('edit_error', {
+                'error': 'Missing required fields',
+                **context,
+            })
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('edit_error', {'error': 'Unauthorized access', 'path': path})
-                return
-
-        result, error = sftp_handler.read_file_for_edit(session_id=session_id, path=path)
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            result, error = file_service.read_file_for_edit(
+                source_id,
+                user_id=current_user.id,
+                path=path,
+            )
+        except FileSourceUnavailable:
+            emit('edit_error', _file_source_unavailable_payload(
+                **context,
+            ))
+            return
 
         if error:
-            emit('edit_error', {'error': f'Failed to open file: {error}', 'path': path})
+            emit('edit_error', {
+                'error': f'Failed to open file: {error}',
+                **context,
+            })
         else:
             import os
             result['filename'] = os.path.basename(path)
             result['path'] = path
+            result.update(identity)
             emit('edit_data', result)
 
     except Exception as e:
         log_error("Open for edit failed", error=str(e))
-        emit('edit_error', {'error': 'Failed to open file for editing', 'path': data.get('path', '')})
+        emit('edit_error', {
+            'error': 'Failed to open file for editing',
+            'operation': 'open_file_for_edit',
+            **_file_request_identity(payload),
+            'path': payload.get('path', ''),
+        })
 
 @socketio.on('save_file')
 @socket_login_required
 def handle_save_file(data, current_user=None):
     """Save edited text content back to a remote file via SFTP."""
     try:
-        session_id = data.get('session_id')
-        path = data.get('path')
-        content = data.get('content')
-        encoding = data.get('encoding', 'utf-8')
-        newline = data.get('newline', 'lf')
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        path = payload.get('path')
+        content = payload.get('content')
+        encoding = payload.get('encoding', 'utf-8')
+        newline = payload.get('newline', 'lf')
+        context = {
+            'operation': 'save_file',
+            **identity,
+            'path': path,
+        }
 
-        if session_id is None or path is None or content is None:
-            emit('error', {'error': 'Missing required fields for save'})
+        if (
+            not _valid_file_request(identity)
+            or path is None
+            or content is None
+        ):
+            emit('error', {
+                'error': 'Missing required fields for save',
+                **context,
+            })
             return
 
         content_bytes = content.encode('utf-8', errors='ignore')
         max_size = config.MAX_EDITOR_FILE_SIZE
         if len(content_bytes) > max_size:
             max_mb = max_size // (1024 * 1024)
-            emit('error', {'error': f'File too large to save. Maximum size: {max_mb}MB'})
+            emit('error', {
+                'error': f'File too large to save. Maximum size: {max_mb}MB',
+                **context,
+            })
             return
 
-        if not verify_session_ownership(session_id, current_user.id):
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(session_id)
-            if not conn_info or conn_info['user_id'] != str(current_user.id):
-                emit('error', {'error': 'Unauthorized access to session'})
-                return
-
-        success, error = sftp_handler.write_file_text(
-            session_id=session_id,
-            path=path,
-            content_str=content,
-            encoding=encoding,
-            newline=newline
-        )
+        try:
+            source_id = _file_request_source_id(payload, current_user.id)
+            source = file_service.resolve(
+                source_id, current_user.id, FileCapability.EDIT
+            )
+            success, error = file_service.write_file_text(
+                source_id,
+                user_id=current_user.id,
+                path=path,
+                content=content,
+                encoding=encoding,
+                newline=newline,
+            )
+        except FileSourceUnavailable:
+            emit('error', _file_source_unavailable_payload(**context))
+            return
+        except NonAtomicOverwriteRequired:
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='edit_save',
+                result='ATOMIC_REPLACE_UNAVAILABLE',
+                path=path,
+                size=len(content_bytes),
+            )
+            emit('error', {
+                'error': 'Atomic replacement is unavailable for this SMB account.',
+                'code': 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
+                **context,
+            })
+            return
 
         if error:
-            emit('error', {'error': f'Save failed: {error}'})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='edit_save',
+                result='FAILED',
+                path=path,
+                size=len(content_bytes),
+            )
+            emit('error', {'error': f'Save failed: {error}', **context})
         else:
-            import os
-            log_file_upload(current_user.username, target_host='via-sftp-edit',
-                            filename=os.path.basename(path), size=len(content_bytes),
-                            success=True, ip_address=request.remote_addr)
-            emit('file_saved', {'path': path})
+            _audit_file_source_operation(
+                current_user,
+                source,
+                operation='edit_save',
+                result='COMPLETED',
+                path=path,
+                size=len(content_bytes),
+            )
+            emit('file_saved', {'path': path, **identity})
 
     except Exception as e:
         log_error("Save failed", error=str(e))
-        emit('error', {'error': 'Save failed'})
+        emit('error', {
+            'error': 'Save failed',
+            'operation': 'save_file',
+            **_file_request_identity(payload),
+            'path': payload.get('path'),
+        })
 
 @socketio.on('transfer_server_to_server')
 @socket_login_required
@@ -2371,73 +3245,186 @@ def handle_transfer_server_to_server(data, current_user=None):
     Streams files directly between two SSH servers without local buffering.
     """
     try:
-        source_session_id = data.get('source_session_id')
-        source_path = data.get('source_path')
-        dest_session_id = data.get('dest_session_id')
-        dest_path = data.get('dest_path')
-        is_dir = data.get('is_dir', False)
+        payload = data if isinstance(data, dict) else {}
+        identity = _file_request_identity(payload)
+        source_id = identity.get('source_id')
+        requested_source_path = payload.get('source_path')
+        destination_source_id = payload.get('destination_source_id')
+        requested_dest_path = payload.get('dest_path')
+        is_dir = payload.get('is_dir', False)
         transfer_id = None
+        response_context = {
+            **identity,
+            'destination_source_id': destination_source_id,
+        }
 
-        if not all([source_session_id, source_path, dest_session_id, dest_path]):
+        if (
+            not _valid_file_request(identity)
+            or not all([
+                requested_source_path,
+                destination_source_id,
+                requested_dest_path,
+            ])
+        ):
             emit('s2s_transfer_error', {
+                **response_context,
                 'transfer_id': None,
                 'error': 'Missing required fields'
             })
-            return {'success': False, 'error': 'Transfer unavailable'}
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **response_context,
+            }
 
-        source_path = sftp_handler.sanitize_path(source_path)
-        dest_path = sftp_handler.sanitize_path(dest_path)
-        if source_path is None or dest_path is None:
+        legacy_source_path = sftp_handler.sanitize_path(requested_source_path)
+        legacy_dest_path = sftp_handler.sanitize_path(requested_dest_path)
+        if legacy_source_path is None or legacy_dest_path is None:
             emit('s2s_transfer_error', {
+                **response_context,
                 'transfer_id': transfer_id,
                 'error': 'Invalid path'
             })
-            return {'success': False, 'error': 'Transfer unavailable'}
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **response_context,
+            }
 
-        source_authorized = False
-        if verify_session_ownership(source_session_id, current_user.id):
-            source_authorized = True
-        else:
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(source_session_id)
-            if conn_info and conn_info['user_id'] == str(current_user.id):
-                source_authorized = True
-
-        if not source_authorized:
+        try:
+            source = file_service.resolve(
+                source_id,
+                current_user.id,
+                FileCapability.READ,
+            )
+            file_service.resolve(
+                source_id,
+                current_user.id,
+                FileCapability.REMOTE_TRANSFER,
+            )
+        except FileSourceUnavailable:
             emit('s2s_transfer_error', {
+                **response_context,
                 'transfer_id': transfer_id,
-                'error': 'Unauthorized access to source server'
+                'error': 'Transfer unavailable',
             })
-            return {'success': False, 'error': 'Transfer unavailable'}
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **response_context,
+            }
 
-        dest_authorized = False
-        if verify_session_ownership(dest_session_id, current_user.id):
-            dest_authorized = True
-        else:
-            conn_info = connection_pool.temp_connection_pool.get_connection_info(dest_session_id)
-            if conn_info and conn_info['user_id'] == str(current_user.id):
-                dest_authorized = True
-
-        if not dest_authorized:
+        try:
+            destination = file_service.resolve(
+                destination_source_id,
+                current_user.id,
+                FileCapability.WRITE,
+            )
+            file_service.resolve(
+                destination_source_id,
+                current_user.id,
+                FileCapability.REMOTE_TRANSFER,
+            )
+        except FileSourceUnavailable:
             emit('s2s_transfer_error', {
+                **response_context,
                 'transfer_id': transfer_id,
-                'error': 'Unauthorized access to destination server'
+                'error': 'Transfer unavailable',
             })
-            return {'success': False, 'error': 'Transfer unavailable'}
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **response_context,
+            }
+
+        try:
+            source_audit_identity = file_source_audit_identity(source)
+            destination_audit_identity = file_source_audit_identity(destination)
+        except Exception as error:
+            source_audit_identity = None
+            destination_audit_identity = None
+            log_error(
+                'S2S audit identity unavailable',
+                exception_type=type(error).__name__,
+            )
+        audit_username = current_user.username
+        audit_ip = request.remote_addr
+
+        def audit_s2s(result, size=0):
+            if source_audit_identity is None:
+                return
+            try:
+                log_file_source_operation(
+                    username=audit_username,
+                    operation='server_to_server_copy',
+                    result=result,
+                    filename=(
+                        posixpath.basename(
+                            str(requested_source_path).rstrip('/')
+                        ) or '/'
+                    ),
+                    size=size,
+                    ip_address=audit_ip,
+                    destination_target_host=(
+                        destination_audit_identity['target_host']
+                    ),
+                    destination_share=destination_audit_identity['share'],
+                    destination_filename=(
+                        posixpath.basename(
+                            str(requested_dest_path).rstrip('/')
+                        ) or '/'
+                    ),
+                    **source_audit_identity,
+                )
+            except Exception as error:
+                log_error(
+                    'S2S transfer audit failed',
+                    result=result,
+                    exception_type=type(error).__name__,
+                )
+
+        if hasattr(source, 'backend') and hasattr(destination, 'backend'):
+            source_path = source.backend.normalize_path(requested_source_path)
+            dest_path = destination.backend.normalize_path(requested_dest_path)
+        else:
+            source_path = legacy_source_path
+            dest_path = legacy_dest_path
+        if source_path is None or dest_path is None:
+            emit('s2s_transfer_error', {
+                **response_context,
+                'transfer_id': transfer_id,
+                'error': 'Invalid path',
+            })
+            return {
+                'success': False,
+                'error': 'Transfer unavailable',
+                **response_context,
+            }
 
         user_id = current_user.id
         user_room = f'user_{user_id}'
-        background_reservation = quota_manager.reserve(
-            QuotaKind.BACKGROUND_JOB, user_id
+        source_holds = file_source_resolver.acquire_transfer_holds(
+            user_id,
+            (source_id, destination_source_id),
         )
+        try:
+            background_reservation = quota_manager.reserve(
+                QuotaKind.BACKGROUND_JOB, user_id
+            )
+        except Exception:
+            source_holds.release()
+            raise
         try:
             record = transfer_manager.create(
                 user_id=user_id,
-                session_id=source_session_id,
+                source_id=source_id,
+                source_ids=(source_id, destination_source_id),
+                source_holds=source_holds,
                 direction='server_to_server',
                 owner_sid=getattr(request, 'sid', None),
                 metadata={
                     'source_path': source_path,
-                    'destination_session_id': dest_session_id,
+                    'destination_source_id': destination_source_id,
                     'destination_path': dest_path,
                     'is_dir': bool(is_dir),
                 },
@@ -2454,25 +3441,92 @@ def handle_transfer_server_to_server(data, current_user=None):
             cancel_event = _CombinedCancellation(
                 record.cancel_event, lifecycle_cancel_event
             )
+            transferred = 0
             try:
-                success, error = sftp_handler.transfer_server_to_server(
-                    source_session_id=source_session_id,
-                    source_path=source_path,
-                    dest_session_id=dest_session_id,
-                    dest_path=dest_path,
-                    transfer_id=transfer_id,
-                    socketio_instance=socketio,
-                    is_dir=is_dir,
-                    user_room=user_room,
-                    cancel_event=cancel_event,
-                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                    chunk_size=config.CHUNK_SIZE,
+                active_source = file_service.resolve(
+                    source_id,
+                    user_id,
+                    FileCapability.READ,
                 )
+                file_service.resolve(
+                    source_id,
+                    user_id,
+                    FileCapability.REMOTE_TRANSFER,
+                )
+                active_destination = file_service.resolve(
+                    destination_source_id,
+                    user_id,
+                    FileCapability.WRITE,
+                )
+                file_service.resolve(
+                    destination_source_id,
+                    user_id,
+                    FileCapability.REMOTE_TRANSFER,
+                )
+                if (
+                    hasattr(active_source, 'backend')
+                    and hasattr(active_destination, 'backend')
+                ):
+                    def report_progress(progress):
+                        nonlocal transferred
+                        transferred = progress['transferred']
+                        total = max(
+                            transferred,
+                            progress.get('file_size', 0),
+                        )
+                        socketio.emit('s2s_transfer_progress', {
+                            **response_context,
+                            'transfer_id': transfer_id,
+                            'filename': posixpath.basename(
+                                progress['path'].rstrip('/')
+                            ),
+                            'transferred': transferred,
+                            'total': total,
+                            'percent': (
+                                min(100, int(transferred * 100 / total))
+                                if total else 0
+                            ),
+                            'status': 'transferring',
+                        }, room=user_room)
+
+                    transfer_result = copy_remote_entry(
+                        active_source,
+                        source_path,
+                        active_destination,
+                        dest_path,
+                        conflict_policy='replace',
+                        budget=TransferBudget(
+                            max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                            max_members=config.MAX_TRANSFER_MEMBERS,
+                        ),
+                        cancel_event=cancel_event,
+                        progress=report_progress,
+                        chunk_size=config.CHUNK_SIZE,
+                    )
+                    transferred = transfer_result.bytes_transferred
+                    success, error = True, None
+                else:
+                    success, error = sftp_handler.transfer_server_to_server(
+                        source_session_id=active_source.handle_id,
+                        source_path=source_path,
+                        dest_session_id=active_destination.handle_id,
+                        dest_path=dest_path,
+                        transfer_id=transfer_id,
+                        socketio_instance=socketio,
+                        is_dir=is_dir,
+                        user_room=user_room,
+                        cancel_event=cancel_event,
+                        max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                        chunk_size=config.CHUNK_SIZE,
+                        event_context=response_context,
+                    )
 
                 if success and _terminalize(
                     record, user_id, 'completed', manager=transfer_manager
                 ):
+                    audit_s2s('COMPLETED', transferred)
                     socketio.emit('s2s_transfer_complete', {
+                        **response_context,
                         'transfer_id': transfer_id,
                         'filename': posixpath.basename(
                             source_path.rstrip('/')
@@ -2483,13 +3537,25 @@ def handle_transfer_server_to_server(data, current_user=None):
                 elif error and _terminalize(
                     record, user_id, 'failed', manager=transfer_manager
                 ):
+                    audit_s2s('FAILED', transferred)
                     log_error(
                         'S2S transfer failed',
                         user_id=user_id,
                         transfer_id=transfer_id,
-                        detail=str(error),
+                        exception_type=type(error).__name__,
                     )
                     socketio.emit('s2s_transfer_error', {
+                        **response_context,
+                        'transfer_id': transfer_id,
+                        'error': 'Transfer unavailable'
+                    }, room=user_room)
+            except RemoteTransferCancelled:
+                if _terminalize(
+                    record, user_id, 'cancelled', manager=transfer_manager
+                ):
+                    audit_s2s('CANCELLED', transferred)
+                    socketio.emit('s2s_transfer_error', {
+                        **response_context,
                         'transfer_id': transfer_id,
                         'error': 'Transfer unavailable'
                     }, room=user_room)
@@ -2497,6 +3563,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                 if _terminalize(
                     record, user_id, 'failed', manager=transfer_manager
                 ):
+                    audit_s2s('FAILED', transferred)
                     log_error(
                         'S2S transfer crashed',
                         user_id=user_id,
@@ -2504,11 +3571,15 @@ def handle_transfer_server_to_server(data, current_user=None):
                         exception_type=type(error).__name__,
                     )
                     socketio.emit('s2s_transfer_error', {
+                        **response_context,
                         'transfer_id': transfer_id,
                         'error': 'Transfer unavailable'
                     }, room=user_room)
             finally:
-                background_reservation.release()
+                try:
+                    record.release_source_holds()
+                finally:
+                    background_reservation.release()
 
         try:
             lifecycle.start_job(
@@ -2520,16 +3591,44 @@ def handle_transfer_server_to_server(data, current_user=None):
                     record, user_id, 'failed', manager=transfer_manager
                 )
             finally:
-                background_reservation.release()
+                try:
+                    record.release_source_holds()
+                finally:
+                    background_reservation.release()
             raise
 
-        log_info(f"S2S transfer started: {source_path} -> {dest_path}", user=current_user.username)
-        return {'success': True, 'transfer_id': transfer_id}
+        log_info(
+            'S2S transfer started',
+            user_id=current_user.id,
+            transfer_id=transfer_id,
+        )
+        return {
+            'success': True,
+            'transfer_id': transfer_id,
+            **response_context,
+        }
 
-    except Exception as e:
-        log_error("S2S transfer setup failed", error=str(e), user=current_user.username)
+    except Exception as error:
+        log_error(
+            'S2S transfer setup failed',
+            user_id=getattr(current_user, 'id', None),
+            exception_type=type(error).__name__,
+        )
         emit('s2s_transfer_error', {
-            'transfer_id': data.get('transfer_id') if isinstance(data, dict) else None,
-            'error': 'Failed to start transfer'
+            **(
+                response_context
+                if 'response_context' in locals()
+                else _file_request_identity(payload)
+            ),
+            'transfer_id': payload.get('transfer_id'),
+            'error': 'Failed to start transfer',
         })
-        return {'success': False, 'error': 'Transfer unavailable'}
+        return {
+            'success': False,
+            'error': 'Transfer unavailable',
+            **(
+                response_context
+                if 'response_context' in locals()
+                else _file_request_identity(payload)
+            ),
+        }

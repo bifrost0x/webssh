@@ -719,7 +719,14 @@ def rename_item(session_id, old_path, new_path):
     except Exception as e:
         return False, str(e)
 
-def delete_directory_recursive(session_id, path):
+def delete_directory_recursive(
+    session_id,
+    path,
+    *,
+    member_budget=None,
+    cancel_event=None,
+    max_depth=50,
+):
     """Recursively delete a directory and all its contents."""
     import stat as stat_module
 
@@ -728,7 +735,13 @@ def delete_directory_recursive(session_id, path):
         if safe_path is None:
             return False, "Invalid path"
 
-        member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
+        member_budget = member_budget or _TransferMemberBudget(
+            config.MAX_TRANSFER_MEMBERS
+        )
+
+        def _check_cancelled():
+            if _is_cancelled(cancel_event):
+                raise TransferCancelled()
 
         def _delete_recursive(sftp_client, dir_path, depth=0):
             """
@@ -737,21 +750,25 @@ def delete_directory_recursive(session_id, path):
             SECURITY: Validates each path to prevent symlink attacks and
             limits recursion depth to prevent stack overflow.
             """
-            if depth > 50:
+            if depth > max_depth:
                 raise ValueError("Maximum recursion depth exceeded")
 
+            _check_cancelled()
             with _directory_entries(sftp_client, dir_path) as entries:
                 while True:
+                    _check_cancelled()
                     try:
                         entry = next(entries)
                     except StopIteration:
                         break
                     member_budget.consume()
+                    _check_cancelled()
                     name = entry.filename
                     if not _is_safe_transfer_entry_name(name):
                         raise SFTPOperationError('unsafe directory entry name')
                     full_path = posixpath.join(dir_path, name)
                     child_stat = sftp_client.lstat(full_path)
+                    _check_cancelled()
 
                     if stat_module.S_ISLNK(child_stat.st_mode):
                         sftp_client.remove(full_path)
@@ -759,14 +776,19 @@ def delete_directory_recursive(session_id, path):
 
                     if stat_module.S_ISDIR(child_stat.st_mode):
                         _delete_recursive(sftp_client, full_path, depth + 1)
+                        _check_cancelled()
                         sftp_client.rmdir(full_path)
                     else:
                         sftp_client.remove(full_path)
 
+        _check_cancelled()
         with sftp_session(session_id) as (sftp, source_type):
+            _check_cancelled()
             stat_result = sftp.lstat(safe_path)
+            _check_cancelled()
             if stat_module.S_ISDIR(stat_result.st_mode):
                 _delete_recursive(sftp, safe_path)
+                _check_cancelled()
                 sftp.rmdir(safe_path)
             elif stat_module.S_ISLNK(stat_result.st_mode):
                 sftp.remove(safe_path)
@@ -776,6 +798,8 @@ def delete_directory_recursive(session_id, path):
         return True, None
     except TransferMemberLimitExceeded:
         return False, 'Directory exceeds configured member limit'
+    except TransferCancelled:
+        return False, 'Operation cancelled'
     except SFTPOperationError as e:
         return False, str(e)
     except FileNotFoundError:
@@ -1159,7 +1183,8 @@ def _remove_sftp_tree(sftp, remote_path, *, max_members, max_depth=50,
 def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                               dest_path, transfer_id, socketio_instance=None,
                               is_dir=False, user_room=None, cancel_event=None,
-                              max_bytes=None, max_members=None, chunk_size=None):
+                              max_bytes=None, max_members=None, chunk_size=None,
+                              event_context=None):
     """
     Direct server-to-server SFTP streaming transfer.
     Streams data from source SSH host to destination SSH host without
@@ -1187,6 +1212,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     sftp_source = None
     sftp_dest = None
     directory_total = None
+    event_context = dict(event_context or {})
 
     try:
         sftp_source, error = get_sftp_client_fresh(source_session_id)
@@ -1210,6 +1236,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                     if safe_total > 0 else 0
                 )
                 socketio_instance.emit('s2s_transfer_progress', {
+                    **event_context,
                     'transfer_id': transfer_id,
                     'filename': filename,
                     'transferred': transferred,
@@ -1396,6 +1423,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
         if socketio_instance and user_room:
             socketio_instance.emit('s2s_transfer_started', {
+                **event_context,
                 'transfer_id': transfer_id,
                 'source_path': source_path,
                 'dest_path': dest_path,

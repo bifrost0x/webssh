@@ -328,6 +328,10 @@ def create_app(
             backup_operations.cleanup_loop,
         )
         transfer_runtime_binding = transfer_manager.bind_runtime()
+        app.extensions['runtime_lifecycle'].start_job(
+            'transfer-token-cleanup',
+            transfer_manager.cleanup_loop,
+        )
         app.extensions['runtime_lifecycle'].register_shutdown_callback(
             'active_transfers',
             lambda _deadline: transfer_manager.close_and_cancel(
@@ -442,6 +446,10 @@ def create_app(
                     ldap_revalidation_task,
                 )
             connection_pool.bind_temp_connection_pool(lifecycle)
+            if config.SMB_ENABLED:
+                from . import smb_pool
+
+                smb_pool.bind_smb_connection_pool(lifecycle)
         except Exception:
             lifecycle.begin_shutdown(config.RUNTIME_SHUTDOWN_GRACE_SECONDS)
             raise
@@ -469,6 +477,7 @@ def create_app(
                 'retry',
             ),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
+            smb_enabled=config.SMB_ENABLED,
         )
 
     @app.route('/login', methods=['GET', 'POST'])

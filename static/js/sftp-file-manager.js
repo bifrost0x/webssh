@@ -13,6 +13,10 @@ class SFTPFileManager {
 
         this.availableSessions = [];
         this.quickConnections = [];
+        this.smbSources = [];
+        this.savedSmbShares = [];
+        this.smbEnabled = document.getElementById('smbSourceModal')?.dataset.enabled === 'true';
+        this.smbSourceDialog = null;
 
         this.transferQueue = [];
         this.activeTransfers = new Map();
@@ -21,8 +25,10 @@ class SFTPFileManager {
         this.uploadRefreshes = new Map();
         this.s2sTerminalWaiters = new Map();
         this.s2sEarlyTerminals = new Map();
+        this.pendingS2SRequests = new Map();
         this.transferConnectionHolds = new Map();
         this.pendingQuickDisconnects = new Set();
+        this.pendingOperationRequests = new Map();
 
         this.conflictAction = null;
         this.applyToAll = false;
@@ -38,9 +44,7 @@ class SFTPFileManager {
 
     createEmptyPaneState() {
         return {
-            type: null,
-            sessionId: null,
-            connectionId: null,
+            source: null,
             path: '/',
             files: [],
             selected: new Set(),
@@ -55,6 +59,86 @@ class SFTPFileManager {
             pendingDirectoryPath: null,
             autoHomeEligible: false
         };
+    }
+
+    normalizeSourceDescriptor(payload = {}) {
+        if (!payload || typeof payload !== 'object'
+                || typeof payload.source_id !== 'string'
+                || !/^(?:sftp-session|sftp-quick|smb-quick):[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(payload.source_id)
+                || typeof payload.kind !== 'string'
+                || typeof payload.label !== 'string'
+                || typeof payload.endpoint !== 'string'
+                || typeof payload.protocol !== 'string'
+                || !Array.isArray(payload.capabilities)) {
+            return null;
+        }
+        const allowedSecurityFields = new Set([
+            'encrypted', 'host_key_verified', 'secure_negotiate', 'signed',
+        ]);
+        const securityPayload = payload.security
+            && typeof payload.security === 'object'
+            && !Array.isArray(payload.security)
+            ? payload.security
+            : {};
+        const security = Object.fromEntries(
+            Object.entries(securityPayload)
+                .filter(([key, value]) => (
+                    allowedSecurityFields.has(key) && typeof value === 'boolean'
+                ))
+                .map(([key, value]) => [
+                    key.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase()),
+                    value,
+                ]),
+        );
+        return {
+            sourceId: payload.source_id,
+            kind: payload.kind,
+            label: payload.label,
+            endpoint: payload.endpoint,
+            protocol: payload.protocol,
+            capabilities: Array.isArray(payload.capabilities)
+                ? [...new Set(payload.capabilities.filter(value => typeof value === 'string'))]
+                : [],
+            ephemeral: payload.ephemeral === true,
+            security,
+        };
+    }
+
+    sourceCan(state, capability) {
+        return Boolean(
+            state?.source
+            && Array.isArray(state.source.capabilities)
+            && state.source.capabilities.includes(capability),
+        );
+    }
+
+    getPaneSourceId(paneOrState) {
+        const state = typeof paneOrState === 'string'
+            ? this.panes?.[paneOrState]
+            : paneOrState;
+        return typeof state?.source?.sourceId === 'string'
+            ? state.source.sourceId
+            : null;
+    }
+
+    sourceSecurityLabel(source) {
+        if (source?.security?.encrypted) {
+            return this.t('fm.workspace.encrypted', 'Encrypted');
+        }
+        if (source?.security?.hostKeyVerified) {
+            return this.t('fm.workspace.hostKeyTrusted', 'SSH host key trusted');
+        }
+        return '';
+    }
+
+    sourceDescriptorForSession(session) {
+        return this.normalizeSourceDescriptor(session?.file_source || session?.fileSource);
+    }
+
+    sourceDescriptorForQuickConnection(connection) {
+        return this.normalizeSourceDescriptor(
+            connection?.file_source || connection?.fileSource,
+        );
     }
 
     initializeWorkspaceState() {
@@ -129,19 +213,19 @@ class SFTPFileManager {
     buildSourceCatalog() {
         const active = (this.availableSessions || [])
             .filter(session => session.connected !== false)
-            .map(session => ({
-                key: `ssh:${session.id}`,
-                type: 'ssh',
-                label: session.displayName || session.name || `${session.username}@${session.host}`,
-                endpoint: `${session.host}:${session.port || 22}`,
-                protocol: 'SFTP',
-                status: this.t('fm.workspace.connected', 'Connected'),
-                security: this.t('fm.workspace.hostKeyTrusted', 'SSH host key trusted'),
-                sessionId: session.id,
-            }));
+            .map(session => {
+                const source = this.sourceDescriptorForSession(session);
+                if (!source) return null;
+                return {
+                    ...source,
+                    key: source.sourceId,
+                    status: this.t('fm.workspace.connected', 'Connected'),
+                    securityLabel: this.sourceSecurityLabel(source),
+                };
+            })
+            .filter(Boolean);
         const saved = (this.qcProfiles || []).map(profile => ({
             key: `profile:${profile.id}`,
-            type: 'profile',
             label: profile.name || `${profile.username}@${profile.host}`,
             endpoint: `${profile.username}@${profile.host}:${profile.port || 22}`,
             protocol: 'SFTP',
@@ -149,26 +233,62 @@ class SFTPFileManager {
             security: this.t('fm.workspace.authenticationRequired', 'Authentication required'),
             profileId: profile.id,
         }));
-        const quick = (this.quickConnections || []).map(connection => ({
-            key: `qc:${connection.connectionId}`,
-            type: 'ssh',
-            label: `${connection.username}@${connection.host}`,
-            endpoint: `${connection.host}:${connection.port || 22}`,
-            protocol: 'SFTP',
-            status: this.t('fm.workspace.connected', 'Connected'),
-            security: this.t('fm.workspace.hostKeyTrusted', 'SSH host key trusted'),
-            connectionId: connection.connectionId,
-        }));
-        return [
+        const quick = (this.quickConnections || []).map(connection => {
+            const source = this.sourceDescriptorForQuickConnection(connection);
+            if (!source) return null;
+            return {
+                ...source,
+                key: source.sourceId,
+                status: this.t('fm.workspace.connected', 'Connected'),
+                securityLabel: this.sourceSecurityLabel(source),
+            };
+        }).filter(Boolean);
+        const groups = [
             { id: 'active', label: this.t('fm.workspace.activeSessions', 'Active SSH sessions'), items: active },
             { id: 'saved', label: this.t('fm.workspace.savedHosts', 'Saved SSH hosts'), items: saved },
             { id: 'quick', label: this.t('fm.workspace.quickConnections', 'SFTP quick connections'), items: quick },
         ];
+        const savedSmb = (this.savedSmbShares || []).map(share => ({
+            key: `smb-saved:${share.id}`,
+            label: share.name,
+            endpoint: `${share.username}@${share.host}/${share.share}`,
+            protocol: 'SMB',
+            status: this.t('fm.workspace.available', 'Available'),
+            security: this.t(
+                'fm.workspace.authenticationRequired',
+                'Authentication required'
+            ),
+            savedSmbShare: share,
+        }));
+        if (savedSmb.length > 0) {
+            groups.push({
+                id: 'saved-smb',
+                label: this.t('fm.workspace.savedSmbShares', 'Saved SMB shares'),
+                items: savedSmb,
+            });
+        }
+        const smb = (this.smbSources || []).map(source => ({
+            ...source,
+            key: source.sourceId,
+            status: this.t('fm.workspace.connected', 'Connected'),
+            securityLabel: this.sourceSecurityLabel(source),
+        }));
+        if (smb.length > 0) {
+            groups.push({
+                id: 'smb',
+                label: this.t('fm.workspace.smbConnections', 'SMB connections'),
+                items: smb,
+            });
+        }
+        return groups;
     }
 
     async openWorkspaceSource(pane, source) {
         if (!source || source.disabled) return null;
-        if (source.type === 'profile') {
+        if (source.savedSmbShare) {
+            return this.openSMBSourceDialog(source.savedSmbShare, pane);
+        }
+        if (source.profileId) {
             this.pendingQuickConnectPane = pane;
             this.openQuickConnect(source.profileId);
             return null;
@@ -181,7 +301,7 @@ class SFTPFileManager {
         this.setActivePane(pane);
         this.closeSourceLauncher();
         this.renderWorkspaceChrome();
-        await this.onSourceChange(pane, source.key);
+        await this.onSourceChange(pane, source.sourceId);
         this.renderWorkspaceChrome();
         return tab;
     }
@@ -197,11 +317,17 @@ class SFTPFileManager {
         });
     }
 
+    loadWorkspaceSmbShares() {
+        if (!this.smbEnabled || !this.socket) return;
+        this.socket.emit('list_smb_shares');
+    }
+
     openSourceLauncher(pane = this.workspace.activePane) {
         if (this.displayMode === 'embedded') return false;
         this.sourceLauncherPane = pane;
         this.sourceLauncherReturnFocus = document.activeElement;
         this.loadWorkspaceProfiles();
+        this.loadWorkspaceSmbShares();
         this.renderSourceLauncher('');
 
         const launcher = document.getElementById('fmSourceLauncher');
@@ -233,6 +359,46 @@ class SFTPFileManager {
         this.sourceLauncherPane = null;
         if (this.sourceLauncherReturnFocus?.isConnected) this.sourceLauncherReturnFocus.focus();
         this.sourceLauncherReturnFocus = null;
+    }
+
+    openSMBSourceDialog(savedShare = null, requestedPane = null) {
+        if (!this.smbEnabled || !this.smbSourceDialog) return false;
+        const pane = requestedPane
+            || this.sourceLauncherPane
+            || this.workspace?.activePane
+            || 'left';
+        const returnFocus = this.sourceLauncherReturnFocus
+            || document.querySelector?.(`[data-source-target="${pane}"]`)
+            || this.modal;
+        if (this.sourceLauncherPane) this.closeSourceLauncher();
+        this.loadWorkspaceSmbShares();
+        return this.smbSourceDialog.open({ pane, returnFocus, savedShare });
+    }
+
+    async handleSMBSourceConnected({ pane, descriptor } = {}) {
+        const source = this.normalizeSourceDescriptor(descriptor);
+        if (!source || source.kind !== 'smb' || !source.sourceId.startsWith('smb-quick:')) {
+            this.showNotification(
+                this.t('fm.sourceUnavailable', 'File source unavailable'),
+                'error',
+            );
+            return false;
+        }
+        this.smbSources = (this.smbSources || []).filter(
+            candidate => candidate.sourceId !== source.sourceId
+        );
+        this.smbSources.push(source);
+        await this.openWorkspaceSource(pane, {
+            ...source,
+            key: source.sourceId,
+            status: this.t('fm.workspace.connected', 'Connected'),
+            securityLabel: this.sourceSecurityLabel(source),
+        });
+        this.showNotification(
+            `${this.t('fm.connected', 'Connected')}: ${source.label}`,
+            'success',
+        );
+        return true;
     }
 
     trapSourceLauncherFocus(event) {
@@ -276,12 +442,14 @@ class SFTPFileManager {
             const items = group.items.filter(source => {
                 this.sourceCatalogByKey.set(source.key, source);
                 if (!normalizedQuery) return true;
-                return [source.label, source.endpoint, source.protocol, source.status, source.security]
+                return [source.label, source.endpoint, source.protocol, source.status, source.securityLabel || source.security]
                     .some(value => String(value || '').toLocaleLowerCase().includes(normalizedQuery));
             });
             if (items.length === 0) return null;
             const rows = items.map(source => {
-                const icon = source.type === 'profile' ? 'bookmark' : 'terminal';
+                const icon = source.profileId || source.savedSmbShare
+                    ? 'bookmark'
+                    : 'terminal';
                 const disabled = source.disabled ? ' disabled aria-disabled="true"' : '';
                 return `
                     <button type="button" class="fm-source-row${source.disabled ? ' is-disabled' : ''}" data-source-key="${this.escapeHtml(source.key)}"${disabled}>
@@ -293,7 +461,7 @@ class SFTPFileManager {
                         <span class="fm-protocol-badge">${this.escapeHtml(source.protocol || '')}</span>
                         <span class="fm-source-row-status">
                             <strong>${this.escapeHtml(source.status || '')}</strong>
-                            <small><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(source.security || '')}</small>
+                            <small><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(source.securityLabel || source.security || '')}</small>
                         </span>
                     </button>`;
             }).join('');
@@ -340,7 +508,7 @@ class SFTPFileManager {
             );
             const activeTab = this.workspace.getActiveTab(pane);
             const legacySelect = document.getElementById(`fm${this.capitalize(pane)}Source`);
-            if (legacySelect) legacySelect.value = activeTab?.source.key || '';
+            if (legacySelect) legacySelect.value = activeTab?.source.sourceId || '';
         });
         this.updateWorkspaceActions();
     }
@@ -383,7 +551,7 @@ class SFTPFileManager {
             <span class="fm-source-identity-name">${this.escapeHtml(tab.source.label || '')}</span>
             <span class="fm-protocol-badge">${this.escapeHtml(tab.source.protocol || '')}</span>
             <span class="fm-source-identity-endpoint">${this.escapeHtml(tab.source.endpoint || '')}</span>
-            <span class="fm-source-identity-security"><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(tab.source.security || '')}</span>`;
+            <span class="fm-source-identity-security"><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(this.sourceSecurityLabel(tab.source))}</span>`;
     }
 
     activateSourceTab(pane, tabId) {
@@ -412,64 +580,78 @@ class SFTPFileManager {
     }
 
     releaseQuickConnectionIfUnused(source) {
-        const connectionId = source?.connectionId;
-        if (!connectionId) return false;
+        const sourceId = source?.sourceId;
+        const isSftpQuick = sourceId?.startsWith('sftp-quick:');
+        const isSmbQuick = sourceId?.startsWith('smb-quick:');
+        if (!source?.ephemeral || (!isSftpQuick && !isSmbQuick)) return false;
 
         const stillInUse = ['left', 'right'].some(pane => (
-            this.workspace.getTabs(pane).some(tab => tab.source.connectionId === connectionId)
+            this.workspace.getTabs(pane).some(tab => tab.source.sourceId === sourceId)
         ));
         if (stillInUse) return false;
 
-        if (this.hasOutstandingTransferForConnection(connectionId)) {
+        if (this.hasOutstandingTransferForSource(sourceId)) {
             if (!this.pendingQuickDisconnects) this.pendingQuickDisconnects = new Set();
-            this.pendingQuickDisconnects.add(connectionId);
+            this.pendingQuickDisconnects.add(sourceId);
             return false;
         }
 
-        this.pendingQuickDisconnects?.delete(connectionId);
-        this.quickConnections = (this.quickConnections || []).filter(
-            connection => connection.connectionId !== connectionId
-        );
-        this.socket.emit('quick_disconnect', { connection_id: connectionId });
+        this.pendingQuickDisconnects?.delete(sourceId);
+        if (isSftpQuick) {
+            const connectionId = sourceId.substring('sftp-quick:'.length);
+            this.quickConnections = (this.quickConnections || []).filter(
+                connection => connection.connectionId !== connectionId
+            );
+            this.socket.emit('quick_disconnect', { connection_id: connectionId });
+        } else {
+            this.smbSources = (this.smbSources || []).filter(
+                candidate => candidate.sourceId !== sourceId
+            );
+            this.socket.emit('file_source_disconnect', { source_id: sourceId });
+        }
         this.updateSessionLists();
         return true;
     }
 
-    getTransferConnectionIds(transfer = {}) {
-        const ids = Array.isArray(transfer.connectionIds)
-            ? transfer.connectionIds
-            : [transfer.sessionId, transfer.sourceSessionId, transfer.targetSessionId];
+    getTransferSourceIds(transfer = {}) {
+        const ids = Array.isArray(transfer.sourceIds)
+            ? transfer.sourceIds
+            : [transfer.sourceId, transfer.originSourceId, transfer.targetSourceId];
         return [...new Set(ids.filter(Boolean))];
     }
 
-    retainTransferConnections(connectionIds) {
+    retainTransferSources(sourceIds) {
         if (!this.transferConnectionHolds) this.transferConnectionHolds = new Map();
-        [...new Set((connectionIds || []).filter(Boolean))].forEach(connectionId => {
-            const current = this.transferConnectionHolds.get(connectionId) || 0;
-            this.transferConnectionHolds.set(connectionId, current + 1);
+        [...new Set((sourceIds || []).filter(Boolean))].forEach(sourceId => {
+            const current = this.transferConnectionHolds.get(sourceId) || 0;
+            this.transferConnectionHolds.set(sourceId, current + 1);
         });
     }
 
-    releaseTransferConnections(connectionIds) {
+    releaseTransferSources(sourceIds) {
         if (!this.transferConnectionHolds) return;
-        [...new Set((connectionIds || []).filter(Boolean))].forEach(connectionId => {
-            const remaining = (this.transferConnectionHolds.get(connectionId) || 0) - 1;
-            if (remaining > 0) this.transferConnectionHolds.set(connectionId, remaining);
-            else this.transferConnectionHolds.delete(connectionId);
+        [...new Set((sourceIds || []).filter(Boolean))].forEach(sourceId => {
+            const remaining = (this.transferConnectionHolds.get(sourceId) || 0) - 1;
+            if (remaining > 0) this.transferConnectionHolds.set(sourceId, remaining);
+            else this.transferConnectionHolds.delete(sourceId);
         });
     }
 
-    hasOutstandingTransferForConnection(connectionId) {
-        if ((this.transferConnectionHolds?.get(connectionId) || 0) > 0) return true;
+    hasOutstandingTransferForSource(sourceId) {
+        if ((this.transferConnectionHolds?.get(sourceId) || 0) > 0) return true;
         return (this.transferQueue || []).some(transfer => (
             ['pending', 'active'].includes(transfer.status)
-            && this.getTransferConnectionIds(transfer).includes(connectionId)
+            && this.getTransferSourceIds(transfer).includes(sourceId)
         ));
     }
 
     flushPendingQuickDisconnects() {
-        Array.from(this.pendingQuickDisconnects || []).forEach(connectionId => {
-            this.releaseQuickConnectionIfUnused({ connectionId: connectionId });
+        Array.from(this.pendingQuickDisconnects || []).forEach(sourceId => {
+            this.releaseQuickConnectionIfUnused({
+                sourceId,
+                kind: sourceId.startsWith('smb-quick:') ? 'smb' : 'sftp',
+                ephemeral: true,
+            });
         });
     }
 
@@ -489,10 +671,12 @@ class SFTPFileManager {
 
         const source = this.panes[sourcePane];
         const target = this.panes[targetPane];
-        const sourceId = source?.sessionId || source?.connectionId;
-        const targetId = target?.sessionId || target?.connectionId;
-        return source?.type === 'ssh'
-            && target?.type === 'ssh'
+        const sourceId = this.getPaneSourceId(source);
+        const targetId = this.getPaneSourceId(target);
+        return this.sourceCan(source, 'read')
+            && this.sourceCan(source, 'remote-transfer')
+            && this.sourceCan(target, 'write')
+            && this.sourceCan(target, 'remote-transfer')
             && !source.loading
             && !target.loading
             && !source.autoHomeEligible
@@ -511,19 +695,18 @@ class SFTPFileManager {
         const state = this.panes[this.activePane];
         const selectedCount = state?.selected?.size || 0;
         const selectedFile = selectedCount === 1 ? state.files[Array.from(state.selected)[0]] : null;
-        const hasSource = Boolean(state?.type);
         const targetPane = this.activePane === 'left' ? 'right' : 'left';
         const transferAvailable = this.canTransferBetweenPanes(this.activePane, targetPane) && selectedCount > 0;
         const setDisabled = (id, disabled) => {
             const element = document.getElementById(id);
             if (element) element.disabled = disabled;
         };
-        setDisabled('fmNewFolder', !hasSource);
-        setDisabled('fmEmbeddedUpload', state?.type !== 'ssh');
-        setDisabled('fmDownload', !hasSource || selectedCount === 0);
-        setDisabled('fmPreview', !selectedFile || selectedFile.is_dir);
-        setDisabled('fmRename', selectedCount !== 1);
-        setDisabled('fmDelete', selectedCount === 0);
+        setDisabled('fmNewFolder', !this.sourceCan(state, 'mkdir'));
+        setDisabled('fmEmbeddedUpload', !this.sourceCan(state, 'write'));
+        setDisabled('fmDownload', !this.sourceCan(state, 'read') || selectedCount === 0);
+        setDisabled('fmPreview', !this.sourceCan(state, 'preview') || !selectedFile || selectedFile.is_dir);
+        setDisabled('fmRename', !this.sourceCan(state, 'rename') || selectedCount !== 1);
+        setDisabled('fmDelete', !this.sourceCan(state, 'delete') || selectedCount === 0);
         setDisabled('fmTransfer', !transferAvailable);
         setDisabled('fmTransferRight', !(this.canTransferBetweenPanes('left', 'right') && this.panes.left.selected.size > 0));
         setDisabled('fmTransferLeft', !(this.canTransferBetweenPanes('right', 'left') && this.panes.right.selected.size > 0));
@@ -536,18 +719,18 @@ class SFTPFileManager {
             document.querySelectorAll(`[data-pane-toolbar="${pane}"] [data-pane-action]`).forEach(button => {
                 const action = button.dataset.paneAction;
                 const disabled = {
-                    newfolder: !paneState?.type,
-                    upload: paneState?.type !== 'ssh',
-                    download: !paneState?.type || paneSelection === 0,
-                    preview: !onlyFile || onlyFile.is_dir,
-                    rename: paneSelection !== 1,
-                    delete: paneSelection === 0,
+                    newfolder: !this.sourceCan(paneState, 'mkdir'),
+                    upload: !this.sourceCan(paneState, 'write'),
+                    download: !this.sourceCan(paneState, 'read') || paneSelection === 0,
+                    preview: !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
+                    rename: !this.sourceCan(paneState, 'rename') || paneSelection !== 1,
+                    delete: !this.sourceCan(paneState, 'delete') || paneSelection === 0,
                 }[action];
                 button.disabled = Boolean(disabled);
             });
             const selectAll = document.querySelector(`[data-pane-select-all="${pane}"]`);
             if (selectAll) {
-                selectAll.disabled = !paneState?.type || paneState.files.length === 0;
+                selectAll.disabled = !this.sourceCan(paneState, 'list') || paneState.files.length === 0;
                 selectAll.checked = paneState.files.length > 0 && paneSelection === paneState.files.length;
                 selectAll.indeterminate = paneSelection > 0 && paneSelection < paneState.files.length;
             }
@@ -568,8 +751,29 @@ class SFTPFileManager {
 
     init() {
         this.createModal();
+        if (typeof window.SMBSourceDialog === 'function') {
+            this.smbSourceDialog = new window.SMBSourceDialog({
+                enabled: this.smbEnabled,
+                socket: this.socket,
+                t: (key, fallback) => this.t(key, fallback),
+                onConnected: result => this.handleSMBSourceConnected(result),
+                onSharesChanged: shares => {
+                    this.savedSmbShares = shares;
+                    if (this.sourceLauncherPane) this.renderSourceLauncher();
+                },
+                closeModal: modal => {
+                    if (window.ModalManager) {
+                        window.ModalManager.close(modal);
+                        if (this.modal?.classList.contains('show')) {
+                            window.ModalManager.activeModal = this.modal;
+                        }
+                    }
+                },
+            });
+        }
         this.setupSocketListeners();
         this.setupKeyboardShortcuts();
+        this.loadWorkspaceSmbShares();
     }
 
     createModal() {
@@ -830,9 +1034,9 @@ class SFTPFileManager {
                                 <span class="material-icons" aria-hidden="true">add</span>
                                 <span><strong data-i18n="fm.workspace.newSftp">New SFTP connection</strong><small data-i18n="fm.workspace.sftpOverSsh">SFTP over SSH</small></span>
                             </button>
-                            <button type="button" class="btn btn-secondary" id="fmNewSmbSource" disabled aria-disabled="true">
+                            <button type="button" class="btn btn-secondary" id="fmNewSmbSource"${this.smbEnabled ? '' : ' disabled aria-disabled="true"'}>
                                 <span class="material-icons" aria-hidden="true">add</span>
-                                <span><strong data-i18n="fm.workspace.newSmb">New SMB share</strong><small><span data-i18n="fm.workspace.comingSoon">Coming soon</span></small></span>
+                                <span><strong data-i18n="fm.workspace.newSmb">New SMB share</strong><small><span class="${this.smbEnabled ? '' : 'hidden'}" data-i18n="fm.workspace.smbSecure">SMB 3.1.1 · encrypted</span><span class="${this.smbEnabled ? 'hidden' : ''}" data-i18n="fm.workspace.disabledByAdmin">Disabled by administrator</span></small></span>
                             </button>
                         </div>
                     </div>
@@ -1077,6 +1281,10 @@ class SFTPFileManager {
             this.closeSourceLauncher();
             this.openQuickConnect();
         });
+        document.getElementById('fmNewSmbSource').addEventListener(
+            'click',
+            () => this.openSMBSourceDialog(),
+        );
 
         ['left', 'right'].forEach(pane => {
             document.getElementById(`fm${this.capitalize(pane)}Tabs`).addEventListener('click', event => {
@@ -1202,8 +1410,7 @@ class SFTPFileManager {
 
         this.socket.on('directory_listing', (data) => {
             this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
-                if (state.type === 'ssh' &&
-                    (state.sessionId === data.session_id || state.connectionId === data.session_id) &&
+                if (this.getPaneSourceId(state) === data.source_id &&
                     state.pendingDirectoryRequestId === data.request_id &&
                     state.pendingDirectoryPath === data.path) {
                     if (state.loadingTimeout) {
@@ -1227,8 +1434,7 @@ class SFTPFileManager {
         this.socket.on('home_directory', (data) => {
             if (!this.isOpen) return;
             this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
-                if (state.type === 'ssh' &&
-                    (state.sessionId === data.session_id || state.connectionId === data.session_id) &&
+                if (this.getPaneSourceId(state) === data.source_id &&
                     state.pendingHomeRequestId === data.request_id) {
                     state.pendingHomeRequestId = null;
                     state.homePath = data.path;
@@ -1242,36 +1448,43 @@ class SFTPFileManager {
         });
 
         this.socket.on('directory_created', (data) => {
+            if (!this.consumeOperationResponse(data, 'create_directory')) return;
             if (this.uploadBatches?.size > 0) return;
             this.showNotification(`${this.t('fm.folderCreated', 'Folder created')}: ${data.path}`, 'success');
-            this.refreshBothPanes();
+            this.refreshSource(data.source_id);
         });
 
-        this.socket.on('file_renamed', () => {
+        this.socket.on('file_renamed', (data) => {
+            if (!this.consumeOperationResponse(data, 'rename_file')) return;
             this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
-            this.refreshBothPanes();
+            this.refreshSource(data.source_id);
         });
 
         this.socket.on('item_deleted', (data) => {
+            if (!this.consumeOperationResponse(data, 'delete_item')) return;
             this.showNotification(`${this.t('fm.deleted', 'Deleted')}: ${data.path}`, 'success');
-            this.refreshBothPanes();
+            this.refreshSource(data.source_id);
         });
 
-        this.socket.on('s2s_transfer_started', () => {
+        this.socket.on('s2s_transfer_started', (data) => {
+            if (!this.matchesS2SResponse(data)) return;
             this.showNotification(this.t('fm.transferStarted', 'Server-to-server transfer started'), 'info');
         });
 
         this.socket.on('s2s_transfer_progress', (data) => {
+            if (!this.matchesS2SResponse(data)) return;
             this.updateTransferProgress(data);
         });
 
         this.socket.on('s2s_transfer_complete', (data) => {
+            if (!this.matchesS2SResponse(data)) return;
             this.showNotification(`${this.t('fm.transferComplete', 'Transfer complete')}: ${data.filename}`, 'success');
             this.refreshBothPanes();
             this.completeS2STransfer(data);
         });
 
         this.socket.on('s2s_transfer_error', (data) => {
+            if (!this.matchesS2SResponse(data)) return;
             this.showNotification(`${this.t('fm.transferFailed', 'Transfer failed')}: ${data.error}`, 'error');
             this.failS2STransfer(data);
         });
@@ -1301,9 +1514,13 @@ class SFTPFileManager {
         this.socket.on('error', (data) => {
             if (!this.handlesSocketError(data)) return;
             const errorMsg = data.error || data.message || 'Unknown error';
+            if (data.operation !== 'list_directory') {
+                if (!this.consumeOperationResponse(data, data.operation)) return;
+                if (this.isOpen !== false) this.showNotification(errorMsg, 'error');
+                return;
+            }
             this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
-                if (state.loading && state.type === 'ssh' &&
-                    (state.sessionId === data.session_id || state.connectionId === data.session_id) &&
+                if (state.loading && this.getPaneSourceId(state) === data.source_id &&
                     state.pendingDirectoryRequestId === data.request_id &&
                     state.pendingDirectoryPath === data.path) {
                     if (state.loadingTimeout) {
@@ -1333,13 +1550,19 @@ class SFTPFileManager {
     }
 
     handlesSocketError(data) {
-        if (data?.operation !== 'list_directory') return false;
-        return this.getPaneStateEntries().some(({ state }) => {
-            return state.type === 'ssh'
-                && (state.sessionId === data.session_id || state.connectionId === data.session_id)
-                && state.pendingDirectoryRequestId === data.request_id
-                && state.pendingDirectoryPath === data.path;
-        });
+        if (data?.operation === 'list_directory') {
+            return this.getPaneStateEntries().some(({ state }) => {
+                return this.getPaneSourceId(state) === data.source_id
+                    && state.pendingDirectoryRequestId === data.request_id
+                    && state.pendingDirectoryPath === data.path;
+            });
+        }
+        const pending = this.pendingOperationRequests?.get(data?.request_id);
+        return Boolean(
+            pending
+            && pending.operation === data.operation
+            && pending.sourceId === data.source_id
+        );
     }
 
     getPaneStateEntries() {
@@ -1550,7 +1773,7 @@ class SFTPFileManager {
         else this.availableSessions.push(sessionRecord);
 
         this.setActivePane('left');
-        await this.onSourceChange('left', `ssh:${sessionId}`);
+        await this.onSourceChange('left', `sftp-session:${sessionId}`);
         return true;
     }
 
@@ -1571,7 +1794,7 @@ class SFTPFileManager {
             return true;
         }
         if (this.displayMode !== 'embedded') return false;
-        if (this.panes.left.sessionId === sessionId) {
+        if (this.getPaneSourceId('left') === `sftp-session:${sessionId}`) {
             this.panes.left.hostInfo = {
                 host: session.host,
                 username: session.username,
@@ -1595,7 +1818,7 @@ class SFTPFileManager {
 
     suspendEmbedded() {
         if (this.displayMode !== 'embedded') return false;
-        const sessionId = this.panes.left.sessionId;
+        const sessionId = this.embeddedTarget?.sessionId;
         const session = this.availableSessions.find(item => item.id === sessionId)
             || this.embeddedTarget?.session
             || { id: sessionId, ...this.panes.left.hostInfo, connected: true };
@@ -1637,7 +1860,7 @@ class SFTPFileManager {
         }
         if (
             this.displayMode === 'embedded'
-            && this.panes.left.sessionId === sessionId
+            && this.getPaneSourceId('left') === `sftp-session:${sessionId}`
         ) {
             this.embeddedTarget = null;
             this.resetPane('left');
@@ -1648,9 +1871,9 @@ class SFTPFileManager {
         if (this.displayMode !== 'embedded' && this.workspace) {
             ['left', 'right'].forEach(pane => {
                 const matchingTabs = this.workspace.getTabs(pane).filter(tab => {
-                    const state = tab.paneState;
-                    return state.type === 'ssh'
-                        && (state.sessionId === sessionId || state.connectionId === sessionId);
+                    const sourceId = this.getPaneSourceId(tab.paneState);
+                    return sourceId === `sftp-session:${sessionId}`
+                        || sourceId === `sftp-quick:${sessionId}`;
                 });
                 matchingTabs.forEach(tab => this.workspace.closeTab(pane, tab.id));
                 this.syncPaneFromWorkspace(pane);
@@ -1667,8 +1890,9 @@ class SFTPFileManager {
             return;
         }
         this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
-            if (state.type === 'ssh' &&
-                (state.sessionId === sessionId || state.connectionId === sessionId)) {
+            const sourceId = this.getPaneSourceId(state);
+            if (sourceId === `sftp-session:${sessionId}`
+                || sourceId === `sftp-quick:${sessionId}`) {
                 if (visible) this.resetPane(pane);
                 else Object.assign(state, this.createEmptyPaneState());
             }
@@ -1680,6 +1904,7 @@ class SFTPFileManager {
     hasOpenDialogs() {
         return document.querySelector('.fm-conflict-dialog') !== null ||
                this.qcModal.classList.contains('show') ||
+               document.getElementById('smbSourceModal')?.classList.contains('show') ||
                document.getElementById('fmSourceLauncher')?.classList.contains('show');
     }
 
@@ -1692,30 +1917,34 @@ class SFTPFileManager {
             group.innerHTML = '';
 
             this.availableSessions.forEach(session => {
+                const source = this.sourceDescriptorForSession(session);
+                if (!source) return;
                 const option = document.createElement('option');
-                option.value = `ssh:${session.id}`;
+                option.value = source.sourceId;
                 option.textContent = `${session.username}@${session.host}`;
                 group.appendChild(option);
             });
 
             this.quickConnections.forEach(qc => {
+                const source = this.sourceDescriptorForQuickConnection(qc);
+                if (!source) return;
                 const option = document.createElement('option');
-                option.value = `qc:${qc.connectionId}`;
+                option.value = source.sourceId;
                 option.textContent = `${qc.username}@${qc.host} (quick)`;
                 group.appendChild(option);
             });
         });
     }
 
-    async onSourceChange(pane, value) {
+    async onSourceChange(pane, sourceId) {
         const state = this.panes[pane];
 
-        if (value === 'quick-connect') {
+        if (sourceId === 'quick-connect') {
             this.pendingQuickConnectPane = pane;
             this.openQuickConnect();
             const select = document.getElementById(`fm${this.capitalize(pane)}Source`);
             if (select) {
-                select.value = state.type === 'ssh' ? `ssh:${state.sessionId || state.connectionId}` : '';
+                select.value = this.getPaneSourceId(state) || '';
             }
             return;
         }
@@ -1728,53 +1957,58 @@ class SFTPFileManager {
         state.loading = true;
         this.renderPane(pane);
 
-        if (!value) {
-            state.type = null;
-            state.sessionId = null;
-            state.connectionId = null;
+        if (!sourceId) {
             state.loading = false;
             this.renderPane(pane);
             this.updatePaneBadge(pane);
             return;
         }
 
-        if (value.startsWith('ssh:')) {
-            const sessionId = value.substring(4);
-            state.type = 'ssh';
-            state.sessionId = sessionId;
-            state.connectionId = null;
-            state.autoHomeEligible = true;
-
-            const session = this.availableSessions.find(s => s.id === sessionId);
-            if (session) {
-                state.hostInfo = { host: session.host, username: session.username, port: session.port };
-            }
-
-            this.requestHomeDirectory(pane, sessionId);
-            this.requestDirectory(pane, '/');
+        const activeTabSource = this.workspace?.getActiveTab(pane)?.source;
+        const catalogSource = this.buildSourceCatalog()
+            .flatMap(group => group.items)
+            .find(source => source.sourceId === sourceId);
+        const source = activeTabSource?.sourceId === sourceId
+            ? activeTabSource
+            : catalogSource;
+        if (!source || !source.sourceId) {
+            state.loading = false;
+            state.error = this.t('fm.sourceUnavailable', 'File source unavailable');
+            this.renderPane(pane);
             this.updatePaneBadge(pane);
-
-            this.setLoadingTimeout(pane);
-
-        } else if (value.startsWith('qc:')) {
-            const connectionId = value.substring(3);
-            const qc = this.quickConnections.find(c => c.connectionId === connectionId);
-
-            state.type = 'ssh';
-            state.sessionId = null;
-            state.connectionId = connectionId;
-            state.autoHomeEligible = true;
-
-            if (qc) {
-                state.hostInfo = { host: qc.host, username: qc.username, port: qc.port };
-            }
-
-            this.requestHomeDirectory(pane, connectionId);
-            this.requestDirectory(pane, '/');
-            this.updatePaneBadge(pane);
-
-            this.setLoadingTimeout(pane);
+            return;
         }
+
+        state.source = {
+            sourceId: source.sourceId,
+            kind: source.kind,
+            label: source.label,
+            endpoint: source.endpoint,
+            protocol: source.protocol,
+            capabilities: [...(source.capabilities || [])],
+            ephemeral: source.ephemeral === true,
+            security: { ...(source.security || {}) },
+        };
+        state.autoHomeEligible = true;
+        const matchingSession = this.availableSessions.find(
+            session => this.sourceDescriptorForSession(session)?.sourceId === sourceId,
+        );
+        const matchingQuick = this.quickConnections.find(
+            connection => this.sourceDescriptorForQuickConnection(connection)?.sourceId === sourceId,
+        );
+        const connection = matchingSession || matchingQuick;
+        if (connection) {
+            state.hostInfo = {
+                host: connection.host,
+                username: connection.username,
+                port: connection.port,
+            };
+        }
+
+        this.requestHomeDirectory(pane);
+        this.requestDirectory(pane, '/');
+        this.updatePaneBadge(pane);
+        this.setLoadingTimeout(pane);
     }
 
     nextRequestId(pane, operation) {
@@ -1782,11 +2016,53 @@ class SFTPFileManager {
         return `${pane}:${operation}:${this.requestSequence}`;
     }
 
-    requestHomeDirectory(pane, sessionId) {
+    registerOperationRequest(sourceId, operation) {
+        this.pendingOperationRequests ||= new Map();
+        const requestId = this.nextRequestId('workspace', operation);
+        this.pendingOperationRequests.set(requestId, { sourceId, operation });
+        return requestId;
+    }
+
+    consumeOperationResponse(data, operation) {
+        const pending = this.pendingOperationRequests?.get(data?.request_id);
+        if (!pending
+                || pending.sourceId !== data?.source_id
+                || pending.operation !== operation) return null;
+        this.pendingOperationRequests.delete(data.request_id);
+        return pending;
+    }
+
+    matchesS2SResponse(data) {
+        if (!data || typeof data.transfer_id !== 'string'
+                || typeof data.request_id !== 'string'
+                || typeof data.source_id !== 'string'
+                || typeof data.destination_source_id !== 'string') {
+            return false;
+        }
+        const transfer = this.transferQueue?.find(item => (
+            item.type === 's2s' && item.id === data.transfer_id
+        ));
+        if (transfer) {
+            return transfer.requestId === data.request_id
+                && transfer.sourceIds?.[0] === data.source_id
+                && transfer.sourceIds?.[1] === data.destination_source_id;
+        }
+        const pending = this.pendingS2SRequests?.get(data.request_id);
+        return Boolean(
+            pending
+            && pending.sourceId === data.source_id
+            && pending.destinationSourceId === data.destination_source_id,
+        );
+    }
+
+    requestHomeDirectory(pane) {
         const state = this.panes[pane];
         const requestId = this.nextRequestId(pane, 'home');
         state.pendingHomeRequestId = requestId;
-        this.socket.emit('get_home_directory', { session_id: sessionId, request_id: requestId });
+        this.socket.emit('get_home_directory', {
+            source_id: this.getPaneSourceId(state),
+            request_id: requestId,
+        });
         return requestId;
     }
 
@@ -1803,7 +2079,7 @@ class SFTPFileManager {
         state.pendingDirectoryRequestId = requestId;
         state.pendingDirectoryPath = path;
         this.socket.emit('list_directory', {
-            session_id: state.sessionId || state.connectionId,
+            source_id: this.getPaneSourceId(state),
             remote_path: path,
             request_id: requestId,
         });
@@ -1831,7 +2107,7 @@ class SFTPFileManager {
         const state = this.panes[pane];
         const badge = document.getElementById(`fm${this.capitalize(pane)}Badge`);
 
-        if (!state.type) {
+        if (!this.getPaneSourceId(state)) {
             badge.textContent = '';
             badge.className = 'fm-host-badge';
             return;
@@ -1840,7 +2116,10 @@ class SFTPFileManager {
         if (state.hostInfo) {
             badge.textContent = `${state.hostInfo.username}@${state.hostInfo.host}`;
             badge.className = 'fm-host-badge ssh';
+            return;
         }
+        badge.textContent = state.source?.endpoint || state.source?.label || '';
+        badge.className = `fm-host-badge ${state.source?.kind || ''}`.trim();
     }
 
     openQuickConnect(profileId = null) {
@@ -1980,7 +2259,8 @@ class SFTPFileManager {
             connectionId: data.connection_id,
             host: data.host,
             port: data.port,
-            username: data.username
+            username: data.username,
+            file_source: data.file_source,
         };
         this.quickConnections.push(qc);
 
@@ -1989,25 +2269,29 @@ class SFTPFileManager {
         const pane = this.pendingQuickConnectPane;
         this.closeQuickConnect();
         if (pane && this.displayMode === 'modal') {
+            const source = this.sourceDescriptorForQuickConnection(qc);
+            if (!source) {
+                this.showNotification(
+                    this.t('fm.sourceUnavailable', 'File source unavailable'),
+                    'error',
+                );
+                return;
+            }
             this.openWorkspaceSource(pane, {
-                key: `qc:${data.connection_id}`,
-                type: 'ssh',
-                label: `${data.username}@${data.host}`,
-                endpoint: `${data.host}:${data.port || 22}`,
-                protocol: 'SFTP',
+                ...source,
+                key: source.sourceId,
                 status: this.t('fm.workspace.connected', 'Connected'),
-                security: this.t('fm.workspace.hostKeyTrusted', 'SSH host key trusted'),
-                connectionId: data.connection_id,
+                securityLabel: this.sourceSecurityLabel(source),
             });
         } else if (pane) {
-            this.onSourceChange(pane, `qc:${data.connection_id}`);
+            this.onSourceChange(pane, `sftp-quick:${data.connection_id}`);
         }
     }
 
     async navigatePaneTo(pane, path) {
         const state = this.panes[pane];
 
-        if (!state.type) {
+        if (!this.sourceCan(state, 'list')) {
             this.showNotification(this.t('fm.selectSourceFirst', 'Please select a source first'), 'warning');
             return;
         }
@@ -2017,56 +2301,46 @@ class SFTPFileManager {
         state.loading = true;
         this.renderPane(pane);
 
-        if (state.type === 'ssh') {
-            this.requestDirectory(pane, path);
-            this.setLoadingTimeout(pane);
-        }
+        this.requestDirectory(pane, path);
+        this.setLoadingTimeout(pane);
     }
 
     async navigatePaneUp(pane) {
         const state = this.panes[pane];
 
-        if (!state.type) return;
-
-        if (state.type === 'ssh') {
-            if (state.path === '/') return;
-            const parentPath = state.path.split('/').slice(0, -1).join('/') || '/';
-            this.navigatePaneTo(pane, parentPath);
-        }
+        if (!this.sourceCan(state, 'list') || state.path === '/') return;
+        const parentPath = state.path.split('/').slice(0, -1).join('/') || '/';
+        this.navigatePaneTo(pane, parentPath);
     }
 
     navigatePaneHome(pane) {
         const state = this.panes[pane];
 
-        if (!state.type) return;
-
-        if (state.type === 'ssh') {
-            const homePath = state.homePath || '/';
-            this.navigatePaneTo(pane, homePath);
-        }
+        if (!this.sourceCan(state, 'list')) return;
+        const homePath = state.homePath || '/';
+        this.navigatePaneTo(pane, homePath);
     }
 
     async navigateIntoDir(pane, dirName) {
         const state = this.panes[pane];
 
-        if (state.type === 'ssh') {
-            const newPath = state.path === '/' ? '/' + dirName : state.path + '/' + dirName;
-            this.navigatePaneTo(pane, newPath);
-        }
+        if (!this.sourceCan(state, 'list')) return;
+        const newPath = state.path === '/' ? '/' + dirName : state.path + '/' + dirName;
+        this.navigatePaneTo(pane, newPath);
     }
 
     async refreshPane(pane) {
         const state = this.panes[pane];
 
-        if (!state.type) return;
+        const sourceId = this.getPaneSourceId(state);
+        if (!sourceId || !this.sourceCan(state, 'list')) return;
 
-        if (state.type === 'ssh') {
-            const sessionId = state.sessionId || state.connectionId;
-            if (!sessionId) return;
-
-            if (state.sessionId && typeof SessionManager !== 'undefined') {
+            if (sourceId.startsWith('sftp-session:') && typeof SessionManager !== 'undefined') {
                 const sessions = SessionManager.getAllSessions();
-                const sessionExists = sessions.some(s => s.id === state.sessionId && s.connected);
+                const sessionExists = sessions.some(
+                    session => this.sourceDescriptorForSession(session)?.sourceId === sourceId
+                        && session.connected,
+                );
                 if (!sessionExists) {
                     this.resetPane(pane);
                     return;
@@ -2078,12 +2352,23 @@ class SFTPFileManager {
             this.renderPane(pane);
             this.requestDirectory(pane, state.path);
             this.setLoadingTimeout(pane);
-        }
     }
 
     refreshBothPanes() {
         this.refreshPane('left');
         this.refreshPane('right');
+    }
+
+    refreshSource(sourceId) {
+        this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
+            if (this.getPaneSourceId(state) !== sourceId
+                    || !this.sourceCan(state, 'list')) return;
+            this.requestDirectoryForState(pane, state, state.path || '/');
+            if (visible) {
+                this.renderPane(pane);
+                this.setLoadingTimeout(pane);
+            }
+        });
     }
 
     resetPane(pane) {
@@ -2138,7 +2423,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (!state.type) {
+        if (!this.getPaneSourceId(state)) {
             const paneLabel = pane === 'left'
                 ? this.t('fm.workspace.leftPane', 'Left side')
                 : this.t('fm.workspace.rightPane', 'Right side');
@@ -2289,11 +2574,11 @@ class SFTPFileManager {
         if (file.is_dir) {
             this.navigateIntoDir(pane, file.name);
         } else {
-            if (state.type === 'ssh') {
-                const sessionId = state.sessionId || state.connectionId;
+            if (this.sourceCan(state, 'preview')) {
+                const sourceId = this.getPaneSourceId(state);
                 const filePath = this.joinPath(state.path, file.name);
                 if (window.FilePreview) {
-                    window.FilePreview.open(sessionId, filePath, file.name);
+                    window.FilePreview.open(sourceId, filePath, file.name);
                 } else {
                     console.error('[SFTP] FilePreview not available');
                 }
@@ -2432,36 +2717,36 @@ class SFTPFileManager {
         if (!files || files.length === 0) return;
 
         const state = this.panes[this.activePane];
-        if (!state.type) {
+        if (!this.getPaneSourceId(state)) {
             this.showNotification(this.t('fm.selectConnectionFirst', 'Please select a connection first'), 'warning');
             return;
         }
 
-        if (state.type === 'ssh') {
-            const sessionId = state.sessionId || state.connectionId;
-            if (!sessionId) {
+        if (this.sourceCan(state, 'write')) {
+            const sourceId = this.getPaneSourceId(state);
+            if (!sourceId) {
                 this.showNotification(this.t('fm.noActiveConnection', 'No active connection'), 'error');
                 return;
             }
 
             this.showNotification(`${this.t('fm.uploading', 'Uploading')} ${files.length} ${this.t('fm.files', 'file(s)')}...`, 'info');
-            const batch = this.startUploadBatch(files.length, sessionId, state);
+            const batch = this.startUploadBatch(files.length, sourceId, state);
 
             Array.from(files).forEach(file => {
                 const remotePath = this.joinPath(state.path, file.name);
-                const transferId = this.getTransferClient().uploadFile(file, remotePath, sessionId);
+                const transferId = this.getTransferClient().uploadFile(file, remotePath, sourceId);
                 this.queueTransfer({
                     id: transferId,
                     type: 'upload',
                     filename: file.name,
                     targetPath: remotePath,
                     size: file.size,
-                    sessionId: sessionId,
+                    sourceId,
                     batchId: batch.id
                 });
             });
         } else {
-            this.showNotification(this.t('fm.uploadSSHOnly', 'Upload only available for SSH connections'), 'warning');
+            this.showNotification(this.t('fm.uploadUnavailable', 'Upload is unavailable for this source'), 'warning');
         }
 
         e.target.value = '';
@@ -2485,7 +2770,7 @@ class SFTPFileManager {
     createNewFolder() {
         const state = this.panes[this.activePane];
 
-        if (!state.type) {
+        if (!this.sourceCan(state, 'mkdir')) {
             this.showNotification(this.t('fm.selectSourceFirst', 'Please select a source first'), 'warning');
             return;
         }
@@ -2498,11 +2783,13 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'ssh') {
-            const path = state.path === '/' ? '/' + name : state.path + '/' + name;
-            const sessionId = state.sessionId || state.connectionId;
-            this.socket.emit('create_directory', { session_id: sessionId, remote_path: path });
-        }
+        const path = state.path === '/' ? '/' + name : state.path + '/' + name;
+        const sourceId = this.getPaneSourceId(state);
+        this.socket.emit('create_directory', {
+            source_id: sourceId,
+            remote_path: path,
+            request_id: this.registerOperationRequest(sourceId, 'create_directory'),
+        });
     }
 
     deleteSelected() {
@@ -2520,11 +2807,15 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'ssh') {
-            const sessionId = state.sessionId || state.connectionId;
+        if (this.sourceCan(state, 'delete')) {
             items.forEach(item => {
                 const path = state.path === '/' ? '/' + item.name : state.path + '/' + item.name;
-                this.socket.emit('delete_item', { session_id: sessionId, path: path });
+                const sourceId = this.getPaneSourceId(state);
+                this.socket.emit('delete_item', {
+                    source_id: sourceId,
+                    path,
+                    request_id: this.registerOperationRequest(sourceId, 'delete_item'),
+                });
             });
             state.selected.clear();
         }
@@ -2550,11 +2841,16 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type === 'ssh') {
-            const sessionId = state.sessionId || state.connectionId;
+        if (this.sourceCan(state, 'rename')) {
             const oldPath = state.path === '/' ? '/' + file.name : state.path + '/' + file.name;
             const newPath = state.path === '/' ? '/' + newName : state.path + '/' + newName;
-            this.socket.emit('rename_file', { session_id: sessionId, old_path: oldPath, new_path: newPath });
+            const sourceId = this.getPaneSourceId(state);
+            this.socket.emit('rename_file', {
+                source_id: sourceId,
+                old_path: oldPath,
+                new_path: newPath,
+                request_id: this.registerOperationRequest(sourceId, 'rename_file'),
+            });
         }
     }
 
@@ -2567,8 +2863,8 @@ class SFTPFileManager {
         const target = this.panes[targetPane];
 
         if (!this.canTransferBetweenPanes(sourcePane, targetPane)) {
-            const sourceId = source?.sessionId || source?.connectionId;
-            const targetId = target?.sessionId || target?.connectionId;
+            const sourceId = this.getPaneSourceId(source);
+            const targetId = this.getPaneSourceId(target);
             const message = sourceId && sourceId === targetId
                 ? this.t('fm.cannotTransferSameHost', 'Cannot transfer to same host. Use rename instead.')
                 : this.t('fm.bothPanesRequired', 'Both panes must have a source selected');
@@ -2576,7 +2872,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (!source.type || !target.type) {
+        if (!this.getPaneSourceId(source) || !this.getPaneSourceId(target)) {
             this.showNotification(this.t('fm.bothPanesRequired', 'Both panes must have a source selected'), 'warning');
             return;
         }
@@ -2595,7 +2891,6 @@ class SFTPFileManager {
             return;
         }
 
-        const transferType = `${source.type}-to-${target.type}`;
         this.showNotification(`${this.t('fm.startingTransfer', 'Starting transfer of')} ${selectedItems.length} ${this.t('fm.items', 'item(s)')}...`, 'info');
         this.transferExecutionInProgress = true;
 
@@ -2604,14 +2899,13 @@ class SFTPFileManager {
                 const sourcePath = source.path === '/' ? '/' + item.name : source.path + '/' + item.name;
                 const targetPath = target.path === '/' ? '/' + item.name : target.path + '/' + item.name;
 
-                switch (transferType) {
-                    case 'ssh-to-ssh':
-                        await this.transferSSHtoSSH(sourcePath, source, targetPath, target, item);
-                        break;
-
-                    default:
-                        this.showNotification(`${this.t('fm.transferNotSupported', 'Transfer type not supported')}: ${transferType}`, 'error');
-                }
+                await this.transferSSHtoSSH(
+                    sourcePath,
+                    source,
+                    targetPath,
+                    target,
+                    item,
+                );
             }
         } finally {
             this.transferExecutionInProgress = false;
@@ -2619,34 +2913,44 @@ class SFTPFileManager {
     }
 
     async transferSSHtoSSH(sourcePath, sourcePane, targetPath, targetPane, item) {
-        const sourceSessionId = sourcePane.sessionId || sourcePane.connectionId;
-        const targetSessionId = targetPane.sessionId || targetPane.connectionId;
-        const connectionIds = [sourceSessionId, targetSessionId];
+        const sourceId = this.getPaneSourceId(sourcePane);
+        const targetSourceId = this.getPaneSourceId(targetPane);
+        const sourceIds = [sourceId, targetSourceId];
 
-        if (sourceSessionId === targetSessionId) {
+        if (sourceId === targetSourceId) {
             this.showNotification(this.t('fm.cannotTransferSameHost', 'Cannot transfer to same host. Use rename instead.'), 'warning');
             return;
         }
 
-        this.retainTransferConnections(connectionIds);
+        this.retainTransferSources(sourceIds);
+        const requestId = this.nextRequestId('workspace', 'remote-transfer');
+        this.pendingS2SRequests ||= new Map();
+        this.pendingS2SRequests.set(requestId, {
+            sourceId,
+            destinationSourceId: targetSourceId,
+        });
 
         const acknowledgement = await new Promise(resolve => {
             this.socket.emit('transfer_server_to_server', {
-                source_session_id: sourceSessionId,
+                source_id: sourceId,
                 source_path: sourcePath,
-                dest_session_id: targetSessionId,
+                destination_source_id: targetSourceId,
                 dest_path: targetPath,
-                is_dir: item.is_dir
+                is_dir: item.is_dir,
+                request_id: requestId,
             }, response => resolve(response));
         });
-        if (!acknowledgement || !acknowledgement.success) {
-            this.releaseTransferConnections(connectionIds);
+        if (!acknowledgement || !acknowledgement.success
+                || !this.matchesS2SResponse(acknowledgement)) {
+            this.pendingS2SRequests.delete(requestId);
+            this.releaseTransferSources(sourceIds);
             this.flushPendingQuickDisconnects();
             this.showNotification(this.t('fm.transferFailed', 'Transfer failed'), 'error');
             return;
         }
         const transferId = acknowledgement.transfer_id;
         const terminal = this.waitForS2STerminal(transferId);
+        this.pendingS2SRequests.delete(requestId);
 
         this.queueTransfer({
             id: transferId,
@@ -2655,8 +2959,9 @@ class SFTPFileManager {
             sourcePath: sourcePath,
             targetPath: targetPath,
             size: item.size || 0,
-            connectionIds: connectionIds,
-            connectionsRetained: true
+            sourceIds,
+            requestId,
+            sourcesRetained: true,
         });
         const earlyTerminal = this.s2sEarlyTerminals?.get(transferId);
         if (earlyTerminal) {
@@ -2683,9 +2988,9 @@ class SFTPFileManager {
             return;
         }
 
-        if (target.type === 'ssh') {
-            const sessionId = target.sessionId || target.connectionId;
-            if (!sessionId) {
+        if (this.sourceCan(target, 'write')) {
+            const sourceId = this.getPaneSourceId(target);
+            if (!sourceId) {
                 this.showNotification(this.t('fm.noActiveSession', 'No active SSH session'), 'error');
                 return;
             }
@@ -2713,7 +3018,7 @@ class SFTPFileManager {
     }
 
     async uploadDesktopItemsToSSH(entries, targetPane) {
-        const sessionId = targetPane.sessionId || targetPane.connectionId;
+        const sourceId = this.getPaneSourceId(targetPane);
         const basePath = targetPane.path;
 
         const countFiles = async (entry) => {
@@ -2735,27 +3040,27 @@ class SFTPFileManager {
             totalFiles += await countFiles(entry);
         }
 
-        const batch = this.startUploadBatch(totalFiles, sessionId, targetPane);
+        const batch = this.startUploadBatch(totalFiles, sourceId, targetPane);
 
         for (const entry of entries) {
             if (entry.isFile) {
                 entry.file(file => {
-                    this.uploadSingleFileToSSH(file, basePath, sessionId, batch.id);
+                    this.uploadSingleFileToSSH(file, basePath, sourceId, batch.id);
                 });
             } else if (entry.isDirectory) {
-                await this.uploadDirectoryToSSH(entry, basePath, sessionId, batch.id);
+                await this.uploadDirectoryToSSH(entry, basePath, sourceId, batch.id);
             }
         }
     }
 
-    uploadSingleFileToSSH(file, basePath, sessionId, batchId = null) {
+    uploadSingleFileToSSH(file, basePath, sourceId, batchId = null) {
         const remotePath = this.joinPath(basePath, file.name);
-        const transferId = this.getTransferClient().uploadFile(file, remotePath, sessionId);
+        const transferId = this.getTransferClient().uploadFile(file, remotePath, sourceId);
         this.queueTransfer({
             id: transferId,
             type: 'upload', filename: file.name, targetPath: remotePath,
             size: file.size,
-            sessionId: sessionId,
+            sourceId,
             batchId: batchId
         });
     }
@@ -2772,12 +3077,13 @@ class SFTPFileManager {
         }
     }
 
-    async uploadDirectoryToSSH(directoryEntry, basePath, sessionId, batchId = null) {
+    async uploadDirectoryToSSH(directoryEntry, basePath, sourceId, batchId = null) {
         const dirPath = this.joinPath(basePath, directoryEntry.name);
 
         this.socket.emit('create_directory', {
-            session_id: sessionId,
-            remote_path: dirPath
+            source_id: sourceId,
+            remote_path: dirPath,
+            request_id: this.registerOperationRequest(sourceId, 'create_directory'),
         });
 
         const entries = await this.readAllDirectoryEntries(directoryEntry);
@@ -2786,10 +3092,10 @@ class SFTPFileManager {
         for (const entry of entries) {
             if (entry.isFile) {
                 entry.file(file => {
-                    this.uploadSingleFileToSSH(file, dirPath, sessionId, batchId);
+                    this.uploadSingleFileToSSH(file, dirPath, sourceId, batchId);
                 });
             } else if (entry.isDirectory) {
-                promises.push(this.uploadDirectoryToSSH(entry, dirPath, sessionId, batchId));
+                promises.push(this.uploadDirectoryToSSH(entry, dirPath, sourceId, batchId));
             }
         }
 
@@ -2797,18 +3103,18 @@ class SFTPFileManager {
     }
 
     async uploadDesktopFilesToSSH(files, targetPane) {
-        const sessionId = targetPane.sessionId || targetPane.connectionId;
-        const batch = this.startUploadBatch(files.length, sessionId, targetPane);
+        const sourceId = this.getPaneSourceId(targetPane);
+        const batch = this.startUploadBatch(files.length, sourceId, targetPane);
 
         for (const file of files) {
-            this.uploadSingleFileToSSH(file, targetPane.path, sessionId, batch.id);
+            this.uploadSingleFileToSSH(file, targetPane.path, sourceId, batch.id);
         }
     }
 
-    startUploadBatch(total, sessionId, destinationState = null) {
+    startUploadBatch(total, sourceId, destinationState = null) {
         if (!Number.isInteger(total) || total <= 0) {
             return {
-                id: null, total: 0, completed: 0, sessionId: sessionId, destinationState,
+                id: null, total: 0, completed: 0, sourceId, destinationState,
             };
         }
         if (!this.uploadBatches) this.uploadBatches = new Map();
@@ -2819,7 +3125,7 @@ class SFTPFileManager {
             succeeded: 0,
             failed: 0,
             cancelled: 0,
-            sessionId: sessionId,
+            sourceId,
             destinationState,
         };
         this.uploadBatches.set(batch.id, batch);
@@ -2837,7 +3143,7 @@ class SFTPFileManager {
             ? this.uploadBatches.get(transfer.batchId)
             : null;
         if (!batch) {
-            this.scheduleUploadRefresh(transfer.sessionId);
+            this.scheduleUploadRefresh(transfer.sourceId);
             return;
         }
 
@@ -2857,12 +3163,12 @@ class SFTPFileManager {
             this.currentUploadBatch = null;
             window._currentUploadBatchId = null;
         }
-        this.scheduleUploadRefresh(batch.sessionId, batch.destinationState);
+        this.scheduleUploadRefresh(batch.sourceId, batch.destinationState);
     }
 
-    scheduleUploadRefresh(sessionId, destinationState = null) {
-        if (!sessionId) return;
-        const entry = this.findPaneStateEntry(sessionId, destinationState);
+    scheduleUploadRefresh(sourceId, destinationState = null) {
+        if (!sourceId) return;
+        const entry = this.findPaneStateEntry(sourceId, destinationState);
         if (!entry) return;
         if (!this.uploadRefreshes) this.uploadRefreshes = new Map();
         const key = entry.state;
@@ -2870,7 +3176,7 @@ class SFTPFileManager {
 
         const scheduled = Promise.resolve().then(() => {
             this.uploadRefreshes.delete(key);
-            const currentEntry = this.findPaneStateEntry(sessionId, entry.state);
+            const currentEntry = this.findPaneStateEntry(sourceId, entry.state);
             if (!currentEntry) return;
             if (currentEntry.visible) return this.refreshPane(currentEntry.pane);
             currentEntry.state.autoHomeEligible = false;
@@ -2885,19 +3191,19 @@ class SFTPFileManager {
         this.uploadRefreshes.set(key, scheduled);
     }
 
-    findPaneStateEntry(sessionId, destinationState = null) {
+    findPaneStateEntry(sourceId, destinationState = null) {
         return this.getPaneStateEntries().find(({ state }) => (
             (!destinationState || state === destinationState)
-            && (state.sessionId === sessionId || state.connectionId === sessionId)
+            && this.getPaneSourceId(state) === sourceId
         )) || null;
     }
 
-    getPaneForSession(sessionId) {
+    getPaneForSession(sourceId) {
         if (!this.panes) return null;
-        if (this.panes.left.sessionId === sessionId || this.panes.left.connectionId === sessionId) {
+        if (this.getPaneSourceId('left') === sourceId) {
             return 'left';
         }
-        if (this.panes.right.sessionId === sessionId || this.panes.right.connectionId === sessionId) {
+        if (this.getPaneSourceId('right') === sourceId) {
             return 'right';
         }
         return null;
@@ -2923,13 +3229,13 @@ class SFTPFileManager {
             transfer.id = Date.now() + Math.random();
         }
         if (transfer.type === 'upload') {
-            if (!Object.hasOwn(transfer, 'sessionId')) transfer.sessionId = null;
+            if (!Object.hasOwn(transfer, 'sourceId')) transfer.sourceId = null;
             if (!Object.hasOwn(transfer, 'batchId')) transfer.batchId = null;
         }
-        const connectionsRetained = transfer.connectionsRetained === true;
-        delete transfer.connectionsRetained;
-        transfer.connectionIds = this.getTransferConnectionIds(transfer);
-        if (!connectionsRetained) this.retainTransferConnections(transfer.connectionIds);
+        const sourcesRetained = transfer.sourcesRetained === true;
+        delete transfer.sourcesRetained;
+        transfer.sourceIds = this.getTransferSourceIds(transfer);
+        if (!sourcesRetained) this.retainTransferSources(transfer.sourceIds);
         transfer.status = 'pending';
         transfer.progress = 0;
         this.transferQueue.push(transfer);
@@ -2958,7 +3264,7 @@ class SFTPFileManager {
     updateTransferProgress(data) {
         const transfer = this.transferQueue.find(t =>
             t.status === 'active' &&
-            (t.filename === data.filename || t.id === data.transfer_id)
+            t.id === data.transfer_id
         );
 
         if (transfer) {
@@ -3057,7 +3363,7 @@ class SFTPFileManager {
         }
         this.activeTransfers.delete(transfer.id);
         this.recordUploadTerminal(transfer, status);
-        this.releaseTransferConnections(this.getTransferConnectionIds(transfer));
+        this.releaseTransferSources(this.getTransferSourceIds(transfer));
         if (transfer.type === 's2s') {
             this.resolveS2STerminal(transfer.id, status);
         }
@@ -3077,12 +3383,12 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.type !== 'ssh') {
-            this.showNotification(this.t('fm.downloadOnlySSH', 'Download only works for SSH sources'), 'warning');
+        if (!this.sourceCan(state, 'read')) {
+            this.showNotification(this.t('fm.downloadUnavailable', 'Download is unavailable for this source'), 'warning');
             return;
         }
 
-        const sessionId = state.sessionId || state.connectionId;
+        const sourceId = this.getPaneSourceId(state);
         const items = Array.from(state.selected).map(i => state.files[i]).filter(f => f);
 
         this.showNotification(`${this.t('fm.downloading', 'Downloading')} ${items.length} ${this.t('fm.items', 'item(s)')}...`, 'info');
@@ -3090,39 +3396,39 @@ class SFTPFileManager {
         for (const item of items) {
             const filePath = this.joinPath(state.path, item.name);
             if (item.is_dir) {
-                this.downloadFolderToBrowser(sessionId, filePath, item.name);
+                this.downloadFolderToBrowser(sourceId, filePath, item.name);
             } else {
-                this.downloadFileToBrowser(sessionId, filePath, item.name);
+                this.downloadFileToBrowser(sourceId, filePath, item.name);
             }
         }
     }
 
-    downloadFileToBrowser(sessionId, remotePath, filename) {
+    downloadFileToBrowser(sourceId, remotePath, filename) {
         this.showNotification(`${this.t('fm.downloading', 'Downloading')}: ${filename}...`, 'info');
 
-        const transferId = this.getTransferClient().downloadFile(remotePath, sessionId);
+        const transferId = this.getTransferClient().downloadFile(remotePath, sourceId);
         this.queueTransfer({
             id: transferId,
             type: 'download',
             filename: filename,
             sourcePath: remotePath,
             size: 0,
-            sessionId: sessionId
+            sourceId,
         });
 
     }
 
-    downloadFolderToBrowser(sessionId, remotePath, folderName) {
+    downloadFolderToBrowser(sourceId, remotePath, folderName) {
         this.showNotification(`${this.t('fm.downloadingFolder', 'Downloading folder')}: ${folderName}...`, 'info');
 
-        const transferId = this.getTransferClient().downloadFolder(remotePath, sessionId);
+        const transferId = this.getTransferClient().downloadFolder(remotePath, sourceId);
         this.queueTransfer({
             id: transferId,
             type: 'download',
             filename: `${folderName}.zip`,
             sourcePath: remotePath,
             size: 0,
-            sessionId: sessionId
+            sourceId,
         });
     }
 
@@ -3242,12 +3548,16 @@ class SFTPFileManager {
         if (file) {
             if (file.is_dir) {
                 items.push({ action: 'open', icon: 'folder_open', text: this.t('fm.ctx.open', 'Open') });
-                if (state.type === 'ssh' || state.type === 'quick-connect') {
+                if (this.sourceCan(state, 'read') && this.sourceCan(state, 'recursive')) {
                     items.push({ action: 'download', icon: 'download', text: this.t('fm.ctx.download', 'Download') });
                 }
-            } else if (state.type === 'ssh' || state.type === 'quick-connect') {
-                items.push({ action: 'preview', icon: 'visibility', text: this.t('fm.ctx.preview', 'Preview') });
-                items.push({ action: 'download', icon: 'download', text: this.t('fm.ctx.download', 'Download') });
+            } else {
+                if (this.sourceCan(state, 'preview')) {
+                    items.push({ action: 'preview', icon: 'visibility', text: this.t('fm.ctx.preview', 'Preview') });
+                }
+                if (this.sourceCan(state, 'read')) {
+                    items.push({ action: 'download', icon: 'download', text: this.t('fm.ctx.download', 'Download') });
+                }
             }
             const otherPane = pane === 'left' ? 'right' : 'left';
             const canTransfer = this.displayMode === 'modal'
@@ -3256,14 +3566,20 @@ class SFTPFileManager {
             if (canTransfer) {
                 items.push({ action: 'transfer', icon: 'swap_horiz', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
             }
-            items.push({ divider: true });
-            items.push({ action: 'rename', icon: 'edit', text: this.t('fm.rename', 'Rename') });
+            if (this.sourceCan(state, 'rename')) {
+                items.push({ divider: true });
+                items.push({ action: 'rename', icon: 'edit', text: this.t('fm.rename', 'Rename') });
+            }
         }
 
-        items.push({ action: 'newfolder', icon: 'create_new_folder', text: this.t('fm.newFolder', 'New Folder') });
-        items.push({ action: 'refresh', icon: 'refresh', text: this.t('fm.refresh', 'Refresh') });
+        if (this.sourceCan(state, 'mkdir')) {
+            items.push({ action: 'newfolder', icon: 'create_new_folder', text: this.t('fm.newFolder', 'New Folder') });
+        }
+        if (this.sourceCan(state, 'list')) {
+            items.push({ action: 'refresh', icon: 'refresh', text: this.t('fm.refresh', 'Refresh') });
+        }
 
-        if (file) {
+        if (file && this.sourceCan(state, 'delete')) {
             items.push({ divider: true });
             items.push({ action: 'delete', icon: 'delete', text: this.t('fm.delete', 'Delete'), danger: true });
         }
@@ -3290,10 +3606,10 @@ class SFTPFileManager {
                 if (index >= 0) {
                     const file = state.files[index];
                     if (file && !file.is_dir) {
-                        const sessionId = state.sessionId || state.connectionId;
+                        const sourceId = this.getPaneSourceId(state);
                         const filePath = this.joinPath(state.path, file.name);
                         if (window.FilePreview) {
-                            window.FilePreview.open(sessionId, filePath, file.name);
+                            window.FilePreview.open(sourceId, filePath, file.name);
                         }
                     }
                 }

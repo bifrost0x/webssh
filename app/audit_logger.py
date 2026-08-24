@@ -397,6 +397,47 @@ def log_file_download(username, target_host, filename, size, success, ip_address
         f"ip={_sanitize_log_value(ip_address)}{error_msg}"
     )
 
+
+def log_file_source_operation(
+    username,
+    operation,
+    result,
+    source_kind,
+    target_host,
+    share,
+    filename,
+    size,
+    ip_address,
+    *,
+    destination_target_host=None,
+    destination_share=None,
+    destination_filename=None,
+):
+    """Audit one file-source operation using credential-free target fields."""
+    operation = str(operation).lower()
+    result = str(result).upper()
+    if not operation or len(operation) > 64:
+        operation = 'unknown'
+    if not result or len(result) > 64:
+        result = 'FAILED'
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+        size = None
+    log_security_event(
+        'FILE_SOURCE_OPERATION',
+        user=username,
+        operation=operation,
+        result=result,
+        source_kind=source_kind,
+        target_host=target_host,
+        share=share,
+        filename=filename,
+        size=size,
+        ip=ip_address,
+        destination_target_host=destination_target_host,
+        destination_share=destination_share,
+        destination_filename=destination_filename,
+    )
+
 def log_key_upload(username, key_name, success, ip_address):
     status = "SUCCESS" if success else "FAILED"
     audit_logger.info(

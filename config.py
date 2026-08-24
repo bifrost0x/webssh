@@ -298,10 +298,18 @@ _validate_quota_pair(
     False,
 )
 
-# Three permanent cleanup jobs occupy executor slots for the app lifetime.
+# Five permanent cleanup jobs occupy executor slots for the app lifetime.
 # Reader and transfer capacity must stay available beyond those loops, otherwise
 # an idle cleanup job can starve an accepted SSH session or background transfer.
-BACKGROUND_CLEANUP_JOBS = 3 + (1 if LDAP_ENABLED else 0)
+BACKGROUND_CLEANUP_JOBS = (
+    5
+    + (1 if LDAP_ENABLED else 0)
+    + (
+        1
+        if os.environ.get('SMB_ENABLED', 'false').lower() == 'true'
+        else 0
+    )
+)
 BACKGROUND_WORKERS_MAX = 128
 BACKGROUND_WORKERS_MIN = (
     BACKGROUND_CLEANUP_JOBS
@@ -511,6 +519,34 @@ PROXY_JUMP_REMOTE_DNS_ALLOWLIST = tuple(
     if entry.strip()
 )
 
+# Optional browser-to-SMB file sources.  Enabling the feature always requires
+# an exact, comma-separated target allowlist; TCP port and SMB dialect are not
+# configurable so deployments cannot weaken the protocol contract.
+SMB_ENABLED = os.environ.get('SMB_ENABLED', 'false').lower() == 'true'
+SMB_ALLOWED_TARGETS = tuple(
+    entry.strip()
+    for entry in os.environ.get('SMB_ALLOWED_TARGETS', '').split(',')
+    if entry.strip()
+)
+SMB_CONNECT_TIMEOUT_SECONDS = _positive_int_env(
+    'SMB_CONNECT_TIMEOUT_SECONDS', 10
+)
+SMB_IO_IDLE_TIMEOUT_SECONDS = _positive_int_env(
+    'SMB_IO_IDLE_TIMEOUT_SECONDS', 30
+)
+SMB_CONNECT_RATELIMIT = os.environ.get(
+    'SMB_CONNECT_RATELIMIT', '5 per minute'
+)
+SMB_SHARE_MUTATION_RATELIMIT = os.environ.get(
+    'SMB_SHARE_MUTATION_RATELIMIT', '30 per minute'
+)
+SMB_SHARE_LIST_RATELIMIT = os.environ.get(
+    'SMB_SHARE_LIST_RATELIMIT', '60 per minute'
+)
+SMB_MAX_SAVED_SHARES = _bounded_int_env(
+    'SMB_MAX_SAVED_SHARES', 100, 1, 1000
+)
+
 MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', str(MAX_UPLOAD_SIZE)))
 MAX_ZIP_DOWNLOAD_SIZE = int(os.environ.get('MAX_ZIP_DOWNLOAD_SIZE', str(500 * 1024 * 1024)))
 MAX_TRANSFER_MEMBERS = _positive_int_env('MAX_TRANSFER_MEMBERS', 10000)
@@ -539,6 +575,57 @@ TMUX_DEFAULT = os.environ.get('TMUX_DEFAULT', 'false').lower() == 'true'
 
 def validate_security_config():
     """Validate the selected deployment profile and return compatibility warnings."""
+    def _canonical_smb_target(raw_value):
+        value = str(raw_value or '').strip()
+        if (
+            not value
+            or any(char in value for char in ('/', '\\', '@', '*', '?', '#'))
+        ):
+            raise ValueError
+        if value.startswith('[') and value.endswith(']'):
+            value = value[1:-1]
+        value = value.rstrip('.')
+        try:
+            return ipaddress.ip_address(value).compressed
+        except ValueError:
+            if ':' in value or '[' in value or ']' in value:
+                raise ValueError
+        try:
+            canonical = value.encode('idna').decode('ascii').lower()
+        except UnicodeError as exc:
+            raise ValueError from exc
+        if (
+            len(canonical) > 253
+            or any(
+                not label
+                or len(label) > 63
+                or label.startswith('-')
+                or label.endswith('-')
+                or not all(char.isalnum() or char == '-' for char in label)
+                for label in canonical.split('.')
+            )
+        ):
+            raise ValueError
+        return canonical
+
+    if SMB_ENABLED and not SMB_ALLOWED_TARGETS:
+        raise RuntimeError(
+            'SECURITY ERROR: SMB_ALLOWED_TARGETS is required when '
+            'SMB_ENABLED is true'
+        )
+    try:
+        for smb_target in SMB_ALLOWED_TARGETS:
+            _canonical_smb_target(smb_target)
+    except ValueError as exc:
+        raise RuntimeError(
+            'SECURITY ERROR: SMB_ALLOWED_TARGETS must contain exact '
+            'hostnames or IP addresses without ports, paths, or wildcards'
+        ) from exc
+    if SMB_CONNECT_TIMEOUT_SECONDS > 60 or SMB_IO_IDLE_TIMEOUT_SECONDS > 300:
+        raise RuntimeError(
+            'SECURITY ERROR: SMB timeout values exceed their bounded limits'
+        )
+
     if LDAP_ENABLED:
         required_ldap_settings = {
             'LDAP_URL': LDAP_URL,

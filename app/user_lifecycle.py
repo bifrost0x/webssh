@@ -23,6 +23,7 @@ def revoke_user_access(user_id, socketio_instance=None):
         'sockets': 0,
         'ssh_sessions': 0,
         'pool_connections': 0,
+        'smb_sources': 0,
         'errors': [],
     }
 
@@ -93,6 +94,20 @@ def revoke_user_access(user_id, socketio_instance=None):
             "Failed to close revoked temporary connections",
             user_id=user_id,
             error=str(exc),
+        )
+
+    try:
+        from . import smb_pool
+
+        result['smb_sources'] = smb_pool.smb_connection_pool.close_all_user_sources(
+            str(user_id)
+        )
+    except Exception as exc:
+        result['errors'].append(f'smb:{exc}')
+        log_warning(
+            "Failed to close revoked SMB sources",
+            user_id=user_id,
+            error_type=type(exc).__name__,
         )
 
     try:
