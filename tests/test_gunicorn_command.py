@@ -12,7 +12,7 @@ def test_native_runtime_keeps_the_reviewed_gunicorn_and_worker_contract():
     requirements = Path("requirements.in").read_text(encoding="utf-8").splitlines()
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8").splitlines()
 
-    assert "gunicorn>=26,<27" in requirements
+    assert "gunicorn>=26.1.0,<27" in requirements
     assert all("eventlet" not in requirement.casefold() for requirement in requirements)
     assert all("greenlet" not in requirement.casefold() for requirement in requirements)
     assert "simple-websocket>=1.1,<2" in requirements

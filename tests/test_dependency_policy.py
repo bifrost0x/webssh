@@ -90,6 +90,29 @@ def test_runtime_locks_are_hashed_and_exclude_eventlet(path):
     assert "eventlet" not in normalized_names(path)
 
 
+@pytest.mark.parametrize(
+    "path",
+    ["requirements.txt", "requirements-test.txt", "requirements-graph.txt"],
+)
+def test_lock_files_do_not_repeat_hashes_within_a_requirement(path):
+    """A regenerated requirement must list each approved artifact only once."""
+    requirement = None
+    hashes = set()
+
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith((" ", "#", "-")):
+            requirement = line.removesuffix(" \\")
+            hashes = set()
+
+        match = re.search(r"--hash=sha256:([0-9a-f]{64})", line)
+        if not match:
+            continue
+
+        digest = match.group(1)
+        assert digest not in hashes, f"duplicate hash for {requirement} in {path}"
+        hashes.add(digest)
+
+
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
 def test_greenlet_lock_is_only_sqlalchemy_transitive_provenance(path):
     """Greenlet is SQLAlchemy's platform-marked dependency, not Eventlet runtime."""
@@ -251,9 +274,9 @@ def test_graph_dependencies_are_hash_locked_and_generated_with_other_locks():
         encoding='utf-8'
     )
 
-    assert 'graphifyy==0.9.42' in graph_input
+    assert 'graphifyy==0.9.48' in graph_input
     assert '--require-hashes' in graph_lock
-    assert 'graphifyy==0.9.42' in graph_lock
+    assert 'graphifyy==0.9.48' in graph_lock
     assert 'requirements-graph.in' in lock_script
     assert 'requirements-graph.txt' in lock_script
 
