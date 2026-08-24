@@ -7,13 +7,13 @@ python-socketio==5.16.4
 paramiko==5.0.0
 # Compatibility: cryptography 50 fixes CVE-2026-69247 while retaining the reviewed Fernet, PBKDF2, and key-loading APIs.
 cryptography>=50.0,<51
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
 # Compatibility: bcrypt 5 enforces the tested 72-byte password boundary; a new major requires an auth review.
 bcrypt>=5.0,<6
 # Compatibility: the production command and lifecycle gates are qualified specifically for Gunicorn 26 gthread.
-gunicorn>=26,<27
+gunicorn>=26.1.0,<27
 # Compatibility: Flask-SocketIO's native-thread transport is qualified with the simple-websocket 1.x API.
 simple-websocket>=1.1,<2
 Flask-WTF==1.3.0
