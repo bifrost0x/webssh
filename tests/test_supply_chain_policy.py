@@ -44,8 +44,8 @@ PINNED_ACTIONS = {
         'v0.36.0',
     ),
     'astral-sh/setup-uv': (
-        'c771a70e6277c0a99b617c7a806ffedaca235ff9',
-        'v9.0.0',
+        '20cfd1bf945f4377ade1205e4dbc17946fc9a30d',
+        'v10.0.1',
     ),
     'docker/build-push-action': (
         '53b7df96c91f9c12dcc8a07bcb9ccacbed38856a',
@@ -60,7 +60,7 @@ PINNED_ACTIONS = {
         'v6',
     ),
     'docker/setup-buildx-action': (
-        'bb05f3f5519dd87d3ba754cc423b652a5edd6d2c',
+        '37fe631027851001ddb9b187196cc803df7f5f0e',
         'v4',
     ),
     'docker/setup-qemu-action': (
