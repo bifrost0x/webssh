@@ -361,7 +361,8 @@ class FileSourceResolver:
         ] | None = None,
     ):
         self._lock = threading.RLock()
-        if source_lookups is None:
+        use_default_source_lookups = source_lookups is None
+        if use_default_source_lookups:
             source_lookups = {
                 FileSourceKind.SFTP_SESSION: _lookup_sftp_session,
                 FileSourceKind.SFTP_QUICK: _lookup_sftp_quick,
@@ -369,13 +370,15 @@ class FileSourceResolver:
             }
         self._source_lookups = dict(source_lookups)
         self._backends = dict(backends) if backends is not None else {}
-        if hold_acquirers is None and source_lookups is not None:
-            hold_acquirers = {}
-        elif hold_acquirers is None:
-            hold_acquirers = {
-                FileSourceKind.SFTP_QUICK: _acquire_sftp_quick_hold,
-                FileSourceKind.SMB_QUICK: _acquire_smb_quick_hold,
-            }
+        if hold_acquirers is None:
+            hold_acquirers = (
+                {
+                    FileSourceKind.SFTP_QUICK: _acquire_sftp_quick_hold,
+                    FileSourceKind.SMB_QUICK: _acquire_smb_quick_hold,
+                }
+                if use_default_source_lookups
+                else {}
+            )
         self._hold_acquirers = dict(hold_acquirers)
 
     def register_source_kind(

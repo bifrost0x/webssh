@@ -264,6 +264,40 @@ def test_resolver_acquires_owned_transfer_holds_atomically():
     assert released == ['source-b', 'source-a']
 
 
+def test_default_resolver_installs_quick_source_hold_acquirers(monkeypatch):
+    import app.file_sources as file_sources
+
+    acquired = []
+    released = []
+
+    monkeypatch.setattr(
+        file_sources,
+        '_lookup_sftp_quick',
+        lambda handle_id, user_id: (
+            descriptor(f'sftp-quick:{handle_id}')
+            if user_id == '7'
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        file_sources,
+        '_acquire_sftp_quick_hold',
+        lambda handle_id, user_id: (
+            acquired.append((handle_id, user_id))
+            or (lambda: released.append(handle_id))
+        ),
+    )
+
+    resolver = FileSourceResolver()
+    resolver.register_backend(FileSourceKind.SFTP_QUICK, object())
+
+    holds = resolver.acquire_transfer_holds(7, ('sftp-quick:source-a',))
+
+    assert acquired == [('source-a', '7')]
+    assert holds.release() is True
+    assert released == ['source-a']
+
+
 def test_resolver_rolls_back_first_hold_when_second_source_is_unavailable():
     released = []
 

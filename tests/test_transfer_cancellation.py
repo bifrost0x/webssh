@@ -1110,6 +1110,102 @@ def test_server_copy_completion_identifies_transferred_item(app, monkeypatch):
     assert complete['filename'] == 'report.txt'
 
 
+def test_backend_copy_cancellation_audits_progressed_bytes(app, monkeypatch):
+    import app.socket_events as socket_events
+    from app.file_sources import SourceHoldSet
+    from app.remote_transfer import RemoteTransferCancelled
+    from app.transfer_manager import TransferManager
+
+    class Reservation:
+        def release(self):
+            pass
+
+    class ImmediateLifecycle:
+        def start_job(self, _name, target, *, owner_id=None):
+            del owner_id
+            target(threading.Event())
+            return SimpleNamespace()
+
+    class Backend:
+        @staticmethod
+        def normalize_path(path):
+            return path
+
+    backend = Backend()
+    sources = {
+        'smb-quick:source': SimpleNamespace(
+            source_id='smb-quick:source',
+            handle_id='source',
+            backend=backend,
+        ),
+        'smb-quick:destination': SimpleNamespace(
+            source_id='smb-quick:destination',
+            handle_id='destination',
+            backend=backend,
+        ),
+    }
+    audits = []
+
+    monkeypatch.setattr(
+        socket_events.file_service,
+        'resolve',
+        lambda source_id, _user_id, _capability: sources[source_id],
+    )
+    monkeypatch.setattr(
+        socket_events.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+    monkeypatch.setattr(socket_events, 'transfer_manager', TransferManager())
+    monkeypatch.setattr(
+        socket_events,
+        'quota_manager',
+        SimpleNamespace(reserve=lambda *_args, **_kwargs: Reservation()),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'file_source_audit_identity',
+        lambda source: {
+            'source_kind': 'smb',
+            'target_host': f'{source.handle_id}.example.test',
+            'share': 'Docs',
+        },
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'log_file_source_operation',
+        lambda **fields: audits.append(fields),
+    )
+
+    def cancel_after_progress(*_args, progress, **_kwargs):
+        progress({
+            'transferred': 37,
+            'file_size': 100,
+            'path': '/from.bin',
+        })
+        raise RemoteTransferCancelled('cancelled')
+
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', cancel_after_progress)
+    monkeypatch.setattr(socket_events.socketio, 'emit', lambda *_args, **_kwargs: None)
+    monkeypatch.setitem(app.extensions, 'runtime_lifecycle', ImmediateLifecycle())
+
+    user = SimpleNamespace(id=7, username='copy-user')
+    with app.test_request_context('/socket.io'):
+        result = socket_events.handle_transfer_server_to_server.__wrapped__({
+            'source_id': 'smb-quick:source',
+            'request_id': 's2s:test',
+            'source_path': '/from.bin',
+            'destination_source_id': 'smb-quick:destination',
+            'dest_path': '/to.bin',
+            'is_dir': False,
+        }, current_user=user)
+
+    assert result['success'] is True
+    assert [(entry['result'], entry['size']) for entry in audits] == [
+        ('CANCELLED', 37),
+    ]
+
+
 def test_combined_cancellation_wait_observes_runtime_shutdown():
     """Waiting only on user cancellation hides an app lifecycle shutdown."""
     import app.socket_events as socket_events

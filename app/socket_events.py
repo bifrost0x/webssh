@@ -3468,6 +3468,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                     and hasattr(active_destination, 'backend')
                 ):
                     def report_progress(progress):
+                        nonlocal transferred
                         transferred = progress['transferred']
                         total = max(
                             transferred,
