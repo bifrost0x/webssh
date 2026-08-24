@@ -30,6 +30,11 @@
             this.requestIdFactory = options.requestIdFactory || (() => (
                 `smb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
             ));
+            this.connectTimeoutMs = Number.isFinite(options.connectTimeoutMs)
+                ? Math.max(1, options.connectTimeoutMs)
+                : 30000;
+            this.setTimeout = options.setTimeout || globalThis.setTimeout.bind(globalThis);
+            this.clearTimeout = options.clearTimeout || globalThis.clearTimeout.bind(globalThis);
             this.openModal = options.openModal || (modal => {
                 if (globalScope.ModalManager) globalScope.ModalManager.open(modal);
             });
@@ -176,17 +181,12 @@
         }
 
         close({ cancelAttempt = true } = {}) {
-            if (
-                cancelAttempt
-                && this.pending
-                && this.socket?.connected === true
-                && typeof this.socket?.volatile?.emit === 'function'
-            ) {
-                this.socket.volatile.emit('smb_quick_connect_cancel', {
-                    request_id: this.pending.requestId,
-                });
+            if (cancelAttempt) {
+                this.cancelPendingAttempt();
+            } else {
+                this.clearPendingTimeout();
+                this.pending = null;
             }
-            this.pending = null;
             this.pendingShareOperation = null;
             if (this.elements.password) this.elements.password.value = '';
             this.setBusy(false);
@@ -197,6 +197,41 @@
             this.pane = null;
             if (focusTarget?.isConnected !== false) focusTarget?.focus?.();
             this.resetForm();
+        }
+
+        clearPendingTimeout() {
+            if (!this.pending || this.pending.timeoutId === null) return;
+            this.clearTimeout(this.pending.timeoutId);
+            this.pending.timeoutId = null;
+        }
+
+        cancelPendingAttempt() {
+            const pending = this.pending;
+            if (!pending) return false;
+            this.clearPendingTimeout();
+            this.pending = null;
+            if (this.socket?.connected === true && typeof this.socket?.emit === 'function') {
+                try {
+                    this.socket.emit('smb_quick_connect_cancel', {
+                        request_id: pending.requestId,
+                    });
+                } catch {
+                    // Local cleanup must not depend on transport availability.
+                }
+            }
+            return true;
+        }
+
+        handleConnectTimeout(requestId) {
+            if (!this.pending || this.pending.requestId !== requestId) return false;
+            this.cancelPendingAttempt();
+            this.setBusy(false);
+            this.setStatus(
+                this.t('smb.error.connection', 'The SMB connection could not be established.'),
+                'error',
+            );
+            this.elements.password?.focus?.();
+            return true;
         }
 
         resetForm() {
@@ -488,14 +523,23 @@
             }
 
             const requestId = this.requestIdFactory();
-            this.pending = { requestId, pane: this.pane };
+            this.pending = { requestId, pane: this.pane, timeoutId: null };
             this.setBusy(true);
             this.setStatus(this.t('smb.connecting', 'Connecting securely…'), 'pending');
-            this.socket.volatile.emit('smb_quick_connect', {
-                request_id: requestId,
-                ...values,
-            });
             this.elements.password.value = '';
+            this.pending.timeoutId = this.setTimeout(
+                () => this.handleConnectTimeout(requestId),
+                this.connectTimeoutMs,
+            );
+            try {
+                this.socket.volatile.emit('smb_quick_connect', {
+                    request_id: requestId,
+                    ...values,
+                });
+            } catch {
+                this.handleConnectTimeout(requestId);
+                return false;
+            }
             return true;
         }
 
@@ -511,7 +555,7 @@
                 pane: this.pending.pane,
                 descriptor: payload.file_source,
             };
-            this.pending = null;
+            this.clearPendingTimeout();
             this.close({ cancelAttempt: false });
             this.onConnected(result);
             return true;
@@ -523,6 +567,7 @@
                 ? payload.code
                 : 'CONNECTION_FAILED';
             const [key, fallback] = ERROR_PRESENTATIONS[code];
+            this.clearPendingTimeout();
             this.pending = null;
             this.setBusy(false);
             this.setStatus(this.t(key, fallback), 'error');

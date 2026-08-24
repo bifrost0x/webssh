@@ -16,7 +16,11 @@ function field(value = '') {
     };
 }
 
-function harness({ enabled = true, socketConnected = true } = {}) {
+function harness({
+    enabled = true,
+    socketConnected = true,
+    connectTimeoutMs = 30000,
+} = {}) {
     const emitted = [];
     const connected = [];
     const closed = [];
@@ -36,6 +40,8 @@ function harness({ enabled = true, socketConnected = true } = {}) {
         submit: field(),
         status: { textContent: '', dataset: {} },
     };
+    let nextTimerId = 0;
+    const timers = new Map();
     let requestNumber = 0;
     const volatileEmitted = [];
     const socket = {
@@ -54,13 +60,20 @@ function harness({ enabled = true, socketConnected = true } = {}) {
             requestNumber += 1;
             return `smb-ui-${requestNumber}`;
         },
+        connectTimeoutMs,
+        setTimeout(callback, delay) {
+            nextTimerId += 1;
+            timers.set(nextTimerId, { callback, delay });
+            return nextTimerId;
+        },
+        clearTimeout(timerId) { timers.delete(timerId); },
         openModal() {},
         closeModal() { closed.push(true); },
         onConnected(result) { connected.push(result); },
         t(_key, fallback) { return fallback; },
     });
     return {
-        dialog, elements, emitted, volatileEmitted, connected, closed, handlers,
+        dialog, elements, emitted, volatileEmitted, connected, closed, handlers, timers,
     };
 }
 
@@ -123,8 +136,8 @@ test('disabled feature and invalid fields emit no network event', () => {
     assert.equal(invalid.elements.share.focused, true);
 });
 
-test('close cancels the exact attempt, clears password and returns focus', () => {
-    const { dialog, elements, volatileEmitted, closed } = harness();
+test('close reliably cancels the exact attempt, clears password and returns focus', () => {
+    const { dialog, elements, emitted, volatileEmitted, closed, timers } = harness();
     const returnFocus = field();
     dialog.open({ pane: 'left', returnFocus });
     dialog.setValues(validValues());
@@ -132,13 +145,38 @@ test('close cancels the exact attempt, clears password and returns focus', () =>
 
     dialog.close({ cancelAttempt: true });
 
-    assert.deepEqual(volatileEmitted[1], [
+    assert.deepEqual(emitted.at(-1), [
         'smb_quick_connect_cancel',
         { request_id: 'smb-ui-1' },
     ]);
+    assert.equal(volatileEmitted.length, 1);
+    assert.equal(timers.size, 0);
     assert.equal(elements.password.value, '');
     assert.equal(returnFocus.focused, true);
     assert.equal(closed.length, 1);
+});
+
+test('a dropped volatile connect times out locally and cancels the server attempt', () => {
+    const { dialog, elements, emitted, timers } = harness({ connectTimeoutMs: 1250 });
+    dialog.open({ pane: 'left' });
+    dialog.setValues(validValues());
+
+    assert.equal(dialog.submit(), true);
+    assert.equal(timers.size, 1);
+    const timer = [...timers.values()][0];
+    assert.equal(timer.delay, 1250);
+
+    timer.callback();
+
+    assert.equal(dialog.pending, null);
+    assert.equal(timers.size, 0);
+    assert.equal(elements.submit.disabled, false);
+    assert.equal(elements.password.focused, true);
+    assert.equal(elements.status.dataset.state, 'error');
+    assert.deepEqual(emitted.at(-1), [
+        'smb_quick_connect_cancel',
+        { request_id: 'smb-ui-1' },
+    ]);
 });
 
 test('stale responses are ignored and success trusts only server descriptor', () => {
