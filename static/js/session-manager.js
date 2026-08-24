@@ -47,6 +47,7 @@ const SessionManager = {
             auth_type: data.auth_type,
             via_jump: data.via_jump,
             display_name: data.display_name,
+            file_source: data.file_source,
             restored: true,
         };
 
@@ -175,6 +176,7 @@ const SessionManager = {
             tmuxSessionName: sessionData.tmux_session_name || null,
             keyId: sessionData.key_id || null,
             authType: sessionData.auth_type || 'password',
+            fileSource: sessionData.file_source || null,
             restored: sessionData.restored === true,
         };
 

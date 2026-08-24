@@ -276,13 +276,15 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
             'quick_connect_success',
         )
         connection_id = connected['connection_id']
+        source_id = connected['file_source']['source_id']
 
         remote_dir = f'/tmp/paramiko5-socket-{auth}-{uuid.uuid4().hex}'
         remote_file = f'{remote_dir}/payload.bin'
         payload = os.urandom(4096)
 
         socket_client.emit('create_directory', {
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'mkdir-{uuid.uuid4().hex}',
             'remote_path': remote_dir,
         })
         created = wait_for_event(socket_client, 'directory_created')
@@ -290,7 +292,8 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
 
         upload = socket_client.emit('prepare_transfer', {
             'direction': 'upload',
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'upload-{uuid.uuid4().hex}',
             'remote_path': remote_file,
         }, callback=True)
         assert upload['success'] is True
@@ -303,17 +306,19 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
         assert uploaded.get_json() == {'success': True}
 
         socket_client.emit('list_directory', {
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'list-{uuid.uuid4().hex}',
             'remote_path': remote_dir,
         })
         listing = wait_for_event(socket_client, 'directory_listing')
-        assert listing['session_id'] == connection_id
+        assert listing['source_id'] == source_id
         assert listing['path'] == remote_dir
         assert {item['name'] for item in listing['files']} == {'payload.bin'}
 
         download = socket_client.emit('prepare_transfer', {
             'direction': 'download',
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'download-{uuid.uuid4().hex}',
             'remote_path': remote_file,
         }, callback=True)
         assert download['success'] is True
@@ -322,7 +327,8 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
         assert downloaded.data == payload
 
         socket_client.emit('delete_item', {
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'delete-{uuid.uuid4().hex}',
             'path': remote_dir,
         })
         deleted = wait_for_event(socket_client, 'item_deleted')
@@ -366,32 +372,36 @@ def test_threaded_runtime_keeps_terminal_sftp_and_http_work_making_progress(app)
             'username': USERNAME,
             'password': PASSWORD,
         })
-        connection_id = wait_for_event(
+        connected = wait_for_event(
             sftp_client,
             'quick_connect_success',
-        )['connection_id']
+        )
+        source_id = connected['file_source']['source_id']
         sftp_client.emit('create_directory', {
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'mkdir-{uuid.uuid4().hex}',
             'remote_path': remote_dir,
         })
         assert wait_for_event(sftp_client, 'directory_created')['path'] == remote_dir
         sftp_client.emit('list_directory', {
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'list-{uuid.uuid4().hex}',
             'remote_path': remote_dir,
         })
         assert wait_for_event(sftp_client, 'directory_listing')['path'] == remote_dir
         sftp_client.emit('delete_item', {
-            'session_id': connection_id,
+            'source_id': source_id,
+            'request_id': f'delete-{uuid.uuid4().hex}',
             'path': remote_dir,
         })
         assert wait_for_event(sftp_client, 'item_deleted')['path'] == remote_dir
-        sftp_client.emit('quick_disconnect', {
-            'connection_id': connection_id,
+        sftp_client.emit('file_source_disconnect', {
+            'source_id': source_id,
         })
         assert wait_for_event(
             sftp_client,
-            'quick_disconnect_success',
-        )['connection_id'] == connection_id
+            'file_source_disconnect_success',
+        )['source_id'] == source_id
 
     def request_readiness():
         response = app.test_client().get('/ready')
@@ -458,11 +468,12 @@ def test_socket_proxy_jump_terminal_and_sftp_roundtrip(
         assert marker in wait_for_output(socket_client, marker)
 
         socket_client.emit('list_directory', {
-            'session_id': session_id,
+            'source_id': f'sftp-session:{session_id}',
+            'request_id': f'list-{uuid.uuid4().hex}',
             'remote_path': '/tmp',
         })
         listing = wait_for_event(socket_client, 'directory_listing')
-        assert listing['session_id'] == session_id
+        assert listing['source_id'] == f'sftp-session:{session_id}'
 
         socket_client.emit('ssh_disconnect', {'session_id': session_id})
         wait_for_event(socket_client, 'ssh_disconnected')

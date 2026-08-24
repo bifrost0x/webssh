@@ -195,6 +195,24 @@ jobs:
       - name: Run disposable OpenSSH integration tests
         run: python scripts/run_integration_tests.py
 
+  smb-integration:
+    needs: dispatch-integrity
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Run disposable encrypted SMB integration tests
+        run: python scripts/run_smb_integration_tests.py
+
   browser-e2e:
     needs: dispatch-integrity
     runs-on: ubuntu-24.04

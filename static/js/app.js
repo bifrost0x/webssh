@@ -357,13 +357,18 @@
 
     const FilePreview = {
         modal: null,
-        currentSessionId: null,
+        currentSourceId: null,
         currentPath: null,
         currentFilename: null,
+        currentPreviewRequestId: null,
+        currentEditRequestId: null,
+        currentSaveRequestId: null,
+        requestSequence: 0,
         editMode: false,
         dirty: false,
         editEncoding: 'utf-8',
         editNewline: 'lf',
+        nonAtomicOverwriteConsents: new Set(),
         maxEditFileSize: 5 * 1024 * 1024,
         _beforeUnloadHandler: null,
 
@@ -467,10 +472,35 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         },
 
-        open(sessionId, path, filename) {
-            this.currentSessionId = sessionId;
+        normalizeSourceId(sourceId) {
+            if (typeof sourceId !== 'string' || !sourceId.trim()) return null;
+            const normalized = sourceId.trim();
+            return normalized.includes(':')
+                ? normalized
+                : `sftp-session:${normalized}`;
+        },
+
+        nextRequestId(operation) {
+            this.requestSequence += 1;
+            return `file-preview:${operation}:${Date.now().toString(36)}:${this.requestSequence}`;
+        },
+
+        matchesResponse(data, requestId) {
+            return Boolean(
+                data
+                && data.source_id === this.currentSourceId
+                && data.request_id === requestId
+            );
+        },
+
+        open(sourceId, path, filename) {
+            this.currentSourceId = this.normalizeSourceId(sourceId);
+            if (!this.currentSourceId) return;
             this.currentPath = path;
             this.currentFilename = filename;
+            this.currentPreviewRequestId = this.nextRequestId('open');
+            this.currentEditRequestId = null;
+            this.currentSaveRequestId = null;
 
             // Start every open in a clean (non-edit) state.
             this.editMode = false;
@@ -490,9 +520,18 @@
             document.getElementById('previewSize').textContent = '';
 
             if (fileType === 'image') {
-                this.loadImage(sessionId, path, filename);
+                this.loadImage(
+                    this.currentSourceId,
+                    path,
+                    filename,
+                    this.currentPreviewRequestId
+                );
             } else {
-                const options = { session_id: sessionId, path: path };
+                const options = {
+                    source_id: this.currentSourceId,
+                    path: path,
+                    request_id: this.currentPreviewRequestId,
+                };
 
                 if (fileType === 'log') {
                     options.tail_lines = 1000;
@@ -502,7 +541,7 @@
             }
         },
 
-        loadImage(sessionId, path, filename) {
+        loadImage(sourceId, path, filename, requestId) {
             if (this._pendingImageHandler) {
                 socket.off('file_download_ready_binary', this._pendingImageHandler);
                 this._pendingImageHandler = null;
@@ -510,18 +549,19 @@
 
             const requestPath = path;
             socket.emit('download_file_binary', {
-                session_id: sessionId,
+                source_id: sourceId,
                 remote_path: path,
-                for_preview: true
+                for_preview: true,
+                request_id: requestId,
             });
 
             const handleBinaryDownload = (data) => {
                 if (!data.for_preview) return;
+                if (this.currentPath !== requestPath
+                        || !this.matchesResponse(data, requestId)) return;
 
                 socket.off('file_download_ready_binary', handleBinaryDownload);
                 this._pendingImageHandler = null;
-
-                if (this.currentPath !== requestPath) return;
 
                 if (data.error) {
                     this.showError(data.error);
@@ -569,6 +609,7 @@
         },
 
         handlePreviewData(data) {
+            if (!this.matchesResponse(data, this.currentPreviewRequestId)) return;
             this.hideLoading();
 
             document.getElementById('previewSize').textContent = this.formatFileSize(data.size);
@@ -592,8 +633,44 @@
         },
 
         handlePreviewError(data) {
+            if (!this.matchesResponse(data, this.currentPreviewRequestId)) return;
             this.hideLoading();
             this.showError(data.error);
+        },
+
+        handleSocketError(data) {
+            if (data?.operation === 'download_file_binary'
+                    && this.matchesResponse(data, this.currentPreviewRequestId)) {
+                this.handlePreviewError(data);
+                return true;
+            }
+            if (data?.operation === 'save_file'
+                    && this.matchesResponse(data, this.currentSaveRequestId)) {
+                if (
+                    data.code === 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED'
+                    && data.can_retry_non_atomic === true
+                    && !this.nonAtomicOverwriteConsents.has(this.currentSourceId)
+                ) {
+                    const warning = window.i18n
+                        ? i18n.t('editor.smbDirectOverwriteWarning')
+                        : 'This SMB account can write the file but cannot replace it atomically. '
+                            + 'A direct overwrite can leave the file incomplete if the connection '
+                            + 'is interrupted. Allow direct overwrite for this connection?';
+                    if (window.confirm(warning)) {
+                        this.nonAtomicOverwriteConsents.add(this.currentSourceId);
+                        this.saveEdit();
+                    } else {
+                        const status = document.getElementById('editorStatus');
+                        if (status) status.textContent = data.error || 'Save cancelled';
+                    }
+                    return true;
+                }
+                const status = document.getElementById('editorStatus');
+                if (status) status.textContent = data.error || 'Save failed';
+                showNotification(data.error || 'Save failed', 'error');
+                return true;
+            }
+            return false;
         },
 
         showLoading() {
@@ -682,9 +759,9 @@
         },
 
         downloadFile() {
-            if (!this.currentSessionId || !this.currentPath) return;
+            if (!this.currentSourceId || !this.currentPath) return;
             BinaryTransferClient.forSocket(socket).downloadFile(
-                this.currentPath, this.currentSessionId
+                this.currentPath, this.currentSourceId
             );
         },
 
@@ -737,18 +814,21 @@
         },
 
         enterEditMode() {
-            if (!this.currentSessionId || !this.currentPath) return;
+            if (!this.currentSourceId || !this.currentPath) return;
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = '';
+            this.currentEditRequestId = this.nextRequestId('edit');
             socket.emit('open_file_for_edit', {
-                session_id: this.currentSessionId,
-                path: this.currentPath
+                source_id: this.currentSourceId,
+                path: this.currentPath,
+                request_id: this.currentEditRequestId,
             });
         },
 
         handleEditData(data) {
             // Ignore responses for a file the user has since navigated away from.
-            if (!data || data.path !== this.currentPath) return;
+            if (!this.matchesResponse(data, this.currentEditRequestId)
+                    || data.path !== this.currentPath) return;
 
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
@@ -773,30 +853,37 @@
         },
 
         handleEditError(data) {
+            if (!this.matchesResponse(data, this.currentEditRequestId)) return;
             const msg = (data && data.error) ? data.error
                 : (window.i18n ? i18n.t('editor.saveFailed') : 'Failed to open file');
             showNotification(msg, 'error');
         },
 
         saveEdit() {
-            if (!this.editMode || !this.currentSessionId || !this.currentPath) return;
+            if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
 
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = window.i18n ? i18n.t('editor.saving') : 'Saving...';
 
+            this.currentSaveRequestId = this.nextRequestId('save');
             socket.emit('save_file', {
-                session_id: this.currentSessionId,
+                source_id: this.currentSourceId,
                 path: this.currentPath,
                 content: textarea.value,
                 encoding: this.editEncoding,
-                newline: this.editNewline
+                newline: this.editNewline,
+                allow_non_atomic: this.nonAtomicOverwriteConsents.has(
+                    this.currentSourceId
+                ),
+                request_id: this.currentSaveRequestId,
             });
         },
 
         handleFileSaved(data) {
-            if (!data || data.path !== this.currentPath) return;
+            if (!this.matchesResponse(data, this.currentSaveRequestId)
+                    || data.path !== this.currentPath) return;
             this.dirty = false;
             this.detachBeforeUnload();
             showNotification(window.i18n ? i18n.t('editor.saved') : 'File saved', 'success');
@@ -828,10 +915,10 @@
         },
 
         refresh() {
-            if (!this.currentSessionId || !this.currentPath) return;
+            if (!this.currentSourceId || !this.currentPath) return;
 
             const filename = this.currentPath.split('/').pop();
-            this.open(this.currentSessionId, this.currentPath, filename);
+            this.open(this.currentSourceId, this.currentPath, filename);
         },
 
         close() {
@@ -846,9 +933,12 @@
             this.modal?.classList.remove('editing');
 
             window.ModalManager.close(this.modal);
-            this.currentSessionId = null;
+            this.currentSourceId = null;
             this.currentPath = null;
             this.currentFilename = null;
+            this.currentPreviewRequestId = null;
+            this.currentEditRequestId = null;
+            this.currentSaveRequestId = null;
 
             const imgEl = document.getElementById('previewImageElement');
             if (imgEl && imgEl.src.startsWith('blob:')) {
@@ -1072,6 +1162,7 @@
     });
 
     socket.on('error', (data) => {
+        if (FilePreview.handleSocketError(data)) return;
         if (window.sftpFileManager?.handlesSocketError?.(data)) return;
         showNotification(`Error: ${data.error}`, 'error');
     });

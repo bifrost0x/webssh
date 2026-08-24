@@ -111,18 +111,28 @@ class PosixRenameSFTP(FakeSFTP):
 @pytest.fixture
 def transfer_components(monkeypatch):
     from app import transfer_routes
+    from app.file_sources import SourceHoldSet
     from app.transfer_manager import TransferManager
 
     manager = TransferManager(token_ttl=60)
     monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
-    monkeypatch.setattr(transfer_routes, 'session_is_owned', lambda *_args: True)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: SimpleNamespace(handle_id='owned-session'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
     return transfer_routes, manager
 
 
 def _token(manager, user_id, direction, path='/remote/report.bin'):
     return manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction=direction,
         metadata={'remote_path': path, 'filename': 'report.bin'},
     ).token
@@ -167,6 +177,109 @@ def test_download_reads_remote_file_in_bounded_chunks(app, client, monkeypatch,
     assert sftp.download_file.closed is True
 
 
+def test_smb_download_streams_only_through_resolved_backend(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    payload = b'smb-download-' * 100
+    remote = TrackingRemoteFile(payload)
+
+    class Backend:
+        def stat(self, _source, path, *, follow_links=False):
+            assert path == '/report.bin'
+            assert follow_links is False
+            return {'size': len(payload), 'is_dir': False}, None
+
+        @contextmanager
+        def open_reader(self, _source, path):
+            assert path == '/report.bin'
+            with remote:
+                yield remote
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler, 'sftp_session',
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError('SMB download must not enter SFTP')
+        ),
+    )
+    user_id = _login(client, app, 'smb_download_user')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={'remote_path': '/report.bin', 'filename': 'report.bin'},
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/download')
+
+    assert response.status_code == 200
+    assert response.data == payload
+    assert max(remote.read_sizes) <= app.config['CHUNK_SIZE']
+    assert manager._records == {}
+
+
+def test_smb_upload_uses_atomic_backend_writer_and_bounded_request_reads(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    written = bytearray()
+    commits = []
+
+    class Writer:
+        def write(self, chunk):
+            accepted = bytes(chunk[:max(1, len(chunk) // 2)])
+            written.extend(accepted)
+            return len(accepted)
+
+    class Backend:
+        @contextmanager
+        def open_atomic_writer(
+                self, _source, path, *, replace, cancel_event):
+            assert path == '/upload.bin'
+            assert replace is False
+            writer = Writer()
+            yield writer
+            assert cancel_event.is_set() is False
+            commits.append(bytes(written))
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler, 'upload_request_stream',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('SMB upload must not enter SFTP')
+        ),
+    )
+    user_id = _login(client, app, 'smb_upload_user')
+    payload = b'smb-upload-' * 100
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='upload',
+        metadata={'remote_path': '/upload.bin', 'filename': 'upload.bin'},
+    )
+
+    response = client.post(
+        f'/api/transfers/{record.token}/upload',
+        data=payload,
+        content_type='application/octet-stream',
+    )
+
+    assert response.status_code == 200
+    assert commits == [payload]
+    assert manager._records == {}
+
+
 def test_download_propagates_io_failure_after_first_chunk(
         app, client, monkeypatch, transfer_components):
     transfer_routes, manager = transfer_components
@@ -196,7 +309,7 @@ def test_download_propagates_io_failure_after_first_chunk(
     user_id = _login(client, app, 'midstream_download_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={
             'remote_path': '/remote/report.bin',
@@ -281,11 +394,12 @@ def test_prepare_transfer_url_includes_application_root_once(
 
     with app.test_request_context('/'):
         result = socket_events.handle_prepare_transfer.__wrapped__(
-            {
-                'direction': 'download',
-                'session_id': 'owned-session',
-                'remote_path': '/remote/report.bin',
-            },
+                {
+                    'direction': 'download',
+                    'source_id': 'sftp-session:owned-session',
+                    'remote_path': '/remote/report.bin',
+                    'request_id': 'transfer:prepare:1',
+                },
             current_user=user,
         )
 
@@ -299,11 +413,208 @@ def test_prepare_transfer_requires_owner_socket(monkeypatch):
 
     manager = TransferManager()
     monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
-    monkeypatch.setattr(transfer_routes, 'session_is_owned', lambda *_args: True)
 
     assert transfer_routes.prepare_transfer(
-        'user-id', 'upload', 'owned-session', '/remote/report.bin',
+        'user-id', 'upload', 'sftp-session:owned-session',
+        '/remote/report.bin',
     ) is None
+    assert manager._records == {}
+
+
+def test_prepare_transfer_acquires_owned_source_hold_before_issuing_token(
+        monkeypatch):
+    from app import transfer_routes
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    manager = TransferManager()
+    calls = []
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda source_id, user_id, capability: calls.append(
+            ('resolve', source_id, str(user_id), capability.value)
+        ) or SimpleNamespace(handle_id='owned-session'),
+    )
+
+    def acquire(user_id, source_ids):
+        calls.append(('hold', str(user_id), tuple(source_ids)))
+        return SourceHoldSet(tuple(source_ids))
+
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        acquire,
+    )
+
+    record = transfer_routes.prepare_transfer(
+        7,
+        'download',
+        'sftp-session:owned-session',
+        '/remote/report.bin',
+        owner_sid='socket-a',
+    )
+
+    assert record.source_id == 'sftp-session:owned-session'
+    assert record.source_ids == ('sftp-session:owned-session',)
+    assert calls == [
+        ('resolve', 'sftp-session:owned-session', '7', 'read'),
+        ('hold', '7', ('sftp-session:owned-session',)),
+    ]
+    assert manager.fail(record.transfer_id, 7) is True
+
+
+def test_prepare_folder_download_requires_recursive_capability(monkeypatch):
+    from app import transfer_routes
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    manager = TransferManager()
+    calls = []
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda source_id, user_id, capability: calls.append(
+            ('resolve', source_id, str(user_id), capability.value)
+        ) or SimpleNamespace(handle_id='owned-session'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda user_id, source_ids: calls.append(
+            ('hold', str(user_id), tuple(source_ids))
+        ) or SourceHoldSet(tuple(source_ids)),
+    )
+
+    record = transfer_routes.prepare_transfer(
+        7,
+        'download',
+        'sftp-session:owned-session',
+        '/remote/reports',
+        owner_sid='socket-a',
+        archive=True,
+    )
+
+    assert record is not None
+    assert calls == [
+        ('resolve', 'sftp-session:owned-session', '7', 'read'),
+        ('resolve', 'sftp-session:owned-session', '7', 'recursive'),
+        ('hold', '7', ('sftp-session:owned-session',)),
+    ]
+    assert manager.fail(record.transfer_id, 7) is True
+
+
+def test_prepare_transfer_never_acquires_hold_for_unavailable_source(
+        monkeypatch):
+    from app import transfer_routes
+    from app.file_sources import FileSourceUnavailable
+    from app.transfer_manager import TransferManager
+
+    manager = TransferManager()
+    acquired = []
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            FileSourceUnavailable()
+        ),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda *_args: acquired.append(True),
+    )
+
+    record = transfer_routes.prepare_transfer(
+        7,
+        'upload',
+        'sftp-session:foreign',
+        '/remote/report.bin',
+        owner_sid='socket-a',
+    )
+
+    assert record is None
+    assert acquired == []
+    assert manager._records == {}
+
+
+def test_prepare_transfer_uses_resolved_backend_path_policy_before_hold(
+        monkeypatch):
+    from app import transfer_routes
+    from app.transfer_manager import TransferManager
+
+    manager = TransferManager()
+    raw_paths = []
+    acquired = []
+    backend = SimpleNamespace(
+        normalize_path=lambda path: raw_paths.append(path) or None,
+    )
+    source = SimpleNamespace(handle_id='smb-owned', backend=backend)
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: source,
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda *_args: acquired.append(True),
+    )
+
+    record = transfer_routes.prepare_transfer(
+        7,
+        'download',
+        'smb-quick:owned',
+        '/reports/../secrets.txt',
+        owner_sid='socket-a',
+    )
+
+    assert record is None
+    assert raw_paths == ['/reports/../secrets.txt']
+    assert acquired == []
+    assert manager._records == {}
+
+
+def test_revoked_source_at_token_consumption_releases_hold_without_remote_io(
+        app, client, monkeypatch, transfer_components):
+    from app.file_sources import FileSourceUnavailable, SourceHoldSet
+
+    transfer_routes, manager = transfer_components
+    user_id = _login(client, app, 'revoked_transfer_source_user')
+    released = []
+    record = manager.create(
+        user_id,
+        'sftp-quick:revoked',
+        'download',
+        {'remote_path': '/remote/report.bin', 'filename': 'report.bin'},
+        source_holds=SourceHoldSet(
+            ('sftp-quick:revoked',),
+            (lambda: released.append('revoked'),),
+        ),
+    )
+    remote_calls = []
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            FileSourceUnavailable()
+        ),
+    )
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler,
+        'sftp_session',
+        lambda *_args: remote_calls.append(True),
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/download')
+
+    assert response.status_code == 404
+    assert released == ['revoked']
+    assert remote_calls == []
     assert manager._records == {}
 
 
@@ -564,7 +875,7 @@ def test_closing_download_response_cancels_record_and_closes_remote_file(
     user_id = _login(client, app, 'generator_close_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={'remote_path': '/file.bin', 'filename': 'file.bin'},
     )
@@ -592,7 +903,7 @@ def test_unstarted_download_response_releases_record(
     user_id = _login(client, app, 'download_close_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={'remote_path': '/remote/report.bin', 'filename': 'report.bin'},
     )
@@ -620,7 +931,7 @@ def test_download_preflight_limit_marks_request_done(
     user_id = _login(client, app, 'download_limit_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={'remote_path': '/remote/large.bin', 'filename': 'large.bin'},
     )
@@ -791,7 +1102,7 @@ def test_folder_download_streams_remote_zip_and_cleans_it(
     user_id = _login(client, app, 'folder_download_user')
     token = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={
             'remote_path': '/reports',
@@ -807,6 +1118,74 @@ def test_folder_download_streams_remote_zip_and_cleans_it(
     assert max(sftp.remote.read_sizes) <= app.config['CHUNK_SIZE']
     assert len(sftp.removed) == 1
     assert sftp.removed[0].startswith('/tmp/webssh_')
+    assert manager._records == {}
+
+
+def test_smb_folder_download_builds_bounded_local_zip_via_backend(
+        app, client, monkeypatch, transfer_components):
+    import io
+    import zipfile
+    from app.remote_transfer import TransferBudget
+
+    transfer_routes, manager = transfer_components
+    payload = b'encrypted-smb-folder-body'
+
+    class Backend:
+        def stat(self, _source, path, *, follow_links=False):
+            assert follow_links is False
+            if path == '/reports':
+                return {'size': 0, 'is_dir': True, 'is_symlink': False}, None
+            return {
+                'size': len(payload), 'is_dir': False, 'is_symlink': False,
+            }, None
+
+        def iter_tree(
+                self, _source, path, *, budget, cancel_event,
+                follow_links=False):
+            assert path == '/reports'
+            assert isinstance(budget, TransferBudget)
+            assert follow_links is False
+            budget.consume()
+            yield {
+                'name': 'report.txt', 'path': '/reports/report.txt',
+                'size': len(payload), 'is_dir': False, 'is_symlink': False,
+            }
+
+        @contextmanager
+        def open_reader(self, _source, path):
+            assert path == '/reports/report.txt'
+            with TrackingRemoteFile(payload) as remote:
+                yield remote
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes.sftp_handler, 'sftp_session',
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError('SMB folder download must not enter SFTP')
+        ),
+    )
+    user_id = _login(client, app, 'smb_folder_download_user')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={
+            'remote_path': '/reports', 'filename': 'reports', 'archive': True,
+        },
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+        assert archive.namelist() == ['reports/report.txt']
+        assert archive.read('reports/report.txt') == payload
     assert manager._records == {}
 
 
@@ -852,7 +1231,7 @@ def test_folder_download_propagates_limit_after_first_chunk(
     user_id = _login(client, app, 'folder_limit_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={
             'remote_path': '/reports',
@@ -912,7 +1291,7 @@ def test_closed_folder_response_releases_remote_archive_and_record(
     user_id = _login(client, app, 'folder_close_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={
             'remote_path': '/reports', 'filename': 'reports', 'archive': True,
@@ -945,7 +1324,7 @@ def test_folder_preflight_failure_marks_request_done(
     user_id = _login(client, app, 'folder_preflight_user')
     record = manager.create(
         user_id=user_id,
-        session_id='owned-session',
+        source_id='sftp-session:owned-session',
         direction='download',
         metadata={
             'remote_path': '/reports', 'filename': 'reports', 'archive': True,

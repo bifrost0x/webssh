@@ -19,6 +19,7 @@ CURRENT_STORAGE_VERSIONS = {
     'keys': 2,
     'settings': 2,
     'app_settings': 2,
+    'smb_shares': 2,
 }
 
 
@@ -90,6 +91,14 @@ def migrate_app_settings_v0_to_v1(document):
 
 
 def migrate_app_settings_v1_to_v2(document):
+    return _version_document(document, 2)
+
+
+def migrate_smb_shares_v0_to_v1(document):
+    return _version_document(document, 1)
+
+
+def migrate_smb_shares_v1_to_v2(document):
     return _version_document(document, 2)
 
 

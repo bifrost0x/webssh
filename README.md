@@ -62,14 +62,30 @@ a hosted control plane or runtime CDN dependencies.
 
 ### Files and transfers
 
-- Source-first SFTP workspace with independent tabs and one or two file panes.
+- Source-first SFTP and opt-in SMB workspace with independent tabs and one or
+  two file panes.
 - Uploads, downloads, previews, inline text editing, and common file operations.
 - Streamed HTTP bulk transfers with Socket.IO limited to control events and
   bounded editor content.
-- Server-to-server SFTP transfers with progress, cancellation, and a shared
-  transfer queue.
+- Server-to-server transfers across SFTP and SMB sources with progress,
+  cancellation, and a shared transfer queue.
 - Per-user ownership checks, size limits, quotas, and path validation.
-- SMB is visible only as **Coming soon**; no SMB backend is active.
+
+SMB is disabled by default (`SMB_ENABLED=false`). Enabling it also requires an
+exact `SMB_ALLOWED_TARGETS` server allowlist. WebSSH fixes SMB connections to
+TCP 445 and requires SMB 3.1.1, signing, encryption, and secure negotiation;
+the current authentication mode is NTLM. Guest access, DFS, Kerberos, and
+automatic reconnect are not supported. SMB credentials are used for one
+temporary connection and are never stored by WebSSH.
+Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
+use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
+files and directories without following reparse points and validates existing
+path components before remote operations.
+
+This is a two-link trust boundary: browser TLS protects browser-to-WebSSH
+traffic, while SMB encryption protects WebSSH-to-share traffic. The WebSSH process
+necessarily handles the submitted credentials and transferred file contents, so
+run it only on a trusted host and allowlist only trusted shares.
 
 ### Identity and security
 
@@ -113,10 +129,10 @@ The active session stays central while contextual tools remain close at hand.
 Split panes make side-by-side observation and coordinated work visible without
 mixing session ownership or terminal state.
 
-### SFTP workspace
+### File workspace
 
 <p align="center">
-  <img src="assets/sftp-workspace.png" alt="WebSSH dual-pane SFTP workspace with trusted sources and a transfer queue" width="1100">
+  <img src="assets/sftp-workspace.png" alt="WebSSH dual-pane file workspace with trusted sources and a transfer queue" width="1100">
 </p>
 
 Each pane has an explicit source, endpoint, path, trust state, and selection.

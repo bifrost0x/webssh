@@ -39,6 +39,19 @@ async function seedLinuxSession(page, options = {}) {
             { name: 'healthcheck.sh', is_dir: false, size: 912, permissions: '-rwxr-xr-x' },
             { name: 'README.md', is_dir: false, size: 4876, permissions: '-rw-r--r--' },
         ];
+        const linuxFileSource = {
+            source_id: 'sftp-session:workspace-linux',
+            kind: 'sftp',
+            label: 'Production Edge',
+            endpoint: 'edge-01.example:22',
+            protocol: 'SFTP',
+            capabilities: [
+                'list', 'read', 'write', 'mkdir', 'rename', 'delete',
+                'preview', 'edit', 'recursive', 'remote-transfer',
+            ],
+            ephemeral: false,
+            security: { host_key_verified: true },
+        };
         const systemd = {
             state: 'degraded',
             total: 3,
@@ -121,7 +134,8 @@ async function seedLinuxSession(page, options = {}) {
                 }
                 if (['ssh_input', 'ssh_resize'].includes(event)) return window.socket;
             }
-            if (payload?.session_id === 'workspace-linux') {
+            if (payload?.session_id === 'workspace-linux'
+                    || payload?.source_id === linuxFileSource.source_id) {
                 if (event === 'probe_session_sftp') {
                     const sendCapability = () => deliver('session_sftp_capability', {
                         success: true,
@@ -225,7 +239,7 @@ async function seedLinuxSession(page, options = {}) {
                 }
                 if (event === 'get_home_directory') {
                     deliver('home_directory', {
-                        session_id: payload.session_id,
+                        source_id: payload.source_id,
                         path: '/srv/webssh/current',
                         request_id: payload.request_id,
                     });
@@ -233,7 +247,7 @@ async function seedLinuxSession(page, options = {}) {
                 }
                 if (event === 'list_directory') {
                     deliver('directory_listing', {
-                        session_id: payload.session_id,
+                        source_id: payload.source_id,
                         path: payload.remote_path,
                         files: fileRows,
                         request_id: payload.request_id,
@@ -252,6 +266,7 @@ async function seedLinuxSession(page, options = {}) {
                 port: 22,
                 username: 'ops',
                 display_name: 'Production Edge',
+                file_source: linuxFileSource,
             });
             SessionManager.assignSessionToPane('workspace-linux', 0);
         };
@@ -786,7 +801,7 @@ test('closing the full File Manager restores the active embedded Files context',
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
-    await page.locator('[data-source-key="ssh:workspace-linux"]').click();
+    await page.locator('[data-source-key="sftp-session:workspace-linux"]').click();
     await expect(page.locator('#sftpFileManager #fmLeftList .fm-file-item')).toHaveCount(5);
     await page.locator('#fmClose').click();
 

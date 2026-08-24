@@ -165,6 +165,7 @@ test('keeps modal actions fixed while expanded content scrolls inside', async ({
     });
     await page.locator('#newTabBtn').click();
     await page.locator('#connectionAdvancedSettings > summary').click();
+    await expect(page.locator('#connectionModal .modal-content')).toHaveCSS('transform', 'none');
 
     const before = await page.locator('#connectionModal').evaluate(modal => {
         const content = modal.querySelector('.modal-content').getBoundingClientRect();

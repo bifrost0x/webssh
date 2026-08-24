@@ -151,6 +151,7 @@ def test_container_build_inputs_and_ci_services_are_digest_pinned():
     dockerfiles = [
         ROOT / 'Dockerfile',
         ROOT / 'tests' / 'integration' / 'paramiko5' / 'Dockerfile',
+        ROOT / 'tests' / 'integration' / 'smb' / 'Dockerfile',
     ]
     for dockerfile in dockerfiles:
         from_lines = [
@@ -429,12 +430,16 @@ def test_dependabot_tracks_pinned_docker_bases():
         config,
         re.DOTALL,
     )
-    assert len(docker_blocks) == 2
+    assert len(docker_blocks) == 3
     directories = {
         re.search(r'directory:\s*"([^"]+)"', block).group(1)
         for block in docker_blocks
     }
-    assert directories == {'/', '/tests/integration/paramiko5'}
+    assert directories == {
+        '/',
+        '/tests/integration/paramiko5',
+        '/tests/integration/smb',
+    }
 
 
 def test_graph_pages_toolchain_versions_are_explicit():

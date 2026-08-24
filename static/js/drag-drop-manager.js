@@ -214,9 +214,11 @@ class DragDropManager {
     const dirPath = `${currentPath}/${directoryEntry.name}`;
 
     if (window.socket) {
+      const sourceId = session.fileSource?.sourceId || `sftp-session:${session.id}`;
       window.socket.emit('create_directory', {
-        session_id: session.id,
-        remote_path: dirPath
+        source_id: sourceId,
+        remote_path: dirPath,
+        request_id: `terminal-drop:create-directory:${Date.now()}:${this.dragCounter}`
       });
     }
 
@@ -269,7 +271,8 @@ class DragDropManager {
       return;
     }
 
-    this.transferClient.uploadFile(file, remotePath, session.id);
+    const sourceId = session.fileSource?.sourceId || `sftp-session:${session.id}`;
+    this.transferClient.uploadFile(file, remotePath, sourceId);
 
     if (window.showNotification) {
       window.showNotification(`Uploading ${file.name}...`, 'info');

@@ -23,12 +23,23 @@ class BinaryTransferClient {
         return `transfer_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     }
 
-    prepare(direction, sessionId, remotePath, options = {}) {
+    normalizeSourceId(sourceId) {
+        if (typeof sourceId !== 'string' || !sourceId.trim()) return null;
+        const normalized = sourceId.trim();
+        return normalized.includes(':')
+            ? normalized
+            : `sftp-session:${normalized}`;
+    }
+
+    prepare(direction, sourceId, remotePath, options = {}) {
+        const canonicalSourceId = this.normalizeSourceId(sourceId);
+        const requestId = this.generateId();
         return new Promise((resolve, reject) => {
             this.socket.emit('prepare_transfer', {
                 direction,
-                session_id: sessionId,
+                source_id: canonicalSourceId,
                 remote_path: remotePath,
+                request_id: requestId,
                 ...options,
             }, acknowledgement => {
                 if (!acknowledgement || !acknowledgement.success) {
@@ -89,12 +100,12 @@ class BinaryTransferClient {
         }
     }
 
-    uploadFile(file, remotePath, sessionId) {
+    uploadFile(file, remotePath, sourceId) {
         const transfer = this.createTransfer({
             type: 'upload',
             filename: file.name,
             size: file.size,
-            sessionId,
+            sourceId: this.normalizeSourceId(sourceId),
             remotePath,
             controller: new AbortController(),
         });
@@ -111,7 +122,7 @@ class BinaryTransferClient {
             transfer.status = 'preparing';
             transfer.prepareStarted = true;
             const prepared = await this.prepare(
-                'upload', transfer.sessionId, transfer.remotePath,
+                'upload', transfer.sourceId, transfer.remotePath,
             );
             transfer.transferId = prepared.transfer_id;
             if (transfer.terminalized) {
@@ -142,24 +153,24 @@ class BinaryTransferClient {
         }
     }
 
-    downloadFile(remotePath, sessionId) {
+    downloadFile(remotePath, sourceId) {
         const filename = remotePath.split('/').pop() || 'download';
         const transfer = this.createTransfer({
             type: 'download',
             filename,
-            sessionId,
+            sourceId: this.normalizeSourceId(sourceId),
             remotePath,
         });
         this.enqueue(transfer, () => this.download(transfer));
         return transfer.id;
     }
 
-    downloadFolder(remotePath, sessionId) {
+    downloadFolder(remotePath, sourceId) {
         const folder = remotePath.replace(/\/$/, '').split('/').pop() || 'download';
         const transfer = this.createTransfer({
             type: 'download',
             filename: `${folder}.zip`,
-            sessionId,
+            sourceId: this.normalizeSourceId(sourceId),
             remotePath,
             archive: true,
         });
@@ -167,12 +178,12 @@ class BinaryTransferClient {
         return transfer.id;
     }
 
-    downloadFileToWritable(remotePath, sessionId, sinkFactory) {
+    downloadFileToWritable(remotePath, sourceId, sinkFactory) {
         const filename = remotePath.split('/').pop() || 'download';
         const transfer = this.createTransfer({
             type: 'download',
             filename,
-            sessionId,
+            sourceId: this.normalizeSourceId(sourceId),
             remotePath,
             controller: new AbortController(),
             writableDestination: true,
@@ -190,7 +201,7 @@ class BinaryTransferClient {
             transfer.status = 'preparing';
             transfer.prepareStarted = true;
             const prepared = await this.prepare(
-                'download', transfer.sessionId, transfer.remotePath,
+                'download', transfer.sourceId, transfer.remotePath,
                 transfer.archive ? { archive: true } : {},
             );
             transfer.transferId = prepared.transfer_id;
@@ -232,7 +243,7 @@ class BinaryTransferClient {
             transfer.status = 'preparing';
             transfer.prepareStarted = true;
             const prepared = await this.prepare(
-                'download', transfer.sessionId, transfer.remotePath,
+                'download', transfer.sourceId, transfer.remotePath,
             );
             transfer.transferId = prepared.transfer_id;
             if (transfer.terminalized) {

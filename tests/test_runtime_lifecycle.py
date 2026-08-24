@@ -740,6 +740,7 @@ def test_app_owns_and_stops_all_permanent_cleanup_jobs(app):
     assert report.remaining == ()
     assert report.cancelled == (
         ('backup-operation-cleanup', None),
+        ('transfer-token-cleanup', None),
         ('inactive_socket_session_cleanup', None),
         ('idle_ssh_session_cleanup', None),
         ('temporary_connection_cleanup', None),

@@ -595,6 +595,85 @@ def test_pool_close_releases_quota_exactly_once(monkeypatch):
     replacement.release()
 
 
+def test_pool_close_is_deferred_until_the_last_owned_hold_is_released(
+        monkeypatch):
+    pool = make_pool(global_limit=2, per_user_limit=1)
+    clients = install_ssh_client(monkeypatch)
+    connection_id, error = create_connection(pool, password='secret')
+    assert error is None
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _connection_id: None
+    )
+
+    assert pool.acquire_hold(connection_id, '7') is True
+    assert pool.acquire_hold(connection_id, 7) is True
+    assert pool.request_close(connection_id, '7') == 'deferred'
+    assert connection_id in pool.connections
+    assert clients[0].closed is False
+    assert pool.acquire_hold(connection_id, '7') is False
+
+    assert pool.release_hold(connection_id, '7') is True
+    assert connection_id in pool.connections
+    assert pool.release_hold(connection_id, 7) is True
+    assert connection_id not in pool.connections
+    assert clients[0].closed is True
+    assert pool.release_hold(connection_id, '7') is False
+
+
+def test_user_revocation_forces_held_connections_closed(monkeypatch):
+    """Account revocation must not wait for cooperative transfer shutdown."""
+    pool = make_pool(global_limit=2, per_user_limit=1)
+    clients = install_ssh_client(monkeypatch)
+    connection_id, error = create_connection(pool, password='secret')
+    assert error is None
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _connection_id: None
+    )
+
+    assert pool.acquire_hold(connection_id, '7') is True
+
+    assert pool.close_all_user_connections('7') == 1
+    assert connection_id not in pool.connections
+    assert clients[0].sftp.closed is True
+    assert clients[0].closed is True
+    assert pool.release_hold(connection_id, '7') is False
+
+
+def test_pool_hold_and_close_hide_foreign_or_missing_connections(monkeypatch):
+    pool = make_pool()
+    install_ssh_client(monkeypatch)
+    connection_id, error = create_connection(pool, password='secret')
+    assert error is None
+
+    assert pool.acquire_hold(connection_id, '8') is False
+    assert pool.release_hold(connection_id, '8') is False
+    assert pool.request_close(connection_id, '8') == 'unavailable'
+    assert pool.acquire_hold('missing', '7') is False
+    assert connection_id in pool.connections
+
+
+def test_pool_expiry_defers_a_held_connection_and_closes_on_release(
+        monkeypatch):
+    pool = make_pool()
+    clients = install_ssh_client(monkeypatch)
+    connection_id, error = create_connection(pool, password='secret')
+    assert error is None
+    monkeypatch.setattr(
+        'app.sftp_handler.close_sftp_cache', lambda _connection_id: None
+    )
+    pool.connections[connection_id]['last_used'] = 0
+
+    assert pool.acquire_hold(connection_id, '7') is True
+    assert pool.cleanup_expired() == 0
+    assert connection_id in pool.connections
+    assert pool.connections[connection_id]['close_requested'] is True
+    assert clients[0].closed is False
+
+    assert pool.release_hold(connection_id, '7') is True
+    assert connection_id not in pool.connections
+    assert clients[0].closed is True
+
+
 def test_pool_close_succeeds_when_quota_release_fails(monkeypatch):
     pool = make_pool()
     client = FakeSSHClient()

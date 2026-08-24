@@ -3,6 +3,7 @@ import threading
 
 import pytest
 
+from app.file_sources import SourceHoldSet
 from app.quota_manager import QuotaExceeded, QuotaKind, QuotaManager
 from app.transfer_manager import (
     InvalidTransferToken,
@@ -122,13 +123,14 @@ def test_create_reserves_quota_and_returns_bound_pending_record():
 
     record = manager.create(
         user_id=7,
-        session_id='session-1',
+        source_id='sftp-session:session-1',
         direction='download',
         metadata=metadata,
     )
 
     assert record.user_id == '7'
-    assert record.session_id == 'session-1'
+    assert record.source_id == 'sftp-session:session-1'
+    assert record.source_ids == ('sftp-session:session-1',)
     assert record.direction == 'download'
     assert record.state is TransferState.PENDING
     assert record.cancel_event.is_set() is False
@@ -152,7 +154,9 @@ def test_record_identity_binding_is_read_only():
     with pytest.raises(AttributeError):
         record.user_id = '8'
     with pytest.raises(AttributeError):
-        record.session_id = 'session-2'
+        record.source_id = 'sftp-session:session-2'
+    with pytest.raises(AttributeError):
+        record.source_ids = ('sftp-session:session-2',)
     with pytest.raises(AttributeError):
         record.direction = 'upload'
 
@@ -201,7 +205,7 @@ def test_consume_token_is_owner_only_and_one_use():
     assert consumed is record
     assert record.state is TransferState.RUNNING
     assert record.user_id == '7'
-    assert record.session_id == 'session-1'
+    assert record.source_id == 'session-1'
     assert record.token is None
 
     with pytest.raises(InvalidTransferToken) as reused_error:
@@ -229,6 +233,173 @@ def test_expired_token_uses_same_opaque_error():
     assert record.token is None
 
 
+def test_pending_cancel_releases_source_holds_exactly_once():
+    released = []
+    holds = SourceHoldSet(
+        ('sftp-quick:source-a',),
+        (lambda: released.append('source-a'),),
+    )
+    manager = make_manager()
+    record = manager.create(
+        7,
+        'sftp-quick:source-a',
+        'download',
+        {},
+        source_holds=holds,
+    )
+
+    assert manager.cancel(record.transfer_id, 7) is True
+    assert released == ['source-a']
+    assert record.release_source_holds() is False
+
+
+def test_running_cancel_keeps_source_hold_until_request_finalizer():
+    released = []
+    holds = SourceHoldSet(
+        ('sftp-quick:source-a',),
+        (lambda: released.append('source-a'),),
+    )
+    manager = make_manager()
+    record = manager.create(
+        7,
+        'sftp-quick:source-a',
+        'download',
+        {},
+        source_holds=holds,
+    )
+    manager.consume_token(record.token, 7)
+
+    assert manager.cancel(record.transfer_id, 7) is True
+    assert record.cancel_event.is_set() is True
+    assert released == []
+
+    assert record.release_source_holds() is True
+    assert released == ['source-a']
+
+
+def test_token_expiry_releases_source_holds():
+    clock = FakeClock()
+    released = []
+    manager = make_manager(clock=clock, ttl=5)
+    record = manager.create(
+        7,
+        'sftp-quick:source-a',
+        'upload',
+        {},
+        source_holds=SourceHoldSet(
+            ('sftp-quick:source-a',),
+            (lambda: released.append('source-a'),),
+        ),
+    )
+
+    clock.advance(6)
+
+    assert manager.cleanup_expired() == 1
+    assert record.state is TransferState.FAILED
+    assert released == ['source-a']
+
+
+def test_periodic_cleanup_expires_idle_tokens_before_their_hold_can_persist():
+    clock = FakeClock()
+    released = []
+    manager = make_manager(clock=clock, ttl=5)
+    record = manager.create(
+        7,
+        'sftp-quick:source-a',
+        'upload',
+        {},
+        source_holds=SourceHoldSet(
+            ('sftp-quick:source-a',),
+            (lambda: released.append('source-a'),),
+        ),
+    )
+
+    class CleanupCycle:
+        def __init__(self):
+            self.waits = []
+
+        def wait(self, interval):
+            self.waits.append(interval)
+            if len(self.waits) == 1:
+                clock.advance(6)
+                return False
+            return True
+
+    cancel_event = CleanupCycle()
+    manager.cleanup_loop(cancel_event)
+
+    assert cancel_event.waits[0] < 5
+    assert record.state is TransferState.FAILED
+    assert record.cancel_event.is_set() is True
+    assert released == ['source-a']
+
+
+def test_socket_cancel_keeps_running_hold_until_worker_cleanup():
+    released = []
+    manager = make_manager()
+    record = manager.create(
+        7,
+        'sftp-quick:source-a',
+        'download',
+        {},
+        owner_sid='socket-a',
+        source_holds=SourceHoldSet(
+            ('sftp-quick:source-a',),
+            (lambda: released.append('source-a'),),
+        ),
+    )
+    manager.consume_token(record.token, 7)
+
+    assert manager.cancel_all_for_socket(7, 'socket-a') == 1
+    assert record.cancel_event.is_set() is True
+    assert released == []
+
+    record.release_source_holds()
+    assert released == ['source-a']
+
+
+def test_runtime_shutdown_releases_pending_hold_and_waits_for_running_hold():
+    released = []
+    manager = make_manager()
+    binding = manager.bind_runtime()
+    pending = manager.create(
+        7,
+        'sftp-quick:pending',
+        'upload',
+        {},
+        source_holds=SourceHoldSet(
+            ('sftp-quick:pending',),
+            (lambda: released.append('pending'),),
+        ),
+    )
+    running = manager.create(
+        7,
+        'sftp-quick:running',
+        'download',
+        {},
+        source_holds=SourceHoldSet(
+            ('sftp-quick:running',),
+            (lambda: released.append('running'),),
+        ),
+    )
+    manager.consume_token(running.token, 7)
+
+    waiters = manager.close_and_cancel(binding)
+
+    assert pending.cancel_event.is_set() is True
+    assert running.cancel_event.is_set() is True
+    assert released == ['pending']
+    assert waiters == ((
+        'http_download',
+        running.transfer_id,
+        running.request_done_event,
+    ),)
+
+    running.release_source_holds()
+    running.request_done_event.set()
+    assert released == ['pending', 'running']
+
+
 @pytest.mark.parametrize(
     ('field', 'value'),
     [
@@ -237,11 +408,11 @@ def test_expired_token_uses_same_opaque_error():
         ('user_id', ''),
         ('user_id', '   '),
         ('user_id', 1.5),
-        ('session_id', None),
-        ('session_id', True),
-        ('session_id', ''),
-        ('session_id', '   '),
-        ('session_id', 1.5),
+        ('source_id', None),
+        ('source_id', True),
+        ('source_id', ''),
+        ('source_id', '   '),
+        ('source_id', 1.5),
         ('direction', None),
         ('direction', ''),
         ('direction', 'sideways'),
@@ -253,7 +424,7 @@ def test_create_rejects_invalid_input(field, value):
     manager = make_manager()
     arguments = {
         'user_id': 7,
-        'session_id': 'session-1',
+        'source_id': 'session-1',
         'direction': 'upload',
         'metadata': {},
     }

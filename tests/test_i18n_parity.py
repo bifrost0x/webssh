@@ -254,6 +254,7 @@ def test_all_popup_translation_references_exist_in_every_locale():
         Path('static/js/session-diagnostics.js'),
         Path('static/js/ssh-error-ui.js'),
         Path('static/js/session-command-launcher.js'),
+        Path('static/js/smb-source-dialog.js'),
         Path('static/js/sftp-file-manager.js'),
         Path('static/js/webauthn.js'),
         Path('static/js/webssh2-shell.js'),

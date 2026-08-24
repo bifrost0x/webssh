@@ -36,6 +36,8 @@ SECURITY_ENV_NAMES = {
     'OIDC_STEP_UP_ACR_VALUES',
     'REGISTRATION_ENABLED',
     'SESSION_COOKIE_SECURE',
+    'SMB_ALLOWED_TARGETS',
+    'SMB_ENABLED',
     'STEP_UP_MAX_AGE_SECONDS',
     'TOTP_ENABLED',
     'TRUSTED_PROXIES',
@@ -87,6 +89,38 @@ def test_safe_production_profile_loads():
     result = _load_config(_production_env())
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_smb_is_disabled_by_default():
+    result = _load_config(
+        _production_env(),
+        'import config; print(config.SMB_ENABLED, config.SMB_ALLOWED_TARGETS)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == 'False ()'
+
+
+def test_enabled_smb_requires_nonempty_exact_allowlist():
+    result = _load_config(
+        _production_env(SMB_ENABLED='true', SMB_ALLOWED_TARGETS=''),
+    )
+
+    assert result.returncode != 0
+    assert 'SMB_ALLOWED_TARGETS' in result.stderr
+
+
+@pytest.mark.parametrize(
+    'entry',
+    ['*', 'smb://nas/share', 'nas:1445', 'user@nas', 'nas/share'],
+)
+def test_config_rejects_invalid_smb_allowlist_entries(entry):
+    result = _load_config(
+        _production_env(SMB_ENABLED='true', SMB_ALLOWED_TARGETS=entry),
+    )
+
+    assert result.returncode != 0
+    assert 'SMB_ALLOWED_TARGETS' in result.stderr
 
 
 def test_totp_is_disabled_by_default():

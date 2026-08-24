@@ -579,6 +579,40 @@ def test_recursive_delete_rejects_limit_plus_one_without_processing_probe(monkey
     assert sftp.removed_dirs == []
 
 
+def test_recursive_delete_stops_before_remote_mutation_when_cancelled(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    root_iterator = CleanupDirectoryIterator([
+        cleanup_entry('first.txt', stat.S_IFREG),
+    ])
+    sftp = CleanupSFTP(
+        {'/remote': root_iterator},
+        {
+            '/remote': stat.S_IFDIR,
+            '/remote/first.txt': stat.S_IFREG,
+        },
+    )
+    cancelled = threading.Event()
+    cancelled.set()
+    monkeypatch.setattr(
+        sftp_handler,
+        'sftp_session',
+        lambda _session_id: cleanup_sftp_session(sftp),
+    )
+
+    success, error = sftp_handler.delete_directory_recursive(
+        'session',
+        '/remote',
+        cancel_event=cancelled,
+    )
+
+    assert success is False
+    assert error == 'Operation cancelled'
+    assert root_iterator.consumed == 0
+    assert sftp.removed == []
+    assert sftp.removed_dirs == []
+
+
 def test_copy_sftp_stream_uses_bounded_reads_and_checks_cancellation():
     from app.sftp_handler import TransferCancelled, copy_sftp_stream
 
@@ -944,6 +978,23 @@ def test_server_directory_progress_is_cumulative(monkeypatch):
     assert progress[-1]['percent'] == 100
 
 
+def _allow_s2s_sources(monkeypatch, socket_events, calls=None):
+    from app.file_sources import SourceHoldSet
+
+    monkeypatch.setattr(
+        socket_events.file_service,
+        'resolve',
+        lambda source_id, _user_id, capability: (
+            calls.append((source_id, capability.value)) if calls is not None else None
+        ) or SimpleNamespace(handle_id=source_id.split(':', 1)[1]),
+    )
+    monkeypatch.setattr(
+        socket_events.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+
+
 def test_server_copy_socket_lifecycle_releases_job_and_transfer(
         app, monkeypatch):
     import app.socket_events as socket_events
@@ -972,7 +1023,8 @@ def test_server_copy_socket_lifecycle_releases_job_and_transfer(
         observed.update(kwargs)
         return True, None
 
-    monkeypatch.setattr(socket_events, 'verify_session_ownership', lambda *_: True)
+    resolve_calls = []
+    _allow_s2s_sources(monkeypatch, socket_events, resolve_calls)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
     monkeypatch.setattr(socket_events, 'quota_manager', quota)
     monkeypatch.setattr(socket_events.sftp_handler, 'transfer_server_to_server', copy)
@@ -983,9 +1035,10 @@ def test_server_copy_socket_lifecycle_releases_job_and_transfer(
     user = SimpleNamespace(id=7, username='copy-user')
     with app.test_request_context('/socket.io'):
         result = socket_events.handle_transfer_server_to_server.__wrapped__({
-            'source_session_id': 'source',
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
             'source_path': '/from.bin',
-            'dest_session_id': 'destination',
+            'destination_source_id': 'sftp-session:destination',
             'dest_path': '/to.bin',
             'is_dir': False,
         }, current_user=user)
@@ -995,6 +1048,16 @@ def test_server_copy_socket_lifecycle_releases_job_and_transfer(
     assert observed['chunk_size'] > 0
     assert reservation.released is True
     assert manager._records == {}
+    assert resolve_calls == [
+        ('sftp-session:source', 'read'),
+        ('sftp-session:source', 'remote-transfer'),
+        ('sftp-session:destination', 'write'),
+        ('sftp-session:destination', 'remote-transfer'),
+        ('sftp-session:source', 'read'),
+        ('sftp-session:source', 'remote-transfer'),
+        ('sftp-session:destination', 'write'),
+        ('sftp-session:destination', 'remote-transfer'),
+    ]
 
 
 def test_server_copy_completion_identifies_transferred_item(app, monkeypatch):
@@ -1012,7 +1075,7 @@ def test_server_copy_completion_identifies_transferred_item(app, monkeypatch):
             return SimpleNamespace()
 
     emitted = []
-    monkeypatch.setattr(socket_events, 'verify_session_ownership', lambda *_: True)
+    _allow_s2s_sources(monkeypatch, socket_events)
     monkeypatch.setattr(socket_events, 'transfer_manager', TransferManager())
     monkeypatch.setattr(
         socket_events, 'quota_manager',
@@ -1031,9 +1094,10 @@ def test_server_copy_completion_identifies_transferred_item(app, monkeypatch):
     user = SimpleNamespace(id=7, username='copy-user')
     with app.test_request_context('/socket.io'):
         result = socket_events.handle_transfer_server_to_server.__wrapped__({
-            'source_session_id': 'source',
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
             'source_path': '/reports/report.txt',
-            'dest_session_id': 'destination',
+            'destination_source_id': 'sftp-session:destination',
             'dest_path': '/archive/report.txt',
             'is_dir': False,
         }, current_user=user)
@@ -1085,7 +1149,7 @@ def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
     reservation = Reservation()
     observed = {}
     manager = TransferManager()
-    monkeypatch.setattr(socket_events, 'verify_session_ownership', lambda *_: True)
+    _allow_s2s_sources(monkeypatch, socket_events)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
     monkeypatch.setattr(
         socket_events, 'quota_manager',
@@ -1101,9 +1165,10 @@ def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
     user = SimpleNamespace(id=7, username='copy-user')
     with app.test_request_context('/socket.io'):
         result = socket_events.handle_transfer_server_to_server.__wrapped__({
-            'source_session_id': 'source',
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
             'source_path': '/from.bin',
-            'dest_session_id': 'destination',
+            'destination_source_id': 'sftp-session:destination',
             'dest_path': '/to.bin',
         }, current_user=user)
 
@@ -1137,7 +1202,7 @@ def test_server_copy_runs_on_the_app_lifecycle_executor(app, monkeypatch):
         assert release.wait(1)
         return True, None
 
-    monkeypatch.setattr(socket_events, 'verify_session_ownership', lambda *_: True)
+    _allow_s2s_sources(monkeypatch, socket_events)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
     monkeypatch.setattr(
         socket_events, 'quota_manager',
@@ -1148,9 +1213,10 @@ def test_server_copy_runs_on_the_app_lifecycle_executor(app, monkeypatch):
     user = SimpleNamespace(id=7, username='copy-user')
     with app.test_request_context('/socket.io'):
         result = socket_events.handle_transfer_server_to_server.__wrapped__({
-            'source_session_id': 'source',
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
             'source_path': '/from.bin',
-            'dest_session_id': 'destination',
+            'destination_source_id': 'sftp-session:destination',
             'dest_path': '/to.bin',
         }, current_user=user)
 
@@ -1188,7 +1254,7 @@ def test_server_copy_lifecycle_rejection_releases_each_reservation_once(
 
     reservation = Reservation()
     manager = TransferManager()
-    monkeypatch.setattr(socket_events, 'verify_session_ownership', lambda *_: True)
+    _allow_s2s_sources(monkeypatch, socket_events)
     monkeypatch.setattr(socket_events, 'transfer_manager', manager)
     monkeypatch.setattr(
         socket_events, 'quota_manager',
@@ -1204,13 +1270,18 @@ def test_server_copy_lifecycle_rejection_releases_each_reservation_once(
     user = SimpleNamespace(id=7, username='copy-user')
     with app.test_request_context('/socket.io'):
         result = socket_events.handle_transfer_server_to_server.__wrapped__({
-            'source_session_id': 'source',
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
             'source_path': '/from.bin',
-            'dest_session_id': 'destination',
+            'destination_source_id': 'sftp-session:destination',
             'dest_path': '/to.bin',
         }, current_user=user)
 
-    assert result == {'success': False, 'error': 'Transfer unavailable'}
+    assert result['success'] is False
+    assert result['error'] == 'Transfer unavailable'
+    assert result['source_id'] == 'sftp-session:source'
+    assert result['destination_source_id'] == 'sftp-session:destination'
+    assert result['request_id'] == 's2s:test'
     assert reservation.release_calls == 1
     assert manager._records == {}
 
@@ -1263,9 +1334,10 @@ def test_server_copy_rejects_invalid_paths_before_allocating(app, monkeypatch):
 
     with app.test_request_context('/socket.io'):
         result = socket_events.handle_transfer_server_to_server.__wrapped__({
-            'source_session_id': 'source',
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:test',
             'source_path': '../from.bin',
-            'dest_session_id': 'destination',
+            'destination_source_id': 'sftp-session:destination',
             'dest_path': '/to.bin',
         }, current_user=user)
 

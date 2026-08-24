@@ -427,6 +427,8 @@ cryptography==50.0.0 \
     #   joserfc
     #   paramiko
     #   pyopenssl
+    #   pyspnego
+    #   smbprotocol
     #   webauthn
 dnspython==2.8.0 \
     --hash=sha256:01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af \
@@ -734,6 +736,10 @@ pyotp==2.10.0 \
     --hash=sha256:1df2f6a1bcc3bb0716172a5215ddc2f8c7c7fd26a13df9927d52e1746934836c \
     --hash=sha256:d01e9703443616b03c57c700b5cbffd56a1f929c1b0f8f03131bc78c1fca9d3f
     # via -r requirements.in
+pyspnego==0.12.1 \
+    --hash=sha256:7237cb47985ccf5da512106ddb2731e4f9cefec00991f76c054488eb95fb1a2d \
+    --hash=sha256:ff4fb6df38202a012ea2a0f43091ae9680878443f0ea61c9ea0e2e8152a4b810
+    # via smbprotocol
 pytest==9.1.1 \
     --hash=sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313 \
     --hash=sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c
@@ -770,6 +776,10 @@ simple-websocket==1.1.0 \
     # via
     #   -r requirements.in
     #   python-engineio
+smbprotocol==1.17.0 \
+    --hash=sha256:bcc27edfff7d727a7eb30424138766e1ee216ae2ffc1af03dab0448f29c4731c \
+    --hash=sha256:bd1abff5417f5af83ca516a64ab8e5acece3dbdcf58d4e5e23e47f5165a77349
+    # via -r requirements.in
 sqlalchemy==2.0.51 \
     --hash=sha256:0378d055e9e8cd6ce4d8dff683bdd3d7d413533c4ee51d67a2b1e0f9eacc0f23 \
     --hash=sha256:0592bdadf86ddcabfd72d9ab66ea8a5d8d2cc6be1cc51fa7e66c03868ac5eac1 \
@@ -830,6 +840,37 @@ sqlalchemy==2.0.51 \
     --hash=sha256:e5ea1a213be1fcd5e49d9904c3b9939211ded90bc2a64e93f4c01963474285de \
     --hash=sha256:fa268106c8987639a17a18514cfe0cd9bf17420ab887e1e1bf486da8836135b1
     # via flask-sqlalchemy
+sspilib==0.6.0 ; sys_platform == 'win32' \
+    --hash=sha256:03335e14f8563e350506b47a15887a99f08102a80cfb6bd715ad83ab1c2c89ae \
+    --hash=sha256:0482631c67a57d8710ecbba3bbe49a9fb60e153dfcfee6d1f9b8a8ff6e419548 \
+    --hash=sha256:05883cd90cb2c67f18fd2418ab0f959549fbe6a9a4fc8013679411af23226d6e \
+    --hash=sha256:071e4e2a617a39a33e31de2c1f313427533879acabe475fedea31f129f7970bb \
+    --hash=sha256:2758aac58b6ca0aa5b726bdc76cea7d020820ac9831f4082b5b6fceda2cb48d0 \
+    --hash=sha256:3b24b6c19657f7b8b74a92e6cadb3ae5e25602ee348a7142cebb5194a0eed01b \
+    --hash=sha256:5937dbe41c34cbbfabbafb84238a06aa8912210cae8a4b909fa20f965868cc89 \
+    --hash=sha256:68a34e702fd81de3d74ea8caf6bc6a1218af551b75d0573a3b0607124a54e5f2 \
+    --hash=sha256:6ad61668c4eea0fdeefd1f596c4fb7b3f45237b1a5989c12d4412729bded7231 \
+    --hash=sha256:70223bdfefde9656c48dd17bb58fd0fb7e879e5b08ab028267d585206f393886 \
+    --hash=sha256:73343ba40b04de0486ab92f60b729eb0768657f71e4c279555d3273f323c0ce4 \
+    --hash=sha256:737adc3b14c2079480bcd10139fbab0b2ad683a24a6046ef69d9c769f4672c0a \
+    --hash=sha256:76a289f415f9beb6a2f3f0cb37b655863616c303b2a06754e1bb84ad86348aab \
+    --hash=sha256:7ea194eeb68d8848fde7125a7ac67fbd4a9052442b7ce69ce6c0c8115227ec67 \
+    --hash=sha256:83f99ed351d3091434f182579d20a419fa7baf03ec154632b5f7f3fbc6aa0788 \
+    --hash=sha256:8957c47c6d4e145a9e111a4c2a2b357ea15cb69719ff99fc0088fbd612618226 \
+    --hash=sha256:8b4b911f59f03601c23357146814e784c9a7612f34f5b933bdb1c50591b173d0 \
+    --hash=sha256:9073afb8f30dc0e7f3a40b39fef0fc29e4bda6a3d4e77936f3c496cedc4beade \
+    --hash=sha256:97bb2e9d4d916d4d6f566888a81997bb3ab0e05ac41549fa0fbebabac66de0e8 \
+    --hash=sha256:aa97562ca3d27a0ba5c830c56bff0fb6d3c8257bd16589b63869a212de6c92bd \
+    --hash=sha256:b4d4e3402230f14cd93999f3953619163075bcaca3e13dcf2ab5942c269627f4 \
+    --hash=sha256:b65fa6f90e523daa6eb95c0aa707cd6c04705bdfab3e42c00723d23141bc74ad \
+    --hash=sha256:b79f8088f8e2826586e5eb14b68f03f443637df178e95c190765c8065fc57a37 \
+    --hash=sha256:b841fabe630101d9e2be6ba56407a2a539087ee85d6ca1477748c21135c9f636 \
+    --hash=sha256:be2b500e7b745569794e8cfa557510f6c18e5402ad8f1fa1abe7adf53b3f3964 \
+    --hash=sha256:bf125782912e4a9012822619eb41e2c9c0e32cb9148efb649e608804b4b4e313 \
+    --hash=sha256:cbc8cf653e71b32ab7cf11d1630866cf12133fb235422f3f9bccb60ba62290e4 \
+    --hash=sha256:d239d78f9619d4fc76a9d57eb929258de50024c56097e73737d46ad58be0acaa \
+    --hash=sha256:fe8c7c9f749ffd302336a7820889ad9189c237d1f6d24e1232d7e2c653433d5b
+    # via pyspnego
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5

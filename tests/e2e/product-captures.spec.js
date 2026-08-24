@@ -223,13 +223,12 @@ async function seedDemoFileManager(page) {
         window.socket.emit = function captureSafeFileManagerEmit(event, ...args) {
             const payload = args[0] || {};
             const captureIds = [
-                payload.session_id,
-                payload.source_session_id,
-                payload.dest_session_id,
+                payload.source_id,
+                payload.destination_source_id,
                 payload.connection_id,
             ];
             if (guardedEvents.has(event)
-                    && captureIds.some(value => String(value || '').startsWith('capture-'))) {
+                    && captureIds.some(value => String(value || '').includes('capture-'))) {
                 window.__captureFileManagerSocketEvents.push(event);
                 return window.socket;
             }
@@ -238,12 +237,19 @@ async function seedDemoFileManager(page) {
 
         openFileManager();
         const manager = window.sftpFileManager;
+        const sftpCapabilities = [
+            'list', 'read', 'write', 'mkdir', 'rename', 'delete',
+            'preview', 'edit', 'recursive', 'remote-transfer',
+        ];
         const demoPanes = {
             left: {
                 ...manager.createEmptyPaneState(),
-                type: 'ssh',
-                sessionId: 'capture-source',
-                connectionId: null,
+                source: {
+                    sourceId: 'sftp-session:capture-source', kind: 'sftp',
+                    label: 'prod-web-01', endpoint: 'edge-01.example:22', protocol: 'SFTP',
+                    capabilities: [...sftpCapabilities], ephemeral: false,
+                    security: { hostKeyVerified: true },
+                },
                 path: '/srv/webssh/current',
                 files: [
                     { name: 'config', is_dir: true, size: 0, permissions: 'drwxr-x---', modified: 1786598100 },
@@ -262,9 +268,12 @@ async function seedDemoFileManager(page) {
             },
             right: {
                 ...manager.createEmptyPaneState(),
-                type: 'ssh',
-                sessionId: 'capture-destination',
-                connectionId: null,
+                source: {
+                    sourceId: 'sftp-session:capture-destination', kind: 'sftp',
+                    label: 'release archive', endpoint: 'archive.example:22', protocol: 'SFTP',
+                    capabilities: [...sftpCapabilities], ephemeral: false,
+                    security: { hostKeyVerified: true },
+                },
                 path: '/srv/archive/releases',
                 files: [
                     { name: 'daily', is_dir: true, size: 0, permissions: 'drwxr-x---' },
@@ -289,14 +298,15 @@ async function seedDemoFileManager(page) {
         ];
         sources.forEach(([pane, sessionId, label, endpoint]) => {
             manager.workspace.openTab(pane, {
-                key: `ssh:${sessionId}`,
-                type: 'ssh',
+                sourceId: `sftp-session:${sessionId}`,
+                kind: 'sftp',
                 label,
                 endpoint,
                 protocol: 'SFTP',
+                capabilities: [...sftpCapabilities],
+                ephemeral: false,
                 status: 'Connected',
-                security: 'SSH host key trusted',
-                sessionId,
+                security: { hostKeyVerified: true },
             }, demoPanes[pane]);
             manager.syncPaneFromWorkspace(pane);
             manager.updatePathInput(pane, demoPanes[pane].path);
@@ -740,15 +750,18 @@ test('captures six current file preview and editing frames without remote action
     await page.evaluate(content => {
         const preview = window.FilePreview;
         const filePath = '/srv/webssh/current/README.md';
-        preview.currentSessionId = 'capture-source';
+        preview.currentSourceId = 'sftp-session:capture-source';
         preview.currentPath = filePath;
         preview.currentFilename = 'README.md';
+        preview.currentPreviewRequestId = 'capture:preview:1';
         preview.editMode = false;
         preview.dirty = false;
         preview.showLoading();
         window.ModalManager.open(preview.modal);
         document.getElementById('previewFilename').textContent = 'README.md';
         preview.handlePreviewData({
+            source_id: 'sftp-session:capture-source',
+            request_id: 'capture:preview:1',
             path: filePath,
             filename: 'README.md',
             content,
@@ -764,7 +777,10 @@ test('captures six current file preview and editing frames without remote action
     await captureCssFrame(page, frameDirectory, '03-readme-preview.png');
 
     await page.evaluate(content => {
+        window.FilePreview.currentEditRequestId = 'capture:edit:1';
         window.FilePreview.handleEditData({
+            source_id: 'sftp-session:capture-source',
+            request_id: 'capture:edit:1',
             path: '/srv/webssh/current/README.md',
             content,
             encoding: 'utf-8',
@@ -781,8 +797,11 @@ test('captures six current file preview and editing frames without remote action
 
     await page.evaluate(content => {
         const preview = window.FilePreview;
+        preview.currentPreviewRequestId = 'capture:preview:2';
         preview.exitEditMode();
         preview.handlePreviewData({
+            source_id: 'sftp-session:capture-source',
+            request_id: 'capture:preview:2',
             path: '/srv/webssh/current/README.md',
             filename: 'README.md',
             content,

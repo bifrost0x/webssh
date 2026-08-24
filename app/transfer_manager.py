@@ -9,6 +9,7 @@ import time
 from enum import Enum
 from collections.abc import Mapping
 
+from .file_sources import SourceHoldSet
 from .quota_manager import QuotaKind, quota_manager as default_quota_manager
 from .runtime_lifecycle import RuntimeShuttingDown
 
@@ -49,7 +50,9 @@ class TransferRecord:
         '_token',
         '_user_id',
         '_owner_sid',
-        '_session_id',
+        '_source_id',
+        '_source_ids',
+        '_source_holds',
         '_direction',
         '_metadata',
         '_state',
@@ -66,7 +69,9 @@ class TransferRecord:
         token,
         user_id,
         owner_sid,
-        session_id,
+        source_id,
+        source_ids,
+        source_holds,
         direction,
         metadata,
         expires_at,
@@ -76,7 +81,9 @@ class TransferRecord:
         self._token = token
         self._user_id = user_id
         self._owner_sid = owner_sid
-        self._session_id = session_id
+        self._source_id = source_id
+        self._source_ids = source_ids
+        self._source_holds = source_holds
         self._direction = direction
         self._metadata = metadata
         self._state = TransferState.PENDING
@@ -103,8 +110,16 @@ class TransferRecord:
         return self._owner_sid
 
     @property
-    def session_id(self):
-        return self._session_id
+    def source_id(self):
+        return self._source_id
+
+    @property
+    def source_ids(self):
+        return self._source_ids
+
+    def release_source_holds(self):
+        """Release retained source lifetimes exactly once."""
+        return self._source_holds.release()
 
     @property
     def direction(self):
@@ -179,9 +194,41 @@ class TransferManager:
             self._accepting = True
         return binding
 
-    def create(self, user_id, session_id, direction, metadata, owner_sid=None):
+    def create(
+        self,
+        user_id,
+        source_id,
+        direction,
+        metadata,
+        owner_sid=None,
+        *,
+        source_ids=None,
+        source_holds=None,
+    ):
         user_id = _normalize_id(user_id, 'user_id')
-        session_id = _normalize_id(session_id, 'session_id')
+        source_id = _normalize_id(source_id, 'source_id')
+        if source_ids is None:
+            source_ids = (source_id,)
+        elif isinstance(source_ids, (str, bytes)):
+            raise ValueError('source_ids must be a sequence')
+        else:
+            try:
+                source_ids = tuple(
+                    _normalize_id(value, 'source_id')
+                    for value in source_ids
+                )
+            except TypeError as exc:
+                raise ValueError('source_ids must be a sequence') from exc
+        if not 1 <= len(source_ids) <= 2 or source_ids[0] != source_id:
+            raise ValueError('source_ids are invalid')
+        unique_source_ids = tuple(dict.fromkeys(source_ids))
+        if source_holds is None:
+            source_holds = SourceHoldSet(unique_source_ids)
+        elif (
+            not isinstance(source_holds, SourceHoldSet)
+            or source_holds.source_ids != unique_source_ids
+        ):
+            raise ValueError('source_holds do not match source_ids')
         if owner_sid is not None:
             owner_sid = _normalize_id(owner_sid, 'owner_sid')
         if not isinstance(direction, str) or direction not in self.DIRECTIONS:
@@ -194,29 +241,40 @@ class TransferManager:
             raise ValueError('metadata must be copyable') from exc
 
         now = self._clock()
-        with self._lock:
-            if not self._accepting:
-                raise RuntimeShuttingDown('runtime lifecycle is shutting down')
-            self._cleanup_expired_locked(now)
-            transfer_id = self._unique_transfer_id_locked()
-            token = self._unique_token_locked()
-            record = TransferRecord(
-                transfer_id=transfer_id,
-                token=token,
-                user_id=user_id,
-                owner_sid=owner_sid,
-                session_id=session_id,
-                direction=direction,
-                metadata=metadata_copy,
-                expires_at=now + self._token_ttl,
-                quota_reservation=None,
-            )
-            reservation = self._quota_manager.reserve(
-                QuotaKind.TRANSFER, user_id
-            )
-            record._quota_reservation = reservation
-            self._records[transfer_id] = record
-        return record
+        try:
+            with self._lock:
+                if not self._accepting:
+                    raise RuntimeShuttingDown(
+                        'runtime lifecycle is shutting down'
+                    )
+                self._cleanup_expired_locked(now)
+                transfer_id = self._unique_transfer_id_locked()
+                token = self._unique_token_locked()
+                record = TransferRecord(
+                    transfer_id=transfer_id,
+                    token=token,
+                    user_id=user_id,
+                    owner_sid=owner_sid,
+                    source_id=source_id,
+                    source_ids=source_ids,
+                    source_holds=source_holds,
+                    direction=direction,
+                    metadata=metadata_copy,
+                    expires_at=now + self._token_ttl,
+                    quota_reservation=None,
+                )
+                reservation = self._quota_manager.reserve(
+                    QuotaKind.TRANSFER, user_id
+                )
+                record._quota_reservation = reservation
+                self._records[transfer_id] = record
+            return record
+        except Exception:
+            try:
+                source_holds.release()
+            except Exception:
+                pass
+            raise
 
     def consume_token(self, token, user_id):
         token_is_valid = self._valid_token(token)
@@ -355,12 +413,25 @@ class TransferManager:
         with self._lock:
             return self._cleanup_expired_locked(self._clock())
 
+    def cleanup_loop(self, cancel_event):
+        """Release unused token holds without requiring later user activity."""
+        interval = max(1.0, min(30.0, self._token_ttl / 2.0))
+        while not cancel_event.wait(interval):
+            self.cleanup_expired()
+
     def _cancel_records_locked(self, records):
         for record in records:
+            release_source_holds = record._state is TransferState.PENDING
             try:
-                self._release_for_terminal(record)
+                self._release_for_terminal(
+                    record,
+                    release_source_holds=release_source_holds,
+                )
             except Exception:
-                self._release_for_terminal(record)
+                self._release_for_terminal(
+                    record,
+                    release_source_holds=release_source_holds,
+                )
             self._finalize_record_locked(
                 record,
                 TransferState.CANCELLED,
@@ -390,7 +461,13 @@ class TransferManager:
                 or record._state not in allowed_states
             ):
                 return False
-            release_error = self._release_for_terminal(record)
+            release_error = self._release_for_terminal(
+                record,
+                release_source_holds=not (
+                    target_state is TransferState.CANCELLED
+                    and record._state is TransferState.RUNNING
+                ),
+            )
             self._finalize_record_locked(
                 record,
                 target_state,
@@ -435,14 +512,21 @@ class TransferManager:
                 return token
 
     @staticmethod
-    def _release_for_terminal(record):
+    def _release_for_terminal(record, *, release_source_holds=True):
+        release_error = None
         try:
             record._quota_reservation.release()
         except Exception as exc:
             if not record._quota_reservation.released:
                 raise
-            return exc
-        return None
+            release_error = exc
+        if release_source_holds:
+            try:
+                record.release_source_holds()
+            except Exception as exc:
+                if release_error is None:
+                    release_error = exc
+        return release_error
 
     def _finalize_record_locked(
         self,
