@@ -7,12 +7,16 @@
         QUOTA_EXCEEDED: ['smb.error.quota', 'The connection limit has been reached.'],
         TARGET_NOT_ALLOWED: ['smb.error.target', 'This SMB server is not allowed.'],
         AUTHENTICATION_REQUIRED: ['smb.error.authentication', 'Authentication failed. Enter the password again.'],
+        PERMISSION_DENIED: ['smb.error.permission', 'You do not have permission to open this SMB share.'],
+        SHARE_UNAVAILABLE: ['smb.error.shareUnavailable', 'The SMB share could not be found or opened.'],
+        TIMEOUT: ['smb.error.timeout', 'The SMB server did not respond in time.'],
         ENCRYPTION_REQUIRED: ['smb.error.encryption', 'The server does not support the required SMB encryption.'],
         DIALECT_REQUIRED: ['smb.error.dialect', 'The server does not support SMB 3.1.1.'],
         RUNTIME_SHUTTING_DOWN: ['smb.error.shutdown', 'The server is shutting down.'],
         INVALID_REQUEST: ['smb.error.invalid', 'Check the connection details and try again.'],
         CONNECTION_FAILED: ['smb.error.connection', 'The SMB connection could not be established.'],
     };
+    const DIAGNOSTIC_ID_PATTERN = /^SMB-[A-F0-9]{12}$/;
 
     class SMBSourceDialog {
         constructor(options = {}) {
@@ -567,10 +571,21 @@
                 ? payload.code
                 : 'CONNECTION_FAILED';
             const [key, fallback] = ERROR_PRESENTATIONS[code];
+            let message = this.t(key, fallback);
+            if (
+                typeof payload.diagnostic_id === 'string'
+                && DIAGNOSTIC_ID_PATTERN.test(payload.diagnostic_id)
+            ) {
+                const reference = this.t(
+                    'smb.error.reference',
+                    'Reference: {id}',
+                ).replace('{id}', payload.diagnostic_id);
+                message = `${message} ${reference}`;
+            }
             this.clearPendingTimeout();
             this.pending = null;
             this.setBusy(false);
-            this.setStatus(this.t(key, fallback), 'error');
+            this.setStatus(message, 'error');
             if (code === 'AUTHENTICATION_REQUIRED') this.elements.password?.focus?.();
             return true;
         }

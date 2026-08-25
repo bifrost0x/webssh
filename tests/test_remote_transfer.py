@@ -52,14 +52,18 @@ class _Backend:
         return None, 'File or directory not found'
 
     @contextmanager
-    def open_reader(self, _source, path):
+    def open_reader(self, _source, path, *, io_lane='control'):
+        assert io_lane == 'transfer'
         reader = _BoundedReader(self.files[path])
         self.readers.append(reader)
         with reader:
             yield reader
 
     @contextmanager
-    def open_atomic_writer(self, _source, path, *, replace, cancel_event):
+    def open_atomic_writer(
+        self, _source, path, *, replace, cancel_event, io_lane='control'
+    ):
+        assert io_lane == 'transfer'
         writer = _PartialWriter()
         try:
             yield writer
@@ -73,8 +77,12 @@ class _Backend:
         finally:
             writer.close()
 
-    def iter_tree(self, _source, _path, *, budget, cancel_event, follow_links=False):
+    def iter_tree(
+        self, _source, _path, *, budget, cancel_event,
+        follow_links=False, io_lane='control',
+    ):
         assert follow_links is False
+        assert io_lane == 'transfer'
         for entry in self.tree:
             budget.consume()
             if cancel_event.is_set():
@@ -256,6 +264,52 @@ def test_same_source_and_path_is_rejected_as_a_noop_conflict():
         )
 
 
+def test_typed_source_stat_permission_failure_is_not_collapsed():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    class DeniedBackend(_Backend):
+        def stat_or_raise(self, _source, _path, *, follow_links=False):
+            assert follow_links is False
+            raise PermissionError('private backend detail')
+
+    with pytest.raises(PermissionError, match='private backend detail'):
+        copy_remote_entry(
+            _source('smb', DeniedBackend()), '/restricted.bin',
+            _source('smb', _Backend()), '/target.bin',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=10, max_members=1),
+            cancel_event=Event(), progress=None, chunk_size=2,
+        )
+
+
+def test_typed_destination_directory_permission_failure_is_not_collapsed():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    source_backend = _Backend(
+        files={'/folder/a.bin': b'a'},
+        tree=[{
+            'name': 'a.bin', 'path': '/folder/a.bin', 'size': 1,
+            'is_dir': False, 'is_symlink': False,
+        }],
+    )
+
+    class DeniedDestination(_Backend):
+        def check_exists_or_raise(self, _source, _path):
+            return {'exists': False, 'is_dir': False, 'size': 0}
+
+        def mkdir_or_raise(self, _source, _path):
+            raise PermissionError('private backend detail')
+
+    with pytest.raises(PermissionError, match='private backend detail'):
+        copy_remote_entry(
+            _source('smb', source_backend), '/folder',
+            _source('smb', DeniedDestination()), '/copy',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=10, max_members=2),
+            cancel_event=Event(), progress=None, chunk_size=2,
+        )
+
+
 def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
     from app.remote_transfer import TransferBudget, copy_remote_entry
 
@@ -277,7 +331,8 @@ def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
             }, None
 
         @contextmanager
-        def open_reader(self, source, _path):
+        def open_reader(self, source, _path, *, io_lane='control'):
+            assert io_lane == 'transfer'
             with source_locks[source.handle_id]:
                 try:
                     rendezvous.wait(timeout=0.2)
@@ -288,7 +343,9 @@ def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
         @contextmanager
         def open_atomic_writer(
             self, source, _path, *, replace, cancel_event,
+            io_lane='control',
         ):
+            assert io_lane == 'transfer'
             assert replace is True
             with source_locks[source.handle_id]:
                 yield _PartialWriter()

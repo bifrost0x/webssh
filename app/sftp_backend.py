@@ -9,6 +9,7 @@ import stat as stat_module
 import config
 
 from . import sftp_handler
+from .file_backend import FileWriteOutcome
 
 
 class SFTPBackend:
@@ -20,32 +21,47 @@ class SFTPBackend:
     def list_directory(self, source, path):
         return sftp_handler.list_directory(source.handle_id, path)
 
-    def stat(self, source, path, *, follow_links=False):
+    def stat_or_raise(self, source, path, *, follow_links=False):
         if follow_links:
-            return sftp_handler.get_file_stat(source.handle_id, path)
+            result, error = sftp_handler.get_file_stat(source.handle_id, path)
+            if error:
+                raise sftp_handler.SFTPOperationError(error)
+            return result
 
         safe_path = self.normalize_path(path)
         if safe_path is None:
-            return None, 'Invalid path'
+            raise sftp_handler.SFTPOperationError('invalid remote path')
+        with sftp_handler.sftp_session(source.handle_id) as (sftp, _source_type):
+            file_stat = sftp.lstat(safe_path)
+        return {
+            'name': posixpath.basename(safe_path),
+            'path': safe_path,
+            'size': file_stat.st_size,
+            'mode': file_stat.st_mode,
+            'is_dir': stat_module.S_ISDIR(file_stat.st_mode),
+            'is_symlink': stat_module.S_ISLNK(file_stat.st_mode),
+            'modified': file_stat.st_mtime,
+            'permissions': oct(file_stat.st_mode)[-3:],
+        }
+
+    def stat(self, source, path, *, follow_links=False):
         try:
-            with sftp_handler.sftp_session(source.handle_id) as (sftp, _source_type):
-                file_stat = sftp.lstat(safe_path)
-            return {
-                'name': posixpath.basename(safe_path),
-                'path': safe_path,
-                'size': file_stat.st_size,
-                'mode': file_stat.st_mode,
-                'is_dir': stat_module.S_ISDIR(file_stat.st_mode),
-                'is_symlink': stat_module.S_ISLNK(file_stat.st_mode),
-                'modified': file_stat.st_mtime,
-                'permissions': oct(file_stat.st_mode)[-3:],
-            }, None
+            return self.stat_or_raise(
+                source, path, follow_links=follow_links
+            ), None
         except sftp_handler.SFTPOperationError as exc:
             return None, str(exc)
         except FileNotFoundError:
             return None, 'File not found'
         except Exception as exc:
             return None, str(exc)
+
+    def mkdir_or_raise(self, source, path):
+        safe_path = self.normalize_path(path)
+        if safe_path is None:
+            raise sftp_handler.SFTPOperationError('invalid remote path')
+        with sftp_handler.sftp_session(source.handle_id) as (sftp, _source_type):
+            sftp.mkdir(safe_path)
 
     def mkdir(self, source, path):
         return sftp_handler.create_directory(source.handle_id, path)
@@ -89,7 +105,8 @@ class SFTPBackend:
             return False, str(exc)
 
     @contextmanager
-    def open_reader(self, source, path):
+    def open_reader(self, source, path, *, io_lane='control'):
+        del io_lane
         safe_path = self.normalize_path(path)
         if safe_path is None:
             raise sftp_handler.SFTPOperationError('invalid remote path')
@@ -105,7 +122,9 @@ class SFTPBackend:
         *,
         replace,
         cancel_event,
+        io_lane='control',
     ):
+        del io_lane
         safe_path = self.normalize_path(path)
         if safe_path is None:
             raise sftp_handler.SFTPOperationError('invalid remote path')
@@ -149,7 +168,9 @@ class SFTPBackend:
         budget,
         cancel_event,
         follow_links=False,
+        io_lane='control',
     ):
+        del io_lane
         if follow_links:
             raise sftp_handler.SFTPOperationError('following links is unavailable')
         safe_path = self.normalize_path(path)
@@ -201,7 +222,30 @@ class SFTPBackend:
         return sftp_handler.get_home_directory(source.handle_id)
 
     def check_exists(self, source, path):
-        return sftp_handler.check_exists(source.handle_id, path)
+        try:
+            return self.check_exists_or_raise(source, path), None
+        except Exception as exc:
+            return None, str(exc)
+
+    def check_exists_or_raise(self, source, path):
+        safe_path = self.normalize_path(path)
+        if safe_path is None:
+            raise sftp_handler.SFTPOperationError('invalid remote path')
+        try:
+            file_stat = self.stat_or_raise(
+                source, safe_path, follow_links=False
+            )
+        except FileNotFoundError:
+            return {'exists': False, 'is_dir': False, 'size': 0}
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                return {'exists': False, 'is_dir': False, 'size': 0}
+            raise
+        return {
+            'exists': True,
+            'is_dir': file_stat['is_dir'],
+            'size': file_stat['size'],
+        }
 
     def get_file_stat(self, source, path):
         return sftp_handler.get_file_stat(source.handle_id, path)
@@ -248,11 +292,20 @@ class SFTPBackend:
         encoding,
         newline,
         allow_non_atomic=False,
+        expected_revision=None,
+        replace_strategy='atomic',
     ):
+        del allow_non_atomic
+        if replace_strategy != 'atomic':
+            return FileWriteOutcome(
+                success=False,
+                error='Invalid replacement strategy',
+            )
         return sftp_handler.write_file_text(
             session_id=source.handle_id,
             path=path,
             content_str=content,
             encoding=encoding,
             newline=newline,
+            expected_revision=expected_revision,
         )

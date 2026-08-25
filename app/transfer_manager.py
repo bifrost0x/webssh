@@ -6,6 +6,7 @@ import math
 import secrets
 import threading
 import time
+from dataclasses import dataclass
 from enum import Enum
 from collections.abc import Mapping
 
@@ -20,6 +21,22 @@ class TransferState(Enum):
     CANCELLED = 'cancelled'
     FAILED = 'failed'
     COMPLETED = 'completed'
+
+
+@dataclass(frozen=True, slots=True)
+class TransferCancelResult:
+    """Authoritative cancellation state without exposing record existence."""
+
+    accepted: bool
+    state: str
+
+    def __post_init__(self):
+        if not isinstance(self.accepted, bool):
+            raise ValueError('accepted must be boolean')
+        if self.state not in {
+            'cancelled', 'completed', 'failed', 'unavailable'
+        }:
+            raise ValueError('invalid cancellation state')
 
 
 class InvalidTransferToken(LookupError):
@@ -183,6 +200,7 @@ class TransferManager:
         self._clock = clock
         self._lock = threading.Lock()
         self._records = {}
+        self._terminal_states = {}
         self._runtime_binding = None
         self._accepting = True
 
@@ -306,15 +324,43 @@ class TransferManager:
             return record
 
     def cancel(self, transfer_id, user_id):
-        return self._transition(
-            transfer_id,
-            user_id,
-            allowed_states={
-                TransferState.PENDING,
-                TransferState.RUNNING,
-            },
-            target_state=TransferState.CANCELLED,
-        )
+        return self.cancel_with_result(transfer_id, user_id).accepted
+
+    def cancel_with_result(self, transfer_id, user_id):
+        """Cancel once and return the stable state on every later request."""
+        try:
+            transfer_id = _normalize_id(transfer_id, 'transfer_id')
+            user_id = _normalize_id(user_id, 'user_id')
+        except ValueError:
+            return TransferCancelResult(False, 'unavailable')
+
+        with self._lock:
+            self._cleanup_expired_locked(self._clock())
+            record = self._records.get(transfer_id)
+            if record is not None and record._user_id == user_id:
+                if record._state in {
+                    TransferState.PENDING,
+                    TransferState.RUNNING,
+                }:
+                    release_error = self._release_for_terminal(
+                        record,
+                        release_source_holds=(
+                            record._state is TransferState.PENDING
+                        ),
+                    )
+                    self._finalize_record_locked(
+                        record,
+                        TransferState.CANCELLED,
+                        set_cancel_event=True,
+                    )
+                    if release_error is not None:
+                        raise release_error
+                    return TransferCancelResult(True, 'cancelled')
+
+            terminal = self._terminal_states.get(transfer_id)
+            if terminal is not None and terminal[0] == user_id:
+                return TransferCancelResult(False, terminal[1])
+            return TransferCancelResult(False, 'unavailable')
 
     def cancel_all_for_user(self, user_id):
         """Atomically cancel every pending or running transfer for one user."""
@@ -502,7 +548,10 @@ class TransferManager:
     def _unique_transfer_id_locked(self):
         while True:
             transfer_id = secrets.token_urlsafe(18)
-            if transfer_id not in self._records:
+            if (
+                transfer_id not in self._records
+                and transfer_id not in self._terminal_states
+            ):
                 return transfer_id
 
     def _unique_token_locked(self):
@@ -540,8 +589,18 @@ class TransferManager:
         if set_cancel_event:
             record._cancel_event.set()
         self._records.pop(record._transfer_id, None)
+        self._terminal_states[record._transfer_id] = (
+            record._user_id,
+            target_state.value,
+            self._clock() + self._token_ttl,
+        )
 
     def _cleanup_expired_locked(self, now):
+        self._terminal_states = {
+            transfer_id: terminal
+            for transfer_id, terminal in self._terminal_states.items()
+            if now < terminal[2]
+        }
         expired = [
             transfer_id
             for transfer_id, record in self._records.items()

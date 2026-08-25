@@ -68,7 +68,10 @@ a hosted control plane or runtime CDN dependencies.
 - Streamed HTTP bulk transfers with Socket.IO limited to control events and
   bounded editor content.
 - Server-to-server transfers across SFTP and SMB sources with progress,
-  cancellation, and a shared transfer queue.
+  cancellation, explicit conflict handling, and a shared transfer queue.
+- Same-source moves between folders without silently replacing existing items.
+- Stable, visible transfer reasons such as permission denied, conflict,
+  unavailable source, timeout, and configured-limit violations.
 - Per-user ownership checks, size limits, quotas, and path validation.
 
 SMB is disabled by default (`SMB_ENABLED=false`). Enabling it also requires an
@@ -79,6 +82,17 @@ automatic reconnect are not supported. SMB credentials are used for one
 temporary connection. Passwords and authentication secrets are never stored by
 WebSSH. Users may save non-secret, per-user share definitions containing a
 display name, host, share, domain, and username.
+After connecting, WebSSH non-destructively checks root listing, file creation,
+directory creation, and child deletion access. The workspace labels confirmed
+write access, confirmed root read-only access, or unknown access; deeper ACLs
+can still differ. Uploads and remote copies never silently overwrite an
+existing destination: replace, skip, or cancel requires an explicit choice,
+and replacement fails closed when the backend cannot provide an atomic rename.
+SMB uses separate control and transfer sessions so browsing does not wait for a
+bulk stream. Cancellation is a single idempotent request, and known oversized
+operations report both the actual size and exact configured limit. Inline SMB
+editing preserves revision checks and offers an explicit recoverable-swap path
+when atomic replacement is unavailable.
 Supported SMB targets must refuse symlink and wide-link traversal (for Samba,
 use `follow symlinks = no` and `wide links = no`). WebSSH additionally opens
 files and directories without following reparse points and validates existing

@@ -368,6 +368,7 @@
         dirty: false,
         editEncoding: 'utf-8',
         editNewline: 'lf',
+        editRevision: null,
         maxEditFileSize: 5 * 1024 * 1024,
         _beforeUnloadHandler: null,
 
@@ -646,8 +647,36 @@
             if (data?.operation === 'save_file'
                     && this.matchesResponse(data, this.currentSaveRequestId)) {
                 const status = document.getElementById('editorStatus');
-                if (status) status.textContent = data.error || 'Save failed';
-                showNotification(data.error || 'Save failed', 'error');
+                if (data.code === 'SMB_RECOVERABLE_REPLACE_REQUIRED') {
+                    const prompt = window.i18n
+                        ? i18n.t('editor.recoverableConfirm')
+                        : 'This account cannot replace the file atomically. Use a recoverable backup swap for this save?';
+                    if (window.confirm(prompt)) {
+                        this.saveEdit('recoverable_swap');
+                    } else if (status) {
+                        status.textContent = window.i18n
+                            ? i18n.t('editor.recoverableDeclined')
+                            : 'Save cancelled. Unsaved changes were kept.';
+                    }
+                    return true;
+                }
+
+                let message = data.error || 'Save failed';
+                if (data.code === 'EDIT_CONFLICT') {
+                    message = window.i18n
+                        ? i18n.t('editor.editConflict')
+                        : 'The file changed on the server. Reopen it before saving.';
+                } else if (data.code === 'SMB_RECOVERY_REQUIRED') {
+                    const leaves = Array.isArray(data.recovery_leaves)
+                        ? data.recovery_leaves.join(', ')
+                        : '';
+                    message = (window.i18n
+                        ? i18n.t('editor.recoveryRequired')
+                        : 'Manual recovery is required. Preserve these files: {files}'
+                    ).replace('{files}', leaves);
+                }
+                if (status) status.textContent = message;
+                showNotification(message, 'error');
                 return true;
             }
             return false;
@@ -815,6 +844,7 @@
 
             this.editEncoding = data.encoding || 'utf-8';
             this.editNewline = data.newline || 'lf';
+            this.editRevision = data.revision || null;
             textarea.value = data.content || '';
 
             document.getElementById('previewContent')?.classList.add('hidden');
@@ -839,7 +869,7 @@
             showNotification(msg, 'error');
         },
 
-        saveEdit() {
+        saveEdit(replaceStrategy = 'atomic') {
             if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
@@ -854,6 +884,8 @@
                 content: textarea.value,
                 encoding: this.editEncoding,
                 newline: this.editNewline,
+                expected_revision: this.editRevision,
+                replace_strategy: replaceStrategy,
                 request_id: this.currentSaveRequestId,
             });
         },
@@ -863,6 +895,20 @@
                     || data.path !== this.currentPath) return;
             this.dirty = false;
             this.detachBeforeUnload();
+            this.editRevision = data.revision || this.editRevision;
+            if (data.warning_code === 'SMB_RECOVERY_BACKUP_RETAINED') {
+                const leaves = Array.isArray(data.recovery_leaves)
+                    ? data.recovery_leaves.join(', ')
+                    : '';
+                const message = (window.i18n
+                    ? i18n.t('editor.recoveryBackupRetained')
+                    : 'File saved, but a recovery backup remains: {files}'
+                ).replace('{files}', leaves);
+                const status = document.getElementById('editorStatus');
+                if (status) status.textContent = message;
+                showNotification(message, 'warning');
+                return;
+            }
             showNotification(window.i18n ? i18n.t('editor.saved') : 'File saved', 'success');
             // Leave edit mode and reload the preview to reflect the saved file.
             this.exitEditMode();
@@ -882,6 +928,7 @@
         exitEditMode() {
             this.editMode = false;
             this.dirty = false;
+            this.editRevision = null;
             this.detachBeforeUnload();
             document.getElementById('fileEditor')?.classList.add('hidden');
             this.modal?.classList.remove('editing');

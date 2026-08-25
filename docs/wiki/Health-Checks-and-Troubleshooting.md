@@ -80,6 +80,57 @@ The file workspace supports SFTP sources and opt-in SMB sources. If the SMB
 control is disabled, confirm that `SMB_ENABLED=true` and a non-empty exact
 `SMB_ALLOWED_TARGETS` allowlist reach the container. SMB remains default-off.
 
+For SMB, test from the WebSSH container's network namespace rather than only
+from the Docker host. The configured hostname or IP must resolve there and be
+reachable on TCP 445. Services in separate Compose projects need a shared
+external network or a LAN address published by the SMB host; WebSSH itself does
+not expose an SMB port.
+
+Use the workspace result to narrow the failure:
+
+- connection rejected: verify allowlist, DNS, TCP 445, credentials, SMB 3.1.1,
+  signing, encryption, and secure negotiation;
+- connection opens but listing fails: verify share name and list/read ACLs;
+- root is labeled read-only: the account can list the root but the server
+  denied both file and directory creation there;
+- root access is unknown: the server could not conclusively answer one or more
+  non-mutating access checks; test the intended operation;
+- an upload or copy fails in a nested folder: inspect that folder's ACL, quota,
+  free space, and delete/rename rights even if root write access was confirmed;
+- replace is unavailable: grant atomic rename/delete-child rights or choose a
+  new filename; WebSSH does not delete the old destination first.
+- an editor reports manual recovery: preserve the named temporary and backup
+  files, recover the newer verified content, and only then remove the artifacts;
+- a move times out: refresh both source and destination folders before retrying
+  because the server may have completed the rename after the browser lost its
+  acknowledgement;
+- cancellation remains pending: wait for the terminal event and inspect the
+  transfer reason; repeated clicks are neither required nor useful.
+
+For a server-side SMB connection failure, the dialog includes a reference such
+as `SMB-A1B2C3D4E5F6`. Search `DATA_DIR/logs/app.log` or structured container
+logs for that exact reference. The matching record contains a stable result
+code plus sanitized diagnostic fields:
+
+- `target_resolution`: allowlist, DNS, or resolved-target handling;
+- `transport_negotiate`: TCP 445 or SMB negotiation;
+- `security_requirements`: SMB 3.1.1, signing, encryption, or secure negotiate;
+- `session_authentication`: domain, username, password, or account state;
+- `share_access`: share name, availability, or root ACL;
+- `lifecycle`: quota reservation, publication, shutdown, or cleanup handling.
+
+`cause_type` identifies only the exception class and `nt_status`, when present,
+is the fixed-width SMB status code. WebSSH deliberately does not return or log
+the backend exception message because it can contain credentials, server names,
+or share paths. A support report should contain the reference, result code,
+phase, cause type, NT status, WebSSH version or commit, SMB server product and
+version, and reproduction steps, but never the SMB password.
+
+The transfer queue shows the stable reason returned by the server. A bare
+generic failure indicates an unclassified backend problem and should be
+correlated with the sanitized server log fields `operation`, `result_code`,
+and `exception_type`.
+
 ## LDAP/AD sign-in fails
 
 Review the dedicated [LDAP troubleshooting sequence](LDAP-and-Active-Directory#troubleshooting). The most important distinction is whether service bind/search failed, the user did not match filters, TLS validation failed, user credential bind failed, or no enabled local account is linked to the resulting directory identity.
@@ -110,7 +161,7 @@ When requesting help, include:
 - exact WebSSH version or commit;
 - deployment profile and sanitized effective Compose configuration;
 - `/health` and `/ready` status;
-- relevant log timestamps and error class;
+- relevant log timestamps, diagnostic reference, phase, and error class;
 - reverse-proxy product and URL path;
 - whether the target is local, private, public, LDAP, OIDC, or Tailscale;
 - steps to reproduce.

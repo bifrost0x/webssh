@@ -219,6 +219,54 @@ test('authentication failure focuses the empty password field', () => {
     assert.equal(elements.submit.disabled, false);
 });
 
+test('connection failure shows only a validated server diagnostic reference', () => {
+    const { dialog, elements } = harness();
+    dialog.open({ pane: 'left' });
+    dialog.setValues(validValues());
+    dialog.submit();
+
+    assert.equal(dialog.handleError({
+        request_id: 'smb-ui-1',
+        code: 'CONNECTION_FAILED',
+        diagnostic_id: 'SMB-A1B2C3D4E5F6',
+    }), true);
+    assert.equal(
+        elements.status.textContent,
+        'The SMB connection could not be established. Reference: SMB-A1B2C3D4E5F6',
+    );
+
+    dialog.open({ pane: 'left' });
+    dialog.setValues(validValues());
+    dialog.submit();
+    assert.equal(dialog.handleError({
+        request_id: 'smb-ui-2',
+        code: 'CONNECTION_FAILED',
+        diagnostic_id: '<img src=x onerror=alert(1)>',
+    }), true);
+    assert.equal(
+        elements.status.textContent,
+        'The SMB connection could not be established.',
+    );
+});
+
+for (const [code, message] of [
+    ['PERMISSION_DENIED', 'You do not have permission to open this SMB share.'],
+    ['SHARE_UNAVAILABLE', 'The SMB share could not be found or opened.'],
+    ['TIMEOUT', 'The SMB server did not respond in time.'],
+]) {
+    test(`${code} shows its actionable connection reason`, () => {
+        const { dialog, elements } = harness();
+        dialog.open({ pane: 'left' });
+        dialog.setValues(validValues());
+        dialog.submit();
+
+        assert.equal(dialog.handleError({ request_id: 'smb-ui-1', code }), true);
+        assert.equal(elements.status.textContent, message);
+        assert.equal(elements.status.dataset.state, 'error');
+        assert.notEqual(elements.status.textContent, 'The SMB connection could not be established.');
+    });
+}
+
 test('selecting a saved share prefills non-secret fields and focuses password', () => {
     const { dialog, elements } = harness();
     dialog.setSavedShares([{

@@ -165,8 +165,30 @@ def test_encryption_failure_closes_before_credentials_reach_session():
         _connect(protocol)
 
     assert exc.value.public_code == 'ENCRYPTION_REQUIRED'
+    assert exc.value.diagnostic_phase == 'security_requirements'
+    assert exc.value.diagnostic_exception_type is None
+    assert exc.value.diagnostic_nt_status is None
     assert not protocol.sessions
     assert protocol.connections[0].disconnected == 1
+
+
+def test_unknown_negotiate_failure_keeps_safe_diagnostic_metadata():
+    protocol = _FakeProtocol()
+
+    def fail_connect(**_kwargs):
+        raise ConnectionResetError(r'secret \\server\share')
+
+    protocol.new_connection = fail_connect
+
+    with pytest.raises(SMBProtocolError) as exc:
+        _connect(protocol)
+
+    assert exc.value.public_code == 'CONNECTION_FAILED'
+    assert exc.value.diagnostic_phase == 'transport_negotiate'
+    assert exc.value.diagnostic_exception_type == 'ConnectionResetError'
+    assert exc.value.diagnostic_nt_status is None
+    assert 'secret' not in str(exc.value)
+    assert 'server' not in str(exc.value)
 
 
 def test_cancel_before_connect_performs_no_protocol_operation():
@@ -181,12 +203,15 @@ def test_cancel_before_connect_performs_no_protocol_operation():
     assert protocol.events == []
 
 
-@pytest.mark.parametrize('status', [
-    NtStatus.STATUS_LOGON_FAILURE,
-    NtStatus.STATUS_WRONG_PASSWORD,
-    NtStatus.STATUS_PASSWORD_EXPIRED,
+@pytest.mark.parametrize(('status', 'expected_status'), [
+    (NtStatus.STATUS_LOGON_FAILURE, '0xC000006D'),
+    (NtStatus.STATUS_WRONG_PASSWORD, '0xC000006A'),
+    (NtStatus.STATUS_PASSWORD_EXPIRED, '0xC0000071'),
 ])
-def test_authentication_statuses_map_to_stable_authentication_error(status):
+def test_authentication_statuses_map_to_stable_authentication_error(
+    status,
+    expected_status,
+):
     protocol = _FakeProtocol()
     original_new_session = protocol.new_session
 
@@ -205,6 +230,9 @@ def test_authentication_statuses_map_to_stable_authentication_error(status):
         _connect(protocol)
 
     assert exc.value.public_code == 'AUTHENTICATION_REQUIRED'
+    assert exc.value.diagnostic_phase == 'session_authentication'
+    assert exc.value.diagnostic_exception_type == 'SMBOSError'
+    assert exc.value.diagnostic_nt_status == expected_status
     assert protocol.sessions[0].password is None
     assert protocol.connections[0].disconnected == 1
 
@@ -336,6 +364,104 @@ def test_no_follow_scandir_sets_the_smb_reparse_point_option(monkeypatch):
     assert captured['kwargs']['create_options'] & int(
         CreateOptions.FILE_OPEN_REPARSE_POINT
     )
+
+
+def test_share_root_inspection_lists_and_probes_directory_access_without_mutation():
+    from smbprotocol.open import DirectoryAccessMask
+
+    protocol, session = _connect()
+    calls = []
+    closed = []
+
+    class Iterator:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise StopIteration
+
+        def close(self):
+            closed.append('listing')
+
+    class DirectoryHandle:
+        def close(self):
+            closed.append('directory')
+
+    def invoke(name, path, **kwargs):
+        calls.append((name, path, kwargs))
+        if name == 'scandir_no_follow':
+            return Iterator()
+        return DirectoryHandle()
+
+    protocol.invoke = invoke
+
+    access = session.inspect_directory_access(r'\\10.0.0.8\Docs')
+
+    assert access == {
+        'list': 'granted',
+        'create_file': 'granted',
+        'create_directory': 'granted',
+        'delete_children': 'granted',
+    }
+    assert calls[0][0] == 'scandir_no_follow'
+    assert [call[2]['desired_access'] for call in calls[1:]] == [
+        int(DirectoryAccessMask.FILE_ADD_FILE),
+        int(DirectoryAccessMask.FILE_ADD_SUBDIRECTORY),
+        int(DirectoryAccessMask.FILE_DELETE_CHILD),
+    ]
+    for name, path, kwargs in calls[1:]:
+        assert name == 'open_file_no_follow'
+        assert path == r'\\10.0.0.8\Docs'
+        assert kwargs['file_type'] == 'dir'
+        assert kwargs['mode'] == 'rb'
+        assert kwargs['buffering'] == 0
+        assert 'create_disposition' not in kwargs
+    assert closed == ['listing', 'directory', 'directory', 'directory']
+
+
+def test_share_root_inspection_marks_only_access_denied_as_denied():
+    protocol, session = _connect()
+    responses = iter((
+        SMBProtocolError('PERMISSION_DENIED'),
+        SMBProtocolError('TIMEOUT'),
+        SMBProtocolError('OPERATION_FAILED'),
+    ))
+
+    class Iterator:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise StopIteration
+
+        def close(self):
+            return None
+
+    def invoke(name, _path, **_kwargs):
+        if name == 'scandir_no_follow':
+            return Iterator()
+        raise next(responses)
+
+    protocol.invoke = invoke
+
+    assert session.inspect_directory_access(r'\\10.0.0.8\Docs') == {
+        'list': 'granted',
+        'create_file': 'denied',
+        'create_directory': 'unknown',
+        'delete_children': 'unknown',
+    }
+
+
+def test_share_root_listing_failure_is_not_downgraded_to_unknown():
+    protocol, session = _connect()
+    protocol.invoke = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        SMBProtocolError('SHARE_UNAVAILABLE')
+    )
+
+    with pytest.raises(SMBProtocolError) as exc:
+        session.inspect_directory_access(r'\\10.0.0.8\Missing')
+
+    assert exc.value.public_code == 'SHARE_UNAVAILABLE'
 
 
 def test_public_session_type_is_explicit():

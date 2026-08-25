@@ -190,8 +190,9 @@ def test_smb_download_streams_only_through_resolved_backend(
             return {'size': len(payload), 'is_dir': False}, None
 
         @contextmanager
-        def open_reader(self, _source, path):
+        def open_reader(self, _source, path, *, io_lane='control'):
             assert path == '/report.bin'
+            assert io_lane == 'transfer'
             with remote:
                 yield remote
 
@@ -259,8 +260,10 @@ def test_smb_upload_uses_atomic_backend_writer_and_bounded_request_reads(
     class Backend:
         @contextmanager
         def open_atomic_writer(
-                self, _source, path, *, replace, cancel_event):
+                self, _source, path, *, replace, cancel_event,
+                io_lane='control'):
             assert path == '/upload.bin'
+            assert io_lane == 'transfer'
             assert replace is False
             writer = Writer()
             yield writer
@@ -300,8 +303,284 @@ def test_smb_upload_uses_atomic_backend_writer_and_bounded_request_reads(
     assert manager._records == {}
 
 
+def test_explicit_replace_token_is_the_only_path_to_backend_replacement(
+    app, client, monkeypatch, transfer_components,
+):
+    transfer_routes, manager = transfer_components
+    replacements = []
+
+    class Writer:
+        def write(self, chunk):
+            return len(chunk)
+
+    class Backend:
+        @contextmanager
+        def open_atomic_writer(
+            self, _source, _path, *, replace, cancel_event,
+            io_lane='control',
+        ):
+            assert io_lane == 'transfer'
+            replacements.append(replace)
+            assert cancel_event.is_set() is False
+            yield Writer()
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    user_id = _login(client, app, 'smb_explicit_replace')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='upload',
+        metadata={
+            'remote_path': '/upload.bin',
+            'filename': 'upload.bin',
+            'conflict_policy': 'replace',
+        },
+    )
+
+    response = client.post(
+        f'/api/transfers/{record.token}/upload',
+        data=b'payload',
+        content_type='application/octet-stream',
+    )
+
+    assert response.status_code == 200
+    assert replacements == [True]
+
+
+@pytest.mark.parametrize(
+    ('error', 'code', 'message', 'status'),
+    (
+        (
+            pytest.param(
+                'permission',
+                'PERMISSION_DENIED',
+                'No write permission for the destination.',
+                403,
+                id='permission',
+            )
+        ),
+        (
+            pytest.param(
+                'conflict',
+                'CONFLICT',
+                'A file or folder already exists at the destination.',
+                409,
+                id='conflict',
+            )
+        ),
+        (
+            pytest.param(
+                'not-found',
+                'NOT_FOUND',
+                'The requested file or folder was not found.',
+                404,
+                id='not-found',
+            )
+        ),
+        (
+            pytest.param(
+                'unknown',
+                'TRANSFER_UNAVAILABLE',
+                'The transfer could not be completed.',
+                500,
+                id='safe-fallback',
+            )
+        ),
+    ),
+)
+def test_upload_http_socket_and_log_share_one_safe_failure_contract(
+    app,
+    client,
+    monkeypatch,
+    transfer_components,
+    error,
+    code,
+    message,
+    status,
+):
+    import app as app_package
+    from app.smb_backend import FileConflict
+    from app.smb_protocol import SMBProtocolError
+
+    transfer_routes, manager = transfer_components
+    failures = {
+        'permission': SMBProtocolError(
+            'PERMISSION_DENIED', r'secret \\server\share'
+        ),
+        'conflict': FileConflict(r'secret \\server\share'),
+        'not-found': FileNotFoundError(r'secret \\server\share'),
+        'unknown': RuntimeError(r'secret \\server\share'),
+    }
+    resolved = SimpleNamespace(
+        handle_id='smb-handle',
+        backend=object(),
+        source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes,
+        '_upload_to_backend',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(failures[error]),
+    )
+    monkeypatch.setattr(transfer_routes, '_audit_transfer_source', lambda *_args, **_kwargs: None)
+    logs = []
+    emitted = []
+    monkeypatch.setattr(
+        transfer_routes,
+        'log_error',
+        lambda event, **details: logs.append((event, details)),
+    )
+    monkeypatch.setattr(
+        app_package.socketio,
+        'emit',
+        lambda event, payload, **kwargs: emitted.append((event, payload, kwargs)),
+    )
+    user_id = _login(client, app, f"upload_contract_{error.replace('-', '_')}")
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='upload',
+        metadata={'remote_path': '/upload.bin', 'filename': 'upload.bin'},
+    )
+
+    response = client.post(
+        f'/api/transfers/{record.token}/upload',
+        data=b'payload',
+        content_type='application/octet-stream',
+    )
+
+    expected = {
+        'error_code': code,
+        'error': message,
+        'retryable': False,
+    }
+    assert response.status_code == status
+    assert response.get_json() == expected
+    finished = [event for event in emitted if event[0] == 'transfer_finished']
+    assert finished == [(
+        'transfer_finished',
+        {
+            'transfer_id': record.transfer_id,
+            'direction': 'upload',
+            'status': 'failed',
+            **expected,
+        },
+        {'room': f'user_{user_id}'},
+    )]
+    assert logs == [(
+        'HTTP upload failed',
+        {
+            'user_id': user_id,
+            'result_code': code,
+            'operation': 'upload',
+            'exception_type': type(failures[error]).__name__,
+        },
+    )]
+    assert 'secret' not in repr(response.get_json())
+    assert 'server' not in repr(response.get_json())
+
+
+@pytest.mark.parametrize(
+    ('failure', 'code', 'message', 'status', 'retryable'),
+    (
+        (
+            PermissionError(r'private \\server\share'),
+            'PERMISSION_DENIED',
+            'No read permission for the source.',
+            403,
+            False,
+        ),
+        (
+            TimeoutError(r'private \\server\share'),
+            'TIMEOUT',
+            'The file operation timed out.',
+            504,
+            True,
+        ),
+    ),
+)
+def test_download_preflight_keeps_typed_failure_across_http_and_socket(
+    app,
+    client,
+    monkeypatch,
+    transfer_components,
+    failure,
+    code,
+    message,
+    status,
+    retryable,
+):
+    import app as app_package
+
+    transfer_routes, manager = transfer_components
+
+    class Backend:
+        def stat_or_raise(self, *_args, **_kwargs):
+            raise failure
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle',
+        backend=Backend(),
+        source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes, '_audit_transfer_source', lambda *_args, **_kwargs: None
+    )
+    emitted = []
+    monkeypatch.setattr(
+        app_package.socketio,
+        'emit',
+        lambda event, payload, **kwargs: emitted.append((event, payload, kwargs)),
+    )
+    user_id = _login(client, app, f'dl_preflight_{code.lower()}')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={'remote_path': '/restricted.bin', 'filename': 'restricted.bin'},
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/download')
+
+    expected = {
+        'error_code': code,
+        'error': message,
+        'retryable': retryable,
+    }
+    assert response.status_code == status
+    assert response.get_json() == expected
+    assert emitted == [(
+        'transfer_finished',
+        {
+            'transfer_id': record.transfer_id,
+            'direction': 'download',
+            'status': 'failed',
+            **expected,
+        },
+        {'room': f'user_{user_id}'},
+    )]
+    assert 'private' not in repr(response.get_json())
+
+
 def test_download_propagates_io_failure_after_first_chunk(
         app, client, monkeypatch, transfer_components):
+    import app as app_package
+
     transfer_routes, manager = transfer_components
     first_chunk = b'valid-prefix'
 
@@ -325,6 +604,12 @@ def test_download_propagates_io_failure_after_first_chunk(
         transfer_routes.sftp_handler,
         'sftp_session',
         fake_session,
+    )
+    emitted = []
+    monkeypatch.setattr(
+        app_package.socketio,
+        'emit',
+        lambda event, payload, **kwargs: emitted.append((event, payload, kwargs)),
     )
     user_id = _login(client, app, 'midstream_download_user')
     record = manager.create(
@@ -350,6 +635,19 @@ def test_download_propagates_io_failure_after_first_chunk(
 
     assert record.request_done_event.is_set()
     assert manager._records == {}
+    finished = [event for event in emitted if event[0] == 'transfer_finished']
+    assert finished == [(
+        'transfer_finished',
+        {
+            'transfer_id': record.transfer_id,
+            'direction': 'download',
+            'status': 'failed',
+            'error_code': 'TRANSFER_UNAVAILABLE',
+            'error': 'The transfer could not be completed.',
+            'retryable': False,
+        },
+        {'room': f'user_{user_id}'},
+    )]
 
 
 def test_content_disposition_has_safe_ascii_fallback_and_utf8_filename():
@@ -439,6 +737,76 @@ def test_prepare_transfer_requires_owner_socket(monkeypatch):
         '/remote/report.bin',
     ) is None
     assert manager._records == {}
+
+
+def test_prepare_upload_conflict_policy_defaults_to_error_and_rejects_unknown(monkeypatch):
+    from app import transfer_routes
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    manager = TransferManager()
+    monkeypatch.setattr(transfer_routes, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: SimpleNamespace(handle_id='owned-session'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+
+    initial = transfer_routes.prepare_transfer(
+        7, 'upload', 'sftp-session:owned-session', '/remote/report.bin',
+        owner_sid='socket-a',
+    )
+    replacement = transfer_routes.prepare_transfer(
+        7, 'upload', 'sftp-session:owned-session', '/remote/report.bin',
+        owner_sid='socket-a', conflict_policy='replace',
+    )
+    rejected = transfer_routes.prepare_transfer(
+        7, 'upload', 'sftp-session:owned-session', '/remote/report.bin',
+        owner_sid='socket-a', conflict_policy='rename-existing',
+    )
+
+    assert initial.metadata['conflict_policy'] == 'error'
+    assert replacement.metadata['conflict_policy'] == 'replace'
+    assert initial.token != replacement.token
+    assert rejected is None
+    assert len(manager._records) == 2
+    assert manager.fail(initial.transfer_id, 7) is True
+    assert manager.fail(replacement.transfer_id, 7) is True
+
+
+def test_prepare_socket_passes_conflict_policy(app, monkeypatch):
+    from app import socket_events
+
+    captured = []
+    record = SimpleNamespace(
+        transfer_id='replacement-id', token='replacement-token', expires_at=123,
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'prepare_transfer',
+        lambda *_args, **kwargs: captured.append(kwargs) or record,
+    )
+    user = SimpleNamespace(id=7)
+
+    with app.test_request_context('/'):
+        result = socket_events.handle_prepare_transfer.__wrapped__(
+            {
+                'direction': 'upload',
+                'source_id': 'sftp-session:owned-session',
+                'remote_path': '/remote/report.bin',
+                'request_id': 'transfer:replace:1',
+                'conflict_policy': 'replace',
+            },
+            current_user=user,
+        )
+
+    assert result['success'] is True
+    assert captured[0]['conflict_policy'] == 'replace'
 
 
 def test_prepare_transfer_acquires_owned_source_hold_before_issuing_token(
@@ -740,13 +1108,38 @@ def test_upload_uses_posix_rename_for_an_existing_remote_destination():
     try:
         sftp_handler.upload_request_stream(
             'owned-session', '/remote/report.bin', BoundedRequestStream(b'new'),
-            chunk_size=2, max_bytes=10,
+            chunk_size=2, max_bytes=10, replace=True,
         )
     finally:
         sftp_handler.sftp_session = original_session
 
     assert sftp.posix_renamed
     assert sftp.renamed == []
+
+
+def test_sftp_upload_preserves_existing_destination_until_replace_is_explicit():
+    from app import sftp_handler
+
+    sftp = PosixRenameSFTP(supports_posix_rename=True)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    original_session = sftp_handler.sftp_session
+    sftp_handler.sftp_session = fake_session
+    try:
+        with pytest.raises(sftp_handler.UploadConflict):
+            sftp_handler.upload_request_stream(
+                'owned-session', '/remote/report.bin', BoundedRequestStream(b'new'),
+                chunk_size=2, max_bytes=10,
+            )
+    finally:
+        sftp_handler.sftp_session = original_session
+
+    assert sftp.posix_renamed == []
+    assert sftp.renamed == []
+    assert sftp.removed and sftp.removed[0] != '/remote/report.bin'
 
 
 def test_upload_preserves_existing_destination_if_posix_rename_is_unavailable():
@@ -765,7 +1158,7 @@ def test_upload_preserves_existing_destination_if_posix_rename_is_unavailable():
         with pytest.raises(Exception):
             sftp_handler.upload_request_stream(
                 'owned-session', '/remote/report.bin', BoundedRequestStream(b'new'),
-                chunk_size=2, max_bytes=10,
+                chunk_size=2, max_bytes=10, replace=True,
             )
     finally:
         sftp_handler.sftp_session = original_session
@@ -959,6 +1352,14 @@ def test_download_preflight_limit_marks_request_done(
     response = client.get(f'/api/transfers/{record.token}/download')
 
     assert response.status_code == 413
+    assert response.get_json() == {
+        'error_code': 'LIMIT_EXCEEDED',
+        'error': 'The transfer exceeds the configured limit.',
+        'retryable': False,
+        'limit_kind': 'download',
+        'limit_bytes': app.config['MAX_DOWNLOAD_SIZE'],
+        'actual_bytes': sftp.reported_size,
+    }
     assert record.request_done_event.is_set()
     assert manager._records == {}
 
@@ -1161,10 +1562,11 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
 
         def iter_tree(
                 self, _source, path, *, budget, cancel_event,
-                follow_links=False):
+                follow_links=False, io_lane='control'):
             assert path == '/reports'
             assert isinstance(budget, TransferBudget)
             assert follow_links is False
+            assert io_lane == 'transfer'
             budget.consume()
             yield {
                 'name': 'report.txt', 'path': '/reports/report.txt',
@@ -1172,8 +1574,9 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
             }
 
         @contextmanager
-        def open_reader(self, _source, path):
+        def open_reader(self, _source, path, *, io_lane='control'):
             assert path == '/reports/report.txt'
+            assert io_lane == 'transfer'
             with TrackingRemoteFile(payload) as remote:
                 yield remote
 
@@ -1207,6 +1610,66 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
         assert archive.namelist() == ['reports/report.txt']
         assert archive.read('reports/report.txt') == payload
     assert manager._records == {}
+
+
+def test_folder_download_preflight_reports_smb_permission_failure(
+        app, client, monkeypatch, transfer_components):
+    import app as app_package
+
+    transfer_routes, manager = transfer_components
+
+    class Backend:
+        def stat_or_raise(self, *_args, **_kwargs):
+            raise PermissionError(r'private \\server\share')
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes, '_audit_transfer_source', lambda *_args, **_kwargs: None
+    )
+    emitted = []
+    monkeypatch.setattr(
+        app_package.socketio,
+        'emit',
+        lambda event, payload, **kwargs: emitted.append((event, payload, kwargs)),
+    )
+    user_id = _login(client, app, 'folder_preflight_denied')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={
+            'remote_path': '/restricted',
+            'filename': 'restricted',
+            'archive': True,
+        },
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    expected = {
+        'error_code': 'PERMISSION_DENIED',
+        'error': 'No read permission for the source.',
+        'retryable': False,
+    }
+    assert response.status_code == 403
+    assert response.get_json() == expected
+    assert emitted == [(
+        'transfer_finished',
+        {
+            'transfer_id': record.transfer_id,
+            'direction': 'download',
+            'status': 'failed',
+            **expected,
+        },
+        {'room': f'user_{user_id}'},
+    )]
+    assert 'private' not in repr(response.get_json())
 
 
 def test_folder_download_propagates_limit_after_first_chunk(

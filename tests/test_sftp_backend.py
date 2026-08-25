@@ -8,7 +8,7 @@ import pytest
 
 from app import sftp_handler
 from app import sftp_backend
-from app.file_backend import FileBackend
+from app.file_backend import FileBackend, FileWriteOutcome
 from app.file_sources import (
     FileCapability,
     FileSourceDescriptor,
@@ -38,6 +38,38 @@ def source(handle_id='session-a'):
 
 def test_sftp_backend_implements_the_common_file_contract():
     assert isinstance(SFTPBackend(), FileBackend)
+
+
+def test_stat_or_raise_preserves_sftp_permission_failure(monkeypatch):
+    class DeniedSFTP:
+        def lstat(self, _path):
+            raise PermissionError('private server detail')
+
+    @contextmanager
+    def denied_session(_handle_id):
+        yield DeniedSFTP(), 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', denied_session)
+
+    with pytest.raises(PermissionError, match='private server detail'):
+        SFTPBackend().stat_or_raise(
+            source(), '/restricted.txt', follow_links=False
+        )
+
+
+def test_mkdir_or_raise_preserves_sftp_permission_failure(monkeypatch):
+    class DeniedSFTP:
+        def mkdir(self, _path):
+            raise PermissionError('private server detail')
+
+    @contextmanager
+    def denied_session(_handle_id):
+        yield DeniedSFTP(), 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', denied_session)
+
+    with pytest.raises(PermissionError, match='private server detail'):
+        SFTPBackend().mkdir_or_raise(source(), '/restricted')
 
 
 def test_sftp_backend_delegates_listing_without_changing_path_semantics(monkeypatch):
@@ -86,7 +118,7 @@ def test_sftp_backend_preserves_editor_encoding_and_newline(monkeypatch):
 
     def write(**kwargs):
         calls.append(kwargs)
-        return True, None
+        return FileWriteOutcome(success=True, revision='a' * 64)
 
     monkeypatch.setattr(sftp_handler, 'write_file_text', write)
 
@@ -96,15 +128,17 @@ def test_sftp_backend_preserves_editor_encoding_and_newline(monkeypatch):
         'first\nsecond',
         encoding='latin-1',
         newline='crlf',
+        expected_revision='b' * 64,
     )
 
-    assert result == (True, None)
+    assert result == FileWriteOutcome(success=True, revision='a' * 64)
     assert calls == [{
         'session_id': 'session-a',
         'path': '/etc/app.conf',
         'content_str': 'first\nsecond',
         'encoding': 'latin-1',
         'newline': 'crlf',
+        'expected_revision': 'b' * 64,
     }]
 
 

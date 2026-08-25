@@ -29,8 +29,9 @@ const FileTransferManager = {
         });
         client.on('error', data => {
             if (!this.ownedTransfers.delete(data.transferId)) return;
+            const reason = data.error ? ` — ${data.error}` : '';
             window.showNotification?.(
-                `${this.t('fm.transferFailed', 'Transfer failed')}: ${data.filename}`,
+                `${this.t('fm.transferFailed', 'Transfer failed')}: ${data.filename}${reason}`,
                 'error'
             );
         });

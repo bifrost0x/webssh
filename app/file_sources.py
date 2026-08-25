@@ -51,6 +51,13 @@ _PUBLIC_SECURITY_KEYS = frozenset({
     'secure_negotiate',
     'signed',
 })
+_PUBLIC_ACCESS_KEYS = frozenset({
+    'list',
+    'create_file',
+    'create_directory',
+    'delete_children',
+})
+_PUBLIC_ACCESS_STATES = frozenset({'granted', 'denied', 'unknown'})
 SFTP_CAPABILITIES = (
     FileCapability.LIST,
     FileCapability.READ,
@@ -117,6 +124,7 @@ class FileSourceDescriptor:
     capabilities: tuple[FileCapability, ...]
     ephemeral: bool
     security: Mapping[str, bool] = field(default_factory=dict)
+    access: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         source_kind, _handle_id = parse_source_id(self.source_id)
@@ -140,6 +148,13 @@ class FileSourceDescriptor:
             raise ValueError('security fields must be boolean')
         object.__setattr__(self, 'security', MappingProxyType(security))
 
+        access = dict(self.access)
+        if not set(access).issubset(_PUBLIC_ACCESS_KEYS):
+            raise ValueError('unsupported public access field')
+        if any(value not in _PUBLIC_ACCESS_STATES for value in access.values()):
+            raise ValueError('unsupported public access state')
+        object.__setattr__(self, 'access', MappingProxyType(access))
+
         if not isinstance(self.ephemeral, bool):
             raise ValueError('ephemeral must be boolean')
 
@@ -153,6 +168,7 @@ class FileSourceDescriptor:
             'capabilities': [capability.value for capability in self.capabilities],
             'ephemeral': self.ephemeral,
             'security': dict(self.security),
+            'access': dict(self.access),
         }
 
 

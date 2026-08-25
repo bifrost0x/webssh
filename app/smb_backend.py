@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import errno
+import hashlib
 import secrets
 import stat as stat_module
 
 import config
 
+from .file_backend import FileWriteOutcome
 from .smb_paths import SMBPath, SMBPathRejected
 from .smb_protocol import SMBProtocolError
 
@@ -89,6 +91,7 @@ class SMBBackend:
         *,
         include_leaf=True,
         allow_missing_leaf=False,
+        session=None,
     ):
         """Reject reparse points before a full-path SMB operation.
 
@@ -97,11 +100,12 @@ class SMBBackend:
         first gives stable application errors and covers mutation helpers that
         otherwise expose only a full-path API.
         """
+        session = session or actual.session
         segments = path.segments if include_leaf else path.segments[:-1]
         for index in range(1, len(segments) + 1):
             component = SMBPath(segments[:index])
             try:
-                file_stat = actual.session.invoke(
+                file_stat = session.invoke(
                     'stat',
                     component.to_unc(actual.target_ip, actual.share),
                     follow_symlinks=False,
@@ -124,6 +128,20 @@ class SMBBackend:
         return bool(attributes & 0x10) or stat_module.S_ISDIR(
             getattr(file_stat, 'st_mode', 0)
         )
+
+    @staticmethod
+    def _io_lane(actual, io_lane):
+        if io_lane == 'control':
+            return (
+                getattr(actual, 'control_session', actual.session),
+                getattr(actual, 'control_lock', actual.lock),
+            )
+        if io_lane == 'transfer':
+            return (
+                getattr(actual, 'transfer_session', actual.session),
+                getattr(actual, 'transfer_lock', actual.lock),
+            )
+        raise SMBBackendError('Invalid SMB I/O lane')
 
     @staticmethod
     def _write_all(remote_file, data):
@@ -167,6 +185,15 @@ class SMBBackend:
         except SMBPathRejected:
             return None
 
+    def inspect_directory_access(self, source, path):
+        """Return non-mutating access evidence for one owned directory."""
+        actual = self._owned_source(source)
+        directory = self._path(path)
+        unc = directory.to_unc(actual.target_ip, actual.share)
+        with actual.lock:
+            self._validate_path_components(actual, directory)
+            return actual.session.inspect_directory_access(unc)
+
     def list_directory(self, source, path):
         iterator = None
         try:
@@ -208,46 +235,54 @@ class SMBBackend:
                 except Exception:
                     pass
 
-    def stat(self, source, path, *, follow_links=False):
+    def stat_or_raise(self, source, path, *, follow_links=False):
         if follow_links:
-            return None, 'Reparse points are not supported'
+            raise SMBBackendError('Reparse points are not supported')
+        actual = self._owned_source(source)
+        smb_path = self._path(path)
+        with actual.lock:
+            self._validate_path_components(actual, smb_path)
+            file_stat = actual.session.invoke(
+                'stat',
+                smb_path.to_unc(actual.target_ip, actual.share),
+                follow_symlinks=False,
+            )
+        if self._is_reparse(file_stat):
+            raise SMBBackendError('Reparse points are not supported')
+        return {
+            'name': smb_path.name,
+            'path': str(smb_path),
+            'size': getattr(file_stat, 'st_size', 0) or 0,
+            'mode': getattr(file_stat, 'st_mode', 0),
+            'is_dir': self._is_directory(file_stat),
+            'is_symlink': False,
+            'modified': getattr(file_stat, 'st_mtime', 0),
+            'permissions': oct(getattr(file_stat, 'st_mode', 0))[-3:],
+        }
+
+    def stat(self, source, path, *, follow_links=False):
         try:
-            actual = self._owned_source(source)
-            smb_path = self._path(path)
-            with actual.lock:
-                self._validate_path_components(actual, smb_path)
-                file_stat = actual.session.invoke(
-                    'stat',
-                    smb_path.to_unc(actual.target_ip, actual.share),
-                    follow_symlinks=False,
-                )
-            if self._is_reparse(file_stat):
-                raise SMBBackendError('Reparse points are not supported')
-            return {
-                'name': smb_path.name,
-                'path': str(smb_path),
-                'size': getattr(file_stat, 'st_size', 0) or 0,
-                'mode': getattr(file_stat, 'st_mode', 0),
-                'is_dir': self._is_directory(file_stat),
-                'is_symlink': False,
-                'modified': getattr(file_stat, 'st_mtime', 0),
-                'permissions': oct(getattr(file_stat, 'st_mode', 0))[-3:],
-            }, None
+            return self.stat_or_raise(
+                source, path, follow_links=follow_links
+            ), None
         except Exception as exc:
             return None, self._public_error(exc)
 
+    def mkdir_or_raise(self, source, path):
+        actual = self._owned_source(source)
+        smb_path = self._mutable_path(self._path(path))
+        with actual.lock:
+            self._validate_path_components(
+                actual, smb_path, include_leaf=False
+            )
+            actual.session.invoke(
+                'mkdir_no_follow',
+                smb_path.to_unc(actual.target_ip, actual.share),
+            )
+
     def mkdir(self, source, path):
         try:
-            actual = self._owned_source(source)
-            smb_path = self._mutable_path(self._path(path))
-            with actual.lock:
-                self._validate_path_components(
-                    actual, smb_path, include_leaf=False
-                )
-                actual.session.invoke(
-                    'mkdir_no_follow',
-                    smb_path.to_unc(actual.target_ip, actual.share),
-                )
+            self.mkdir_or_raise(source, path)
             return True, None
         except Exception as exc:
             return False, self._public_error(exc)
@@ -339,18 +374,21 @@ class SMBBackend:
             return False, self._public_error(exc)
 
     @contextmanager
-    def open_reader(self, source, path):
+    def open_reader(self, source, path, *, io_lane='control'):
         actual = self._owned_source(source)
+        session, lane_lock = self._io_lane(actual, io_lane)
         smb_path = self._path(path)
         unc = smb_path.to_unc(actual.target_ip, actual.share)
-        with actual.lock:
-            self._validate_path_components(actual, smb_path)
-            file_stat = actual.session.invoke(
+        with lane_lock:
+            self._validate_path_components(
+                actual, smb_path, session=session
+            )
+            file_stat = session.invoke(
                 'stat', unc, follow_symlinks=False
             )
             if self._is_reparse(file_stat) or self._is_directory(file_stat):
                 raise SMBBackendError('File is not readable')
-            remote_file = actual.session.invoke(
+            remote_file = session.invoke(
                 'open_file_no_follow', unc, mode='rb', buffering=0
             )
             with remote_file:
@@ -364,8 +402,10 @@ class SMBBackend:
         *,
         replace,
         cancel_event,
+        io_lane='control',
     ):
         actual = self._owned_source(source)
+        session, lane_lock = self._io_lane(actual, io_lane)
         destination = self._path(path)
         if not destination.name:
             raise SMBBackendError('Invalid path')
@@ -374,15 +414,16 @@ class SMBBackend:
         )
         destination_unc = destination.to_unc(actual.target_ip, actual.share)
         temporary_unc = temporary.to_unc(actual.target_ip, actual.share)
-        with actual.lock:
+        with lane_lock:
             remote_file = None
             try:
                 self._validate_path_components(
                     actual,
                     destination,
                     allow_missing_leaf=True,
+                    session=session,
                 )
-                remote_file = actual.session.invoke(
+                remote_file = session.invoke(
                     'open_file_no_follow',
                     temporary_unc,
                     mode='xb',
@@ -397,8 +438,9 @@ class SMBBackend:
                         actual,
                         destination,
                         allow_missing_leaf=True,
+                        session=session,
                     )
-                    actual.session.invoke(
+                    session.invoke(
                         'replace' if replace else 'rename',
                         temporary_unc,
                         destination_unc,
@@ -418,7 +460,7 @@ class SMBBackend:
                     raise
             except Exception:
                 try:
-                    actual.session.invoke('remove', temporary_unc)
+                    session.invoke('remove', temporary_unc)
                 except Exception:
                     pass
                 raise
@@ -431,10 +473,12 @@ class SMBBackend:
         budget,
         cancel_event,
         follow_links=False,
+        io_lane='control',
     ):
         if follow_links:
             raise SMBBackendError('Following reparse points is unavailable')
         actual = self._owned_source(source)
+        session, lane_lock = self._io_lane(actual, io_lane)
         root = self._path(path)
         member_budget = budget or _MemberBudget(config.MAX_TRANSFER_MEMBERS)
 
@@ -442,8 +486,10 @@ class SMBBackend:
             return cancel_event is not None and cancel_event.is_set()
 
         def iterate():
-            with actual.lock:
-                self._validate_path_components(actual, root)
+            with lane_lock:
+                self._validate_path_components(
+                    actual, root, session=session
+                )
 
                 def walk(directory, depth=0):
                     if depth > 50:
@@ -452,7 +498,7 @@ class SMBBackend:
                         )
                     if cancelled():
                         raise SMBBackendError('Operation cancelled')
-                    iterator = actual.session.invoke(
+                    iterator = session.invoke(
                         'scandir_no_follow',
                         directory.to_unc(actual.target_ip, actual.share),
                     )
@@ -503,17 +549,27 @@ class SMBBackend:
         except Exception as exc:
             return None, self._public_error(exc)
 
-    def check_exists(self, source, path):
-        result, error = self.stat(source, path, follow_links=False)
-        if error == 'File or directory not found':
-            return {'exists': False, 'is_dir': False, 'size': 0}, None
-        if error:
-            return None, error
+    def check_exists_or_raise(self, source, path):
+        try:
+            result = self.stat_or_raise(source, path, follow_links=False)
+        except Exception as exc:
+            if self._is_not_found(exc):
+                return {'exists': False, 'is_dir': False, 'size': 0}
+            raise
         return {
             'exists': True,
             'is_dir': result['is_dir'],
             'size': result['size'],
-        }, None
+        }
+
+    def check_exists(self, source, path):
+        try:
+            return self.check_exists_or_raise(source, path), None
+        except Exception as exc:
+            error = self._public_error(exc)
+        if error == 'File or directory not found':
+            return {'exists': False, 'is_dir': False, 'size': 0}, None
+        return None, error
 
     def get_file_stat(self, source, path):
         return self.stat(source, path, follow_links=False)
@@ -540,6 +596,150 @@ class SMBBackend:
                     remote_file.seek(offset)
                 data = remote_file.read(maximum + 1)
         return file_size, data
+
+    def _editor_revision_locked(self, actual, destination):
+        """Hash one validated editor target while the caller owns its lane."""
+        self._validate_path_components(actual, destination)
+        unc = destination.to_unc(actual.target_ip, actual.share)
+        file_stat = actual.session.invoke('stat', unc, follow_symlinks=False)
+        if self._is_reparse(file_stat) or self._is_directory(file_stat):
+            raise SMBBackendError('File is not readable')
+        file_size = getattr(file_stat, 'st_size', 0) or 0
+        if file_size > config.MAX_EDITOR_FILE_SIZE:
+            raise SMBBackendError('File too large to edit')
+        remote_file = actual.session.invoke(
+            'open_file_no_follow', unc, mode='rb', buffering=0
+        )
+        with remote_file:
+            data = remote_file.read(config.MAX_EDITOR_FILE_SIZE + 1)
+        if len(data) > config.MAX_EDITOR_FILE_SIZE:
+            raise SMBBackendError('File too large to edit')
+        return hashlib.sha256(data).hexdigest()
+
+    @staticmethod
+    def _edit_conflict():
+        return FileWriteOutcome(
+            success=False,
+            error='The file changed on the server. Reopen it before saving.',
+            code='EDIT_CONFLICT',
+        )
+
+    @staticmethod
+    def _generated_leaf(destination, purpose, token):
+        return f'.{destination.name}.webssh-{purpose}-{token}'
+
+    def _remove_generated(self, actual, path):
+        try:
+            actual.session.invoke(
+                'remove', path.to_unc(actual.target_ip, actual.share)
+            )
+            return True
+        except Exception:
+            return False
+
+    def _recoverable_replace(
+        self,
+        actual,
+        destination,
+        data,
+        *,
+        expected_revision,
+    ):
+        """Install an editor save with a sibling backup and bounded rollback."""
+        token = secrets.token_hex(12)
+        temporary = destination.parent().child(
+            self._generated_leaf(destination, 'write', token) + '.tmp'
+        )
+        recovery = destination.parent().child(
+            self._generated_leaf(destination, 'recovery', token) + '.bak'
+        )
+        destination_unc = destination.to_unc(actual.target_ip, actual.share)
+        temporary_unc = temporary.to_unc(actual.target_ip, actual.share)
+        recovery_unc = recovery.to_unc(actual.target_ip, actual.share)
+
+        with actual.lock:
+            try:
+                current_revision = self._editor_revision_locked(
+                    actual, destination
+                )
+            except Exception as exc:
+                return FileWriteOutcome(
+                    success=False,
+                    error=self._public_error(exc),
+                )
+            if not expected_revision or expected_revision != current_revision:
+                return self._edit_conflict()
+
+            try:
+                self._validate_path_components(
+                    actual, temporary, allow_missing_leaf=True
+                )
+                self._validate_path_components(
+                    actual, recovery, allow_missing_leaf=True
+                )
+                remote_file = actual.session.invoke(
+                    'open_file_no_follow',
+                    temporary_unc,
+                    mode='xb',
+                    buffering=0,
+                )
+                with remote_file:
+                    self._write_all(remote_file, data)
+            except Exception as exc:
+                self._remove_generated(actual, temporary)
+                return FileWriteOutcome(
+                    success=False,
+                    error=self._public_error(exc),
+                )
+
+            try:
+                self._validate_path_components(actual, destination)
+                actual.session.invoke('rename', destination_unc, recovery_unc)
+            except Exception as exc:
+                removed = self._remove_generated(actual, temporary)
+                if not removed:
+                    return FileWriteOutcome(
+                        success=False,
+                        error='The save failed and a temporary recovery file remains.',
+                        code='SMB_RECOVERY_REQUIRED',
+                        recovery_leaves=(temporary.name,),
+                    )
+                return FileWriteOutcome(
+                    success=False,
+                    error=self._public_error(exc),
+                )
+
+            try:
+                actual.session.invoke('rename', temporary_unc, destination_unc)
+            except Exception:
+                try:
+                    actual.session.invoke('rename', recovery_unc, destination_unc)
+                except Exception:
+                    return FileWriteOutcome(
+                        success=False,
+                        error=(
+                            'The replacement and automatic rollback failed. '
+                            'Manual recovery is required.'
+                        ),
+                        code='SMB_RECOVERY_REQUIRED',
+                        recovery_leaves=(temporary.name, recovery.name),
+                    )
+                self._remove_generated(actual, temporary)
+                return FileWriteOutcome(
+                    success=False,
+                    error='The replacement failed. The original file was restored.',
+                    code='SMB_RECOVERABLE_REPLACE_FAILED',
+                )
+
+            revision = hashlib.sha256(data).hexdigest()
+            if not self._remove_generated(actual, recovery):
+                return FileWriteOutcome(
+                    success=True,
+                    warning_code='SMB_RECOVERY_BACKUP_RETAINED',
+                    recovery_leaves=(recovery.name,),
+                    revision=revision,
+                )
+            return FileWriteOutcome(success=True, revision=revision)
 
     @staticmethod
     def _decode(data):
@@ -635,6 +835,7 @@ class SMBBackend:
                 'size': file_size,
                 'encoding': encoding,
                 'newline': newline,
+                'revision': hashlib.sha256(data).hexdigest(),
             }, None
         except Exception as exc:
             return None, self._public_error(exc)
@@ -657,6 +858,8 @@ class SMBBackend:
         encoding,
         newline,
         allow_non_atomic=False,
+        expected_revision=None,
+        replace_strategy='atomic',
     ):
         try:
             if not isinstance(content, str):
@@ -672,22 +875,58 @@ class SMBBackend:
                 data = text.encode('utf-8')
             if len(data) > config.MAX_EDITOR_FILE_SIZE:
                 raise SMBBackendError('File too large to edit')
-            # ``allow_non_atomic`` is retained only for compatibility with old
-            # clients.  SMB editor saves always fail closed when the server
-            # cannot replace the destination atomically.
+            # Retained for wire compatibility only. A boolean must never enable
+            # a truncating overwrite of the destination.
             del allow_non_atomic
-            with self.open_atomic_writer(
-                source,
-                path,
-                replace=True,
-                cancel_event=None,
-            ) as remote_file:
-                self._write_all(remote_file, data)
-            return True, None
-        except NonAtomicOverwriteRequired:
-            raise
+            if replace_strategy not in {'atomic', 'recoverable_swap'}:
+                raise SMBBackendError('Invalid replacement strategy')
+
+            actual = self._owned_source(source)
+            destination = self._mutable_path(self._path(path))
+            if replace_strategy == 'recoverable_swap':
+                return self._recoverable_replace(
+                    actual,
+                    destination,
+                    data,
+                    expected_revision=expected_revision,
+                )
+
+            with actual.lock:
+                current_revision = self._editor_revision_locked(
+                    actual, destination
+                )
+                if (
+                    not expected_revision
+                    or expected_revision != current_revision
+                ):
+                    return self._edit_conflict()
+                try:
+                    with self.open_atomic_writer(
+                        source,
+                        path,
+                        replace=True,
+                        cancel_event=None,
+                    ) as remote_file:
+                        self._write_all(remote_file, data)
+                except NonAtomicOverwriteRequired:
+                    return FileWriteOutcome(
+                        success=False,
+                        error=(
+                            'This SMB account cannot replace the file '
+                            'atomically.'
+                        ),
+                        code='SMB_RECOVERABLE_REPLACE_REQUIRED',
+                        revision=current_revision,
+                    )
+            return FileWriteOutcome(
+                success=True,
+                revision=hashlib.sha256(data).hexdigest(),
+            )
         except Exception as exc:
-            return False, self._public_error(exc)
+            return FileWriteOutcome(
+                success=False,
+                error=self._public_error(exc),
+            )
 
 
 smb_backend = SMBBackend()

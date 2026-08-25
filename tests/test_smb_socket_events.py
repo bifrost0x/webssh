@@ -139,6 +139,83 @@ def test_success_is_correlated_and_password_never_reaches_response(app, monkeypa
     assert emitted[0][2]['room'] == sid
 
 
+@pytest.mark.parametrize(
+    'code',
+    ('PERMISSION_DENIED', 'SHARE_UNAVAILABLE', 'TIMEOUT'),
+)
+def test_connect_preserves_actionable_share_failure_codes(app, monkeypatch, code):
+    import app.socket_events as socket_events
+    from app.smb_pool import SMBSourceError
+
+    _user_id, sid = _socket_user(app, f'smb_error_{code.lower()}')
+    lifecycle = _CapturedLifecycle()
+    app.extensions['runtime_lifecycle'] = lifecycle
+
+    failure = SMBSourceError(code, r'secret \\server\share')
+    failure.diagnostic_phase = 'share_access'
+    failure.diagnostic_exception_type = 'SMBOSError'
+    failure.diagnostic_nt_status = '0xC0000022'
+
+    class _Pool:
+        def create_source(self, **_kwargs):
+            raise failure
+
+    emitted = []
+    logs = []
+    monkeypatch.setattr(socket_events.config, 'SMB_ENABLED', True)
+    monkeypatch.setattr(socket_events, 'check_socket_rate_limit', lambda *_args: False)
+    monkeypatch.setattr(socket_events, '_smb_pool', lambda: _Pool())
+    monkeypatch.setattr(
+        socket_events,
+        '_new_smb_diagnostic_id',
+        lambda: 'SMB-A1B2C3D4E5F6',
+        raising=False,
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'log_warning',
+        lambda event, **details: logs.append((event, details)),
+    )
+    monkeypatch.setattr(socket_events, 'emit', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        socket_events.socketio,
+        'emit',
+        lambda name, data=None, **kwargs: emitted.append((name, data, kwargs)),
+    )
+
+    _call(app, sid, socket_events.handle_smb_quick_connect, _payload())
+    with app.app_context():
+        lifecycle.jobs[0][1](lifecycle.jobs[0][2])
+
+    assert emitted == [(
+        'smb_quick_connect_error',
+        {
+            'request_id': 'smb-request-1',
+            'code': code,
+            'diagnostic_id': 'SMB-A1B2C3D4E5F6',
+        },
+        {'room': sid},
+    )]
+    assert logs == [(
+        'SMB source connection failed',
+        {
+            'user_id': str(_user_id),
+            'host': 'nas.example',
+            'share': 'Docs',
+            'result_code': code,
+            'diagnostic_id': 'SMB-A1B2C3D4E5F6',
+            'diagnostic_phase': 'share_access',
+            'cause_type': 'SMBOSError',
+            'nt_status': '0xC0000022',
+            'exception_type': 'SMBSourceError',
+        },
+    )]
+    assert 'secret' not in repr(emitted)
+    assert 'server' not in repr(emitted)
+    assert 'secret' not in repr(logs)
+    assert 'server' not in repr(logs)
+
+
 def test_cancelled_connect_closes_late_success(app, monkeypatch):
     import app.socket_events as socket_events
     from app.file_sources import FileSourceDescriptor, FileSourceKind, make_source_id

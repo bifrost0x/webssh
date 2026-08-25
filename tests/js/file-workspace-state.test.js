@@ -20,10 +20,12 @@ test('opening tabs keeps independent pane state and strips credential fields', (
     const workspace = new FileWorkspaceState(() => ({ path: '/', selected: new Set() }));
     const leftState = { path: '/srv/app', selected: new Set([1]) };
     const rightState = { path: '/srv/archive', selected: new Set() };
+    const leftAccess = { list: 'granted', createFile: 'denied' };
 
     const leftTab = workspace.openTab('left', {
         sourceId: 'sftp-session:session-a', kind: 'sftp', label: 'Production',
         protocol: 'SFTP', capabilities: ['list'], ephemeral: false,
+        access: leftAccess,
         password: 'must-not-survive', keyMaterial: 'private',
     }, leftState);
     const rightTab = workspace.openTab('right', {
@@ -37,8 +39,10 @@ test('opening tabs keeps independent pane state and strips credential fields', (
     assert.equal(rightTab.paneState, rightState);
     assert.equal(leftTab.source.password, undefined);
     assert.equal(leftTab.source.keyMaterial, undefined);
+    assert.deepEqual(leftTab.source.access, leftAccess);
+    assert.notEqual(leftTab.source.access, leftAccess);
     assert.deepEqual(Object.keys(leftTab.source).sort(), [
-        'capabilities', 'endpoint', 'ephemeral', 'kind', 'label', 'protocol',
+        'access', 'capabilities', 'endpoint', 'ephemeral', 'kind', 'label', 'protocol',
         'security', 'sourceId', 'status',
     ]);
 });

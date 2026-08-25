@@ -33,8 +33,8 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=23',
-        "filename='css/sftp-file-manager.css'": '?v=12',
-        "filename='js/i18n.js'": '?v=25',
+        "filename='css/sftp-file-manager.css'": '?v=15',
+        "filename='js/i18n.js'": '?v=30',
         "filename='js/command-workspace.js'": '?v=2',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
@@ -43,19 +43,26 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/session-workspace.js'": '?v=9',
         "filename='js/session-manager.js'": '?v=12',
         "filename='js/terminal-manager.js'": '?v=10',
-        "filename='js/smb-source-dialog.js'": '?v=3',
-        "filename='js/sftp-file-manager.js'": '?v=19',
+        "filename='js/smb-source-dialog.js'": '?v=5',
+        "filename='js/sftp-file-manager.js'": '?v=24',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=3',
         "filename='js/command-set-manager.js'": '?v=2',
         "filename='js/session-command-launcher.js'": '?v=5',
         "filename='js/connection-history.js'": '?v=2',
-        "filename='js/app.js'": '?v=22',
+        "filename='js/app.js'": '?v=23',
     }
     for asset, version in expected_versions.items():
         asset_start = template.index(asset)
         asset_tag = template[asset_start:template.index('>', asset_start)]
         assert version in asset_tag
+
+
+def test_index_exposes_only_bounded_numeric_transfer_limits():
+    template = read('templates/index.html')
+
+    assert 'window.WEBSSH_TRANSFER_LIMITS = Object.freeze(' in template
+    assert 'transfer_limits | tojson' in template
 
 
 def test_profile_manager_builds_safe_contextual_launcher_buttons():

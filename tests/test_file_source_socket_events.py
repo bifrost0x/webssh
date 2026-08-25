@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import socket_events
+from app.file_backend import FileWriteOutcome
 from app.file_service import FileService
 from app.file_sources import (
     FileCapability,
@@ -10,7 +11,6 @@ from app.file_sources import (
     FileSourceUnavailable,
     ResolvedFileSource,
 )
-from app.smb_backend import NonAtomicOverwriteRequired
 
 
 class ListingBackend:
@@ -132,6 +132,11 @@ class OperationBackend:
         self.calls.append(('mkdir', path))
         return True, None
 
+    def normalize_path(self, path):
+        if not isinstance(path, str) or not path.startswith('/') or '..' in path:
+            return None
+        return path.rstrip('/') or '/'
+
     def rename(self, source, old_path, new_path, *, replace=False):
         self.calls.append(('rename', old_path, new_path, replace))
         return True, None
@@ -146,7 +151,11 @@ class OperationBackend:
 
     def check_exists(self, source, path):
         self.calls.append(('exists', path))
-        return {'exists': True, 'is_dir': False, 'size': 4}, None
+        return {
+            'exists': path != '/new',
+            'is_dir': False,
+            'size': 4,
+        }, None
 
     def get_file_stat(self, source, path):
         self.calls.append(('stat', path))
@@ -171,6 +180,7 @@ class OperationBackend:
             'size': 4,
             'encoding': 'utf-8',
             'newline': 'lf',
+            'revision': 'a' * 64,
         }, None
 
     def read_binary_preview(self, source, path, *, max_size):
@@ -186,11 +196,14 @@ class OperationBackend:
         encoding,
         newline,
         allow_non_atomic=False,
+        expected_revision=None,
+        replace_strategy='atomic',
     ):
         self.calls.append((
             'save', path, content, encoding, newline, allow_non_atomic,
+            expected_revision, replace_strategy,
         ))
-        return True, None
+        return FileWriteOutcome(success=True, revision='b' * 64)
 
 
 def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatch):
@@ -219,7 +232,7 @@ def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatc
         **common,
         'remote_path': '/new',
     }, current_user=user)
-    socket_events.handle_rename_file.__wrapped__({
+    rename_result = socket_events.handle_rename_file.__wrapped__({
         **common,
         'old_path': '/old',
         'new_path': '/new',
@@ -263,10 +276,12 @@ def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatc
             'content': 'saved',
             'encoding': 'utf-8',
             'newline': 'lf',
+            'expected_revision': 'a' * 64,
         }, current_user=user)
 
     assert backend.calls == [
         ('mkdir', '/new'),
+        ('exists', '/new'),
         ('rename', '/old', '/new', False),
         ('delete', '/old-tree', True, None, None),
         ('home',),
@@ -275,7 +290,7 @@ def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatc
         ('preview', '/note.txt', 4096, 2, 10),
         ('edit', '/note.txt'),
         ('binary-preview', '/image.png', socket_events.config.MAX_EDITOR_FILE_SIZE),
-        ('save', '/note.txt', 'saved', 'utf-8', 'lf', False),
+        ('save', '/note.txt', 'saved', 'utf-8', 'lf', False, 'a' * 64, 'atomic'),
     ]
     assert [event for event, _payload in emitted] == [
         'directory_created',
@@ -293,9 +308,16 @@ def test_file_operation_handlers_use_one_source_service_boundary(app, monkeypatc
         payload.get('source_id') == 'sftp-session:owned'
         for _event, payload in emitted
     )
+    assert rename_result == {
+        'success': True,
+        'source_id': 'sftp-session:owned',
+        'old_path': '/old',
+        'new_path': '/new',
+        'request_id': 'file-operation:owned',
+    }
 
 
-def test_smb_editor_fails_closed_when_atomic_replace_is_unavailable(
+def test_smb_editor_requests_per_save_recoverable_swap_consent(
     app,
     monkeypatch,
 ):
@@ -317,10 +339,17 @@ def test_smb_editor_fails_closed_when_atomic_replace_is_unavailable(
             encoding,
             newline,
             allow_non_atomic=False,
+            expected_revision=None,
+            replace_strategy='atomic',
         ):
-            self.calls.append(('save', allow_non_atomic))
-            raise NonAtomicOverwriteRequired(
-                'Atomic replacement requires delete permission'
+            self.calls.append((
+                'save', allow_non_atomic, expected_revision, replace_strategy,
+            ))
+            return FileWriteOutcome(
+                success=False,
+                error='This SMB account cannot replace the file atomically.',
+                code='SMB_RECOVERABLE_REPLACE_REQUIRED',
+                revision=expected_revision,
             )
 
     backend = AtomicOnlyBackend()
@@ -342,6 +371,7 @@ def test_smb_editor_fails_closed_when_atomic_replace_is_unavailable(
         'content': 'saved',
         'encoding': 'utf-8',
         'newline': 'lf',
+        'expected_revision': 'a' * 64,
     }
 
     with app.test_request_context('/socket.io'):
@@ -350,12 +380,12 @@ def test_smb_editor_fails_closed_when_atomic_replace_is_unavailable(
             current_user=user,
         )
 
-    assert backend.calls == [('save', False)]
+    assert backend.calls == [('save', False, 'a' * 64, 'atomic')]
     assert len(audit_calls) == 1
     assert audit_calls[0] == {
         'username': 'operator',
         'operation': 'edit_save',
-        'result': 'ATOMIC_REPLACE_UNAVAILABLE',
+        'result': 'RECOVERABLE_REPLACE_REQUIRED',
         'filename': 'note.txt',
         'size': len(b'saved'),
         'ip_address': None,
@@ -367,12 +397,147 @@ def test_smb_editor_fails_closed_when_atomic_replace_is_unavailable(
         'share': 'Share',
     }
     assert emitted[0] == ('error', {
-        'error': 'Atomic replacement is unavailable for this SMB account.',
-        'code': 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
+        'error': 'This SMB account cannot replace the file atomically.',
+        'code': 'SMB_RECOVERABLE_REPLACE_REQUIRED',
+        'revision': 'a' * 64,
         'operation': 'save_file',
         'source_id': 'smb-quick:owned',
         'request_id': 'save:smb:1',
         'path': '/note.txt',
+    })
+
+
+def test_smb_editor_surfaces_recovery_artifacts_without_raw_paths(app, monkeypatch):
+    emitted, user = capture(monkeypatch)
+    monkeypatch.setattr(
+        socket_events,
+        'log_file_source_operation',
+        lambda **_details: None,
+    )
+    class RecoveryBackend(OperationBackend):
+        def write_file_text(self, *_args, **_kwargs):
+            return FileWriteOutcome(
+                success=False,
+                error='Manual recovery is required.',
+                code='SMB_RECOVERY_REQUIRED',
+                recovery_leaves=(
+                    '.note.txt.webssh-write-safe.tmp',
+                    '.note.txt.webssh-recovery-safe.bak',
+                ),
+            )
+
+    source = make_source(
+        'smb-quick:owned',
+        tuple(FileCapability),
+        RecoveryBackend(),
+        kind='smb',
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'file_service',
+        FileService(SimpleNamespace(resolve=lambda *_args: source)),
+    )
+
+    with app.test_request_context('/socket.io'):
+        socket_events.handle_save_file.__wrapped__({
+            'source_id': 'smb-quick:owned',
+            'request_id': 'save:smb:recovery',
+            'path': '/note.txt',
+            'content': 'saved',
+            'encoding': 'utf-8',
+            'newline': 'lf',
+            'expected_revision': 'a' * 64,
+            'replace_strategy': 'recoverable_swap',
+        }, current_user=user)
+
+    assert emitted == [('error', {
+        'error': 'Manual recovery is required.',
+        'code': 'SMB_RECOVERY_REQUIRED',
+        'recovery_leaves': [
+            '.note.txt.webssh-write-safe.tmp',
+            '.note.txt.webssh-recovery-safe.bak',
+        ],
+        'operation': 'save_file',
+        'source_id': 'smb-quick:owned',
+        'request_id': 'save:smb:recovery',
+        'path': '/note.txt',
+    })]
+
+
+@pytest.mark.parametrize(
+    ('old_path', 'new_path'),
+    (
+        ('/same', '/same'),
+        ('/folder', '/folder/child'),
+        ('/Folder', '/folder/child'),
+        ('/Folder', '/folder/child'),
+        ('/', '/target'),
+        ('/source', '/../escape'),
+    ),
+)
+def test_move_rejects_unsafe_relationships_without_mutation(
+    monkeypatch,
+    old_path,
+    new_path,
+):
+    emitted, user = capture(monkeypatch)
+    backend = OperationBackend()
+    source = make_source(
+        'smb-quick:owned', tuple(FileCapability), backend, kind='smb',
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'file_service',
+        FileService(SimpleNamespace(resolve=lambda *_args: source)),
+    )
+
+    result = socket_events.handle_rename_file.__wrapped__({
+        'source_id': 'smb-quick:owned',
+        'old_path': old_path,
+        'new_path': new_path,
+        'request_id': 'workspace:move:1',
+    }, current_user=user)
+
+    assert result['success'] is False
+    assert result['code'] == 'INVALID_REQUEST'
+    assert not any(call[0] == 'rename' for call in backend.calls)
+    assert emitted[-1][0] == 'error'
+    assert emitted[-1][1]['code'] == 'INVALID_REQUEST'
+
+
+def test_move_reports_destination_conflict_without_replacement(monkeypatch):
+    emitted, user = capture(monkeypatch)
+    backend = OperationBackend()
+    source = make_source(
+        'smb-quick:owned', tuple(FileCapability), backend, kind='smb',
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'file_service',
+        FileService(SimpleNamespace(resolve=lambda *_args: source)),
+    )
+
+    result = socket_events.handle_rename_file.__wrapped__({
+        'source_id': 'smb-quick:owned',
+        'old_path': '/source.txt',
+        'new_path': '/note.txt',
+        'request_id': 'workspace:move:conflict',
+    }, current_user=user)
+
+    assert result == {
+        'success': False,
+        'code': 'CONFLICT',
+        'error': 'A file or folder already exists at the destination.',
+        'operation': 'rename_file',
+        'source_id': 'smb-quick:owned',
+        'old_path': '/source.txt',
+        'new_path': '/note.txt',
+        'request_id': 'workspace:move:conflict',
+    }
+    assert not any(call[0] == 'rename' for call in backend.calls)
+    assert emitted[-1] == ('error', {
+        **result,
+        'path': '/source.txt',
     })
 
 

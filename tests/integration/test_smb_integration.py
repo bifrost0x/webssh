@@ -8,8 +8,10 @@ from threading import Event
 
 from app.file_sources import ResolvedFileSource
 from app.remote_transfer import TransferBudget, copy_remote_entry
-from app.smb_backend import NonAtomicOverwriteRequired, SMBBackend
+from app.smb_backend import SMBBackend
 from app.smb_pool import SMBConnectionPool, SMBSourceError
+from app.smb_protocol import SMBProtocolError
+from app.transfer_errors import classify_transfer_failure
 
 
 def _required(name):
@@ -54,6 +56,12 @@ def run_checks():
             user_id='integration-user',
             cancel_event=Event(),
         )
+        assert descriptor.access == {
+            'list': 'granted',
+            'create_file': 'granted',
+            'create_directory': 'granted',
+            'delete_children': 'granted',
+        }
         assert pool.get_source(descriptor.source_id, 'other-user') is None
         source = ResolvedFileSource(
             descriptor=descriptor,
@@ -94,48 +102,60 @@ def run_checks():
             cancel_event=Event(),
         ) as remote_file:
             remote_file.write(b'before')
-        assert backend.write_file_text(
+        original_revision = hashlib.sha256(b'before').hexdigest()
+        edit_outcome = backend.write_file_text(
             source,
             '/atomic-edit.txt',
             'after',
             encoding='utf-8',
             newline='lf',
-        ) == (True, None)
+            expected_revision=original_revision,
+        )
+        assert edit_outcome.success is True, edit_outcome
+        assert edit_outcome.revision == hashlib.sha256(b'after').hexdigest()
         with backend.open_reader(source, '/atomic-edit.txt') as remote_file:
             assert remote_file.read() == b'after'
 
         protected_path = '/atomic-denied/replace-denied.txt'
         with backend.open_reader(source, protected_path) as remote_file:
             protected_original = remote_file.read()
-        try:
-            backend.write_file_text(
-                source,
-                protected_path,
-                'direct overwrite requires consent',
-                encoding='utf-8',
-                newline='lf',
-            )
-        except NonAtomicOverwriteRequired:
-            pass
-        else:
-            raise AssertionError(
-                'delete-denied edit did not require explicit consent'
-            )
+        protected_revision = hashlib.sha256(protected_original).hexdigest()
+        protected_outcome = backend.write_file_text(
+            source,
+            protected_path,
+            'recoverable replacement requires consent',
+            encoding='utf-8',
+            newline='lf',
+            expected_revision=protected_revision,
+        )
+        assert protected_outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
         with backend.open_reader(source, protected_path) as remote_file:
             assert remote_file.read() == protected_original
-        try:
-            backend.write_file_text(
-                source,
-                protected_path,
-                'legacy direct overwrite request',
-                encoding='utf-8',
-                newline='lf',
-                allow_non_atomic=True,
-            )
-        except NonAtomicOverwriteRequired:
-            pass
-        else:
-            raise AssertionError('legacy consent bypassed atomic replacement')
+
+        recoverable_outcome = backend.write_file_text(
+            source,
+            protected_path,
+            'recoverable replacement was attempted',
+            encoding='utf-8',
+            newline='lf',
+            expected_revision=protected_revision,
+            replace_strategy='recoverable_swap',
+        )
+        assert recoverable_outcome.success is False
+        assert recoverable_outcome.recovery_leaves == ()
+        with backend.open_reader(source, protected_path) as remote_file:
+            assert remote_file.read() == protected_original
+
+        legacy_outcome = backend.write_file_text(
+            source,
+            protected_path,
+            'legacy direct overwrite request',
+            encoding='utf-8',
+            newline='lf',
+            allow_non_atomic=True,
+            expected_revision=protected_revision,
+        )
+        assert legacy_outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
         with backend.open_reader(source, protected_path) as remote_file:
             assert remote_file.read() == protected_original
 
@@ -178,6 +198,51 @@ def run_checks():
 
         denied, error = backend.list_directory(source, '/denied')
         assert denied is None and error == 'Permission denied', (denied, error)
+
+        read_only_descriptor = pool.create_source(
+            host=host,
+            share='ReadOnly',
+            domain='',
+            username=username,
+            password=password,
+            user_id='integration-user',
+            cancel_event=Event(),
+        )
+        assert read_only_descriptor.access == {
+            'list': 'granted',
+            'create_file': 'denied',
+            'create_directory': 'denied',
+            'delete_children': 'denied',
+        }
+        read_only_source = ResolvedFileSource(
+            descriptor=read_only_descriptor,
+            user_id='integration-user',
+            handle_id=read_only_descriptor.source_id.split(':', 1)[1],
+            backend=backend,
+        )
+        read_only_listing, error = backend.list_directory(read_only_source, '/')
+        assert error is None
+        assert [item['name'] for item in read_only_listing] == ['read-only.txt']
+        try:
+            with backend.open_atomic_writer(
+                read_only_source,
+                '/must-not-exist.txt',
+                replace=False,
+                cancel_event=Event(),
+            ) as remote_file:
+                remote_file.write(b'blocked')
+        except SMBProtocolError as exc:
+            failure = classify_transfer_failure(exc, operation='upload')
+            assert failure.to_public_dict() == {
+                'error_code': 'PERMISSION_DENIED',
+                'error': 'No write permission for the destination.',
+                'retryable': False,
+            }
+        else:
+            raise AssertionError('read-only share accepted a write')
+        read_only_listing, error = backend.list_directory(read_only_source, '/')
+        assert error is None
+        assert [item['name'] for item in read_only_listing] == ['read-only.txt']
 
         assert backend.delete(
             source,

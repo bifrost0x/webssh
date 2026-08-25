@@ -1,7 +1,8 @@
 from contextlib import contextmanager
+import hashlib
 from io import BytesIO
 from types import SimpleNamespace
-from threading import Event, RLock
+from threading import Event, RLock, Thread
 
 import pytest
 
@@ -11,6 +12,7 @@ from app.file_sources import (
     ResolvedFileSource,
     make_source_id,
 )
+from app.file_backend import FileWriteOutcome
 from app.smb_backend import (
     FileConflict,
     NonAtomicOverwriteRequired,
@@ -98,6 +100,13 @@ class _Session:
             return response(*args, **kwargs)
         return response
 
+    def inspect_directory_access(self, path):
+        self.calls.append(('inspect_directory_access', (path,), {}))
+        response = self.responses.get('inspect_directory_access')
+        if isinstance(response, Exception):
+            raise response
+        return response
+
 
 def _fixture():
     session = _Session()
@@ -131,6 +140,70 @@ def _fixture():
     return backend, resolved, session
 
 
+class _StatefulSMBSession(_Session):
+    """Small in-memory SMB surface for editor replacement tests."""
+
+    def __init__(self, original=b'old'):
+        super().__init__()
+        self.destination = r'\\10.0.0.8\Docs\report.txt'
+        self.files = {self.destination: original}
+        self.failures = {}
+        self.open_modes = []
+
+    def invoke(self, name, *args, **kwargs):
+        self.calls.append((name, args, kwargs))
+        path = args[0] if args else None
+        failure = self.failures.get((name, path), self.failures.get(name))
+        if failure is not None:
+            raise failure
+        if name == 'stat':
+            if path not in self.files:
+                raise FileNotFoundError(path)
+            return _Stat(size=len(self.files[path]))
+        if name == 'open_file_no_follow':
+            mode = kwargs['mode']
+            self.open_modes.append((path, mode))
+            if mode == 'rb':
+                if path not in self.files:
+                    raise FileNotFoundError(path)
+                return BytesIO(self.files[path])
+            if mode != 'xb':
+                raise AssertionError(f'unsafe editor mode: {mode}')
+            if path in self.files:
+                raise FileExistsError(path)
+            session = self
+
+            class _StoredWrite(_Writable):
+                def close(self):
+                    if not self.closed:
+                        session.files[path] = self.getvalue()
+                    super().close()
+
+            return _StoredWrite()
+        if name in {'rename', 'replace'}:
+            old_path, new_path = args
+            if old_path not in self.files:
+                raise FileNotFoundError(old_path)
+            if name == 'rename' and new_path in self.files:
+                raise FileExistsError(new_path)
+            self.files[new_path] = self.files.pop(old_path)
+            return None
+        if name == 'remove':
+            if path not in self.files:
+                raise FileNotFoundError(path)
+            del self.files[path]
+            return None
+        raise AssertionError(f'unexpected SMB operation: {name}')
+
+
+def _stateful_fixture(original=b'old'):
+    backend, source, _session = _fixture()
+    session = _StatefulSMBSession(original)
+    actual = backend._pool().get_source(source.source_id, source.user_id)
+    actual.session = session
+    return backend, source, session
+
+
 def test_listing_closes_iterator_and_marks_reparse_entries_unfollowable():
     backend, source, session = _fixture()
     iterator = _Iterator([
@@ -146,6 +219,59 @@ def test_listing_closes_iterator_and_marks_reparse_entries_unfollowable():
     assert listing[0]['is_dir'] is True
     assert listing[1]['is_dir'] is False
     assert listing[1]['is_symlink'] is True
+
+
+def test_directory_access_inspection_uses_the_owned_share_confined_source():
+    backend, source, session = _fixture()
+    session.responses['inspect_directory_access'] = {
+        'list': 'granted',
+        'create_file': 'denied',
+        'create_directory': 'unknown',
+        'delete_children': 'granted',
+    }
+
+    access = backend.inspect_directory_access(source, '/')
+
+    assert access == session.responses['inspect_directory_access']
+    assert session.calls[-1] == (
+        'inspect_directory_access',
+        (r'\\10.0.0.8\Docs',),
+        {},
+    )
+
+
+def test_directory_access_inspection_preserves_protocol_failure():
+    backend, source, session = _fixture()
+    session.responses['inspect_directory_access'] = SMBProtocolError(
+        'PERMISSION_DENIED'
+    )
+
+    with pytest.raises(SMBProtocolError) as exc:
+        backend.inspect_directory_access(source, '/')
+
+    assert exc.value.public_code == 'PERMISSION_DENIED'
+
+
+def test_stat_or_raise_preserves_protocol_failure_for_transfer_boundaries():
+    backend, source, session = _fixture()
+    session.responses['stat'] = SMBProtocolError('PERMISSION_DENIED')
+
+    with pytest.raises(SMBProtocolError) as exc:
+        backend.stat_or_raise(source, '/restricted.txt', follow_links=False)
+
+    assert exc.value.public_code == 'PERMISSION_DENIED'
+
+
+def test_typed_directory_mutations_preserve_protocol_failure():
+    backend, source, session = _fixture()
+    session.responses['stat'] = _Stat(mode=0o040755, attributes=0x10)
+    session.responses['mkdir'] = SMBProtocolError('PERMISSION_DENIED')
+
+    assert backend.check_exists_or_raise(source, '/folder')['exists'] is True
+    with pytest.raises(SMBProtocolError) as exc:
+        backend.mkdir_or_raise(source, '/folder/new')
+
+    assert exc.value.public_code == 'PERMISSION_DENIED'
 
 
 def test_listing_and_recursive_traversal_use_no_follow_directory_opens():
@@ -282,78 +408,219 @@ def test_atomic_replace_never_predeletes_existing_target():
     assert removed != r'\\10.0.0.8\Docs\report.txt'
 
 
-def test_atomic_replace_permission_failure_requires_explicit_non_atomic_consent():
-    backend, source, session = _fixture()
-    session.responses['open_file'] = _Writable()
-    session.responses['replace'] = SMBProtocolError('PERMISSION_DENIED')
+def test_editor_read_returns_revision_of_exact_remote_bytes():
+    backend, source, session = _stateful_fixture(b'old\r\ntext')
 
-    with pytest.raises(NonAtomicOverwriteRequired):
-        backend.write_file_text(
-            source,
-            '/report.txt',
-            'new',
-            encoding='utf-8',
-            newline='lf',
-        )
+    result, error = backend.read_file_for_edit(source, '/report.txt')
 
-    open_modes = [
-        kwargs['mode']
-        for name, _args, kwargs in session.calls
-        if name in {'open_file', 'open_file_no_follow'}
-    ]
-    assert open_modes == ['xb']
+    assert error is None
+    assert result['content'] == 'old\ntext'
+    assert result['revision'] == hashlib.sha256(b'old\r\ntext').hexdigest()
 
 
-def test_legacy_non_atomic_consent_never_truncates_the_destination():
-    backend, source, session = _fixture()
-    atomic_writer = _Writable()
+def test_editor_save_rejects_missing_or_changed_revision_before_staging():
+    backend, source, session = _stateful_fixture()
 
-    def open_file(_path, *, mode, **_kwargs):
-        if mode == 'xb':
-            return atomic_writer
-        raise AssertionError('editor must never open the destination with wb')
+    missing = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision=None,
+    )
+    changed = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision='0' * 64,
+    )
 
-    session.responses['open_file'] = open_file
-    session.responses['open_file_no_follow'] = open_file
-    session.responses['replace'] = SMBProtocolError('PERMISSION_DENIED')
+    assert missing == FileWriteOutcome(
+        success=False,
+        error='The file changed on the server. Reopen it before saving.',
+        code='EDIT_CONFLICT',
+    )
+    assert changed.code == 'EDIT_CONFLICT'
+    assert session.files[session.destination] == b'old'
+    assert all(mode != 'xb' for _path, mode in session.open_modes)
 
-    with pytest.raises(NonAtomicOverwriteRequired):
-        backend.write_file_text(
-            source,
-            '/report.txt',
-            'new',
-            encoding='utf-8',
-            newline='lf',
-            allow_non_atomic=True,
-        )
 
+def test_recoverable_editor_swap_never_opens_destination_for_write():
+    backend, source, session = _stateful_fixture()
+    original_revision = hashlib.sha256(b'old').hexdigest()
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision=original_revision,
+        replace_strategy='recoverable_swap',
+    )
+
+    assert outcome == FileWriteOutcome(
+        success=True,
+        revision=hashlib.sha256(b'new').hexdigest(),
+    )
+    assert session.files == {session.destination: b'new'}
     assert all(
-        kwargs['mode'] != 'wb'
-        for name, _args, kwargs in session.calls
-        if name in {'open_file', 'open_file_no_follow'}
+        path != session.destination or mode == 'rb'
+        for path, mode in session.open_modes
     )
 
 
-def test_non_permission_replace_failure_never_uses_direct_overwrite():
-    backend, source, session = _fixture()
-    session.responses['open_file'] = _Writable()
-    session.responses['replace'] = SMBProtocolError('CONFLICT')
+def test_recoverable_editor_swap_rolls_back_when_install_fails():
+    backend, source, session = _stateful_fixture()
+    original_revision = hashlib.sha256(b'old').hexdigest()
 
-    success, error = backend.write_file_text(
+    def fail_temp_install(name, *args, **kwargs):
+        path = args[0] if args else None
+        if name == 'rename' and path and '.webssh-write-' in path:
+            raise SMBProtocolError('PERMISSION_DENIED')
+        return _StatefulSMBSession.invoke(session, name, *args, **kwargs)
+
+    session.invoke = fail_temp_install
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision=original_revision,
+        replace_strategy='recoverable_swap',
+    )
+
+    assert outcome.success is False
+    assert outcome.code == 'SMB_RECOVERABLE_REPLACE_FAILED'
+    assert outcome.recovery_leaves == ()
+    assert session.files == {session.destination: b'old'}
+
+
+def test_recoverable_editor_swap_preserves_safe_artifacts_when_rollback_fails():
+    backend, source, session = _stateful_fixture()
+    original_revision = hashlib.sha256(b'old').hexdigest()
+
+    def fail_install_and_rollback(name, *args, **kwargs):
+        old_path = args[0] if args else ''
+        if name == 'rename' and (
+            '.webssh-write-' in old_path or '.webssh-recovery-' in old_path
+        ):
+            raise SMBProtocolError('PERMISSION_DENIED')
+        return _StatefulSMBSession.invoke(session, name, *args, **kwargs)
+
+    session.invoke = fail_install_and_rollback
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision=original_revision,
+        replace_strategy='recoverable_swap',
+    )
+
+    assert outcome.success is False
+    assert outcome.code == 'SMB_RECOVERY_REQUIRED'
+    assert len(outcome.recovery_leaves) == 2
+    assert all('/' not in leaf and '\\' not in leaf for leaf in outcome.recovery_leaves)
+    assert all(leaf in '\n'.join(session.files) for leaf in outcome.recovery_leaves)
+    assert session.destination not in session.files
+
+
+def test_recoverable_editor_swap_reports_retained_backup_after_cleanup_failure():
+    backend, source, session = _stateful_fixture()
+    original_revision = hashlib.sha256(b'old').hexdigest()
+
+    original_invoke = session.invoke
+
+    def fail_backup_cleanup(name, *args, **kwargs):
+        path = args[0] if args else ''
+        if name == 'remove' and '.webssh-recovery-' in path:
+            raise SMBProtocolError('PERMISSION_DENIED')
+        return original_invoke(name, *args, **kwargs)
+
+    session.invoke = fail_backup_cleanup
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision=original_revision,
+        replace_strategy='recoverable_swap',
+    )
+
+    assert outcome.success is True
+    assert outcome.warning_code == 'SMB_RECOVERY_BACKUP_RETAINED'
+    assert len(outcome.recovery_leaves) == 1
+    assert session.files[session.destination] == b'new'
+
+
+def test_atomic_replace_permission_failure_requires_explicit_non_atomic_consent():
+    backend, source, session = _stateful_fixture()
+    session.failures['replace'] = SMBProtocolError('PERMISSION_DENIED')
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        expected_revision=hashlib.sha256(b'old').hexdigest(),
+    )
+
+    assert outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
+    assert session.files[session.destination] == b'old'
+    assert all(mode != 'wb' for _path, mode in session.open_modes)
+
+
+def test_legacy_non_atomic_consent_never_truncates_the_destination():
+    backend, source, session = _stateful_fixture()
+    session.failures['replace'] = SMBProtocolError('PERMISSION_DENIED')
+
+    outcome = backend.write_file_text(
         source,
         '/report.txt',
         'new',
         encoding='utf-8',
         newline='lf',
         allow_non_atomic=True,
+        expected_revision=hashlib.sha256(b'old').hexdigest(),
     )
 
-    assert success is False
-    assert error == 'Atomic replacement is unavailable'
+    assert outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
     assert all(
-        kwargs['mode'] != 'wb'
-        for name, _args, kwargs in session.calls
-        if name == 'open_file'
+        mode != 'wb'
+        for _path, mode in session.open_modes
+    )
+
+
+def test_non_permission_replace_failure_never_uses_direct_overwrite():
+    backend, source, session = _stateful_fixture()
+    session.failures['replace'] = SMBProtocolError('CONFLICT')
+
+    outcome = backend.write_file_text(
+        source,
+        '/report.txt',
+        'new',
+        encoding='utf-8',
+        newline='lf',
+        allow_non_atomic=True,
+        expected_revision=hashlib.sha256(b'old').hexdigest(),
+    )
+
+    assert outcome.success is False
+    assert outcome.error == 'Atomic replacement is unavailable'
+    assert all(
+        mode != 'wb'
+        for _path, mode in session.open_modes
     )
 
 
@@ -447,6 +714,53 @@ def test_open_reader_does_not_retry_when_caller_raises_attribute_error():
             raise AttributeError('caller failure')
 
     assert yielded == 1
+
+
+def test_transfer_lane_does_not_block_control_lane_navigation():
+    backend, source, control_session = _fixture()
+    transfer_session = _Session()
+    transfer_session.responses['stat'] = _Stat(size=3)
+    transfer_session.responses['open_file'] = BytesIO(b'abc')
+    control_session.responses['scandir'] = _Iterator([])
+    actual = backend._pool().get_source(source.source_id, source.user_id)
+    actual.control_session = control_session
+    actual.transfer_session = transfer_session
+    actual.control_lock = RLock()
+    actual.transfer_lock = RLock()
+    actual.session = control_session
+    actual.lock = actual.control_lock
+    transfer_entered = Event()
+    release_transfer = Event()
+    listing_finished = Event()
+    listing_result = []
+
+    def hold_transfer_reader():
+        with backend.open_reader(
+            source, '/large.bin', io_lane='transfer'
+        ):
+            transfer_entered.set()
+            release_transfer.wait(2)
+
+    def list_during_transfer():
+        listing_result.append(backend.list_directory(source, '/'))
+        listing_finished.set()
+
+    transfer_thread = Thread(target=hold_transfer_reader)
+    listing_thread = Thread(target=list_during_transfer)
+    transfer_thread.start()
+    try:
+        assert transfer_entered.wait(1)
+        listing_thread.start()
+        assert listing_finished.wait(1)
+    finally:
+        release_transfer.set()
+        transfer_thread.join(2)
+        if listing_thread.ident is not None:
+            listing_thread.join(2)
+
+    assert listing_result == [([], None)]
+    assert any(call[0] == 'open_file_no_follow' for call in transfer_session.calls)
+    assert any(call[0] == 'scandir_no_follow' for call in control_session.calls)
 
 
 def test_read_paths_open_the_validated_object_without_following_reparse_points():

@@ -36,6 +36,7 @@ from .remote_transfer import (
     RemoteTransferLimitExceeded,
     TransferBudget,
 )
+from .transfer_errors import classify_transfer_failure
 
 
 TRANSFER_CHUNK_SIZE = config.CHUNK_SIZE
@@ -48,13 +49,19 @@ transfer_manager = TransferManager()
 class DownloadLimitExceeded(RuntimeError):
     """The remote file exceeded its configured download limit while streaming."""
 
+    public_code = 'LIMIT_EXCEEDED'
+
 
 class TransferCancelled(RuntimeError):
     """The record was cancelled while a request was in flight."""
 
+    public_code = 'CANCELLED'
+
 
 class FolderUnavailable(RuntimeError):
     """A folder transfer target is not a readable directory."""
+
+    public_code = 'NOT_FOUND'
 
 
 def _current_user_id():
@@ -82,12 +89,21 @@ def _resolve_transfer_source(record, user_id):
     return source
 
 
-def prepare_transfer(user_id, direction, source_id, remote_path, owner_sid=None,
-                     archive=False):
+def prepare_transfer(
+    user_id,
+    direction,
+    source_id,
+    remote_path,
+    owner_sid=None,
+    archive=False,
+    conflict_policy='error',
+):
     """Validate a socket control request before giving out a one-use token."""
     if (
         owner_sid is None
         or direction not in {'upload', 'download'}
+        or conflict_policy not in {'error', 'replace'}
+        or direction != 'upload' and conflict_policy != 'error'
     ):
         return None
     try:
@@ -118,6 +134,7 @@ def prepare_transfer(user_id, direction, source_id, remote_path, owner_sid=None,
                 'remote_path': safe_path,
                 'filename': posixpath.basename(safe_path),
                 'archive': bool(archive),
+                'conflict_policy': conflict_policy,
             },
         )
     except (FileSourceUnavailable, RuntimeShuttingDown, ValueError):
@@ -141,6 +158,16 @@ def read_bounded_remote(remote_file, *, chunk_size, max_bytes, cancelled=None):
 
 def _transfer_backend(source):
     return getattr(source, 'backend', None)
+
+
+def _stat_transfer_source(backend, source, path):
+    stat_or_raise = getattr(backend, 'stat_or_raise', None)
+    if callable(stat_or_raise):
+        return stat_or_raise(source, path, follow_links=False)
+    file_stat, error = backend.stat(source, path, follow_links=False)
+    if error:
+        raise FolderUnavailable()
+    return file_stat
 
 
 def _audit_transfer_source(
@@ -195,6 +222,7 @@ def _upload_to_backend(
     cancel_event,
     cancelled,
     progress,
+    replace=False,
 ):
     transferred = 0
     backend = _transfer_backend(source)
@@ -203,8 +231,9 @@ def _upload_to_backend(
     with backend.open_atomic_writer(
         source,
         remote_path,
-        replace=False,
+        replace=replace,
         cancel_event=cancel_event,
+        io_lane='transfer',
     ) as remote_file:
         while True:
             if cancelled():
@@ -269,7 +298,7 @@ def _consume(token, expected_direction):
     return record, user_id, source
 
 
-def _terminalize(record, user_id, outcome, manager=None):
+def _terminalize(record, user_id, outcome, manager=None, failure=None):
     """Ask the manager for precisely one terminal state; it releases once."""
     manager = transfer_manager if manager is None else manager
     previous_attempt_raised = False
@@ -297,12 +326,19 @@ def _terminalize(record, user_id, outcome, manager=None):
     else:
         return False
     from . import socketio
-    socketio.emit('transfer_finished', {
+    payload = {
         'transfer_id': record.transfer_id,
         'direction': record.direction,
         'status': outcome,
-    }, room=f'user_{user_id}')
+    }
+    if failure is not None:
+        payload.update(failure.to_public_dict())
+    socketio.emit('transfer_finished', payload, room=f'user_{user_id}')
     return True
+
+
+def _json_failure(failure):
+    return jsonify(failure.to_public_dict()), failure.http_status
 
 
 def _request_finalizer(record, user_id, cleanup=None):
@@ -310,7 +346,7 @@ def _request_finalizer(record, user_id, cleanup=None):
     state_lock = threading.Lock()
     finished = False
 
-    def finish(outcome):
+    def finish(outcome, failure=None):
         nonlocal finished
         with state_lock:
             if finished:
@@ -321,7 +357,7 @@ def _request_finalizer(record, user_id, cleanup=None):
                 cleanup()
         finally:
             try:
-                _terminalize(record, user_id, outcome)
+                _terminalize(record, user_id, outcome, failure=failure)
             finally:
                 try:
                     record.release_source_holds()
@@ -356,17 +392,20 @@ def download_transfer(token):
     finish = _request_finalizer(record, user_id)
     remote_path = record.metadata.get('remote_path')
     if not remote_path:
+        failure = classify_transfer_failure(
+            FolderUnavailable(), operation='download'
+        )
         _audit_transfer_source(
             source,
             username=audit_username,
             ip_address=audit_ip,
             operation='download',
-            result='FAILED',
+            result=failure.code,
             filename=record.metadata.get('filename'),
             size=0,
         )
-        finish('failed')
-        abort(404)
+        finish('failed', failure)
+        return _json_failure(failure)
 
     try:
         backend = _transfer_backend(source)
@@ -374,27 +413,38 @@ def download_transfer(token):
             with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
                 size = sftp.stat(remote_path).st_size
         else:
-            file_stat, error = backend.stat(
-                source,
-                remote_path,
-                follow_links=False,
-            )
-            if error or not file_stat or file_stat.get('is_dir'):
+            file_stat = _stat_transfer_source(backend, source, remote_path)
+            if not file_stat or file_stat.get('is_dir'):
                 raise FolderUnavailable()
             size = int(file_stat.get('size', 0))
-    except Exception:
+    except Exception as error:
+        failure = classify_transfer_failure(error, operation='download')
+        log_error(
+            'HTTP download preparation failed',
+            user_id=user_id,
+            result_code=failure.code,
+            operation='download',
+            exception_type=type(error).__name__,
+        )
         _audit_transfer_source(
             source,
             username=audit_username,
             ip_address=audit_ip,
             operation='download',
-            result='FAILED',
+            result=failure.code,
             filename=record.metadata.get('filename'),
             size=0,
         )
-        finish('failed')
-        abort(404)
+        finish('failed', failure)
+        return _json_failure(failure)
     if size > config.MAX_DOWNLOAD_SIZE:
+        failure = classify_transfer_failure(
+            DownloadLimitExceeded(),
+            operation='download',
+            limit_kind='download',
+            limit_bytes=config.MAX_DOWNLOAD_SIZE,
+            actual_bytes=size,
+        )
         _audit_transfer_source(
             source,
             username=audit_username,
@@ -404,11 +454,12 @@ def download_transfer(token):
             filename=record.metadata.get('filename'),
             size=size,
         )
-        finish('failed')
-        return jsonify({'error': 'Transfer unavailable'}), 413
+        finish('failed', failure)
+        return _json_failure(failure)
 
     def generate():
         outcome = 'failed'
+        failure = None
         transferred = 0
         try:
             # Recheck directly before remote I/O because response iteration starts
@@ -428,17 +479,31 @@ def download_transfer(token):
                 with backend.open_reader(
                     active_source,
                     remote_path,
+                    io_lane='transfer',
                 ) as remote_file:
                     transferred = yield from _stream_download_chunks(
                         remote_file, record, user_id, size
                     )
             outcome = 'completed'
-        except (GeneratorExit, TransferCancelled):
+        except GeneratorExit:
             outcome = 'cancelled'
+            failure = classify_transfer_failure(
+                TransferCancelled(), operation='download'
+            )
+            raise
+        except TransferCancelled as error:
+            outcome = 'cancelled'
+            failure = classify_transfer_failure(error, operation='download')
             raise
         except Exception as error:
-            log_error('HTTP download failed', user_id=user_id,
-                      exception_type=type(error).__name__)
+            failure = classify_transfer_failure(error, operation='download')
+            log_error(
+                'HTTP download failed',
+                user_id=user_id,
+                result_code=failure.code,
+                operation='download',
+                exception_type=type(error).__name__,
+            )
             raise
         finally:
             _audit_transfer_source(
@@ -446,11 +511,11 @@ def download_transfer(token):
                 username=audit_username,
                 ip_address=audit_ip,
                 operation='download',
-                result=outcome,
+                result=failure.code if failure is not None else outcome,
                 filename=record.metadata['filename'],
                 size=transferred,
             )
-            finish(outcome)
+            finish(outcome, failure)
 
     response = Response(stream_with_context(generate()), mimetype='application/octet-stream')
     response.headers['Content-Disposition'] = _content_disposition(record.metadata['filename'])
@@ -561,6 +626,7 @@ def _build_backend_zip_to_disk(
             budget=budget,
             cancel_event=cancel_event,
             follow_links=False,
+            io_lane='transfer',
         ))
         if any(entry.get('is_symlink') for entry in entries):
             raise RemoteTransferError('Reparse points are not supported')
@@ -598,7 +664,9 @@ def _build_backend_zip_to_disk(
                 if entry.get('is_dir'):
                     archive.writestr(archive_name.rstrip('/') + '/', b'')
                     continue
-                with source.backend.open_reader(source, entry_path) as reader:
+                with source.backend.open_reader(
+                    source, entry_path, io_lane='transfer'
+                ) as reader:
                     with archive.open(archive_name, 'w') as archive_member:
                         while True:
                             if cancel_event.is_set():
@@ -666,29 +734,27 @@ def download_folder_transfer(token):
 
     finish = _request_finalizer(record, user_id, cleanup_resources)
     if not metadata.get('archive') or not remote_path:
+        failure = classify_transfer_failure(
+            FolderUnavailable(), operation='folder_download'
+        )
         _audit_transfer_source(
             source,
             username=audit_username,
             ip_address=audit_ip,
             operation='folder_download',
-            result='FAILED',
+            result=failure.code,
             filename=f'{folder_name}.zip',
             size=0,
         )
-        finish('failed')
-        abort(404)
+        finish('failed', failure)
+        return _json_failure(failure)
 
     try:
         backend = _transfer_backend(source)
         if backend is not None:
-            remote_stat, stat_error = backend.stat(
-                source,
-                remote_path,
-                follow_links=False,
-            )
+            remote_stat = _stat_transfer_source(backend, source, remote_path)
             if (
-                stat_error
-                or remote_stat is None
+                remote_stat is None
                 or not remote_stat.get('is_dir')
                 or remote_stat.get('is_symlink')
             ):
@@ -772,55 +838,27 @@ def download_folder_transfer(token):
                             temp_reservation.release()
                             temp_reservation = None
                         raise
-    except FolderUnavailable:
-        _audit_transfer_source(
-            source, username=audit_username, ip_address=audit_ip,
-            operation='folder_download', result='FAILED',
-            filename=f'{folder_name}.zip', size=0,
-        )
-        finish('failed')
-        abort(404)
-    except (
-        sftp_handler.TransferSizeExceeded,
-        sftp_handler.TransferMemberLimitExceeded,
-        RemoteTransferLimitExceeded,
-    ):
-        _audit_transfer_source(
-            source, username=audit_username, ip_address=audit_ip,
-            operation='folder_download', result='LIMIT_EXCEEDED',
-            filename=f'{folder_name}.zip', size=0,
-        )
-        finish('failed')
-        return jsonify({'error': 'Transfer unavailable'}), 413
-    except (sftp_handler.TransferCancelled, RemoteTransferCancelled):
-        _audit_transfer_source(
-            source, username=audit_username, ip_address=audit_ip,
-            operation='folder_download', result='CANCELLED',
-            filename=f'{folder_name}.zip', size=0,
-        )
-        finish('cancelled')
-        return jsonify({'error': 'Transfer unavailable'}), 409
-    except RemoteTransferError:
-        _audit_transfer_source(
-            source, username=audit_username, ip_address=audit_ip,
-            operation='folder_download', result='FAILED',
-            filename=f'{folder_name}.zip', size=0,
-        )
-        finish('failed')
-        return jsonify({'error': 'Transfer unavailable'}), 500
     except Exception as error:
-        log_error('Folder download preparation failed', user_id=user_id,
-                  exception_type=type(error).__name__)
+        failure = classify_transfer_failure(error, operation='folder_download')
+        outcome = 'cancelled' if failure.code == 'CANCELLED' else 'failed'
+        log_error(
+            'Folder download preparation failed',
+            user_id=user_id,
+            result_code=failure.code,
+            operation='folder_download',
+            exception_type=type(error).__name__,
+        )
         _audit_transfer_source(
             source, username=audit_username, ip_address=audit_ip,
-            operation='folder_download', result='FAILED',
+            operation='folder_download', result=failure.code,
             filename=f'{folder_name}.zip', size=0,
         )
-        finish('failed')
-        return jsonify({'error': 'Transfer unavailable'}), 500
+        finish(outcome, failure)
+        return _json_failure(failure)
 
     def generate():
         outcome = 'failed'
+        failure = None
         transferred = 0
         try:
             if remote_archive is not None:
@@ -852,12 +890,30 @@ def download_folder_transfer(token):
                         )
                         yield chunk
             outcome = 'completed'
-        except (GeneratorExit, sftp_handler.TransferCancelled):
+        except GeneratorExit:
             outcome = 'cancelled'
+            failure = classify_transfer_failure(
+                sftp_handler.TransferCancelled(),
+                operation='folder_download',
+            )
+            raise
+        except (sftp_handler.TransferCancelled, RemoteTransferCancelled) as error:
+            outcome = 'cancelled'
+            failure = classify_transfer_failure(
+                error, operation='folder_download'
+            )
             raise
         except Exception as error:
-            log_error('Folder download stream failed', user_id=user_id,
-                      exception_type=type(error).__name__)
+            failure = classify_transfer_failure(
+                error, operation='folder_download'
+            )
+            log_error(
+                'Folder download stream failed',
+                user_id=user_id,
+                result_code=failure.code,
+                operation='folder_download',
+                exception_type=type(error).__name__,
+            )
             raise
         finally:
             _audit_transfer_source(
@@ -865,11 +921,11 @@ def download_folder_transfer(token):
                 username=audit_username,
                 ip_address=audit_ip,
                 operation='folder_download',
-                result=outcome,
+                result=failure.code if failure is not None else outcome,
                 filename=f'{folder_name}.zip',
                 size=transferred,
             )
-            finish(outcome)
+            finish(outcome, failure)
 
     response = Response(
         stream_with_context(generate()), mimetype='application/zip'
@@ -894,13 +950,20 @@ def upload_transfer(token):
             request.content_length is None
             or request.content_length > config.MAX_UPLOAD_SIZE
         ):
+            failure = classify_transfer_failure(
+                sftp_handler.UploadSizeExceeded(),
+                operation='upload',
+                limit_kind='upload',
+                limit_bytes=config.MAX_UPLOAD_SIZE,
+                actual_bytes=request.content_length,
+            )
             _audit_transfer_source(
                 source, username=audit_username, ip_address=audit_ip,
-                operation='upload', result='LIMIT_EXCEEDED',
+                operation='upload', result=failure.code,
                 filename=record.metadata.get('filename'), size=0,
             )
-            _terminalize(record, user_id, 'failed')
-            return jsonify({'error': 'Transfer unavailable'}), 413
+            _terminalize(record, user_id, 'failed', failure=failure)
+            return _json_failure(failure)
 
         transferred = 0
         try:
@@ -916,6 +979,7 @@ def upload_transfer(token):
                     progress=lambda count: _emit_upload_progress(
                         record, user_id, count
                     ),
+                    replace=record.metadata.get('conflict_policy') == 'replace',
                 )
             else:
                 transferred = _upload_to_backend(
@@ -929,36 +993,57 @@ def upload_transfer(token):
                     progress=lambda count: _emit_upload_progress(
                         record, user_id, count
                     ),
+                    replace=record.metadata.get('conflict_policy') == 'replace',
                 )
         except sftp_handler.TransferCancelled:
+            failure = classify_transfer_failure(
+                sftp_handler.TransferCancelled(),
+                operation='upload',
+            )
             _audit_transfer_source(
                 source, username=audit_username, ip_address=audit_ip,
-                operation='upload', result='CANCELLED',
+                operation='upload', result=failure.code,
                 filename=record.metadata.get('filename'), size=transferred,
             )
-            _terminalize(record, user_id, 'cancelled')
-            return jsonify({'error': 'Transfer unavailable'}), 409
+            _terminalize(record, user_id, 'cancelled', failure=failure)
+            return _json_failure(failure)
         except sftp_handler.UploadSizeExceeded:
+            failure = classify_transfer_failure(
+                sftp_handler.UploadSizeExceeded(),
+                operation='upload',
+                limit_kind='upload',
+                limit_bytes=config.MAX_UPLOAD_SIZE,
+            )
             _audit_transfer_source(
                 source, username=audit_username, ip_address=audit_ip,
-                operation='upload', result='LIMIT_EXCEEDED',
+                operation='upload', result=failure.code,
                 filename=record.metadata.get('filename'), size=transferred,
             )
-            _terminalize(record, user_id, 'failed')
-            return jsonify({'error': 'Transfer unavailable'}), 413
+            _terminalize(record, user_id, 'failed', failure=failure)
+            return _json_failure(failure)
         except Exception as error:
-            log_error('HTTP upload failed', user_id=user_id,
-                      exception_type=type(error).__name__)
+            failure = classify_transfer_failure(error, operation='upload')
+            log_error(
+                'HTTP upload failed',
+                user_id=user_id,
+                result_code=failure.code,
+                operation='upload',
+                exception_type=type(error).__name__,
+            )
             _audit_transfer_source(
                 source, username=audit_username, ip_address=audit_ip,
-                operation='upload', result='FAILED',
+                operation='upload', result=failure.code,
                 filename=record.metadata.get('filename'), size=transferred,
             )
-            _terminalize(record, user_id, 'failed')
-            return jsonify({'error': 'Transfer unavailable'}), 500
+            _terminalize(record, user_id, 'failed', failure=failure)
+            return _json_failure(failure)
 
         if not _terminalize(record, user_id, 'completed'):
-            return jsonify({'error': 'Transfer unavailable'}), 500
+            failure = classify_transfer_failure(
+                RuntimeError('terminalization failed'),
+                operation='upload',
+            )
+            return _json_failure(failure)
         _audit_transfer_source(
             source,
             username=audit_username,

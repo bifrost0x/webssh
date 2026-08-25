@@ -677,6 +677,14 @@
     text-overflow: ellipsis;
 }
 
+.fm-transfer-error {
+    margin-top: 3px;
+    color: var(--error-color);
+    font-size: 11px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
 .fm-transfer-progress-bar {
     height: 4px;
     background: var(--bg-tertiary);
@@ -707,6 +715,10 @@
     color: var(--error-color);
 }
 
+.fm-transfer-status.cancelling {
+    color: var(--warning-color);
+}
+
 .fm-transfer-actions {
     display: flex;
     gap: 4px;
@@ -734,6 +746,11 @@
 
 .fm-transfer-btn.cancel:hover {
     color: var(--error-color);
+}
+
+.fm-transfer-direction.is-move,
+#fmTransfer.is-move {
+    border-color: var(--accent-primary);
 }
 
 .fm-context-menu {
@@ -1876,6 +1893,29 @@
 
 .fm-source-identity-security .material-icons {
     font-size: 15px;
+}
+
+.fm-source-identity-access {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-radius: 999px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.fm-source-identity-access[data-state="write"] {
+    color: var(--success-color);
+}
+
+.fm-source-identity-access[data-state="readonly"] {
+    color: var(--warning-color);
+}
+
+.fm-source-identity-access .material-icons {
+    font-size: 14px;
 }
 
 .fm-empty-source-button {

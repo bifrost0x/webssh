@@ -18,8 +18,9 @@ from .file_sources import (
 )
 from .quota_manager import QuotaExceeded, QuotaKind, quota_manager, release_reservation
 from .smb_network_policy import resolve_allowed_smb_target
-from .smb_paths import SMBPathRejected, SMBShareName
+from .smb_paths import SMBPath, SMBPathRejected, SMBShareName
 from .smb_protocol import SMBProtocolClient, SMBProtocolError
+from .smb_diagnostics import build_smb_diagnostic, copy_smb_diagnostic
 
 
 SMB_CAPABILITIES = (
@@ -39,9 +40,32 @@ SMB_CAPABILITIES = (
 class SMBSourceError(Exception):
     """Stable, non-sensitive SMB source lifecycle error."""
 
-    def __init__(self, public_code, message='SMB source unavailable'):
+    def __init__(
+        self,
+        public_code,
+        message='SMB source unavailable',
+        *,
+        diagnostic_phase='unknown',
+        diagnostic_exception_type=None,
+        diagnostic_nt_status=None,
+    ):
         super().__init__(message)
         self.public_code = public_code
+        diagnostic = build_smb_diagnostic(
+            phase=diagnostic_phase,
+            exception_type=diagnostic_exception_type,
+            nt_status=diagnostic_nt_status,
+        )
+        self.diagnostic_phase = diagnostic['diagnostic_phase']
+        self.diagnostic_exception_type = diagnostic[
+            'diagnostic_exception_type'
+        ]
+        self.diagnostic_nt_status = diagnostic['diagnostic_nt_status']
+
+    @classmethod
+    def from_protocol_error(cls, error, *, phase=None):
+        diagnostic = copy_smb_diagnostic(error, phase=phase)
+        return cls(error.public_code, **diagnostic)
 
 
 @dataclass
@@ -52,17 +76,29 @@ class SMBSource:
     target_ip: str
     share: SMBShareName
     username: str
-    session: object
+    control_session: object
+    transfer_session: object
     quota_reservation: object
     created_at: float
     last_used: float
     hold_count: int = 0
     close_requested: bool = False
-    lock: RLock = field(default_factory=RLock, repr=False)
+    control_lock: RLock = field(default_factory=RLock, repr=False)
+    transfer_lock: RLock = field(default_factory=RLock, repr=False)
 
     @property
     def source_id(self):
         return self.descriptor.source_id
+
+    @property
+    def session(self):
+        """Compatibility alias for interactive operations during migration."""
+        return self.control_session
+
+    @property
+    def lock(self):
+        """Compatibility alias for interactive operations during migration."""
+        return self.control_lock
 
 
 def _canonical_user_id(user_id):
@@ -194,8 +230,10 @@ class SMBConnectionPool:
         )
 
         reservation = None
-        session = None
+        control_session = None
+        transfer_session = None
         stored = False
+        diagnostic_phase = 'lifecycle'
         try:
             reservation = self._quota_manager.reserve(
                 QuotaKind.QUICK_CONNECTION,
@@ -203,19 +241,70 @@ class SMBConnectionPool:
             )
             if cancel_event is not None and cancel_event.is_set():
                 raise SMBSourceError('CONNECT_CANCELLED')
+            diagnostic_phase = 'target_resolution'
             target = self._target_resolver(host, self._allowed_targets)
-            session = self._protocol_client.connect(
-                target_ip=target.ip,
-                canonical_host=target.hostname,
-                username=protocol_username,
-                password=local_password,
-                timeout=self.connect_timeout,
-                io_idle_timeout=self.io_idle_timeout,
-                cancel_event=cancel_event,
-            )
+            diagnostic_phase = 'transport_negotiate'
+            try:
+                control_session = self._protocol_client.connect(
+                    target_ip=target.ip,
+                    canonical_host=target.hostname,
+                    username=protocol_username,
+                    password=local_password,
+                    timeout=self.connect_timeout,
+                    io_idle_timeout=self.io_idle_timeout,
+                    cancel_event=cancel_event,
+                )
+            except SMBProtocolError as exc:
+                raise SMBSourceError.from_protocol_error(exc) from exc
             if cancel_event is not None and cancel_event.is_set():
                 raise SMBSourceError('CONNECT_CANCELLED')
 
+            diagnostic_phase = 'share_access'
+            try:
+                root_unc = SMBPath.parse('/').to_unc(target.ip, share_name)
+                root_access = control_session.inspect_directory_access(
+                    root_unc
+                )
+            except SMBProtocolError as exc:
+                raise SMBSourceError.from_protocol_error(
+                    exc,
+                    phase='share_access',
+                ) from exc
+            if cancel_event is not None and cancel_event.is_set():
+                raise SMBSourceError('CONNECT_CANCELLED')
+
+            diagnostic_phase = 'transport_negotiate'
+            try:
+                transfer_session = self._protocol_client.connect(
+                    target_ip=target.ip,
+                    canonical_host=target.hostname,
+                    username=protocol_username,
+                    password=local_password,
+                    timeout=self.connect_timeout,
+                    io_idle_timeout=self.io_idle_timeout,
+                    cancel_event=cancel_event,
+                )
+            except SMBProtocolError as exc:
+                raise SMBSourceError.from_protocol_error(exc) from exc
+            if cancel_event is not None and cancel_event.is_set():
+                raise SMBSourceError('CONNECT_CANCELLED')
+
+            diagnostic_phase = 'share_access'
+            try:
+                # Validate that the independent transfer lane can reach the
+                # same approved share before publishing the source.
+                transfer_session.inspect_directory_access(
+                    root_unc
+                )
+            except SMBProtocolError as exc:
+                raise SMBSourceError.from_protocol_error(
+                    exc,
+                    phase='share_access',
+                ) from exc
+            if cancel_event is not None and cancel_event.is_set():
+                raise SMBSourceError('CONNECT_CANCELLED')
+
+            diagnostic_phase = 'lifecycle'
             handle_id = uuid.uuid4().hex
             source_id = make_source_id(FileSourceKind.SMB_QUICK, handle_id)
             descriptor = FileSourceDescriptor(
@@ -231,6 +320,7 @@ class SMBConnectionPool:
                     'signed': True,
                     'secure_negotiate': True,
                 },
+                access=root_access,
             )
             now = self._clock()
             source = SMBSource(
@@ -240,7 +330,8 @@ class SMBConnectionPool:
                 target_ip=target.ip,
                 share=share_name,
                 username=protocol_username,
-                session=session,
+                control_session=control_session,
+                transfer_session=transfer_session,
                 quota_reservation=reservation,
                 created_at=now,
                 last_used=now,
@@ -257,16 +348,26 @@ class SMBConnectionPool:
         except SMBSourceError:
             raise
         except SMBProtocolError as exc:
-            raise SMBSourceError(exc.public_code) from exc
+            raise SMBSourceError.from_protocol_error(exc) from exc
         except ValueError as exc:
-            raise SMBSourceError('TARGET_NOT_ALLOWED') from exc
+            diagnostic = build_smb_diagnostic(
+                phase=diagnostic_phase,
+                exception=exc,
+            )
+            raise SMBSourceError('TARGET_NOT_ALLOWED', **diagnostic) from exc
         except Exception as exc:
-            raise SMBSourceError('CONNECTION_FAILED') from exc
+            diagnostic = build_smb_diagnostic(
+                phase=diagnostic_phase,
+                exception=exc,
+            )
+            raise SMBSourceError('CONNECTION_FAILED', **diagnostic) from exc
         finally:
             local_password = None
             password = None
             if not stored:
-                if session is not None:
+                for session in (transfer_session, control_session):
+                    if session is None:
+                        continue
                     try:
                         session.close()
                     except Exception:
@@ -288,10 +389,27 @@ class SMBConnectionPool:
     @staticmethod
     def _close_detached(sources):
         for source in sources:
-            try:
-                source.session.close()
-            finally:
-                release_reservation(source.quota_reservation)
+            closed = set()
+            for session in (
+                source.transfer_session,
+                source.control_session,
+            ):
+                identity = id(session)
+                if identity in closed:
+                    continue
+                closed.add(identity)
+                try:
+                    session.close()
+                except Exception:
+                    pass
+            release_reservation(source.quota_reservation)
+
+    @classmethod
+    def _source_alive(cls, source):
+        return (
+            cls._session_alive(source.control_session)
+            and cls._session_alive(source.transfer_session)
+        )
 
     def get_source(self, source_id, user_id):
         handle_id = self._handle_id(source_id)
@@ -307,7 +425,7 @@ class SMBConnectionPool:
             source = self._sources.get(handle_id)
             if source is None or source.user_id != canonical_user_id:
                 return None
-            if not self._session_alive(source.session):
+            if not self._source_alive(source):
                 stale = self._sources.pop(handle_id)
             else:
                 # A deferred close must remain resolvable by the transfer that
@@ -330,7 +448,7 @@ class SMBConnectionPool:
                 source is None
                 or source.user_id != canonical_user_id
                 or source.close_requested
-                or not self._session_alive(source.session)
+                or not self._source_alive(source)
             ):
                 return False
             source.hold_count += 1
@@ -404,7 +522,7 @@ class SMBConnectionPool:
         detached = self._detach(
             lambda _handle_id, source: (
                 now - source.last_used > self.cleanup_interval
-                or not self._session_alive(source.session)
+                or not self._source_alive(source)
             ),
             defer_held=True,
         )
