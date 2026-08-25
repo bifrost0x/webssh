@@ -151,7 +151,7 @@ class SFTPFileManager {
             left: this.createEmptyPaneState(),
             right: this.createEmptyPaneState(),
         };
-        this.panes = this.workspaceEmptyPanes;
+        this.panes = { ...this.workspaceEmptyPanes };
         this.standalonePanes = this.panes;
         this.embeddedPanes = null;
         this.activePane = 'left';

@@ -74,6 +74,39 @@ test('standalone workspace starts in one pane with independent empty states', ()
     assert.equal(manager.workspace.getActiveTab('right'), null);
 });
 
+test('closing the final tab restores an independent empty pane state', () => {
+    for (const pane of ['left', 'right']) {
+        const manager = Object.create(SFTPFileManager.prototype);
+        manager.initializeWorkspaceState();
+        const populatedState = filePane(manager, `sftp-session:${pane}`, {
+            path: `/srv/${pane}`,
+            files: [{ name: 'stale.txt', is_dir: false }],
+        });
+        const tab = manager.workspace.openTab(
+            pane,
+            fileSource(`sftp-session:${pane}`),
+            populatedState,
+        );
+        manager.syncPaneFromWorkspace(pane);
+        Object.assign(manager, {
+            displayMode: 'modal',
+            updatePathInput() {},
+            updatePaneBadge() {},
+            renderPane() {},
+            renderWorkspaceChrome() {},
+            openSourceLauncher() {},
+        });
+
+        manager.closeSourceTab(pane, tab.id);
+
+        assert.equal(manager.workspace.getActiveTab(pane), null);
+        assert.notEqual(manager.panes[pane], populatedState);
+        assert.equal(manager.panes[pane].source, null);
+        assert.equal(manager.panes[pane].path, '/');
+        assert.deepEqual(manager.panes[pane].files, []);
+    }
+});
+
 test('pane state has one canonical source and no legacy identity fields', () => {
     const manager = Object.create(SFTPFileManager.prototype);
 

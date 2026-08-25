@@ -96,9 +96,15 @@
             <div class="auth-container">
         <div class="auth-card">
             <div class="auth-header">
+                {% if mfa_required %}
+                <span class="auth-form-eyebrow" data-i18n="auth.verificationOverviewEyebrow">Confirm sign-in</span>
+                <h1 data-i18n="auth.twoFactorAuthentication">Two-factor authentication</h1>
+                <p data-i18n="auth.verificationOverviewHint">Use one of your available factors for this second step. A recovery code opens a restricted session where you renew your account protection.</p>
+                {% else %}
                 <span class="auth-form-eyebrow" data-i18n="auth.login">Sign in</span>
                 <h1 data-i18n="auth.signInPrompt">Access your SSH workspace</h1>
                 <p data-i18n="auth.signInSourceHint">Use the identity source configured for this WebSSH instance.</p>
+                {% endif %}
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -113,31 +119,31 @@
             <div id="authNotificationContainer" class="auth-notification-container" aria-live="polite" aria-atomic="true"></div>
 
             {% set selected_auth_source = auth_source if auth_source in ('local', 'ldap') else ('ldap' if ldap_enabled else 'local') %}
-            {% if mfa_required and 'totp' in mfa_methods %}
-            <section id="totpMfaPanel" class="login-mode">
-                <h2 data-i18n="auth.twoFactorAuthentication">Two-factor authentication</h2>
-                <p data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</p>
-                <div class="form-group">
-                    <label for="totpMfaCode" data-i18n="security.authenticatorCode">Authenticator code</label>
-                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
-                </div>
-                <div class="alert alert-error hidden" id="totpMfaError" role="alert"></div>
-                <button type="button" class="btn-primary" id="submitTotpMfa" data-i18n="auth.verifyCode">Verify code</button>
-            </section>
+            {% if mfa_required %}
+            {% set default_mfa_method = 'totp' if 'totp' in mfa_methods else ('passkey' if 'passkey' in mfa_methods else 'recovery') %}
+            {% if mfa_methods|length > 1 %}
+            <div id="authMfaMethodSwitcher" class="auth-method-switcher" role="tablist" aria-label="Choose a verification method" data-i18n-aria-label="auth.availableVerificationMethods">
+                {% if 'totp' in mfa_methods %}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="totp" aria-selected="{{ 'true' if default_mfa_method == 'totp' else 'false' }}" aria-controls="totpMfaPanel">
+                    <span class="material-icons" aria-hidden="true">phonelink_lock</span>
+                    <span><strong data-i18n="security.methodTotp">Authenticator app</strong><small data-i18n="security.authenticatorCode">Authenticator code</small></span>
+                </button>
+                {% endif %}
+                {% if 'passkey' in mfa_methods %}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="passkey" aria-selected="{{ 'true' if default_mfa_method == 'passkey' else 'false' }}" aria-controls="passkeyLoginMode">
+                    <span class="material-icons" aria-hidden="true">key</span>
+                    <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.deviceAuthentication">Device authentication</small></span>
+                </button>
+                {% endif %}
+                {% if 'recovery' in mfa_methods %}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="recovery" aria-selected="{{ 'true' if default_mfa_method == 'recovery' else 'false' }}" aria-controls="recoveryMfaPanel">
+                    <span class="material-icons" aria-hidden="true">lock_reset</span>
+                    <span><strong data-i18n="security.methodRecoveryCode">Recovery code</strong><small data-i18n="auth.recoveryAccessHint">One-time account recovery</small></span>
+                </button>
+                {% endif %}
+            </div>
             {% endif %}
-            {% if mfa_required and 'recovery' in mfa_methods %}
-            <section id="recoveryMfaPanel" class="login-mode">
-                <h2 data-i18n="auth.useRecoveryCode">Use a recovery code</h2>
-                <p data-i18n="auth.recoverySessionHint">This creates a restricted session where you must add a replacement factor or explicitly disable MFA.</p>
-                <div class="form-group">
-                    <label for="recoveryMfaCode" data-i18n="auth.recoveryCode">Recovery code</label>
-                    <input type="text" id="recoveryMfaCode" class="form-control" autocomplete="one-time-code">
-                </div>
-                <div class="alert alert-error hidden" id="recoveryMfaError" role="alert"></div>
-                <button type="button" class="btn-primary" id="submitRecoveryMfa" data-i18n="auth.continueWithRecoveryCode">Continue with recovery code</button>
-            </section>
-            {% endif %}
-            {% if not mfa_required %}
+            {% else %}
             <div class="auth-method-switcher" role="tablist" aria-label="Choose how to sign in" data-i18n-aria-label="auth.chooseSignInMethod">
                 <button class="auth-method-option" type="button" role="tab" data-auth-mode="password" aria-selected="true" aria-controls="passwordLoginMode">
                     <span class="material-icons" aria-hidden="true">person</span>
@@ -159,6 +165,30 @@
             {% endif %}
 
             <div class="auth-credentials-zone">
+            {% if mfa_required and 'totp' in mfa_methods %}
+            <section id="totpMfaPanel" class="login-mode{% if default_mfa_method != 'totp' %} hidden{% endif %}" data-auth-mode-panel="totp" aria-hidden="{{ 'false' if default_mfa_method == 'totp' else 'true' }}">
+                <h2 data-i18n="security.methodTotp">Authenticator app</h2>
+                <p data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</p>
+                <div class="form-group">
+                    <label for="totpMfaCode" data-i18n="security.authenticatorCode">Authenticator code</label>
+                    <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
+                </div>
+                <div class="alert alert-error hidden" id="totpMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitTotpMfa" data-i18n="auth.verifyCode">Verify code</button>
+            </section>
+            {% endif %}
+            {% if mfa_required and 'recovery' in mfa_methods %}
+            <section id="recoveryMfaPanel" class="login-mode{% if default_mfa_method != 'recovery' %} hidden{% endif %}" data-auth-mode-panel="recovery" aria-hidden="{{ 'false' if default_mfa_method == 'recovery' else 'true' }}">
+                <h2 data-i18n="auth.useRecoveryCode">Use a recovery code</h2>
+                <p data-i18n="auth.recoverySessionHint">This creates a restricted session where you must add a replacement factor or explicitly disable MFA.</p>
+                <div class="form-group">
+                    <label for="recoveryMfaCode" data-i18n="auth.recoveryCode">Recovery code</label>
+                    <input type="text" id="recoveryMfaCode" class="form-control" autocomplete="one-time-code">
+                </div>
+                <div class="alert alert-error hidden" id="recoveryMfaError" role="alert"></div>
+                <button type="button" class="btn-primary" id="submitRecoveryMfa" data-i18n="auth.continueWithRecoveryCode">Continue with recovery code</button>
+            </section>
+            {% endif %}
             <section id="passwordLoginMode" class="login-mode{% if mfa_required %} hidden{% endif %}" data-auth-mode-panel="password" aria-hidden="{{ 'true' if mfa_required else 'false' }}">
             <div id="passwordAuthenticationForms"{% if mfa_required %} class="hidden"{% endif %}>
             {% if ldap_enabled %}
@@ -229,7 +259,7 @@
                 </div>
             </section>
             {% if webauthn_enabled and (not mfa_required or 'passkey' in mfa_methods) %}
-            <section id="passkeyLoginMode" class="login-mode auth-provider-mode{% if not mfa_required %} hidden{% endif %}" data-auth-mode-panel="passkey" aria-hidden="{{ 'false' if mfa_required else 'true' }}">
+            <section id="passkeyLoginMode" class="login-mode auth-provider-mode{% if not mfa_required or default_mfa_method != 'passkey' %} hidden{% endif %}" data-auth-mode-panel="passkey" aria-hidden="{{ 'false' if mfa_required and default_mfa_method == 'passkey' else 'true' }}">
                 <span class="auth-provider-mode-icon material-icons" aria-hidden="true">key</span>
                 <h2 data-i18n="auth.passkeyPrompt">Use a Passkey</h2>
                 <p data-i18n="auth.passkeyPromptHint">Authenticate with a Passkey saved on this device or another nearby device.</p>
@@ -258,9 +288,9 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=24"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=25"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=3"></script>
 </body>
 </html>

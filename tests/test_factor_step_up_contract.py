@@ -199,13 +199,19 @@ def test_last_local_factor_cannot_be_deleted_while_mfa_is_enabled(
         assert db.session.get(WebAuthnCredential, credential_id) is not None
 
 
-def test_mfa_disable_requires_strong_grant_and_preserves_enrolled_factors(
+def test_mfa_disable_requires_strong_grant_and_removes_all_totp_authenticators(
     app,
     client,
     monkeypatch,
 ):
     import config
-    from app.models import SecurityFeatureState, TOTPAuthenticator, User, db
+    from app.models import (
+        SecurityFeatureState,
+        TOTPAuthenticator,
+        User,
+        WebAuthnCredential,
+        db,
+    )
 
     monkeypatch.setattr(config, "TOTP_ENABLED", True)
     app.extensions["security_feature_readiness"]["totp"] = (True, None)
@@ -214,14 +220,28 @@ def test_mfa_disable_requires_strong_grant_and_preserves_enrolled_factors(
         user = db.session.get(User, user_id)
         user.mfa_enabled = True
         db.session.add(SecurityFeatureState(feature="totp", enabled=True))
-        factor = TOTPAuthenticator(
-            user_id=user_id,
-            encrypted_secret=b"encrypted-secret",
-            active=True,
-        )
-        db.session.add(factor)
+        db.session.add_all((
+            TOTPAuthenticator(
+                user_id=user_id,
+                encrypted_secret=b"encrypted-secret-a",
+                label="Phone",
+                active=True,
+            ),
+            TOTPAuthenticator(
+                user_id=user_id,
+                encrypted_secret=b"encrypted-secret-b",
+                label="Tablet",
+                active=True,
+            ),
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=b"unrelated-passkey",
+                public_key=b"public-key",
+                sign_count=0,
+                transports="[]",
+            ),
+        ))
         db.session.commit()
-        factor_id = factor.id
     headers = _strong_account_headers(
         app,
         client,
@@ -238,4 +258,8 @@ def test_mfa_disable_requires_strong_grant_and_preserves_enrolled_factors(
     assert response.status_code == 200
     with app.app_context():
         assert db.session.get(User, user_id).mfa_enabled is False
-        assert db.session.get(TOTPAuthenticator, factor_id).active is True
+        assert TOTPAuthenticator.query.filter_by(user_id=user_id).count() == 0
+        assert WebAuthnCredential.query.filter_by(
+            user_id=user_id,
+            credential_id=b"unrelated-passkey",
+        ).count() == 1

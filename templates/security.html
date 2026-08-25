@@ -151,7 +151,7 @@
                 </div>
                 <div class="admin-toolbar-actions">
                     <button class="btn btn-primary" id="totpAddBtn" data-i18n="security.addAuthenticator">Add authenticator</button>
-                    <button class="btn btn-danger hidden" id="totpDisableBtn" data-i18n="security.disableMfaRequirement">Disable MFA requirement</button>
+                    <button class="btn btn-danger hidden" id="totpDisableBtn" data-i18n="security.disableMfaAndRemoveTotp">Disable MFA and remove authenticators</button>
                 </div>
             </div>
             <div id="totpList"></div>
@@ -217,8 +217,8 @@
         </div>
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=24"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=25"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=3"></script>
 </body>
 </html>

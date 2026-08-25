@@ -30,7 +30,14 @@ from .auth_assurance import (
     current_authentication_session,
 )
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
-from .models import LDAPIdentity, OIDCIdentity, User, WebAuthnCredential, db
+from .models import (
+    LDAPIdentity,
+    OIDCIdentity,
+    TOTPAuthenticator,
+    User,
+    WebAuthnCredential,
+    db,
+)
 from .oidc_service import OIDCStateError
 from .security_features import feature_is_active
 from .step_up import (
@@ -549,6 +556,9 @@ def disable_account_mfa():
         )
     except StepUpError:
         return _error("step_up_required", 403)
+    TOTPAuthenticator.query.filter_by(
+        user_id=user.id,
+    ).delete(synchronize_session=False)
     user.mfa_enabled = False
     db.session.commit()
     log_security_event(

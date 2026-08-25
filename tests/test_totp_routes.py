@@ -180,7 +180,13 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
     monkeypatch,
 ):
     import config
-    from app.models import SecurityFeatureState, User, WebAuthnCredential, db
+    from app.models import (
+        SecurityFeatureState,
+        TOTPAuthenticator,
+        User,
+        WebAuthnCredential,
+        db,
+    )
 
     user_id = _create_user(app, "mixed_factor_user")
     _activate_totp_feature(app, monkeypatch)
@@ -189,6 +195,11 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
         db.session.merge(SecurityFeatureState(feature="passkey", enabled=True))
         user = db.session.get(User, user_id)
         user.mfa_enabled = True
+        db.session.add(TOTPAuthenticator(
+            user_id=user_id,
+            encrypted_secret=b"encrypted-mixed-factor-secret",
+            active=True,
+        ))
         db.session.add(WebAuthnCredential(
             user_id=user_id,
             credential_id=b"mixed-factor-credential",
@@ -207,6 +218,17 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
     assert response.status_code == 200
     assert 'id="passkeyLoginBtn"' in html
     assert 'id="passwordAuthenticationForms" class="hidden"' in html
+    assert 'id="authMfaMethodSwitcher"' in html
+    assert 'data-auth-mode="totp" aria-selected="true"' in html
+    assert 'data-auth-mode="passkey" aria-selected="false"' in html
+    assert (
+        'id="totpMfaPanel" class="login-mode" '
+        'data-auth-mode-panel="totp" aria-hidden="false"'
+    ) in html
+    assert (
+        'id="passkeyLoginMode" class="login-mode auth-provider-mode hidden" '
+        'data-auth-mode-panel="passkey" aria-hidden="true"'
+    ) in html
 
 
 def test_mfa_disable_is_explicit_and_recently_reauthenticated(

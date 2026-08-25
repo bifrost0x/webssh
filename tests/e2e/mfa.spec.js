@@ -90,8 +90,49 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await page.locator('#password').fill('browser-password');
     await page.locator('form button[type="submit"]').click();
     await expect(page.locator('#totpMfaPanel')).toBeVisible();
+    await expect(page.locator('#authMfaMethodSwitcher')).toBeVisible();
+    await expect(page.locator('#recoveryMfaPanel')).toBeHidden();
     await expect(page.locator('#passwordAuthenticationForms')).toHaveClass(/hidden/);
+    await page.locator('[data-auth-mode="recovery"]').click();
+    await expect(page.locator('#totpMfaPanel')).toBeHidden();
+    await expect(page.locator('#recoveryMfaPanel')).toBeVisible();
+    await page.locator('[data-auth-mode="totp"]').click();
+    await expect(page.locator('#totpMfaPanel')).toBeVisible();
+    await expect(page.locator('#recoveryMfaPanel')).toBeHidden();
     await page.locator('#totpMfaCode').fill(totp(secret, Date.now()));
     await page.locator('#submitTotpMfa').click();
     await expect(page).toHaveURL(/\/$/);
+
+    await page.goto('/security');
+    await expect(page.locator('#totpList')).toContainText('E2E authenticator');
+    const dialogPromise = page.waitForEvent('dialog');
+    const disableClick = page.locator('#totpDisableBtn').click();
+    const dialog = await dialogPromise;
+    expect(dialog.message()).toContain('remove all authenticator apps');
+    await dialog.accept();
+    await disableClick;
+    await expect(page.locator('#totpList')).toContainText(
+        'No authenticator app is enrolled.',
+    );
+    await expect(page.locator('#totpDisableBtn')).toBeHidden();
+});
+
+test('shows mixed MFA methods one at a time', async ({ page }) => {
+    await page.goto('/login');
+    await page.locator('#username').fill('e2e_mixed_mfa');
+    await page.locator('#password').fill('browser-password');
+    await page.locator('form button[type="submit"]').click();
+
+    await expect(page.locator('#authMfaMethodSwitcher')).toBeVisible();
+    await expect(page.locator('.auth-header')).toContainText('Two-factor authentication');
+    await expect(
+        page.locator('[data-auth-mode-panel]:visible'),
+    ).toHaveCount(1);
+
+    await page.locator('[data-auth-mode="passkey"]').click();
+    await expect(page.locator('#totpMfaPanel')).toBeHidden();
+    await expect(page.locator('#passkeyLoginMode')).toBeVisible();
+    await expect(
+        page.locator('[data-auth-mode-panel]:visible'),
+    ).toHaveCount(1);
 });
