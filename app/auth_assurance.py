@@ -25,6 +25,7 @@ from .models import (
     db,
 )
 from .session_epoch import current_epoch
+from .totp_service import disable_totp_mfa
 
 
 _PENDING_TTL = timedelta(minutes=5)
@@ -497,7 +498,7 @@ def clear_recovery_restriction(*, replacement_factor=None, disable_mfa=False):
     if user is None:
         raise AuthenticationFinalizationError("account is no longer eligible")
     if disable_mfa:
-        user.mfa_enabled = False
+        disable_totp_mfa(user)
         row.assurance = AssuranceLevel.BASIC.value
     db.session.commit()
     log_security_event(

@@ -302,7 +302,13 @@ def main():
 
         app = create_app()
         with app.app_context():
-            from app.models import OIDCIdentity, SecurityFeatureState, db
+            from app.models import (
+                OIDCIdentity,
+                SecurityFeatureState,
+                TOTPAuthenticator,
+                WebAuthnCredential,
+                db,
+            )
 
             admin, error = register_user('e2e_admin', 'browser-password')
             if error:
@@ -314,17 +320,46 @@ def main():
             mfa_user, error = register_user('e2e_mfa', 'browser-password')
             if error:
                 raise RuntimeError(error)
-            if not admin.is_admin or user.is_admin or mfa_user.is_admin:
+            mixed_mfa_user, error = register_user('e2e_mixed_mfa', 'browser-password')
+            if error:
+                raise RuntimeError(error)
+            if (
+                not admin.is_admin
+                or user.is_admin
+                or mfa_user.is_admin
+                or mixed_mfa_user.is_admin
+            ):
                 raise RuntimeError('E2E user roles were not seeded deterministically')
-            db.session.add(OIDCIdentity(
-                user_id=user.id,
-                issuer='https://issuer.example',
-                subject='existing-e2e-subject',
-            ))
-            db.session.add(SecurityFeatureState(
-                feature='totp',
-                enabled=True,
-                updated_by=admin.id,
+            mixed_mfa_user.mfa_enabled = True
+            db.session.add_all((
+                OIDCIdentity(
+                    user_id=user.id,
+                    issuer='https://issuer.example',
+                    subject='existing-e2e-subject',
+                ),
+                SecurityFeatureState(
+                    feature='totp',
+                    enabled=True,
+                    updated_by=admin.id,
+                ),
+                SecurityFeatureState(
+                    feature='passkey',
+                    enabled=True,
+                    updated_by=admin.id,
+                ),
+                TOTPAuthenticator(
+                    user_id=mixed_mfa_user.id,
+                    encrypted_secret=b'e2e-only-mixed-totp',
+                    label='E2E authenticator',
+                    active=True,
+                ),
+                WebAuthnCredential(
+                    user_id=mixed_mfa_user.id,
+                    credential_id=b'e2e-mixed-passkey',
+                    public_key=b'e2e-only-public-key',
+                    transports='[]',
+                    name='E2E passkey',
+                ),
             ))
             db.session.commit()
             key = _seed_launcher_profiles(admin, user)

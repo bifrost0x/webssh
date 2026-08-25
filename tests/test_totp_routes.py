@@ -180,7 +180,13 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
     monkeypatch,
 ):
     import config
-    from app.models import SecurityFeatureState, User, WebAuthnCredential, db
+    from app.models import (
+        SecurityFeatureState,
+        TOTPAuthenticator,
+        User,
+        WebAuthnCredential,
+        db,
+    )
 
     user_id = _create_user(app, "mixed_factor_user")
     _activate_totp_feature(app, monkeypatch)
@@ -189,6 +195,11 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
         db.session.merge(SecurityFeatureState(feature="passkey", enabled=True))
         user = db.session.get(User, user_id)
         user.mfa_enabled = True
+        db.session.add(TOTPAuthenticator(
+            user_id=user_id,
+            encrypted_secret=b"encrypted-mixed-factor-secret",
+            active=True,
+        ))
         db.session.add(WebAuthnCredential(
             user_id=user_id,
             credential_id=b"mixed-factor-credential",
@@ -207,6 +218,17 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
     assert response.status_code == 200
     assert 'id="passkeyLoginBtn"' in html
     assert 'id="passwordAuthenticationForms" class="hidden"' in html
+    assert 'id="authMfaMethodSwitcher"' in html
+    assert 'data-auth-mode="totp" aria-selected="true"' in html
+    assert 'data-auth-mode="passkey" aria-selected="false"' in html
+    assert (
+        'id="totpMfaPanel" class="login-mode" '
+        'data-auth-mode-panel="totp" aria-hidden="false"'
+    ) in html
+    assert (
+        'id="passkeyLoginMode" class="login-mode auth-provider-mode hidden" '
+        'data-auth-mode-panel="passkey" aria-hidden="true"'
+    ) in html
 
 
 def test_mfa_disable_is_explicit_and_recently_reauthenticated(
@@ -214,7 +236,7 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
     client,
     monkeypatch,
 ):
-    from app.models import User, db
+    from app.models import TOTPAuthenticator, User, db
 
     user_id = _create_user(app, "disable_totp_user")
     _activate_totp_feature(app, monkeypatch)
@@ -237,6 +259,14 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
             "confirm_enable_mfa": True,
         },
     ).status_code == 200
+    with app.app_context():
+        db.session.add(TOTPAuthenticator(
+            user_id=user_id,
+            encrypted_secret=b"inactive-totp-secret",
+            label="Retired phone",
+            active=False,
+        ))
+        db.session.commit()
 
     rejected = client.post(
         "/api/totp/disable",
@@ -266,6 +296,7 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
     assert accepted.status_code == 200
     with app.app_context():
         assert db.session.get(User, user_id).mfa_enabled is False
+        assert TOTPAuthenticator.query.filter_by(user_id=user_id).count() == 0
 
 
 def test_totp_enrollment_verification_is_rate_limited_before_code_check(

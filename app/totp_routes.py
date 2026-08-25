@@ -24,6 +24,7 @@ from .totp_service import (
     TOTPEnrollmentError,
     activate_totp_enrollment,
     begin_totp_enrollment,
+    disable_totp_mfa,
     verify_totp,
 )
 from .step_up import (
@@ -228,7 +229,7 @@ def disable_mfa():
     if grant_error is not None:
         return grant_error
     user = db.session.get(User, current_user.id)
-    user.mfa_enabled = False
+    disable_totp_mfa(user)
     db.session.commit()
     log_security_event("MFA_DISABLED", user=user.username)
     return jsonify({"ok": True})

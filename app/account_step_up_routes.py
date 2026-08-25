@@ -30,7 +30,13 @@ from .auth_assurance import (
     current_authentication_session,
 )
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
-from .models import LDAPIdentity, OIDCIdentity, User, WebAuthnCredential, db
+from .models import (
+    LDAPIdentity,
+    OIDCIdentity,
+    User,
+    WebAuthnCredential,
+    db,
+)
 from .oidc_service import OIDCStateError
 from .security_features import feature_is_active
 from .step_up import (
@@ -45,7 +51,7 @@ from .step_up import (
     consume_account_step_up_grant,
     recent_strong_assurance,
 )
-from .totp_service import verify_totp
+from .totp_service import disable_totp_mfa, verify_totp
 from .webauthn_service import ChallengeError, consume_challenge, create_challenge
 
 
@@ -549,7 +555,7 @@ def disable_account_mfa():
         )
     except StepUpError:
         return _error("step_up_required", 403)
-    user.mfa_enabled = False
+    disable_totp_mfa(user)
     db.session.commit()
     log_security_event(
         "ACCOUNT_STEP_UP_CONSUMED",

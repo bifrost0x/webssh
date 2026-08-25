@@ -496,8 +496,8 @@
 
     async function disableTotpMfa() {
         if (!window.confirm(t(
-            'security.confirmDisableMfa',
-            'Disable the MFA requirement for future sign-ins? Enrolled factors remain stored.'
+            'security.confirmDisableMfaAndRemoveTotp',
+            'Disable MFA and remove all authenticator apps? This cannot be undone.'
         ))) { return; }
         const headers = await stepUpHeaders('mfa.disable');
         if (headers === null) { return; }
