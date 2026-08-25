@@ -31,6 +31,14 @@ class TOTPEnrollmentError(RuntimeError):
     """The enrollment token, binding, or first code was invalid."""
 
 
+def disable_totp_mfa(user):
+    """Remove every TOTP factor and disable MFA without committing."""
+    TOTPAuthenticator.query.filter_by(
+        user_id=user.id,
+    ).delete(synchronize_session=False)
+    user.mfa_enabled = False
+
+
 @dataclass(frozen=True)
 class EnrollmentView:
     token: str

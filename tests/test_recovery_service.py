@@ -191,10 +191,26 @@ def test_recovery_code_cannot_be_replayed_after_restricted_logout(app, client):
 
 
 def test_explicit_mfa_disable_releases_restricted_session(app, client):
-    from app.models import User, db
+    from app.models import TOTPAuthenticator, User, db
 
     user_id = _create_user(app, "disable_recovered_mfa")
     code = _enable_recovery_mfa(app, user_id, count=1)[0]
+    with app.app_context():
+        db.session.add_all((
+            TOTPAuthenticator(
+                user_id=user_id,
+                encrypted_secret=b"active-recovery-totp-secret",
+                label="Phone",
+                active=True,
+            ),
+            TOTPAuthenticator(
+                user_id=user_id,
+                encrypted_secret=b"inactive-recovery-totp-secret",
+                label="Retired phone",
+                active=False,
+            ),
+        ))
+        db.session.commit()
     _login(client, "disable_recovered_mfa", expected=200)
     assert client.post("/api/auth/recovery", json={"code": code}).status_code == 200
 
@@ -212,6 +228,7 @@ def test_explicit_mfa_disable_releases_restricted_session(app, client):
     assert client.get("/").status_code == 200
     with app.app_context():
         assert db.session.get(User, user_id).mfa_enabled is False
+        assert TOTPAuthenticator.query.filter_by(user_id=user_id).count() == 0
 
 
 def test_verified_totp_replacement_releases_restricted_session(

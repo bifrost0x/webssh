@@ -236,7 +236,7 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
     client,
     monkeypatch,
 ):
-    from app.models import User, db
+    from app.models import TOTPAuthenticator, User, db
 
     user_id = _create_user(app, "disable_totp_user")
     _activate_totp_feature(app, monkeypatch)
@@ -259,6 +259,14 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
             "confirm_enable_mfa": True,
         },
     ).status_code == 200
+    with app.app_context():
+        db.session.add(TOTPAuthenticator(
+            user_id=user_id,
+            encrypted_secret=b"inactive-totp-secret",
+            label="Retired phone",
+            active=False,
+        ))
+        db.session.commit()
 
     rejected = client.post(
         "/api/totp/disable",
@@ -288,6 +296,7 @@ def test_mfa_disable_is_explicit_and_recently_reauthenticated(
     assert accepted.status_code == 200
     with app.app_context():
         assert db.session.get(User, user_id).mfa_enabled is False
+        assert TOTPAuthenticator.query.filter_by(user_id=user_id).count() == 0
 
 
 def test_totp_enrollment_verification_is_rate_limited_before_code_check(
