@@ -46,7 +46,8 @@ def test_stat_or_raise_preserves_sftp_permission_failure(monkeypatch):
             raise PermissionError('private server detail')
 
     @contextmanager
-    def denied_session(_handle_id):
+    def denied_session(_handle_id, *, io_lane='control'):
+        assert io_lane == 'control'
         yield DeniedSFTP(), 'session'
 
     monkeypatch.setattr(sftp_handler, 'sftp_session', denied_session)
@@ -63,7 +64,8 @@ def test_mkdir_or_raise_preserves_sftp_permission_failure(monkeypatch):
             raise PermissionError('private server detail')
 
     @contextmanager
-    def denied_session(_handle_id):
+    def denied_session(_handle_id, *, io_lane='control'):
+        assert io_lane == 'control'
         yield DeniedSFTP(), 'session'
 
     monkeypatch.setattr(sftp_handler, 'sftp_session', denied_session)
@@ -252,12 +254,27 @@ class AtomicSFTP:
         self.removed.append(path)
 
 
-def install_sftp_session(monkeypatch, sftp):
+def install_sftp_session(monkeypatch, sftp, calls=None):
     @contextmanager
-    def fake_session(_handle_id):
+    def fake_session(_handle_id, *, io_lane='control'):
+        if calls is not None:
+            calls.append((_handle_id, io_lane))
         yield sftp, 'session'
 
     monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+
+
+def test_transfer_reader_uses_a_separate_io_lane(monkeypatch):
+    calls = []
+    sftp = AtomicSFTP()
+    install_sftp_session(monkeypatch, sftp, calls)
+
+    with SFTPBackend().open_reader(
+        source(), '/source.txt', io_lane='transfer'
+    ) as reader:
+        assert reader.read() == b''
+
+    assert calls == [('session-a', 'transfer')]
 
 
 def test_atomic_writer_commits_replace_only_through_posix_rename(monkeypatch):

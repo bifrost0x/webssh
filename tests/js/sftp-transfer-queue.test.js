@@ -913,6 +913,49 @@ test('embedded mode mounts the existing manager body as one remote pane', async 
     assert.deepEqual(manager.sourceChange, { pane: 'left', source: 'sftp-session:session-a' });
 });
 
+test('embedded Files recomputes shared toolbar actions after leaving the full manager', () => {
+    const previousDocument = global.document;
+    const buttons = Object.fromEntries([
+        'fmNewFolder', 'fmEmbeddedUpload', 'fmDownload',
+        'fmPreview', 'fmRename', 'fmDelete',
+    ].map(id => [id, { disabled: true }]));
+    global.document = {
+        getElementById(id) { return buttons[id] || null; },
+        querySelectorAll() { return []; },
+        querySelector() { return null; },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.enterEmbeddedPaneState();
+    manager.panes.left = filePane(manager, 'sftp-session:workspace', {
+        files: [{ name: 'report.txt', is_dir: false }],
+        selected: new Set([0]),
+    });
+    Object.assign(manager, {
+        displayMode: 'embedded',
+        activePane: 'left',
+        t(_key, fallback) { return fallback; },
+    });
+
+    try {
+        manager.updateWorkspaceActions();
+    } finally {
+        global.document = previousDocument;
+    }
+
+    assert.deepEqual(
+        Object.fromEntries(Object.entries(buttons).map(([id, button]) => [id, button.disabled])),
+        {
+            fmNewFolder: false,
+            fmEmbeddedUpload: false,
+            fmDownload: false,
+            fmPreview: false,
+            fmRename: false,
+            fmDelete: false,
+        },
+    );
+});
+
 test('closing embedded mode restores the full manager body for modal use', () => {
     let inserted;
     const modalContent = {
@@ -1350,6 +1393,62 @@ test('workspace operation distinguishes same-source move from cross-source copy'
     rightState.autoHomeEligible = false;
     rightState.pendingHomeRequestId = null;
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), true);
+});
+
+test('same-source move is named visibly on the directional action and hint', () => {
+    const previousDocument = global.document;
+    const hint = { textContent: '' };
+    const icon = { textContent: '' };
+    const text = { textContent: '' };
+    const button = {
+        dataset: {},
+        title: '',
+        classList: classList(),
+        querySelector(selector) {
+            return selector === '.material-icons' ? icon : text;
+        },
+        setAttribute(name, value) { this[name] = value; },
+    };
+    global.document = {
+        getElementById(id) {
+            return id === 'fmTransferHint' ? hint : null;
+        },
+        querySelectorAll() { return []; },
+        querySelector() { return null; },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.workspace.setLayout('split');
+    manager.panes.left = filePane(manager, 'smb-quick:shared', {
+        path: '/source',
+        files: [{ name: 'report.txt', is_dir: false }],
+        selected: new Set([0]),
+    });
+    manager.panes.right = filePane(manager, 'smb-quick:shared', {
+        path: '/target',
+    });
+    manager.workspace.openTab(
+        'left', manager.panes.left.source, manager.panes.left,
+    );
+    manager.workspace.openTab(
+        'right', manager.panes.right.source, manager.panes.right,
+    );
+    Object.assign(manager, {
+        displayMode: 'modal',
+        t(_key, fallback) { return fallback; },
+    });
+
+    try {
+        manager.updateWorkspaceOperationButton(button, 'move', 'LeftToRight');
+        manager.updateWorkspaceActions();
+    } finally {
+        global.document = previousDocument;
+    }
+
+    assert.equal(icon.textContent, 'drive_file_move');
+    assert.equal(text.textContent, 'Move');
+    assert.equal(button.title, 'Move left to right');
+    assert.equal(hint.textContent, 'Move 1 selected');
 });
 
 test('same-source move is sequential, never replaces, and refreshes both panes once', async () => {
@@ -2136,6 +2235,28 @@ test('directory upload batches consume every readEntries page before fixing the 
     assert.equal(batchTotal, 2);
     assert.deepEqual(uploaded.map(item => item.name), ['first.txt', 'second.txt']);
     assert.equal(uploaded.every(item => item.batchId === 'paged-batch'), true);
+});
+
+test('upload batch presentation never reports a failed batch as complete', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.t = (_key, fallback) => fallback;
+
+    assert.deepEqual(manager.uploadBatchPresentation({
+        total: 1, succeeded: 0, failed: 1, cancelled: 0,
+    }), {
+        state: 'error',
+        icon: 'error',
+        heading: 'Upload failed',
+        details: '0 / 1 files uploaded · 1 Failed',
+    });
+    assert.deepEqual(manager.uploadBatchPresentation({
+        total: 3, succeeded: 2, failed: 1, cancelled: 0,
+    }), {
+        state: 'error',
+        icon: 'error',
+        heading: 'Upload finished with issues',
+        details: '2 / 3 files uploaded · 1 Failed',
+    });
 });
 
 test('default transfer client uses the shared per-socket coordinator', () => {

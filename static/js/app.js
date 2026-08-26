@@ -369,6 +369,7 @@
         editEncoding: 'utf-8',
         editNewline: 'lf',
         editRevision: null,
+        recoverableReplaceSources: new Set(),
         maxEditFileSize: 5 * 1024 * 1024,
         _beforeUnloadHandler: null,
 
@@ -648,10 +649,15 @@
                     && this.matchesResponse(data, this.currentSaveRequestId)) {
                 const status = document.getElementById('editorStatus');
                 if (data.code === 'SMB_RECOVERABLE_REPLACE_REQUIRED') {
+                    if (this.recoverableReplaceSources.has(this.currentSourceId)) {
+                        this.saveEdit('recoverable_swap');
+                        return true;
+                    }
                     const prompt = window.i18n
                         ? i18n.t('editor.recoverableConfirm')
-                        : 'This account cannot replace the file atomically. Use a recoverable backup swap for this save?';
+                        : 'This server cannot replace the file in one safe step. WebSSH can save it with a temporary recovery backup and restore the original if replacement fails. Use this method for this SMB connection until the page is reloaded?';
                     if (window.confirm(prompt)) {
+                        this.recoverableReplaceSources.add(this.currentSourceId);
                         this.saveEdit('recoverable_swap');
                     } else if (status) {
                         status.textContent = window.i18n
@@ -869,7 +875,7 @@
             showNotification(msg, 'error');
         },
 
-        saveEdit(replaceStrategy = 'atomic') {
+        saveEdit(replaceStrategy = null) {
             if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
@@ -878,6 +884,11 @@
             if (status) status.textContent = window.i18n ? i18n.t('editor.saving') : 'Saving...';
 
             this.currentSaveRequestId = this.nextRequestId('save');
+            const selectedStrategy = replaceStrategy || (
+                this.recoverableReplaceSources.has(this.currentSourceId)
+                    ? 'recoverable_swap'
+                    : 'atomic'
+            );
             socket.emit('save_file', {
                 source_id: this.currentSourceId,
                 path: this.currentPath,
@@ -885,7 +896,7 @@
                 encoding: this.editEncoding,
                 newline: this.editNewline,
                 expected_revision: this.editRevision,
-                replace_strategy: replaceStrategy,
+                replace_strategy: selectedStrategy,
                 request_id: this.currentSaveRequestId,
             });
         },

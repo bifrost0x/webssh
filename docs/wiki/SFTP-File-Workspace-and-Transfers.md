@@ -33,6 +33,10 @@ domain, and username. Closing a source's final tab closes the connection after
 any dependent transfer finishes. An application restart also removes all active
 SMB sources.
 
+For Active Directory or TrueNAS, enter a UPN-style username such as
+`user@example.com` when the server requires the DNS realm. Use the separate
+domain field only when the server expects the `DOMAIN\\user` form.
+
 After authentication, WebSSH performs a non-mutating access inspection at the
 share root. It separately records whether listing, file creation, directory
 creation, and child deletion are granted, denied, or unknown. The workspace

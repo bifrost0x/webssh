@@ -315,7 +315,7 @@ test('saved SMB shares persist without passwords and reopen from the source laun
     await assertNoExternalRequests(page);
 });
 
-test('SMB editor requests one recoverable-swap confirmation for the current save', async ({ page }) => {
+test('SMB editor remembers recoverable-swap consent for the current connection', async ({ page }) => {
     await login(page);
 
     const state = await page.evaluate(() => {
@@ -351,6 +351,7 @@ test('SMB editor requests one recoverable-swap confirmation for the current save
             code: 'SMB_RECOVERABLE_REPLACE_REQUIRED',
             revision: 'a'.repeat(64),
         });
+        preview.saveEdit();
 
         return {
             emitted,
@@ -360,7 +361,7 @@ test('SMB editor requests one recoverable-swap confirmation for the current save
     });
 
     expect(state.confirmations).toBe(1);
-    expect(state.emitted).toHaveLength(2);
+    expect(state.emitted).toHaveLength(3);
     expect(state.emitted[0]).toMatchObject({
         expected_revision: 'a'.repeat(64),
         replace_strategy: 'atomic',
@@ -370,6 +371,10 @@ test('SMB editor requests one recoverable-swap confirmation for the current save
         replace_strategy: 'recoverable_swap',
     });
     expect(state.emitted[1]).not.toHaveProperty('allow_non_atomic');
+    expect(state.emitted[2]).toMatchObject({
+        expected_revision: 'a'.repeat(64),
+        replace_strategy: 'recoverable_swap',
+    });
     expect(state.status).toBe('Saving...');
     await assertNoExternalRequests(page);
 });

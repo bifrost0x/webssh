@@ -89,7 +89,8 @@ not expose an SMB port.
 Use the workspace result to narrow the failure:
 
 - connection rejected: verify allowlist, DNS, TCP 445, credentials, SMB 3.1.1,
-  signing, encryption, and secure negotiation;
+  signing, encryption, and secure negotiation; Active Directory and TrueNAS
+  may require a UPN username such as `user@example.com`;
 - connection opens but listing fails: verify share name and list/read ACLs;
 - root is labeled read-only: the account can list the root but the server
   denied both file and directory creation there;
@@ -104,8 +105,9 @@ Use the workspace result to narrow the failure:
 - a move times out: refresh both source and destination folders before retrying
   because the server may have completed the rename after the browser lost its
   acknowledgement;
-- cancellation remains pending: wait for the terminal event and inspect the
-  transfer reason; repeated clicks are neither required nor useful.
+- cancellation remains pending: inspect the transfer reason and server logs;
+  the first request is idempotent and its acknowledgement is authoritative, so
+  repeated clicks are neither required nor useful.
 
 For a server-side SMB connection failure, the dialog includes a reference such
 as `SMB-A1B2C3D4E5F6`. Search `DATA_DIR/logs/app.log` or structured container

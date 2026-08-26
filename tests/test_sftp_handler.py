@@ -3,6 +3,42 @@
 import pytest
 
 
+def test_transfer_lane_owns_and_closes_a_fresh_sftp_channel(monkeypatch):
+    import app.sftp_handler as sftp_handler
+
+    class FreshSFTP:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    fresh = FreshSFTP()
+    monkeypatch.setattr(
+        sftp_handler,
+        'get_sftp_client_fresh',
+        lambda identifier: (
+            (fresh, None) if identifier == 'session-a'
+            else (None, 'missing')
+        ),
+    )
+    monkeypatch.setattr(
+        sftp_handler,
+        '_get_sftp_lock',
+        lambda _identifier: (_ for _ in ()).throw(
+            AssertionError('transfer lane must not acquire the control lock')
+        ),
+    )
+
+    with sftp_handler.sftp_session(
+        'session-a', io_lane='transfer'
+    ) as (client, source_type):
+        assert client is fresh
+        assert source_type == 'transfer'
+        assert fresh.closed is False
+
+    assert fresh.closed is True
+
+
 def test_probe_sftp_capability_verifies_directory_access(monkeypatch):
     import app.sftp_handler as sftp_handler
 
