@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=15">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=16">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}">
     <header class="header">
@@ -33,11 +33,21 @@
                     <h2 id="securityAssuranceTitle" data-i18n="security.confirmationOverviewTitle">How security changes are confirmed</h2>
                     <p data-i18n="security.confirmationOverviewHint">WebSSH uses this signed-in browser session to protect changes to passkeys, authenticator apps, recovery codes, and passwords.</p>
                 </div>
-                {% if account_mfa_enabled %}
-                <span class="security-policy-badge active" id="securityMfaStatus" data-i18n="security.mfaEnabled">MFA enabled</span>
-                {% else %}
-                <span class="security-policy-badge" id="securityMfaStatus" data-i18n="security.mfaOptional">MFA optional</span>
-                {% endif %}
+                <div class="security-policy-controls">
+                    {% if account_mfa_enabled %}
+                    <span class="security-policy-badge active" id="securityMfaStatus" role="status" aria-live="polite" data-i18n="security.mfaEnabled">MFA enabled</span>
+                    {% else %}
+                    <span class="security-policy-badge" id="securityMfaStatus" role="status" aria-live="polite" data-i18n="security.mfaOptional">MFA optional</span>
+                    {% endif %}
+                    {% if not recovery_mode %}
+                    <div class="security-policy-actions">
+                        {% if recovery_codes_enabled %}
+                        <button class="btn btn-primary hidden" id="passkeyEnableMfaBtn" data-i18n="security.enablePasskeyMfa">Require MFA for password sign-in</button>
+                        {% endif %}
+                        <button class="btn btn-danger hidden" id="accountDisableMfaBtn" data-i18n="security.disableMfaAndRemoveTotp">Disable MFA and remove authenticators</button>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
             <dl class="security-assurance-grid">
                 <div>
@@ -72,12 +82,15 @@
                 <div>
                     <dt data-i18n="security.extraProtection">Extra protection</dt>
                     {% if account_mfa_enabled %}
-                    <dd data-i18n="security.extraProtectionEnabled">A registered strong factor is required for protected changes.</dd>
+                    <dd id="securityExtraProtectionState" data-i18n="security.extraProtectionEnabled">A registered strong factor is required for protected changes.</dd>
                     {% else %}
-                    <dd data-i18n="security.extraProtectionOptional">Passkeys and authenticator apps are optional for this account.</dd>
+                    <dd id="securityExtraProtectionState" data-i18n="security.extraProtectionOptional">Passkeys and authenticator apps are optional for this account.</dd>
                     {% endif %}
                 </div>
             </dl>
+            {% if recovery_codes_enabled and not recovery_mode %}
+            <pre id="passkeyMfaRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
+            {% endif %}
         </section>
         {% if recovery_mode %}
         <section class="admin-setting-row" id="recoveryRequiredNotice" style="max-width:none;">
@@ -96,8 +109,65 @@
             <h2 data-i18n="security.directoryManagedAccount">Directory-managed account</h2>
             <p class="admin-muted" data-i18n="security.directoryManagedHint">Your password and primary sign-in policy are managed by your LDAP directory. You can add Passkeys and authenticator apps after a recent directory sign-in.</p>
         </section>
-        {% else %}
-        <section class="admin-setting-row" id="password" style="max-width:none;">
+        {% endif %}
+        <section class="admin-setting-row" id="passkeySettings" style="max-width:none;margin-top:18px;">
+            <div class="admin-toolbar">
+                <h2 data-i18n="security.passkeys">Passkeys</h2>
+                {% if webauthn_enabled %}
+                <div class="admin-toolbar-actions">
+                    <button class="btn btn-primary" id="passkeyAddBtn" data-i18n="security.addPasskey">Add passkey</button>
+                    <button class="btn btn-secondary" id="passkeyUpgradeBtn" data-i18n="security.replaceLegacyPasskey">Replace legacy passkey</button>
+                </div>
+                {% endif %}
+            </div>
+            {% if webauthn_enabled %}
+            <p class="admin-muted" data-i18n="security.passkeyMfaHint">A Passkey can sign in directly. To prevent password-only fallback, explicitly enable MFA after adding and testing at least one Passkey.</p>
+            <p class="admin-muted" data-i18n="security.legacyPasskeyHint">
+                If a non-discoverable passkey from an older release no longer
+                appears during username-less sign-in, use Replace legacy
+                passkey. Test the replacement before deleting the old record.
+            </p>
+            <div class="security-factor-list" id="passkeyList"></div>
+            {% else %}
+            <p class="admin-muted" id="passkeyList" data-i18n="security.passkeysDisabled">Passkeys are disabled by configuration.</p>
+            {% endif %}
+        </section>
+        {% if totp_enabled %}
+        <section class="admin-setting-row" id="totpSettings" style="max-width:none;margin-top:18px;">
+            <div class="admin-toolbar">
+                <div>
+                    <h2 data-i18n="security.authenticatorAppTotp">Authenticator app (TOTP)</h2>
+                    <p class="admin-muted" data-i18n="security.authenticatorAppHint">Optionally protect password or directory sign-in with a six-digit code from an authenticator app.</p>
+                </div>
+                <div class="admin-toolbar-actions">
+                    <button class="btn btn-primary" id="totpAddBtn" data-i18n="security.addAuthenticator">Add authenticator</button>
+                </div>
+            </div>
+            <div class="security-factor-list" id="totpList"></div>
+            <div id="totpEnrollment" class="hidden" style="margin-top:16px;" role="region" aria-live="polite" aria-labelledby="totpEnrollmentTitle">
+                <h3 id="totpEnrollmentTitle" data-i18n="security.setupAuthenticator">Set up authenticator app</h3>
+                <p data-i18n="security.setupAuthenticatorHint">Scan this QR code locally in your authenticator app, or enter the setup key manually. The setup expires after five minutes.</p>
+                <img id="totpQr" alt="TOTP enrollment QR code" data-i18n-alt="security.totpQrCode" width="240" height="240">
+                <p><strong data-i18n="security.setupKey">Setup key</strong>: <code id="totpSecret"></code></p>
+                <div class="form-group">
+                    <label for="totpActivationCode" data-i18n="security.sixDigitCode">Six-digit code</label>
+                    <input id="totpActivationCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+                </div>
+                <button class="btn btn-primary" id="totpActivateBtn" data-i18n="security.verifyEnableMfa">Verify and enable MFA</button>
+            </div>
+            <pre id="totpRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
+        </section>
+        {% endif %}
+        {% if recovery_codes_enabled and not recovery_mode %}
+        <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
+            <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
+            <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>
+            <button class="btn btn-primary" id="recoveryGenerateBtn" data-i18n="security.generateRecoveryCodes">Generate recovery codes</button>
+            <pre id="recoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
+        </section>
+        {% endif %}
+        {% if not recovery_mode and authentication_primary_method != 'oidc' and not ldap_managed %}
+        <section class="admin-setting-row" id="password" style="max-width:none;margin-top:18px;">
             <div class="admin-toolbar">
                 <div>
                     <h2 data-i18n="security.password">Password</h2>
@@ -119,67 +189,6 @@
                     <tbody id="hostKeyList"></tbody>
                 </table>
             </div>
-        </section>
-        {% endif %}
-        <section class="admin-setting-row" id="ssh-host-trust" style="max-width:none;margin-top:18px;">
-            <div class="admin-toolbar">
-                <h2 data-i18n="security.passkeys">Passkeys</h2>
-                {% if webauthn_enabled %}
-                <div class="admin-toolbar-actions">
-                    <button class="btn btn-primary" id="passkeyAddBtn" data-i18n="security.addPasskey">Add passkey</button>
-                    <button class="btn btn-secondary" id="passkeyUpgradeBtn" data-i18n="security.replaceLegacyPasskey">Replace legacy passkey</button>
-                </div>
-                {% endif %}
-            </div>
-            {% if webauthn_enabled %}
-            <p class="admin-muted" data-i18n="security.passkeyMfaHint">A Passkey can sign in directly. To prevent password-only fallback, explicitly enable MFA after adding and testing at least one Passkey.</p>
-            <p class="admin-muted" data-i18n="security.legacyPasskeyHint">
-                If a non-discoverable passkey from an older release no longer
-                appears during username-less sign-in, use Replace legacy
-                passkey. Test the replacement before deleting the old record.
-            </p>
-            <div id="passkeyList"></div>
-            {% if recovery_codes_enabled and not account_mfa_enabled %}
-            <button class="btn btn-primary hidden" id="passkeyEnableMfaBtn" data-i18n="security.enablePasskeyMfa">Require Passkey MFA for password sign-in</button>
-            <pre id="passkeyMfaRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
-            {% endif %}
-            {% else %}
-            <p class="admin-muted" id="passkeyList" data-i18n="security.passkeysDisabled">Passkeys are disabled by configuration.</p>
-            {% endif %}
-        </section>
-        {% if totp_enabled %}
-        <section class="admin-setting-row" id="totpSettings" style="max-width:none;margin-top:18px;">
-            <div class="admin-toolbar">
-                <div>
-                    <h2 data-i18n="security.authenticatorAppTotp">Authenticator app (TOTP)</h2>
-                    <p class="admin-muted" data-i18n="security.authenticatorAppHint">Optionally protect password or directory sign-in with a six-digit code from an authenticator app.</p>
-                </div>
-                <div class="admin-toolbar-actions">
-                    <button class="btn btn-primary" id="totpAddBtn" data-i18n="security.addAuthenticator">Add authenticator</button>
-                    <button class="btn btn-danger hidden" id="totpDisableBtn" data-i18n="security.disableMfaAndRemoveTotp">Disable MFA and remove authenticators</button>
-                </div>
-            </div>
-            <div id="totpList"></div>
-            <div id="totpEnrollment" class="hidden" style="margin-top:16px;" role="region" aria-live="polite" aria-labelledby="totpEnrollmentTitle">
-                <h3 id="totpEnrollmentTitle" data-i18n="security.setupAuthenticator">Set up authenticator app</h3>
-                <p data-i18n="security.setupAuthenticatorHint">Scan this QR code locally in your authenticator app, or enter the setup key manually. The setup expires after five minutes.</p>
-                <img id="totpQr" alt="TOTP enrollment QR code" data-i18n-alt="security.totpQrCode" width="240" height="240">
-                <p><strong data-i18n="security.setupKey">Setup key</strong>: <code id="totpSecret"></code></p>
-                <div class="form-group">
-                    <label for="totpActivationCode" data-i18n="security.sixDigitCode">Six-digit code</label>
-                    <input id="totpActivationCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
-                </div>
-                <button class="btn btn-primary" id="totpActivateBtn" data-i18n="security.verifyEnableMfa">Verify and enable MFA</button>
-            </div>
-            <pre id="totpRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
-        </section>
-        {% endif %}
-        {% if recovery_codes_enabled and not recovery_mode %}
-        <section class="admin-setting-row" style="max-width:none;margin-top:18px;">
-            <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
-            <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>
-            <button class="btn btn-primary" id="recoveryGenerateBtn" data-i18n="security.generateRecoveryCodes">Generate recovery codes</button>
-            <pre id="recoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
         </section>
         {% endif %}
     </main>
@@ -223,7 +232,7 @@
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="{{ url_for('static', filename='js/i18n.js') }}?v=32"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=5"></script>
 </body>
 </html>

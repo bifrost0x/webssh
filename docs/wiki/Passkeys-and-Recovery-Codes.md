@@ -113,6 +113,13 @@ First activation enables MFA and generates a one-time Recovery set. Store it
 before leaving the page. Enabling TOTP remains voluntary; the Admin feature
 toggle makes enrollment available but does not enroll or force users.
 
+Each enrolled authenticator can be removed separately after action-bound
+Step-up. Removing the final TOTP authenticator keeps account MFA enabled when
+an active Passkey remains. WebSSH blocks removal of the last durable Passkey or
+TOTP factor while MFA is enabled; add and test a replacement first, or use the
+separate explicit MFA-disable action. Explicit disable removes all stored TOTP
+authenticators, while enrolled Passkeys remain available for direct sign-in.
+
 ## Recovery codes
 
 Recovery codes are enabled by default and can be disabled with:

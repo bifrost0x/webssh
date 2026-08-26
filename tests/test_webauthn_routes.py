@@ -117,6 +117,112 @@ def test_passkey_mfa_requires_confirmation_and_an_enrolled_passkey(
     ).status_code == 400
 
 
+def test_deleting_passkey_keeps_mfa_when_totp_remains(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import (
+        SecurityFeatureState,
+        TOTPAuthenticator,
+        User,
+        WebAuthnCredential,
+        db,
+    )
+
+    user_id = _create_user(app, "delete_mixed_passkey_user")
+    _login(client, "delete_mixed_passkey_user")
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "TOTP_ENABLED", True)
+    with app.app_context():
+        db.session.merge(SecurityFeatureState(feature="passkey", enabled=True))
+        db.session.merge(SecurityFeatureState(feature="totp", enabled=True))
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        credential = WebAuthnCredential(
+            user_id=user_id,
+            credential_id=b"delete-mixed-passkey",
+            public_key=b"public-key",
+            transports="[]",
+            name="Laptop",
+        )
+        db.session.add_all((
+            credential,
+            TOTPAuthenticator(
+                user_id=user_id,
+                encrypted_secret=b"delete-mixed-totp",
+                active=True,
+            ),
+        ))
+        db.session.commit()
+        credential_id = credential.id
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "passkey.delete",
+        credential_id,
+        assurance="MFA",
+        method="totp",
+    )
+
+    response = client.delete(
+        f"/api/webauthn/credentials/{credential_id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert db.session.get(User, user_id).mfa_enabled is True
+        assert db.session.get(WebAuthnCredential, credential_id) is None
+        assert TOTPAuthenticator.query.filter_by(user_id=user_id).count() == 1
+
+
+def test_deleting_last_durable_passkey_factor_is_blocked(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    from app.models import User, WebAuthnCredential, db
+
+    user_id = _create_user(app, "delete_last_passkey_user")
+    _login(client, "delete_last_passkey_user")
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        credential = WebAuthnCredential(
+            user_id=user_id,
+            credential_id=b"delete-last-passkey",
+            public_key=b"public-key",
+            transports="[]",
+            name="Only passkey",
+        )
+        db.session.add(credential)
+        db.session.commit()
+        credential_id = credential.id
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "passkey.delete",
+        credential_id,
+        assurance="MFA",
+        method="passkey",
+    )
+
+    response = client.delete(
+        f"/api/webauthn/credentials/{credential_id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "last_factor_required"
+    with app.app_context():
+        assert db.session.get(User, user_id).mfa_enabled is True
+        assert db.session.get(WebAuthnCredential, credential_id) is not None
+
+
 def test_registration_options_require_account_grant_and_exact_rp(
     app, client, monkeypatch
 ):

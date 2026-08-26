@@ -43,6 +43,7 @@ ACCOUNT_STEP_UP_ACTIONS = frozenset({
     "passkey.delete",
     "mfa.enable",
     "totp.enroll",
+    "totp.delete",
     "mfa.disable",
     "recovery.rotate",
 })

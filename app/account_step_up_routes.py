@@ -33,6 +33,7 @@ from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
 from .models import (
     LDAPIdentity,
     OIDCIdentity,
+    TOTPAuthenticator,
     User,
     WebAuthnCredential,
     db,
@@ -88,6 +89,7 @@ def _action_target(action, data):
         "passkey.delete": "passkey",
         "mfa.enable": "passkey",
         "totp.enroll": "totp",
+        "totp.delete": "totp",
         "recovery.rotate": "recovery",
     }.get(action)
     if feature is not None and not feature_is_active(feature):
@@ -97,11 +99,16 @@ def _action_target(action, data):
     if action == "mfa.enable":
         if current_user.mfa_enabled or not current_user.webauthn_credentials.count():
             raise StepUpError("step-up request is invalid")
-    if action == "passkey.delete":
+    if action in {"passkey.delete", "totp.delete"}:
         target = data.get("target")
         if not isinstance(target, int) or isinstance(target, bool):
             raise StepUpError("step-up request is invalid")
-        row = db.session.get(WebAuthnCredential, target)
+        model = (
+            WebAuthnCredential
+            if action == "passkey.delete"
+            else TOTPAuthenticator
+        )
+        row = db.session.get(model, target)
         if row is None or row.user_id != current_user.id:
             raise StepUpError("step-up request is invalid")
         return target
@@ -568,3 +575,14 @@ def disable_account_mfa():
     )
     log_security_event("MFA_DISABLED", user=user.username)
     return jsonify({"ok": True})
+
+
+@account_step_up_blueprint.get("/api/account/security-state")
+@login_required
+def account_security_state_view():
+    from .mfa_factors import account_security_state
+
+    user = db.session.get(User, current_user.id, populate_existing=True)
+    if user is None:
+        return _error("security_state_changed", 409)
+    return jsonify(account_security_state(user))

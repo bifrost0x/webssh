@@ -31,6 +31,16 @@ def _activate_totp_feature(app, monkeypatch):
         db.session.commit()
 
 
+def _activate_passkey_feature(app, monkeypatch):
+    import config
+    from app.models import SecurityFeatureState, db
+
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    with app.app_context():
+        db.session.merge(SecurityFeatureState(feature="passkey", enabled=True))
+        db.session.commit()
+
+
 def _login(client, username="totp_route_user"):
     response = client.post(
         "/login",
@@ -229,6 +239,145 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
         'id="passkeyLoginMode" class="login-mode auth-provider-mode hidden" '
         'data-auth-mode-panel="passkey" aria-hidden="true"'
     ) in html
+
+
+def test_deleting_last_totp_keeps_mfa_when_passkey_remains(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import TOTPAuthenticator, User, WebAuthnCredential, db
+
+    user_id = _create_user(app, "delete_mixed_totp_user")
+    _activate_totp_feature(app, monkeypatch)
+    _activate_passkey_feature(app, monkeypatch)
+    _login(client, "delete_mixed_totp_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        authenticator = TOTPAuthenticator(
+            user_id=user_id,
+            encrypted_secret=b"delete-mixed-totp-secret",
+            label="Phone",
+            active=True,
+        )
+        db.session.add_all((
+            authenticator,
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=b"delete-mixed-passkey",
+                public_key=b"public-key",
+                transports="[]",
+                name="Laptop",
+            ),
+        ))
+        db.session.commit()
+        authenticator_id = authenticator.id
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "totp.delete",
+        authenticator_id,
+        assurance="MFA",
+        method="passkey",
+    )
+
+    response = client.delete(
+        f"/api/totp/authenticators/{authenticator_id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["mfa_enabled"] is True
+    with app.app_context():
+        assert db.session.get(User, user_id).mfa_enabled is True
+        assert TOTPAuthenticator.query.filter_by(user_id=user_id).count() == 0
+        assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 1
+
+
+def test_deleting_last_durable_totp_factor_is_blocked(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import TOTPAuthenticator, User, db
+
+    user_id = _create_user(app, "delete_last_totp_user")
+    _activate_totp_feature(app, monkeypatch)
+    _login(client, "delete_last_totp_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        authenticator = TOTPAuthenticator(
+            user_id=user_id,
+            encrypted_secret=b"delete-last-totp-secret",
+            label="Only phone",
+            active=True,
+        )
+        db.session.add(authenticator)
+        db.session.commit()
+        authenticator_id = authenticator.id
+    headers = mint_account_step_up_headers(
+        app,
+        client,
+        "totp.delete",
+        authenticator_id,
+        assurance="MFA",
+        method="totp",
+    )
+
+    response = client.delete(
+        f"/api/totp/authenticators/{authenticator_id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "last_factor_required"
+    with app.app_context():
+        assert db.session.get(User, user_id).mfa_enabled is True
+        assert db.session.get(TOTPAuthenticator, authenticator_id) is not None
+
+
+def test_security_state_reports_active_durable_factor_inventory(
+    app,
+    client,
+    monkeypatch,
+):
+    from app.models import TOTPAuthenticator, User, WebAuthnCredential, db
+
+    user_id = _create_user(app, "factor_state_user")
+    _activate_totp_feature(app, monkeypatch)
+    _activate_passkey_feature(app, monkeypatch)
+    _login(client, "factor_state_user")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        user.mfa_enabled = True
+        db.session.add_all((
+            TOTPAuthenticator(
+                user_id=user_id,
+                encrypted_secret=b"state-totp-secret",
+                active=True,
+            ),
+            WebAuthnCredential(
+                user_id=user_id,
+                credential_id=b"state-passkey",
+                public_key=b"public-key",
+                transports="[]",
+            ),
+        ))
+        db.session.commit()
+
+    response = client.get("/api/account/security-state")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "can_disable_mfa": True,
+        "can_enable_mfa": False,
+        "mfa_enabled": True,
+        "passkey_count": 1,
+        "total": 2,
+        "totp_count": 1,
+    }
 
 
 def test_mfa_disable_is_explicit_and_recently_reauthenticated(
