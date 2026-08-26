@@ -310,6 +310,104 @@ def test_typed_destination_directory_permission_failure_is_not_collapsed():
         )
 
 
+@pytest.mark.parametrize(
+    ('writer_error', 'expected_type', 'expected_code'),
+    [
+        pytest.param(
+            lambda: __import__(
+                'app.smb_protocol', fromlist=['SMBProtocolError']
+            ).SMBProtocolError('CONFLICT'),
+            'SMBProtocolError',
+            'CONFLICT',
+            id='smb-protocol-conflict',
+        ),
+        pytest.param(
+            lambda: __import__(
+                'app.smb_backend', fromlist=['FileConflict']
+            ).FileConflict('private destination'),
+            'FileConflict',
+            'CONFLICT',
+            id='smb-file-conflict',
+        ),
+        pytest.param(
+            lambda: __import__(
+                'app.smb_backend', fromlist=['NonAtomicOverwriteRequired']
+            ).NonAtomicOverwriteRequired('private destination'),
+            'NonAtomicOverwriteRequired',
+            'ATOMIC_REPLACE_UNAVAILABLE',
+            id='smb-non-atomic-replace',
+        ),
+        pytest.param(
+            lambda: PermissionError('private destination'),
+            'PermissionError',
+            'PERMISSION_DENIED',
+            id='destination-permission',
+        ),
+    ],
+)
+def test_remote_copy_preserves_typed_writer_failures(
+    writer_error, expected_type, expected_code,
+):
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+    from app.transfer_errors import classify_transfer_failure
+
+    class FailingWriterBackend(_Backend):
+        @contextmanager
+        def open_atomic_writer(
+            self, _source, _path, *, replace, cancel_event,
+            io_lane='control',
+        ):
+            assert io_lane == 'transfer'
+            yield _PartialWriter()
+            raise writer_error()
+
+    with pytest.raises(Exception) as failure:
+        copy_remote_entry(
+            _source('smb', _Backend({'/source.bin': b'value'})),
+            '/source.bin',
+            _source('smb', FailingWriterBackend()),
+            '/target.bin',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=10, max_members=1),
+            cancel_event=Event(), progress=None, chunk_size=2,
+        )
+
+    assert type(failure.value).__name__ == expected_type
+    assert classify_transfer_failure(
+        failure.value, operation='remote_transfer'
+    ).code == expected_code
+
+
+def test_directory_copy_rejects_existing_root_before_mutation():
+    from app.remote_transfer import (
+        RemoteTransferConflict,
+        TransferBudget,
+        copy_remote_entry,
+    )
+
+    source_backend = _Backend(
+        files={'/folder/a.bin': b'a'},
+        tree=[{
+            'name': 'a.bin', 'path': '/folder/a.bin', 'size': 1,
+            'is_dir': False, 'is_symlink': False,
+        }],
+    )
+    destination_backend = _Backend()
+    destination_backend.created.append('/copy')
+
+    with pytest.raises(RemoteTransferConflict):
+        copy_remote_entry(
+            _source('smb', source_backend), '/folder',
+            _source('smb', destination_backend), '/copy',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=10, max_members=2),
+            cancel_event=Event(), progress=None, chunk_size=2,
+        )
+
+    assert destination_backend.created == ['/copy']
+    assert destination_backend.commits == []
+
+
 def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
     from app.remote_transfer import TransferBudget, copy_remote_entry
 

@@ -205,6 +205,26 @@ class BinaryTransferClient {
         }
     }
 
+    resolveDefaultUploadConflict(details = {}) {
+        const browserWindow = typeof window !== 'undefined' ? window : null;
+        const fileManager = browserWindow?.sftpFileManager;
+        if (typeof fileManager?.resolveUploadConflict === 'function') {
+            return fileManager.resolveUploadConflict(details);
+        }
+        if (typeof browserWindow?.confirm !== 'function') {
+            return 'cancel';
+        }
+        const filename = typeof details.filename === 'string'
+            && details.filename.trim()
+            ? details.filename
+            : 'destination';
+        const replace = browserWindow.confirm(
+            `A file or folder named "${filename}" already exists. `
+            + 'Select OK to overwrite it, or Cancel to skip this upload.',
+        );
+        return replace ? 'replace' : 'skip';
+    }
+
     uploadFile(file, remotePath, sourceId, options = {}) {
         const transfer = this.createTransfer({
             type: 'upload',
@@ -215,7 +235,7 @@ class BinaryTransferClient {
             controller: new AbortController(),
             onConflict: typeof options.onConflict === 'function'
                 ? options.onConflict
-                : null,
+                : details => this.resolveDefaultUploadConflict(details),
         });
         this.enqueue(transfer, () => this.upload(transfer, file));
         return transfer.id;

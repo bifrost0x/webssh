@@ -204,6 +204,57 @@ test('conflict overwrite retries with a fresh replace token', async () => {
     assert.equal(completed.length, 1);
 });
 
+test('uploads without a caller resolver still offer conflict replacement', async () => {
+    const transport = controlledSocket();
+    const client = new BinaryTransferClient(transport.socket);
+    const previousWindow = global.window;
+    const prompts = [];
+    global.window = {
+        confirm(message) {
+            prompts.push(message);
+            return true;
+        },
+    };
+    const responses = [
+        {
+            ok: false,
+            status: 409,
+            async json() {
+                return {
+                    error_code: 'CONFLICT',
+                    error: 'A file or folder already exists at the destination.',
+                    retryable: false,
+                };
+            },
+        },
+        { ok: true, status: 200 },
+    ];
+    global.fetch = async () => responses.shift();
+
+    try {
+        client.uploadFile(
+            { name: 'terminal-drop.txt', size: 7 },
+            '/terminal-drop.txt',
+            'sftp-session:terminal',
+        );
+        await flushTasks();
+        transport.preparations[0].acknowledgement({
+            success: true, transfer_id: 'default-conflict', url: '/upload',
+        });
+        await flushTasks();
+
+        assert.equal(prompts.length, 1);
+        assert.match(prompts[0], /terminal-drop\.txt/);
+        assert.equal(transport.preparations.length, 2);
+        assert.equal(
+            transport.preparations[1].payload.conflict_policy,
+            'replace',
+        );
+    } finally {
+        global.window = previousWindow;
+    }
+});
+
 for (const decision of ['skip', 'cancel']) {
     test(`conflict ${decision} ends locally without a replacement token`, async () => {
         const transport = controlledSocket();

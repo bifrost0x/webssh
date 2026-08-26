@@ -10,6 +10,9 @@ import threading
 
 import config
 
+from .smb_backend import FileConflict, NonAtomicOverwriteRequired
+from .smb_protocol import SMBProtocolError
+
 
 class RemoteTransferError(RuntimeError):
     """A remote copy failed without exposing backend-specific details."""
@@ -207,7 +210,17 @@ def _copy_file(
                             'file_size': declared_size,
                         })
                 _check_cancelled(cancel_event)
-    except (RemoteTransferError, RemoteTransferCancelled):
+    except (
+        RemoteTransferError,
+        RemoteTransferCancelled,
+        FileConflict,
+        NonAtomicOverwriteRequired,
+        SMBProtocolError,
+        PermissionError,
+        FileNotFoundError,
+        TimeoutError,
+        ConnectionError,
+    ):
         raise
     except FileExistsError as exc:
         raise RemoteTransferConflict('Destination exists') from exc
@@ -232,7 +245,7 @@ def _destination_child(root, relative):
     return result if result.startswith('/') else '/' + result
 
 
-def _ensure_directory(destination, path):
+def _ensure_directory(destination, path, *, allow_existing=True):
     check_exists = getattr(
         destination.backend, 'check_exists_or_raise', None
     )
@@ -243,7 +256,10 @@ def _ensure_directory(destination, path):
         if error:
             raise RemoteTransferError('Destination unavailable')
     if exists and exists.get('exists'):
-        if not exists.get('is_dir'):
+        if (
+            not exists.get('is_dir')
+            or not allow_existing
+        ):
             raise RemoteTransferConflict('Destination exists')
         return
     mkdir = getattr(destination.backend, 'mkdir_or_raise', None)
@@ -338,7 +354,11 @@ def _copy_remote_entry_locked(
                 )
 
     _check_cancelled(cancel_event)
-    _ensure_directory(destination, destination_path)
+    _ensure_directory(
+        destination,
+        destination_path,
+        allow_existing=conflict_policy == 'replace',
+    )
     directories = sorted(
         (entry for entry in entries if entry.get('is_dir')),
         key=lambda entry: entry['path'].count('/'),
