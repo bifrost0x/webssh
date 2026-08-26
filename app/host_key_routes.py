@@ -1,6 +1,6 @@
 """Authenticated management routes for SSH host trust."""
 
-from flask import Blueprint, abort, jsonify
+from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user, login_required
 
 import config
@@ -61,6 +61,36 @@ def list_global_host_keys():
             owner_id=None,
         )
     })
+
+
+@host_key_blueprint.post("/admin/api/host-keys")
+@admin_required
+@login_required
+@step_up_required("host_key.global_add", "global")
+def add_global_host_key():
+    _require_enabled()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request"}), 400
+    entry, error = HostKeyStore.add_file_entry(
+        config.KNOWN_HOSTS_FILE,
+        data.get("entry"),
+        scope="global",
+        owner_id=None,
+        lock_key="host_keys:global",
+    )
+    if error:
+        status = 409 if "already" in error or "different key" in error else 400
+        return jsonify({"error": error}), status
+    log_security_event(
+        "GLOBAL_SSH_HOST_KEY_ADDED",
+        admin=current_user.username,
+        hosts=",".join(item["host"] for item in entry["hosts"]),
+        algorithm=entry["algorithm"],
+        fingerprint=entry["fingerprint"],
+        marker=entry["marker"],
+    )
+    return jsonify({"entry": entry}), 201
 
 
 @host_key_blueprint.delete("/admin/api/host-keys/<entry_id>")

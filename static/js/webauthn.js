@@ -4,6 +4,7 @@
     const root = (document.querySelector('meta[name="app-root"]')?.content || '').replace(/\/$/, '');
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const recoveryMode = document.body?.dataset.recoveryMode === 'true';
+    let accountMfaEnabled = document.body?.dataset.accountMfaEnabled === 'true';
     const t = (key, fallback) => {
         const translated = window.i18n && i18n.t ? i18n.t(key) : null;
         return translated && translated !== key ? translated : (fallback || key);
@@ -319,8 +320,12 @@
         const container = document.getElementById('passkeyList');
         if (!container || !document.getElementById('passkeyAddBtn')) { return; }
         const data = await api('/api/webauthn/credentials');
+        const credentials = data.credentials || [];
+        document.getElementById('passkeyEnableMfaBtn')?.classList.toggle(
+            'hidden', accountMfaEnabled || credentials.length === 0
+        );
         container.replaceChildren();
-        for (const credential of data.credentials || []) {
+        for (const credential of credentials) {
             const row = document.createElement('div');
             row.className = 'admin-toolbar';
             const label = document.createElement('span');
@@ -344,6 +349,41 @@
             row.append(label, button);
             container.appendChild(row);
         }
+    }
+
+    async function enablePasskeyMfa() {
+        if (!window.confirm(t(
+            'security.confirmEnablePasskeyMfa',
+            'Require a Passkey, authenticator app, or recovery code after every password or directory sign-in?'
+        ))) { return; }
+        const headers = await stepUpHeaders('mfa.enable');
+        if (headers === null) { return; }
+        const data = await api('/api/webauthn/mfa', {
+            method: 'POST',
+            headers,
+            body: {confirm_enable_mfa: true}
+        });
+        const codes = data.recovery_codes || [];
+        if (codes.length) {
+            document.getElementById('passkeyMfaRecoveryCodes').textContent = [
+                t(
+                    'security.storeRecoveryCodes',
+                    'Store these codes now. They will not be shown again.'
+                ),
+                '',
+                ...codes
+            ].join('\n');
+        }
+        accountMfaEnabled = true;
+        document.body.dataset.accountMfaEnabled = 'true';
+        document.getElementById('passkeyEnableMfaBtn')?.classList.add('hidden');
+        const badge = document.getElementById('securityMfaStatus');
+        if (badge) {
+            badge.classList.add('active');
+            badge.dataset.i18n = 'security.mfaEnabled';
+            badge.textContent = t('security.mfaEnabled', 'MFA enabled');
+        }
+        notify(t('security.mfaEnabled', 'MFA enabled'), 'success');
     }
 
     async function registerPasskey(legacyUpgrade) {
@@ -552,6 +592,9 @@
         });
         document.getElementById('passkeyUpgradeBtn')?.addEventListener('click', () => {
             registerPasskey(true);
+        });
+        document.getElementById('passkeyEnableMfaBtn')?.addEventListener('click', () => {
+            enablePasskeyMfa().catch(error => notify(error.message, 'error'));
         });
         loadPasskeys().catch(error => notify(error.message, 'error'));
         document.getElementById('totpAddBtn')?.addEventListener('click', () => {

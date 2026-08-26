@@ -77,6 +77,7 @@ const ProfileManager = {
             if (button.dataset.profileAction === 'connect') this.connect(profileId);
             if (button.dataset.profileAction === 'favorite') this.toggleFavorite(profileId);
             if (button.dataset.profileAction === 'edit') this.openEditor(profileId);
+            if (button.dataset.profileAction === 'duplicate') this.duplicateProfile(profileId);
             if (button.dataset.profileAction === 'delete') this.deleteProfile(profileId);
         });
         document.getElementById('profileManagementList')?.addEventListener('dragstart', event => {
@@ -1028,6 +1029,7 @@ const ProfileManager = {
                 [
                     ['connect', this.t('connection.connect', 'Connect'), 'btn-primary'],
                     ['edit', this.t('common.edit', 'Edit'), 'btn-secondary'],
+                    ['duplicate', this.t('profiles.duplicate', 'Duplicate'), 'btn-secondary'],
                     ['delete', this.t('common.delete', 'Delete'), 'btn-danger'],
                 ].forEach(([action, label, style]) => {
                     const button = document.createElement('button');
@@ -1096,18 +1098,32 @@ const ProfileManager = {
         this.renderEditorCommandPreview();
     },
 
-    openEditor(profileId = null) {
+    duplicateProfileName(name) {
+        const suffix = this.t('profiles.copyNameSuffix', ' (copy)');
+        const source = String(name || '').trim();
+        const available = Math.max(0, 128 - suffix.length);
+        return `${source.slice(0, available).trimEnd()}${suffix}`.slice(0, 128);
+    },
+
+    duplicateProfile(profileId) {
+        this.openEditor(profileId, {duplicate: true});
+    },
+
+    openEditor(profileId = null, options = {}) {
         const profile = profileId
             ? this.profiles.find(item => item.id === profileId)
             : null;
         if (profileId && !profile) return;
-        this.editingProfileId = profile?.id || null;
+        const duplicating = options?.duplicate === true;
+        this.editingProfileId = duplicating ? null : (profile?.id || null);
         this.renderEditorSelects();
 
         document.getElementById('profileEditorForm')?.reset();
         this.setInlineKeyPanelExpanded(false);
-        document.getElementById('profileEditorId').value = profile?.id || '';
-        document.getElementById('profileEditorName').value = profile?.name || '';
+        document.getElementById('profileEditorId').value = this.editingProfileId || '';
+        document.getElementById('profileEditorName').value = duplicating
+            ? this.duplicateProfileName(profile?.name)
+            : (profile?.name || '');
         document.getElementById('profileEditorGroup').value = profile?.group || '';
         document.getElementById('profileEditorHost').value = profile?.host || '';
         document.getElementById('profileEditorPort').value = profile?.port || 22;

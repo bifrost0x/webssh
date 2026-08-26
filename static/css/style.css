@@ -2296,6 +2296,49 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
     width: min(100%, 440px);
 }
 
+.ssh-auth-banner-modal {
+    z-index: 9200;
+}
+
+.ssh-auth-banner-modal .modal-content {
+    width: min(100%, 680px);
+}
+
+.ssh-auth-banner-body {
+    display: grid;
+    gap: 14px;
+}
+
+.ssh-auth-banner-body > p {
+    margin: 0;
+}
+
+.ssh-auth-banner-target {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.ssh-auth-banner-text {
+    min-height: 140px;
+    max-height: min(42vh, 360px);
+    margin: 0;
+    padding: 14px;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: 13px/1.55 var(--font-mono, monospace);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.ssh-auth-banner-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
 .palette-list,
 .shortcuts-list {
     margin-top: 16px;

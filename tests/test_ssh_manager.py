@@ -31,6 +31,10 @@ class FakeTransport:
         self.session_channels = []
         self.open_timeout = None
         self.channel_timeout = None
+        self.banner = None
+
+    def get_banner(self):
+        return self.banner
 
     def set_keepalive(self, seconds):
         self.keepalive = seconds
@@ -264,6 +268,66 @@ def test_direct_password_connect_preserves_connect_contract(monkeypatch):
     assert shell_channel.pty == ('xterm-256color', 80, 24)
     assert shell_channel.shell_invoked is True
     assert shell_channel.timeout == 0.1
+
+
+def test_authentication_banner_must_be_accepted_before_shell(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    decisions = []
+
+    def decide(banner, context):
+        decisions.append((banner, context))
+        return True
+
+    # The client is created only when connect_target enters SSH setup, so use
+    # the factory's class default through a small wrapper.
+    original_factory = ssh_manager.paramiko.SSHClient
+
+    def client_factory():
+        client = original_factory()
+        client.transport.banner = (
+            "Authorized use only\r\n\x00Review \u202epolicy"
+        ).encode("utf-8")
+        return client
+
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', client_factory)
+
+    session_id, error = connect_target(
+        password='secret', auth_banner_decision=decide
+    )
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    assert decisions == [(
+        "Authorized use only\nReview policy",
+        "target",
+    )]
+    assert clients[0].transport.session_channels
+
+
+def test_declined_authentication_banner_prevents_shell_and_startup(
+        monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+    original_factory = ssh_manager.paramiko.SSHClient
+
+    def client_factory():
+        client = original_factory()
+        client.transport.banner = b"Consent required"
+        return client
+
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', client_factory)
+
+    session_id, error = connect_target(
+        password='secret',
+        startup_commands='whoami',
+        auth_banner_decision=lambda _banner, _context: False,
+    )
+
+    assert session_id is None
+    assert str(error) == "SSH authentication banner was not accepted"
+    assert error.code == "auth_banner_declined"
+    assert error.context == "target"
+    assert clients[0].transport.session_channels == []
+    assert clients[0].closed is True
 
 
 def test_direct_connection_pins_real_resolution_through_paramiko(monkeypatch):

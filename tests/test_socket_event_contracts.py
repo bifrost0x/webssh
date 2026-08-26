@@ -8,6 +8,7 @@ SOCKET_EVENTS = ROOT / 'app' / 'socket_events.py'
 LOGIN_TEMPLATE = ROOT / 'templates' / 'login.html'
 BINARY_TRANSFER_CLIENT = ROOT / 'static' / 'js' / 'binary-transfer-client.js'
 AUTHENTICATED_TEMPLATE = ROOT / 'templates' / 'index.html'
+AUTHENTICATED_APP = ROOT / 'static' / 'js' / 'app.js'
 SECURITY_TEMPLATE = ROOT / 'templates' / 'security.html'
 
 STALE_SERVER_EVENTS = {'detect_os', 'get_sessions'}
@@ -129,3 +130,19 @@ def test_password_actions_navigate_through_security_center():
 
     assert "APP_ROOT + '/security#password'" in app_source
     assert "getElementById('changePasswordBtn')" not in app_source
+
+
+def test_ssh_authentication_banner_has_mandatory_safe_client_contract():
+    handlers, emitted = _server_inventory()
+    template = AUTHENTICATED_TEMPLATE.read_text(encoding='utf-8')
+    app_source = AUTHENTICATED_APP.read_text(encoding='utf-8')
+
+    assert 'ssh_auth_banner_decision' in handlers
+    assert 'ssh_auth_banner' in emitted
+    assert 'id="sshAuthBannerModal" role="alertdialog"' in template
+    assert 'id="sshAuthBannerCancel"' in template
+    assert 'id="sshAuthBannerContinue"' in template
+    assert "socket.on('ssh_auth_banner'" in app_source
+    assert "socket.emit('ssh_auth_banner_decision'" in app_source
+    assert "getElementById('sshAuthBannerText').textContent" in app_source
+    assert "e.target.id === 'sshAuthBannerModal'" in app_source

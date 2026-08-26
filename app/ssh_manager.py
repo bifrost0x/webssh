@@ -29,6 +29,7 @@ sessions = {}
 sessions_lock = Lock()
 TMUX_KILL_TIMEOUT = 2.0
 TMUX_PROBE_TIMEOUT = 2.0
+SSH_AUTH_BANNER_MAX_CHARS = 16 * 1024
 
 
 class TailscaleSSHAuthStrategy(AuthStrategy):
@@ -45,6 +46,42 @@ class TailscaleSSHAuthStrategy(AuthStrategy):
 def _configure_host_key_trust(client, store):
     store.load_into(client)
     client.set_missing_host_key_policy(store.missing_key_policy())
+
+
+def _authentication_banner(transport):
+    """Return a bounded, display-safe SSH authentication banner."""
+    get_banner = getattr(transport, 'get_banner', None)
+    if not callable(get_banner):
+        return ''
+    banner = get_banner()
+    if banner is None:
+        return ''
+    if isinstance(banner, bytes):
+        banner = banner.decode('utf-8', errors='replace')
+    else:
+        banner = str(banner)
+    banner = banner.replace('\r\n', '\n').replace('\r', '\n')
+    banner = ''.join(
+        character
+        for character in banner
+        if character in {'\n', '\t'} or character.isprintable()
+    )
+    return banner[:SSH_AUTH_BANNER_MAX_CHARS].strip()
+
+
+def _authentication_banner_accepted(transport, decision_callback, context):
+    banner = _authentication_banner(transport)
+    if not banner or decision_callback is None:
+        return True
+    try:
+        return decision_callback(banner, context) is True
+    except Exception as error:
+        log_warning(
+            "SSH authentication banner decision failed",
+            context=context,
+            error_type=type(error).__name__,
+        )
+        return False
 
 
 def _open_exec_channel(transport, command, *, timeout, pty=None):
@@ -106,7 +143,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           proxy_jump_host=None, proxy_jump_port=None, proxy_jump_username=None,
                           proxy_jump_password=None, proxy_jump_key_content=None,
                           use_tmux=False, reconnect_tmux_name=None,
-                          auth_type='password', startup_commands=''):
+                          auth_type='password', startup_commands='',
+                          auth_banner_decision=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -122,6 +160,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         user_id: User ID for session tracking
         proxy_jump_*: Optional jump host (bastion) connection parameters
         auth_type: Target authentication method (password, key, or tailscale)
+        auth_banner_decision: Callback that must accept a server banner before
+            any forwarding channel, shell, tmux probe, or startup command opens
     """
     try:
         host_key_store = HostKeyStore(
@@ -207,6 +247,15 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 if bastion_transport:
                     bastion_transport.set_keepalive(30)
 
+                if not _authentication_banner_accepted(
+                    bastion_transport, auth_banner_decision, 'jump_host'
+                ):
+                    return None, SSHConnectionError(
+                        "SSH authentication banner was not accepted",
+                        code="auth_banner_declined",
+                        context="jump_host",
+                    )
+
                 sock = bastion_transport.open_channel(
                     'direct-tcpip',
                     channel_destination,
@@ -277,6 +326,15 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         transport = client.get_transport()
         if transport:
             transport.set_keepalive(30)
+
+        if not _authentication_banner_accepted(
+            transport, auth_banner_decision, 'target'
+        ):
+            return None, SSHConnectionError(
+                "SSH authentication banner was not accepted",
+                code="auth_banner_declined",
+                context="target",
+            )
 
         tmux_session_name = None
         if use_tmux:

@@ -332,3 +332,13 @@ test('group removal acknowledgement opens confirmation and retries explicitly', 
     assert.equal(manager.profiles[0].group, 'Apps');
     assert.equal(manager.pendingProfileMove, null);
 });
+
+test('duplicate profile names are localized and remain within storage limit', () => {
+    const manager = loadProfileManager();
+    manager.t = key => key === 'profiles.copyNameSuffix' ? ' (Kopie)' : key;
+
+    assert.equal(manager.duplicateProfileName('Production'), 'Production (Kopie)');
+    const bounded = manager.duplicateProfileName('x'.repeat(128));
+    assert.equal(bounded.length, 128);
+    assert.equal(bounded.endsWith(' (Kopie)'), true);
+});

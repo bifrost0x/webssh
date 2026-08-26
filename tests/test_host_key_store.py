@@ -798,3 +798,140 @@ def test_retry_repeats_parent_fsync_after_first_fsync_failure(
         ("fsync", store.user_path.parent),
         ("write", store.user_path),
     ]
+
+
+def test_add_file_entry_validates_and_appends_canonical_entry(tmp_path):
+    path = tmp_path / "known_hosts"
+    key = _key()
+
+    entry, error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line(
+            "host.example,[host.example]:2222", key, comment="operator note"
+        ).rstrip("\n"),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys",
+    )
+
+    assert error is None
+    assert entry["hosts"] == [
+        {"host": "host.example", "port": 22},
+        {"host": "host.example", "port": 2222},
+    ]
+    assert entry["fingerprint"].startswith("SHA256:")
+    assert path.read_text(encoding="utf-8") == (
+        f"host.example,[host.example]:2222 {key.get_name()} "
+        f"{key.get_base64()}\n"
+    )
+
+
+def test_add_file_entry_rejects_duplicates_conflicts_and_multiline(tmp_path):
+    path = tmp_path / "known_hosts"
+    original = _key()
+    replacement = _key()
+    first, error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line("host.example", original).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-conflict",
+    )
+    assert first is not None and error is None
+
+    duplicate, duplicate_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line("host.example", original).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-conflict",
+    )
+    conflict, conflict_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line("host.example", replacement).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-conflict",
+    )
+    multiline, multiline_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line("second.example", original)
+        + _known_hosts_line("third.example", original),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-conflict",
+    )
+
+    assert duplicate is None
+    assert duplicate_error == "Host key entry already exists"
+    assert conflict is None
+    assert "different key" in conflict_error
+    assert multiline is None
+    assert multiline_error == "Enter exactly one known_hosts entry"
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
+def test_add_file_entry_rejects_conflict_on_overlapping_host_token(tmp_path):
+    path = tmp_path / "known_hosts"
+    original = _key()
+    replacement = _key()
+    first, first_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line(
+            "first.example,shared.example", original
+        ).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-overlap",
+    )
+    conflict, conflict_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line("shared.example", replacement).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-overlap",
+    )
+
+    assert first is not None and first_error is None
+    assert conflict is None
+    assert "different key" in conflict_error
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
+def test_add_file_entry_keeps_distinct_hashed_hosts_separate(tmp_path):
+    path = tmp_path / "known_hosts"
+    key = _key()
+    first_host = paramiko.HostKeys.hash_host("first.example")
+    second_host = paramiko.HostKeys.hash_host("second.example")
+
+    first, first_error = HostKeyStore.add_file_entry(
+        path,
+        f"{first_host} {key.get_name()} {key.get_base64()}",
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-hashed-hosts",
+    )
+    second, second_error = HostKeyStore.add_file_entry(
+        path,
+        f"{second_host} {key.get_name()} {key.get_base64()}",
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-hashed-hosts",
+    )
+
+    assert first is not None and first_error is None
+    assert second is not None and second_error is None
+    assert path.read_text(encoding="utf-8").count("\n") == 2
+
+
+def test_add_file_entry_rejects_invalid_unicode(tmp_path):
+    entry, error = HostKeyStore.add_file_entry(
+        tmp_path / "known_hosts",
+        "host.example ssh-rsa \ud800",
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-invalid-unicode",
+    )
+
+    assert entry is None
+    assert error == "Invalid known_hosts entry"

@@ -86,6 +86,15 @@ def _host_pattern_is_valid(host_pattern):
     return len(salt) == 20 and len(digest) == 20
 
 
+def _host_identity_token(host_pattern):
+    """Normalize a literal pattern identity without conflating salted hashes."""
+    negated = host_pattern.startswith("!")
+    pattern = host_pattern[1:] if negated else host_pattern
+    if not pattern.startswith("|1|"):
+        pattern = pattern.casefold()
+    return f"!{pattern}" if negated else pattern
+
+
 class _EffectiveKeyMapping(MutableMapping):
     """Paramiko-compatible key mapping returned for one runtime hostname."""
 
@@ -356,6 +365,86 @@ class HostKeyStore:
                 return False
             atomic_write_bytes(path, b"".join(kept), mode=0o600)
             return True
+
+    @classmethod
+    def add_file_entry(cls, path, value, *, scope, owner_id, lock_key):
+        """Append one validated known_hosts entry without exposing stored keys."""
+        if not isinstance(value, str):
+            return None, "Host key entry must be text"
+        try:
+            encoded = value.encode("utf-8")
+        except UnicodeEncodeError:
+            return None, "Invalid known_hosts entry"
+        if not encoded or len(encoded) > 16384 or "\n" in value or "\r" in value:
+            return None, "Enter exactly one known_hosts entry"
+
+        fields = re.split(r"[ \t]+", value.strip())
+        marker = None
+        if fields and fields[0].startswith("@"):
+            marker = fields.pop(0)
+        if marker not in (None, "@revoked") or len(fields) < 3:
+            return None, "Invalid or unsupported known_hosts entry"
+        try:
+            entry = HostKeyEntry.from_line(" ".join(fields[:3]))
+        except Exception:
+            return None, "Invalid known_hosts entry"
+        if entry is None or not entry.hostnames or not all(
+            _host_pattern_is_valid(pattern) for pattern in entry.hostnames
+        ):
+            return None, "Invalid known_hosts entry"
+
+        canonical = " ".join(
+            ([marker] if marker else []) + fields[:3]
+        ).encode("utf-8")
+        candidate = cls._management_entry(
+            canonical,
+            scope=scope,
+            owner_id=owner_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        path = Path(path)
+        with storage_lock(lock_key):
+            try:
+                raw = path.read_bytes()
+                # Refuse to append to a malformed trust store.
+                cls._load_strict(path)
+            except FileNotFoundError:
+                raw = b""
+
+            for raw_line in raw.splitlines():
+                existing_line = raw_line.decode("utf-8").strip()
+                if not existing_line or existing_line.startswith("#"):
+                    continue
+                existing_fields = re.split(r"[ \t]+", existing_line)
+                existing_marker = None
+                if existing_fields[0].startswith("@"):
+                    existing_marker = existing_fields.pop(0)
+                existing_entry = HostKeyEntry.from_line(
+                    " ".join(existing_fields[:3])
+                )
+                overlapping_hosts = not set(map(
+                    _host_identity_token, existing_entry.hostnames
+                )).isdisjoint(map(_host_identity_token, entry.hostnames))
+                same_identity = (
+                    overlapping_hosts
+                    and existing_marker == marker
+                    and existing_entry.key.get_name() == entry.key.get_name()
+                )
+                if not same_identity:
+                    continue
+                if existing_entry.key == entry.key:
+                    return None, "Host key entry already exists"
+                return None, (
+                    "A different key already exists for this host and algorithm; "
+                    "verify and remove it first"
+                )
+
+            prefix = raw
+            if prefix and not prefix.endswith(b"\n"):
+                prefix += b"\n"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_bytes(path, prefix + canonical + b"\n", mode=0o600)
+        return candidate, None
 
     @staticmethod
     def _management_entry(raw_line, *, scope, owner_id, timestamp):
