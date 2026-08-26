@@ -24,7 +24,7 @@ import config
 from . import ssh_manager
 from .paramiko_channels import open_sftp_client
 from .audit_logger import log_warning, log_error
-from .file_backend import FileWriteOutcome
+from .file_backend import FileReaderLease, FileWriteOutcome
 
 _sftp_cache = {}
 _sftp_cache_lock = Lock()
@@ -123,6 +123,54 @@ def sftp_session(identifier, *, io_lane='control'):
 class SFTPOperationError(Exception):
     """Raised when an SFTP operation cannot be performed (no connection, etc.)."""
     pass
+
+
+@contextmanager
+def open_bound_reader(session_id, path, *, io_lane='control'):
+    """Open one SFTP object and derive all read metadata through FSTAT."""
+    safe_path = sanitize_path(path)
+    if safe_path is None:
+        raise SFTPOperationError('Invalid remote path')
+
+    session_context = (
+        sftp_session(session_id)
+        if io_lane == 'control'
+        else sftp_session(session_id, io_lane=io_lane)
+    )
+    with session_context as (sftp, _source_type):
+        with _open_bound_reader_from_client(sftp, safe_path) as lease:
+            yield lease
+
+
+@contextmanager
+def _open_bound_reader_from_client(sftp, safe_path):
+    """Bind one already-owned SFTP client read to its opened handle."""
+    with sftp.file(safe_path, 'rb') as remote_file:
+        handle_stat = getattr(remote_file, 'stat', None)
+        if not callable(handle_stat):
+            raise SFTPOperationError('Remote file metadata unavailable')
+        try:
+            file_stat = handle_stat()
+            mode = getattr(file_stat, 'st_mode', None)
+            size = getattr(file_stat, 'st_size', None)
+            modified = getattr(file_stat, 'st_mtime', None)
+            if type(mode) is not int or not stat.S_ISREG(mode):
+                raise SFTPOperationError('Remote file is not readable')
+            lease = FileReaderLease(
+                reader=remote_file,
+                size=size,
+                mode=mode,
+                modified=modified,
+                is_dir=stat.S_ISDIR(mode),
+                is_symlink=stat.S_ISLNK(mode),
+            )
+        except SFTPOperationError:
+            raise
+        except Exception as exc:
+            raise SFTPOperationError(
+                'Remote file metadata unavailable'
+            ) from exc
+        yield lease
 
 
 def normalize_file_preview_options(max_bytes=512000, offset=0, tail_lines=None):
@@ -392,13 +440,15 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
                         archive, source_path, archive_pathname, depth + 1
                     )
                     continue
-                declared_size = getattr(entry_stat, 'st_size', 0) or 0
-                if transferred + declared_size > max_bytes:
-                    raise TransferSizeExceeded()
-                with sftp.file(source_path, 'rb') as remote_file:
+                with _open_bound_reader_from_client(
+                    sftp,
+                    source_path,
+                ) as lease:
+                    if transferred + lease.size > max_bytes:
+                        raise TransferSizeExceeded()
                     with archive.open(archive_pathname, 'w') as zip_entry:
                         copied = copy_sftp_stream(
-                            remote_file,
+                            lease.reader,
                             zip_entry,
                             cancel_event=cancel_event,
                             max_bytes=max_bytes - transferred,
@@ -922,9 +972,8 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
         if safe_path is None:
             return None, "Invalid path"
 
-        with sftp_session(session_id) as (sftp, source_type):
-            file_stat = sftp.stat(safe_path)
-            file_size = file_stat.st_size
+        with open_bound_reader(session_id, safe_path) as lease:
+            file_size = lease.size
 
             max_supported_file = config.MAX_SUPPORTED_FILE_SIZE
             if file_size > max_supported_file:
@@ -935,20 +984,22 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
 
             content = b''
 
-            with sftp.file(safe_path, 'rb') as remote_file:
-                if tail_lines:
-                    seek_pos = max(0, file_size - max_bytes)
-                    remote_file.seek(seek_pos)
-                    content = remote_file.read(max_bytes)
+            remote_file = lease.reader
+            if tail_lines:
+                seek_pos = max(0, file_size - max_bytes)
+                remote_file.seek(seek_pos)
+                content = remote_file.read(max_bytes)
 
-                    lines = content.split(b'\n')
-                    if len(lines) > tail_lines:
-                        content = b'\n'.join(lines[-tail_lines:])
-                        truncated = True
-                else:
-                    if offset > 0:
-                        remote_file.seek(offset)
-                    content = remote_file.read(read_size)
+                lines = content.split(b'\n')
+                if len(lines) > tail_lines:
+                    content = b'\n'.join(lines[-tail_lines:])
+                    truncated = True
+            else:
+                if offset > 0:
+                    remote_file.seek(offset)
+                content = remote_file.read(read_size)
+            if len(content) > max_bytes:
+                return None, 'Preview exceeds the configured size limit'
 
         is_binary = False
         try:
@@ -1010,17 +1061,21 @@ def read_file_for_edit(session_id, path, max_bytes=None):
         if max_bytes is None:
             max_bytes = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
 
-        with sftp_session(session_id) as (sftp, source_type):
-            file_stat = sftp.stat(safe_path)
-            file_size = file_stat.st_size
+        with open_bound_reader(session_id, safe_path) as lease:
+            file_size = lease.size
 
             if file_size > max_bytes:
                 max_mb = max_bytes // (1024 * 1024)
                 return None, (f"File too large to edit ({file_size // (1024 * 1024)}MB). "
                               f"Maximum: {max_mb}MB")
 
-            with sftp.file(safe_path, 'rb') as remote_file:
-                raw = remote_file.read(file_size)
+            raw = lease.reader.read(max_bytes + 1)
+            if len(raw) > max_bytes:
+                max_mb = max_bytes // (1024 * 1024)
+                return None, (
+                    f"File too large to edit ({len(raw) // (1024 * 1024)}MB). "
+                    f"Maximum: {max_mb}MB"
+                )
 
         # Binary detection mirrors read_file_preview.
         is_binary = b'\x00' in raw[:1024]
@@ -1097,16 +1152,14 @@ def write_file_text(
         tmp_path = safe_path + '.webssh-tmp-' + os.urandom(4).hex()
 
         with sftp_session(session_id) as (sftp, source_type):
-            file_stat = sftp.stat(safe_path)
-            file_size = file_stat.st_size
             maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
-            if file_size > maximum:
-                return FileWriteOutcome(
-                    success=False,
-                    error='File too large to edit',
-                )
-            with sftp.file(safe_path, 'rb') as original_file:
-                original = original_file.read(maximum + 1)
+            with _open_bound_reader_from_client(sftp, safe_path) as lease:
+                if lease.size > maximum:
+                    return FileWriteOutcome(
+                        success=False,
+                        error='File too large to edit',
+                    )
+                original = lease.reader.read(maximum + 1)
             if len(original) > maximum:
                 return FileWriteOutcome(
                     success=False,

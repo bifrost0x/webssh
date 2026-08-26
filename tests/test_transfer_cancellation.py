@@ -24,6 +24,13 @@ class BoundedReader:
         self.offset += len(chunk)
         return chunk
 
+    def stat(self):
+        return SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600,
+            st_size=len(self.payload),
+            st_mtime=1,
+        )
+
     def __enter__(self):
         return self
 

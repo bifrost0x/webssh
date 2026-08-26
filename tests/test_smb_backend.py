@@ -12,7 +12,7 @@ from app.file_sources import (
     ResolvedFileSource,
     make_source_id,
 )
-from app.file_backend import FileWriteOutcome
+from app.file_backend import FileReaderLease, FileWriteOutcome
 from app.smb_backend import (
     FileConflict,
     NonAtomicOverwriteRequired,
@@ -73,6 +73,15 @@ class _Writable(BytesIO):
     def close(self):
         self.saved = self.getvalue()
         super().close()
+
+
+class _Readable(BytesIO):
+    def __init__(self, data, *, attributes=0, declared_size=None):
+        super().__init__(data)
+        self.fd = SimpleNamespace(
+            end_of_file=(len(data) if declared_size is None else declared_size),
+            file_attributes=attributes,
+        )
 
 
 class _PartialWritable(_Writable):
@@ -166,7 +175,7 @@ class _StatefulSMBSession(_Session):
             if mode == 'rb':
                 if path not in self.files:
                     raise FileNotFoundError(path)
-                return BytesIO(self.files[path])
+                return _Readable(self.files[path])
             if mode != 'xb':
                 raise AssertionError(f'unsafe editor mode: {mode}')
             if path in self.files:
@@ -690,10 +699,32 @@ def test_share_root_mutations_are_rejected_before_remote_io():
     assert session.calls == []
 
 
-def test_preview_rejects_growth_beyond_limit():
+def test_preview_uses_opened_size_when_path_size_is_stale():
     backend, source, session = _fixture()
     session.responses['stat'] = _Stat(size=3)
-    session.responses['open_file'] = BytesIO(b'abcd')
+    session.responses['open_file'] = _Readable(b'abcd')
+
+    result, error = backend.read_file_preview(
+        source,
+        '/growing.txt',
+        max_bytes=3,
+        offset=0,
+        tail_lines=None,
+    )
+
+    assert error is None
+    assert result['content'] == 'abc'
+    assert result['size'] == 4
+    assert result['truncated'] is True
+
+
+def test_preview_rejects_growth_after_the_handle_metadata_was_bound():
+    backend, source, session = _fixture()
+    session.responses['stat'] = _Stat(size=3)
+    session.responses['open_file'] = _Readable(
+        b'abcd',
+        declared_size=3,
+    )
 
     result, error = backend.read_file_preview(
         source,
@@ -710,7 +741,7 @@ def test_preview_rejects_growth_beyond_limit():
 def test_preview_truncates_a_file_that_was_already_over_the_limit():
     backend, source, session = _fixture()
     session.responses['stat'] = _Stat(size=6)
-    session.responses['open_file'] = BytesIO(b'abcdef')
+    session.responses['open_file'] = _Readable(b'abcdef')
 
     result, error = backend.read_file_preview(
         source,
@@ -728,7 +759,7 @@ def test_preview_truncates_a_file_that_was_already_over_the_limit():
 def test_open_reader_does_not_retry_when_caller_raises_attribute_error():
     backend, source, session = _fixture()
     session.responses['stat'] = _Stat(size=3)
-    session.responses['open_file'] = BytesIO(b'abc')
+    session.responses['open_file'] = _Readable(b'abc')
     yielded = 0
 
     with pytest.raises(AttributeError, match='caller failure'):
@@ -743,7 +774,7 @@ def test_transfer_lane_does_not_block_control_lane_navigation():
     backend, source, control_session = _fixture()
     transfer_session = _Session()
     transfer_session.responses['stat'] = _Stat(size=3)
-    transfer_session.responses['open_file'] = BytesIO(b'abc')
+    transfer_session.responses['open_file'] = _Readable(b'abc')
     control_session.responses['scandir'] = _Iterator([])
     actual = backend._pool().get_source(source.source_id, source.user_id)
     actual.control_session = control_session
@@ -789,13 +820,14 @@ def test_transfer_lane_does_not_block_control_lane_navigation():
 def test_read_paths_open_the_validated_object_without_following_reparse_points():
     backend, source, session = _fixture()
     session.responses['stat'] = _Stat(size=3)
-    session.responses['open_file'] = BytesIO(b'bad')
+    session.responses['open_file'] = _Readable(b'bad')
     session.responses['open_file_no_follow'] = (
-        lambda *_args, **_kwargs: BytesIO(b'abc')
+        lambda *_args, **_kwargs: _Readable(b'abc')
     )
 
-    with backend.open_reader(source, '/a.txt') as remote:
-        assert remote.read() == b'abc'
+    with backend.open_reader(source, '/a.txt') as lease:
+        assert isinstance(lease, FileReaderLease)
+        assert lease.reader.read() == b'abc'
 
     assert any(
         name == 'open_file_no_follow' and kwargs['mode'] == 'rb'
@@ -820,6 +852,33 @@ def test_read_paths_open_the_validated_object_without_following_reparse_points()
         name == 'open_file_no_follow' and kwargs['mode'] == 'rb'
         for name, _args, kwargs in session.calls
     )
+
+
+def test_open_reader_uses_size_and_attributes_from_the_open_handle():
+    """The SMB2 CREATE response, not a pathname stat, binds read policy."""
+    backend, source, session = _fixture()
+    session.responses['stat'] = _Stat(size=1)
+    opened = _Readable(b'replacement', declared_size=11)
+    session.responses['open_file'] = opened
+
+    with backend.open_reader(source, '/swapped.txt') as lease:
+        assert lease.reader is opened
+        assert lease.size == 11
+        assert lease.reader.read() == b'replacement'
+
+
+def test_open_reader_rejects_reparse_attribute_from_the_open_handle():
+    """A leaf swapped after component checks must still be rejected."""
+    backend, source, session = _fixture()
+    session.responses['stat'] = _Stat(size=1)
+    session.responses['open_file'] = _Readable(
+        b'link-target',
+        attributes=0x400,
+    )
+
+    with pytest.raises(SMBBackendError, match='File is not readable'):
+        with backend.open_reader(source, '/swapped.txt'):
+            pass
 
 
 class _MemberBudget:
@@ -924,7 +983,7 @@ def test_recursive_delete_is_postorder_and_rejects_reparse_points():
 def test_binary_preview_is_bounded_even_if_file_grows():
     backend, source, session = _fixture()
     session.responses['stat'] = _Stat(size=2)
-    session.responses['open_file'] = BytesIO(b'abc')
+    session.responses['open_file'] = _Readable(b'abc')
 
     value, error = backend.read_binary_preview(source, '/file.bin', max_size=2)
 

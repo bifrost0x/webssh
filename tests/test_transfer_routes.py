@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.file_backend import FileReaderLease
+
 
 class BoundedRequestStream:
     """A WSGI input stream that treats ``read()`` without a size as a bug."""
@@ -42,8 +44,11 @@ class BoundedRequestStream:
 
 
 class TrackingRemoteFile:
-    def __init__(self, payload=b''):
+    def __init__(self, payload=b'', *, declared_size=None):
         self.payload = payload
+        self.declared_size = (
+            len(payload) if declared_size is None else declared_size
+        )
         self.offset = 0
         self.read_sizes = []
         self.written = bytearray()
@@ -59,6 +64,13 @@ class TrackingRemoteFile:
 
     def write(self, chunk):
         self.written.extend(chunk)
+
+    def stat(self):
+        return SimpleNamespace(
+            st_size=self.declared_size,
+            st_mode=stat.S_IFREG | 0o600,
+            st_mtime=1,
+        )
 
     def close(self):
         self.closed = True
@@ -194,7 +206,7 @@ def test_smb_download_streams_only_through_resolved_backend(
             assert path == '/report.bin'
             assert io_lane == 'transfer'
             with remote:
-                yield remote
+                yield FileReaderLease(reader=remote, size=len(payload))
 
     resolved = SimpleNamespace(
         handle_id='smb-handle',
@@ -243,6 +255,117 @@ def test_smb_download_streams_only_through_resolved_backend(
         'target_host': 'nas.example',
         'share': 'Docs',
     }]
+
+
+def test_download_rejects_oversized_opened_object_before_first_byte(
+        app, client, monkeypatch, transfer_components):
+    """A stale small preflight must not authorize a larger opened object."""
+    transfer_routes, manager = transfer_components
+    remote = TrackingRemoteFile(b'123456789', declared_size=9)
+
+    class Backend:
+        def stat(self, *_args, **_kwargs):
+            raise AssertionError('path stat must not authorize the download')
+
+        @contextmanager
+        def open_reader(self, _source, _path, *, io_lane='control'):
+            assert io_lane == 'transfer'
+            with remote:
+                yield FileReaderLease(reader=remote, size=9)
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle',
+        backend=Backend(),
+        source_id='smb-quick:owned',
+        descriptor=SimpleNamespace(kind='smb', endpoint='nas.example/Docs'),
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service,
+        'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(transfer_routes.config, 'MAX_DOWNLOAD_SIZE', 5)
+    user_id = _login(client, app, 'opened_download_limit_user')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={'remote_path': '/report.bin', 'filename': 'report.bin'},
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/download')
+
+    assert response.status_code == 413
+    assert response.get_json() == {
+        'error_code': 'LIMIT_EXCEEDED',
+        'error': 'The transfer exceeds the configured limit.',
+        'retryable': False,
+        'limit_kind': 'download',
+        'limit_bytes': 5,
+        'actual_bytes': 9,
+    }
+    assert remote.read_sizes == []
+    assert remote.closed is True
+    assert manager._records == {}
+
+
+def test_download_explicitly_does_not_support_http_ranges(
+        app, client, monkeypatch, transfer_components):
+    transfer_routes, manager = transfer_components
+    payload = b'abcdef'
+    sftp = FakeSFTP(payload)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'download_range_user')
+    token = _token(manager, user_id, 'download')
+
+    response = client.get(
+        f'/api/transfers/{token}/download',
+        headers={'Range': 'bytes=0-1'},
+    )
+
+    assert response.status_code == 200
+    assert response.headers['Accept-Ranges'] == 'none'
+    assert 'Content-Range' not in response.headers
+    assert response.data == payload
+
+
+def test_range_request_keeps_the_original_open_object_after_path_swap(
+        app, client, monkeypatch, transfer_components):
+    """Renaming the target mid-response must not cause a second path open."""
+    transfer_routes, manager = transfer_components
+    original_payload = b'a' * (app.config['CHUNK_SIZE'] + 17)
+    replacement_payload = b'not-the-opened-object'
+    sftp = FakeSFTP(original_payload)
+    original_reader = sftp.download_file
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(transfer_routes.sftp_handler, 'sftp_session', fake_session)
+    user_id = _login(client, app, 'download_path_swap_user')
+    token = _token(manager, user_id, 'download')
+
+    response = client.get(
+        f'/api/transfers/{token}/download',
+        headers={'Range': 'bytes=0-1'},
+        buffered=False,
+    )
+    sftp.download_file = TrackingRemoteFile(replacement_payload)
+    body = b''.join(response.response)
+    response.close()
+
+    assert response.status_code == 200
+    assert response.headers['Accept-Ranges'] == 'none'
+    assert body == original_payload
+    assert sftp.opened == [('/remote/report.bin', 'rb')]
+    assert original_reader.closed is True
+    assert sftp.download_file.read_sizes == []
 
 
 def test_smb_upload_uses_atomic_backend_writer_and_bounded_request_reads(
@@ -509,7 +632,7 @@ def test_upload_http_socket_and_log_share_one_safe_failure_contract(
         ),
     ),
 )
-def test_download_preflight_keeps_typed_failure_across_http_and_socket(
+def test_download_open_keeps_typed_failure_across_http_and_socket(
     app,
     client,
     monkeypatch,
@@ -525,8 +648,10 @@ def test_download_preflight_keeps_typed_failure_across_http_and_socket(
     transfer_routes, manager = transfer_components
 
     class Backend:
-        def stat_or_raise(self, *_args, **_kwargs):
+        @contextmanager
+        def open_reader(self, *_args, **_kwargs):
             raise failure
+            yield
 
     resolved = SimpleNamespace(
         handle_id='smb-handle',
@@ -1330,11 +1455,11 @@ def test_unstarted_download_response_releases_record(
     assert manager._records == {}
 
 
-def test_download_preflight_limit_marks_request_done(
+def test_download_opened_handle_limit_marks_request_done(
         app, client, monkeypatch, transfer_components):
     transfer_routes, manager = transfer_components
     sftp = FakeSFTP()
-    sftp.reported_size = app.config['MAX_DOWNLOAD_SIZE'] + 1
+    sftp.download_file.declared_size = app.config['MAX_DOWNLOAD_SIZE'] + 1
 
     @contextmanager
     def fake_session(_session_id):
@@ -1358,7 +1483,7 @@ def test_download_preflight_limit_marks_request_done(
         'retryable': False,
         'limit_kind': 'download',
         'limit_bytes': app.config['MAX_DOWNLOAD_SIZE'],
-        'actual_bytes': sftp.reported_size,
+        'actual_bytes': sftp.download_file.declared_size,
     }
     assert record.request_done_event.is_set()
     assert manager._records == {}
@@ -1578,7 +1703,7 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
             assert path == '/reports/report.txt'
             assert io_lane == 'transfer'
             with TrackingRemoteFile(payload) as remote:
-                yield remote
+                yield FileReaderLease(reader=remote, size=len(payload))
 
     resolved = SimpleNamespace(
         handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
@@ -1672,7 +1797,7 @@ def test_folder_download_preflight_reports_smb_permission_failure(
     assert 'private' not in repr(response.get_json())
 
 
-def test_folder_download_propagates_limit_after_first_chunk(
+def test_folder_download_rejects_oversized_opened_archive_before_first_chunk(
         app, client, monkeypatch, transfer_components):
     transfer_routes, manager = transfer_components
     payload = b'abcdef'
@@ -1723,17 +1848,12 @@ def test_folder_download_propagates_limit_after_first_chunk(
         },
     )
 
-    response = client.get(
-        f'/api/transfers/{record.token}/folder-download',
-        buffered=False,
-    )
-    stream = iter(response.response)
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
 
-    assert next(stream) == b'abc'
-    with pytest.raises(transfer_routes.sftp_handler.TransferSizeExceeded):
-        next(stream)
-    response.close()
-
+    assert response.status_code == 413
+    assert response.get_json()['error_code'] == 'LIMIT_EXCEEDED'
+    assert sftp.download_file.read_sizes == []
+    assert sftp.download_file.closed is True
     assert record.request_done_event.is_set()
     assert manager._records == {}
 

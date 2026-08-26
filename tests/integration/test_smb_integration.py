@@ -88,8 +88,8 @@ def run_checks():
             for offset in range(0, len(payload), 65536):
                 remote_file.write(payload[offset:offset + 65536])
 
-        with backend.open_reader(source, '/round-trip.bin') as remote_file:
-            downloaded = b''.join(iter(lambda: remote_file.read(65536), b''))
+        with backend.open_reader(source, '/round-trip.bin') as lease:
+            downloaded = b''.join(iter(lambda: lease.reader.read(65536), b''))
         assert hashlib.sha256(downloaded).digest() == hashlib.sha256(payload).digest()
 
         unicode_stat, error = backend.get_file_stat(source, '/Überblick.txt')
@@ -113,12 +113,12 @@ def run_checks():
         )
         assert edit_outcome.success is True, edit_outcome
         assert edit_outcome.revision == hashlib.sha256(b'after').hexdigest()
-        with backend.open_reader(source, '/atomic-edit.txt') as remote_file:
-            assert remote_file.read() == b'after'
+        with backend.open_reader(source, '/atomic-edit.txt') as lease:
+            assert lease.reader.read() == b'after'
 
         protected_path = '/atomic-denied/replace-denied.txt'
-        with backend.open_reader(source, protected_path) as remote_file:
-            protected_original = remote_file.read()
+        with backend.open_reader(source, protected_path) as lease:
+            protected_original = lease.reader.read()
         protected_revision = hashlib.sha256(protected_original).hexdigest()
         protected_outcome = backend.write_file_text(
             source,
@@ -129,8 +129,8 @@ def run_checks():
             expected_revision=protected_revision,
         )
         assert protected_outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
-        with backend.open_reader(source, protected_path) as remote_file:
-            assert remote_file.read() == protected_original
+        with backend.open_reader(source, protected_path) as lease:
+            assert lease.reader.read() == protected_original
 
         recoverable_outcome = backend.write_file_text(
             source,
@@ -143,8 +143,8 @@ def run_checks():
         )
         assert recoverable_outcome.success is False
         assert recoverable_outcome.recovery_leaves == ()
-        with backend.open_reader(source, protected_path) as remote_file:
-            assert remote_file.read() == protected_original
+        with backend.open_reader(source, protected_path) as lease:
+            assert lease.reader.read() == protected_original
 
         legacy_outcome = backend.write_file_text(
             source,
@@ -156,8 +156,8 @@ def run_checks():
             expected_revision=protected_revision,
         )
         assert legacy_outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
-        with backend.open_reader(source, protected_path) as remote_file:
-            assert remote_file.read() == protected_original
+        with backend.open_reader(source, protected_path) as lease:
+            assert lease.reader.read() == protected_original
 
         assert backend.mkdir(source, '/recursive-source') == (True, None)
         assert backend.mkdir(source, '/recursive-source/nested') == (True, None)
@@ -192,8 +192,8 @@ def run_checks():
             None,
         )
         assert copy_result.bytes_transferred == len(payload)
-        with backend.open_reader(source, '/copied-from-remote.bin') as remote_file:
-            copied = b''.join(iter(lambda: remote_file.read(65536), b''))
+        with backend.open_reader(source, '/copied-from-remote.bin') as lease:
+            copied = b''.join(iter(lambda: lease.reader.read(65536), b''))
         assert hashlib.sha256(copied).digest() == hashlib.sha256(payload).digest()
 
         denied, error = backend.list_directory(source, '/denied')

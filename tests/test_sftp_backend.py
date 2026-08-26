@@ -8,7 +8,7 @@ import pytest
 
 from app import sftp_handler
 from app import sftp_backend
-from app.file_backend import FileBackend, FileWriteOutcome
+from app.file_backend import FileBackend, FileReaderLease, FileWriteOutcome
 from app.file_sources import (
     FileCapability,
     FileSourceDescriptor,
@@ -215,6 +215,54 @@ def test_sftp_backend_normalizes_through_existing_sanitizer(monkeypatch):
     assert calls == ['/a/./b']
 
 
+def test_open_reader_uses_metadata_from_the_open_handle(monkeypatch):
+    """A path stat followed by open can be swapped to a different object."""
+    class RemoteFile(io.BytesIO):
+        def stat(self):
+            return SimpleNamespace(
+                st_size=13,
+                st_mode=stat.S_IFREG | 0o600,
+                st_mtime=123,
+            )
+
+    remote = RemoteFile(b'bound-content')
+
+    class RacingSFTP:
+        def stat(self, _path):
+            raise AssertionError('path stat must not authorize an opened reader')
+
+        def file(self, path, mode):
+            assert (path, mode) == ('/target.txt', 'rb')
+            return remote
+
+    install_sftp_session(monkeypatch, RacingSFTP())
+
+    with SFTPBackend().open_reader(source(), '/target.txt') as lease:
+        assert isinstance(lease, FileReaderLease)
+        assert lease.reader is remote
+        assert lease.size == 13
+        assert lease.modified == 123
+        assert lease.reader.read() == b'bound-content'
+
+
+def test_open_reader_fails_closed_without_handle_metadata(monkeypatch):
+    """Falling back to a pathname stat would reopen the original race."""
+    class NoFstatFile(io.BytesIO):
+        pass
+
+    install_sftp_session(
+        monkeypatch,
+        SimpleNamespace(file=lambda *_args: NoFstatFile(b'unsafe')),
+    )
+
+    with pytest.raises(
+        sftp_handler.SFTPOperationError,
+        match='metadata unavailable',
+    ):
+        with SFTPBackend().open_reader(source(), '/target.txt'):
+            pass
+
+
 class AtomicSFTP:
     def __init__(
         self,
@@ -266,13 +314,22 @@ def install_sftp_session(monkeypatch, sftp, calls=None):
 
 def test_transfer_reader_uses_a_separate_io_lane(monkeypatch):
     calls = []
-    sftp = AtomicSFTP()
+    class RemoteFile(io.BytesIO):
+        def stat(self):
+            return SimpleNamespace(
+                st_size=0,
+                st_mode=stat.S_IFREG | 0o600,
+                st_mtime=123,
+            )
+
+    sftp = SimpleNamespace(file=lambda *_args: RemoteFile())
     install_sftp_session(monkeypatch, sftp, calls)
 
     with SFTPBackend().open_reader(
         source(), '/source.txt', io_lane='transfer'
-    ) as reader:
-        assert reader.read() == b''
+    ) as lease:
+        assert lease.reader.read() == b''
+        assert lease.size == 0
 
     assert calls == [('session-a', 'transfer')]
 

@@ -113,6 +113,13 @@ The body routes are:
 - `GET /api/transfers/<token>/download` for streamed file downloads;
 - `GET /api/transfers/<token>/folder-download` for bounded folder archives.
 
+Downloads intentionally do not implement HTTP byte ranges. A request carrying
+`Range` still receives the complete `200` response and `Accept-Ranges: none`.
+The server opens the remote file once before creating the response, obtains the
+security-relevant size from that same handle, and keeps that handle for the
+whole stream. Renaming or replacing the pathname while a response is active
+therefore cannot switch the stream to another object.
+
 Server-to-server work runs as a bounded cancellable background job. The
 transfer queue tracks progress, errors, cancellation, and conflict choices such
 as skip or overwrite.
@@ -175,6 +182,19 @@ host filesystem paths.
 Preview loads only bounded content. Tail mode limits requested line count. The
 editor refuses files above its size cap and saves through the resolved, owned
 file source.
+
+Preview, editor, download, archive, and server-to-server reads bind their byte
+limits to the already-open remote object. SFTP obtains size and type through
+handle `fstat`; SMB uses the SMB2 CREATE response and rejects directory or
+reparse-point handles. Observed bytes remain capped as a second guard if a file
+grows after it was opened. Path metadata is not reused to authorize bytes from
+a later open.
+
+For SFTP, the remote SSH account and server configuration define which paths
+are reachable; WebSSH does not add a virtual allowed-folder boundary. Deploy
+`internal-sftp` with a server-side chroot when a user must be confined to one
+subtree. Handle binding prevents a later pathname swap, but it is not a
+replacement for server-side filesystem confinement.
 
 Text saves carry the revision that was previewed and reject stale content.
 Atomic replacement is the default. If an SMB account cannot provide it, the

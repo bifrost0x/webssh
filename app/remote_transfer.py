@@ -12,6 +12,7 @@ import config
 
 from .smb_backend import FileConflict, NonAtomicOverwriteRequired
 from .smb_protocol import SMBProtocolError
+from .file_backend import FileReaderLease
 
 
 class RemoteTransferError(RuntimeError):
@@ -173,15 +174,18 @@ def _copy_file(
         raise RemoteTransferError('Source file unavailable')
     if file_stat.get('is_symlink'):
         raise RemoteTransferError('Reparse points are not supported')
-    declared_size = int(file_stat.get('size', 0))
-    budget.ensure_declared_bytes(declared_size)
     _check_cancelled(cancel_event)
 
     copied = 0
     try:
         with source.backend.open_reader(
             source, source_path, io_lane='transfer'
-        ) as reader:
+        ) as lease:
+            if not isinstance(lease, FileReaderLease):
+                raise RemoteTransferError('Source reader is unavailable')
+            declared_size = lease.size
+            budget.ensure_declared_bytes(declared_size)
+            _check_cancelled(cancel_event)
             with destination.backend.open_atomic_writer(
                 destination,
                 destination_path,
@@ -191,7 +195,7 @@ def _copy_file(
             ) as writer:
                 while True:
                     _check_cancelled(cancel_event)
-                    chunk = reader.read(chunk_size)
+                    chunk = lease.reader.read(chunk_size)
                     if not chunk:
                         break
                     if not isinstance(chunk, (bytes, bytearray, memoryview)):
