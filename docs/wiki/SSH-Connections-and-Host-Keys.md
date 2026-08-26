@@ -48,6 +48,52 @@ Trust is scoped to the relevant user or administrator-managed global store.
 Users can inspect and revoke their own trust records in the Security Center;
 administrators can manage global trust.
 
+## Add global host trust
+
+Administrators can add a verified OpenSSH `known_hosts` record under **Admin →
+Settings → Global SSH host trust**. The import accepts exactly one bounded
+record, validates the hostname pattern and public key, requires action-bound
+administrator Step-up, and returns only fingerprint metadata to the browser.
+
+One way to collect a candidate record is:
+
+```bash
+ssh-keyscan -p 22 server.example
+```
+
+`ssh-keyscan` collects a key but does **not** prove its identity. Verify the
+fingerprint through a separate trusted channel, for example with the server
+owner, console, or configuration management, before importing it. You can
+inspect a collected record with:
+
+```bash
+ssh-keygen -lf candidate_known_hosts
+```
+
+Paste one verified `hostname key-type base64-key` line into the Admin field.
+Hashed hostnames, non-default-port tokens such as `[server.example]:2222`,
+multi-host records, and `@revoked` records are supported. Duplicate records are
+rejected. A different key for the same host token and algorithm must be
+verified and the old record explicitly removed first.
+
+Removing a global record also requires Step-up and affects every user who
+depends on that global trust record. Per-user trust can still take precedence
+for the same effective host identity.
+
+## SSH authentication banners
+
+An SSH server can send `SSH_MSG_USERAUTH_BANNER` during authentication. The SSH
+protocol does not make this a true pre-authentication message; Paramiko exposes
+it after authentication completes. WebSSH therefore pauses immediately after
+authentication and before it opens a target shell, jump-host forwarding
+channel, tmux probe, or post-connect command.
+
+The browser displays the bounded, control-character-sanitized text and requires
+**Continue** or **Cancel connection**. Cancellation, browser disconnect, or a
+60-second timeout closes the transport. The audit log records the user, target,
+target/jump-host context, and accepted/declined/timed-out result. It deliberately
+does not record the banner text, which is controlled by the remote server.
+
 ## Respond to a changed host key
 
 Do not immediately delete the record and retry. A change may indicate:
@@ -118,6 +164,12 @@ container network. Confirm the target is not blocked by network policy.
 Verify the remote username and selected method. For keys, check the public key
 is installed for that remote user and the private-key format is supported. For
 a jump host, distinguish bastion authentication from target authentication.
+
+### The authentication banner closes the connection
+
+Choose **Continue** within 60 seconds only after reviewing the remote policy.
+Cancelling, closing the browser connection, or leaving the prompt unanswered
+fails closed before a shell or startup command is opened.
 
 ### Host key is rejected
 

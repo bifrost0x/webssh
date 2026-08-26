@@ -117,6 +117,43 @@ def test_admin_can_manage_global_host_keys_without_raw_key_material(app, client)
     assert client.get("/admin/api/host-keys").get_json()["entries"] == []
 
 
+def test_admin_can_import_one_verified_global_host_key(app, client):
+    import config
+
+    _create_user(app, "admin", is_admin=True)
+    _login(client, "admin")
+    key = paramiko.RSAKey.generate(1024)
+    raw_entry = f"global.example {key.get_name()} {key.get_base64()}"
+    headers, _verified = password_step_up_headers(
+        client, "host_key.global_add", "global"
+    )
+
+    response = client.post(
+        "/admin/api/host-keys",
+        json={"entry": raw_entry},
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    payload = response.get_json()["entry"]
+    assert payload["host"] == "global.example"
+    assert payload["scope"] == "global"
+    assert key.get_base64() not in response.get_data(as_text=True)
+    assert config.KNOWN_HOSTS_FILE.read_text(encoding="utf-8") == raw_entry + "\n"
+
+
+def test_global_host_key_import_rejects_normal_user(app, client):
+    _create_user(app, "normal")
+    _login(client, "normal")
+
+    response = client.post(
+        "/admin/api/host-keys",
+        json={"entry": "not a key"},
+    )
+
+    assert response.status_code == 403
+
+
 def test_multi_host_and_revoked_records_disclose_full_deletion_scope(
     app, client
 ):

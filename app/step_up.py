@@ -41,6 +41,7 @@ _intent_lock = Lock()
 ACCOUNT_STEP_UP_ACTIONS = frozenset({
     "passkey.enroll",
     "passkey.delete",
+    "mfa.enable",
     "totp.enroll",
     "mfa.disable",
     "recovery.rotate",

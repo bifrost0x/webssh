@@ -7,11 +7,11 @@
     <meta name="app-root" content="{{ url_prefix }}">
     <title data-i18n="security.pageTitle">Security · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=23">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=15">
 </head>
-<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}">
+<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}">
     <header class="header">
         <div class="header-content">
             <h1 class="app-title"><span class="material-icons" aria-hidden="true">shield</span><span data-i18n="security.title">Security Center</span></h1>
@@ -34,9 +34,9 @@
                     <p data-i18n="security.confirmationOverviewHint">WebSSH uses this signed-in browser session to protect changes to passkeys, authenticator apps, recovery codes, and passwords.</p>
                 </div>
                 {% if account_mfa_enabled %}
-                <span class="security-policy-badge active" data-i18n="security.mfaEnabled">MFA enabled</span>
+                <span class="security-policy-badge active" id="securityMfaStatus" data-i18n="security.mfaEnabled">MFA enabled</span>
                 {% else %}
-                <span class="security-policy-badge" data-i18n="security.mfaOptional">MFA optional</span>
+                <span class="security-policy-badge" id="securityMfaStatus" data-i18n="security.mfaOptional">MFA optional</span>
                 {% endif %}
             </div>
             <dl class="security-assurance-grid">
@@ -132,12 +132,17 @@
                 {% endif %}
             </div>
             {% if webauthn_enabled %}
+            <p class="admin-muted" data-i18n="security.passkeyMfaHint">A Passkey can sign in directly. To prevent password-only fallback, explicitly enable MFA after adding and testing at least one Passkey.</p>
             <p class="admin-muted" data-i18n="security.legacyPasskeyHint">
                 If a non-discoverable passkey from an older release no longer
                 appears during username-less sign-in, use Replace legacy
                 passkey. Test the replacement before deleting the old record.
             </p>
             <div id="passkeyList"></div>
+            {% if recovery_codes_enabled and not account_mfa_enabled %}
+            <button class="btn btn-primary hidden" id="passkeyEnableMfaBtn" data-i18n="security.enablePasskeyMfa">Require Passkey MFA for password sign-in</button>
+            <pre id="passkeyMfaRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
+            {% endif %}
             {% else %}
             <p class="admin-muted" id="passkeyList" data-i18n="security.passkeysDisabled">Passkeys are disabled by configuration.</p>
             {% endif %}
@@ -217,8 +222,8 @@
         </div>
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=30"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=31"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=4"></script>
 </body>
 </html>

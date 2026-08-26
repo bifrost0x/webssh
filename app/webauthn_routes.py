@@ -153,6 +153,51 @@ def list_credentials():
     ]})
 
 
+@webauthn_blueprint.post("/api/webauthn/mfa")
+@login_required
+def enable_passkey_mfa():
+    """Require an enrolled Passkey after basic primary authentication."""
+    _require_enabled()
+    data = _bounded_json()
+    if data is None:
+        return _request_body_too_large()
+    if data.get("confirm_enable_mfa") is not True:
+        return jsonify({"error": "MFA activation must be confirmed"}), 400
+    grant_error = _consume_factor_grant("mfa.enable", current_user.id)
+    if grant_error is not None:
+        return grant_error
+
+    from .recovery_service import _recovery_lock, _replace_codes_uncommitted
+    from .security_features import feature_is_active
+
+    if not feature_is_active("recovery"):
+        return jsonify({
+            "error": "Recovery codes must be active before enabling MFA"
+        }), 409
+
+    with _registration_lock, _recovery_lock:
+        user = db.session.get(User, current_user.id, populate_existing=True)
+        if user is None or user.is_locked:
+            return jsonify({"error": "Account is unavailable"}), 409
+        if user.mfa_enabled:
+            return jsonify({"error": "MFA is already enabled"}), 409
+        if not WebAuthnCredential.query.filter_by(user_id=user.id).first():
+            return jsonify({"error": "Add a Passkey before enabling MFA"}), 409
+        recovery_codes = _replace_codes_uncommitted(user.id, count=10)
+        user.mfa_enabled = True
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({"error": "MFA could not be enabled"}), 503
+
+    log_security_event("MFA_ENABLED", user=current_user.username, factor="passkey")
+    response = jsonify({"ok": True, "recovery_codes": recovery_codes})
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @webauthn_blueprint.post("/api/webauthn/register/options")
 @login_required
 def registration_options():

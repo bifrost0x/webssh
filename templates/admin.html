@@ -11,8 +11,8 @@
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
     <title>Admin · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=23">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=1">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=15">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
@@ -135,6 +135,12 @@
                 <div class="admin-toolbar">
                     <strong data-i18n="admin.globalSshHostTrust">Global SSH host trust</strong>
                     <button class="btn btn-secondary" id="globalHostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
+                </div>
+                <p class="admin-muted" data-i18n="admin.globalHostKeyHint">Import one independently verified OpenSSH known_hosts entry. Global trust applies to every WebSSH user; existing entries can be removed from the table below.</p>
+                <div class="admin-toolbar admin-host-key-import">
+                    <label class="sr-only" for="globalHostKeyEntry" data-i18n="admin.globalHostKeyEntry">Verified known_hosts entry</label>
+                    <textarea id="globalHostKeyEntry" class="form-control" rows="3" maxlength="16384" spellcheck="false" data-i18n-placeholder="admin.globalHostKeyPlaceholder" placeholder="host.example ssh-ed25519 AAAA…"></textarea>
+                    <button type="button" class="btn btn-primary" id="globalHostKeyAdd" data-i18n="admin.importHostKey">Import verified key</button>
                 </div>
                 <div class="admin-table-wrap">
                     <table class="admin-table admin-responsive-table">
@@ -328,9 +334,9 @@
 
     <div id="notificationContainer" class="notification-container"></div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=30"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=31"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=3"></script>
 </body>
 </html>

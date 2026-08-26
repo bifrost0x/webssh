@@ -40,6 +40,34 @@ MAX_WEBAUTHN_JSON_SIZE=65536
 - Registration and authentication payloads are capped at 64 KiB.
 - Credential inventory and deletion require authenticated ownership.
 
+## Direct Passkey login and Passkey MFA
+
+Passkeys can be used in two distinct ways:
+
+- **Direct Passkey login** selects **Sign in with Passkey** on the login page.
+  It does not ask for the account password and creates a phishing-resistant
+  session after the authenticator verifies the user.
+- **Passkey MFA after primary login** first verifies the local password, LDAP,
+  or another configured primary method, then requires an enrolled Passkey,
+  authenticator app, or Recovery Code.
+
+Merely enrolling a Passkey does not make the account password path require a
+second factor. After adding and testing a Passkey, choose **Require Passkey MFA
+for password sign-in** in **Security**. WebSSH requires recent action-bound
+Step-up, enables account MFA atomically, and returns a new ten-code Recovery set
+once. Store those codes before leaving the page.
+
+When account MFA is enabled, an enrolled Passkey is one eligible second factor;
+WebSSH does not require the same specific Passkey on every login. Direct Passkey
+login remains available and already provides phishing-resistant assurance.
+
+The Admin authentication-feature switches are deployment and availability
+controls, not organization-wide enrollment policy. This release does not let
+an administrator force MFA or Passkey enrollment for every account. Such a
+policy needs an enrollment grace period, recovery and break-glass rules, and a
+safe treatment for service or directory-managed accounts to avoid mass
+lockout.
+
 ## Enroll a passkey
 
 1. Sign in with the local password or LDAP. If MFA is already enabled, complete
@@ -49,6 +77,8 @@ MAX_WEBAUTHN_JSON_SIZE=65536
 4. Complete the authenticator prompt.
 5. Give the credential a recognizable name where supported.
 6. Sign out and test passkey login before depending on it.
+7. If password or directory sign-in must not remain a single-factor fallback,
+   return to **Security** and enable Passkey MFA.
 
 Enroll more than one authenticator when losing one device would otherwise lock
 out the account.

@@ -13,6 +13,7 @@ from .auth import (
 from .models import db, SSHSession, SocketSession
 from .user_settings import save_user_settings, get_user_settings
 from .audit_logger import (log_info, log_warning, log_error, log_debug,
+                              log_security_event,
                               log_ssh_connection, log_ssh_disconnect,
                               log_file_source_operation,
                               log_key_upload, log_key_rename, log_key_replace,
@@ -78,10 +79,24 @@ _SMB_CONNECT_CODES = frozenset({
 })
 _smb_attempts_lock = threading.RLock()
 _smb_attempts = {}
+_ssh_banner_prompts_lock = threading.RLock()
+_ssh_banner_prompts = {}
+SSH_AUTH_BANNER_DECISION_TIMEOUT = 60
 
 
 def _new_smb_diagnostic_id():
     return f'SMB-{secrets.token_hex(6).upper()}'
+
+
+def _cancel_ssh_banner_prompts_for_socket(socket_sid):
+    with _ssh_banner_prompts_lock:
+        prompts = [
+            prompt
+            for prompt in _ssh_banner_prompts.values()
+            if prompt['socket_sid'] == socket_sid
+        ]
+    for prompt in prompts:
+        prompt['event'].set()
 
 
 def _smb_request_id(payload):
@@ -377,6 +392,7 @@ def handle_connect():
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
     socket_sid = request.sid
+    _cancel_ssh_banner_prompts_for_socket(socket_sid)
     owner_id = socket_capacity.release(socket_sid)
     user = get_user_from_socket(socket_sid)
     user_id = user.id if user else owner_id
@@ -490,6 +506,35 @@ def restore_user_sessions(user_id):
             log_info("Persistent tmux session available for reconnect",
                      host=db_session.host, tmux_session=db_session.tmux_session_name)
 
+@socketio.on('ssh_auth_banner_decision')
+@socket_login_required
+def handle_ssh_auth_banner_decision(data, current_user=None):
+    """Resolve one pending SSH authentication-banner prompt."""
+    if not isinstance(data, dict):
+        return {'success': False}
+    prompt_id = data.get('prompt_id')
+    accepted = data.get('accepted')
+    if (
+        not isinstance(prompt_id, str)
+        or not re.fullmatch(r'[A-Za-z0-9_-]{16,64}', prompt_id)
+        or type(accepted) is not bool
+    ):
+        return {'success': False}
+
+    with _ssh_banner_prompts_lock:
+        prompt = _ssh_banner_prompts.get(prompt_id)
+        if (
+            prompt is None
+            or prompt['socket_sid'] != request.sid
+            or prompt['user_id'] != current_user.id
+            or prompt['event'].is_set()
+        ):
+            return {'success': False}
+        prompt['accepted'] = accepted
+        prompt['event'].set()
+    return {'success': True}
+
+
 @socketio.on('ssh_connect')
 @socket_login_required
 def handle_ssh_connect(data, current_user=None):
@@ -499,6 +544,7 @@ def handle_ssh_connect(data, current_user=None):
     bastion_password = None
     bastion_key_content = None
     client_request_id = None
+    socket_sid = request.sid
     try:
         client_request_id = data.get('client_request_id')
         if not current_app.extensions[
@@ -519,6 +565,42 @@ def handle_ssh_connect(data, current_user=None):
                 message,
                 client_request_id=client_request_id,
             ))
+
+        def request_auth_banner_decision(banner, context):
+            prompt_id = secrets.token_urlsafe(24)
+            decision_event = threading.Event()
+            prompt = {
+                'event': decision_event,
+                'accepted': False,
+                'socket_sid': socket_sid,
+                'user_id': current_user.id,
+            }
+            with _ssh_banner_prompts_lock:
+                _ssh_banner_prompts[prompt_id] = prompt
+            emit('ssh_auth_banner', {
+                'prompt_id': prompt_id,
+                'banner': banner,
+                'context': context,
+                'host': bastion_host if context == 'jump_host' else host,
+                'port': bastion_port if context == 'jump_host' else port,
+                'client_request_id': client_request_id,
+            })
+            answered = decision_event.wait(SSH_AUTH_BANNER_DECISION_TIMEOUT)
+            with _ssh_banner_prompts_lock:
+                _ssh_banner_prompts.pop(prompt_id, None)
+            accepted = answered and prompt['accepted'] is True
+            log_security_event(
+                'SSH_AUTH_BANNER_DECISION',
+                user=current_user.username,
+                host=bastion_host if context == 'jump_host' else host,
+                port=bastion_port if context == 'jump_host' else port,
+                context=context,
+                result='ACCEPTED' if accepted else (
+                    'DECLINED' if answered else 'TIMED_OUT'
+                ),
+                ip_address=request.remote_addr,
+            )
+            return accepted
 
         startup_commands, startup_commands_error = (
             post_connect_manager.resolve_configuration(
@@ -670,6 +752,7 @@ def handle_ssh_connect(data, current_user=None):
             reconnect_tmux_name=reconnect_tmux_name,
             auth_type=auth_type,
             startup_commands='' if reconnect_tmux_name else startup_commands,
+            auth_banner_decision=request_auth_banner_decision,
         )
 
         if password:

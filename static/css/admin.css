@@ -65,6 +65,18 @@
     min-width: 180px;
 }
 
+.admin-host-key-import {
+    align-items: stretch;
+}
+
+.admin-host-key-import .form-control {
+    flex: 1 1 520px;
+    width: 100%;
+    min-width: min(100%, 280px);
+    resize: vertical;
+    font-family: var(--font-mono, monospace);
+}
+
 .admin-table-wrap {
     width: 100%;
     min-width: 0;

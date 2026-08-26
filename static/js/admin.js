@@ -1315,6 +1315,37 @@
         }
     }
 
+    async function addGlobalHostKey() {
+        const input = document.getElementById('globalHostKeyEntry');
+        const button = document.getElementById('globalHostKeyAdd');
+        const entry = input?.value.trim() || '';
+        if (!entry) {
+            notify(t('admin.globalHostKeyRequired', 'Paste one verified known_hosts entry.'), 'error');
+            input?.focus();
+            return;
+        }
+        if (!window.confirm(t(
+            'admin.confirmGlobalHostKeyImport',
+            'Trust this verified SSH host key for every WebSSH user?'
+        ))) { return; }
+        if (button) button.disabled = true;
+        try {
+            await stepUpApi(
+                'host_key.global_add',
+                'global',
+                '/admin/api/host-keys',
+                {method: 'POST', body: {entry}},
+            );
+            input.value = '';
+            await loadGlobalHostKeys();
+            notify(t('admin.globalHostKeyAdded', 'Global SSH host key imported'), 'success');
+        } catch (error) {
+            notify(error.message, 'error');
+        } finally {
+            if (button) button.disabled = false;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         if (window.i18n && i18n.updatePageText) { i18n.updatePageText(); }
         initStepUpDialog();
@@ -1323,6 +1354,9 @@
         initAudit();
         initSettings();
         initBackupRestore();
+        document.getElementById('globalHostKeyAdd')?.addEventListener(
+            'click', addGlobalHostKey
+        );
         loadUsers();
         loadGlobalHostKeys();
         window.addEventListener('languageChanged', () => {

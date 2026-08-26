@@ -86,6 +86,7 @@ def _action_target(action, data):
     feature = {
         "passkey.enroll": "passkey",
         "passkey.delete": "passkey",
+        "mfa.enable": "passkey",
         "totp.enroll": "totp",
         "recovery.rotate": "recovery",
     }.get(action)
@@ -93,6 +94,9 @@ def _action_target(action, data):
         raise StepUpError("step-up request is invalid")
     if action == "mfa.disable" and not current_user.mfa_enabled:
         raise StepUpError("step-up request is invalid")
+    if action == "mfa.enable":
+        if current_user.mfa_enabled or not current_user.webauthn_credentials.count():
+            raise StepUpError("step-up request is invalid")
     if action == "passkey.delete":
         target = data.get("target")
         if not isinstance(target, int) or isinstance(target, bool):

@@ -21,6 +21,13 @@ Password-dependent profiles open the connection form at the required field.
 Profiles that need no password, such as a usable stored key or authorized
 Tailscale mode, can launch directly from an empty pane.
 
+Use **Duplicate** in the Hosts manager to create a new draft from an existing
+profile. The draft copies connection, authentication-reference, jump-host,
+group, and post-connect settings, adds a localized “copy” suffix to the
+bounded name, and has no source profile ID. Saving therefore creates a separate
+profile and never overwrites the original. Passwords remain excluded because
+they are never stored in profiles.
+
 ## Favorites and groups
 
 The connection manager provides:

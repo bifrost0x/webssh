@@ -48,6 +48,75 @@ def test_webauthn_routes_are_hidden_when_disabled(app, client):
     assert response.status_code == 404
 
 
+def test_enrolled_passkey_can_be_required_for_password_sign_in(
+    app, client, monkeypatch
+):
+    import config
+    from app.models import RecoveryCode, User, WebAuthnCredential, db
+
+    user_id = _create_user(app)
+    with app.app_context():
+        db.session.add(WebAuthnCredential(
+            user_id=user_id,
+            credential_id=b"mfa-passkey-id",
+            public_key=b"public-key",
+            sign_count=0,
+            transports="[]",
+            name="MFA Passkey",
+        ))
+        db.session.commit()
+    _login(client)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "RECOVERY_CODES_ENABLED", True)
+    headers, _verified = account_password_step_up_headers(
+        client, "mfa.enable", user_id
+    )
+
+    response = client.post(
+        "/api/webauthn/mfa",
+        json={"confirm_enable_mfa": True},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
+    codes = response.get_json()["recovery_codes"]
+    assert len(codes) == 10
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        assert user.mfa_enabled is True
+        stored_codes = RecoveryCode.query.filter_by(user_id=user_id).all()
+        assert len(stored_codes) == 10
+        assert all(
+            code.encode("ascii") not in row.code_hash
+            for code in codes
+            for row in stored_codes
+        )
+
+
+def test_passkey_mfa_requires_confirmation_and_an_enrolled_passkey(
+    app, client, monkeypatch
+):
+    import config
+
+    user_id = _create_user(app)
+    _login(client)
+    monkeypatch.setattr(config, "WEBAUTHN_ENABLED", True)
+    monkeypatch.setattr(config, "RECOVERY_CODES_ENABLED", True)
+
+    intent = client.post("/api/account/step-up/intents", json={
+        "action": "mfa.enable",
+        "target": user_id,
+    })
+
+    assert intent.status_code == 400
+    assert client.post(
+        "/api/webauthn/mfa",
+        json={"confirm_enable_mfa": False},
+    ).status_code == 400
+
+
 def test_registration_options_require_account_grant_and_exact_rp(
     app, client, monkeypatch
 ):

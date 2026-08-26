@@ -1001,6 +1001,49 @@
         }
     }, 60000);
 
+    let pendingAuthBannerPrompt = null;
+
+    function closeAuthBannerPrompt() {
+        const hadPrompt = pendingAuthBannerPrompt !== null;
+        pendingAuthBannerPrompt = null;
+        window.ModalManager.close(document.getElementById('sshAuthBannerModal'));
+        const connectionModal = document.getElementById('connectionModal');
+        if (hadPrompt && connectionModal?.classList.contains('show')) {
+            window.ModalManager.activeModal = connectionModal;
+        }
+    }
+
+    function answerAuthBannerPrompt(accepted) {
+        if (!pendingAuthBannerPrompt) return;
+        const promptId = pendingAuthBannerPrompt.promptId;
+        closeAuthBannerPrompt();
+        socket.emit('ssh_auth_banner_decision', {
+            prompt_id: promptId,
+            accepted: accepted === true,
+        });
+    }
+
+    socket.on('ssh_auth_banner', data => {
+        if (
+            !data
+            || typeof data.prompt_id !== 'string'
+            || typeof data.banner !== 'string'
+        ) {
+            return;
+        }
+        pendingAuthBannerPrompt = { promptId: data.prompt_id };
+        const contextKey = data.context === 'jump_host'
+            ? 'connection.authBannerJumpHost'
+            : 'connection.authBannerTarget';
+        const contextLabel = window.i18n
+            ? i18n.t(contextKey)
+            : (data.context === 'jump_host' ? 'Jump host' : 'Target host');
+        const target = [data.host, data.port].filter(value => value !== undefined).join(':');
+        document.getElementById('sshAuthBannerTarget').textContent = `${contextLabel}: ${target}`;
+        document.getElementById('sshAuthBannerText').textContent = data.banner;
+        window.ModalManager.open(document.getElementById('sshAuthBannerModal'));
+    });
+
     socket.io.on('reconnect_attempt', (attempt) => {
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar) {
@@ -1021,6 +1064,7 @@
     });
 
     socket.on('disconnect', () => {
+        closeAuthBannerPrompt();
         showNotification(
             window.i18n
                 ? i18n.t('connection.disconnectedFromServer')
@@ -1038,6 +1082,7 @@
     });
 
     socket.on('ssh_connected', (data) => {
+        closeAuthBannerPrompt();
         if (data.client_request_id) {
             SessionManager.clearPendingConnection(data.client_request_id);
         }
@@ -1083,6 +1128,7 @@
     });
 
     socket.on('ssh_error', (data) => {
+        closeAuthBannerPrompt();
         const presentation = window.SSHErrorUI?.describeSSHError?.(
             data,
             key => window.i18n?.t?.(key),
@@ -2332,6 +2378,7 @@
 
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
+                if (e.target.id === 'sshAuthBannerModal') return;
                 window.ModalManager.close(e.target);
                 if (e.target.id === 'connectionModal') {
                     clearPendingPane();
@@ -2403,7 +2450,10 @@
                     TerminalSearch.close();
                 } else {
                     document.querySelectorAll('.modal.show').forEach(modal => {
-                        if (modal.id === 'sftpFileManager') return;
+                        if (
+                            modal.id === 'sftpFileManager'
+                            || modal.id === 'sshAuthBannerModal'
+                        ) return;
                         window.ModalManager.close(modal);
                     });
                 }
@@ -2415,6 +2465,13 @@
         document.getElementById('mobileMenuBtn').addEventListener('click', () => {
             document.querySelector('.header-buttons').classList.toggle('is-open');
         });
+
+        document.getElementById('sshAuthBannerCancel')?.addEventListener(
+            'click', () => answerAuthBannerPrompt(false)
+        );
+        document.getElementById('sshAuthBannerContinue')?.addEventListener(
+            'click', () => answerAuthBannerPrompt(true)
+        );
 
         document.addEventListener('click', (e) => {
             const menu = document.querySelector('.header-buttons');

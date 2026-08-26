@@ -1,6 +1,7 @@
 import importlib
 import os
 import tempfile
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -210,6 +211,80 @@ def test_connect_fails_closed_if_created_session_disappears(app, monkeypatch):
         with app.app_context():
             assert SSHSession.query.filter_by(
                 session_id='vanished-session').first() is None
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()
+
+
+def test_ssh_authentication_banner_requires_same_socket_decision(
+        app, monkeypatch):
+    from app import socket_events
+    from app.ssh_errors import SSHConnectionError
+
+    socket_client, _user_id = _authenticated_socket(
+        app, 'authentication_banner_user'
+    )
+    decisions = []
+
+    def fake_create(**kwargs):
+        accepted = kwargs['auth_banner_decision'](
+            'Authorized use only', 'target'
+        )
+        decisions.append(accepted)
+        return None, SSHConnectionError(
+            'SSH authentication banner was not accepted',
+            code='auth_banner_declined',
+            context='target',
+        )
+
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', fake_create)
+    audit = []
+    monkeypatch.setattr(
+        socket_events,
+        'log_security_event',
+        lambda event, **details: audit.append((event, details)),
+    )
+
+    try:
+        connect_worker = threading.Thread(
+            target=lambda: socket_client.emit('ssh_connect', {
+                'host': 'example.com',
+                'port': 22,
+                'username': 'alice',
+                'password': 'secret',
+                'client_request_id': 'banner-request',
+            }),
+            daemon=True,
+        )
+        connect_worker.start()
+        banner_events = _collect_until(socket_client, 'ssh_auth_banner')
+        banner = next(
+            event['args'][0]
+            for event in banner_events
+            if event['name'] == 'ssh_auth_banner'
+        )
+        assert banner['banner'] == 'Authorized use only'
+        assert banner['host'] == 'example.com'
+        assert banner['context'] == 'target'
+
+        result = socket_client.emit('ssh_auth_banner_decision', {
+            'prompt_id': banner['prompt_id'],
+            'accepted': False,
+        }, callback=True)
+        errors = _collect_until(socket_client, 'ssh_error')
+        connect_worker.join(2)
+
+        assert result == {'success': True}
+        assert not connect_worker.is_alive()
+        assert decisions == [False]
+        assert any(
+            event['args'][0]['code'] == 'auth_banner_declined'
+            for event in errors
+            if event['name'] == 'ssh_error'
+        )
+        assert audit[0][0] == 'SSH_AUTH_BANNER_DECISION'
+        assert audit[0][1]['result'] == 'DECLINED'
+        assert 'banner' not in audit[0][1]
     finally:
         if socket_client.is_connected():
             socket_client.disconnect()
