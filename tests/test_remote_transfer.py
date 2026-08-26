@@ -6,6 +6,8 @@ import hashlib
 
 import pytest
 
+from app.file_backend import FileReaderLease
+
 
 class _BoundedReader(BytesIO):
     def __init__(self, payload):
@@ -33,6 +35,7 @@ class _Backend:
         self.readers = []
         self.commits = []
         self.created = []
+        self.writer_opens = 0
 
     def normalize_path(self, path):
         return path if isinstance(path, str) and path.startswith('/') else None
@@ -57,13 +60,14 @@ class _Backend:
         reader = _BoundedReader(self.files[path])
         self.readers.append(reader)
         with reader:
-            yield reader
+            yield FileReaderLease(reader=reader, size=len(self.files[path]))
 
     @contextmanager
     def open_atomic_writer(
         self, _source, path, *, replace, cancel_event, io_lane='control'
     ):
         assert io_lane == 'transfer'
+        self.writer_opens += 1
         writer = _PartialWriter()
         try:
             yield writer
@@ -136,6 +140,48 @@ def test_remote_copy_streams_through_one_atomic_commit(
     assert len(destination_backend.commits) == 1
     assert result.sha256 == hashlib.sha256(payload).hexdigest()
     assert max(source_backend.readers[0].read_sizes) == 31
+
+
+def test_remote_copy_rejects_opened_object_before_destination_writer():
+    """A small path stat must not authorize a larger substituted object."""
+    from app.remote_transfer import (
+        RemoteTransferLimitExceeded,
+        TransferBudget,
+        copy_remote_entry,
+    )
+
+    class StaleStatBackend(_Backend):
+        def stat(self, _source, path, *, follow_links=False):
+            assert follow_links is False
+            assert path == '/source.bin'
+            return {
+                'path': path,
+                'size': 1,
+                'is_dir': False,
+                'is_symlink': False,
+            }, None
+
+    source_backend = StaleStatBackend({'/source.bin': b'123456789'})
+    destination_backend = _Backend()
+
+    with pytest.raises(
+        RemoteTransferLimitExceeded,
+        match='Transfer size limit exceeded',
+    ):
+        copy_remote_entry(
+            _source('sftp', source_backend),
+            '/source.bin',
+            _source('smb', destination_backend),
+            '/target.bin',
+            conflict_policy='replace',
+            budget=TransferBudget(max_bytes=5, max_members=1),
+            cancel_event=Event(),
+            progress=None,
+            chunk_size=2,
+        )
+
+    assert destination_backend.writer_opens == 0
+    assert destination_backend.commits == []
 
 
 def test_limit_plus_one_never_commits_destination():
@@ -436,7 +482,11 @@ def test_opposite_direction_transfers_use_one_canonical_source_lock_order():
                     rendezvous.wait(timeout=0.2)
                 except BrokenBarrierError:
                     pass
-                yield _BoundedReader(payloads[source.handle_id])
+                reader = _BoundedReader(payloads[source.handle_id])
+                yield FileReaderLease(
+                    reader=reader,
+                    size=len(payloads[source.handle_id]),
+                )
 
         @contextmanager
         def open_atomic_writer(

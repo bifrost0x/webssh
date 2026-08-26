@@ -106,14 +106,12 @@ class SFTPBackend:
 
     @contextmanager
     def open_reader(self, source, path, *, io_lane='control'):
-        safe_path = self.normalize_path(path)
-        if safe_path is None:
-            raise sftp_handler.SFTPOperationError('invalid remote path')
-        with sftp_handler.sftp_session(
-            source.handle_id, io_lane=io_lane
-        ) as (sftp, _source_type):
-            with sftp.file(safe_path, 'rb') as remote_file:
-                yield remote_file
+        with sftp_handler.open_bound_reader(
+            source.handle_id,
+            path,
+            io_lane=io_lane,
+        ) as lease:
+            yield lease
 
     @contextmanager
     def open_atomic_writer(

@@ -29,12 +29,8 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
         if safe_path is None:
             return None, "Invalid remote path"
 
-        with sftp_handler.sftp_session(session_id) as (sftp, source_type):
-            try:
-                file_stat = sftp.stat(safe_path)
-                file_size = file_stat.st_size
-            except FileNotFoundError:
-                return None, "Remote file not found"
+        with sftp_handler.open_bound_reader(session_id, safe_path) as lease:
+            file_size = lease.size
 
             limit = config.MAX_DOWNLOAD_SIZE if max_size is None else max_size
             if file_size > limit:
@@ -47,38 +43,38 @@ def handle_binary_download(session_id, remote_path, socketio_instance=None,
 
             binary_data = io.BytesIO()
 
-            with sftp.file(safe_path, 'rb') as remote_file:
-                while True:
-                    chunk = remote_file.read(chunk_size)
-                    if not chunk:
-                        break
+            remote_file = lease.reader
+            while True:
+                chunk = remote_file.read(chunk_size)
+                if not chunk:
+                    break
 
-                    observed_size = transferred + len(chunk)
-                    if observed_size > limit:
-                        max_mb = limit // (1024 * 1024)
-                        return None, (
-                            "File too large for download "
-                            f"({observed_size // (1024 * 1024)}MB). "
-                            f"Maximum: {max_mb}MB"
-                        )
+                observed_size = transferred + len(chunk)
+                if observed_size > limit:
+                    max_mb = limit // (1024 * 1024)
+                    return None, (
+                        "File too large for download "
+                        f"({observed_size // (1024 * 1024)}MB). "
+                        f"Maximum: {max_mb}MB"
+                    )
 
-                    binary_data.write(chunk)
-                    transferred = observed_size
+                binary_data.write(chunk)
+                transferred = observed_size
 
-                    if socketio_instance:
-                        progress_total = max(file_size, transferred, 1)
-                        percent = min(
-                            100,
-                            int((transferred / progress_total) * 100),
-                        )
-                        socketio_instance.emit('file_progress', {
-                            'session_id': session_id,
-                            'type': 'download',
-                            'filename': filename,
-                            'transferred': transferred,
-                            'total': file_size,
-                            'percent': percent
-                        })
+                if socketio_instance:
+                    progress_total = max(file_size, transferred, 1)
+                    percent = min(
+                        100,
+                        int((transferred / progress_total) * 100),
+                    )
+                    socketio_instance.emit('file_progress', {
+                        'session_id': session_id,
+                        'type': 'download',
+                        'filename': filename,
+                        'transferred': transferred,
+                        'total': file_size,
+                        'percent': percent
+                    })
 
             return binary_data.getvalue(), None
 

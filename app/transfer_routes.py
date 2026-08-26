@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unicodedata
+from contextlib import ExitStack
 from urllib.parse import quote
 import zipfile
 from pathlib import Path
@@ -19,6 +20,7 @@ from flask_login import current_user, login_required
 import config
 from . import sftp_handler
 from .audit_logger import log_error, log_file_source_operation
+from .file_backend import FileReaderLease
 from .file_sources import (
     FileCapability,
     FileSourceUnavailable,
@@ -407,18 +409,47 @@ def download_transfer(token):
         finish('failed', failure)
         return _json_failure(failure)
 
+    reader_stack = ExitStack()
+    size = 0
     try:
-        backend = _transfer_backend(source)
+        active_source = _resolve_transfer_source(record, user_id)
+        backend = _transfer_backend(active_source)
         if backend is None:
-            with sftp_handler.sftp_session(source.handle_id) as (sftp, _source):
-                size = sftp.stat(remote_path).st_size
+            reader_context = sftp_handler.open_bound_reader(
+                active_source.handle_id,
+                remote_path,
+            )
         else:
-            file_stat = _stat_transfer_source(backend, source, remote_path)
-            if not file_stat or file_stat.get('is_dir'):
-                raise FolderUnavailable()
-            size = int(file_stat.get('size', 0))
+            reader_context = backend.open_reader(
+                active_source,
+                remote_path,
+                io_lane='transfer',
+            )
+        lease = reader_stack.enter_context(reader_context)
+        if not isinstance(lease, FileReaderLease):
+            raise FolderUnavailable()
+        size = lease.size
+        if size > config.MAX_DOWNLOAD_SIZE:
+            raise DownloadLimitExceeded()
     except Exception as error:
-        failure = classify_transfer_failure(error, operation='download')
+        try:
+            reader_stack.close()
+        except Exception as close_error:
+            log_error(
+                'HTTP download reader close failed',
+                user_id=user_id,
+                exception_type=type(close_error).__name__,
+            )
+        limit_arguments = ({
+            'limit_kind': 'download',
+            'limit_bytes': config.MAX_DOWNLOAD_SIZE,
+            'actual_bytes': size,
+        } if isinstance(error, DownloadLimitExceeded) else {})
+        failure = classify_transfer_failure(
+            error,
+            operation='download',
+            **limit_arguments,
+        )
         log_error(
             'HTTP download preparation failed',
             user_id=user_id,
@@ -433,26 +464,7 @@ def download_transfer(token):
             operation='download',
             result=failure.code,
             filename=record.metadata.get('filename'),
-            size=0,
-        )
-        finish('failed', failure)
-        return _json_failure(failure)
-    if size > config.MAX_DOWNLOAD_SIZE:
-        failure = classify_transfer_failure(
-            DownloadLimitExceeded(),
-            operation='download',
-            limit_kind='download',
-            limit_bytes=config.MAX_DOWNLOAD_SIZE,
-            actual_bytes=size,
-        )
-        _audit_transfer_source(
-            source,
-            username=audit_username,
-            ip_address=audit_ip,
-            operation='download',
-            result='LIMIT_EXCEEDED',
-            filename=record.metadata.get('filename'),
-            size=size,
+            size=size if isinstance(error, DownloadLimitExceeded) else 0,
         )
         finish('failed', failure)
         return _json_failure(failure)
@@ -462,28 +474,13 @@ def download_transfer(token):
         failure = None
         transferred = 0
         try:
-            # Recheck directly before remote I/O because response iteration starts
-            # after headers have been constructed.
-            active_source = _resolve_transfer_source(record, user_id)
-            backend = _transfer_backend(active_source)
-            if backend is None:
-                reader_context = sftp_handler.sftp_session(
-                    active_source.handle_id
-                )
-                with reader_context as (sftp, _source):
-                    with sftp.file(remote_path, 'rb') as remote_file:
-                        transferred = yield from _stream_download_chunks(
-                            remote_file, record, user_id, size
-                        )
-            else:
-                with backend.open_reader(
-                    active_source,
-                    remote_path,
-                    io_lane='transfer',
-                ) as remote_file:
-                    transferred = yield from _stream_download_chunks(
-                        remote_file, record, user_id, size
-                    )
+            transferred = yield from _stream_download_chunks(
+                lease.reader,
+                record,
+                user_id,
+                lease.size,
+            )
+            reader_stack.close()
             outcome = 'completed'
         except GeneratorExit:
             outcome = 'cancelled'
@@ -506,22 +503,43 @@ def download_transfer(token):
             )
             raise
         finally:
-            _audit_transfer_source(
-                source,
-                username=audit_username,
-                ip_address=audit_ip,
-                operation='download',
-                result=failure.code if failure is not None else outcome,
-                filename=record.metadata['filename'],
-                size=transferred,
+            try:
+                reader_stack.close()
+            except Exception as close_error:
+                log_error(
+                    'HTTP download reader close failed',
+                    user_id=user_id,
+                    exception_type=type(close_error).__name__,
+                )
+            finally:
+                _audit_transfer_source(
+                    source,
+                    username=audit_username,
+                    ip_address=audit_ip,
+                    operation='download',
+                    result=failure.code if failure is not None else outcome,
+                    filename=record.metadata['filename'],
+                    size=transferred,
+                )
+                finish(outcome, failure)
+
+    def close_unstarted_response():
+        try:
+            reader_stack.close()
+        except Exception as close_error:
+            log_error(
+                'HTTP download reader close failed',
+                user_id=user_id,
+                exception_type=type(close_error).__name__,
             )
-            finish(outcome, failure)
+        finish('cancelled')
 
     response = Response(stream_with_context(generate()), mimetype='application/octet-stream')
     response.headers['Content-Disposition'] = _content_disposition(record.metadata['filename'])
     response.headers['Cache-Control'] = 'no-store'
     response.headers['Referrer-Policy'] = 'no-referrer'
-    response.call_on_close(lambda: finish('cancelled'))
+    response.headers['Accept-Ranges'] = 'none'
+    response.call_on_close(close_unstarted_response)
     return response
 
 
@@ -666,14 +684,20 @@ def _build_backend_zip_to_disk(
                     continue
                 with source.backend.open_reader(
                     source, entry_path, io_lane='transfer'
-                ) as reader:
+                ) as lease:
+                    if not isinstance(lease, FileReaderLease):
+                        raise RemoteTransferError('Source reader unavailable')
+                    if transferred + lease.size > max_bytes:
+                        raise RemoteTransferLimitExceeded(
+                            'Folder exceeds transfer size limit'
+                        )
                     with archive.open(archive_name, 'w') as archive_member:
                         while True:
                             if cancel_event.is_set():
                                 raise RemoteTransferCancelled(
                                     'Transfer cancelled'
                                 )
-                            chunk = reader.read(chunk_size)
+                            chunk = lease.reader.read(chunk_size)
                             if not chunk:
                                 break
                             transferred += len(chunk)
@@ -710,6 +734,8 @@ def download_folder_transfer(token):
     archive_size = None
     local_archive = None
     temp_reservation = None
+    remote_reader_stack = ExitStack()
+    remote_lease = None
 
     def cleanup_resources():
         if remote_archive is not None:
@@ -836,10 +862,40 @@ def download_folder_transfer(token):
                                 local_archive.unlink(missing_ok=True)
                         finally:
                             temp_reservation.release()
-                            temp_reservation = None
+                        temp_reservation = None
                         raise
+        if remote_archive is not None:
+            active_source = _resolve_transfer_source(record, user_id)
+            remote_lease = remote_reader_stack.enter_context(
+                sftp_handler.open_bound_reader(
+                    active_source.handle_id,
+                    remote_archive,
+                )
+            )
+            if remote_lease.size > config.MAX_ZIP_DOWNLOAD_SIZE:
+                raise DownloadLimitExceeded()
+            archive_size = remote_lease.size
     except Exception as error:
-        failure = classify_transfer_failure(error, operation='folder_download')
+        try:
+            remote_reader_stack.close()
+        except Exception as close_error:
+            log_error(
+                'Folder download reader close failed',
+                user_id=user_id,
+                exception_type=type(close_error).__name__,
+            )
+        limit_arguments = ({
+            'limit_kind': 'archive',
+            'limit_bytes': config.MAX_ZIP_DOWNLOAD_SIZE,
+            'actual_bytes': (
+                remote_lease.size if remote_lease is not None else archive_size
+            ),
+        } if isinstance(error, DownloadLimitExceeded) else {})
+        failure = classify_transfer_failure(
+            error,
+            operation='folder_download',
+            **limit_arguments,
+        )
         outcome = 'cancelled' if failure.code == 'CANCELLED' else 'failed'
         log_error(
             'Folder download preparation failed',
@@ -851,7 +907,13 @@ def download_folder_transfer(token):
         _audit_transfer_source(
             source, username=audit_username, ip_address=audit_ip,
             operation='folder_download', result=failure.code,
-            filename=f'{folder_name}.zip', size=0,
+            filename=f'{folder_name}.zip',
+            size=(
+                remote_lease.size
+                if isinstance(error, DownloadLimitExceeded)
+                and remote_lease is not None
+                else 0
+            ),
         )
         finish(outcome, failure)
         return _json_failure(failure)
@@ -862,20 +924,20 @@ def download_folder_transfer(token):
         transferred = 0
         try:
             if remote_archive is not None:
-                active_source = _resolve_transfer_source(record, user_id)
-                with sftp_handler.sftp_session(active_source.handle_id) as (sftp, _source):
-                    with sftp.file(remote_archive, 'rb') as remote_file:
-                        for chunk in sftp_handler.stream_remote_zip(
-                            remote_file,
-                            cancel_event=record.cancel_event,
-                            max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
-                            chunk_size=TRANSFER_CHUNK_SIZE,
-                        ):
-                            transferred += len(chunk)
-                            _emit_download_progress(
-                                record, user_id, transferred, archive_size
-                            )
-                            yield chunk
+                for chunk in sftp_handler.stream_remote_zip(
+                    remote_lease.reader,
+                    cancel_event=record.cancel_event,
+                    max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
+                    chunk_size=TRANSFER_CHUNK_SIZE,
+                ):
+                    transferred += len(chunk)
+                    _emit_download_progress(
+                        record,
+                        user_id,
+                        transferred,
+                        remote_lease.size,
+                    )
+                    yield chunk
             else:
                 with open(local_archive, 'rb') as archive:
                     while True:
@@ -889,6 +951,7 @@ def download_folder_transfer(token):
                             record, user_id, transferred, archive_size
                         )
                         yield chunk
+            remote_reader_stack.close()
             outcome = 'completed'
         except GeneratorExit:
             outcome = 'cancelled'
@@ -916,16 +979,36 @@ def download_folder_transfer(token):
             )
             raise
         finally:
-            _audit_transfer_source(
-                source,
-                username=audit_username,
-                ip_address=audit_ip,
-                operation='folder_download',
-                result=failure.code if failure is not None else outcome,
-                filename=f'{folder_name}.zip',
-                size=transferred,
+            try:
+                remote_reader_stack.close()
+            except Exception as close_error:
+                log_error(
+                    'Folder download reader close failed',
+                    user_id=user_id,
+                    exception_type=type(close_error).__name__,
+                )
+            finally:
+                _audit_transfer_source(
+                    source,
+                    username=audit_username,
+                    ip_address=audit_ip,
+                    operation='folder_download',
+                    result=failure.code if failure is not None else outcome,
+                    filename=f'{folder_name}.zip',
+                    size=transferred,
+                )
+                finish(outcome, failure)
+
+    def close_unstarted_response():
+        try:
+            remote_reader_stack.close()
+        except Exception as close_error:
+            log_error(
+                'Folder download reader close failed',
+                user_id=user_id,
+                exception_type=type(close_error).__name__,
             )
-            finish(outcome, failure)
+        finish('cancelled')
 
     response = Response(
         stream_with_context(generate()), mimetype='application/zip'
@@ -935,7 +1018,8 @@ def download_folder_transfer(token):
     )
     response.headers['Cache-Control'] = 'no-store'
     response.headers['Referrer-Policy'] = 'no-referrer'
-    response.call_on_close(lambda: finish('cancelled'))
+    response.headers['Accept-Ranges'] = 'none'
+    response.call_on_close(close_unstarted_response)
     return response
 
 

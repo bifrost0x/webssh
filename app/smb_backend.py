@@ -10,7 +10,7 @@ import stat as stat_module
 
 import config
 
-from .file_backend import FileWriteOutcome
+from .file_backend import FileReaderLease, FileWriteOutcome
 from .smb_paths import SMBPath, SMBPathRejected
 from .smb_protocol import SMBProtocolError
 
@@ -128,6 +128,52 @@ class SMBBackend:
         return bool(attributes & 0x10) or stat_module.S_ISDIR(
             getattr(file_stat, 'st_mode', 0)
         )
+
+    @staticmethod
+    def _reader_lease(remote_file):
+        """Build metadata from the connected SMB handle's CREATE response."""
+        handle = getattr(remote_file, 'fd', None)
+        size = getattr(handle, 'end_of_file', None)
+        attributes = getattr(handle, 'file_attributes', None)
+        if isinstance(attributes, bool):
+            raise SMBBackendError('File metadata is unavailable')
+        try:
+            attributes = int(attributes)
+        except (TypeError, ValueError) as exc:
+            raise SMBBackendError('File metadata is unavailable') from exc
+        if attributes < 0:
+            raise SMBBackendError('File metadata is unavailable')
+        is_reparse = bool(attributes & _REPARSE_POINT)
+        is_directory = bool(attributes & 0x10)
+        if is_reparse or is_directory:
+            raise SMBBackendError('File is not readable')
+        try:
+            return FileReaderLease(
+                reader=remote_file,
+                size=size,
+                is_dir=is_directory,
+                is_symlink=is_reparse,
+            )
+        except ValueError as exc:
+            raise SMBBackendError('File metadata is unavailable') from exc
+
+    @contextmanager
+    def _open_reader_locked(self, actual, smb_path, session):
+        """Open and validate one object while the caller owns its I/O lane."""
+        unc = smb_path.to_unc(actual.target_ip, actual.share)
+        self._validate_path_components(
+            actual,
+            smb_path,
+            session=session,
+        )
+        remote_file = session.invoke(
+            'open_file_no_follow',
+            unc,
+            mode='rb',
+            buffering=0,
+        )
+        with remote_file:
+            yield self._reader_lease(remote_file)
 
     @staticmethod
     def _io_lane(actual, io_lane):
@@ -378,21 +424,9 @@ class SMBBackend:
         actual = self._owned_source(source)
         session, lane_lock = self._io_lane(actual, io_lane)
         smb_path = self._path(path)
-        unc = smb_path.to_unc(actual.target_ip, actual.share)
         with lane_lock:
-            self._validate_path_components(
-                actual, smb_path, session=session
-            )
-            file_stat = session.invoke(
-                'stat', unc, follow_symlinks=False
-            )
-            if self._is_reparse(file_stat) or self._is_directory(file_stat):
-                raise SMBBackendError('File is not readable')
-            remote_file = session.invoke(
-                'open_file_no_follow', unc, mode='rb', buffering=0
-            )
-            with remote_file:
-                yield remote_file
+            with self._open_reader_locked(actual, smb_path, session) as lease:
+                yield lease
 
     @contextmanager
     def open_atomic_writer(
@@ -584,39 +618,27 @@ class SMBBackend:
             raise SMBBackendError('Invalid read range')
         actual = self._owned_source(source)
         smb_path = self._path(path)
-        unc = smb_path.to_unc(actual.target_ip, actual.share)
         with actual.lock:
-            self._validate_path_components(actual, smb_path)
-            file_stat = actual.session.invoke(
-                'stat', unc, follow_symlinks=False
-            )
-            if self._is_reparse(file_stat) or self._is_directory(file_stat):
-                raise SMBBackendError('File is not readable')
-            file_size = getattr(file_stat, 'st_size', 0) or 0
-            remote_file = actual.session.invoke(
-                'open_file_no_follow', unc, mode='rb', buffering=0
-            )
-            with remote_file:
+            with self._open_reader_locked(
+                actual,
+                smb_path,
+                actual.session,
+            ) as lease:
                 if offset:
-                    remote_file.seek(offset)
-                data = remote_file.read(maximum + 1)
-        return file_size, data
+                    lease.reader.seek(offset)
+                data = lease.reader.read(maximum + 1)
+                return lease.size, data
 
     def _editor_revision_locked(self, actual, destination):
         """Hash one validated editor target while the caller owns its lane."""
-        self._validate_path_components(actual, destination)
-        unc = destination.to_unc(actual.target_ip, actual.share)
-        file_stat = actual.session.invoke('stat', unc, follow_symlinks=False)
-        if self._is_reparse(file_stat) or self._is_directory(file_stat):
-            raise SMBBackendError('File is not readable')
-        file_size = getattr(file_stat, 'st_size', 0) or 0
-        if file_size > config.MAX_EDITOR_FILE_SIZE:
-            raise SMBBackendError('File too large to edit')
-        remote_file = actual.session.invoke(
-            'open_file_no_follow', unc, mode='rb', buffering=0
-        )
-        with remote_file:
-            data = remote_file.read(config.MAX_EDITOR_FILE_SIZE + 1)
+        with self._open_reader_locked(
+            actual,
+            destination,
+            actual.session,
+        ) as lease:
+            if lease.size > config.MAX_EDITOR_FILE_SIZE:
+                raise SMBBackendError('File too large to edit')
+            data = lease.reader.read(config.MAX_EDITOR_FILE_SIZE + 1)
         if len(data) > config.MAX_EDITOR_FILE_SIZE:
             raise SMBBackendError('File too large to edit')
         return hashlib.sha256(data).hexdigest()
@@ -775,27 +797,21 @@ class SMBBackend:
 
             actual = self._owned_source(source)
             smb_path = self._path(path)
-            unc = smb_path.to_unc(actual.target_ip, actual.share)
             with actual.lock:
-                self._validate_path_components(actual, smb_path)
-                file_stat = actual.session.invoke(
-                    'stat', unc, follow_symlinks=False
-                )
-                if self._is_reparse(file_stat) or self._is_directory(file_stat):
-                    raise SMBBackendError('File is not readable')
-                file_size = getattr(file_stat, 'st_size', 0) or 0
-                if file_size > config.MAX_SUPPORTED_FILE_SIZE:
-                    raise SMBBackendError('File exceeds supported size')
-                read_offset = (
-                    max(0, file_size - max_bytes) if tail_lines else offset
-                )
-                remote_file = actual.session.invoke(
-                    'open_file_no_follow', unc, mode='rb', buffering=0
-                )
-                with remote_file:
+                with self._open_reader_locked(
+                    actual,
+                    smb_path,
+                    actual.session,
+                ) as lease:
+                    file_size = lease.size
+                    if file_size > config.MAX_SUPPORTED_FILE_SIZE:
+                        raise SMBBackendError('File exceeds supported size')
+                    read_offset = (
+                        max(0, file_size - max_bytes) if tail_lines else offset
+                    )
                     if read_offset:
-                        remote_file.seek(read_offset)
-                    data = remote_file.read(max_bytes + 1)
+                        lease.reader.seek(read_offset)
+                    data = lease.reader.read(max_bytes + 1)
             available_at_stat = max(0, file_size - read_offset)
             if len(data) > max_bytes and available_at_stat <= max_bytes:
                 raise SMBBackendError('File exceeds preview limit')
