@@ -11,6 +11,7 @@
         'ephemeral',
         'status',
         'security',
+        'access',
     ];
 
     class FileWorkspaceState {
@@ -46,6 +47,10 @@
             normalized.security = normalized.security
                 && typeof normalized.security === 'object'
                 ? { ...normalized.security }
+                : {};
+            normalized.access = normalized.access
+                && typeof normalized.access === 'object'
+                ? { ...normalized.access }
                 : {};
             return normalized;
         }

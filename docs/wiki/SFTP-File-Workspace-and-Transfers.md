@@ -33,6 +33,22 @@ domain, and username. Closing a source's final tab closes the connection after
 any dependent transfer finishes. An application restart also removes all active
 SMB sources.
 
+After authentication, WebSSH performs a non-mutating access inspection at the
+share root. It separately records whether listing, file creation, directory
+creation, and child deletion are granted, denied, or unknown. The workspace
+shows confirmed write access, confirmed root read-only access, or unknown root
+write access. This is evidence for the root only: ACLs on nested directories
+can be more or less restrictive, so every operation still handles a remote
+denial explicitly.
+
+Connection failures show a sanitized reason in the SMB dialog. Failures that
+reach the server-side connection job also include a reference in the form
+`SMB-A1B2C3D4E5F6`; an operator can correlate it with `DATA_DIR/logs/app.log`
+without exposing the backend exception text to the browser. The log record
+separates target resolution, transport negotiation, security requirements,
+session authentication, share access, and lifecycle handling, and can include
+the exception class and SMB NT status when safely available.
+
 Browser TLS and SMB encryption protect different links. TLS covers the browser
 to WebSSH, while SMB encryption covers WebSSH to the share. The WebSSH process
 must handle the submitted credentials and file contents, so deploy it on a
@@ -58,6 +74,7 @@ Supported operations include:
 - directory listing and navigation;
 - create directory;
 - rename;
+- move files or folders between directories on the same source;
 - delete;
 - drag-and-drop file and folder upload;
 - single and batch download;
@@ -96,6 +113,30 @@ Server-to-server work runs as a bounded cancellable background job. The
 transfer queue tracks progress, errors, cancellation, and conflict choices such
 as skip or overwrite.
 
+An SMB source maintains separate control and transfer sessions. Directory
+navigation and metadata operations therefore remain available while a bulk
+upload, download, or remote copy is using the transfer lane. Cancellation is
+one idempotent request: the queue changes to **Cancelling** once and waits for
+the authoritative terminal event instead of requiring repeated clicks.
+
+HTTP responses, Socket.IO terminal events, notifications, and queue rows use
+the same allowlisted transfer failure contract. The visible reason distinguishes
+permission denial, an existing destination, a missing path, an unavailable
+share or source, a timeout, a configured limit, cancellation, and unavailable
+atomic replacement. Backend exception text, paths, and credentials are not
+reflected to the browser.
+
+When the browser or server knows the actual byte count, configured-limit
+errors include the operation, actual size, and exact limit. Unknown or
+untrusted sizes are never guessed.
+
+Uploads and server-to-server copies start with a no-overwrite policy. If the
+destination exists, the workspace asks whether to replace, skip, or cancel and
+can apply that choice to the remaining batch. Replace uses a new authorized
+transfer request and an atomic backend rename. If atomic replacement is not
+available, the existing destination remains untouched and the queue explains
+why the replacement was refused.
+
 Queued and active transfers retain references to their source and destination
 connections. Closing the last quick-connection tab defers disconnect until the
 dependent transfer reaches a terminal state.
@@ -131,6 +172,13 @@ Preview loads only bounded content. Tail mode limits requested line count. The
 editor refuses files above its size cap and saves through the resolved, owned
 file source.
 
+Text saves carry the revision that was previewed and reject stale content.
+Atomic replacement is the default. If an SMB account cannot provide it, the
+editor asks for explicit consent before using a recoverable swap that keeps a
+backup until the new file is in place. A failed rollback leaves named temporary
+and backup artifacts in the error so an operator can recover the content; the
+dirty editor buffer remains open.
+
 Treat remote content as untrusted. Previewing or editing a file does not make
 its commands safe to execute.
 
@@ -143,6 +191,13 @@ covers SFTP-to-SFTP, SFTP-to-SMB, SMB-to-SFTP, and SMB-to-SMB copies.
 
 Both connections remain owned by the same WebSSH user, both count against
 capacity, and cancellation is tied to the server-owned transfer record.
+Existing targets are not overwritten without the conflict decision described
+above.
+
+For two folders on the same source, the workspace offers **Move** instead of a
+copy. It uses the source's rename operation, refuses root, self, descendant,
+and existing-destination moves, and never replaces an existing item. SMB path
+relationship checks are case-insensitive.
 
 ## Connection lifecycle
 

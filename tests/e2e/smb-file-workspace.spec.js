@@ -3,9 +3,18 @@ const { login, assertNoExternalRequests } = require('./helpers');
 
 test.use({ viewport: { width: 1440, height: 1024 }, trace: 'off' });
 
-async function enableSmbTestDouble(page, { connect = true } = {}) {
+async function enableSmbTestDouble(page, {
+    connect = true,
+    failFirstAuthentication = true,
+    access = {
+        list: 'granted',
+        create_file: 'granted',
+        create_directory: 'granted',
+        delete_children: 'granted',
+    },
+} = {}) {
     await login(page);
-    await page.evaluate(({ shouldConnect }) => {
+    await page.evaluate(({ shouldConnect, shouldFailFirstAuthentication, rootAccess }) => {
         openFileManager();
         const manager = window.sftpFileManager;
         manager.smbEnabled = true;
@@ -24,6 +33,7 @@ async function enableSmbTestDouble(page, { connect = true } = {}) {
             connectRequestId: null,
             savedPayload: null,
             savedShares: [],
+            rootAccess,
         };
         const notify = (event, payload) => queueMicrotask(() => {
             window.socket.listeners(event).forEach(listener => listener(payload));
@@ -35,7 +45,7 @@ async function enableSmbTestDouble(page, { connect = true } = {}) {
                     && payload.password.length > 0;
                 window.__smbTest.connectRequestId = payload.request_id;
                 if (shouldConnect) {
-                    if (window.__smbTest.connectCount === 1) {
+                    if (shouldFailFirstAuthentication && window.__smbTest.connectCount === 1) {
                         notify('smb_quick_connect_error', {
                             request_id: payload.request_id,
                             code: 'AUTHENTICATION_REQUIRED',
@@ -60,6 +70,7 @@ async function enableSmbTestDouble(page, { connect = true } = {}) {
                                     signed: true,
                                     secure_negotiate: true,
                                 },
+                                access: rootAccess,
                             },
                         });
                     }
@@ -140,7 +151,11 @@ async function enableSmbTestDouble(page, { connect = true } = {}) {
                 ? originalEmit(event, ...rest)
                 : originalEmit(event, payload, ...rest);
         };
-    }, { shouldConnect: connect });
+    }, {
+        shouldConnect: connect,
+        shouldFailFirstAuthentication: failFirstAuthentication,
+        rootAccess: access,
+    });
 }
 
 test('disabled SMB control cannot open a dialog or emit a connect event', async ({ page }) => {
@@ -193,6 +208,7 @@ test('SMB dialog clears credentials, recovers from auth failure and opens an enc
     await expect(page.locator('#smbSourceModal')).not.toHaveClass(/show/);
     await expect(page.locator('#fmLeftTabs')).toContainText('nas.example / Docs');
     await expect(page.locator('#fmLeftBadge')).toContainText('nas.example:445 / Docs');
+    await expect(page.locator('#fmLeftIdentity')).toContainText('Write access at share root');
     await expect(page.locator('#fmLeftList')).toContainText('report.txt');
     const state = await page.evaluate(() => ({
         test: window.__smbTest,
@@ -204,6 +220,48 @@ test('SMB dialog clears credentials, recovers from auth failure and opens an enc
     expect(state.test.passwordWasPresent).toBe(true);
     expect(state.password).toBe('');
     expect([...state.localStorage, ...state.sessionStorage].join(' ')).not.toContain('retry-');
+    await assertNoExternalRequests(page);
+});
+
+test('read-only SMB access is visible and disables root mutations', async ({ page }) => {
+    await enableSmbTestDouble(page, {
+        failFirstAuthentication: false,
+        access: {
+            list: 'granted',
+            create_file: 'denied',
+            create_directory: 'denied',
+            delete_children: 'denied',
+        },
+    });
+    await page.locator('#fmNewSmbSource').click();
+    await page.locator('#smbSourceHost').fill('nas.example');
+    await page.locator('#smbSourceShare').fill('ReadOnly');
+    await page.locator('#smbSourceUsername').fill('alice');
+    await page.locator('#smbSourcePassword').fill('browser-only-secret');
+    await page.locator('#smbSourceConnect').click();
+
+    expect(await page.evaluate(() => (
+        ({
+            input: window.__smbTest.rootAccess,
+            normalized: window.sftpFileManager.panes.left.source.access,
+        })
+    ))).toEqual({
+        input: {
+            list: 'granted',
+            create_file: 'denied',
+            create_directory: 'denied',
+            delete_children: 'denied',
+        },
+        normalized: {
+            list: 'granted',
+            createFile: 'denied',
+            createDirectory: 'denied',
+            deleteChildren: 'denied',
+        },
+    });
+    await expect(page.locator('#fmLeftIdentity')).toContainText('Read-only at share root');
+    await expect(page.locator('#fmNewFolder')).toBeDisabled();
+    await expect(page.locator('#fmEmbeddedUpload')).toBeDisabled();
     await assertNoExternalRequests(page);
 });
 
@@ -257,7 +315,7 @@ test('saved SMB shares persist without passwords and reopen from the source laun
     await assertNoExternalRequests(page);
 });
 
-test('SMB editor fails closed when atomic replacement is unavailable', async ({ page }) => {
+test('SMB editor requests one recoverable-swap confirmation for the current save', async ({ page }) => {
     await login(page);
 
     const state = await page.evaluate(() => {
@@ -280,6 +338,8 @@ test('SMB editor fails closed when atomic replacement is unavailable', async ({ 
         preview.currentSourceId = 'smb-quick:e2eowned';
         preview.currentPath = '/report.txt';
         preview.editMode = true;
+        preview.editRevision = 'a'.repeat(64);
+        preview.dirty = true;
         document.getElementById('editorContent').value = 'updated';
         preview.saveEdit();
         preview.handleSocketError({
@@ -287,8 +347,9 @@ test('SMB editor fails closed when atomic replacement is unavailable', async ({ 
             source_id: 'smb-quick:e2eowned',
             request_id: preview.currentSaveRequestId,
             path: '/report.txt',
-            error: 'Atomic replacement is unavailable for this SMB account.',
-            code: 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
+            error: 'This SMB account cannot replace the file atomically.',
+            code: 'SMB_RECOVERABLE_REPLACE_REQUIRED',
+            revision: 'a'.repeat(64),
         });
 
         return {
@@ -298,12 +359,52 @@ test('SMB editor fails closed when atomic replacement is unavailable', async ({ 
         };
     });
 
-    expect(state.confirmations).toBe(0);
-    expect(state.emitted).toHaveLength(1);
-    expect(state.emitted[0]).not.toHaveProperty('allow_non_atomic');
-    expect(state.status).toBe(
-        'Atomic replacement is unavailable for this SMB account.',
-    );
+    expect(state.confirmations).toBe(1);
+    expect(state.emitted).toHaveLength(2);
+    expect(state.emitted[0]).toMatchObject({
+        expected_revision: 'a'.repeat(64),
+        replace_strategy: 'atomic',
+    });
+    expect(state.emitted[1]).toMatchObject({
+        expected_revision: 'a'.repeat(64),
+        replace_strategy: 'recoverable_swap',
+    });
+    expect(state.emitted[1]).not.toHaveProperty('allow_non_atomic');
+    expect(state.status).toBe('Saving...');
+    await assertNoExternalRequests(page);
+});
+
+test('SMB editor keeps dirty content and names safe recovery artifacts', async ({ page }) => {
+    await login(page);
+
+    const state = await page.evaluate(() => {
+        const preview = window.FilePreview;
+        preview.currentSourceId = 'smb-quick:e2eowned';
+        preview.currentPath = '/report.txt';
+        preview.currentSaveRequestId = 'save:recovery:1';
+        preview.editMode = true;
+        preview.dirty = true;
+        preview.handleSocketError({
+            operation: 'save_file',
+            source_id: 'smb-quick:e2eowned',
+            request_id: 'save:recovery:1',
+            path: '/report.txt',
+            error: 'Manual recovery is required.',
+            code: 'SMB_RECOVERY_REQUIRED',
+            recovery_leaves: [
+                '.report.txt.webssh-write-safe.tmp',
+                '.report.txt.webssh-recovery-safe.bak',
+            ],
+        });
+        return {
+            dirty: preview.dirty,
+            status: document.getElementById('editorStatus').textContent,
+        };
+    });
+
+    expect(state.dirty).toBe(true);
+    expect(state.status).toContain('.report.txt.webssh-write-safe.tmp');
+    expect(state.status).toContain('.report.txt.webssh-recovery-safe.bak');
     await assertNoExternalRequests(page);
 });
 

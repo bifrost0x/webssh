@@ -26,58 +26,83 @@ from smbprotocol.exceptions import (
     SharingViolation,
 )
 from smbprotocol.header import NtStatus
-from smbprotocol.open import CreateOptions
+from smbprotocol.open import CreateOptions, DirectoryAccessMask
 from smbprotocol.session import Session, SessionFlags
+
+from .smb_diagnostics import build_smb_diagnostic
 
 
 class SMBProtocolError(Exception):
     """Protocol failure with a non-sensitive code suitable for clients."""
 
-    def __init__(self, public_code: str, message: str = 'SMB operation failed'):
+    def __init__(
+        self,
+        public_code: str,
+        message: str = 'SMB operation failed',
+        *,
+        diagnostic_phase='file_operation',
+        diagnostic_exception_type=None,
+        diagnostic_nt_status=None,
+    ):
         super().__init__(message)
         self.public_code = public_code
+        diagnostic = build_smb_diagnostic(
+            phase=diagnostic_phase,
+            exception_type=diagnostic_exception_type,
+            nt_status=diagnostic_nt_status,
+        )
+        self.diagnostic_phase = diagnostic['diagnostic_phase']
+        self.diagnostic_exception_type = diagnostic[
+            'diagnostic_exception_type'
+        ]
+        self.diagnostic_nt_status = diagnostic['diagnostic_nt_status']
 
 
-def _mapped_protocol_error(exc):
+def _mapped_protocol_error(exc, *, phase='file_operation'):
+    diagnostic = build_smb_diagnostic(phase=phase, exception=exc)
+
+    def mapped(code):
+        return SMBProtocolError(code, **diagnostic)
+
     if isinstance(exc, LogonFailure):
-        return SMBProtocolError('AUTHENTICATION_REQUIRED')
+        return mapped('AUTHENTICATION_REQUIRED')
     if isinstance(exc, SMBOSError):
         if exc.ntstatus in {
             NtStatus.STATUS_LOGON_FAILURE,
             NtStatus.STATUS_WRONG_PASSWORD,
             NtStatus.STATUS_PASSWORD_EXPIRED,
         }:
-            return SMBProtocolError('AUTHENTICATION_REQUIRED')
+            return mapped('AUTHENTICATION_REQUIRED')
         if exc.ntstatus in {
             NtStatus.STATUS_ACCESS_DENIED,
             NtStatus.STATUS_PRIVILEGE_NOT_HELD,
         }:
-            return SMBProtocolError('PERMISSION_DENIED')
+            return mapped('PERMISSION_DENIED')
         if exc.ntstatus in {
             NtStatus.STATUS_OBJECT_NAME_NOT_FOUND,
             NtStatus.STATUS_OBJECT_PATH_NOT_FOUND,
             NtStatus.STATUS_NOT_FOUND,
         }:
-            return SMBProtocolError('NOT_FOUND')
+            return mapped('NOT_FOUND')
         if exc.ntstatus == NtStatus.STATUS_BAD_NETWORK_NAME:
-            return SMBProtocolError('SHARE_UNAVAILABLE')
+            return mapped('SHARE_UNAVAILABLE')
         if exc.ntstatus in {
             NtStatus.STATUS_OBJECT_NAME_COLLISION,
             NtStatus.STATUS_SHARING_VIOLATION,
             NtStatus.STATUS_DIRECTORY_NOT_EMPTY,
         }:
-            return SMBProtocolError('CONFLICT')
-        return SMBProtocolError('OPERATION_FAILED')
+            return mapped('CONFLICT')
+        return mapped('OPERATION_FAILED')
     if isinstance(exc, AccessDenied):
-        return SMBProtocolError('PERMISSION_DENIED')
+        return mapped('PERMISSION_DENIED')
     if isinstance(exc, (ObjectNameNotFound, ObjectPathNotFound)):
-        return SMBProtocolError('NOT_FOUND')
+        return mapped('NOT_FOUND')
     if isinstance(exc, BadNetworkName):
-        return SMBProtocolError('SHARE_UNAVAILABLE')
+        return mapped('SHARE_UNAVAILABLE')
     if isinstance(exc, (ObjectNameCollision, SharingViolation, DirectoryNotEmpty)):
-        return SMBProtocolError('CONFLICT')
+        return mapped('CONFLICT')
     if isinstance(exc, IOTimeout):
-        return SMBProtocolError('TIMEOUT')
+        return mapped('TIMEOUT')
     return None
 
 
@@ -276,6 +301,51 @@ class SMBProtocolSession:
             except Exception as exc:
                 raise SMBProtocolError('OPERATION_FAILED') from exc
 
+    def inspect_directory_access(self, path):
+        """Validate listing and query root directory rights without mutation."""
+        iterator = self.invoke('scandir_no_follow', path)
+        try:
+            next(iter(iterator), None)
+        finally:
+            try:
+                iterator.close()
+            except Exception:
+                pass
+
+        access = {'list': 'granted'}
+        probes = (
+            ('create_file', DirectoryAccessMask.FILE_ADD_FILE),
+            ('create_directory', DirectoryAccessMask.FILE_ADD_SUBDIRECTORY),
+            ('delete_children', DirectoryAccessMask.FILE_DELETE_CHILD),
+        )
+        for name, desired_access in probes:
+            handle = None
+            try:
+                handle = self.invoke(
+                    'open_file_no_follow',
+                    path,
+                    mode='rb',
+                    buffering=0,
+                    file_type='dir',
+                    desired_access=int(desired_access),
+                )
+                access[name] = 'granted'
+            except SMBProtocolError as exc:
+                access[name] = (
+                    'denied'
+                    if exc.public_code == 'PERMISSION_DENIED'
+                    else 'unknown'
+                )
+            except Exception:
+                access[name] = 'unknown'
+            finally:
+                if handle is not None:
+                    try:
+                        handle.close()
+                    except Exception:
+                        pass
+        return access
+
     def close(self):
         with self._lock:
             if self._closed:
@@ -326,6 +396,7 @@ class SMBProtocolClient:
 
         connection = None
         raw_session = None
+        diagnostic_phase = 'transport_negotiate'
         try:
             connection = self._protocol.new_connection(
                 server=target_ip,
@@ -335,13 +406,21 @@ class SMBProtocolClient:
                 timeout=timeout,
                 io_idle_timeout=io_idle_timeout,
             )
+            diagnostic_phase = 'security_requirements'
             if connection.dialect != self._protocol.smb_3_1_1:
-                raise SMBProtocolError('DIALECT_REQUIRED')
+                raise SMBProtocolError(
+                    'DIALECT_REQUIRED',
+                    diagnostic_phase=diagnostic_phase,
+                )
             if not self._protocol.connection_supports_encryption(connection):
-                raise SMBProtocolError('ENCRYPTION_REQUIRED')
+                raise SMBProtocolError(
+                    'ENCRYPTION_REQUIRED',
+                    diagnostic_phase=diagnostic_phase,
+                )
             if self._cancelled(cancel_event):
                 raise SMBProtocolError('CONNECT_CANCELLED')
 
+            diagnostic_phase = 'session_authentication'
             raw_session = self._protocol.new_session(
                 connection,
                 username=username,
@@ -351,9 +430,15 @@ class SMBProtocolClient:
             )
             raw_session.connect()
             if self._protocol.session_is_guest_or_null(raw_session):
-                raise SMBProtocolError('AUTHENTICATION_REQUIRED')
+                raise SMBProtocolError(
+                    'AUTHENTICATION_REQUIRED',
+                    diagnostic_phase=diagnostic_phase,
+                )
             if not getattr(raw_session, 'encrypt_data', False):
-                raise SMBProtocolError('ENCRYPTION_REQUIRED')
+                raise SMBProtocolError(
+                    'ENCRYPTION_REQUIRED',
+                    diagnostic_phase='security_requirements',
+                )
             if self._cancelled(cancel_event):
                 raise SMBProtocolError('CONNECT_CANCELLED')
 
@@ -389,7 +474,11 @@ class SMBProtocolClient:
                     )
                 except Exception:
                     pass
-            mapped = _mapped_protocol_error(exc)
+            mapped = _mapped_protocol_error(exc, phase=diagnostic_phase)
             if mapped is not None:
                 raise mapped from exc
-            raise SMBProtocolError('CONNECTION_FAILED') from exc
+            diagnostic = build_smb_diagnostic(
+                phase=diagnostic_phase,
+                exception=exc,
+            )
+            raise SMBProtocolError('CONNECTION_FAILED', **diagnostic) from exc

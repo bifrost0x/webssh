@@ -36,6 +36,7 @@ function fileSource(sourceId, overrides = {}) {
         capabilities: [...ALL_FILE_CAPABILITIES],
         ephemeral: sourceId.startsWith('sftp-quick:'),
         security: { hostKeyVerified: true },
+        access: {},
         ...overrides,
     };
 }
@@ -51,6 +52,12 @@ function serverFileSource(sourceId, overrides = {}) {
         capabilities: normalized.capabilities,
         ephemeral: normalized.ephemeral,
         security: { host_key_verified: normalized.security.hostKeyVerified },
+        access: Object.fromEntries(
+            Object.entries(normalized.access || {}).map(([key, value]) => [
+                key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`),
+                value,
+            ]),
+        ),
     };
 }
 
@@ -141,6 +148,7 @@ test('source descriptor normalization is the only snake case boundary', () => {
         capabilities: ['list', 'read'],
         ephemeral: true,
         security: { hostKeyVerified: true },
+        access: {},
     });
 
     const untrustedSecurity = manager.normalizeSourceDescriptor({
@@ -155,6 +163,87 @@ test('source descriptor normalization is the only snake case boundary', () => {
     });
     assert.deepEqual(untrustedSecurity.security, {});
     assert.equal(manager.sourceDescriptorForSession({ id: 'legacy-only' }), null);
+});
+
+test('SMB access evidence is normalized, labeled, and enforced only at the root', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.t = (_key, fallback) => fallback;
+    const source = manager.normalizeSourceDescriptor({
+        source_id: 'smb-quick:readonly',
+        kind: 'smb',
+        label: 'Docs on nas.example',
+        endpoint: 'nas.example/Docs',
+        protocol: 'SMB 3.1.1',
+        capabilities: ['list', 'read', 'write', 'mkdir'],
+        ephemeral: true,
+        security: { encrypted: true },
+        access: {
+            list: 'granted',
+            create_file: 'denied',
+            create_directory: 'denied',
+            delete_children: 'unknown',
+            unsupported: 'granted',
+        },
+    });
+    const root = { source, path: '/' };
+    const nested = { source, path: '/department' };
+
+    assert.deepEqual(source.access, {
+        list: 'granted',
+        createFile: 'denied',
+        createDirectory: 'denied',
+        deleteChildren: 'unknown',
+    });
+    manager.initializeWorkspaceState();
+    const tab = manager.workspace.openTab('left', source);
+    assert.deepEqual(tab.source.access, source.access);
+    assert.notEqual(tab.source.access, source.access);
+    assert.equal(manager.sourceAccessLabel(source), 'Read-only at share root');
+    assert.equal(manager.sourceCan(root, 'write'), false);
+    assert.equal(manager.sourceCan(root, 'mkdir'), false);
+    assert.equal(manager.sourceCan(root, 'read'), true);
+    assert.equal(manager.sourceCan(nested, 'write'), true);
+});
+
+test('SMB access label distinguishes confirmed write access from unknown evidence', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.t = (_key, fallback) => fallback;
+    const base = { kind: 'smb' };
+
+    assert.equal(manager.sourceAccessLabel({
+        ...base,
+        access: { createFile: 'granted', createDirectory: 'granted' },
+    }), 'Write access at share root');
+    assert.equal(manager.sourceAccessLabel({
+        ...base,
+        access: { createFile: 'unknown', createDirectory: 'unknown' },
+    }), 'Write access at share root unknown');
+    assert.equal(manager.sourceAccessLabel({ kind: 'sftp', access: {} }), '');
+});
+
+test('apply-to-all reuses the selected conflict action without opening another dialog', async () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.applyToAll = true;
+    manager.conflictAction = 'replace';
+
+    assert.equal(
+        await manager.resolveUploadConflict({ filename: 'next.txt' }),
+        'replace',
+    );
+});
+
+test('conflict dialog source keeps an accessible modal and three explicit actions', () => {
+    const fs = require('node:fs');
+    const source = fs.readFileSync(
+        require.resolve('../../static/js/sftp-file-manager.js'),
+        'utf8',
+    );
+
+    assert.match(source, /role="dialog"/);
+    assert.match(source, /aria-modal="true"/);
+    assert.match(source, /data-conflict-action="replace"/);
+    assert.match(source, /data-conflict-action="skip"/);
+    assert.match(source, /data-conflict-action="cancel"/);
 });
 
 test('S2S events must match transfer id source ids and request id', () => {
@@ -1215,9 +1304,16 @@ test('context menu offers transfer only when another connected file area exists'
     manager.syncPaneFromWorkspace('right');
     actions = manager.getContextMenuItems(file, leftState, 'left').map(item => item.action);
     assert.equal(actions.includes('transfer'), true);
+
+    rightState.source = fileSource('sftp-session:left');
+    rightState.path = '/archive';
+    const moveAction = manager.getContextMenuItems(file, leftState, 'left')
+        .find(item => item.action === 'transfer');
+    assert.equal(moveAction.text, 'Move to other pane');
+    assert.equal(moveAction.icon, 'drive_file_move');
 });
 
-test('transfer availability rejects identical connections and unfinished targets', () => {
+test('workspace operation distinguishes same-source move from cross-source copy', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     manager.workspace.setLayout('split');
@@ -1231,13 +1327,20 @@ test('transfer availability rejects identical connections and unfinished targets
     manager.workspace.openTab('right', fileSource('sftp-session:shared'), rightState);
     manager.panes = { left: leftState, right: rightState };
 
-    assert.equal(manager.canTransferBetweenPanes('left', 'right'), false);
+    assert.equal(manager.workspaceOperationBetweenPanes('left', 'right'), 'move');
+    assert.equal(manager.canTransferBetweenPanes('left', 'right'), true);
+
+    rightState.path = '/source';
+    assert.equal(manager.workspaceOperationBetweenPanes('left', 'right'), 'unavailable');
+    rightState.path = '/target';
 
     rightState.source = fileSource('sftp-session:target');
     rightState.loading = true;
+    assert.equal(manager.workspaceOperationBetweenPanes('left', 'right'), 'unavailable');
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), false);
 
     rightState.loading = false;
+    assert.equal(manager.workspaceOperationBetweenPanes('left', 'right'), 'copy');
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), true);
 
     rightState.autoHomeEligible = true;
@@ -1247,6 +1350,162 @@ test('transfer availability rejects identical connections and unfinished targets
     rightState.autoHomeEligible = false;
     rightState.pendingHomeRequestId = null;
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), true);
+});
+
+test('same-source move is sequential, never replaces, and refreshes both panes once', async () => {
+    const requests = [];
+    const refreshes = [];
+    const conflictOptions = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: { emit(event, payload, acknowledgement) {
+            requests.push({ event, payload });
+            acknowledgement({
+                success: payload.old_path !== '/source/two.txt',
+                code: payload.old_path === '/source/two.txt' ? 'CONFLICT' : undefined,
+                error: payload.old_path === '/source/two.txt'
+                    ? 'A file or folder already exists at the destination.'
+                    : undefined,
+                source_id: payload.source_id,
+                old_path: payload.old_path,
+                new_path: payload.new_path,
+                request_id: payload.request_id,
+            });
+        } },
+        panes: {
+            left: filePane(manager, 'smb-quick:shared', { path: '/source' }),
+            right: filePane(manager, 'smb-quick:shared', { path: '/target' }),
+        },
+        resolveUploadConflict(_details, options) {
+            conflictOptions.push(options);
+            return Promise.resolve('skip');
+        },
+        refreshPane(pane) { refreshes.push(pane); },
+        showNotification() {},
+        t(_key, fallback) { return fallback; },
+    });
+
+    const result = await manager.moveSelectedBetweenPanes(
+        'left',
+        'right',
+        [
+            { name: 'one.txt', is_dir: false },
+            { name: 'two.txt', is_dir: false },
+            { name: 'three', is_dir: true },
+        ],
+    );
+
+    assert.equal(result, 'complete');
+    assert.deepEqual(requests.map(request => request.event), [
+        'rename_file', 'rename_file', 'rename_file',
+    ]);
+    assert.equal(requests.every(request => (
+        !Object.hasOwn(request.payload, 'replace')
+    )), true);
+    assert.deepEqual(conflictOptions, [{ allowReplace: false }]);
+    assert.deepEqual(refreshes, ['left', 'right']);
+});
+
+test('same-source move stops after a cancelled conflict and refreshes both panes', async () => {
+    const requests = [];
+    const refreshes = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: { emit(event, payload, acknowledgement) {
+            requests.push({ event, payload });
+            acknowledgement({
+                success: false,
+                code: 'CONFLICT',
+                error: 'A file or folder already exists at the destination.',
+                source_id: payload.source_id,
+                old_path: payload.old_path,
+                new_path: payload.new_path,
+                request_id: payload.request_id,
+            });
+        } },
+        panes: {
+            left: filePane(manager, 'smb-quick:shared', { path: '/source' }),
+            right: filePane(manager, 'smb-quick:shared', { path: '/target' }),
+        },
+        resolveUploadConflict(_details, options) {
+            assert.deepEqual(options, { allowReplace: false });
+            return Promise.resolve('cancel');
+        },
+        refreshPane(pane) { refreshes.push(pane); },
+        showNotification() {},
+        t(_key, fallback) { return fallback; },
+    });
+
+    const result = await manager.moveSelectedBetweenPanes(
+        'left',
+        'right',
+        [
+            { name: 'one.txt', is_dir: false },
+            { name: 'two.txt', is_dir: false },
+        ],
+    );
+
+    assert.equal(result, 'cancelled');
+    assert.equal(requests.length, 1);
+    assert.deepEqual(refreshes, ['left', 'right']);
+});
+
+test('same-source move reports an acknowledgement timeout instead of hanging', async () => {
+    const notifications = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        moveAcknowledgementTimeoutMs: 1,
+        socket: { emit() {} },
+        panes: {
+            left: filePane(manager, 'smb-quick:shared', { path: '/source' }),
+            right: filePane(manager, 'smb-quick:shared', { path: '/target' }),
+        },
+        refreshPane() {},
+        showNotification(message, level) {
+            notifications.push({ message, level });
+        },
+        t(_key, fallback) { return fallback; },
+    });
+
+    const result = await manager.moveSelectedBetweenPanes(
+        'left',
+        'right',
+        [{ name: 'one.txt', is_dir: false }],
+    );
+
+    assert.equal(result, 'error');
+    assert.deepEqual(notifications, [{
+        message: 'The move timed out before the server confirmed it. Refresh both folders before retrying.',
+        level: 'error',
+    }]);
+});
+
+test('same-source drag advertises a move instead of a copy', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const item = { name: 'report.txt', is_dir: false };
+    Object.assign(manager, {
+        workspace: {
+            layout: 'split',
+            getActiveTab() { return {}; },
+        },
+        panes: {
+            left: filePane(manager, 'smb-quick:shared', {
+                path: '/source', files: [item], selected: new Set([0]),
+            }),
+            right: filePane(manager, 'smb-quick:shared', { path: '/target' }),
+        },
+    });
+    const dataTransfer = {
+        effectAllowed: '',
+        setData() {},
+    };
+
+    manager.handleDragStart({ dataTransfer }, 'left', 0);
+
+    assert.equal(dataTransfer.effectAllowed, 'move');
 });
 
 test('file checkbox keeps native Tab and Enter keyboard behavior', () => {
@@ -1907,7 +2166,9 @@ test('default transfer client uses the shared per-socket coordinator', () => {
     }
 
     assert.equal(receivedSocket, socket);
-    assert.deepEqual(listeners, ['progress', 'complete', 'error', 'cancel']);
+    assert.deepEqual(listeners, [
+        'progress', 'complete', 'error', 'cancelling', 'cancel', 'skip',
+    ]);
 });
 
 test('client events advance two queue entries and report byte progress by id', () => {
@@ -1943,6 +2204,83 @@ test('client events advance two queue entries and report byte progress by id', (
     assert.equal(manager.transferQueue[1].status, 'error');
     assert.equal(manager.isTransferring, false);
     assert.equal(manager.activeTransfers.size, 0);
+});
+
+test('failed transfer row renders a localized visible and accessible reason', () => {
+    const previousDocument = global.document;
+    const queue = { innerHTML: '' };
+    const badge = { textContent: '', style: {} };
+    global.document = {
+        getElementById(id) {
+            return { fmQueueList: queue, fmQueueBadge: badge }[id] || null;
+        },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [{
+            id: 'failed-upload',
+            type: 'upload',
+            filename: 'report.txt',
+            status: 'error',
+            progress: 0,
+            error: 'No write permission for the destination.',
+            errorCode: 'PERMISSION_DENIED',
+            retryable: false,
+        }],
+        t(key, fallback) {
+            if (key === 'transfer.error.PERMISSION_DENIED') {
+                return 'No write permission for the destination.';
+            }
+            return fallback;
+        },
+        escapeHtml(value) { return String(value); },
+    });
+
+    try {
+        manager.renderTransferQueue();
+    } finally {
+        global.document = previousDocument;
+    }
+
+    assert.match(queue.innerHTML, />Failed</);
+    assert.match(queue.innerHTML, /fm-transfer-error/);
+    assert.match(queue.innerHTML, /No write permission for the destination\./);
+    assert.match(queue.innerHTML, /title="No write permission for the destination\."/);
+});
+
+test('structured client failure reaches the queue without losing its code', () => {
+    const listeners = {};
+    const client = { on(event, callback) { listeners[event] = callback; } };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: {},
+        transferClient: null,
+        transferQueue: [],
+        activeTransfers: new Map(),
+        isTransferring: false,
+        renderTransferQueue() {},
+        createTransferClient: () => client,
+        t(_key, fallback) { return fallback; },
+    });
+
+    manager.getTransferClient();
+    manager.queueTransfer({
+        id: 'failed-upload', type: 'upload', filename: 'report.txt', size: 7,
+    });
+    listeners.error({
+        transferId: 'failed-upload',
+        error: 'No write permission for the destination.',
+        errorCode: 'PERMISSION_DENIED',
+        retryable: false,
+    });
+
+    assert.equal(manager.transferQueue[0].status, 'error');
+    assert.equal(manager.transferQueue[0].errorCode, 'PERMISSION_DENIED');
+    assert.equal(
+        manager.transferQueue[0].error,
+        'No write permission for the destination.',
+    );
+    assert.equal(manager.transferQueue[0].retryable, false);
 });
 
 test('a terminal event for a pending entry does not release the active queue entry', () => {
@@ -2133,7 +2471,12 @@ test('three selected server copies start only after the previous transfer is ter
         '/source/first.bin', '/source/second.bin',
     ]);
 
-    manager.failS2STransfer({ transfer_id: 'server-2', error: 'failed' });
+    manager.failS2STransfer({
+        transfer_id: 'server-2',
+        error: 'Permission denied for this file operation.',
+        error_code: 'PERMISSION_DENIED',
+        retryable: false,
+    });
     await flushAsync();
     assert.deepEqual(requests.map(request => request.sourcePath), [
         '/source/first.bin', '/source/second.bin', '/source/third.bin',
@@ -2144,6 +2487,81 @@ test('three selected server copies start only after the previous transfer is ter
     assert.deepEqual(manager.transferQueue.map(transfer => transfer.status), [
         'complete', 'error', 'cancelled',
     ]);
+    assert.equal(manager.transferQueue[1].errorCode, 'PERMISSION_DENIED');
+    assert.equal(
+        manager.transferQueue[1].error,
+        'Permission denied for this file operation.',
+    );
+});
+
+test('server copy retries a conflict only after explicit replace consent', async () => {
+    const requests = [];
+    const conflicts = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [],
+        activeTransfers: new Map(),
+        pendingS2SRequests: new Map(),
+        requestSequence: 0,
+        socket: {
+            emit(event, payload, acknowledgement) {
+                assert.equal(event, 'transfer_server_to_server');
+                requests.push(payload);
+                acknowledgement({
+                    success: true,
+                    transfer_id: `copy-${requests.length}`,
+                    source_id: payload.source_id,
+                    destination_source_id: payload.destination_source_id,
+                    request_id: payload.request_id,
+                });
+            },
+        },
+        getPaneSourceId(state) { return state.source.sourceId; },
+        retainTransferSources() {},
+        releaseTransferSources() {},
+        flushPendingQuickDisconnects() {},
+        showNotification() {},
+        matchesS2SResponse() { return true; },
+        nextRequestId() { return `request-${++this.requestSequence}`; },
+        waitForS2STerminal(transferId) {
+            return Promise.resolve(transferId === 'copy-1' ? 'error' : 'complete');
+        },
+        queueTransfer(transfer) {
+            transfer.status = transfer.id === 'copy-1' ? 'error' : 'complete';
+            if (transfer.id === 'copy-1') {
+                transfer.errorCode = 'CONFLICT';
+                transfer.error = 'A file or folder already exists at the destination.';
+            }
+            this.transferQueue.push(transfer);
+        },
+        renderTransferQueue() {},
+        resolveUploadConflict(details) {
+            conflicts.push(details);
+            return Promise.resolve('replace');
+        },
+        t(_key, fallback) { return fallback; },
+    });
+    const source = { source: fileSource('smb-quick:source') };
+    const destination = { source: fileSource('smb-quick:destination') };
+
+    const result = await manager.transferSSHtoSSH(
+        '/source/report.txt',
+        source,
+        '/destination/report.txt',
+        destination,
+        { name: 'report.txt', size: 10, is_dir: false },
+    );
+
+    assert.equal(result, 'complete');
+    assert.deepEqual(
+        requests.map(request => request.conflict_policy),
+        ['error', 'replace'],
+    );
+    assert.deepEqual(conflicts, [{ filename: 'report.txt' }]);
+    assert.deepEqual(
+        manager.transferQueue.map(transfer => transfer.id),
+        ['copy-2'],
+    );
 });
 
 test('an S2S terminal event received before its acknowledgement cannot strand the selection', async () => {
@@ -2184,13 +2602,13 @@ test('an S2S terminal event received before its acknowledgement cannot strand th
     await transfer;
 });
 
-test('server copy cancellation calls the server lifecycle and updates the queue', () => {
-    let request;
+test('server copy cancellation finalizes from the authoritative acknowledgement', () => {
+    const requests = [];
     const manager = Object.create(SFTPFileManager.prototype);
     Object.assign(manager, {
         socket: { emit(event, payload, ack) {
-            request = { event, payload };
-            ack({ success: true });
+            requests.push({ event, payload });
+            ack({ success: true, state: 'cancelled' });
         } },
         transferQueue: [{ id: 's2s-id', type: 's2s', status: 'active' }],
         activeTransfers: new Map([['s2s-id', {}]]),
@@ -2200,10 +2618,35 @@ test('server copy cancellation calls the server lifecycle and updates the queue'
     });
 
     manager.cancelQueuedTransfer('s2s-id');
+    manager.cancelQueuedTransfer('s2s-id');
 
-    assert.deepEqual(request, {
+    assert.deepEqual(requests, [{
         event: 'cancel_transfer', payload: { transfer_id: 's2s-id' },
-    });
+    }]);
     assert.equal(manager.transferQueue[0].status, 'cancelled');
     assert.equal(manager.isTransferring, false);
+});
+
+test('structured byte limit renders the exact localized size and limit kind', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.t = (key, fallback) => ({
+        'transfer.limit.message': '{actual} exceeds the {limit} {kind} limit.',
+        'transfer.limit.kind.upload': 'upload',
+    }[key] || fallback);
+
+    assert.equal(manager.transferFailureMessage(
+        'LIMIT_EXCEEDED',
+        'The transfer exceeds the configured limit.',
+        {
+            limit_kind: 'upload',
+            limit_bytes: 100 * 1024 * 1024,
+            actual_bytes: 142 * 1024 * 1024,
+        },
+    ), '142 MiB exceeds the 100 MiB upload limit.');
+
+    assert.equal(manager.transferFailureMessage(
+        'LIMIT_EXCEEDED',
+        'The transfer exceeds the configured limit.',
+        { limit_kind: 'raw', limit_bytes: -1, actual_bytes: true },
+    ), 'The transfer exceeds the configured limit.');
 });

@@ -10,6 +10,9 @@ import threading
 
 import config
 
+from .smb_backend import FileConflict, NonAtomicOverwriteRequired
+from .smb_protocol import SMBProtocolError
+
 
 class RemoteTransferError(RuntimeError):
     """A remote copy failed without exposing backend-specific details."""
@@ -140,6 +143,18 @@ def _write_all(remote_file, chunk):
         offset += written
 
 
+def _stat_or_raise(source, path):
+    operation = getattr(source.backend, 'stat_or_raise', None)
+    if callable(operation):
+        return operation(source, path, follow_links=False)
+    file_stat, error = source.backend.stat(
+        source, path, follow_links=False
+    )
+    if error:
+        raise RemoteTransferError('Source unavailable')
+    return file_stat
+
+
 def _copy_file(
     source,
     source_path,
@@ -153,12 +168,8 @@ def _copy_file(
     chunk_size,
     digest,
 ):
-    file_stat, error = source.backend.stat(
-        source,
-        source_path,
-        follow_links=False,
-    )
-    if error or not file_stat or file_stat.get('is_dir'):
+    file_stat = _stat_or_raise(source, source_path)
+    if not file_stat or file_stat.get('is_dir'):
         raise RemoteTransferError('Source file unavailable')
     if file_stat.get('is_symlink'):
         raise RemoteTransferError('Reparse points are not supported')
@@ -168,12 +179,15 @@ def _copy_file(
 
     copied = 0
     try:
-        with source.backend.open_reader(source, source_path) as reader:
+        with source.backend.open_reader(
+            source, source_path, io_lane='transfer'
+        ) as reader:
             with destination.backend.open_atomic_writer(
                 destination,
                 destination_path,
                 replace=replace,
                 cancel_event=cancel_event,
+                io_lane='transfer',
             ) as writer:
                 while True:
                     _check_cancelled(cancel_event)
@@ -196,7 +210,17 @@ def _copy_file(
                             'file_size': declared_size,
                         })
                 _check_cancelled(cancel_event)
-    except (RemoteTransferError, RemoteTransferCancelled):
+    except (
+        RemoteTransferError,
+        RemoteTransferCancelled,
+        FileConflict,
+        NonAtomicOverwriteRequired,
+        SMBProtocolError,
+        PermissionError,
+        FileNotFoundError,
+        TimeoutError,
+        ConnectionError,
+    ):
         raise
     except FileExistsError as exc:
         raise RemoteTransferConflict('Destination exists') from exc
@@ -221,17 +245,30 @@ def _destination_child(root, relative):
     return result if result.startswith('/') else '/' + result
 
 
-def _ensure_directory(destination, path):
-    exists, error = destination.backend.check_exists(destination, path)
-    if error:
-        raise RemoteTransferError('Destination unavailable')
+def _ensure_directory(destination, path, *, allow_existing=True):
+    check_exists = getattr(
+        destination.backend, 'check_exists_or_raise', None
+    )
+    if callable(check_exists):
+        exists = check_exists(destination, path)
+    else:
+        exists, error = destination.backend.check_exists(destination, path)
+        if error:
+            raise RemoteTransferError('Destination unavailable')
     if exists and exists.get('exists'):
-        if not exists.get('is_dir'):
+        if (
+            not exists.get('is_dir')
+            or not allow_existing
+        ):
             raise RemoteTransferConflict('Destination exists')
         return
-    success, error = destination.backend.mkdir(destination, path)
-    if not success or error:
-        raise RemoteTransferError('Destination directory unavailable')
+    mkdir = getattr(destination.backend, 'mkdir_or_raise', None)
+    if callable(mkdir):
+        mkdir(destination, path)
+    else:
+        success, error = destination.backend.mkdir(destination, path)
+        if not success or error:
+            raise RemoteTransferError('Destination directory unavailable')
 
 
 def _copy_remote_entry_locked(
@@ -264,12 +301,8 @@ def _copy_remote_entry_locked(
         raise RemoteTransferConflict('Source and destination are identical')
     _check_cancelled(cancel_event)
 
-    source_stat, error = source.backend.stat(
-        source,
-        source_path,
-        follow_links=False,
-    )
-    if error or not source_stat:
+    source_stat = _stat_or_raise(source, source_path)
+    if not source_stat:
         raise RemoteTransferError('Source unavailable')
     if source_stat.get('is_symlink'):
         raise RemoteTransferError('Reparse points are not supported')
@@ -296,6 +329,7 @@ def _copy_remote_entry_locked(
         budget=budget,
         cancel_event=cancel_event,
         follow_links=False,
+        io_lane='transfer',
     ))
     if any(entry.get('is_symlink') for entry in entries):
         raise RemoteTransferError('Reparse points are not supported')
@@ -320,7 +354,11 @@ def _copy_remote_entry_locked(
                 )
 
     _check_cancelled(cancel_event)
-    _ensure_directory(destination, destination_path)
+    _ensure_directory(
+        destination,
+        destination_path,
+        allow_existing=conflict_policy == 'replace',
+    )
     directories = sorted(
         (entry for entry in entries if entry.get('is_dir')),
         key=lambda entry: entry['path'].count('/'),

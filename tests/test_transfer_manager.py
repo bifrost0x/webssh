@@ -277,6 +277,77 @@ def test_running_cancel_keeps_source_hold_until_request_finalizer():
     assert released == ['source-a']
 
 
+def test_cancel_result_is_idempotent_and_authoritative_for_owned_record():
+    quota = SpyQuotaManager()
+    manager = make_manager(quota_manager=quota)
+    record = manager.create(7, 'sftp-quick:source-a', 'download', {})
+
+    first = manager.cancel_with_result(record.transfer_id, 7)
+    second = manager.cancel_with_result(record.transfer_id, 7)
+
+    assert first.accepted is True
+    assert first.state == 'cancelled'
+    assert second.accepted is False
+    assert second.state == 'cancelled'
+    assert quota.reservations[0].release_calls == 1
+
+
+def test_cancel_result_reports_existing_terminal_state_without_retransition():
+    manager = make_manager()
+    record = manager.create(7, 'sftp-quick:source-a', 'download', {})
+    manager.consume_token(record.token, 7)
+    assert manager.complete(record.transfer_id, 7) is True
+
+    result = manager.cancel_with_result(record.transfer_id, 7)
+
+    assert result.accepted is False
+    assert result.state == 'completed'
+
+
+def test_cancel_result_hides_foreign_and_unknown_transfers():
+    manager = make_manager()
+    record = manager.create(7, 'sftp-quick:source-a', 'download', {})
+
+    foreign = manager.cancel_with_result(record.transfer_id, 8)
+    unknown = manager.cancel_with_result('unknown-transfer', 7)
+
+    assert (foreign.accepted, foreign.state) == (False, 'unavailable')
+    assert (unknown.accepted, unknown.state) == (False, 'unavailable')
+    assert record.state is TransferState.PENDING
+
+
+def test_cancel_and_completion_race_has_one_terminal_winner():
+    for _iteration in range(20):
+        manager = make_manager()
+        record = manager.create(7, 'sftp-quick:source-a', 'download', {})
+        manager.consume_token(record.token, 7)
+        barrier = threading.Barrier(2)
+        observed = []
+
+        def cancel():
+            barrier.wait()
+            observed.append(('cancel', manager.cancel_with_result(
+                record.transfer_id, 7
+            )))
+
+        def complete():
+            barrier.wait()
+            observed.append(('complete', manager.complete(
+                record.transfer_id, 7
+            )))
+
+        threads = [threading.Thread(target=cancel), threading.Thread(target=complete)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        cancel_result = next(value for name, value in observed if name == 'cancel')
+        completion_won = next(value for name, value in observed if name == 'complete')
+        assert (cancel_result.accepted, completion_won).count(True) == 1
+        assert cancel_result.state in {'cancelled', 'completed'}
+
+
 def test_token_expiry_releases_source_holds():
     clock = FakeClock()
     released = []

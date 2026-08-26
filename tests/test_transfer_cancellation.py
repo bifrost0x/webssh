@@ -199,6 +199,58 @@ def test_server_transfer_closes_fresh_pool_channels_on_success(monkeypatch):
     assert destination.close_calls == 1
 
 
+def test_socket_cancel_returns_authoritative_state_and_emits_terminal_once(
+    app, monkeypatch,
+):
+    import app.socket_events as socket_events
+    from app.transfer_manager import TransferManager
+
+    manager = TransferManager()
+    record = manager.create(7, 'sftp-session:owned', 'download', {})
+    emitted = []
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        socket_events.socketio,
+        'emit',
+        lambda event, payload, **kwargs: emitted.append(
+            (event, payload, kwargs)
+        ),
+    )
+    user = SimpleNamespace(id=7)
+
+    with app.test_request_context('/socket.io'):
+        first = socket_events.handle_cancel_transfer.__wrapped__(
+            {'transfer_id': record.transfer_id}, current_user=user
+        )
+        second = socket_events.handle_cancel_transfer.__wrapped__(
+            {'transfer_id': record.transfer_id}, current_user=user
+        )
+
+    assert first == {'success': True, 'state': 'cancelled'}
+    assert second == {'success': True, 'state': 'cancelled'}
+    assert emitted == [(
+        'transfer_finished',
+        {'transfer_id': record.transfer_id, 'status': 'cancelled'},
+        {'room': 'user_7'},
+    )]
+
+    completed = manager.create(7, 'sftp-session:owned', 'download', {})
+    manager.consume_token(completed.token, 7)
+    manager.complete(completed.transfer_id, 7)
+    with app.test_request_context('/socket.io'):
+        terminal = socket_events.handle_cancel_transfer.__wrapped__(
+            {'transfer_id': completed.transfer_id}, current_user=user
+        )
+        foreign = socket_events.handle_cancel_transfer.__wrapped__(
+            {'transfer_id': record.transfer_id},
+            current_user=SimpleNamespace(id=8),
+        )
+
+    assert terminal == {'success': True, 'state': 'completed'}
+    assert foreign == {'success': False, 'state': 'unavailable'}
+    assert len(emitted) == 1
+
+
 def test_server_transfer_closes_pool_source_once_if_destination_fails(monkeypatch):
     """Opening the destination must not leak or double-close the pool source."""
     import app.sftp_handler as sftp_handler
@@ -1206,6 +1258,107 @@ def test_backend_copy_cancellation_audits_progressed_bytes(app, monkeypatch):
     ]
 
 
+def test_backend_copy_permission_failure_keeps_structured_terminal_reason(
+        app, monkeypatch):
+    import app.socket_events as socket_events
+    from app.file_sources import SourceHoldSet
+    from app.transfer_manager import TransferManager
+
+    class Reservation:
+        def release(self):
+            pass
+
+    class ImmediateLifecycle:
+        def start_job(self, _name, target, *, owner_id=None):
+            del owner_id
+            target(threading.Event())
+            return SimpleNamespace()
+
+    class Backend:
+        @staticmethod
+        def normalize_path(path):
+            return path
+
+    backend = Backend()
+    sources = {
+        source_id: SimpleNamespace(
+            source_id=source_id,
+            handle_id=source_id.rsplit(':', 1)[-1],
+            backend=backend,
+        )
+        for source_id in ('smb-quick:source', 'smb-quick:destination')
+    }
+    monkeypatch.setattr(
+        socket_events.file_service,
+        'resolve',
+        lambda source_id, _user_id, _capability: sources[source_id],
+    )
+    monkeypatch.setattr(
+        socket_events.file_source_resolver,
+        'acquire_transfer_holds',
+        lambda _user_id, source_ids: SourceHoldSet(tuple(source_ids)),
+    )
+    monkeypatch.setattr(socket_events, 'transfer_manager', TransferManager())
+    monkeypatch.setattr(
+        socket_events,
+        'quota_manager',
+        SimpleNamespace(reserve=lambda *_args, **_kwargs: Reservation()),
+    )
+    observed = {}
+
+    def denied_copy(*_args, **kwargs):
+        observed.update(kwargs)
+        raise PermissionError(r'private \\server\share')
+
+    monkeypatch.setattr(socket_events, 'copy_remote_entry', denied_copy)
+    monkeypatch.setattr(
+        socket_events, 'file_source_audit_identity',
+        lambda source: {
+            'source_kind': 'smb',
+            'target_host': f'{source.handle_id}.example.test',
+            'share': 'Docs',
+        },
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events.socketio,
+        'emit',
+        lambda event, payload, room=None: emitted.append((event, payload, room)),
+    )
+    monkeypatch.setitem(app.extensions, 'runtime_lifecycle', ImmediateLifecycle())
+
+    user = SimpleNamespace(id=7, username='copy-user')
+    with app.test_request_context('/socket.io'):
+        result = socket_events.handle_transfer_server_to_server.__wrapped__({
+            'source_id': 'smb-quick:source',
+            'request_id': 's2s:permission',
+            'source_path': '/from.bin',
+            'destination_source_id': 'smb-quick:destination',
+            'dest_path': '/to.bin',
+            'is_dir': False,
+        }, current_user=user)
+
+    assert result['success'] is True
+    expected = {
+        'error_code': 'PERMISSION_DENIED',
+        'error': 'Permission denied for this file operation.',
+        'retryable': False,
+    }
+    terminal = next(
+        payload for event, payload, _room in emitted
+        if event == 'transfer_finished'
+    )
+    visible = next(
+        payload for event, payload, _room in emitted
+        if event == 's2s_transfer_error'
+    )
+    assert terminal['status'] == 'failed'
+    assert {key: terminal[key] for key in expected} == expected
+    assert {key: visible[key] for key in expected} == expected
+    assert observed['conflict_policy'] == 'error'
+    assert 'private' not in repr(emitted)
+
+
 def test_combined_cancellation_wait_observes_runtime_shutdown():
     """Waiting only on user cancellation hides an app lifecycle shutdown."""
     import app.socket_events as socket_events
@@ -1374,7 +1527,9 @@ def test_server_copy_lifecycle_rejection_releases_each_reservation_once(
         }, current_user=user)
 
     assert result['success'] is False
-    assert result['error'] == 'Transfer unavailable'
+    assert result['error_code'] == 'TRANSFER_UNAVAILABLE'
+    assert result['error'] == 'The transfer could not be completed.'
+    assert result['retryable'] is False
     assert result['source_id'] == 'sftp-session:source'
     assert result['destination_source_id'] == 'sftp-session:destination'
     assert result['request_id'] == 's2s:test'

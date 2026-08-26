@@ -85,11 +85,64 @@ def test_descriptor_exposes_only_public_fields_and_freezes_nested_values():
         'capabilities': ['list', 'read'],
         'ephemeral': False,
         'security': {'host_key_verified': True},
+        'access': {},
     }
     with pytest.raises(TypeError):
         source.security['host_key_verified'] = False
     with pytest.raises(AttributeError):
         source.label = 'changed'
+
+
+def test_descriptor_validates_serializes_and_freezes_access_state():
+    access = {
+        'list': 'granted',
+        'create_file': 'denied',
+        'create_directory': 'unknown',
+        'delete_children': 'granted',
+    }
+    source = FileSourceDescriptor(
+        source_id='smb-quick:owned',
+        kind='smb',
+        label='Docs on nas.example',
+        endpoint='nas.example/Docs',
+        protocol='SMB 3.1.1',
+        capabilities=(FileCapability.LIST, FileCapability.WRITE),
+        ephemeral=True,
+        security={'encrypted': True},
+        access=access,
+    )
+    access['create_file'] = 'granted'
+
+    assert source.to_public_dict()['access'] == {
+        'list': 'granted',
+        'create_file': 'denied',
+        'create_directory': 'unknown',
+        'delete_children': 'granted',
+    }
+    with pytest.raises(TypeError):
+        source.access['create_file'] = 'granted'
+
+
+@pytest.mark.parametrize(
+    'access',
+    (
+        {'unsupported': 'granted'},
+        {'create_file': 'maybe'},
+        {'create_file': True},
+    ),
+)
+def test_descriptor_rejects_unsupported_access_state(access):
+    with pytest.raises(ValueError):
+        FileSourceDescriptor(
+            source_id='smb-quick:owned',
+            kind='smb',
+            label='Docs on nas.example',
+            endpoint='nas.example/Docs',
+            protocol='SMB 3.1.1',
+            capabilities=(FileCapability.LIST,),
+            ephemeral=True,
+            access=access,
+        )
 
 
 def test_smb_audit_identity_separates_host_and_share_without_credentials():

@@ -90,6 +90,25 @@ class SFTPFileManager {
                     value,
                 ]),
         );
+        const allowedAccessFields = new Set([
+            'list', 'create_file', 'create_directory', 'delete_children',
+        ]);
+        const allowedAccessStates = new Set(['granted', 'denied', 'unknown']);
+        const accessPayload = payload.access
+            && typeof payload.access === 'object'
+            && !Array.isArray(payload.access)
+            ? payload.access
+            : {};
+        const access = Object.fromEntries(
+            Object.entries(accessPayload)
+                .filter(([key, value]) => (
+                    allowedAccessFields.has(key) && allowedAccessStates.has(value)
+                ))
+                .map(([key, value]) => [
+                    key.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase()),
+                    value,
+                ]),
+        );
         return {
             sourceId: payload.source_id,
             kind: payload.kind,
@@ -101,15 +120,26 @@ class SFTPFileManager {
                 : [],
             ephemeral: payload.ephemeral === true,
             security,
+            access,
         };
     }
 
     sourceCan(state, capability) {
-        return Boolean(
+        const supported = Boolean(
             state?.source
             && Array.isArray(state.source.capabilities)
             && state.source.capabilities.includes(capability),
         );
+        if (!supported || state?.path !== '/' || state.source.kind !== 'smb') {
+            return supported;
+        }
+        if (capability === 'write' && state.source.access?.createFile === 'denied') {
+            return false;
+        }
+        if (capability === 'mkdir' && state.source.access?.createDirectory === 'denied') {
+            return false;
+        }
+        return true;
     }
 
     getPaneSourceId(paneOrState) {
@@ -129,6 +159,113 @@ class SFTPFileManager {
             return this.t('fm.workspace.hostKeyTrusted', 'SSH host key trusted');
         }
         return '';
+    }
+
+    sourceAccessState(source) {
+        if (source?.kind !== 'smb') return '';
+        const createFile = source.access?.createFile;
+        const createDirectory = source.access?.createDirectory;
+        if (createFile === 'granted' && createDirectory === 'granted') return 'write';
+        if (createFile === 'denied' && createDirectory === 'denied') return 'readonly';
+        return 'unknown';
+    }
+
+    sourceAccessLabel(source) {
+        return {
+            write: this.t('fm.workspace.writeAccess', 'Write access at share root'),
+            readonly: this.t('fm.workspace.readOnly', 'Read-only at share root'),
+            unknown: this.t(
+                'fm.workspace.writeAccessUnknown',
+                'Write access at share root unknown',
+            ),
+        }[this.sourceAccessState(source)] || '';
+    }
+
+    resolveUploadConflict(details = {}, options = {}) {
+        const allowReplace = options.allowReplace !== false;
+        const allowedActions = allowReplace
+            ? ['replace', 'skip', 'cancel']
+            : ['skip', 'cancel'];
+        if (this.applyToAll && allowedActions.includes(this.conflictAction)) {
+            return Promise.resolve(this.conflictAction);
+        }
+        return new Promise(resolve => {
+            const dialog = document.createElement('div');
+            dialog.className = 'fm-conflict-dialog';
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            dialog.setAttribute('aria-labelledby', 'fmConflictTitle');
+            dialog.setAttribute('aria-describedby', 'fmConflictMessage');
+            dialog.innerHTML = `
+                <div class="fm-conflict-content">
+                    <div class="fm-conflict-title" id="fmConflictTitle">
+                        <span class="material-icons fm-conflict-title-icon" aria-hidden="true">warning</span>
+                        ${this.escapeHtml(this.t('fm.fileExists', 'File already exists'))}
+                    </div>
+                    <p class="fm-conflict-message" id="fmConflictMessage">
+                        ${this.escapeHtml(this.t('fm.conflictMessage', 'Choose what to do with the existing destination.'))}
+                        <span class="fm-conflict-filename">${this.escapeHtml(details.filename || '')}</span>
+                    </p>
+                    <label class="fm-conflict-checkbox">
+                        <input type="checkbox" data-conflict-apply-all>
+                        <span>${this.escapeHtml(this.t('fm.applyToAll', 'Apply to all'))}</span>
+                    </label>
+                    <div class="fm-conflict-actions">
+                        <button type="button" class="btn btn-secondary" data-conflict-action="cancel">${this.escapeHtml(this.t('common.cancel', 'Cancel'))}</button>
+                        <button type="button" class="btn btn-secondary" data-conflict-action="skip">${this.escapeHtml(this.t('fm.skip', 'Skip'))}</button>
+                        ${allowReplace ? `<button type="button" class="btn btn-primary" data-conflict-action="replace">${this.escapeHtml(this.t('fm.overwrite', 'Overwrite'))}</button>` : ''}
+                    </div>
+                </div>`;
+            const previousFocus = document.activeElement;
+            const buttons = Array.from(dialog.querySelectorAll('[data-conflict-action]'));
+            const applyAll = dialog.querySelector('[data-conflict-apply-all]');
+            let settled = false;
+            const finish = action => {
+                if (settled) return;
+                settled = true;
+                if (applyAll?.checked) {
+                    this.applyToAll = true;
+                    this.conflictAction = action;
+                }
+                document.removeEventListener('keydown', onKeyDown, true);
+                dialog.remove();
+                previousFocus?.focus?.();
+                resolve(action);
+            };
+            const onKeyDown = event => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    finish('cancel');
+                    return;
+                }
+                if (event.key !== 'Tab' || buttons.length === 0) return;
+                const focusable = [applyAll, ...buttons].filter(Boolean);
+                const first = focusable[0];
+                const last = focusable.at(-1);
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            };
+            buttons.forEach(button => button.addEventListener(
+                'click',
+                () => finish(button.dataset.conflictAction),
+            ));
+            document.addEventListener('keydown', onKeyDown, true);
+            document.body.appendChild(dialog);
+            dialog.querySelector(
+                allowReplace
+                    ? '[data-conflict-action="replace"]'
+                    : '[data-conflict-action="skip"]',
+            )?.focus?.();
+        });
+    }
+
+    uploadConflictOptions() {
+        return { onConflict: details => this.resolveUploadConflict(details) };
     }
 
     sourceDescriptorForSession(session) {
@@ -272,6 +409,7 @@ class SFTPFileManager {
             key: source.sourceId,
             status: this.t('fm.workspace.connected', 'Connected'),
             securityLabel: this.sourceSecurityLabel(source),
+            accessLabel: this.sourceAccessLabel(source),
         }));
         if (smb.length > 0) {
             groups.push({
@@ -442,7 +580,7 @@ class SFTPFileManager {
             const items = group.items.filter(source => {
                 this.sourceCatalogByKey.set(source.key, source);
                 if (!normalizedQuery) return true;
-                return [source.label, source.endpoint, source.protocol, source.status, source.securityLabel || source.security]
+                return [source.label, source.endpoint, source.protocol, source.status, source.securityLabel || source.security, source.accessLabel]
                     .some(value => String(value || '').toLocaleLowerCase().includes(normalizedQuery));
             });
             if (items.length === 0) return null;
@@ -451,6 +589,10 @@ class SFTPFileManager {
                     ? 'bookmark'
                     : 'terminal';
                 const disabled = source.disabled ? ' disabled aria-disabled="true"' : '';
+                const assurance = [
+                    source.securityLabel || source.security,
+                    source.accessLabel,
+                ].filter(Boolean).join(' · ');
                 return `
                     <button type="button" class="fm-source-row${source.disabled ? ' is-disabled' : ''}" data-source-key="${this.escapeHtml(source.key)}"${disabled}>
                         <span class="material-icons fm-source-row-icon" aria-hidden="true">${icon}</span>
@@ -461,7 +603,7 @@ class SFTPFileManager {
                         <span class="fm-protocol-badge">${this.escapeHtml(source.protocol || '')}</span>
                         <span class="fm-source-row-status">
                             <strong>${this.escapeHtml(source.status || '')}</strong>
-                            <small><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(source.securityLabel || source.security || '')}</small>
+                            <small><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(assurance)}</small>
                         </span>
                     </button>`;
             }).join('');
@@ -551,7 +693,8 @@ class SFTPFileManager {
             <span class="fm-source-identity-name">${this.escapeHtml(tab.source.label || '')}</span>
             <span class="fm-protocol-badge">${this.escapeHtml(tab.source.protocol || '')}</span>
             <span class="fm-source-identity-endpoint">${this.escapeHtml(tab.source.endpoint || '')}</span>
-            <span class="fm-source-identity-security"><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(this.sourceSecurityLabel(tab.source))}</span>`;
+            <span class="fm-source-identity-security"><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(this.sourceSecurityLabel(tab.source))}</span>
+            ${this.sourceAccessLabel(tab.source) ? `<span class="fm-source-identity-access" data-state="${this.escapeHtml(this.sourceAccessState(tab.source))}"><span class="material-icons" aria-hidden="true">${this.sourceAccessState(tab.source) === 'readonly' ? 'lock' : this.sourceAccessState(tab.source) === 'write' ? 'edit' : 'help_outline'}</span>${this.escapeHtml(this.sourceAccessLabel(tab.source))}</span>` : ''}`;
     }
 
     activateSourceTab(pane, tabId) {
@@ -640,7 +783,7 @@ class SFTPFileManager {
     hasOutstandingTransferForSource(sourceId) {
         if ((this.transferConnectionHolds?.get(sourceId) || 0) > 0) return true;
         return (this.transferQueue || []).some(transfer => (
-            ['pending', 'active'].includes(transfer.status)
+            ['pending', 'active', 'cancelling'].includes(transfer.status)
             && this.getTransferSourceIds(transfer).includes(sourceId)
         ));
     }
@@ -665,29 +808,79 @@ class SFTPFileManager {
         return true;
     }
 
-    canTransferBetweenPanes(sourcePane, targetPane) {
-        if (!this.workspace || this.workspace.layout !== 'split') return false;
-        if (!this.workspace.getActiveTab(sourcePane) || !this.workspace.getActiveTab(targetPane)) return false;
+    workspaceOperationBetweenPanes(sourcePane, targetPane) {
+        if (!this.workspace || this.workspace.layout !== 'split') {
+            return 'unavailable';
+        }
+        if (!this.workspace.getActiveTab(sourcePane)
+                || !this.workspace.getActiveTab(targetPane)) {
+            return 'unavailable';
+        }
 
         const source = this.panes[sourcePane];
         const target = this.panes[targetPane];
         const sourceId = this.getPaneSourceId(source);
         const targetId = this.getPaneSourceId(target);
-        return this.sourceCan(source, 'read')
-            && this.sourceCan(source, 'remote-transfer')
-            && this.sourceCan(target, 'write')
-            && this.sourceCan(target, 'remote-transfer')
-            && !source.loading
+        const ready = !source.loading
             && !target.loading
             && !source.autoHomeEligible
             && !target.autoHomeEligible
+            && !source.pendingHomeRequestId
+            && !target.pendingHomeRequestId
             && !source.error
             && !target.error
             && Boolean(sourceId)
             && Boolean(targetId)
-            && sourceId !== targetId
             && typeof source.path === 'string'
             && typeof target.path === 'string';
+        if (!ready) return 'unavailable';
+        if (sourceId === targetId) {
+            return this.sourceCan(source, 'rename')
+                && this.sourceCan(target, 'write')
+                && source.path !== target.path
+                ? 'move'
+                : 'unavailable';
+        }
+        return this.sourceCan(source, 'read')
+            && this.sourceCan(source, 'remote-transfer')
+            && this.sourceCan(target, 'write')
+            && this.sourceCan(target, 'remote-transfer')
+            ? 'copy'
+            : 'unavailable';
+    }
+
+    canTransferBetweenPanes(sourcePane, targetPane) {
+        return this.workspaceOperationBetweenPanes(sourcePane, targetPane)
+            !== 'unavailable';
+    }
+
+    updateWorkspaceOperationButton(button, operation, direction = null) {
+        if (!button) return;
+        const moving = operation === 'move';
+        const available = operation !== 'unavailable';
+        const label = moving
+            ? this.t('fm.move', 'Move')
+            : this.t('fm.transfer', 'Transfer');
+        const icon = button.querySelector?.('.material-icons');
+        const text = button.querySelector?.('.btn-text');
+        if (icon) icon.textContent = moving ? 'drive_file_move' : 'swap_horiz';
+        if (text) text.textContent = label;
+        button.classList?.toggle?.('is-move', moving);
+        button.dataset.operation = available ? operation : 'unavailable';
+        if (direction) {
+            const key = moving
+                ? `fm.workspace.move${direction}`
+                : `fm.workspace.transfer${direction}`;
+            const fallback = moving
+                ? `Move ${direction === 'LeftToRight' ? 'left to right' : 'right to left'}`
+                : `Transfer ${direction === 'LeftToRight' ? 'left to right' : 'right to left'}`;
+            const accessible = this.t(key, fallback);
+            button.title = accessible;
+            button.setAttribute?.('aria-label', accessible);
+        } else {
+            button.title = label;
+            button.setAttribute?.('aria-label', label);
+        }
     }
 
     updateWorkspaceActions() {
@@ -696,7 +889,11 @@ class SFTPFileManager {
         const selectedCount = state?.selected?.size || 0;
         const selectedFile = selectedCount === 1 ? state.files[Array.from(state.selected)[0]] : null;
         const targetPane = this.activePane === 'left' ? 'right' : 'left';
-        const transferAvailable = this.canTransferBetweenPanes(this.activePane, targetPane) && selectedCount > 0;
+        const activeOperation = this.workspaceOperationBetweenPanes(
+            this.activePane, targetPane,
+        );
+        const transferAvailable = activeOperation !== 'unavailable'
+            && selectedCount > 0;
         const setDisabled = (id, disabled) => {
             const element = document.getElementById(id);
             if (element) element.disabled = disabled;
@@ -708,8 +905,29 @@ class SFTPFileManager {
         setDisabled('fmRename', !this.sourceCan(state, 'rename') || selectedCount !== 1);
         setDisabled('fmDelete', !this.sourceCan(state, 'delete') || selectedCount === 0);
         setDisabled('fmTransfer', !transferAvailable);
-        setDisabled('fmTransferRight', !(this.canTransferBetweenPanes('left', 'right') && this.panes.left.selected.size > 0));
-        setDisabled('fmTransferLeft', !(this.canTransferBetweenPanes('right', 'left') && this.panes.right.selected.size > 0));
+        const rightOperation = this.workspaceOperationBetweenPanes('left', 'right');
+        const leftOperation = this.workspaceOperationBetweenPanes('right', 'left');
+        setDisabled('fmTransferRight', !(
+            rightOperation !== 'unavailable'
+            && this.panes.left.selected.size > 0
+        ));
+        setDisabled('fmTransferLeft', !(
+            leftOperation !== 'unavailable'
+            && this.panes.right.selected.size > 0
+        ));
+        this.updateWorkspaceOperationButton(
+            document.getElementById('fmTransfer'), activeOperation,
+        );
+        this.updateWorkspaceOperationButton(
+            document.getElementById('fmTransferRight'),
+            rightOperation,
+            'LeftToRight',
+        );
+        this.updateWorkspaceOperationButton(
+            document.getElementById('fmTransferLeft'),
+            leftOperation,
+            'RightToLeft',
+        );
         ['left', 'right'].forEach(pane => {
             const paneState = this.panes[pane];
             const paneSelection = paneState?.selected?.size || 0;
@@ -1379,6 +1597,14 @@ class SFTPFileManager {
                 e.stopPropagation();
                 if (this.dragSource && this.dragSource !== pane) {
                     paneEl.classList.add('drop-target');
+                    const operation = this.workspaceOperationBetweenPanes(
+                        this.dragSource, pane,
+                    );
+                    if (e.dataTransfer) {
+                        e.dataTransfer.dropEffect = operation === 'move'
+                            ? 'move'
+                            : operation === 'copy' ? 'copy' : 'none';
+                    }
                 }
                 if (e.dataTransfer?.types?.includes('Files')) {
                     paneEl.classList.add('drop-target');
@@ -1485,7 +1711,14 @@ class SFTPFileManager {
 
         this.socket.on('s2s_transfer_error', (data) => {
             if (!this.matchesS2SResponse(data)) return;
-            this.showNotification(`${this.t('fm.transferFailed', 'Transfer failed')}: ${data.error}`, 'error');
+            const message = this.transferFailureMessage(
+                data.error_code,
+                data.error,
+                data,
+            );
+            if (data.error_code !== 'CONFLICT') {
+                this.showNotification(`${this.t('fm.transferFailed', 'Transfer failed')}: ${message}`, 'error');
+            }
             this.failS2STransfer(data);
         });
 
@@ -1988,6 +2221,7 @@ class SFTPFileManager {
             capabilities: [...(source.capabilities || [])],
             ephemeral: source.ephemeral === true,
             security: { ...(source.security || {}) },
+            access: { ...(source.access || {}) },
         };
         state.autoHomeEligible = true;
         const matchingSession = this.availableSessions.find(
@@ -2734,7 +2968,9 @@ class SFTPFileManager {
 
             Array.from(files).forEach(file => {
                 const remotePath = this.joinPath(state.path, file.name);
-                const transferId = this.getTransferClient().uploadFile(file, remotePath, sourceId);
+                const transferId = this.getTransferClient().uploadFile(
+                    file, remotePath, sourceId, this.uploadConflictOptions(),
+                );
                 this.queueTransfer({
                     id: transferId,
                     type: 'upload',
@@ -2862,13 +3098,17 @@ class SFTPFileManager {
         const source = this.panes[sourcePane];
         const target = this.panes[targetPane];
 
-        if (!this.canTransferBetweenPanes(sourcePane, targetPane)) {
-            const sourceId = this.getPaneSourceId(source);
-            const targetId = this.getPaneSourceId(target);
-            const message = sourceId && sourceId === targetId
-                ? this.t('fm.cannotTransferSameHost', 'Cannot transfer to same host. Use rename instead.')
-                : this.t('fm.bothPanesRequired', 'Both panes must have a source selected');
-            this.showNotification(message, 'warning');
+        const operation = this.workspaceOperationBetweenPanes(
+            sourcePane, targetPane,
+        );
+        if (operation === 'unavailable') {
+            this.showNotification(
+                this.t(
+                    'fm.workspace.operationUnavailable',
+                    'Select two ready file areas with compatible permissions.',
+                ),
+                'warning',
+            );
             return;
         }
 
@@ -2891,28 +3131,133 @@ class SFTPFileManager {
             return;
         }
 
+        if (operation === 'move') {
+            return this.moveSelectedBetweenPanes(
+                sourcePane, targetPane, selectedItems,
+            );
+        }
+
         this.showNotification(`${this.t('fm.startingTransfer', 'Starting transfer of')} ${selectedItems.length} ${this.t('fm.items', 'item(s)')}...`, 'info');
         this.transferExecutionInProgress = true;
+        this.conflictAction = null;
+        this.applyToAll = false;
 
         try {
             for (const item of selectedItems) {
                 const sourcePath = source.path === '/' ? '/' + item.name : source.path + '/' + item.name;
                 const targetPath = target.path === '/' ? '/' + item.name : target.path + '/' + item.name;
 
-                await this.transferSSHtoSSH(
+                const outcome = await this.transferSSHtoSSH(
                     sourcePath,
                     source,
                     targetPath,
                     target,
                     item,
                 );
+                if (outcome === 'cancelled') break;
             }
         } finally {
             this.transferExecutionInProgress = false;
         }
     }
 
-    async transferSSHtoSSH(sourcePath, sourcePane, targetPath, targetPane, item) {
+    async moveSelectedBetweenPanes(sourcePane, targetPane, selectedItems) {
+        if (this.transferExecutionInProgress) return 'unavailable';
+        const source = this.panes[sourcePane];
+        const target = this.panes[targetPane];
+        const sourceId = this.getPaneSourceId(source);
+        if (
+            !sourceId
+            || sourceId !== this.getPaneSourceId(target)
+            || source.path === target.path
+        ) return 'unavailable';
+
+        this.transferExecutionInProgress = true;
+        this.conflictAction = null;
+        this.applyToAll = false;
+        let outcome = 'complete';
+        try {
+            for (const item of selectedItems) {
+                const oldPath = this.joinPath(source.path, item.name);
+                const newPath = this.joinPath(target.path, item.name);
+                const requestId = this.nextRequestId('workspace', 'move');
+                const response = await new Promise(resolve => {
+                    let settled = false;
+                    const finish = value => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timeoutId);
+                        resolve(value);
+                    };
+                    const timeoutId = setTimeout(
+                        () => finish({ client_error: 'timeout' }),
+                        this.moveAcknowledgementTimeoutMs || 10000,
+                    );
+                    try {
+                        this.socket.emit('rename_file', {
+                            source_id: sourceId,
+                            old_path: oldPath,
+                            new_path: newPath,
+                            request_id: requestId,
+                        }, acknowledgement => finish(acknowledgement));
+                    } catch {
+                        finish({ client_error: 'unavailable' });
+                    }
+                });
+                const correlated = response
+                    && response.source_id === sourceId
+                    && response.request_id === requestId
+                    && response.old_path === oldPath
+                    && response.new_path === newPath;
+                if (correlated && response.success) continue;
+                if (correlated && response.code === 'CONFLICT') {
+                    const action = await this.resolveUploadConflict(
+                        { filename: item.name },
+                        { allowReplace: false },
+                    );
+                    if (action === 'skip') continue;
+                    outcome = 'cancelled';
+                    break;
+                }
+                const message = response?.client_error === 'timeout'
+                    ? this.t(
+                        'fm.moveTimeout',
+                        'The move timed out before the server confirmed it. Refresh both folders before retrying.',
+                    )
+                    : response?.client_error === 'unavailable'
+                        ? this.t(
+                            'fm.moveUnavailable',
+                            'The move request could not be sent. Check the connection and refresh both folders.',
+                        )
+                        : correlated && typeof response.error === 'string'
+                            ? response.error
+                            : this.t('fm.moveFailed', 'The item could not be moved.');
+                this.showNotification(message, 'error');
+                outcome = 'error';
+                break;
+            }
+        } finally {
+            this.transferExecutionInProgress = false;
+            this.refreshPane(sourcePane);
+            this.refreshPane(targetPane);
+        }
+        if (outcome === 'complete') {
+            this.showNotification(
+                this.t('fm.moveComplete', 'Move complete'),
+                'success',
+            );
+        }
+        return outcome;
+    }
+
+    async transferSSHtoSSH(
+        sourcePath,
+        sourcePane,
+        targetPath,
+        targetPane,
+        item,
+        conflictPolicy = 'error',
+    ) {
         const sourceId = this.getPaneSourceId(sourcePane);
         const targetSourceId = this.getPaneSourceId(targetPane);
         const sourceIds = [sourceId, targetSourceId];
@@ -2920,6 +3265,25 @@ class SFTPFileManager {
         if (sourceId === targetSourceId) {
             this.showNotification(this.t('fm.cannotTransferSameHost', 'Cannot transfer to same host. Use rename instead.'), 'warning');
             return;
+        }
+
+        if (!item.is_dir) {
+            const preflight = this.knownTransferLimitFailure(
+                'remote_transfer', item.size,
+            );
+            if (preflight) {
+                this.showNotification(
+                    `${this.t('fm.transferFailed', 'Transfer failed')}: ${
+                        this.transferFailureMessage(
+                            'LIMIT_EXCEEDED',
+                            'The transfer exceeds the configured limit.',
+                            preflight,
+                        )
+                    }`,
+                    'error',
+                );
+                return 'error';
+            }
         }
 
         this.retainTransferSources(sourceIds);
@@ -2937,6 +3301,7 @@ class SFTPFileManager {
                 destination_source_id: targetSourceId,
                 dest_path: targetPath,
                 is_dir: item.is_dir,
+                conflict_policy: conflictPolicy,
                 request_id: requestId,
             }, response => resolve(response));
         });
@@ -2945,8 +3310,16 @@ class SFTPFileManager {
             this.pendingS2SRequests.delete(requestId);
             this.releaseTransferSources(sourceIds);
             this.flushPendingQuickDisconnects();
-            this.showNotification(this.t('fm.transferFailed', 'Transfer failed'), 'error');
-            return;
+            const message = this.transferFailureMessage(
+                acknowledgement?.error_code,
+                acknowledgement?.error,
+                acknowledgement,
+            );
+            this.showNotification(
+                `${this.t('fm.transferFailed', 'Transfer failed')}: ${message}`,
+                'error',
+            );
+            return 'error';
         }
         const transferId = acknowledgement.transfer_id;
         const terminal = this.waitForS2STerminal(transferId);
@@ -2969,10 +3342,46 @@ class SFTPFileManager {
             this.finalizeTransferById(
                 transferId,
                 earlyTerminal.status,
-                earlyTerminal.error
+                earlyTerminal.error,
+                earlyTerminal.errorCode,
+                earlyTerminal.retryable,
             );
         }
-        await terminal;
+        const status = await terminal;
+        const completedTransfer = this.transferQueue?.find(
+            transfer => transfer.id === transferId
+        );
+        if (
+            status === 'error'
+            && completedTransfer?.errorCode === 'CONFLICT'
+            && conflictPolicy === 'error'
+        ) {
+            const action = await this.resolveUploadConflict({
+                filename: item.name,
+            });
+            if (action === 'replace') {
+                this.activeTransfers.delete(transferId);
+                this.transferQueue = this.transferQueue.filter(
+                    transfer => transfer.id !== transferId
+                );
+                this.renderTransferQueue();
+                return this.transferSSHtoSSH(
+                    sourcePath,
+                    sourcePane,
+                    targetPath,
+                    targetPane,
+                    item,
+                    'replace',
+                );
+            }
+            completedTransfer.status = action === 'skip' ? 'skipped' : 'cancelled';
+            completedTransfer.error = null;
+            completedTransfer.errorCode = null;
+            completedTransfer.retryable = false;
+            this.renderTransferQueue();
+            return completedTransfer.status;
+        }
+        return status;
     }
 
     handleDrop(e, targetPane) {
@@ -3055,7 +3464,9 @@ class SFTPFileManager {
 
     uploadSingleFileToSSH(file, basePath, sourceId, batchId = null) {
         const remotePath = this.joinPath(basePath, file.name);
-        const transferId = this.getTransferClient().uploadFile(file, remotePath, sourceId);
+        const transferId = this.getTransferClient().uploadFile(
+            file, remotePath, sourceId, this.uploadConflictOptions(),
+        );
         this.queueTransfer({
             id: transferId,
             type: 'upload', filename: file.name, targetPath: remotePath,
@@ -3128,6 +3539,8 @@ class SFTPFileManager {
             sourceId,
             destinationState,
         };
+        this.conflictAction = null;
+        this.applyToAll = false;
         this.uploadBatches.set(batch.id, batch);
         this.currentUploadBatch = batch;
         window._currentUploadBatchId = batch.id;
@@ -3149,7 +3562,7 @@ class SFTPFileManager {
 
         batch.completed++;
         if (status === 'complete') batch.succeeded++;
-        else if (status === 'cancelled') batch.cancelled++;
+        else if (status === 'cancelled' || status === 'skipped') batch.cancelled++;
         else batch.failed++;
 
         if (this.currentUploadBatch?.id === batch.id) {
@@ -3220,7 +3633,11 @@ class SFTPFileManager {
         }
 
         this.draggedItems = Array.from(state.selected).map(i => state.files[i]).filter(f => f);
-        e.dataTransfer.effectAllowed = 'copy';
+        const targetPane = pane === 'left' ? 'right' : 'left';
+        const operation = this.workspaceOperationBetweenPanes(pane, targetPane);
+        e.dataTransfer.effectAllowed = operation === 'move'
+            ? 'move'
+            : operation === 'copy' ? 'copy' : 'none';
         e.dataTransfer.setData('text/plain', this.draggedItems.map(f => f.name).join(', '));
     }
 
@@ -3287,17 +3704,41 @@ class SFTPFileManager {
     }
 
     failS2STransfer(data) {
-        this.finalizeOrBufferS2STerminal(data.transfer_id, 'error', data.error);
+        const message = this.transferFailureMessage(
+            data.error_code,
+            data.error,
+            data,
+        );
+        this.finalizeOrBufferS2STerminal(
+            data.transfer_id,
+            'error',
+            message,
+            data.error_code,
+            data.retryable,
+        );
     }
 
-    finalizeOrBufferS2STerminal(transferId, status, error = null) {
+    finalizeOrBufferS2STerminal(
+        transferId,
+        status,
+        error = null,
+        errorCode = null,
+        retryable = false,
+    ) {
         const transfer = this.transferQueue?.find(item => item.id === transferId);
         if (transfer) {
-            this.finalizeTransferById(transferId, status, error);
+            this.finalizeTransferById(
+                transferId, status, error, errorCode, retryable
+            );
             return;
         }
         if (!this.s2sEarlyTerminals) this.s2sEarlyTerminals = new Map();
-        this.s2sEarlyTerminals.set(transferId, { status: status, error: error });
+        this.s2sEarlyTerminals.set(transferId, {
+            status: status,
+            error: error,
+            errorCode: errorCode,
+            retryable: retryable === true,
+        });
     }
 
     waitForS2STerminal(transferId) {
@@ -3322,26 +3763,148 @@ class SFTPFileManager {
         this.finalizeTransferById(transferId, 'complete');
     }
 
-    failTransferById(transferId, error) {
-        const displayError = error === 'Transfer unavailable'
-            ? this.t('fm.transferUnavailable', 'Transfer unavailable')
-            : error;
-        this.finalizeTransferById(transferId, 'error', displayError);
+    transferFailureMessage(errorCode, fallback = null, details = {}) {
+        const messages = {
+            PERMISSION_DENIED: 'Permission denied for this file operation.',
+            CONFLICT: 'A file or folder already exists at the destination.',
+            NOT_FOUND: 'The requested file or folder was not found.',
+            SHARE_UNAVAILABLE: 'The SMB share is unavailable.',
+            TIMEOUT: 'The file operation timed out.',
+            SOURCE_UNAVAILABLE: 'The file source is no longer available. Reconnect and try again.',
+            LIMIT_EXCEEDED: 'The transfer exceeds the configured limit.',
+            CANCELLED: 'The transfer was cancelled.',
+            ATOMIC_REPLACE_UNAVAILABLE: 'Safe overwrite is unavailable for this destination.',
+            TRANSFER_UNAVAILABLE: 'The transfer could not be completed.',
+        };
+        const code = Object.hasOwn(messages, errorCode)
+            ? errorCode
+            : 'TRANSFER_UNAVAILABLE';
+        const limitKind = details?.limit_kind ?? details?.limitKind;
+        const limitBytes = details?.limit_bytes ?? details?.limitBytes;
+        const actualBytes = details?.actual_bytes ?? details?.actualBytes;
+        if (
+            code === 'LIMIT_EXCEEDED'
+            && ['upload', 'download', 'archive', 'remote_transfer'].includes(limitKind)
+            && Number.isSafeInteger(limitBytes)
+            && limitBytes >= 0
+            && Number.isSafeInteger(actualBytes)
+            && actualBytes >= 0
+        ) {
+            const template = this.t(
+                'transfer.limit.message',
+                '{actual} exceeds the {limit} {kind} limit.',
+            );
+            const kind = this.t(
+                `transfer.limit.kind.${limitKind}`,
+                {
+                    upload: 'upload',
+                    download: 'download',
+                    archive: 'folder download',
+                    remote_transfer: 'server-to-server transfer',
+                }[limitKind],
+            );
+            return template
+                .replace('{actual}', this.formatTransferMiB(actualBytes))
+                .replace('{limit}', this.formatTransferMiB(limitBytes))
+                .replace('{kind}', kind);
+        }
+        return this.t(`transfer.error.${code}`, fallback || messages[code]);
+    }
+
+    formatTransferMiB(bytes) {
+        const mib = bytes / (1024 * 1024);
+        const rounded = Number.isInteger(mib)
+            ? String(mib)
+            : String(Math.round(mib * 10) / 10);
+        return `${rounded} MiB`;
+    }
+
+    knownTransferLimitFailure(kind, actualBytes) {
+        const key = {
+            upload: 'uploadBytes',
+            download: 'downloadBytes',
+            archive: 'archiveBytes',
+            remote_transfer: 'remoteTransferBytes',
+        }[kind];
+        const limits = typeof window !== 'undefined'
+            ? window.WEBSSH_TRANSFER_LIMITS
+            : null;
+        const limitBytes = key ? limits?.[key] : null;
+        if (
+            !Number.isSafeInteger(actualBytes)
+            || actualBytes < 0
+            || !Number.isSafeInteger(limitBytes)
+            || limitBytes < 0
+            || actualBytes <= limitBytes
+        ) return null;
+        return {
+            limit_kind: kind,
+            limit_bytes: limitBytes,
+            actual_bytes: actualBytes,
+        };
+    }
+
+    failTransferById(
+        transferId,
+        error,
+        errorCode = null,
+        retryable = false,
+        limitKind = null,
+        limitBytes = null,
+        actualBytes = null,
+    ) {
+        const displayError = errorCode
+            ? this.transferFailureMessage(errorCode, error, {
+                limitKind, limitBytes, actualBytes,
+            })
+            : error === 'Transfer unavailable'
+                ? this.t('fm.transferUnavailable', 'Transfer unavailable')
+                : error;
+        if (errorCode) {
+            this.finalizeTransferById(
+                transferId,
+                'error',
+                displayError,
+                errorCode,
+                retryable,
+            );
+        } else {
+            this.finalizeTransferById(transferId, 'error', displayError);
+        }
     }
 
     cancelTransferById(transferId) {
         this.finalizeTransferById(transferId, 'cancelled');
     }
 
+    skipTransferById(transferId) {
+        this.finalizeTransferById(transferId, 'skipped');
+    }
+
     cancelQueuedTransfer(transferId) {
         const transfer = this.transferQueue.find(t => String(t.id) === transferId);
         if (!transfer || !['pending', 'active'].includes(transfer.status)) return;
         if (transfer.type === 's2s') {
+            transfer.cancelWasActive = transfer.status === 'active';
+            transfer.status = 'cancelling';
+            this.renderTransferQueue();
             this.socket.emit('cancel_transfer', {
                 transfer_id: transfer.id
             }, acknowledgement => {
-                if (acknowledgement?.success) {
+                if (
+                    acknowledgement?.success === true
+                    && acknowledgement.state === 'cancelled'
+                ) {
                     this.cancelTransferById(transfer.id);
+                } else if (acknowledgement?.state === 'unavailable') {
+                    this.failTransferById(
+                        transfer.id,
+                        this.t(
+                            'fm.cancelUnavailable',
+                            'Cancellation could not be confirmed. Refresh the destination before retrying.',
+                        ),
+                        'TRANSFER_UNAVAILABLE',
+                    );
                 }
             });
             return;
@@ -3349,17 +3912,26 @@ class SFTPFileManager {
         this.getTransferClient().cancelTransfer(transfer.id);
     }
 
-    finalizeTransferById(transferId, status, error = null) {
+    finalizeTransferById(
+        transferId,
+        status,
+        error = null,
+        errorCode = null,
+        retryable = false,
+    ) {
         const transfer = this.transferQueue.find(t => t.id === transferId);
         if (!transfer) return;
-        if (['complete', 'error', 'cancelled'].includes(transfer.status)) return;
+        if (['complete', 'error', 'cancelled', 'skipped'].includes(transfer.status)) return;
 
-        const wasActive = transfer.status === 'active';
+        const wasActive = transfer.status === 'active'
+            || (transfer.status === 'cancelling' && transfer.cancelWasActive === true);
         transfer.status = status;
         if (status === 'complete') {
             transfer.progress = 100;
         } else if (error) {
             transfer.error = error;
+            transfer.errorCode = errorCode;
+            transfer.retryable = retryable === true;
         }
         this.activeTransfers.delete(transfer.id);
         this.recordUploadTerminal(transfer, status);
@@ -3398,21 +3970,25 @@ class SFTPFileManager {
             if (item.is_dir) {
                 this.downloadFolderToBrowser(sourceId, filePath, item.name);
             } else {
-                this.downloadFileToBrowser(sourceId, filePath, item.name);
+                this.downloadFileToBrowser(
+                    sourceId, filePath, item.name, item.size,
+                );
             }
         }
     }
 
-    downloadFileToBrowser(sourceId, remotePath, filename) {
+    downloadFileToBrowser(sourceId, remotePath, filename, size = 0) {
         this.showNotification(`${this.t('fm.downloading', 'Downloading')}: ${filename}...`, 'info');
 
-        const transferId = this.getTransferClient().downloadFile(remotePath, sourceId);
+        const transferId = this.getTransferClient().downloadFile(
+            remotePath, sourceId, { size },
+        );
         this.queueTransfer({
             id: transferId,
             type: 'download',
             filename: filename,
             sourcePath: remotePath,
-            size: 0,
+            size,
             sourceId,
         });
 
@@ -3439,8 +4015,24 @@ class SFTPFileManager {
                 : BinaryTransferClient.forSocket(this.socket);
             this.transferClient.on('progress', data => this.updateTransferById(data));
             this.transferClient.on('complete', data => this.completeTransferById(data.transferId));
-            this.transferClient.on('error', data => this.failTransferById(data.transferId, data.error));
+            this.transferClient.on('error', data => this.failTransferById(
+                data.transferId,
+                data.error,
+                data.errorCode,
+                data.retryable,
+                data.limitKind,
+                data.limitBytes,
+                data.actualBytes,
+            ));
+            this.transferClient.on('cancelling', data => {
+                const transfer = this.transferQueue.find(t => t.id === data.transferId);
+                if (!transfer || transfer.status !== 'active') return;
+                transfer.cancelWasActive = true;
+                transfer.status = 'cancelling';
+                this.renderTransferQueue();
+            });
             this.transferClient.on('cancel', data => this.cancelTransferById(data.transferId));
+            this.transferClient.on('skip', data => this.skipTransferById(data.transferId));
         }
         return this.transferClient;
     }
@@ -3450,7 +4042,7 @@ class SFTPFileManager {
         const badge = document.getElementById('fmQueueBadge');
 
         const activeCount = this.transferQueue.filter(t =>
-            t.status === 'pending' || t.status === 'active'
+            ['pending', 'active', 'cancelling'].includes(t.status)
         ).length;
 
         badge.textContent = activeCount;
@@ -3461,13 +4053,18 @@ class SFTPFileManager {
             return;
         }
 
-        container.innerHTML = this.transferQueue.slice(-20).map(t => `
-            <div class="fm-transfer-item ${t.status}">
+        container.innerHTML = this.transferQueue.slice(-20).map(t => {
+            const reason = t.status === 'error' && t.error
+                ? this.escapeHtml(t.error)
+                : '';
+            return `
+            <div class="fm-transfer-item ${t.status}"${reason ? ` title="${reason}"` : ''}>
                 <div class="fm-transfer-icon ${t.type}">
                     ${t.type === 'upload' ? '⬆️' : t.type === 'download' ? '⬇️' : '↔️'}
                 </div>
                 <div class="fm-transfer-info">
                     <div class="fm-transfer-name">${this.escapeHtml(t.filename)}</div>
+                    ${reason ? `<div class="fm-transfer-error" role="status">${reason}</div>` : ''}
                     ${t.status === 'active' ? `
                         <div class="fm-transfer-progress-bar">
                             <div class="fm-transfer-progress-fill" style="width: ${t.progress}%"></div>
@@ -3483,15 +4080,19 @@ class SFTPFileManager {
                     </div>
                 ` : ''}
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     getStatusText(transfer) {
         switch (transfer.status) {
             case 'pending': return this.t('fm.waiting', 'Waiting...');
             case 'active': return `${transfer.progress}%`;
+            case 'cancelling': return this.t('fm.cancelling', 'Cancelling...');
             case 'complete': return this.t('fm.done', 'Done');
             case 'error': return this.t('fm.failed', 'Failed');
+            case 'cancelled': return this.t('fm.cancelled', 'Cancelled');
+            case 'skipped': return this.t('fm.skipped', 'Skipped');
             default: return '';
         }
     }
@@ -3560,11 +4161,17 @@ class SFTPFileManager {
                 }
             }
             const otherPane = pane === 'left' ? 'right' : 'left';
-            const canTransfer = this.displayMode === 'modal'
-                && !this.isMobile()
-                && this.canTransferBetweenPanes(pane, otherPane);
-            if (canTransfer) {
-                items.push({ action: 'transfer', icon: 'swap_horiz', text: this.t('fm.ctx.transferToOther', 'Transfer to other pane') });
+            const operation = this.displayMode === 'modal' && !this.isMobile()
+                ? this.workspaceOperationBetweenPanes(pane, otherPane)
+                : 'unavailable';
+            if (operation !== 'unavailable') {
+                items.push({
+                    action: 'transfer',
+                    icon: operation === 'move' ? 'drive_file_move' : 'swap_horiz',
+                    text: operation === 'move'
+                        ? this.t('fm.ctx.moveToOther', 'Move to other pane')
+                        : this.t('fm.ctx.transferToOther', 'Transfer to other pane'),
+                });
             }
             if (this.sourceCan(state, 'rename')) {
                 items.push({ divider: true });

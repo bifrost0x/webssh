@@ -31,9 +31,11 @@ from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
 from .remote_transfer import (
     RemoteTransferCancelled,
+    RemoteTransferError,
     TransferBudget,
     copy_remote_entry,
 )
+from .transfer_errors import classify_transfer_failure
 from .file_sources import (
     FileCapability,
     FileSourceKind,
@@ -44,9 +46,10 @@ from .file_sources import (
     parse_source_id,
 )
 from .file_service import file_service
-from .smb_backend import NonAtomicOverwriteRequired
+from .smb_diagnostics import smb_diagnostic_log_fields
 import posixpath
 import re
+import secrets
 import threading
 import time
 import config
@@ -65,13 +68,20 @@ _SMB_CONNECT_CODES = frozenset({
     'DIALECT_REQUIRED',
     'ENCRYPTION_REQUIRED',
     'INVALID_REQUEST',
+    'PERMISSION_DENIED',
     'QUOTA_EXCEEDED',
     'RUNTIME_SHUTTING_DOWN',
+    'SHARE_UNAVAILABLE',
     'SOURCE_UNAVAILABLE',
     'TARGET_NOT_ALLOWED',
+    'TIMEOUT',
 })
 _smb_attempts_lock = threading.RLock()
 _smb_attempts = {}
+
+
+def _new_smb_diagnostic_id():
+    return f'SMB-{secrets.token_hex(6).upper()}'
 
 
 def _smb_request_id(payload):
@@ -1993,11 +2003,13 @@ def handle_prepare_transfer(data, current_user=None):
         direction = payload.get('direction')
         remote_path = payload.get('remote_path')
         archive = bool(payload.get('archive'))
+        conflict_policy = payload.get('conflict_policy', 'error')
         source_id = _file_request_source_id(payload, current_user.id)
         record = prepare_transfer(
             current_user.id, direction, source_id, remote_path,
             owner_sid=getattr(request, 'sid', None),
             archive=archive,
+            conflict_policy=conflict_policy,
         )
         if record is None:
             return {
@@ -2039,17 +2051,22 @@ def handle_cancel_transfer(data, current_user=None):
     """Cancel a prepared or streaming transfer owned by this user only."""
     transfer_id = data.get('transfer_id') if isinstance(data, dict) else None
     try:
-        cancelled = transfer_manager.cancel(transfer_id, current_user.id)
+        result = transfer_manager.cancel_with_result(
+            transfer_id, current_user.id
+        )
     except Exception as error:
         log_error('Transfer cancellation failed', user_id=current_user.id,
                   exception_type=type(error).__name__)
-        cancelled = False
-    if cancelled:
+        return {'success': False, 'state': 'unavailable'}
+    if result.accepted:
         socketio.emit('transfer_finished', {
             'transfer_id': transfer_id,
             'status': 'cancelled',
         }, room=f'user_{current_user.id}')
-    return {'success': bool(cancelled)}
+    return {
+        'success': result.state != 'unavailable',
+        'state': result.state,
+    }
 
 @socketio.on('download_file_binary')
 @socket_login_required
@@ -2461,10 +2478,16 @@ def handle_smb_quick_connect(data, current_user=None):
             code = getattr(error, 'public_code', 'CONNECTION_FAILED')
             if code not in _SMB_CONNECT_CODES:
                 code = 'CONNECTION_FAILED'
+            diagnostic_id = _new_smb_diagnostic_id()
+            diagnostic_fields = smb_diagnostic_log_fields(error)
             if not cancellation.is_set():
                 socketio.emit(
                     'smb_quick_connect_error',
-                    {'request_id': request_id, 'code': code},
+                    {
+                        'request_id': request_id,
+                        'code': code,
+                        'diagnostic_id': diagnostic_id,
+                    },
                     room=socket_sid,
                 )
             log_warning(
@@ -2473,6 +2496,8 @@ def handle_smb_quick_connect(data, current_user=None):
                 host=host,
                 share=share,
                 result_code=code,
+                diagnostic_id=diagnostic_id,
+                **diagnostic_fields,
                 exception_type=type(error).__name__,
             )
         finally:
@@ -2728,24 +2753,34 @@ def handle_create_directory(data, current_user=None):
 @socket_login_required
 def handle_rename_file(data, current_user=None):
     """Rename a file or directory on remote server."""
-    try:
-        payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
-        old_path = payload.get('old_path')
-        new_path = payload.get('new_path')
-        context = {
-            'operation': 'rename_file',
-            **identity,
-            'path': old_path,
-        }
+    payload = data if isinstance(data, dict) else {}
+    identity = _file_request_identity(payload)
+    old_path = payload.get('old_path')
+    new_path = payload.get('new_path')
+    response_context = {
+        'operation': 'rename_file',
+        **identity,
+        'old_path': old_path,
+        'new_path': new_path,
+    }
 
+    def reject(code, message):
+        result = {
+            'success': False,
+            'code': code,
+            'error': message,
+            **response_context,
+        }
+        emit('error', {**result, 'path': old_path})
+        return result
+
+    try:
         if (
             not _valid_file_request(identity)
             or not old_path
             or not new_path
         ):
-            emit('error', {'error': 'Missing required fields', **context})
-            return
+            return reject('INVALID_REQUEST', 'The move request is invalid.')
 
         try:
             source_id = _file_request_source_id(payload, current_user.id)
@@ -2759,8 +2794,10 @@ def handle_rename_file(data, current_user=None):
                 new_path=new_path,
             )
         except FileSourceUnavailable:
-            emit('error', _file_source_unavailable_payload(**context))
-            return
+            return reject(
+                'SOURCE_UNAVAILABLE',
+                'File source unavailable',
+            )
 
         if error:
             _audit_file_source_operation(
@@ -2772,7 +2809,27 @@ def handle_rename_file(data, current_user=None):
                 destination=source,
                 destination_path=new_path,
             )
-            emit('error', {'error': f'Failed to rename: {error}', **context})
+            normalized = str(error or '').lower()
+            if error == 'Invalid move request':
+                code = 'INVALID_REQUEST'
+                message = 'The move request is invalid.'
+            elif error == 'Destination already exists' or any(
+                marker in normalized for marker in ('conflict', 'already exists')
+            ):
+                code = 'CONFLICT'
+                message = 'A file or folder already exists at the destination.'
+            elif any(
+                marker in normalized for marker in ('permission', 'access denied')
+            ):
+                code = 'PERMISSION_DENIED'
+                message = 'Permission denied for this file operation.'
+            elif 'not found' in normalized:
+                code = 'NOT_FOUND'
+                message = 'The requested file or folder was not found.'
+            else:
+                code = 'OPERATION_FAILED'
+                message = 'The item could not be moved or renamed.'
+            return reject(code, message)
         else:
             _audit_file_source_operation(
                 current_user,
@@ -2788,16 +2845,17 @@ def handle_rename_file(data, current_user=None):
                 'new_path': new_path,
                 **identity,
             })
-            log_info(f"Renamed: {old_path} -> {new_path}", user=current_user.username)
+            log_info('File source item renamed', user=current_user.username)
+            return {
+                'success': True,
+                **identity,
+                'old_path': old_path,
+                'new_path': new_path,
+            }
 
     except Exception as e:
-        log_error("Rename failed", error=str(e))
-        emit('error', {
-            'error': 'Failed to rename',
-            'operation': 'rename_file',
-            **_file_request_identity(payload),
-            'path': payload.get('old_path'),
-        })
+        log_error('Rename failed', exception_type=type(e).__name__)
+        return reject('OPERATION_FAILED', 'The item could not be moved or renamed.')
 
 @socketio.on('delete_item')
 @socket_login_required
@@ -3140,7 +3198,7 @@ def handle_open_file_for_edit(data, current_user=None):
 @socketio.on('save_file')
 @socket_login_required
 def handle_save_file(data, current_user=None):
-    """Save edited text content back to a remote file via SFTP."""
+    """Save revision-bound editor content through its file source backend."""
     try:
         payload = data if isinstance(data, dict) else {}
         identity = _file_request_identity(payload)
@@ -3148,6 +3206,8 @@ def handle_save_file(data, current_user=None):
         content = payload.get('content')
         encoding = payload.get('encoding', 'utf-8')
         newline = payload.get('newline', 'lf')
+        expected_revision = payload.get('expected_revision')
+        replace_strategy = payload.get('replace_strategy', 'atomic')
         context = {
             'operation': 'save_file',
             **identity,
@@ -3161,6 +3221,14 @@ def handle_save_file(data, current_user=None):
         ):
             emit('error', {
                 'error': 'Missing required fields for save',
+                **context,
+            })
+            return
+
+        if replace_strategy not in {'atomic', 'recoverable_swap'}:
+            emit('error', {
+                'error': 'Invalid replacement strategy',
+                'code': 'INVALID_REQUEST',
                 **context,
             })
             return
@@ -3180,53 +3248,70 @@ def handle_save_file(data, current_user=None):
             source = file_service.resolve(
                 source_id, current_user.id, FileCapability.EDIT
             )
-            success, error = file_service.write_file_text(
+            outcome = file_service.write_file_text(
                 source_id,
                 user_id=current_user.id,
                 path=path,
                 content=content,
                 encoding=encoding,
                 newline=newline,
+                expected_revision=expected_revision,
+                replace_strategy=replace_strategy,
             )
         except FileSourceUnavailable:
             emit('error', _file_source_unavailable_payload(**context))
             return
-        except NonAtomicOverwriteRequired:
+
+        if not outcome.success:
+            audit_result = {
+                'SMB_RECOVERABLE_REPLACE_REQUIRED': (
+                    'RECOVERABLE_REPLACE_REQUIRED'
+                ),
+                'SMB_RECOVERABLE_REPLACE_FAILED': (
+                    'RECOVERABLE_REPLACE_FAILED_ROLLED_BACK'
+                ),
+                'SMB_RECOVERY_REQUIRED': 'RECOVERY_REQUIRED',
+                'EDIT_CONFLICT': 'EDIT_CONFLICT',
+            }.get(outcome.code, 'FAILED')
             _audit_file_source_operation(
                 current_user,
                 source,
                 operation='edit_save',
-                result='ATOMIC_REPLACE_UNAVAILABLE',
+                result=audit_result,
                 path=path,
                 size=len(content_bytes),
             )
-            emit('error', {
-                'error': 'Atomic replacement is unavailable for this SMB account.',
-                'code': 'SMB_NON_ATOMIC_OVERWRITE_REQUIRED',
-                **context,
-            })
+            failure = {'error': outcome.error or 'Save failed', **context}
+            if outcome.code:
+                failure['code'] = outcome.code
+            if outcome.revision:
+                failure['revision'] = outcome.revision
+            if outcome.recovery_leaves:
+                failure['recovery_leaves'] = list(outcome.recovery_leaves)
+            emit('error', failure)
             return
 
-        if error:
-            _audit_file_source_operation(
-                current_user,
-                source,
-                operation='edit_save',
-                result='FAILED',
-                path=path,
-                size=len(content_bytes),
-            )
-            emit('error', {'error': f'Save failed: {error}', **context})
-        else:
-            _audit_file_source_operation(
-                current_user,
-                source,
-                operation='edit_save',
-                result='COMPLETED',
-                path=path,
-                size=len(content_bytes),
-            )
-            emit('file_saved', {'path': path, **identity})
+        audit_result = 'COMPLETED'
+        if replace_strategy == 'recoverable_swap':
+            audit_result = 'RECOVERABLE_REPLACE_COMPLETED'
+        if outcome.warning_code:
+            audit_result = 'COMPLETED_WITH_RECOVERY_BACKUP'
+        _audit_file_source_operation(
+            current_user,
+            source,
+            operation='edit_save',
+            result=audit_result,
+            path=path,
+            size=len(content_bytes),
+        )
+        saved = {'path': path, **identity}
+        if outcome.revision:
+            saved['revision'] = outcome.revision
+        if outcome.warning_code:
+            saved['warning_code'] = outcome.warning_code
+        if outcome.recovery_leaves:
+            saved['recovery_leaves'] = list(outcome.recovery_leaves)
+        emit('file_saved', saved)
 
     except Exception as e:
         log_error("Save failed", error=str(e))
@@ -3252,6 +3337,7 @@ def handle_transfer_server_to_server(data, current_user=None):
         destination_source_id = payload.get('destination_source_id')
         requested_dest_path = payload.get('dest_path')
         is_dir = payload.get('is_dir', False)
+        conflict_policy = payload.get('conflict_policy', 'error')
         transfer_id = None
         response_context = {
             **identity,
@@ -3260,6 +3346,7 @@ def handle_transfer_server_to_server(data, current_user=None):
 
         if (
             not _valid_file_request(identity)
+            or conflict_policy not in {'error', 'replace'}
             or not all([
                 requested_source_path,
                 destination_source_id,
@@ -3273,7 +3360,7 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return {
                 'success': False,
-                'error': 'Transfer unavailable',
+                'error': 'Missing required fields',
                 **response_context,
             }
 
@@ -3287,7 +3374,7 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return {
                 'success': False,
-                'error': 'Transfer unavailable',
+                'error': 'Invalid path',
                 **response_context,
             }
 
@@ -3303,14 +3390,17 @@ def handle_transfer_server_to_server(data, current_user=None):
                 FileCapability.REMOTE_TRANSFER,
             )
         except FileSourceUnavailable:
+            failure = classify_transfer_failure(
+                FileSourceUnavailable(), operation='remote_transfer'
+            )
             emit('s2s_transfer_error', {
                 **response_context,
                 'transfer_id': transfer_id,
-                'error': 'Transfer unavailable',
+                **failure.to_public_dict(),
             })
             return {
                 'success': False,
-                'error': 'Transfer unavailable',
+                **failure.to_public_dict(),
                 **response_context,
             }
 
@@ -3326,14 +3416,17 @@ def handle_transfer_server_to_server(data, current_user=None):
                 FileCapability.REMOTE_TRANSFER,
             )
         except FileSourceUnavailable:
+            failure = classify_transfer_failure(
+                FileSourceUnavailable(), operation='remote_transfer'
+            )
             emit('s2s_transfer_error', {
                 **response_context,
                 'transfer_id': transfer_id,
-                'error': 'Transfer unavailable',
+                **failure.to_public_dict(),
             })
             return {
                 'success': False,
-                'error': 'Transfer unavailable',
+                **failure.to_public_dict(),
                 **response_context,
             }
 
@@ -3397,7 +3490,7 @@ def handle_transfer_server_to_server(data, current_user=None):
             })
             return {
                 'success': False,
-                'error': 'Transfer unavailable',
+                'error': 'Invalid path',
                 **response_context,
             }
 
@@ -3427,6 +3520,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                     'destination_source_id': destination_source_id,
                     'destination_path': dest_path,
                     'is_dir': bool(is_dir),
+                    'conflict_policy': conflict_policy,
                 },
             )
             transfer_manager.consume_token(record.token, user_id)
@@ -3494,7 +3588,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                         source_path,
                         active_destination,
                         dest_path,
-                        conflict_policy='replace',
+                        conflict_policy=conflict_policy,
                         budget=TransferBudget(
                             max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
                             max_members=config.MAX_TRANSFER_MEMBERS,
@@ -3519,6 +3613,7 @@ def handle_transfer_server_to_server(data, current_user=None):
                         max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
                         chunk_size=config.CHUNK_SIZE,
                         event_context=response_context,
+                        conflict_policy=conflict_policy,
                     )
 
                 if success and _terminalize(
@@ -3534,46 +3629,78 @@ def handle_transfer_server_to_server(data, current_user=None):
                         'source_path': source_path,
                         'dest_path': dest_path,
                     }, room=user_room)
-                elif error and _terminalize(
-                    record, user_id, 'failed', manager=transfer_manager
-                ):
-                    audit_s2s('FAILED', transferred)
+                elif error:
+                    internal_error = (
+                        error
+                        if isinstance(error, BaseException)
+                        else RemoteTransferError('Transfer unavailable')
+                    )
+                    failure = classify_transfer_failure(
+                        internal_error, operation='remote_transfer'
+                    )
+                    if not _terminalize(
+                        record,
+                        user_id,
+                        'failed',
+                        manager=transfer_manager,
+                        failure=failure,
+                    ):
+                        return
+                    audit_s2s(failure.code, transferred)
                     log_error(
                         'S2S transfer failed',
                         user_id=user_id,
                         transfer_id=transfer_id,
-                        exception_type=type(error).__name__,
+                        result_code=failure.code,
+                        operation='remote_transfer',
+                        exception_type=type(internal_error).__name__,
                     )
                     socketio.emit('s2s_transfer_error', {
                         **response_context,
                         'transfer_id': transfer_id,
-                        'error': 'Transfer unavailable'
+                        **failure.to_public_dict(),
                     }, room=user_room)
-            except RemoteTransferCancelled:
+            except RemoteTransferCancelled as error:
+                failure = classify_transfer_failure(
+                    error, operation='remote_transfer'
+                )
                 if _terminalize(
-                    record, user_id, 'cancelled', manager=transfer_manager
+                    record,
+                    user_id,
+                    'cancelled',
+                    manager=transfer_manager,
+                    failure=failure,
                 ):
-                    audit_s2s('CANCELLED', transferred)
+                    audit_s2s(failure.code, transferred)
                     socketio.emit('s2s_transfer_error', {
                         **response_context,
                         'transfer_id': transfer_id,
-                        'error': 'Transfer unavailable'
+                        **failure.to_public_dict(),
                     }, room=user_room)
             except Exception as error:
+                failure = classify_transfer_failure(
+                    error, operation='remote_transfer'
+                )
                 if _terminalize(
-                    record, user_id, 'failed', manager=transfer_manager
+                    record,
+                    user_id,
+                    'failed',
+                    manager=transfer_manager,
+                    failure=failure,
                 ):
-                    audit_s2s('FAILED', transferred)
+                    audit_s2s(failure.code, transferred)
                     log_error(
                         'S2S transfer crashed',
                         user_id=user_id,
                         transfer_id=transfer_id,
+                        result_code=failure.code,
+                        operation='remote_transfer',
                         exception_type=type(error).__name__,
                     )
                     socketio.emit('s2s_transfer_error', {
                         **response_context,
                         'transfer_id': transfer_id,
-                        'error': 'Transfer unavailable'
+                        **failure.to_public_dict(),
                     }, room=user_room)
             finally:
                 try:
@@ -3585,10 +3712,17 @@ def handle_transfer_server_to_server(data, current_user=None):
             lifecycle.start_job(
                 'server_to_server_transfer', run_transfer, owner_id=user_id
             )
-        except Exception:
+        except Exception as error:
+            failure = classify_transfer_failure(
+                error, operation='remote_transfer'
+            )
             try:
                 _terminalize(
-                    record, user_id, 'failed', manager=transfer_manager
+                    record,
+                    user_id,
+                    'failed',
+                    manager=transfer_manager,
+                    failure=failure,
                 )
             finally:
                 try:
@@ -3609,9 +3743,14 @@ def handle_transfer_server_to_server(data, current_user=None):
         }
 
     except Exception as error:
+        failure = classify_transfer_failure(
+            error, operation='remote_transfer'
+        )
         log_error(
             'S2S transfer setup failed',
             user_id=getattr(current_user, 'id', None),
+            result_code=failure.code,
+            operation='remote_transfer',
             exception_type=type(error).__name__,
         )
         emit('s2s_transfer_error', {
@@ -3621,11 +3760,11 @@ def handle_transfer_server_to_server(data, current_user=None):
                 else _file_request_identity(payload)
             ),
             'transfer_id': payload.get('transfer_id'),
-            'error': 'Failed to start transfer',
+            **failure.to_public_dict(),
         })
         return {
             'success': False,
-            'error': 'Transfer unavailable',
+            **failure.to_public_dict(),
             **(
                 response_context
                 if 'response_context' in locals()

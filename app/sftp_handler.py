@@ -1,3 +1,4 @@
+import hashlib
 import os
 import socket
 import stat
@@ -23,6 +24,7 @@ import config
 from . import ssh_manager
 from .paramiko_channels import open_sftp_client
 from .audit_logger import log_warning, log_error
+from .file_backend import FileWriteOutcome
 
 _sftp_cache = {}
 _sftp_cache_lock = Lock()
@@ -143,6 +145,18 @@ class TransferSizeExceeded(SFTPOperationError):
 
 class TransferMemberLimitExceeded(SFTPOperationError):
     """A recursive SFTP operation exceeded its entry-count limit."""
+
+
+class UploadConflict(SFTPOperationError):
+    """The upload destination exists and replacement was not approved."""
+
+    public_code = 'CONFLICT'
+
+
+class AtomicOverwriteUnavailable(SFTPOperationError):
+    """The server cannot replace the destination without a delete window."""
+
+    public_code = 'ATOMIC_REPLACE_UNAVAILABLE'
 
 
 class _TransferMemberBudget:
@@ -642,8 +656,17 @@ def create_directory(session_id, remote_path):
         return False, str(e)
 
 
-def upload_request_stream(session_id, remote_path, source, *, chunk_size,
-                          max_bytes, cancelled=None, progress=None):
+def upload_request_stream(
+    session_id,
+    remote_path,
+    source,
+    *,
+    chunk_size,
+    max_bytes,
+    cancelled=None,
+    progress=None,
+    replace=False,
+):
     """Write a request stream to a temporary remote file and atomically rename it.
 
     ``source`` is purposely consumed only with an explicit ``chunk_size``.
@@ -683,15 +706,15 @@ def upload_request_stream(session_id, remote_path, source, *, chunk_size,
             except (FileNotFoundError, IOError, OSError):
                 destination_exists = False
             if destination_exists:
+                if not replace:
+                    raise UploadConflict()
                 # ``rename`` must not be used for replacement: standard SFTP
                 # servers may reject it, and deleting first loses the original.
                 # The OpenSSH posix-rename extension is atomic replacement.
                 try:
                     sftp.posix_rename(temporary_path, safe_path)
                 except (AttributeError, IOError, OSError) as error:
-                    raise SFTPOperationError(
-                        'atomic replacement is unavailable'
-                    ) from error
+                    raise AtomicOverwriteUnavailable() from error
             else:
                 sftp.rename(temporary_path, safe_path)
         except Exception:
@@ -1015,7 +1038,8 @@ def read_file_for_edit(session_id, path, max_bytes=None):
             'content': content_str,
             'size': file_size,
             'encoding': encoding,
-            'newline': newline
+            'newline': newline,
+            'revision': hashlib.sha256(raw).hexdigest(),
         }, None
 
     except SFTPOperationError as e:
@@ -1027,14 +1051,20 @@ def read_file_for_edit(session_id, path, max_bytes=None):
     except Exception as e:
         return None, str(e)
 
-def write_file_text(session_id, path, content_str, encoding='utf-8', newline='lf'):
+def write_file_text(
+    session_id,
+    path,
+    content_str,
+    encoding='utf-8',
+    newline='lf',
+    expected_revision=None,
+):
     """
     Write edited text content back to a remote file.
 
-    Writes atomically: content is written to a temp file in the same directory
-    first, then renamed over the target, so an interrupted transfer cannot leave
-    a half-written or empty file. Falls back to a direct overwrite if the server
-    does not support the posix-rename extension.
+    Writes atomically through the server's POSIX rename extension. The exact
+    bytes opened by the editor must still be current before a temp file is
+    staged; direct truncating overwrite is never used as a fallback.
     """
     try:
         safe_path = sanitize_path(path)
@@ -1056,19 +1086,40 @@ def write_file_text(session_id, path, content_str, encoding='utf-8', newline='lf
         tmp_path = safe_path + '.webssh-tmp-' + os.urandom(4).hex()
 
         with sftp_session(session_id) as (sftp, source_type):
+            file_stat = sftp.stat(safe_path)
+            file_size = file_stat.st_size
+            maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
+            if file_size > maximum:
+                return FileWriteOutcome(
+                    success=False,
+                    error='File too large to edit',
+                )
+            with sftp.file(safe_path, 'rb') as original_file:
+                original = original_file.read(maximum + 1)
+            if len(original) > maximum:
+                return FileWriteOutcome(
+                    success=False,
+                    error='File too large to edit',
+                )
+            current_revision = hashlib.sha256(original).hexdigest()
+            if not expected_revision or expected_revision != current_revision:
+                return FileWriteOutcome(
+                    success=False,
+                    error=(
+                        'The file changed on the server. '
+                        'Reopen it before saving.'
+                    ),
+                    code='EDIT_CONFLICT',
+                )
             try:
                 with sftp.file(tmp_path, 'wb') as remote_file:
                     remote_file.write(data)
                 try:
                     sftp.posix_rename(tmp_path, safe_path)
                 except (IOError, OSError, AttributeError):
-                    # Server lacks posix-rename; fall back to direct overwrite.
-                    with sftp.file(safe_path, 'wb') as remote_file:
-                        remote_file.write(data)
-                    try:
-                        sftp.remove(tmp_path)
-                    except Exception:
-                        pass
+                    raise SFTPOperationError(
+                        'Atomic replacement is unavailable'
+                    )
             except Exception:
                 # Best-effort cleanup of the temp file on failure.
                 try:
@@ -1077,11 +1128,14 @@ def write_file_text(session_id, path, content_str, encoding='utf-8', newline='lf
                     pass
                 raise
 
-        return True, None
+        return FileWriteOutcome(
+            success=True,
+            revision=hashlib.sha256(data).hexdigest(),
+        )
     except SFTPOperationError as e:
-        return False, str(e)
+        return FileWriteOutcome(success=False, error=str(e))
     except Exception as e:
-        return False, str(e)
+        return FileWriteOutcome(success=False, error=str(e))
 
 def get_sftp_client_from_pool(connection_id):
     """Get SFTP client from temporary connection pool."""
@@ -1184,7 +1238,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                               dest_path, transfer_id, socketio_instance=None,
                               is_dir=False, user_room=None, cancel_event=None,
                               max_bytes=None, max_members=None, chunk_size=None,
-                              event_context=None):
+                              event_context=None, conflict_policy='error'):
     """
     Direct server-to-server SFTP streaming transfer.
     Streams data from source SSH host to destination SSH host without
@@ -1213,6 +1267,8 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     sftp_dest = None
     directory_total = None
     event_context = dict(event_context or {})
+    if conflict_policy not in {'error', 'replace'}:
+        return False, SFTPOperationError('unsupported conflict policy')
 
     try:
         sftp_source, error = get_sftp_client_fresh(source_session_id)
@@ -1294,10 +1350,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                 except (FileNotFoundError, IOError, OSError):
                     destination_exists = False
                 if destination_exists:
+                    if conflict_policy == 'error':
+                        raise UploadConflict('destination already exists')
                     try:
                         sftp_dest.posix_rename(temporary_path, dst_path)
                     except (AttributeError, IOError, OSError) as error:
-                        raise SFTPOperationError(
+                        raise AtomicOverwriteUnavailable(
                             'atomic replacement is unavailable'
                         ) from error
                 else:
@@ -1449,7 +1507,11 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                 except (FileNotFoundError, IOError, OSError):
                     destination_exists = False
                 if destination_exists:
-                    raise SFTPOperationError('destination already exists')
+                    if conflict_policy == 'error':
+                        raise UploadConflict('destination already exists')
+                    raise AtomicOverwriteUnavailable(
+                        'atomic directory replacement is unavailable'
+                    )
                 sftp_dest.rename(temporary_root, dest_path)
                 emit_progress(
                     os.path.basename(source_path.rstrip('/')) or source_path,
@@ -1477,8 +1539,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     except TransferMemberLimitExceeded:
         return False, 'Transfer exceeds configured member limit'
     except Exception as e:
-        log_error("S2S transfer failed", error=str(e), transfer_id=transfer_id)
-        return False, "Transfer failed"
+        log_error(
+            "S2S transfer failed",
+            transfer_id=transfer_id,
+            exception_type=type(e).__name__,
+        )
+        return False, e
     finally:
         if sftp_source is not None:
             try:
