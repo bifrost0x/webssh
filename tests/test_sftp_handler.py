@@ -344,3 +344,87 @@ def test_preview_rejects_negative_read_before_opening_sftp(monkeypatch):
 
     assert result is None
     assert error == 'max_bytes must be a positive integer'
+
+
+def test_preview_limit_uses_fstat_from_the_open_object(monkeypatch):
+    """A rename between path stat and open must not bypass preview limits."""
+    import io
+    import stat
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import app.sftp_handler as sftp_handler
+    import config
+
+    class Replacement(io.BytesIO):
+        def __init__(self):
+            super().__init__(b'replacement')
+            self.read_called = False
+
+        def stat(self):
+            return SimpleNamespace(
+                st_size=11,
+                st_mode=stat.S_IFREG | 0o600,
+                st_mtime=1,
+            )
+
+        def read(self, size=-1):
+            self.read_called = True
+            return super().read(size)
+
+    replacement = Replacement()
+    sftp = SimpleNamespace(
+        stat=lambda _path: SimpleNamespace(st_size=1),
+        file=lambda *_args: replacement,
+    )
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    monkeypatch.setattr(config, 'MAX_SUPPORTED_FILE_SIZE', 8)
+
+    result, error = sftp_handler.read_file_preview(
+        'session', '/allowed/link.txt', max_bytes=8
+    )
+
+    assert result is None
+    assert error == 'File too large (11 bytes). Maximum supported size is 8 bytes.'
+    assert replacement.read_called is False
+
+
+def test_editor_limit_uses_fstat_from_the_open_object(monkeypatch):
+    """Editor authorization must describe the object that supplies bytes."""
+    import io
+    import stat
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import app.sftp_handler as sftp_handler
+
+    class Replacement(io.BytesIO):
+        def stat(self):
+            return SimpleNamespace(
+                st_size=9,
+                st_mode=stat.S_IFREG | 0o600,
+                st_mtime=1,
+            )
+
+    sftp = SimpleNamespace(
+        stat=lambda _path: SimpleNamespace(st_size=1),
+        file=lambda *_args: Replacement(b'123456789'),
+    )
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield sftp, 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+
+    result, error = sftp_handler.read_file_for_edit(
+        'session', '/allowed/link.txt', max_bytes=8
+    )
+
+    assert result is None
+    assert error == 'File too large to edit (0MB). Maximum: 0MB'

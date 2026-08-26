@@ -19,6 +19,42 @@ _WRITE_WARNING_CODES = frozenset({
 
 
 @dataclass(frozen=True, slots=True)
+class FileReaderLease:
+    """One readable remote object and metadata obtained from that handle."""
+
+    reader: Any
+    size: int
+    mode: int | None = None
+    modified: int | float | None = None
+    is_dir: bool = False
+    is_symlink: bool = False
+
+    def __post_init__(self):
+        if not callable(getattr(self.reader, 'read', None)):
+            raise ValueError('reader must expose read')
+        if type(self.size) is not int or self.size < 0:
+            raise ValueError('size must be a non-negative integer')
+        if self.mode is not None and (
+            type(self.mode) is not int or self.mode < 0
+        ):
+            raise ValueError('mode must be a non-negative integer or None')
+        if self.modified is not None and (
+            isinstance(self.modified, bool)
+            or not isinstance(self.modified, (int, float))
+            or self.modified < 0
+        ):
+            raise ValueError('modified must be non-negative or None')
+        if type(self.is_dir) is not bool:
+            raise ValueError('is_dir must be boolean')
+        if type(self.is_symlink) is not bool:
+            raise ValueError('is_symlink must be boolean')
+        if self.is_dir:
+            raise ValueError('reader lease cannot represent a directory')
+        if self.is_symlink:
+            raise ValueError('reader lease cannot represent a symbolic link')
+
+
+@dataclass(frozen=True, slots=True)
 class FileWriteOutcome:
     """Validated result of an editor save without backend exception leakage."""
 
@@ -140,7 +176,7 @@ class FileBackend(Protocol):
         path: str,
         *,
         io_lane: str = 'control',
-    ) -> Any:
+    ) -> FileReaderLease:
         ...
 
     def open_atomic_writer(
