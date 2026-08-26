@@ -3891,7 +3891,12 @@ class SFTPFileManager {
             this.socket.emit('cancel_transfer', {
                 transfer_id: transfer.id
             }, acknowledgement => {
-                if (acknowledgement?.state === 'unavailable') {
+                if (
+                    acknowledgement?.success === true
+                    && acknowledgement.state === 'cancelled'
+                ) {
+                    this.cancelTransferById(transfer.id);
+                } else if (acknowledgement?.state === 'unavailable') {
                     this.failTransferById(
                         transfer.id,
                         this.t(

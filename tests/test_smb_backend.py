@@ -390,7 +390,7 @@ def test_atomic_replace_never_predeletes_existing_target():
     backend, source, session = _fixture()
     writer = _Writable()
     session.responses['open_file'] = writer
-    session.responses['replace'] = OSError('replace unsupported')
+    session.responses['replace'] = SMBProtocolError('CONFLICT')
 
     with pytest.raises(FileConflict):
         with backend.open_atomic_writer(
@@ -622,6 +622,29 @@ def test_non_permission_replace_failure_never_uses_direct_overwrite():
         mode != 'wb'
         for _path, mode in session.open_modes
     )
+
+
+@pytest.mark.parametrize('public_code', [
+    'TIMEOUT',
+    'SHARE_UNAVAILABLE',
+    'SOURCE_UNAVAILABLE',
+    'NOT_FOUND',
+])
+def test_atomic_replace_preserves_actionable_non_conflict_failure(public_code):
+    backend, source, session = _stateful_fixture()
+    session.failures['replace'] = SMBProtocolError(public_code)
+
+    with pytest.raises(SMBProtocolError) as caught:
+        with backend.open_atomic_writer(
+            source,
+            '/report.txt',
+            replace=True,
+            cancel_event=None,
+        ) as remote_file:
+            remote_file.write(b'new')
+
+    assert caught.value.public_code == public_code
+    assert session.files == {session.destination: b'old'}
 
 
 def test_cancelled_atomic_write_cleans_only_generated_temp():

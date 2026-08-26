@@ -447,13 +447,18 @@ class SMBBackend:
                     )
                 except Exception as exc:
                     if replace:
-                        if (
-                            isinstance(exc, SMBProtocolError)
-                            and exc.public_code == 'PERMISSION_DENIED'
+                        if isinstance(exc, SMBProtocolError):
+                            if exc.public_code == 'PERMISSION_DENIED':
+                                raise NonAtomicOverwriteRequired(
+                                    'Atomic replacement requires delete permission'
+                                ) from exc
+                            if exc.public_code != 'CONFLICT':
+                                raise
+                        elif not (
+                            isinstance(exc, OSError)
+                            and exc.errno in {errno.EEXIST, errno.ENOTEMPTY}
                         ):
-                            raise NonAtomicOverwriteRequired(
-                                'Atomic replacement requires delete permission'
-                            ) from exc
+                            raise
                         raise FileConflict(
                             'Atomic replacement is unavailable'
                         ) from exc

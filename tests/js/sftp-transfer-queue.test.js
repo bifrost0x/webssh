@@ -2602,7 +2602,7 @@ test('an S2S terminal event received before its acknowledgement cannot strand th
     await transfer;
 });
 
-test('server copy cancellation waits for the authoritative terminal event', () => {
+test('server copy cancellation finalizes from the authoritative acknowledgement', () => {
     const requests = [];
     const manager = Object.create(SFTPFileManager.prototype);
     Object.assign(manager, {
@@ -2623,10 +2623,6 @@ test('server copy cancellation waits for the authoritative terminal event', () =
     assert.deepEqual(requests, [{
         event: 'cancel_transfer', payload: { transfer_id: 's2s-id' },
     }]);
-    assert.equal(manager.transferQueue[0].status, 'cancelling');
-    assert.equal(manager.isTransferring, true);
-
-    manager.cancelTransferById('s2s-id');
     assert.equal(manager.transferQueue[0].status, 'cancelled');
     assert.equal(manager.isTransferring, false);
 });
