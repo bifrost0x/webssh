@@ -81,11 +81,13 @@ def _cleanup_sftp_lock(session_id):
         _sftp_session_locks.pop(session_id, None)
 
 @contextmanager
-def sftp_session(identifier):
+def sftp_session(identifier, *, io_lane='control'):
     """Context manager: acquire per-session lock and provide SFTP client.
 
-    Ensures only one execution context uses the cached SFTPClient at a time,
-    preventing Paramiko's internal request/response queue corruption.
+    Control operations serialize access to the cached SFTPClient, preventing
+    Paramiko request/response queue corruption.  Bulk transfers instead own a
+    fresh SFTP channel so directory browsing remains responsive while a stream
+    is in progress.
 
     Usage:
         with sftp_session(session_id) as (sftp, source_type):
@@ -93,6 +95,21 @@ def sftp_session(identifier):
 
     Raises SFTPOperationError if no connection is available.
     """
+    if io_lane not in {'control', 'transfer'}:
+        raise ValueError('invalid SFTP I/O lane')
+    if io_lane == 'transfer':
+        sftp, error = get_sftp_client_fresh(identifier)
+        if error:
+            raise SFTPOperationError(error)
+        try:
+            yield sftp, 'transfer'
+        finally:
+            try:
+                sftp.close()
+            except Exception:
+                pass
+        return
+
     lock = _get_sftp_lock(identifier)
     lock.acquire()
     try:
@@ -461,17 +478,11 @@ def get_sftp_client(session_id):
         return None, str(e)
 
 def get_sftp_client_fresh(session_id):
-    """Get a NEW (uncached) SFTP client. Used for concurrent operations like S2S transfers."""
+    """Open an uncached SFTP channel for a session or quick connection."""
     try:
-        with ssh_manager.sessions_lock:
-            if session_id not in ssh_manager.sessions:
-                return None, "Session not found"
-
-            session = ssh_manager.sessions[session_id]
-            if not session['connected']:
-                return None, "Session not connected"
-
-            client = session['client']
+        client = get_ssh_client(session_id)
+        if client is None:
+            return None, "Session not found or disconnected"
 
         sftp = open_sftp_client(
             client.get_transport(),

@@ -884,7 +884,7 @@ class SFTPFileManager {
     }
 
     updateWorkspaceActions() {
-        if (this.displayMode !== 'modal' || !this.workspace) return;
+        if (!['modal', 'embedded'].includes(this.displayMode) || !this.workspace) return;
         const state = this.panes[this.activePane];
         const selectedCount = state?.selected?.size || 0;
         const selectedFile = selectedCount === 1 ? state.files[Array.from(state.selected)[0]] : null;
@@ -955,14 +955,20 @@ class SFTPFileManager {
         });
         const hint = document.getElementById('fmTransferHint');
         if (hint) {
-            const transferSelection = (
-                this.canTransferBetweenPanes('left', 'right')
-                || this.canTransferBetweenPanes('right', 'left')
-            )
-                ? Math.max(this.panes.left.selected.size, this.panes.right.selected.size)
-                : 0;
+            const leftOperation = this.workspaceOperationBetweenPanes('left', 'right');
+            const rightOperation = this.workspaceOperationBetweenPanes('right', 'left');
+            const leftSelection = leftOperation !== 'unavailable'
+                ? this.panes.left.selected.size : 0;
+            const rightSelection = rightOperation !== 'unavailable'
+                ? this.panes.right.selected.size : 0;
+            const transferSelection = Math.max(leftSelection, rightSelection);
+            const selectedOperation = leftSelection >= rightSelection
+                ? leftOperation : rightOperation;
             hint.textContent = transferSelection > 0
-                ? `${transferSelection} ${this.t('fm.selected', 'selected')}`
+                ? `${this.t(
+                    selectedOperation === 'move' ? 'fm.move' : 'fm.transfer',
+                    selectedOperation === 'move' ? 'Move' : 'Transfer',
+                )} ${transferSelection} ${this.t('fm.selected', 'selected')}`
                 : this.t('fm.workspace.selectFiles', 'Select files');
         }
     }
@@ -1146,9 +1152,11 @@ class SFTPFileManager {
                             <span class="fm-transfer-hint" id="fmTransferHint" data-i18n="fm.workspace.selectFiles">Select files</span>
                             <button type="button" class="fm-transfer-direction" id="fmTransferRight" aria-label="Transfer left to right" title="Transfer left to right">
                                 <span class="material-icons" aria-hidden="true">arrow_forward</span>
+                                <span class="btn-text" data-i18n="fm.transfer">Transfer</span>
                             </button>
                             <button type="button" class="fm-transfer-direction" id="fmTransferLeft" aria-label="Transfer right to left" title="Transfer right to left">
                                 <span class="material-icons" aria-hidden="true">arrow_back</span>
+                                <span class="btn-text" data-i18n="fm.transfer">Transfer</span>
                             </button>
                         </div>
 
@@ -4455,6 +4463,14 @@ class SFTPFileManager {
                         background: var(--success-bg, #1e4d2b);
                         border-color: var(--success-color, #4ade80);
                     }
+                    .upload-progress-notification.error {
+                        background: var(--error-bg, #4d1e24);
+                        border-color: var(--error-color, #f87171);
+                    }
+                    .upload-progress-notification.warning {
+                        background: var(--warning-bg, #4d3d1e);
+                        border-color: var(--warning-color, #fbbf24);
+                    }
                     .upload-progress-content {
                         display: flex;
                         gap: 12px;
@@ -4466,6 +4482,12 @@ class SFTPFileManager {
                     }
                     .upload-progress-icon.success {
                         color: var(--success-color, #4ade80);
+                    }
+                    .upload-progress-icon.error {
+                        color: var(--error-color, #f87171);
+                    }
+                    .upload-progress-icon.warning {
+                        color: var(--warning-color, #fbbf24);
                     }
                     .upload-progress-icon .spinning {
                         animation: spin 1s linear infinite;
@@ -4534,19 +4556,50 @@ class SFTPFileManager {
         }
     }
 
+    uploadBatchPresentation(batch) {
+        const succeeded = batch?.succeeded || 0;
+        const failed = batch?.failed || 0;
+        const cancelled = batch?.cancelled || 0;
+        const total = batch?.total || 0;
+        const complete = total > 0 && succeeded === total;
+        const onlyCancelled = total > 0 && cancelled === total;
+        const heading = complete
+            ? this.t('fm.uploadComplete', 'Upload complete')
+            : onlyCancelled
+                ? this.t('fm.uploadCancelled', 'Upload cancelled')
+                : succeeded > 0
+                    ? this.t('fm.uploadFinishedWithIssues', 'Upload finished with issues')
+                    : this.t('fm.uploadFailed', 'Upload failed');
+        const details = [
+            `${succeeded} / ${total} ${this.t('fm.filesUploaded', 'files uploaded')}`,
+        ];
+        if (failed > 0) details.push(`${failed} ${this.t('fm.failed', 'Failed')}`);
+        if (cancelled > 0) {
+            details.push(`${cancelled} ${this.t('fm.cancelled', 'Cancelled')}`);
+        }
+        return {
+            state: complete ? 'success' : onlyCancelled ? 'warning' : 'error',
+            icon: complete ? 'check_circle' : onlyCancelled ? 'cancel' : 'error',
+            heading,
+            details: details.join(' · '),
+        };
+    }
+
     showUploadComplete(batch = this.currentUploadBatch) {
         if (!this.uploadProgressNotification) return;
 
-        this.uploadProgressNotification.classList.add('success');
+        const presentation = this.uploadBatchPresentation(batch);
+        this.uploadProgressNotification.classList.remove('success', 'warning', 'error');
+        this.uploadProgressNotification.classList.add(presentation.state);
         this.uploadProgressNotification.innerHTML = `
             <div class="upload-progress-content">
-                <div class="upload-progress-icon success">
-                    <span class="material-icons">check_circle</span>
+                <div class="upload-progress-icon ${presentation.state}">
+                    <span class="material-icons">${presentation.icon}</span>
                 </div>
                 <div class="upload-progress-info">
-                    <div class="upload-progress-text">${this.t('fm.uploadComplete', 'Upload complete')}!</div>
+                    <div class="upload-progress-text">${presentation.heading}</div>
                     <div class="upload-progress-stats">
-                        <span>${batch ? batch.succeeded : 0} / ${batch ? batch.total : 0} ${this.t('fm.filesUploaded', 'files uploaded')}</span>
+                        <span>${presentation.details}</span>
                     </div>
                 </div>
             </div>

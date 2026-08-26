@@ -2127,13 +2127,27 @@
 
 .fm-transfer-direction {
     z-index: 1;
-    display: grid;
-    width: 40px;
-    height: 40px;
-    place-items: center;
+    display: flex;
+    width: 66px;
+    min-height: 42px;
+    padding: 5px 3px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
     border: 1px solid var(--border-color);
     border-radius: 9px;
     background: var(--bg-secondary);
+}
+
+.fm-transfer-direction .btn-text {
+    overflow: hidden;
+    max-width: 60px;
+    font-size: 9px;
+    font-weight: 650;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .fm-transfer-direction:not(:disabled):hover {

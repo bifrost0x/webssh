@@ -316,7 +316,16 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     await expect(page.locator('#fmRightPane')).toBeHidden();
     await expect(page.locator('#fmTransfer')).toBeHidden();
     await expect(page.locator('#fmEmbeddedUpload')).toBeVisible();
+    await expect(page.locator('#fmNewFolder')).toBeEnabled();
+    await expect(page.locator('#fmEmbeddedUpload')).toBeEnabled();
     await expect(page.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+
+    await page.locator('#fileTransferBtn').click();
+    await expect(page.locator('#sftpFileManager')).toBeVisible();
+    await page.locator('#fmClose').click();
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#fmNewFolder')).toBeEnabled();
+    await expect(page.locator('#fmEmbeddedUpload')).toBeEnabled();
 
     const embeddedFileLayout = await page.evaluate(() => {
         const bounds = element => element.getBoundingClientRect();

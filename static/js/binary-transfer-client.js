@@ -498,6 +498,14 @@ class BinaryTransferClient {
                         this.releaseSlot(transfer);
                         return;
                     }
+                    if (
+                        acknowledgement?.success === true
+                        && acknowledgement.state === 'cancelled'
+                    ) {
+                        transfer.controller?.abort();
+                        this.finalize(transfer, 'cancelled');
+                        return;
+                    }
                     if (acknowledgement?.state !== 'unavailable') return;
                     const failure = this.normalizeFailure({
                         error_code: 'TRANSFER_UNAVAILABLE',

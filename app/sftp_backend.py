@@ -106,11 +106,12 @@ class SFTPBackend:
 
     @contextmanager
     def open_reader(self, source, path, *, io_lane='control'):
-        del io_lane
         safe_path = self.normalize_path(path)
         if safe_path is None:
             raise sftp_handler.SFTPOperationError('invalid remote path')
-        with sftp_handler.sftp_session(source.handle_id) as (sftp, _source_type):
+        with sftp_handler.sftp_session(
+            source.handle_id, io_lane=io_lane
+        ) as (sftp, _source_type):
             with sftp.file(safe_path, 'rb') as remote_file:
                 yield remote_file
 
@@ -124,12 +125,13 @@ class SFTPBackend:
         cancel_event,
         io_lane='control',
     ):
-        del io_lane
         safe_path = self.normalize_path(path)
         if safe_path is None:
             raise sftp_handler.SFTPOperationError('invalid remote path')
         temporary_path = f'{safe_path}.webssh-write-{secrets.token_hex(12)}.tmp'
-        with sftp_handler.sftp_session(source.handle_id) as (sftp, _source_type):
+        with sftp_handler.sftp_session(
+            source.handle_id, io_lane=io_lane
+        ) as (sftp, _source_type):
             try:
                 with sftp.file(temporary_path, 'wb') as remote_file:
                     yield remote_file
@@ -170,7 +172,6 @@ class SFTPBackend:
         follow_links=False,
         io_lane='control',
     ):
-        del io_lane
         if follow_links:
             raise sftp_handler.SFTPOperationError('following links is unavailable')
         safe_path = self.normalize_path(path)
@@ -181,7 +182,9 @@ class SFTPBackend:
         )
 
         def iterate():
-            with sftp_handler.sftp_session(source.handle_id) as (sftp, _source_type):
+            with sftp_handler.sftp_session(
+                source.handle_id, io_lane=io_lane
+            ) as (sftp, _source_type):
                 def walk(directory, depth=0):
                     if depth > 50:
                         raise sftp_handler.SFTPOperationError(

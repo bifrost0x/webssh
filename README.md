@@ -82,6 +82,9 @@ automatic reconnect are not supported. SMB credentials are used for one
 temporary connection. Passwords and authentication secrets are never stored by
 WebSSH. Users may save non-secret, per-user share definitions containing a
 display name, host, share, domain, and username.
+Active Directory and TrueNAS deployments may require a UPN-style username
+containing the realm, such as `user@example.com`; the separate domain field
+remains available for servers that expect `DOMAIN\\user` authentication.
 After connecting, WebSSH non-destructively checks root listing, file creation,
 directory creation, and child deletion access. The workspace labels confirmed
 write access, confirmed root read-only access, or unknown access; deeper ACLs

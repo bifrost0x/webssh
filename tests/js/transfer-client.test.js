@@ -640,15 +640,16 @@ test('duplicate completion error and cancellation signals release one queue slot
         success: true, state: 'cancelled',
     });
     await flushTasks();
-    assert.equal(client.activeTransfers.has(third), true);
-    assert.equal(transport.preparations.length, 3);
+    assert.equal(client.activeTransfers.has(third), false);
+    assert.equal(transport.preparations.length, 4);
+    assert.equal(transport.preparations[3].payload.remote_path, '/fourth.bin');
+
+    // A late duplicate terminal event cannot reopen or advance the queue twice.
     transport.receive('transfer_finished', {
         transfer_id: 'third-server', status: 'cancelled',
     });
     await flushTasks();
-
     assert.equal(transport.preparations.length, 4);
-    assert.equal(transport.preparations[3].payload.remote_path, '/fourth.bin');
 });
 
 test('known oversized upload fails before preparation with exact safe context', async () => {
@@ -705,6 +706,12 @@ test('cancelling during preparation emits once after the server id arrives', asy
         transfer_id: 'slow-server',
     });
     assert.equal(client.activeTransfers.has(localId), true);
+
+    transport.cancellations[0].acknowledgement({
+        success: true, state: 'cancelled',
+    });
+    await flushTasks();
+    assert.equal(client.activeTransfers.has(localId), false);
 
     transport.receive('transfer_finished', {
         transfer_id: 'slow-server', status: 'cancelled',
