@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import threading
 
 import pytest
 from sqlalchemy import inspect, text
@@ -308,10 +309,17 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
     monkeypatch.setattr(ssh_manager, 'get_session', fake_get_session)
     monkeypatch.setattr(config, 'TMUX_ENABLED', True)
     emitted = []
+    connected_event = threading.Event()
+
+    def record_emit(event, payload=None, **_kwargs):
+        emitted.append((event, payload))
+        if event == 'ssh_connected':
+            connected_event.set()
+
     monkeypatch.setattr(
         socket_events,
         'emit',
-        lambda event, payload=None, **kwargs: emitted.append((event, payload)),
+        record_emit,
     )
 
     with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
@@ -334,6 +342,7 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
             'display_name': persistent['display_name'],
         })
 
+    assert connected_event.wait(2)
     connected = next(
         payload for event, payload in emitted
         if event == 'ssh_connected'

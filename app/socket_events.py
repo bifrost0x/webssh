@@ -1,5 +1,5 @@
 from flask_socketio import emit, join_room, disconnect
-from flask import request, current_app, url_for
+from flask import copy_current_request_context, request, current_app, url_for
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
                session_insights, runtime_inventory, smb_share_manager)
@@ -734,97 +734,188 @@ def handle_ssh_connect(data, current_user=None):
                 if existing:
                     reconnect_tmux_name = raw_name
 
-        session_id, error = ssh_manager.create_ssh_connection(
-            host=host,
-            port=int(port),
-            username=username,
-            password=password,
-            key_content=key_content,
-            socketio_instance=socketio,
-            app=current_app._get_current_object(),
-            user_id=current_user.id,
-            proxy_jump_host=bastion_host,
-            proxy_jump_port=bastion_port,
-            proxy_jump_username=bastion_username,
-            proxy_jump_password=bastion_password,
-            proxy_jump_key_content=bastion_key_content,
-            use_tmux=use_tmux,
-            reconnect_tmux_name=reconnect_tmux_name,
-            auth_type=auth_type,
-            startup_commands='' if reconnect_tmux_name else startup_commands,
-            auth_banner_decision=request_auth_banner_decision,
-        )
+        app = current_app._get_current_object()
+        lifecycle = app.extensions['runtime_lifecycle']
+        credential_box = {
+            'password': password,
+            'key_content': key_content,
+            'bastion_password': bastion_password,
+            'bastion_key_content': bastion_key_content,
+        }
 
-        if password:
-            password = None
-        if key_content:
-            key_content = None
-
-        if error:
-            emit_error(error)
-        else:
-            created_session = ssh_manager.get_session(session_id)
-            if not created_session:
-                log_error("SSH session disappeared after creation", session_id=session_id)
-                emit_error("Connection failed")
-                return
-            created_tmux_name = created_session.get('tmux_session_name') if use_tmux else None
-
-            display_name = data.get('display_name') if use_tmux else None
-            if display_name:
-                display_name = display_name.strip()[:128] or None
+        @copy_current_request_context
+        def connect_ssh(cancel_event, credentials=credential_box):
+            """Run blocking SSH setup outside the synchronous socket reader."""
+            local_password = credentials.pop('password', None)
+            local_key_content = credentials.pop('key_content', None)
+            local_bastion_password = credentials.pop(
+                'bastion_password', None
+            )
+            local_bastion_key_content = credentials.pop(
+                'bastion_key_content', None
+            )
             try:
-                # Clean up the specific old disconnected persistent session when
-                # reconnecting to avoid ghost tabs on refresh.
-                if use_tmux and reconnect_tmux_name:
-                    old_session = SSHSession.query.filter_by(
-                        user_id=current_user.id, host=host, port=port,
-                        is_persistent=True, connected=False,
-                        tmux_session_name=reconnect_tmux_name
-                    ).first()
-                    if old_session:
-                        db.session.delete(old_session)
-                        log_info("Cleaned up old persistent session",
-                                user=current_user.username, host=host,
-                                tmux_session=reconnect_tmux_name)
-
-                ssh_session = SSHSession(
-                    session_id=session_id,
-                    user_id=current_user.id,
+                if cancel_event.is_set():
+                    return
+                session_id, error = ssh_manager.create_ssh_connection(
                     host=host,
-                    port=port,
+                    port=int(port),
                     username=username,
-                    is_persistent=use_tmux,
-                    key_id=key_id if use_tmux else None,
+                    password=local_password,
+                    key_content=local_key_content,
+                    socketio_instance=socketio,
+                    app=app,
+                    user_id=current_user.id,
+                    proxy_jump_host=bastion_host,
+                    proxy_jump_port=bastion_port,
+                    proxy_jump_username=bastion_username,
+                    proxy_jump_password=local_bastion_password,
+                    proxy_jump_key_content=local_bastion_key_content,
+                    use_tmux=use_tmux,
+                    reconnect_tmux_name=reconnect_tmux_name,
                     auth_type=auth_type,
-                    tmux_session_name=created_tmux_name,
-                    display_name=display_name if use_tmux else None
+                    startup_commands=(
+                        '' if reconnect_tmux_name else startup_commands
+                    ),
+                    auth_banner_decision=request_auth_banner_decision,
                 )
-                db.session.add(ssh_session)
-                db.session.commit()
-            except Exception as db_err:
-                db.session.rollback()
-                log_error("Failed to record SSH session in database",
-                          error=str(db_err), session_id=session_id)
 
-            emit('ssh_connected', {
-                'session_id': session_id,
-                'host': host,
-                'port': port,
-                'username': username,
-                'client_request_id': client_request_id,
-                'via_jump': bastion_host,
-                'use_tmux': use_tmux,
-                'key_id': key_id if use_tmux else None,
-                'auth_type': auth_type,
-                'tmux_session_name': created_tmux_name,
-                'display_name': display_name,
-                'file_source': _public_file_source(
-                    make_source_id(FileSourceKind.SFTP_SESSION, session_id),
-                    current_user.id,
-                ),
-            })
-            log_ssh_connection(current_user.username, host, port, True, request.remote_addr)
+                if error:
+                    emit_error(error)
+                    return
+
+                socket_is_live = SocketSession.query.filter_by(
+                    socket_sid=socket_sid,
+                    user_id=current_user.id,
+                ).first() is not None
+                if cancel_event.is_set() or not socket_is_live:
+                    ssh_manager.close_session(
+                        session_id,
+                        kill_tmux=use_tmux,
+                    )
+                    return
+
+                created_session = ssh_manager.get_session(session_id)
+                if not created_session:
+                    log_error(
+                        "SSH session disappeared after creation",
+                        session_id=session_id,
+                    )
+                    emit_error("Connection failed")
+                    return
+                created_tmux_name = (
+                    created_session.get('tmux_session_name')
+                    if use_tmux else None
+                )
+
+                display_name = data.get('display_name') if use_tmux else None
+                if display_name:
+                    display_name = display_name.strip()[:128] or None
+                try:
+                    # Clean up the specific old disconnected persistent session
+                    # when reconnecting to avoid ghost tabs on refresh.
+                    if use_tmux and reconnect_tmux_name:
+                        old_session = SSHSession.query.filter_by(
+                            user_id=current_user.id,
+                            host=host,
+                            port=port,
+                            is_persistent=True,
+                            connected=False,
+                            tmux_session_name=reconnect_tmux_name,
+                        ).first()
+                        if old_session:
+                            db.session.delete(old_session)
+                            log_info(
+                                "Cleaned up old persistent session",
+                                user=current_user.username,
+                                host=host,
+                                tmux_session=reconnect_tmux_name,
+                            )
+
+                    ssh_session = SSHSession(
+                        session_id=session_id,
+                        user_id=current_user.id,
+                        host=host,
+                        port=port,
+                        username=username,
+                        is_persistent=use_tmux,
+                        key_id=key_id if use_tmux else None,
+                        auth_type=auth_type,
+                        tmux_session_name=created_tmux_name,
+                        display_name=display_name if use_tmux else None,
+                    )
+                    db.session.add(ssh_session)
+                    db.session.commit()
+                except Exception as db_err:
+                    db.session.rollback()
+                    log_error(
+                        "Failed to record SSH session in database",
+                        error=str(db_err),
+                        session_id=session_id,
+                    )
+
+                emit('ssh_connected', {
+                    'session_id': session_id,
+                    'host': host,
+                    'port': port,
+                    'username': username,
+                    'client_request_id': client_request_id,
+                    'via_jump': bastion_host,
+                    'use_tmux': use_tmux,
+                    'key_id': key_id if use_tmux else None,
+                    'auth_type': auth_type,
+                    'tmux_session_name': created_tmux_name,
+                    'display_name': display_name,
+                    'file_source': _public_file_source(
+                        make_source_id(
+                            FileSourceKind.SFTP_SESSION,
+                            session_id,
+                        ),
+                        current_user.id,
+                    ),
+                })
+                log_ssh_connection(
+                    current_user.username,
+                    host,
+                    port,
+                    True,
+                    request.remote_addr,
+                )
+            except StorageCorruptionError as error:
+                emit('ssh_error', _storage_error_payload(
+                    error,
+                    user_id=current_user.id,
+                    include_success=False,
+                    client_request_id=client_request_id,
+                ))
+            except Exception as error:
+                log_error(
+                    "SSH connection failed",
+                    error=str(error),
+                    user=current_user.username,
+                )
+                emit('ssh_error', {'error': 'Connection failed'})
+            finally:
+                credentials.clear()
+                local_password = None
+                local_key_content = None
+                local_bastion_password = None
+                local_bastion_key_content = None
+
+        try:
+            lifecycle.start_job(
+                'ssh_connect',
+                connect_ssh,
+                owner_id=current_user.id,
+            )
+        except Exception as error:
+            credential_box.clear()
+            log_warning(
+                'SSH connection job rejected',
+                user=current_user.username,
+                error_type=type(error).__name__,
+            )
+            emit_error('Server is shutting down')
 
     except StorageCorruptionError as error:
         emit('ssh_error', _storage_error_payload(

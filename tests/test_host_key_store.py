@@ -871,6 +871,33 @@ def test_add_file_entry_rejects_duplicates_conflicts_and_multiline(tmp_path):
     assert path.read_text(encoding="utf-8").count("\n") == 1
 
 
+def test_add_file_entry_rejects_conflict_on_overlapping_host_token(tmp_path):
+    path = tmp_path / "known_hosts"
+    original = _key()
+    replacement = _key()
+    first, first_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line(
+            "first.example,shared.example", original
+        ).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-overlap",
+    )
+    conflict, conflict_error = HostKeyStore.add_file_entry(
+        path,
+        _known_hosts_line("shared.example", replacement).strip(),
+        scope="global",
+        owner_id=None,
+        lock_key="test:global-host-keys-overlap",
+    )
+
+    assert first is not None and first_error is None
+    assert conflict is None
+    assert "different key" in conflict_error
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
 def test_add_file_entry_keeps_distinct_hashed_hosts_separate(tmp_path):
     path = tmp_path / "known_hosts"
     key = _key()

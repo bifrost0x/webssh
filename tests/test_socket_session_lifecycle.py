@@ -246,17 +246,13 @@ def test_ssh_authentication_banner_requires_same_socket_decision(
     )
 
     try:
-        connect_worker = threading.Thread(
-            target=lambda: socket_client.emit('ssh_connect', {
-                'host': 'example.com',
-                'port': 22,
-                'username': 'alice',
-                'password': 'secret',
-                'client_request_id': 'banner-request',
-            }),
-            daemon=True,
-        )
-        connect_worker.start()
+        socket_client.emit('ssh_connect', {
+            'host': 'example.com',
+            'port': 22,
+            'username': 'alice',
+            'password': 'secret',
+            'client_request_id': 'banner-request',
+        })
         banner_events = _collect_until(socket_client, 'ssh_auth_banner')
         banner = next(
             event['args'][0]
@@ -272,10 +268,8 @@ def test_ssh_authentication_banner_requires_same_socket_decision(
             'accepted': False,
         }, callback=True)
         errors = _collect_until(socket_client, 'ssh_error')
-        connect_worker.join(2)
 
         assert result == {'success': True}
-        assert not connect_worker.is_alive()
         assert decisions == [False]
         assert any(
             event['args'][0]['code'] == 'auth_banner_declined'

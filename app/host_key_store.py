@@ -86,6 +86,15 @@ def _host_pattern_is_valid(host_pattern):
     return len(salt) == 20 and len(digest) == 20
 
 
+def _host_identity_token(host_pattern):
+    """Normalize a literal pattern identity without conflating salted hashes."""
+    negated = host_pattern.startswith("!")
+    pattern = host_pattern[1:] if negated else host_pattern
+    if not pattern.startswith("|1|"):
+        pattern = pattern.casefold()
+    return f"!{pattern}" if negated else pattern
+
+
 class _EffectiveKeyMapping(MutableMapping):
     """Paramiko-compatible key mapping returned for one runtime hostname."""
 
@@ -413,8 +422,11 @@ class HostKeyStore:
                 existing_entry = HostKeyEntry.from_line(
                     " ".join(existing_fields[:3])
                 )
+                overlapping_hosts = not set(map(
+                    _host_identity_token, existing_entry.hostnames
+                )).isdisjoint(map(_host_identity_token, entry.hostnames))
                 same_identity = (
-                    tuple(existing_entry.hostnames) == tuple(entry.hostnames)
+                    overlapping_hosts
                     and existing_marker == marker
                     and existing_entry.key.get_name() == entry.key.get_name()
                 )
