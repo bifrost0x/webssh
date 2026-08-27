@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -125,6 +127,42 @@ def test_account_preferences_api_validates_and_persists_supported_values(
     assert b'data-theme="obsidian"' in rendered.data
     assert b'data-confirm-session-close="true"' in rendered.data
     assert b'data-disconnect-session-action="close"' in rendered.data
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("theme", [], "Invalid theme"),
+        ("theme", {}, "Invalid theme"),
+        (
+            "disconnect_session_action",
+            [],
+            "Invalid disconnect session action",
+        ),
+        (
+            "disconnect_session_action",
+            {},
+            "Invalid disconnect session action",
+        ),
+    ],
+)
+def test_account_preferences_api_rejects_unhashable_values(
+    app,
+    client,
+    field,
+    value,
+    expected_error,
+):
+    _create_user(app, "malformed_preferences_user")
+    _login(client, "malformed_preferences_user")
+
+    response = client.post(
+        "/api/account/preferences",
+        json={field: value},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": expected_error}
 
 
 def test_login_shows_only_enabled_external_authentication(

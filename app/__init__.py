@@ -762,7 +762,10 @@ def create_app(
                 'arctic-ice', 'rose-gold', 'cyberpunk-neon',
                 'emerald-matrix', 'obsidian',
             }
-            if data['theme'] not in valid_themes:
+            if (
+                not isinstance(data['theme'], str)
+                or data['theme'] not in valid_themes
+            ):
                 return jsonify({'error': 'Invalid theme'}), 400
             updates['theme'] = data['theme']
         if 'confirm_session_close' in data:
@@ -775,7 +778,10 @@ def create_app(
             ]
         if 'disconnect_session_action' in data:
             action = data['disconnect_session_action']
-            if action not in {'retry', 'close'}:
+            if (
+                not isinstance(action, str)
+                or action not in {'retry', 'close'}
+            ):
                 return jsonify({
                     'error': 'Invalid disconnect session action',
                 }), 400
