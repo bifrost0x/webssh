@@ -467,6 +467,8 @@ def recovery_route_allowed(path, method):
         return method == "POST"
     if path == "/api/webauthn/credentials":
         return method == "GET"
+    if path == "/api/account/security-state":
+        return method == "GET"
     if path in {"/api/totp/enroll", "/api/totp/enroll/verify"}:
         return method == "POST"
     if path == "/api/totp/authenticators":

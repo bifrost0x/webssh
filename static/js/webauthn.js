@@ -316,38 +316,121 @@
         }
     }
 
+    function factorRow(labelText, createdAt, deleteLabel, onDelete) {
+        const row = document.createElement('div');
+        row.className = 'security-factor-row';
+        const details = document.createElement('div');
+        details.className = 'security-factor-details';
+        const label = document.createElement('strong');
+        label.textContent = labelText;
+        const created = document.createElement('time');
+        created.dateTime = createdAt;
+        created.textContent = new Date(createdAt).toLocaleString();
+        details.append(label, created);
+        const button = document.createElement('button');
+        button.className = 'btn btn-danger';
+        button.textContent = t('common.delete', 'Delete');
+        button.setAttribute(
+            'aria-label',
+            `${t('common.delete', 'Delete')} ${deleteLabel}`
+        );
+        button.addEventListener('click', onDelete);
+        row.append(details, button);
+        return row;
+    }
+
+    async function loadAccountSecurityState() {
+        const badge = document.getElementById('securityMfaStatus');
+        if (!badge) { return null; }
+        const state = await api('/api/account/security-state');
+        accountMfaEnabled = Boolean(state.mfa_enabled);
+        document.body.dataset.accountMfaEnabled = String(accountMfaEnabled);
+        badge.classList.toggle('active', accountMfaEnabled);
+        badge.dataset.i18n = accountMfaEnabled
+            ? 'security.mfaEnabled'
+            : 'security.mfaOptional';
+        badge.textContent = accountMfaEnabled
+            ? t('security.mfaEnabled', 'MFA enabled')
+            : t('security.mfaOptional', 'MFA optional');
+
+        const extraProtection = document.getElementById(
+            'securityExtraProtectionState'
+        );
+        if (extraProtection) {
+            extraProtection.dataset.i18n = accountMfaEnabled
+                ? 'security.extraProtectionEnabled'
+                : 'security.extraProtectionOptional';
+            extraProtection.textContent = accountMfaEnabled
+                ? t(
+                    'security.extraProtectionEnabled',
+                    'A registered strong factor is required for protected changes.'
+                )
+                : t(
+                    'security.extraProtectionOptional',
+                    'Passkeys and authenticator apps are optional for this account.'
+                );
+        }
+        document.getElementById('passkeyEnableMfaBtn')?.classList.toggle(
+            'hidden',
+            !state.can_enable_mfa
+        );
+        document.getElementById('accountDisableMfaBtn')?.classList.toggle(
+            'hidden',
+            !state.can_disable_mfa
+        );
+        return state;
+    }
+
+    async function refreshSecuritySurface() {
+        await Promise.all([
+            loadAccountSecurityState(),
+            loadPasskeys(),
+            loadTotpAuthenticators()
+        ]);
+    }
+
     async function loadPasskeys() {
         const container = document.getElementById('passkeyList');
         if (!container || !document.getElementById('passkeyAddBtn')) { return; }
         const data = await api('/api/webauthn/credentials');
         const credentials = data.credentials || [];
-        document.getElementById('passkeyEnableMfaBtn')?.classList.toggle(
-            'hidden', accountMfaEnabled || credentials.length === 0
-        );
         container.replaceChildren();
+        if (credentials.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'admin-muted security-factor-empty';
+            empty.textContent = t(
+                'security.noPasskeys',
+                'No passkey is registered.'
+            );
+            container.appendChild(empty);
+            return;
+        }
         for (const credential of credentials) {
-            const row = document.createElement('div');
-            row.className = 'admin-toolbar';
-            const label = document.createElement('span');
-            label.textContent = `${credential.name} · ${new Date(credential.created_at).toLocaleString()}`;
-            const button = document.createElement('button');
-            button.className = 'btn btn-danger';
-            button.textContent = t('common.delete', 'Delete');
-            button.addEventListener('click', async () => {
-                if (!window.confirm(t(
-                    'security.confirmDeletePasskey',
-                    'Delete this passkey? Make sure another sign-in method remains available.'
-                ))) { return; }
-                const headers = await stepUpHeaders('passkey.delete', credential.id);
-                if (headers === null) { return; }
-                await api(`/api/webauthn/credentials/${credential.id}`, {
-                    method: 'DELETE',
-                    headers
-                });
-                await loadPasskeys();
-            });
-            row.append(label, button);
-            container.appendChild(row);
+            container.appendChild(factorRow(
+                credential.name,
+                credential.created_at,
+                credential.name,
+                async () => {
+                    try {
+                        if (!window.confirm(t(
+                            'security.confirmDeletePasskey',
+                            'Delete this passkey? Make sure another sign-in method remains available.'
+                        ))) { return; }
+                        const headers = await stepUpHeaders(
+                            'passkey.delete',
+                            credential.id
+                        );
+                        if (headers === null) { return; }
+                        await api(`/api/webauthn/credentials/${credential.id}`, {
+                            method: 'DELETE',
+                            headers
+                        });
+                        await refreshSecuritySurface();
+                    } catch (error) {
+                        notify(error.message, 'error');
+                    }
+                }
+            ));
         }
     }
 
@@ -374,15 +457,7 @@
                 ...codes
             ].join('\n');
         }
-        accountMfaEnabled = true;
-        document.body.dataset.accountMfaEnabled = 'true';
-        document.getElementById('passkeyEnableMfaBtn')?.classList.add('hidden');
-        const badge = document.getElementById('securityMfaStatus');
-        if (badge) {
-            badge.classList.add('active');
-            badge.dataset.i18n = 'security.mfaEnabled';
-            badge.textContent = t('security.mfaEnabled', 'MFA enabled');
-        }
+        await refreshSecuritySurface();
         notify(t('security.mfaEnabled', 'MFA enabled'), 'success');
     }
 
@@ -435,7 +510,7 @@
                     credential: serializeCredential(credential)
                 }
             });
-            await loadPasskeys();
+            await refreshSecuritySurface();
             notify(t('security.passkeyAdded', 'Passkey added'), 'success');
         } catch (error) {
             notify(error.message, 'error');
@@ -448,29 +523,48 @@
         const container = document.getElementById('totpList');
         if (!container) { return; }
         const data = await api('/api/totp/authenticators');
-        const state = window.WebSSHSecurityUI.totpAccountState(data);
+        const authenticators = data.authenticators || [];
         container.replaceChildren();
-        for (const authenticator of data.authenticators || []) {
-            const row = document.createElement('div');
-            row.className = 'admin-toolbar';
-            const label = document.createElement('span');
-            label.textContent = `${authenticator.label} · ${new Date(authenticator.created_at).toLocaleString()}`;
-            row.appendChild(label);
-            container.appendChild(row);
+        for (const authenticator of authenticators) {
+            container.appendChild(factorRow(
+                authenticator.label,
+                authenticator.created_at,
+                authenticator.label,
+                async () => {
+                    try {
+                        if (!window.confirm(t(
+                            'security.confirmDeleteAuthenticator',
+                            'Delete this authenticator app?'
+                        ))) { return; }
+                        const headers = await stepUpHeaders(
+                            'totp.delete',
+                            authenticator.id
+                        );
+                        if (headers === null) { return; }
+                        await api(
+                            `/api/totp/authenticators/${authenticator.id}`,
+                            { method: 'DELETE', headers }
+                        );
+                        await refreshSecuritySurface();
+                        notify(t(
+                            'security.authenticatorDeleted',
+                            'Authenticator app deleted'
+                        ), 'success');
+                    } catch (error) {
+                        notify(error.message, 'error');
+                    }
+                }
+            ));
         }
-        if (!state.hasAuthenticator) {
+        if (authenticators.length === 0) {
             const empty = document.createElement('p');
-            empty.className = 'admin-muted';
+            empty.className = 'admin-muted security-factor-empty';
             empty.textContent = t(
                 'security.noTotpAuthenticators',
                 'No authenticator app is enrolled.'
             );
             container.appendChild(empty);
         }
-        document.getElementById('totpDisableBtn')?.classList.toggle(
-            'hidden',
-            !state.canDisable
-        );
     }
 
     async function beginTotpEnrollment() {
@@ -530,11 +624,11 @@
                 ...codes
             ].join('\n');
         }
-        await loadTotpAuthenticators();
+        await refreshSecuritySurface();
         notify(t('security.mfaEnabled', 'MFA enabled'), 'success');
     }
 
-    async function disableTotpMfa() {
+    async function disableAccountMfa() {
         if (!window.confirm(t(
             'security.confirmDisableMfaAndRemoveTotp',
             'Disable MFA and remove all authenticator apps? This cannot be undone.'
@@ -546,7 +640,7 @@
             headers,
             body: { confirm_disable_mfa: true }
         });
-        await loadTotpAuthenticators();
+        await refreshSecuritySurface();
         notify(t('security.mfaDisabled', 'MFA requirement disabled'), 'success');
     }
 
@@ -596,15 +690,14 @@
         document.getElementById('passkeyEnableMfaBtn')?.addEventListener('click', () => {
             enablePasskeyMfa().catch(error => notify(error.message, 'error'));
         });
-        loadPasskeys().catch(error => notify(error.message, 'error'));
+        document.getElementById('accountDisableMfaBtn')?.addEventListener('click', () => {
+            disableAccountMfa().catch(error => notify(error.message, 'error'));
+        });
         document.getElementById('totpAddBtn')?.addEventListener('click', () => {
             beginTotpEnrollment().catch(error => notify(error.message, 'error'));
         });
         document.getElementById('totpActivateBtn')?.addEventListener('click', () => {
             activateTotpEnrollment().catch(error => notify(error.message, 'error'));
-        });
-        document.getElementById('totpDisableBtn')?.addEventListener('click', () => {
-            disableTotpMfa().catch(error => notify(error.message, 'error'));
         });
         document.getElementById('recoveryDisableMfaBtn')?.addEventListener('click', async () => {
             try {
@@ -622,7 +715,7 @@
                 notify(error.message, 'error');
             }
         });
-        loadTotpAuthenticators().catch(error => notify(error.message, 'error'));
+        refreshSecuritySurface().catch(error => notify(error.message, 'error'));
         document.getElementById('passkeyLoginBtn')?.addEventListener('click', async () => {
             const operation = async () => {
                 const options = decodeRequestOptions(await api('/api/webauthn/auth/options', {

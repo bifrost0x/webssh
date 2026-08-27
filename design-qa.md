@@ -87,6 +87,16 @@ and context navigation no longer compete in one toolbar.
 
 ## Regression evidence
 
+### Discussion 148 MFA management QA (2026-08-26)
+
+- The Discussion 148 reference wireframe and the implemented mixed-factor state were inspected together in one comparison input.
+- The Security overview keeps the current account-wide MFA state visible, exposes the explicit global disable action only while MFA is enabled, and places Passkeys, authenticator apps, and Recovery codes together before unrelated password and SSH host-trust settings.
+- Passkey and TOTP entries share one compact row pattern with label, creation time, an accessible factor-specific Delete label, and a clearly destructive action.
+- The real browser state contained one Passkey and one TOTP authenticator. Both factor lists, the account-wide status, the global disable action, and the Recovery section rendered without clipping or horizontal overflow at the 1280 x 720 QA viewport.
+- Empty Passkey and TOTP states were also inspected in the real browser; both remain contained and readable.
+- The backend blocks deletion of the final durable factor while account MFA is enabled, but permits deleting the final TOTP authenticator when a Passkey remains (and vice versa). Individual TOTP deletion uses action- and target-bound step-up authorization.
+- Regression evidence: 2,194 Python tests passed and 29 skipped. Four loopback/runtime cases that the workspace sandbox initially blocked were rerun outside that restriction and passed. The focused JavaScript test, syntax validation, ESLint, i18n parity, and `git diff --check` passed.
+
 - Python 3.14 broad run: 1,806 passed and 33 skipped with one upstream Flask-Login deprecation warning; two stale test-only cache-version and responsive-breakpoint expectations were corrected, then both affected modules passed 45/45.
 - Python 3.11 broad run: 1,806 passed and 33 skipped; the same two stale test-only expectations were corrected, then both affected modules passed 45/45.
 - Disposable OpenSSH/Paramiko integration: 27 passed; its containers, network, and generated private-key fixture were removed by the runner afterward.

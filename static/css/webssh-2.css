@@ -756,6 +756,30 @@ body:has(#securityAssuranceOverview) .admin-setting-row .admin-toolbar {
     color: var(--ws2-success);
 }
 
+.security-policy-controls {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.security-policy-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#passkeyMfaRecoveryCodes:not(:empty) {
+    margin: 16px 0 0;
+    padding: 13px 14px;
+    border: 1px solid color-mix(in srgb, var(--ws2-warning) 48%, var(--ws2-border));
+    border-radius: var(--ws2-radius);
+    background: color-mix(in srgb, var(--ws2-warning) 7%, var(--ws2-surface));
+    color: var(--ws2-text-secondary);
+}
+
 .security-assurance-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -787,6 +811,56 @@ body:has(#securityAssuranceOverview) .admin-setting-row .admin-toolbar {
     color: var(--ws2-text-secondary);
     font-size: 12px;
     line-height: 1.5;
+}
+
+.security-factor-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.security-factor-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    min-height: 54px;
+    padding: 10px 12px;
+    border: 1px solid var(--ws2-border);
+    border-radius: var(--ws2-radius);
+    background: color-mix(in srgb, var(--ws2-canvas) 48%, var(--ws2-surface));
+}
+
+.security-factor-details {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.security-factor-details strong {
+    overflow: hidden;
+    color: var(--ws2-text);
+    font-size: 13px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.security-factor-details time {
+    color: var(--ws2-text-muted);
+    font-size: 11px;
+}
+
+.security-factor-row .btn {
+    min-height: 36px;
+}
+
+.security-factor-empty {
+    margin: 0 !important;
+    padding: 12px;
+    border: 1px dashed var(--ws2-border);
+    border-radius: var(--ws2-radius);
+    text-align: center;
 }
 
 .admin-table-wrap {
@@ -1133,8 +1207,25 @@ body:has(.auth-container) {
         justify-self: start;
     }
 
+    .security-policy-controls {
+        align-items: flex-start;
+    }
+
+    .security-policy-actions {
+        justify-content: flex-start;
+    }
+
     .security-assurance-grid {
         grid-template-columns: 1fr;
+    }
+
+    .security-factor-row {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+    }
+
+    .security-factor-row .btn {
+        justify-self: start;
     }
 
     .workspace-status-bar > span:nth-of-type(2) {

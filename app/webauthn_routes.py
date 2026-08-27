@@ -45,7 +45,7 @@ from .auth_assurance import (
     pending_authentication,
     recovery_session_required,
 )
-from .models import TOTPAuthenticator, User, WebAuthnCredential, db
+from .models import User, WebAuthnCredential, db
 from .step_up import (
     SecurityUIUpgradeRequired,
     StepUpError,
@@ -335,27 +335,30 @@ def delete_credential(credential_id):
     grant_error = _consume_factor_grant("passkey.delete", credential_id)
     if grant_error is not None:
         return grant_error
-    if current_user.mfa_enabled:
-        from .security_features import feature_is_active
+    from .mfa_factors import durable_factor_counts, factor_mutation
 
-        passkey_count = WebAuthnCredential.query.filter_by(
-            user_id=current_user.id
-        ).count()
-        totp_count = (
-            TOTPAuthenticator.query.filter_by(
-                user_id=current_user.id,
-                active=True,
-            ).count()
-            if feature_is_active("totp")
-            else 0
+    with factor_mutation():
+        row = db.session.get(
+            WebAuthnCredential,
+            credential_id,
+            populate_existing=True,
         )
-        if passkey_count + totp_count <= 1:
+        user = db.session.get(User, current_user.id, populate_existing=True)
+        if row is None or row.user_id != current_user.id:
+            return jsonify({"error": "Passkey not found"}), 404
+        if user is None:
+            return jsonify({"error": "Account is unavailable"}), 409
+        remaining = durable_factor_counts(
+            user.id,
+            excluding_passkey_id=row.id,
+        )
+        if user.mfa_enabled and remaining["total"] == 0:
             return jsonify({
                 "error": "Add a replacement factor or disable MFA first",
                 "code": "last_factor_required",
             }), 409
-    db.session.delete(row)
-    db.session.commit()
+        db.session.delete(row)
+        db.session.commit()
     log_security_event(
         "WEBAUTHN_CREDENTIAL_DELETED",
         user=current_user.username,

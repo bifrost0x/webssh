@@ -59,11 +59,14 @@ def _enrollment_binding():
     return session.setdefault("totp_binding", secrets.token_urlsafe(32))
 
 
-def _consume_factor_grant(action, *, recovery_repair=False):
+def _consume_factor_grant(action, target=None, *, recovery_repair=False):
     if recovery_repair and recovery_session_required():
         return None
     try:
-        consume_account_step_up_grant(action, current_user.id)
+        consume_account_step_up_grant(
+            action,
+            current_user.id if target is None else target,
+        )
     except SecurityUIUpgradeRequired:
         return jsonify({
             "error": "Reload the Security page before continuing",
@@ -114,6 +117,50 @@ def list_totp_authenticators():
             ),
         } for row in rows],
     })
+
+
+@totp_blueprint.delete("/api/totp/authenticators/<int:authenticator_id>")
+@login_required
+def delete_totp_authenticator(authenticator_id):
+    _require_enabled()
+    row = db.session.get(TOTPAuthenticator, authenticator_id)
+    if row is None or row.user_id != current_user.id:
+        return jsonify({"error": "Authenticator not found"}), 404
+    grant_error = _consume_factor_grant("totp.delete", authenticator_id)
+    if grant_error is not None:
+        return grant_error
+
+    from .mfa_factors import durable_factor_counts, factor_mutation
+
+    with factor_mutation():
+        row = db.session.get(
+            TOTPAuthenticator,
+            authenticator_id,
+            populate_existing=True,
+        )
+        user = db.session.get(User, current_user.id, populate_existing=True)
+        if row is None or row.user_id != current_user.id:
+            return jsonify({"error": "Authenticator not found"}), 404
+        if user is None:
+            return jsonify({"error": "Account is unavailable"}), 409
+        remaining = durable_factor_counts(
+            user.id,
+            excluding_totp_id=(row.id if row.active else None),
+        )
+        if user.mfa_enabled and remaining["total"] == 0:
+            return jsonify({
+                "error": "Add a replacement factor or disable MFA first",
+                "code": "last_factor_required",
+            }), 409
+        db.session.delete(row)
+        db.session.commit()
+
+    log_security_event(
+        "TOTP_AUTHENTICATOR_DELETED",
+        user=current_user.username,
+        authenticator_id=authenticator_id,
+    )
+    return jsonify({"ok": True, "mfa_enabled": bool(user.mfa_enabled)})
 
 
 @totp_blueprint.post("/api/totp/enroll")

@@ -100,18 +100,6 @@
             .replace('{feature}', name);
     }
 
-    function totpAccountState(payload) {
-        const item = payload || {};
-        const authenticators = Array.isArray(item.authenticators)
-            ? item.authenticators
-            : [];
-        return {
-            mfaEnabled: Boolean(item.mfa_enabled),
-            hasAuthenticator: authenticators.length > 0,
-            canDisable: Boolean(item.mfa_enabled) && authenticators.length > 0
-        };
-    }
-
     function createAccountStepUpClient(dependencies) {
         const options = dependencies || {};
         const api = options.api;
@@ -338,7 +326,6 @@
         featureDisableWarning,
         featureStatusReason,
         featureToggleState,
-        hostKeyConfirmation,
-        totpAccountState
+        hostKeyConfirmation
     };
 });

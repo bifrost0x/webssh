@@ -68,6 +68,8 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
         'will not be shown again',
     );
     await expect(page.locator('#totpList')).toContainText('E2E authenticator');
+    await expect(page.locator('#securityMfaStatus')).toHaveText('MFA enabled');
+    await expect(page.locator('#accountDisableMfaBtn')).toBeVisible();
 
     const browserStorage = await page.evaluate(() => ({
         local: Object.entries(localStorage),
@@ -106,7 +108,7 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await page.goto('/security');
     await expect(page.locator('#totpList')).toContainText('E2E authenticator');
     const dialogPromise = page.waitForEvent('dialog');
-    const disableClick = page.locator('#totpDisableBtn').click();
+    const disableClick = page.locator('#accountDisableMfaBtn').click();
     const dialog = await dialogPromise;
     expect(dialog.message()).toContain('remove all authenticator apps');
     await dialog.accept();
@@ -114,7 +116,8 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await expect(page.locator('#totpList')).toContainText(
         'No authenticator app is enrolled.',
     );
-    await expect(page.locator('#totpDisableBtn')).toBeHidden();
+    await expect(page.locator('#securityMfaStatus')).toHaveText('MFA optional');
+    await expect(page.locator('#accountDisableMfaBtn')).toBeHidden();
 });
 
 test('shows mixed MFA methods one at a time', async ({ page }) => {
