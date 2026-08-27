@@ -257,6 +257,34 @@ def test_socket_cancel_returns_authoritative_state_and_emits_terminal_once(
     assert foreign == {'success': False, 'state': 'unavailable'}
     assert len(emitted) == 1
 
+    running = manager.create(7, 'sftp-session:owned', 'download', {})
+    manager.consume_token(running.token, 7)
+    with app.test_request_context('/socket.io'):
+        first_running = socket_events.handle_cancel_transfer.__wrapped__(
+            {'transfer_id': running.transfer_id}, current_user=user
+        )
+        second_running = socket_events.handle_cancel_transfer.__wrapped__(
+            {'transfer_id': running.transfer_id}, current_user=user
+        )
+
+    assert first_running == {'success': True, 'state': 'cancelling'}
+    assert second_running == {'success': True, 'state': 'cancelling'}
+    assert len(emitted) == 1
+
+    from app.transfer_routes import _terminalize
+    assert _terminalize(
+        running, 7, 'cancelled', manager=manager
+    ) is True
+    assert emitted[-1] == (
+        'transfer_finished',
+        {
+            'transfer_id': running.transfer_id,
+            'direction': 'download',
+            'status': 'cancelled',
+        },
+        {'room': 'user_7'},
+    )
+
 
 def test_server_transfer_closes_pool_source_once_if_destination_fails(monkeypatch):
     """Opening the destination must not leak or double-close the pool source."""

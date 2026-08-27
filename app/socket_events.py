@@ -2232,7 +2232,7 @@ def handle_cancel_transfer(data, current_user=None):
         log_error('Transfer cancellation failed', user_id=current_user.id,
                   exception_type=type(error).__name__)
         return {'success': False, 'state': 'unavailable'}
-    if result.accepted:
+    if result.accepted and result.state == 'cancelled':
         socketio.emit('transfer_finished', {
             'transfer_id': transfer_id,
             'status': 'cancelled',

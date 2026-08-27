@@ -18,6 +18,7 @@ from .runtime_lifecycle import RuntimeShuttingDown
 class TransferState(Enum):
     PENDING = 'pending'
     RUNNING = 'running'
+    CANCELLING = 'cancelling'
     CANCELLED = 'cancelled'
     FAILED = 'failed'
     COMPLETED = 'completed'
@@ -34,7 +35,7 @@ class TransferCancelResult:
         if not isinstance(self.accepted, bool):
             raise ValueError('accepted must be boolean')
         if self.state not in {
-            'cancelled', 'completed', 'failed', 'unavailable'
+            'cancelling', 'cancelled', 'completed', 'failed', 'unavailable'
         }:
             raise ValueError('invalid cancellation state')
 
@@ -327,7 +328,7 @@ class TransferManager:
         return self.cancel_with_result(transfer_id, user_id).accepted
 
     def cancel_with_result(self, transfer_id, user_id):
-        """Cancel once and return the stable state on every later request."""
+        """Request cancellation once without claiming running I/O has stopped."""
         try:
             transfer_id = _normalize_id(transfer_id, 'transfer_id')
             user_id = _normalize_id(user_id, 'user_id')
@@ -338,15 +339,10 @@ class TransferManager:
             self._cleanup_expired_locked(self._clock())
             record = self._records.get(transfer_id)
             if record is not None and record._user_id == user_id:
-                if record._state in {
-                    TransferState.PENDING,
-                    TransferState.RUNNING,
-                }:
+                if record._state is TransferState.PENDING:
                     release_error = self._release_for_terminal(
                         record,
-                        release_source_holds=(
-                            record._state is TransferState.PENDING
-                        ),
+                        release_source_holds=True,
                     )
                     self._finalize_record_locked(
                         record,
@@ -356,6 +352,12 @@ class TransferManager:
                     if release_error is not None:
                         raise release_error
                     return TransferCancelResult(True, 'cancelled')
+                if record._state is TransferState.RUNNING:
+                    record._state = TransferState.CANCELLING
+                    record._cancel_event.set()
+                    return TransferCancelResult(True, 'cancelling')
+                if record._state is TransferState.CANCELLING:
+                    return TransferCancelResult(False, 'cancelling')
 
             terminal = self._terminal_states.get(transfer_id)
             if terminal is not None and terminal[0] == user_id:
@@ -395,6 +397,7 @@ class TransferManager:
                 if record._state in {
                     TransferState.PENDING,
                     TransferState.RUNNING,
+                    TransferState.CANCELLING,
                 }
             ]
             waiters = tuple(
@@ -406,7 +409,10 @@ class TransferManager:
                 for record in records
                 if (
                     record._direction in {'upload', 'download'}
-                    and record._state is TransferState.RUNNING
+                    and record._state in {
+                        TransferState.RUNNING,
+                        TransferState.CANCELLING,
+                    }
                 )
             )
             self._cancel_records_locked(records)
@@ -439,7 +445,10 @@ class TransferManager:
         return self._transition(
             transfer_id,
             user_id,
-            allowed_states={TransferState.RUNNING},
+            allowed_states={
+                TransferState.RUNNING,
+                TransferState.CANCELLING,
+            },
             target_state=TransferState.COMPLETED,
         )
 
@@ -450,8 +459,21 @@ class TransferManager:
             allowed_states={
                 TransferState.PENDING,
                 TransferState.RUNNING,
+                TransferState.CANCELLING,
             },
             target_state=TransferState.FAILED,
+        )
+
+    def finish_cancelled(self, transfer_id, user_id):
+        """Confirm that a worker observed cancellation and stopped its I/O."""
+        return self._transition(
+            transfer_id,
+            user_id,
+            allowed_states={
+                TransferState.RUNNING,
+                TransferState.CANCELLING,
+            },
+            target_state=TransferState.CANCELLED,
         )
 
     def cleanup_expired(self):
@@ -466,24 +488,33 @@ class TransferManager:
             self.cleanup_expired()
 
     def _cancel_records_locked(self, records):
+        cancelled = 0
         for record in records:
-            release_source_holds = record._state is TransferState.PENDING
-            try:
-                self._release_for_terminal(
+            if record._state is TransferState.CANCELLING:
+                continue
+            if record._state is TransferState.RUNNING:
+                record._state = TransferState.CANCELLING
+                record._cancel_event.set()
+                cancelled += 1
+                continue
+            if record._state is TransferState.PENDING:
+                try:
+                    self._release_for_terminal(
+                        record,
+                        release_source_holds=True,
+                    )
+                except Exception:
+                    self._release_for_terminal(
+                        record,
+                        release_source_holds=True,
+                    )
+                self._finalize_record_locked(
                     record,
-                    release_source_holds=release_source_holds,
+                    TransferState.CANCELLED,
+                    set_cancel_event=True,
                 )
-            except Exception:
-                self._release_for_terminal(
-                    record,
-                    release_source_holds=release_source_holds,
-                )
-            self._finalize_record_locked(
-                record,
-                TransferState.CANCELLED,
-                set_cancel_event=True,
-            )
-        return len(records)
+                cancelled += 1
+        return cancelled
 
     def _transition(
         self,
@@ -511,7 +542,10 @@ class TransferManager:
                 record,
                 release_source_holds=not (
                     target_state is TransferState.CANCELLED
-                    and record._state is TransferState.RUNNING
+                    and record._state in {
+                        TransferState.RUNNING,
+                        TransferState.CANCELLING,
+                    }
                 ),
             )
             self._finalize_record_locked(

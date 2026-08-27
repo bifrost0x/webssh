@@ -332,6 +332,50 @@ test('transfer queue toggle keeps icon and accessibility state in sync', () => {
     global.document.getElementById = originalGetElementById;
 });
 
+test('an open transfer queue follows appended work but preserves manual history scrolling', () => {
+    const previousDocument = global.document;
+    const queue = { classList: classList() };
+    const list = {
+        innerHTML: '',
+        scrollHeight: 500,
+        scrollTop: 0,
+        clientHeight: 100,
+    };
+    const badge = { textContent: '', style: {} };
+    global.document = {
+        getElementById(id) {
+            return { fmQueue: queue, fmQueueList: list, fmQueueBadge: badge }[id] || null;
+        },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [{
+            id: 'first', type: 'upload', filename: 'first.bin', status: 'active', progress: 10,
+        }],
+        t(_key, fallback) { return fallback; },
+        escapeHtml(value) { return String(value); },
+    });
+
+    try {
+        manager.renderTransferQueue();
+        assert.equal(list.scrollTop, 500);
+
+        list.scrollTop = 100;
+        manager.transferQueue[0].progress = 20;
+        manager.renderTransferQueue();
+        assert.equal(list.scrollTop, 100);
+
+        list.scrollHeight = 600;
+        manager.transferQueue.push({
+            id: 'second', type: 'download', filename: 'second.bin', status: 'pending', progress: 0,
+        });
+        manager.renderTransferQueue();
+        assert.equal(list.scrollTop, 600);
+    } finally {
+        global.document = previousDocument;
+    }
+});
+
 test('embedded pane state cannot overwrite standalone workspace tabs', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
@@ -1441,14 +1485,33 @@ test('same-source move is named visibly on the directional action and hint', () 
     try {
         manager.updateWorkspaceOperationButton(button, 'move', 'LeftToRight');
         manager.updateWorkspaceActions();
+
+        assert.equal(icon.textContent, 'drive_file_move');
+        assert.equal(text.textContent, 'Move');
+        assert.equal(button.title, 'Move left to right');
+        assert.equal(hint.textContent, 'Move 1 selected');
+
+        manager.panes.left.selected.clear();
+        manager.updateWorkspaceActions();
+        assert.equal(hint.textContent, 'Select items to move');
     } finally {
         global.document = previousDocument;
     }
+});
 
-    assert.equal(icon.textContent, 'drive_file_move');
-    assert.equal(text.textContent, 'Move');
-    assert.equal(button.title, 'Move left to right');
-    assert.equal(hint.textContent, 'Move 1 selected');
+test('source launcher identifies the existing connection that enables Move', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.sourceLauncherPane = 'right';
+    manager.panes.left = filePane(manager, 'smb-quick:shared');
+    manager.t = (_key, fallback) => fallback;
+
+    assert.equal(manager.sourceLauncherStatus({
+        sourceId: 'smb-quick:shared', status: 'Connected',
+    }), 'Same connection · enables Move');
+    assert.equal(manager.sourceLauncherStatus({
+        sourceId: 'smb-quick:other', status: 'Connected',
+    }), 'Connected');
 });
 
 test('same-source move is sequential, never replaces, and refreshes both panes once', async () => {
@@ -1672,6 +1735,43 @@ test('file checkbox markup is keyboard accessible and double click never opens t
     assert.match(rendered, /<button[^>]+class="fm-file-checkbox material-icons"/);
     assert.match(rendered, /role="checkbox"[^>]+aria-checked="false"/);
     assert.equal(opened, false);
+});
+
+test('an empty non-root folder still renders the parent directory action', () => {
+    const previousDocument = global.document;
+    let rendered = '';
+    const container = {
+        set innerHTML(value) { rendered = value; },
+        get innerHTML() { return rendered; },
+        querySelectorAll() { return []; },
+    };
+    global.document = {
+        getElementById(id) { return id === 'fmLeftList' ? container : null; },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        panes: {
+            left: {
+                source: fileSource('smb-quick:share'), path: '/empty',
+                selected: new Set(), files: [],
+            },
+        },
+        workspace: { layout: 'single' },
+        displayMode: 'modal',
+        escapeHtml(value) { return String(value); },
+        updatePaneStatus() {},
+        t(_key, fallback) { return fallback; },
+    });
+
+    try {
+        manager.renderPane('left');
+    } finally {
+        global.document = previousDocument;
+    }
+
+    assert.match(rendered, /data-type="parent"/);
+    assert.match(rendered, /<div class="fm-file-name">\.\.<\/div>/);
+    assert.match(rendered, /Empty directory/);
 });
 
 test('embedded drag and drop uses the existing directory upload path', () => {
@@ -2723,13 +2823,13 @@ test('an S2S terminal event received before its acknowledgement cannot strand th
     await transfer;
 });
 
-test('server copy cancellation finalizes from the authoritative acknowledgement', () => {
+test('server copy cancellation waits for the worker terminal event', () => {
     const requests = [];
     const manager = Object.create(SFTPFileManager.prototype);
     Object.assign(manager, {
         socket: { emit(event, payload, ack) {
             requests.push({ event, payload });
-            ack({ success: true, state: 'cancelled' });
+            ack({ success: true, state: 'cancelling' });
         } },
         transferQueue: [{ id: 's2s-id', type: 's2s', status: 'active' }],
         activeTransfers: new Map([['s2s-id', {}]]),
@@ -2744,6 +2844,14 @@ test('server copy cancellation finalizes from the authoritative acknowledgement'
     assert.deepEqual(requests, [{
         event: 'cancel_transfer', payload: { transfer_id: 's2s-id' },
     }]);
+    assert.equal(manager.transferQueue[0].status, 'cancelling');
+    assert.equal(manager.isTransferring, true);
+
+    manager.failS2STransfer({
+        transfer_id: 's2s-id',
+        error_code: 'CANCELLED',
+        error: 'The transfer was cancelled.',
+    });
     assert.equal(manager.transferQueue[0].status, 'cancelled');
     assert.equal(manager.isTransferring, false);
 });

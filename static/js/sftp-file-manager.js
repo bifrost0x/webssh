@@ -602,7 +602,7 @@ class SFTPFileManager {
                         </span>
                         <span class="fm-protocol-badge">${this.escapeHtml(source.protocol || '')}</span>
                         <span class="fm-source-row-status">
-                            <strong>${this.escapeHtml(source.status || '')}</strong>
+                            <strong>${this.escapeHtml(this.sourceLauncherStatus(source))}</strong>
                             <small><span class="material-icons" aria-hidden="true">verified_user</span>${this.escapeHtml(assurance)}</small>
                         </span>
                     </button>`;
@@ -621,6 +621,18 @@ class SFTPFileManager {
                     <strong>${this.escapeHtml(this.t('fm.workspace.noAvailableSources', 'No sources available'))}</strong>
                     <span>${this.escapeHtml(this.t('fm.workspace.noAvailableSourcesHint', 'Open an SSH session or create a new SFTP connection below.'))}</span>
                 </div>`;
+    }
+
+    sourceLauncherStatus(source) {
+        const otherPane = this.sourceLauncherPane === 'left' ? 'right' : 'left';
+        const otherSourceId = this.getPaneSourceId(this.panes?.[otherPane]);
+        if (source?.sourceId && source.sourceId === otherSourceId) {
+            return this.t(
+                'fm.workspace.sameConnectionMove',
+                'Same connection · enables Move',
+            );
+        }
+        return source?.status || '';
     }
 
     renderWorkspaceChrome() {
@@ -969,7 +981,9 @@ class SFTPFileManager {
                     selectedOperation === 'move' ? 'fm.move' : 'fm.transfer',
                     selectedOperation === 'move' ? 'Move' : 'Transfer',
                 )} ${transferSelection} ${this.t('fm.selected', 'selected')}`
-                : this.t('fm.workspace.selectFiles', 'Select files');
+                : selectedOperation === 'move'
+                    ? this.t('fm.workspace.selectItemsToMove', 'Select items to move')
+                    : this.t('fm.workspace.selectFiles', 'Select files');
         }
     }
 
@@ -1724,7 +1738,7 @@ class SFTPFileManager {
                 data.error,
                 data,
             );
-            if (data.error_code !== 'CONFLICT') {
+            if (!['CONFLICT', 'CANCELLED'].includes(data.error_code)) {
                 this.showNotification(`${this.t('fm.transferFailed', 'Transfer failed')}: ${message}`, 'error');
             }
             this.failS2STransfer(data);
@@ -2689,17 +2703,6 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.files.length === 0) {
-            container.innerHTML = `
-                <div class="fm-empty">
-                    <span class="material-icons fm-empty-icon">folder_off</span>
-                    <div class="fm-empty-text">${this.t('fm.emptyDirectory', 'Empty directory')}</div>
-                </div>
-            `;
-            this.updatePaneStatus(pane);
-            return;
-        }
-
         const sortedFiles = [...state.files].sort((a, b) => {
             if (a.is_dir && !b.is_dir) return -1;
             if (!a.is_dir && b.is_dir) return 1;
@@ -2725,6 +2728,15 @@ class SFTPFileManager {
                     <div class="fm-file-size">-</div>
                     <div class="fm-file-modified">-</div>
                     <div class="fm-file-permissions">${this.t('fm.parentDirectory', 'Parent directory')}</div>
+                </div>
+            `;
+        }
+
+        if (state.files.length === 0) {
+            html += `
+                <div class="fm-empty">
+                    <span class="material-icons fm-empty-icon">folder_off</span>
+                    <div class="fm-empty-text">${this.t('fm.emptyDirectory', 'Empty directory')}</div>
                 </div>
             `;
         }
@@ -3719,7 +3731,7 @@ class SFTPFileManager {
         );
         this.finalizeOrBufferS2STerminal(
             data.transfer_id,
-            'error',
+            data.error_code === 'CANCELLED' ? 'cancelled' : 'error',
             message,
             data.error_code,
             data.retryable,
@@ -4048,6 +4060,17 @@ class SFTPFileManager {
     renderTransferQueue() {
         const container = document.getElementById('fmQueueList');
         const badge = document.getElementById('fmQueueBadge');
+        const queue = document.getElementById('fmQueue');
+        const nearBottom = (
+            Number(container.scrollHeight || 0)
+            - Number(container.scrollTop || 0)
+            - Number(container.clientHeight || 0)
+        ) <= 24;
+        const tailId = this.transferQueue.length > 0
+            ? String(this.transferQueue[this.transferQueue.length - 1].id)
+            : null;
+        const appended = tailId !== null && tailId !== this.renderedQueueTailId;
+        this.renderedQueueTailId = tailId;
 
         const activeCount = this.transferQueue.filter(t =>
             ['pending', 'active', 'cancelling'].includes(t.status)
@@ -4090,6 +4113,9 @@ class SFTPFileManager {
             </div>
         `;
         }).join('');
+        if (!queue?.classList?.contains('collapsed') && (appended || nearBottom)) {
+            this.scrollTransferQueueToEnd(tailId);
+        }
     }
 
     getStatusText(transfer) {
@@ -4110,6 +4136,23 @@ class SFTPFileManager {
         const toggle = document.getElementById('fmQueueToggle');
         toggle.textContent = collapsed ? 'expand_more' : 'expand_less';
         document.getElementById('fmQueueHeader').setAttribute('aria-expanded', String(!collapsed));
+        if (!collapsed) this.scrollTransferQueueToEnd();
+    }
+
+    scrollTransferQueueToEnd(expectedTailId = null) {
+        const schedule = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : callback => callback();
+        schedule(() => {
+            const queue = document.getElementById('fmQueue');
+            const container = document.getElementById('fmQueueList');
+            if (!container || queue?.classList?.contains('collapsed')) return;
+            if (
+                expectedTailId !== null
+                && this.renderedQueueTailId !== expectedTailId
+            ) return;
+            container.scrollTop = container.scrollHeight;
+        });
     }
 
     showContextMenu(e, pane, index) {
