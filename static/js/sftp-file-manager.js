@@ -323,6 +323,7 @@ class SFTPFileManager {
     setWorkspaceLayout(layout) {
         const previousLayout = this.workspace.layout;
         this.workspace.setLayout(layout);
+        if (layout === 'single') this.guidedMove = null;
         if (layout === 'split' && previousLayout === 'single' && this.displayMode === 'modal') {
             const sourcePane = this.workspace.activePane;
             const targetPane = sourcePane === 'left' ? 'right' : 'left';
@@ -339,8 +340,6 @@ class SFTPFileManager {
                 this.renderPane(sourcePane);
                 this.renderPane(targetPane);
                 this.setActivePane(targetPane);
-            } else if (!this.workspace.getActiveTab(targetPane)) {
-                this.openSourceLauncher(targetPane);
             }
         }
         this.renderWorkspaceChrome();
@@ -663,6 +662,10 @@ class SFTPFileManager {
             const activeTab = this.workspace.getActiveTab(pane);
             const legacySelect = document.getElementById(`fm${this.capitalize(pane)}Source`);
             if (legacySelect) legacySelect.value = activeTab?.source.sourceId || '';
+            document.getElementById(`fm${this.capitalize(pane)}Pane`)?.classList.toggle(
+                'fm-guided-move-target',
+                this.guidedMove?.targetPane === pane,
+            );
         });
         this.updateWorkspaceActions();
     }
@@ -730,7 +733,6 @@ class SFTPFileManager {
         this.updatePaneBadge(pane);
         this.renderPane(pane);
         this.renderWorkspaceChrome();
-        if (!result.active && this.workspace.layout === 'single') this.openSourceLauncher(pane);
         return result.closed;
     }
 
@@ -954,6 +956,9 @@ class SFTPFileManager {
                     download: !this.sourceCan(paneState, 'read') || paneSelection === 0,
                     preview: !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
                     rename: !this.sourceCan(paneState, 'rename') || paneSelection !== 1,
+                    move: this.displayMode !== 'modal'
+                        || !this.sourceCan(paneState, 'rename')
+                        || paneSelection === 0,
                     delete: !this.sourceCan(paneState, 'delete') || paneSelection === 0,
                 }[action];
                 button.disabled = Boolean(disabled);
@@ -976,7 +981,22 @@ class SFTPFileManager {
             const transferSelection = Math.max(leftSelection, rightSelection);
             const selectedOperation = leftSelection >= rightSelection
                 ? leftOperation : rightOperation;
-            hint.textContent = transferSelection > 0
+            const guided = this.guidedMove;
+            const guidedSource = guided ? this.panes[guided.sourcePane] : null;
+            const guidedTarget = guided ? this.panes[guided.targetPane] : null;
+            const guidedReady = guided
+                && this.getPaneSourceId(guidedSource) === guided.sourceId
+                && this.getPaneSourceId(guidedTarget) === guided.sourceId
+                && this.workspaceOperationBetweenPanes(
+                    guided.sourcePane,
+                    guided.targetPane,
+                ) === 'move';
+            hint.textContent = guided && !guidedReady
+                ? this.t(
+                    'fm.workspace.chooseMoveDestination',
+                    'Browse to the destination folder',
+                )
+                : transferSelection > 0
                 ? `${this.t(
                     selectedOperation === 'move' ? 'fm.move' : 'fm.transfer',
                     selectedOperation === 'move' ? 'Move' : 'Transfer',
@@ -985,6 +1005,43 @@ class SFTPFileManager {
                     ? this.t('fm.workspace.selectItemsToMove', 'Select items to move')
                     : this.t('fm.workspace.selectFiles', 'Select files');
         }
+    }
+
+    async startGuidedMove(sourcePane = this.activePane) {
+        if (this.displayMode !== 'modal' || !this.workspace) return false;
+        const sourceState = this.panes[sourcePane];
+        const sourceTab = this.workspace.getActiveTab(sourcePane);
+        const selectedCount = sourceState?.selected?.size || 0;
+        if (!sourceTab || selectedCount === 0 || !this.sourceCan(sourceState, 'rename')) {
+            this.showNotification(
+                this.t('fm.workspace.selectItemsToMove', 'Select items to move'),
+                'warning',
+            );
+            return false;
+        }
+
+        const targetPane = sourcePane === 'left' ? 'right' : 'left';
+        const sourceId = this.getPaneSourceId(sourceState);
+        this.guidedMove = { sourcePane, targetPane, sourceId };
+        if (this.workspace.layout !== 'split') this.setWorkspaceLayout('split');
+
+        const targetTab = this.workspace.getActiveTab(targetPane);
+        if (targetTab?.source?.sourceId !== sourceId) {
+            await this.openWorkspaceSource(targetPane, { ...sourceTab.source });
+        } else {
+            this.setActivePane(targetPane);
+        }
+
+        this.renderWorkspaceChrome();
+        this.showNotification(
+            this.t(
+                'fm.workspace.moveDestinationGuidance',
+                'Choose the destination folder in the other pane, then select Move.',
+            ),
+            'info',
+        );
+        document.getElementById(`fm${this.capitalize(targetPane)}Path`)?.focus?.();
+        return true;
     }
 
     init() {
@@ -1138,6 +1195,7 @@ class SFTPFileManager {
                                 <button type="button" data-pane-action="download"><span class="material-icons">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview"><span class="material-icons">preview</span><span data-i18n="fm.preview">Preview</span></button>
                                 <button type="button" data-pane-action="rename"><span class="material-icons">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
+                                <button type="button" data-pane-action="move"><span class="material-icons">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
                                 <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
@@ -1163,7 +1221,7 @@ class SFTPFileManager {
                         </div>
 
                         <div class="fm-transfer-rail" aria-label="Transfer between panes" data-i18n-aria-label="fm.workspace.transferBetween">
-                            <span class="fm-transfer-hint" id="fmTransferHint" data-i18n="fm.workspace.selectFiles">Select files</span>
+                            <span class="fm-transfer-hint" id="fmTransferHint" aria-live="polite">Select files</span>
                             <button type="button" class="fm-transfer-direction" id="fmTransferRight" aria-label="Transfer left to right" title="Transfer left to right">
                                 <span class="material-icons" aria-hidden="true">arrow_forward</span>
                                 <span class="btn-text" data-i18n="fm.transfer">Transfer</span>
@@ -1208,6 +1266,7 @@ class SFTPFileManager {
                                 <button type="button" data-pane-action="download"><span class="material-icons">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview"><span class="material-icons">preview</span><span data-i18n="fm.preview">Preview</span></button>
                                 <button type="button" data-pane-action="rename"><span class="material-icons">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
+                                <button type="button" data-pane-action="move"><span class="material-icons">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
                                 <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
@@ -1455,7 +1514,10 @@ class SFTPFileManager {
     setupEventListeners() {
         document.getElementById('fmClose').addEventListener('click', () => this.close());
         this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
+            if (
+                e.target === this.modal
+                && !window.primaryWorkspaceController?.isElementActive(this.modal)
+            ) this.close();
         });
 
         document.getElementById('fmRefresh').addEventListener('click', () => this.refreshBothPanes());
@@ -1490,6 +1552,7 @@ class SFTPFileManager {
                 download: () => this.downloadSelected(),
                 preview: () => this.previewSelected(),
                 rename: () => this.renameSelected(),
+                move: () => this.startGuidedMove(pane),
                 delete: () => this.deleteSelected(),
             };
             actions[actionButton.dataset.paneAction]?.();
@@ -1856,7 +1919,7 @@ class SFTPFileManager {
                 if (this.displayMode === 'embedded') {
                     window.dispatchEvent?.(new CustomEvent('session-sftp-request-close'));
                     if (this.displayMode === 'embedded') this.closeEmbedded();
-                } else {
+                } else if (!window.primaryWorkspaceController?.isElementActive(this.modal)) {
                     this.close();
                 }
             }
@@ -1931,7 +1994,9 @@ class SFTPFileManager {
         this.modal.classList.add('fm-workspace-mode');
         if (this.isMobile()) this.modal.classList.add('fm-mobile-mode');
         else this.modal.classList.remove('fm-mobile-mode');
-        if (window.ModalManager) {
+        if (window.primaryWorkspaceController?.open('files', this.modal)) {
+            // The full manager is a top-level application view.
+        } else if (window.ModalManager) {
             window.ModalManager.open(this.modal);
         } else {
             this.modal.classList.add('show');
@@ -1948,24 +2013,23 @@ class SFTPFileManager {
         });
         this.setActivePane(this.workspace.activePane || 'left');
         this.renderWorkspaceChrome();
-        if (!this.workspace.getActiveTab(this.workspace.activePane)) {
-            this.openSourceLauncher(this.workspace.activePane);
-        }
     }
 
-    close() {
+    close(options = {}) {
         if (this.displayMode === 'embedded') {
             this.closeEmbedded();
             return;
         }
+        const primaryWorkspace = window.primaryWorkspaceController;
+        const wasPrimaryWorkspace = primaryWorkspace?.isElementActive(this.modal) === true;
         const embeddedTarget = this.suspendedEmbeddedTarget;
         this.suspendedEmbeddedTarget = null;
         this.isOpen = false;
         this.displayMode = 'closed';
         this.closeSourceLauncher();
-        if (window.ModalManager) {
+        if (!wasPrimaryWorkspace && window.ModalManager) {
             window.ModalManager.close(this.modal);
-        } else {
+        } else if (!wasPrimaryWorkspace) {
             this.modal.classList.remove('show');
             this.modal.setAttribute('aria-hidden', 'true');
         }
@@ -1993,6 +2057,9 @@ class SFTPFileManager {
                 embeddedTarget.sessionId,
                 embeddedTarget.session,
             );
+        }
+        if (wasPrimaryWorkspace && options.restorePrimaryWorkspace !== false) {
+            primaryWorkspace.showWorkspaces({skipFileManagerClose: true});
         }
     }
 
@@ -2689,7 +2756,6 @@ class SFTPFileManager {
                 : openSourceLabel;
             container.innerHTML = `
                 <div class="fm-empty fm-source-empty-state">
-                    <span class="fm-empty-icon-shell"><span class="material-icons fm-empty-icon" aria-hidden="true">folder_open</span></span>
                     <strong>${this.escapeHtml(this.t('fm.selectSourceAbove', 'Select a source above'))}</strong>
                     <p>${this.escapeHtml(this.t('fm.workspace.sourceHint', 'Choose an active SSH session or a saved host.'))}</p>
                     <button type="button" class="btn btn-primary fm-empty-source-cta" aria-label="${this.escapeHtml(chooseLabel)}">
@@ -3152,9 +3218,15 @@ class SFTPFileManager {
         }
 
         if (operation === 'move') {
-            return this.moveSelectedBetweenPanes(
+            const outcome = await this.moveSelectedBetweenPanes(
                 sourcePane, targetPane, selectedItems,
             );
+            if (this.guidedMove?.sourcePane === sourcePane
+                    && this.guidedMove?.targetPane === targetPane) {
+                this.guidedMove = null;
+                this.renderWorkspaceChrome();
+            }
+            return outcome;
         }
 
         this.showNotification(`${this.t('fm.startingTransfer', 'Starting transfer of')} ${selectedItems.length} ${this.t('fm.items', 'item(s)')}...`, 'info');

@@ -126,4 +126,82 @@ and context navigation no longer compete in one toolbar.
 - P2: compact breakpoint entry could leave the context sheet covering the terminal; it now closes once on desktop-to-compact transition and keeps the launcher visible.
 - P3: none blocking handoff.
 
+## Shared top-level workspace QA (2026-08-27)
+
+- The approved Hosts, File Manager, and Commands mockups were compared side by side with the implementation at the same 1487 x 1058 viewport.
+- All three top-level destinations occupy the same full-width application surface directly below the global header. They no longer use a backdrop, floating card, or close control; the selected global navigation item is exposed with `aria-current="page"`.
+- Returning to Workspaces reveals the original session rail, workspace DOM, and status bar without rebuilding or replacing them. A browser regression verifies the original workspace node identity, child counts, and File Manager shutdown state after traversing all top-level destinations.
+- The existing Hosts, Jump Hosts, SSH Keys, File Manager, Command Sets, and Command Library content remains available. Existing nested workflows that require an overlay, including return-to-connection Command Set editing, retain dialog semantics and modal behavior.
+- The full File Manager continues to suspend and restore the embedded per-session SFTP target when switching between top-level destinations. Escape closes the source chooser but cannot accidentally dismiss the top-level File Manager.
+- The real in-app browser traversal covered Hosts, File Manager, Commands, and Workspaces with no console errors. Desktop and mobile containment scenarios, focus behavior, file-source selection, nested modal behavior, and embedded SFTP restoration passed their targeted browser regressions.
+- Current regression evidence: 80 focused Python tests passed; all 33 JavaScript test files passed; JavaScript syntax and lint checks passed; 8 targeted cross-feature browser scenarios passed; the two corrected edge-case browser scenarios passed independently; `git diff --check` passed.
+
+## Professional management information architecture QA (2026-08-27)
+
+- The approved Admin Center and Hosts mockups were captured again and placed beside the final implementation in the same comparison images at the same browser viewport.
+- Admin settings now use the approved grouped hierarchy: Access & identity, Security, and Operations. Authentication, registration, SSH host trust, audit logs, retention, and backup/restore remain separate destinations instead of being combined into one generic settings page.
+- Hosts uses a persistent resource sidebar for Hosts, Jump Hosts, and SSH Keys. Saved connections remain grouped and searchable, primary Connect actions stay visible, and secondary edit/duplicate/delete actions move into a compact action menu.
+- Commands uses the same resource hierarchy for Command Sets and Command Library. Sets are searchable, show their step count, retain all prior edit/duplicate/delete actions, and use compact secondary menus.
+- The existing Workspaces and File Manager flows were not restructured. Hosts and Commands continue to occupy the shared application surface below the global header, without returning to floating top-level dialogs.
+- Visual review found no clipped navigation, escaped controls, broken borders, or inconsistent destructive-action treatment in the compared desktop states. Existing WebSSH typography, Material Icons, logo assets, dark surfaces, and interaction colors were preserved.
+- The in-app browser traversal covered Admin Users, Authentication, Registration, SSH host trust, Audit Logs, Audit retention, Backup & Restore, Hosts, Jump Hosts, SSH Keys, Command Sets, and Command Library. Browser logging remained clean.
+- A regression exposed by the review path was fixed: an empty Command Set selector could throw before opening a saved host for review. The selector and management-search filtering are now separated, and the Tailscale review path passes again.
+- Current focused regression evidence: 76 Python UI tests passed; all 33 JavaScript test files passed; all 32 relevant browser scenarios passed after the final correction; JavaScript syntax checks passed.
+
+## Security and File Manager correction QA (2026-08-27)
+
+- Source visual truth: `/tmp/codex-clipboard-4892cc9a-c618-444f-9007-34762780cf98.png` (Security, 3018 x 1570 pixels) and `/tmp/codex-clipboard-3ec80bf6-add4-46ee-971a-f6e7b1137eea.png` (two-pane File Manager, 3070 x 1442 pixels).
+- Browser-rendered implementation: `/tmp/webssh-security-settings-fixed.jpg` and `/tmp/webssh-file-manager-empty-fixed.jpg`, each captured at a 1280 x 720 CSS viewport and saved as 1280 x 720 pixels. The in-app browser reported devicePixelRatio 2 but returned CSS-pixel screenshots; the source captures were proportionally contained rather than stretched for the comparison.
+- Combined full-view evidence: `/tmp/webssh-security-comparison.png` and `/tmp/webssh-file-manager-comparison.png`. Each comparison places the reported state and corrected implementation in one 1400 x 1500 image.
+- State: authenticated administrator, dark theme, Security overview with empty Passkey and TOTP lists; File Manager with two panes, no selected source, and source launcher closed.
+- Focused-region evidence was not required because both defects were clearly legible in the full-view comparisons: the Security grid-track regression affected the entire content frame and the File Manager duplication was isolated to the central empty-state card.
+- Typography and copy: the Security heading, explanatory text, assurance labels, and factor-card copy now have normal line lengths and no clipped words. Existing text and type hierarchy were preserved.
+- Spacing and layout rhythm: the Security overview and factor cards now form one centered vertical settings flow. The File Manager empty card retains its spacing after removing the redundant decorative icon.
+- Colors and tokens: existing WebSSH dark surfaces, borders, muted copy, and blue primary action token were preserved.
+- Image and icon fidelity: existing vendored Material Icons remain in use. Each File Manager empty card now exposes exactly one folder icon, attached to the actionable Open source button; no custom asset substitute was introduced.
+- Interaction and console verification: File Manager navigation, one-pane/two-pane switching, automatic source-launcher opening, launcher closing, and return to the empty two-pane state passed in the in-app browser. Security loaded with the corrected block layout. Browser error logs were empty for both routes.
+- Earlier P1: the professional Admin Center grid applied to every `.admin-main`, forcing the Security overview into a 228 px navigation track and the factor cards into the adjacent track. Fixed by explicitly restoring block flow and centered margins only for the Security Center.
+- Earlier P2: the File Manager empty-state card rendered a decorative folder icon and repeated the same icon inside the Open source button. Fixed by removing the decorative instance while retaining the actionable button icon.
+- Post-fix evidence: Security measured `display: block`, a 1220 px overview width at the 1280 px viewport, and the Passkeys card began below the overview. File Manager measured two empty cards, zero decorative empty icons, and two action icons (one per pane), with no document-level horizontal overflow.
+- Remaining P0/P1/P2 findings: none.
+- Regression evidence: 68 focused Python tests passed, 3 focused JavaScript test files passed, browser error logs were empty, and `git diff --check` passed.
+
+## Unified Settings Center QA (2026-08-27)
+
+- Source visual truth: `/home/heimdall/.codex/visualizations/2026/08/27/01a04300-d47c-7fc1-80ce-2de90aa75f58/unified-settings-center.html`, captured as `/tmp/webssh-unified-settings-source.png` in its dark-theme state.
+- Browser-rendered implementation: `http://127.0.0.1:4181/settings#security-overview`, captured as `/tmp/webssh-unified-settings-implementation.png` in the authenticated administrator state.
+- Viewport and normalization: both source and implementation used a 1280 x 720 CSS viewport and produced 1280 x 720 screenshots. The in-app browser reported devicePixelRatio 2 but returned CSS-pixel captures, so no density resampling was required.
+- Combined full-view evidence: `/tmp/webssh-unified-settings-comparison.png` (1336 x 1628). Focused navigation, assurance, and security-method evidence: `/tmp/webssh-unified-settings-focused-comparison.png` (1264 x 1380).
+- State: dark theme, signed-in local administrator, optional MFA, Security overview selected, empty-factor management path available.
+- Typography: the implementation preserves the source's system sans-serif hierarchy, compact uppercase metadata, readable assurance copy, and consistent row weights. The additional WebSSH headings use the existing product type tokens and do not wrap or truncate.
+- Spacing and layout rhythm: both views use the 228 px settings rail, full-width content track, compact navigation rows, three-column assurance strip, and aligned security-method actions. The implementation intentionally retains the established Admin-pane outer gutter and adds Preferences because general settings are part of the approved consolidation.
+- Colors and visual tokens: dark primary, secondary, raised, border, muted-copy, accent, and status colors match the approved calm operations palette through existing WebSSH theme variables.
+- Image and icon fidelity: the interface uses the repository's existing WebSSH branding and vendored Material Icons. No placeholder, handcrafted SVG, CSS drawing, or substitute asset was introduced.
+- Copy and content: account security, strong factors, recovery, personal SSH trust, and every admin destination remain separately named. The implementation uses action-oriented descriptions instead of claiming an empty or enrolled factor state before the live APIs respond.
+- Primary interactions tested in the in-app browser: account-menu entry to `#preferences`; hash navigation across account sections; preference persistence after reload; Security method Manage action to `#factors`; Administration link to `#authentication`; and return to the overview. Browser error logs were empty.
+- Responsive containment: the final 1280 x 720 page measured exactly 1280 px wide with no horizontal overflow. Mobile containment remains covered by the updated account-menu Settings Center scenario.
+- Earlier P2: the first implementation comparison left the lower Security overview empty and omitted the approved security-method summary. Fixed by adding the three method rows and functional Manage actions, then recaptured at the same viewport and state.
+- Post-fix evidence: the full and focused combined comparisons show the approved hierarchy, proportions, assurance strip, three method rows, and right-aligned actions. The Manage action was exercised and opened the complete Passkeys & MFA panel at `#factors`.
+- Remaining P0/P1/P2 findings: none. The extra Preferences destination and product icons are intentional consequences of merging general Settings with Security while retaining the existing professional Admin-pane design system.
+
+## Unified management navigation follow-up QA (2026-08-27)
+
+- Source visual truth: `/tmp/codex-clipboard-c8ed4cba-999c-4ffb-9217-c05eb800c62e.png` (Commands before-state, 6826 x 2334 pixels) and `/tmp/codex-clipboard-4892cc9a-c618-444f-9007-34762780cf98.png` (Security before-state, 3018 x 1570 pixels). These are defect references rather than target mockups, so the comparison evaluates the maintainer's requested information architecture instead of treating the old layout as a fidelity target.
+- Browser-rendered implementation: `/tmp/webssh-commands-left-nav.jpg`, `/tmp/webssh-settings-unified.jpg`, and `/tmp/webssh-admin-unified.jpg`, captured at a 1280 x 720 CSS viewport as 1280 x 720 pixel images in the authenticated administrator state.
+- Density and viewport normalization: the ultra-wide source screenshots were proportionally contained to 1280 pixels without stretching. Their original aspect ratios differ from the available in-app-browser viewport, so no pixel-level spacing claim is made across screenshots; layout hierarchy, rail persistence, content containment, and control placement were compared instead.
+- Combined full-view evidence: `/tmp/webssh-commands-qa-comparison.jpg` and `/tmp/webssh-settings-qa-comparison.jpg`. The first places the old horizontal Commands tabs and the new persistent left resource rail in one image. The second places the malformed Security grid and the unified Settings Center in one image.
+- State: dark theme; Commands with Command Sets selected; Settings with Security overview selected; Admin with Users selected. The old `/admin` URL was also exercised and redirected to `/settings#users`.
+- Focused-region evidence was not needed because the relevant defects and their corrections are legible in the full-view comparisons: primary versus secondary navigation, the left-rail hierarchy, header edge alignment, the assurance strip, and the users table.
+- Fonts and typography: the implementation retains the established WebSSH UI font stack, weights, uppercase metadata, and compact operations density. Headings, descriptions, resource labels, and table copy remain readable without the wrapping failure visible in the Security reference.
+- Spacing and layout rhythm: Commands now uses the same 228 px resource-navigation track as Hosts. Settings, Security, and Administration share one persistent 228 px settings rail and one content track. The content track consumes the available width, while cards and tables use aligned gutters rather than leaving an accidental right-side void.
+- Colors and visual tokens: existing dark surfaces, low-emphasis borders, muted copy, blue selection accent, and destructive-action tokens remain unchanged. Selected destinations are clear without introducing a second visual language.
+- Image and icon fidelity: the header now renders the repository's current `webssh-logo.svg`, and all navigation icons use the vendored Material Icons set. No placeholder, handcrafted SVG, CSS drawing, emoji, or substitute brand asset was introduced.
+- Copy and content: Command Sets and Command Library remain separately named. Personal Settings and Security destinations are followed by an explicitly labelled admin-only group, preserving every prior Users, Authentication, Registration, SSH trust, Audit, Retention, and Backup destination.
+- Primary interactions tested in the in-app browser: Command Sets to Command Library; Security overview to Users; Users to Preferences; direct hash navigation; the legacy `/admin` redirect; and return to the shared top-level workspace. The browser console log remained empty.
+- Earlier P1: Commands used full-width horizontal tabs unlike Hosts and the approved management pattern. Fixed with a persistent resource sidebar and verified in both Command Sets and Command Library states.
+- Earlier P1: Settings, Security, and Admin were separate surfaces, and the Security page could collapse into an unusable narrow grid. Fixed by rendering account and admin sections in one Settings Center and coordinating all section visibility through one hash-aware controller.
+- Earlier P2: the management header did not use the current logo asset and the return action did not clearly anchor to the far right. Fixed with the shipped logo image, a full-width header, and edge-aligned brand and return controls.
+- Post-fix evidence: the browser showed a single visible content panel for every tested hash, the complete admin users table inside the Settings Center, the Commands resource rail beside its content, and a clean browser console. Focused regressions passed 158/158, adjacent UI regressions passed 73/73, all 33 JavaScript test files passed, and `git diff --check` passed.
+- Remaining P0/P1/P2 findings: none.
+
 final result: passed

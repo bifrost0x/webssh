@@ -322,7 +322,7 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
 
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#sftpFileManager')).toBeVisible();
-    await page.locator('#fmClose').click();
+    await page.locator('#workspaceNavBtn').click();
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();
     await expect(page.locator('#fmNewFolder')).toBeEnabled();
     await expect(page.locator('#fmEmbeddedUpload')).toBeEnabled();
@@ -432,8 +432,8 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
 
     await page.getByRole('button', { name: 'Manage Commands' }).click();
     await expect(page.locator('#commandWorkspaceModal')).toHaveClass(/show/);
-    await expect(page.locator('#sessionCommandsPanel')).toBeVisible();
-    await page.locator('#closeCommandWorkspaceModal').click();
+    await expect(page.locator('#sessionCommandsPanel')).toBeHidden();
+    await page.locator('#workspaceNavBtn').click();
     await expect(page.locator('#sessionCommandsPanel')).toBeVisible();
 
     await page.locator('#contextNotesTab').click();
@@ -809,10 +809,12 @@ test('closing the full File Manager restores the active embedded Files context',
 
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
+    await expect(page.locator('#fmSourceLauncher')).not.toHaveClass(/show/);
+    await page.locator('.fm-source-tab-add[data-source-target="left"]').click();
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await page.locator('[data-source-key="sftp-session:workspace-linux"]').click();
     await expect(page.locator('#sftpFileManager #fmLeftList .fm-file-item')).toHaveCount(5);
-    await page.locator('#fmClose').click();
+    await page.locator('#workspaceNavBtn').click();
 
     await expect(page.locator('#sftpFileManager')).not.toHaveClass(/show/);
     await expect(page.locator('#contextFilesTab')).toHaveAttribute('aria-selected', 'true');
@@ -822,7 +824,7 @@ test('closing the full File Manager restores the active embedded Files context',
     await assertNoExternalRequests(page);
 });
 
-test('Escape closes the source launcher before restoring embedded Files', async ({ page }) => {
+test('Escape closes the source launcher but top-level navigation restores embedded Files', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
 
@@ -831,6 +833,7 @@ test('Escape closes the source launcher before restoring embedded Files', async 
 
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
+    await page.locator('.fm-source-tab-add[data-source-target="left"]').click();
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
 
     await page.keyboard.press('Escape');
@@ -838,6 +841,10 @@ test('Escape closes the source launcher before restoring embedded Files', async 
     await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
 
     await page.keyboard.press('Escape');
+    await expect(page.locator('#sftpFileManager')).toHaveClass(/show/);
+    await expect(page.locator('#fileTransferBtn')).toHaveAttribute('aria-current', 'page');
+
+    await page.locator('#workspaceNavBtn').click();
     await expect(page.locator('#sftpFileManager')).not.toHaveClass(/show/);
     await expect(page.locator('#contextFilesTab')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();

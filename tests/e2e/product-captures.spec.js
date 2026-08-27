@@ -615,13 +615,13 @@ test('captures seeded command and connection option surfaces at Full HD scale', 
     await page.locator('#commandLibraryBtn').click();
     await expect(page.locator('#commandWorkspaceModal')).toHaveClass(/show/);
     await page.locator('#commandLibraryTab').click();
-    await expect(page.locator('#commandLibraryTab')).toHaveText('Command Library');
+    await expect(page.locator('#commandLibraryTab')).toContainText('Command Library');
     await expect(page.locator('#commandsList')).toContainText('Update Package Lists');
     await expect(page.locator('#commandWorkspaceModal')).not.toContainText('E2E');
     await expectCurrentCaptureTerminology(page);
     await captureDesktopStill(page, 'commandlibrary.png', testInfo);
 
-    await page.locator('#closeCommandWorkspaceModal').click();
+    await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
@@ -877,6 +877,7 @@ test('captures six current Command Sets animation frames without remote actions'
 
     const baselineSet = page.locator('#commandSetManagementList .command-set-management-item')
         .filter({ hasText: 'Baseline diagnostics' });
+    await baselineSet.locator('.command-set-action-menu > summary').click();
     await baselineSet.locator('[data-command-set-action="edit"]').click();
     await expect(page.locator('#commandSetEditorView')).toBeVisible();
     await expect(page.locator('#commandSetNameInput')).toHaveValue('Baseline diagnostics');
@@ -907,7 +908,7 @@ test('captures six current Command Sets animation frames without remote actions'
     });
     await captureCssFrame(page, frameDirectory, '05-three-step-order.png');
 
-    await page.locator('#closeCommandWorkspaceModal').click();
+    await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
@@ -948,17 +949,16 @@ test('captures a contained multi-session workspace and the current theme menu', 
 
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
-    await expect(page.locator('#settingsModal')).toHaveClass(/show/);
+    await expect(page).toHaveURL(/\/settings#preferences$/);
     await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
     await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
     await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
-    const themeBounds = await page.locator('#settingsModal .modal-content').boundingBox();
+    const themeBounds = await page.locator('.settings-center-content').boundingBox();
     expect(themeBounds).not.toBeNull();
     expect(themeBounds.x).toBeGreaterThanOrEqual(0);
     expect(themeBounds.y).toBeGreaterThanOrEqual(0);
     expect(themeBounds.x + themeBounds.width).toBeLessThanOrEqual(DESKTOP_VIEWPORT.width);
     expect(themeBounds.y + themeBounds.height).toBeLessThanOrEqual(DESKTOP_VIEWPORT.height);
-    await assertWorkspaceIsContained(page);
     await captureDesktopStill(page, 'themes.png', testInfo);
 
     await assertCaptureNetworkClean(page);
@@ -975,9 +975,15 @@ test('captures the current Security Center assurance overview', async ({ page },
         'How security changes are confirmed',
     );
     await expect(page.locator('#securityCurrentMethod')).toContainText('WebSSH password');
+
+    await page.locator('[data-account-section="factors"]').click();
     await expect(page.locator('#passkeyAddBtn')).toBeVisible();
     await expect(page.locator('#totpAddBtn')).toBeVisible();
+
+    await page.locator('[data-account-section="recovery"]').click();
     await expect(page.locator('#recoveryGenerateBtn')).toBeVisible();
+
+    await page.locator('[data-account-section="security-overview"]').click();
     await expect(page.locator('body')).not.toContainText('E2E');
     await captureDesktopStill(page, 'security-center.png', testInfo);
 

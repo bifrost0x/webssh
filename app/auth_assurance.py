@@ -216,6 +216,20 @@ def pending_authentication(token, session_binding):
     return pending
 
 
+def cancel_pending_authentication(token, session_binding):
+    """Delete one pending login only when it belongs to this browser."""
+    token_value = str(token or '')
+    binding_value = str(session_binding or '')
+    if not token_value or not binding_value:
+        return False
+    deleted = PendingAuthentication.query.filter_by(
+        token_hash=_digest(token_value),
+        session_binding_hash=_digest(binding_value),
+    ).delete(synchronize_session=False)
+    db.session.commit()
+    return bool(deleted)
+
+
 def _normalize_methods(methods, primary_method):
     if not isinstance(methods, (list, tuple)):
         raise TypeError('methods must be a list or tuple')
@@ -458,7 +472,10 @@ def recovery_route_allowed(path, method):
     """Allow only factor repair and logout during a Recovery session."""
     path = str(path or "")
     method = str(method or "GET").upper()
-    if path == "/security" or path == "/logout" or path.startswith("/static/"):
+    if (
+        path in {"/security", "/settings", "/logout"}
+        or path.startswith("/static/")
+    ):
         return True
     if path in {
         "/api/webauthn/register/options",

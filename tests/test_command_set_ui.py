@@ -34,6 +34,7 @@ def test_connection_form_uses_command_set_selector_and_preview():
 
 def test_commands_workspace_unifies_library_and_command_sets():
     template = read('templates/index.html')
+    styles = read('static/css/webssh-2.css')
 
     assert 'id="commandSetManagementModal"' not in template
     assert re.search(
@@ -71,6 +72,13 @@ def test_commands_workspace_unifies_library_and_command_sets():
     assert template.index('id="commandSetsTab"') < template.index('id="commandLibraryTab"')
     assert 'data-os="linux"' in template
     assert 'data-os="windows"' in template
+    assert 'class="command-workspace-tabs management-resource-navigation"' in template
+    assert 'class="management-resource-title"' in template
+    assert (
+        '#primaryWorkspaceSurface .primary-workspace-view-commands '
+        '.command-workspace-layout'
+    ) in styles
+    assert 'grid-template-columns: 228px minmax(0, 1fr);' in styles
 
 
 def test_commands_workspace_controller_owns_all_entry_points():
@@ -81,11 +89,11 @@ def test_commands_workspace_controller_owns_all_entry_points():
     template = read('templates/index.html')
 
     assert "activeSection: 'sets'" in workspace
-    assert "open(section = 'sets')" in workspace
+    assert "open(section = 'sets', options = {})" in workspace
     assert "this.select('sets')" in workspace
     assert 'select(section)' in workspace
-    assert "CommandWorkspace.open('library')" in library
-    assert "CommandWorkspace.open('sets')" in sets
+    assert "CommandWorkspace.open('library', {primary: true})" in library
+    assert "CommandWorkspace.open('sets', {primary: !this.returnToConnection})" in sets
     assert 'openEditor(commandId, returnToModalId = null)' in library
     assert 'CommandWorkspace.init()' in app
     assert "filename='js/command-workspace.js'" in template
@@ -256,9 +264,7 @@ def test_account_menu_focuses_on_workspace_and_account_destinations():
         'accountPulsePanes',
         'accountPulseCurrent',
         'accountSettingsBtn',
-        'securityCenterBtn',
         'accountShortcutsBtn',
-        'adminPanelBtn',
     ):
         assert f'id="{element_id}"' in body
     for nested_preference_id in (
@@ -281,16 +287,19 @@ def test_account_menu_focuses_on_workspace_and_account_destinations():
 
 
 def test_settings_keep_existing_preferences_after_account_menu_cleanup():
-    template = read('templates/index.html')
+    workspace = read('templates/index.html')
+    settings = read('templates/security.html')
 
     for element_id in (
-        'settingsModal',
         'settingsThemeSelect',
         'settingsLanguageSelect',
         'scrollbackInput',
         'confirmSessionCloseInput',
+        'disconnectSessionActionSelect',
     ):
-        assert f'id="{element_id}"' in template
+        assert f'id="{element_id}"' in settings
+    assert 'id="settingsModal"' not in workspace
+    assert 'href="{{ url_for(\'security_center\') }}#preferences"' in workspace
 
 
 def test_close_confirmation_preference_is_rendered_for_session_manager():

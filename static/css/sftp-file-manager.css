@@ -1992,6 +1992,10 @@
     color: var(--error-color);
 }
 
+.fm-pane-toolbar button[data-pane-action="move"]:not(:disabled) {
+    color: var(--accent-color);
+}
+
 .fm-pane-toolbar .material-icons {
     font-size: 17px;
 }
@@ -2123,6 +2127,15 @@
     font-weight: 650;
     line-height: 1.3;
     text-align: center;
+}
+
+.fm-pane.fm-guided-move-target {
+    border-color: color-mix(in srgb, var(--accent-color) 72%, var(--border-color));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 32%, transparent);
+}
+
+.fm-pane.fm-guided-move-target .fm-path-input {
+    border-color: var(--accent-color);
 }
 
 .fm-transfer-direction {
@@ -2761,6 +2774,24 @@
     margin-top: 5px;
     color: var(--text-muted);
     line-height: 1.35;
+}
+
+.smb-inline-help {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.smb-inline-help a {
+    flex: none;
+    color: var(--accent-color);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.smb-inline-help a:hover {
+    text-decoration: underline;
 }
 
 .smb-source-security-note {

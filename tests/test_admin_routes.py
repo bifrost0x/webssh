@@ -201,7 +201,7 @@ def test_enabled_admin_routes_redirect_locked_users(app, client, method, path, d
 @pytest.mark.parametrize(
     ('method', 'path', 'data', 'expected_status'),
     (
-        pytest.param('get', '/admin', None, 200, id='admin-page'),
+        pytest.param('get', '/admin', None, 302, id='admin-page'),
         pytest.param('get', '/admin/api/users', None, 200, id='list-users'),
         pytest.param(
             'post',
@@ -255,6 +255,8 @@ def test_enabled_admin_routes_allow_administrators(
     response = _admin_request(client, method, path, data, target_id, headers)
 
     assert response.status_code == expected_status
+    if path == '/admin':
+        assert response.headers['Location'].endswith('/settings#users')
 
 
 def test_admin_settings_rejects_non_boolean_without_overwriting(
@@ -346,7 +348,7 @@ def test_security_feature_status_exposes_all_supported_gates(app, client):
 def test_admin_page_includes_security_feature_controls(app, client):
     _prepare_role(app, client, 'admin')
 
-    response = client.get('/admin')
+    response = client.get('/settings')
 
     assert response.status_code == 200
     assert b'id="securityFeatureList"' in response.data
@@ -532,16 +534,18 @@ def test_disabled_panel_hides_admin_navigation(app, client, monkeypatch):
     _prepare_role(app, client, 'admin')
     monkeypatch.setattr(config, 'ADMIN_PANEL_ENABLED', False)
 
-    response = client.get('/')
+    response = client.get('/settings')
 
     assert response.status_code == 200
-    assert b'id="adminPanelBtn"' not in response.data
+    assert b'Administration' not in response.data
+    assert b'data-tab="users"' not in response.data
 
 
 def test_enabled_panel_shows_admin_navigation_to_administrators(app, client):
     _prepare_role(app, client, 'admin')
 
-    response = client.get('/')
+    response = client.get('/settings')
 
     assert response.status_code == 200
-    assert b'id="adminPanelBtn"' in response.data
+    assert b'Administration' in response.data
+    assert b'data-tab="users"' in response.data

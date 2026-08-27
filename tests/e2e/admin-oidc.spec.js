@@ -9,6 +9,11 @@ async function completePasswordStepUp(page) {
     await expect(modal).not.toHaveClass(/show/);
 }
 
+async function clickUserAction(row, action) {
+    await row.locator('.admin-action-menu > summary').click();
+    await row.locator(`button[data-act="${action}"]`).click();
+}
+
 test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => {
     await login(page);
     await page.goto('/admin');
@@ -16,7 +21,7 @@ test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => 
     const targetRow = page.locator('#adminUsersBody tr').filter({
         hasText: 'e2e_user',
     });
-    await targetRow.locator('button[data-act="oidc-link"]').click();
+    await clickUserAction(targetRow, 'oidc-link');
     const modal = page.locator('#securityActionModal');
     await expect(modal).toHaveClass(/show/);
     await expect(modal.getByText('existing-e2e-subject')).toBeVisible();
@@ -41,25 +46,24 @@ test('admin navigation and users become readable cards on a mobile viewport', as
     await login(page);
     await page.goto('/admin');
 
-    const navigation = await page.locator('.admin-tabs').evaluate(element => {
-        const bounds = [...element.querySelectorAll('.admin-tab')].map(tab => {
-            const rect = tab.getBoundingClientRect();
-            return { left: rect.left, right: rect.right };
-        });
+    await expect(page.locator('.admin-tabs')).toBeHidden();
+    const mobileSelect = page.locator('#settingsMobileSection');
+    await expect(page.locator('.settings-mobile-navigation')).toBeVisible();
+    await expect(mobileSelect).toBeVisible();
+    await expect(mobileSelect).toHaveValue('users');
+    const navigation = await mobileSelect.evaluate(element => {
+        const rect = element.getBoundingClientRect();
         return {
-            display: getComputedStyle(element).display,
-            clientWidth: element.clientWidth,
-            scrollWidth: element.scrollWidth,
-            bounds,
+            bounds: { left: rect.left, right: rect.right },
+            optionLabels: [...element.options].map(option => option.textContent.trim()),
             viewportWidth: window.innerWidth,
         };
     });
-    expect(navigation.display).toBe('grid');
-    expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth);
-    for (const bounds of navigation.bounds) {
-        expect(bounds.left).toBeGreaterThanOrEqual(0);
-        expect(bounds.right).toBeLessThanOrEqual(navigation.viewportWidth);
-    }
+    expect(navigation.bounds.left).toBeGreaterThanOrEqual(0);
+    expect(navigation.bounds.right).toBeLessThanOrEqual(navigation.viewportWidth);
+    expect(navigation.optionLabels).toContain('Preferences');
+    expect(navigation.optionLabels).toContain('Users');
+    expect(navigation.optionLabels).toContain('Backup & Restore');
 
     const row = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
     await expect(row).toBeVisible();
@@ -112,7 +116,7 @@ test('a delayed recovery response cannot populate another user modal', async ({ 
     });
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
     await completePasswordStepUp(page);
@@ -120,7 +124,7 @@ test('a delayed recovery response cannot populate another user modal', async ({ 
 
     await page.locator('#closeSecurityAction').click();
     const adminRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_admin' });
-    await adminRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(adminRow, 'recovery');
     await expect(page.locator('#securityActionHint')).toContainText('e2e_admin');
 
     const responseFinished = page.waitForResponse(response => (
@@ -157,7 +161,7 @@ test('recovery submission is single-flight and clears reauthentication fields', 
     });
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
     await completePasswordStepUp(page);
@@ -195,14 +199,14 @@ test('closing and reopening cannot overlap recovery rotations', async ({ page })
     });
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
     await completePasswordStepUp(page);
     await requestStarted;
 
     await page.locator('#closeSecurityAction').click();
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await expect(page.locator('#submitSecurityAction')).toBeDisabled();
     await page.locator('#submitSecurityAction').click({ force: true });
     expect(requestCount).toBe(1);

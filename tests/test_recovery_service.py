@@ -116,6 +116,9 @@ def test_password_then_recovery_is_restricted_until_factor_replacement(
     assert b'id="recoveryRequiredNotice"' in security.data
     assert b'id="recoveryLogoutBtn"' in security.data
     assert b'Back to terminal' not in security.data
+    settings_alias = client.get("/settings")
+    assert settings_alias.status_code == 200
+    assert b'id="recoveryRequiredNotice"' in settings_alias.data
     security_state = client.get("/api/account/security-state")
     assert security_state.status_code == 200
     assert security_state.get_json()["mfa_enabled"] is True

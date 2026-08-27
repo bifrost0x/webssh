@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=3">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=16">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=24">
 </head>
 <body data-theme="glass" data-use-theme-preference>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -120,23 +120,30 @@
 
             {% set selected_auth_source = auth_source if auth_source in ('local', 'ldap') else ('ldap' if ldap_enabled else 'local') %}
             {% if mfa_required %}
+            <form class="auth-mfa-back-form" method="POST" action="{{ url_for('cancel_login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="auth-mfa-back" id="cancelMfaLogin" type="submit">
+                    <span class="material-icons" aria-hidden="true">arrow_back</span>
+                    <span data-i18n="auth.backToSignIn">Back to sign in</span>
+                </button>
+            </form>
             {% set default_mfa_method = 'totp' if 'totp' in mfa_methods else ('passkey' if 'passkey' in mfa_methods else 'recovery') %}
             {% if mfa_methods|length > 1 %}
             <div id="authMfaMethodSwitcher" class="auth-method-switcher" role="tablist" aria-label="Choose a verification method" data-i18n-aria-label="auth.availableVerificationMethods">
                 {% if 'totp' in mfa_methods %}
-                <button class="auth-method-option" type="button" role="tab" data-auth-mode="totp" aria-selected="{{ 'true' if default_mfa_method == 'totp' else 'false' }}" aria-controls="totpMfaPanel">
+                <button class="auth-method-option" id="totpMfaTab" type="button" role="tab" data-auth-mode="totp" aria-selected="{{ 'true' if default_mfa_method == 'totp' else 'false' }}" aria-controls="totpMfaPanel">
                     <span class="material-icons" aria-hidden="true">phonelink_lock</span>
                     <span><strong data-i18n="security.methodTotp">Authenticator app</strong><small data-i18n="security.authenticatorCode">Authenticator code</small></span>
                 </button>
                 {% endif %}
                 {% if 'passkey' in mfa_methods %}
-                <button class="auth-method-option" type="button" role="tab" data-auth-mode="passkey" aria-selected="{{ 'true' if default_mfa_method == 'passkey' else 'false' }}" aria-controls="passkeyLoginMode">
+                <button class="auth-method-option" id="passkeyMfaTab" type="button" role="tab" data-auth-mode="passkey" aria-selected="{{ 'true' if default_mfa_method == 'passkey' else 'false' }}" aria-controls="passkeyLoginMode">
                     <span class="material-icons" aria-hidden="true">key</span>
                     <span><strong data-i18n="security.methodPasskey">Passkey</strong><small data-i18n="auth.deviceAuthentication">Device authentication</small></span>
                 </button>
                 {% endif %}
                 {% if 'recovery' in mfa_methods %}
-                <button class="auth-method-option" type="button" role="tab" data-auth-mode="recovery" aria-selected="{{ 'true' if default_mfa_method == 'recovery' else 'false' }}" aria-controls="recoveryMfaPanel">
+                <button class="auth-method-option" id="recoveryMfaTab" type="button" role="tab" data-auth-mode="recovery" aria-selected="{{ 'true' if default_mfa_method == 'recovery' else 'false' }}" aria-controls="recoveryMfaPanel">
                     <span class="material-icons" aria-hidden="true">lock_reset</span>
                     <span><strong data-i18n="security.methodRecoveryCode">Recovery code</strong><small data-i18n="auth.recoveryAccessHint">One-time account recovery</small></span>
                 </button>
@@ -164,11 +171,13 @@
             </div>
             {% endif %}
 
-            <div class="auth-credentials-zone">
+            <div class="auth-credentials-zone"{% if mfa_required and mfa_methods|length > 1 %} data-mfa-layout="compact"{% endif %}>
             {% if mfa_required and 'totp' in mfa_methods %}
-            <section id="totpMfaPanel" class="login-mode{% if default_mfa_method != 'totp' %} hidden{% endif %}" data-auth-mode-panel="totp" aria-hidden="{{ 'false' if default_mfa_method == 'totp' else 'true' }}">
+            <section id="totpMfaPanel" class="login-mode{% if default_mfa_method != 'totp' %} hidden{% endif %}" data-auth-mode-panel="totp" aria-hidden="{{ 'false' if default_mfa_method == 'totp' else 'true' }}"{% if mfa_methods|length > 1 %} aria-labelledby="totpMfaTab"{% endif %}>
+                {% if mfa_methods|length == 1 %}
                 <h2 data-i18n="security.methodTotp">Authenticator app</h2>
                 <p data-i18n="auth.enterAuthenticatorCode">Enter the six-digit code from your authenticator app.</p>
+                {% endif %}
                 <div class="form-group">
                     <label for="totpMfaCode" data-i18n="security.authenticatorCode">Authenticator code</label>
                     <input type="text" id="totpMfaCode" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus>
@@ -178,9 +187,11 @@
             </section>
             {% endif %}
             {% if mfa_required and 'recovery' in mfa_methods %}
-            <section id="recoveryMfaPanel" class="login-mode{% if default_mfa_method != 'recovery' %} hidden{% endif %}" data-auth-mode-panel="recovery" aria-hidden="{{ 'false' if default_mfa_method == 'recovery' else 'true' }}">
+            <section id="recoveryMfaPanel" class="login-mode{% if default_mfa_method != 'recovery' %} hidden{% endif %}" data-auth-mode-panel="recovery" aria-hidden="{{ 'false' if default_mfa_method == 'recovery' else 'true' }}"{% if mfa_methods|length > 1 %} aria-labelledby="recoveryMfaTab"{% endif %}>
+                {% if mfa_methods|length == 1 %}
                 <h2 data-i18n="auth.useRecoveryCode">Use a recovery code</h2>
                 <p data-i18n="auth.recoverySessionHint">This creates a restricted session where you must add a replacement factor or explicitly disable MFA.</p>
+                {% endif %}
                 <div class="form-group">
                     <label for="recoveryMfaCode" data-i18n="auth.recoveryCode">Recovery code</label>
                     <input type="text" id="recoveryMfaCode" class="form-control" autocomplete="one-time-code">
@@ -194,10 +205,13 @@
             {% if ldap_enabled %}
             <div class="form-group">
                 <label for="authenticationSource" data-i18n="auth.authenticationSource">Authentication source</label>
-                <select id="authenticationSource" class="form-control" aria-controls="localLoginForm ldapLoginForm">
-                    <option value="local"{% if selected_auth_source == 'local' %} selected{% endif %} data-i18n="auth.localAccount">Local account</option>
-                    <option value="ldap"{% if selected_auth_source == 'ldap' %} selected{% endif %}>{{ ldap_provider_id }}</option>
-                </select>
+                <div class="input-wrapper auth-source-control">
+                    <span class="input-icon material-icons" aria-hidden="true">account_tree</span>
+                    <select id="authenticationSource" class="form-control" aria-controls="localLoginForm ldapLoginForm">
+                        <option value="local"{% if selected_auth_source == 'local' %} selected{% endif %} data-i18n="auth.localAccount">Local account</option>
+                        <option value="ldap"{% if selected_auth_source == 'ldap' %} selected{% endif %}>{{ ldap_provider_id }}</option>
+                    </select>
+                </div>
             </div>
             {% endif %}
 
@@ -210,7 +224,6 @@
                         <input type="text" id="username" name="username" class="form-control"
                                data-i18n-placeholder="auth.username" placeholder="Username" required{% if selected_auth_source == 'local' %} autofocus{% endif %}>
                     </div>
-                    <div class="field-hint" id="loginUsernameHint"></div>
                 </div>
 
                 <div class="form-group">
@@ -221,12 +234,11 @@
                                data-i18n-placeholder="auth.password" placeholder="Password" required>
                         <button type="button" class="password-toggle material-icons" data-target="password" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
-                    <div class="field-hint" id="loginPasswordHint"></div>
                 </div>
 
-                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="remember" name="remember" style="width: auto;">
-                    <label for="remember" style="margin: 0; cursor: pointer;" data-i18n="auth.rememberMe">Remember me</label>
+                <div class="form-group auth-remember-control">
+                    <input type="checkbox" id="remember" name="remember">
+                    <label for="remember" data-i18n="auth.rememberMe">Remember me</label>
                 </div>
 
                 <button type="submit" class="btn-primary">
@@ -252,6 +264,10 @@
                         <button type="button" class="password-toggle material-icons" data-target="ldapPassword" aria-label="Toggle password visibility" data-i18n-aria-label="auth.togglePasswordVisibility">visibility</button>
                     </div>
                 </div>
+                <div class="form-group auth-remember-control">
+                    <input type="checkbox" id="ldapRemember" name="remember">
+                    <label for="ldapRemember" data-i18n="auth.rememberMe">Remember me</label>
+                </div>
                 {% if ldap_error %}<div class="alert alert-error">{{ ldap_error }}</div>{% endif %}
                 <button type="submit" class="btn-primary" data-i18n="auth.login">Sign in</button>
             </form>
@@ -259,10 +275,12 @@
                 </div>
             </section>
             {% if webauthn_enabled and (not mfa_required or 'passkey' in mfa_methods) %}
-            <section id="passkeyLoginMode" class="login-mode auth-provider-mode{% if not mfa_required or default_mfa_method != 'passkey' %} hidden{% endif %}" data-auth-mode-panel="passkey" aria-hidden="{{ 'false' if mfa_required and default_mfa_method == 'passkey' else 'true' }}">
+            <section id="passkeyLoginMode" class="login-mode auth-provider-mode{% if not mfa_required or default_mfa_method != 'passkey' %} hidden{% endif %}" data-auth-mode-panel="passkey" aria-hidden="{{ 'false' if mfa_required and default_mfa_method == 'passkey' else 'true' }}"{% if mfa_required and mfa_methods|length > 1 %} aria-labelledby="passkeyMfaTab"{% endif %}>
+                {% if not mfa_required or mfa_methods|length == 1 %}
                 <span class="auth-provider-mode-icon material-icons" aria-hidden="true">key</span>
                 <h2 data-i18n="auth.passkeyPrompt">Use a Passkey</h2>
                 <p data-i18n="auth.passkeyPromptHint">Authenticate with a Passkey saved on this device or another nearby device.</p>
+                {% endif %}
                 <button type="button" class="auth-provider-button" id="passkeyLoginBtn"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="auth.signInWithPasskey">Sign in with passkey</span></button>
             </section>
             {% endif %}
@@ -288,7 +306,7 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=33"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=34"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=5"></script>

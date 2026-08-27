@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 
 def _create_user(app, username, *, is_admin=False):
     from app.auth import register_user
@@ -54,6 +56,113 @@ def test_security_center_requires_login_and_exposes_management_controls(
     assert b'WebSSH password from this sign-in' in authenticated.data
     assert b'id="securityCurrentAssurance"' not in authenticated.data
     assert b'BASIC' not in authenticated.data
+
+
+def test_settings_center_combines_preferences_security_and_admin_navigation(
+    app, client
+):
+    _create_user(app, "settings_admin", is_admin=True)
+    _login(client, "settings_admin")
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    assert b'Settings Center' in response.data
+    assert b'data-account-section="preferences"' in response.data
+    assert b'data-account-section="security-overview"' in response.data
+    assert b'data-account-section="factors"' in response.data
+    assert b'id="settingsSecurityMethodsTitle"' in response.data
+    assert b'data-account-jump="factors"' in response.data
+    assert b'data-tab="users"' in response.data
+    assert b'id="tab-users"' in response.data
+    assert b'id="securityFeatureList"' in response.data
+    assert b'class="settings-context-rail"' in response.data
+    assert b'static/images/webssh-logo.svg' in response.data
+    assert b'settings-back-link' in response.data
+    assert b'id="settingsMobileSection"' in response.data
+    assert b'id="adminUserFilterStatus"' in response.data
+    assert b'href="/admin#' not in response.data
+    assert b'id="settingsModal"' not in response.data
+
+
+def test_standard_user_settings_do_not_expose_administration_navigation(
+    app, client
+):
+    _create_user(app, "settings_user")
+    _login(client, "settings_user")
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    assert b'data-account-section="preferences"' in response.data
+    assert b'Administration' not in response.data
+    assert b'data-tab="users"' not in response.data
+
+
+def test_account_preferences_api_validates_and_persists_supported_values(
+    app, client
+):
+    _create_user(app, "preferences_user")
+    _login(client, "preferences_user")
+
+    updated = client.post("/api/account/preferences", json={
+        "theme": "obsidian",
+        "confirm_session_close": True,
+        "disconnect_session_action": "close",
+    })
+    invalid = client.post(
+        "/api/account/preferences",
+        json={"disconnect_session_action": "delete"},
+    )
+    rendered = client.get("/settings")
+
+    assert updated.status_code == 200
+    assert updated.get_json()["settings"] == {
+        "theme": "obsidian",
+        "notepad": "",
+        "confirm_session_close": True,
+        "disconnect_session_action": "close",
+    }
+    assert invalid.status_code == 400
+    assert b'data-theme="obsidian"' in rendered.data
+    assert b'data-confirm-session-close="true"' in rendered.data
+    assert b'data-disconnect-session-action="close"' in rendered.data
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("theme", [], "Invalid theme"),
+        ("theme", {}, "Invalid theme"),
+        (
+            "disconnect_session_action",
+            [],
+            "Invalid disconnect session action",
+        ),
+        (
+            "disconnect_session_action",
+            {},
+            "Invalid disconnect session action",
+        ),
+    ],
+)
+def test_account_preferences_api_rejects_unhashable_values(
+    app,
+    client,
+    field,
+    value,
+    expected_error,
+):
+    _create_user(app, "malformed_preferences_user")
+    _login(client, "malformed_preferences_user")
+
+    response = client.post(
+        "/api/account/preferences",
+        json={field: value},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": expected_error}
 
 
 def test_login_shows_only_enabled_external_authentication(
@@ -124,7 +233,7 @@ def test_admin_page_exposes_audit_and_global_host_key_controls(app, client):
     _create_user(app, "security_admin", is_admin=True)
     _login(client, "security_admin")
 
-    response = client.get("/admin")
+    response = client.get("/settings")
 
     assert response.status_code == 200
     assert b'id="auditExportBtn"' in response.data
@@ -150,7 +259,7 @@ def test_security_features_can_be_rolled_back_independently(
     monkeypatch.setattr(config, "AUDIT_EXPORT_ENABLED", False)
 
     security = client.get("/security")
-    admin = client.get("/admin")
+    admin = client.get("/settings")
     client.post("/logout")
     login = client.get("/login")
 

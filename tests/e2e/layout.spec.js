@@ -181,7 +181,7 @@ test('admin security actions and empty host trust use user-facing copy', async (
     await page.goto('/admin');
 
     await expect(page.locator('button[data-act="recovery"]').first()).toHaveText('Recovery');
-    await page.locator('.admin-tab[data-tab="settings"]').click();
+    await page.locator('.admin-tab[data-settings-section="host-trust"]').click();
     await expect(page.locator('#globalHostKeyList')).toContainText(
         'No global host keys stored.'
     );
@@ -199,12 +199,20 @@ test('new login, security, and admin controls honor the stored locale', async ({
 
     await login(page);
     await page.goto('/security');
-    await expect(page.locator('h1')).toContainText('Sicherheit');
+    await expect(page.getByRole('link', { name: 'Zurück zum Terminal' })).toBeVisible();
+
+    await page.locator('[data-account-section="ssh-host-trust"]').click();
     await expect(page.locator('#hostKeyRefresh')).toHaveText('Aktualisieren');
+
+    await page.locator('[data-account-section="factors"]').click();
     await expect(page.locator('#passkeyAddBtn')).toHaveText('Passkey hinzufügen');
+
+    await page.locator('[data-account-section="recovery"]').click();
     await expect(page.locator('#recoveryGenerateBtn')).toHaveText(
         'Wiederherstellungscodes erstellen'
     );
+
+    await page.locator('[data-account-section="factors"]').click();
     await page.locator('#passkeyAddBtn').click();
     await expect(page.locator('#securityConfirmationTitle')).toHaveText(
         'Sicherheitsaktion bestätigen'
@@ -213,11 +221,12 @@ test('new login, security, and admin controls honor the stored locale', async ({
     await page.locator('#securityConfirmationCancel').click();
 
     await page.goto('/admin');
-    await page.locator('.admin-tab[data-tab="settings"]').click();
+    await page.locator('.admin-tab[data-settings-section="retention"]').click();
     await expect(page.locator('label[for="auditRetention"]')).toContainText(
         'Audit-Aufbewahrungssicherungen'
     );
-    await expect(page.locator('#globalHostKeyRefresh')).toHaveText('Aktualisieren');
+    await page.locator('.admin-tab[data-settings-section="host-trust"]').click();
+    await expect(page.locator('#globalHostKeyRefresh')).toContainText('Aktualisieren');
     await expect(page.locator('#globalHostKeyList')).toContainText(
         'Keine globalen Host-Schlüssel gespeichert.'
     );

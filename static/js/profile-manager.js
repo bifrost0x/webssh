@@ -24,7 +24,10 @@ const ProfileManager = {
             window.openConnectionAssetManager?.('hosts');
         });
         document.getElementById('closeProfileManagementModal')?.addEventListener('click', () => {
-            window.ModalManager?.close(document.getElementById('profileManagementModal'));
+            const view = document.getElementById('profileManagementModal');
+            if (!window.primaryWorkspaceController?.close(view)) {
+                window.ModalManager?.close(view);
+            }
         });
         document.getElementById('newProfileBtn')?.addEventListener('click', () => {
             this.openEditor();
@@ -73,6 +76,7 @@ const ProfileManager = {
             }
             const button = event.target.closest('[data-profile-action]');
             if (!button) return;
+            button.closest('details')?.removeAttribute('open');
             const profileId = button.dataset.profileId;
             if (button.dataset.profileAction === 'connect') this.connect(profileId);
             if (button.dataset.profileAction === 'favorite') this.toggleFavorite(profileId);
@@ -751,7 +755,9 @@ const ProfileManager = {
         this.loadKeys();
         window.JumpHostManager?.load();
         const modal = document.getElementById('profileManagementModal');
-        window.ModalManager?.open(modal);
+        if (!window.primaryWorkspaceController?.open('hosts', modal)) {
+            window.ModalManager?.open(modal);
+        }
         modal?.querySelector('#profileSearchInput')?.focus();
     },
 
@@ -976,8 +982,10 @@ const ProfileManager = {
                     info.appendChild(name);
                 }
                 const target = document.createElement('span');
+                target.className = 'profile-management-target';
                 target.textContent = `${profile.username}@${profile.host}:${profile.port}`;
                 const details = document.createElement('span');
+                details.className = 'profile-management-post-connect';
                 const mode = this.inferPostConnectMode(profile);
                 const modeKey = {
                     none: 'commandModes.none',
@@ -1026,8 +1034,23 @@ const ProfileManager = {
                 star.textContent = profile.favorite === true ? 'star' : 'star_border';
                 favorite.appendChild(star);
                 actions.appendChild(favorite);
+                const connect = document.createElement('button');
+                connect.type = 'button';
+                connect.className = 'btn btn-sm btn-primary';
+                connect.dataset.profileAction = 'connect';
+                connect.dataset.profileId = profile.id;
+                connect.textContent = this.t('connection.connect', 'Connect');
+                actions.appendChild(connect);
+
+                const actionMenu = document.createElement('details');
+                actionMenu.className = 'profile-action-menu';
+                const actionSummary = document.createElement('summary');
+                actionSummary.className = 'btn btn-secondary btn-sm material-icons';
+                actionSummary.setAttribute('aria-label', this.t('common.actions', 'Actions'));
+                actionSummary.textContent = 'more_horiz';
+                const actionMenuItems = document.createElement('div');
+                actionMenuItems.className = 'profile-action-menu-items';
                 [
-                    ['connect', this.t('connection.connect', 'Connect'), 'btn-primary'],
                     ['edit', this.t('common.edit', 'Edit'), 'btn-secondary'],
                     ['duplicate', this.t('profiles.duplicate', 'Duplicate'), 'btn-secondary'],
                     ['delete', this.t('common.delete', 'Delete'), 'btn-danger'],
@@ -1038,8 +1061,10 @@ const ProfileManager = {
                     button.dataset.profileAction = action;
                     button.dataset.profileId = profile.id;
                     button.textContent = label;
-                    actions.appendChild(button);
+                    actionMenuItems.appendChild(button);
                 });
+                actionMenu.append(actionSummary, actionMenuItems);
+                actions.appendChild(actionMenu);
                 if (section.key === 'favorites') {
                     card.classList.add('is-derived-favorite');
                     card.append(info, actions);

@@ -32,8 +32,10 @@ const FUN_THEME_BACKGROUNDS = {
 
 async function openThemeSettings(page) {
     await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByRole('button', { name: 'Settings' }).click();
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(/\/settings#preferences$/);
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
 }
 
 async function readThemeState(page) {
@@ -46,7 +48,6 @@ async function readThemeState(page) {
                 x: bounds.x,
                 y: bounds.y,
                 width: bounds.width,
-                height: bounds.height,
             };
         };
         const rgb = value => {
@@ -78,21 +79,14 @@ async function readThemeState(page) {
             fontFamily: bodyStyle.fontFamily,
             geometry: {
                 header: rect('.header'),
-                workspace: rect('.workspace'),
-                notepad: rect('.notepad-panel'),
+                workspace: rect('.admin-navigation'),
+                notepad: rect('.admin-content'),
             },
             background: {
                 image: backgroundStyle.backgroundImage,
                 opacity: Number(backgroundStyle.opacity),
                 pointerEvents: backgroundStyle.pointerEvents,
                 size: backgroundStyle.backgroundSize,
-                panelImage: getComputedStyle(document.querySelector('.terminal-pane')).backgroundImage,
-                panelBlendMode: getComputedStyle(document.querySelector('.terminal-pane')).backgroundBlendMode,
-                modalImage: getComputedStyle(document.querySelector('.modal-content')).backgroundImage,
-                accountMenuImage: getComputedStyle(
-                    document.querySelector('.account-dropdown-header'),
-                ).backgroundImage,
-                notepadImage: getComputedStyle(document.querySelector('.notepad-panel')).backgroundImage,
             },
             colors: {
                 accent: bodyStyle.getPropertyValue('--accent-primary').trim(),
@@ -111,12 +105,12 @@ async function readThemeState(page) {
                     bodyStyle.getPropertyValue('--bg-secondary').trim(),
                 ),
                 settingsLabel: getComputedStyle(
-                    document.querySelector('#settingsModal .settings-field label'),
+                    document.querySelector('.admin-settings-row label'),
                 ).color,
                 primaryText: rgb(bodyStyle.getPropertyValue('--text-primary').trim()),
                 settingsLabelContrast: contrast(
                     getComputedStyle(
-                        document.querySelector('#settingsModal .settings-field label'),
+                        document.querySelector('.admin-settings-row label'),
                     ).color,
                     bodyStyle.getPropertyValue('--bg-secondary').trim(),
                 ),
@@ -128,15 +122,18 @@ async function readThemeState(page) {
 function expectStableGeometry(actual, expected) {
     for (const region of Object.keys(expected)) {
         for (const dimension of Object.keys(expected[region])) {
-            expect(actual[region][dimension]).toBeCloseTo(expected[region][dimension], 0);
+            expect(
+                actual[region][dimension],
+                `${region}.${dimension} should remain stable across themes`,
+            ).toBeCloseTo(expected[region][dimension], 0);
         }
     }
 }
 
-test('all themes share one typography system without moving the workspace', async ({ page }) => {
+test('all themes share one typography system without moving the Settings Center', async ({ page }) => {
     await login(page);
-    const baseline = await readThemeState(page);
     await openThemeSettings(page);
+    const baseline = await readThemeState(page);
 
     const selector = page.getByRole('combobox', { name: 'Theme' });
     await expect(selector.locator('option')).toHaveCount(10);
@@ -192,15 +189,10 @@ test('professional themes use restrained local backgrounds', async ({ page }) =>
         await selector.selectOption(themeId);
         const state = await readThemeState(page);
         expect(state.background.image).toContain(assetName);
-        expect(state.background.panelImage).toContain(assetName);
-        expect(state.background.modalImage).toContain(assetName);
-        expect(state.background.accountMenuImage).toContain(assetName);
-        expect(state.background.notepadImage).toContain(assetName);
         expect(state.background.opacity).toBeGreaterThanOrEqual(0.04);
         expect(state.background.opacity).toBeLessThanOrEqual(themeId === 'paper' ? 0.18 : 0.1);
         expect(state.background.pointerEvents).toBe('none');
         expect(state.background.size).toBe('cover');
-        expect(state.background.panelBlendMode).toBe(themeId === 'paper' ? 'normal' : 'soft-light');
     }
 
     await assertNoExternalRequests(page);
@@ -212,10 +204,17 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     await page.getByRole('combobox', { name: 'Theme' }).selectOption('paper');
     await expect.poll(() => page.evaluate(() => localStorage.getItem('websshTheme')))
         .toBe('paper');
-    await page.getByRole('button', { name: 'Close', exact: true }).click();
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: 'Logout' }).click();
+    await page.getByRole('link', { name: 'Back to Terminal' }).click();
+    const logoutStatus = await page.evaluate(async () => {
+        const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        const response = await fetch('/logout', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf },
+        });
+        return response.status;
+    });
+    expect(logoutStatus).toBe(200);
+    await page.goto('/login');
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'paper');
 
@@ -236,10 +235,6 @@ test('fun themes use local decorative backgrounds that cannot intercept input', 
         await selector.selectOption(themeId);
         const state = await readThemeState(page);
         expect(state.background.image).toContain(assetName);
-        expect(state.background.panelImage).toContain(assetName);
-        expect(state.background.modalImage).toContain(assetName);
-        expect(state.background.accountMenuImage).toContain(assetName);
-        expect(state.background.notepadImage).toContain(assetName);
         expect(state.background.opacity).toBeGreaterThanOrEqual(0.08);
         expect(state.background.opacity).toBeLessThanOrEqual(0.22);
         expect(state.background.pointerEvents).toBe('none');

@@ -42,7 +42,7 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await page.locator('form button[type="submit"]').click();
     await expect(page).toHaveURL(/\/$/);
 
-    await page.goto('/security');
+    await page.goto('/settings#factors');
     await expect(page.locator('#totpAddBtn')).toBeVisible();
     await page.locator('#totpAddBtn').click();
     await expect(page.locator('#securityConfirmationModal')).toHaveClass(/show/);
@@ -68,6 +68,7 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
         'will not be shown again',
     );
     await expect(page.locator('#totpList')).toContainText('E2E authenticator');
+    await page.locator('[data-account-section="security-overview"]').click();
     await expect(page.locator('#securityMfaStatus')).toHaveText('MFA enabled');
     await expect(page.locator('#accountDisableMfaBtn')).toBeVisible();
 
@@ -105,19 +106,21 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
     await page.locator('#submitTotpMfa').click();
     await expect(page).toHaveURL(/\/$/);
 
-    await page.goto('/security');
+    await page.goto('/settings#factors');
     await expect(page.locator('#totpList')).toContainText('E2E authenticator');
+    await page.locator('[data-account-section="security-overview"]').click();
     const dialogPromise = page.waitForEvent('dialog');
     const disableClick = page.locator('#accountDisableMfaBtn').click();
     const dialog = await dialogPromise;
     expect(dialog.message()).toContain('remove all authenticator apps');
     await dialog.accept();
     await disableClick;
+    await expect(page.locator('#securityMfaStatus')).toHaveText('MFA optional');
+    await expect(page.locator('#accountDisableMfaBtn')).toBeHidden();
+    await page.locator('[data-account-section="factors"]').click();
     await expect(page.locator('#totpList')).toContainText(
         'No authenticator app is enrolled.',
     );
-    await expect(page.locator('#securityMfaStatus')).toHaveText('MFA optional');
-    await expect(page.locator('#accountDisableMfaBtn')).toBeHidden();
 });
 
 test('shows mixed MFA methods one at a time', async ({ page }) => {
@@ -128,6 +131,9 @@ test('shows mixed MFA methods one at a time', async ({ page }) => {
 
     await expect(page.locator('#authMfaMethodSwitcher')).toBeVisible();
     await expect(page.locator('.auth-header')).toContainText('Two-factor authentication');
+    await expect(page.locator('#cancelMfaLogin')).toBeVisible();
+    await expect(page.locator('#totpMfaPanel > h2')).toHaveCount(0);
+    await expect(page.locator('#totpMfaPanel > p')).toHaveCount(0);
     await expect(
         page.locator('[data-auth-mode-panel]:visible'),
     ).toHaveCount(1);
@@ -138,4 +144,8 @@ test('shows mixed MFA methods one at a time', async ({ page }) => {
     await expect(
         page.locator('[data-auth-mode-panel]:visible'),
     ).toHaveCount(1);
+
+    await page.locator('#cancelMfaLogin').click();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.locator('#username')).toBeVisible();
 });

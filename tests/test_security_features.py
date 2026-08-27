@@ -233,7 +233,7 @@ def test_admin_disabled_oidc_is_not_advertised_in_templates(
     })
     assert response.status_code == 302
 
-    response = client.get('/admin')
+    response = client.get('/settings')
 
     assert response.status_code == 200
     assert b'<meta name="oidc-enabled" content="false">' in response.data

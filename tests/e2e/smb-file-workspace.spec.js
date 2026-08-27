@@ -24,6 +24,7 @@ async function enableSmbTestDouble(page, {
         launcher.removeAttribute('aria-disabled');
         launcher.querySelector('[data-i18n="fm.workspace.smbSecure"]').classList.remove('hidden');
         launcher.querySelector('[data-i18n="fm.workspace.disabledByAdmin"]').classList.add('hidden');
+        manager.openSourceLauncher('left');
 
         const originalEmit = window.socket.emit.bind(window.socket);
         window.__smbTest = {
@@ -183,6 +184,15 @@ test('SMB dialog clears credentials, recovers from auth failure and opens an enc
 
     await expect(page.locator('#smbSourceModal')).toHaveClass(/show/);
     await expect(page.locator('#fmSourceLauncher')).not.toHaveClass(/show/);
+    await expect(page.locator('[data-i18n="smb.usernameHint"]')).toHaveText(
+        'Use alice@example.com or a DNS domain with username alice.',
+    );
+    const signInHelp = page.locator('[data-i18n="smb.signInHelp"]');
+    await expect(signInHelp).toHaveAttribute(
+        'href',
+        'https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers',
+    );
+    await expect(signInHelp).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(page.locator('#smbSourceHost')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.locator('#smbSourceShare')).toBeFocused();
@@ -190,6 +200,8 @@ test('SMB dialog clears credentials, recovers from auth failure and opens an enc
     await expect(page.locator('#smbSourceDomain')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.locator('#smbSourceUsername')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(signInHelp).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.locator('#smbSourcePassword')).toBeFocused();
     await page.locator('#smbSourceHost').fill('nas.example');

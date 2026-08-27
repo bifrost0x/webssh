@@ -1,3 +1,4 @@
+{% if not embedded %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,38 +10,70 @@
     <meta name="oidc-enabled" content="{{ 'true' if oidc_enabled else 'false' }}">
     <meta name="ldap-enabled" content="{{ 'true' if ldap_enabled else 'false' }}">
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
-    <title>Admin · Web SSH Terminal</title>
+    <title>Settings · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=16">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=24">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <h1 class="app-title"><span class="material-icons" aria-hidden="true">admin_panel_settings</span><span data-i18n="admin.title">Admin Center</span></h1>
+                <h1 class="app-title"><span class="material-icons" aria-hidden="true">terminal</span><span>WebSSH</span></h1>
             </div>
             <div class="header-buttons">
-                <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Terminal</span></a>
+                <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Workspaces</span></a>
             </div>
         </div>
     </header>
 
     <main class="admin-main">
-        <div class="admin-tabs">
-            <button class="admin-tab active" data-tab="users" data-i18n="admin.users">Users</button>
-            {% if audit_export_enabled %}
-            <button class="admin-tab" data-tab="audit" data-i18n="admin.auditLogs">Audit Logs</button>
+        <aside class="admin-navigation" aria-label="Settings">
+            <div class="admin-navigation-title"><span class="material-icons" aria-hidden="true">settings</span><span>Settings Center</span></div>
+            <div class="admin-tabs settings-center-navigation">
+            <p class="admin-nav-group">My account</p>
+            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#preferences"><span class="material-icons" aria-hidden="true">tune</span><span>Preferences</span></a>
+            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#security-overview"><span class="material-icons" aria-hidden="true">shield</span><span>Security overview</span></a>
+            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span>Passkeys &amp; MFA</span></a>
+            {% if recovery_codes_enabled %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#recovery"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="security.recoveryCodes">Recovery codes</span></a>{% endif %}
+            {% if authentication_primary_method != 'oidc' and not ldap_managed %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#password"><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="security.password">Password</span></a>{% endif %}
+            {% if host_key_management_enabled %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#ssh-host-trust"><span class="material-icons" aria-hidden="true">dns</span><span>Personal SSH trust</span></a>{% endif %}
+            <p class="admin-nav-group"><span>Administration</span><small>Admin only</small></p>
+            <button class="admin-tab active" data-tab="users"><span class="material-icons" aria-hidden="true">group</span><span data-i18n="admin.users">Users</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="authentication"><span class="material-icons" aria-hidden="true">key</span><span>Authentication</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="registration"><span class="material-icons" aria-hidden="true">person_add</span><span>Registration</span></button>
+            {% if host_key_management_enabled %}
+            <button class="admin-tab" data-tab="settings" data-settings-section="host-trust"><span class="material-icons" aria-hidden="true">verified_user</span><span>Global SSH trust</span></button>
             {% endif %}
-            <button class="admin-tab" data-tab="settings" data-i18n="admin.settings">Settings</button>
-            <button class="admin-tab" data-tab="backup" data-i18n="backup.title">Backup &amp; Restore</button>
-        </div>
+            {% if audit_export_enabled %}
+            <button class="admin-tab" data-tab="audit"><span class="material-icons" aria-hidden="true">receipt_long</span><span data-i18n="admin.auditLogs">Audit Logs</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="retention"><span class="material-icons" aria-hidden="true">inventory_2</span><span>Audit retention</span></button>
+            {% endif %}
+            <button class="admin-tab" data-tab="backup"><span class="material-icons" aria-hidden="true">backup</span><span data-i18n="backup.title">Backup &amp; Restore</span></button>
+            </div>
+        </aside>
 
-        <section class="admin-panel" id="tab-users">
-            <div class="admin-toolbar">
-                <button class="btn btn-primary" id="adminAddUserBtn"><span data-i18n="admin.addUser">Add User</span></button>
-                <button class="btn btn-secondary" id="adminRefreshUsers" data-i18n="admin.refresh">Refresh</button>
+        <div class="admin-content">
+{% endif %}
+
+        <section class="admin-panel{% if embedded %} hidden{% endif %}" id="tab-users">
+            <div class="admin-page-header">
+                <div><h2 data-i18n="admin.users">Users</h2><p>Manage accounts, roles, access state, and recovery actions.</p></div>
+                <div class="admin-page-actions">
+                    <button class="btn btn-secondary" id="adminRefreshUsers"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button>
+                    <button class="btn btn-primary" id="adminAddUserBtn"><span class="material-icons" aria-hidden="true">person_add</span><span data-i18n="admin.addUser">Add User</span></button>
+                </div>
+            </div>
+            <div class="admin-toolbar admin-user-toolbar" role="search" aria-label="Filter users">
+                <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only">Search users</span><input type="search" id="adminUserSearch" class="form-control" placeholder="Search users"></label>
+                <label class="admin-user-filter-field"><span>Access</span><select id="adminUserFilter" class="form-control" aria-label="Filter users">
+                        <option value="all">All users</option>
+                        <option value="admin">Administrators</option>
+                        <option value="user">Standard users</option>
+                        <option value="locked">Locked accounts</option>
+                    </select></label>
+                <output id="adminUserFilterStatus" class="admin-filter-count" aria-live="polite"></output>
             </div>
             <div class="admin-table-wrap">
                 <table class="admin-table admin-responsive-table" id="adminUsersTable">
@@ -62,16 +95,21 @@
 
         {% if audit_export_enabled %}
         <section class="admin-panel hidden" id="tab-audit">
+            <div class="admin-page-header">
+                <div><h2 data-i18n="admin.auditLogs">Audit Logs</h2><p>Review security and administrative activity.</p></div>
+                <div class="admin-page-actions">
+                    <button class="btn btn-secondary" id="auditRefresh"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button>
+                    <button class="btn btn-secondary" id="auditExportBtn"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="admin.exportJsonl">Export JSONL</span></button>
+                </div>
+            </div>
             <div class="admin-toolbar">
-                <input type="search" id="auditSearch" class="form-control" placeholder="Search…" data-i18n-placeholder="admin.search">
+                <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="admin.search">Search</span><input type="search" id="auditSearch" class="form-control" placeholder="Search events, users, or sources" data-i18n-placeholder="admin.search"></label>
                 <select id="auditLevel" class="form-control">
                     <option value="" data-i18n="admin.allLevels">All levels</option>
                     <option value="INFO">INFO</option>
                     <option value="WARNING">WARNING</option>
                     <option value="ERROR">ERROR</option>
                 </select>
-                <button class="btn btn-secondary" id="auditRefresh" data-i18n="admin.refresh">Refresh</button>
-                <button class="btn btn-secondary" id="auditExportBtn" data-i18n="admin.exportJsonl">Export JSONL</button>
             </div>
             <div class="admin-table-wrap">
                 <table class="admin-table admin-responsive-table" id="adminAuditTable">
@@ -95,50 +133,62 @@
 
         {% endif %}
         <section class="admin-panel hidden" id="tab-settings">
-            <div class="admin-settings-grid">
-            {% if ldap_enabled %}
-            <div class="admin-setting-row" id="ldapStatusPanel">
-                <h2 data-i18n="admin.ldapDirectory">LDAP directory</h2>
-                <p class="admin-muted" data-i18n="admin.ldapCheckHint">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
-                <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
-                    <button class="btn btn-secondary" id="ldapStatusCheck" data-i18n="admin.checkConnection">Check connection</button>
-                    <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.notChecked">Not checked</span>
+            <section class="admin-settings-subpanel" data-settings-panel="authentication">
+                <div class="admin-page-header">
+                    <div><h2>Authentication</h2><p>Manage the sign-in methods available to WebSSH users.</p></div>
                 </div>
-            </div>
-            {% endif %}
-            <div class="admin-setting-row">
-                <label class="admin-checkbox">
-                    <input type="checkbox" id="settingRegistration">
-                    <strong data-i18n="admin.allowRegistration">Allow self-registration</strong>
-                </label>
-                <p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p>
-            </div>
-            <div class="admin-setting-row admin-auth-features">
-                <h2 data-i18n="admin.authenticationFeatures">Authentication features</h2>
-                <p class="admin-muted" data-i18n="admin.authenticationFeaturesHint">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
-                <div id="securityFeatureList" style="margin-top:14px;"></div>
-                <p id="securityFeatureStatus" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</p>
-            </div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-intro">
+                        <h3 data-i18n="admin.authenticationFeatures">Authentication features</h3>
+                        <p class="admin-muted" data-i18n="admin.authenticationFeaturesHint">Deployment configuration defines the maximum available feature set. Only ready features can be activated here; disabling a provider blocks new logins without terminating existing sessions.</p>
+                    </div>
+                    <div id="securityFeatureList"></div>
+                    <p id="securityFeatureStatus" class="admin-muted admin-settings-status" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</p>
+                    {% if ldap_enabled %}
+                    <details class="admin-config-disclosure" id="ldapStatusPanel">
+                        <summary><span><strong data-i18n="admin.ldapDirectory">LDAP directory</strong><small>Deployment connection check</small></span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
+                        <div class="admin-config-disclosure-body">
+                            <p class="admin-muted" data-i18n="admin.ldapCheckHint">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
+                            <div class="admin-toolbar">
+                                <button class="btn btn-secondary" id="ldapStatusCheck" data-i18n="admin.checkConnection">Check connection</button>
+                                <span id="ldapStatusResult" class="admin-muted" role="status" aria-live="polite" data-i18n="admin.notChecked">Not checked</span>
+                            </div>
+                        </div>
+                    </details>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="admin-settings-subpanel hidden" data-settings-panel="registration">
+                <div class="admin-page-header"><div><h2>Registration</h2><p>Control who can create a local WebSSH account.</p></div></div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-row">
+                        <div><strong data-i18n="admin.allowRegistration">Allow self-registration</strong><p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="settingRegistration"><span>Enabled</span></label>
+                    </div>
+                </div>
+            </section>
+
             {% if audit_export_enabled %}
-            <div class="admin-setting-row admin-audit-retention">
-                <label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label>
-                <div class="admin-toolbar" style="margin-top:10px;margin-bottom:0;">
-                    <input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5">
-                    <button class="btn btn-secondary" id="auditRetentionSave" data-i18n="common.save">Save</button>
+            <section class="admin-settings-subpanel hidden" data-settings-panel="retention">
+                <div class="admin-page-header"><div><h2>Audit retention</h2><p>Define how many rotated audit archives WebSSH keeps.</p></div></div>
+                <div class="admin-settings-surface">
+                    <div class="admin-settings-row admin-audit-retention">
+                        <div><label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label><p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p></div>
+                        <div class="admin-inline-control"><input type="number" id="auditRetention" class="form-control" min="1" max="90" value="5"><button class="btn btn-primary" id="auditRetentionSave" data-i18n="common.save">Save</button></div>
+                    </div>
                 </div>
-                <p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p>
-            </div>
+            </section>
             {% endif %}
-            </div>
+
             {% if host_key_management_enabled %}
-            <div class="admin-setting-row" style="margin-top:16px;max-width:none;">
-                <div class="admin-toolbar">
-                    <strong data-i18n="admin.globalSshHostTrust">Global SSH host trust</strong>
-                    <button class="btn btn-secondary" id="globalHostKeyRefresh" data-i18n="admin.refresh">Refresh</button>
+            <section class="admin-settings-subpanel hidden" data-settings-panel="host-trust">
+                <div class="admin-page-header">
+                    <div><h2 data-i18n="admin.globalSshHostTrust">Global SSH host trust</h2><p data-i18n="admin.globalHostKeyHint">Import one independently verified OpenSSH known_hosts entry. Global trust applies to every WebSSH user; existing entries can be removed from the table below.</p></div>
+                    <div class="admin-page-actions"><button class="btn btn-secondary" id="globalHostKeyRefresh"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button></div>
                 </div>
-                <p class="admin-muted" data-i18n="admin.globalHostKeyHint">Import one independently verified OpenSSH known_hosts entry. Global trust applies to every WebSSH user; existing entries can be removed from the table below.</p>
-                <div class="admin-toolbar admin-host-key-import">
-                    <label class="sr-only" for="globalHostKeyEntry" data-i18n="admin.globalHostKeyEntry">Verified known_hosts entry</label>
+                <div class="admin-trust-import">
+                    <label for="globalHostKeyEntry" data-i18n="admin.globalHostKeyEntry">Verified known_hosts entry</label>
                     <textarea id="globalHostKeyEntry" class="form-control" rows="3" maxlength="16384" spellcheck="false" data-i18n-placeholder="admin.globalHostKeyPlaceholder" placeholder="host.example ssh-ed25519 AAAA…"></textarea>
                     <button type="button" class="btn btn-primary" id="globalHostKeyAdd" data-i18n="admin.importHostKey">Import verified key</button>
                 </div>
@@ -148,11 +198,12 @@
                         <tbody id="globalHostKeyList"></tbody>
                     </table>
                 </div>
-            </div>
+            </section>
             {% endif %}
         </section>
 
         <section class="admin-panel hidden" id="tab-backup">
+            <div class="admin-page-header"><div><h2 data-i18n="backup.title">Backup &amp; Restore</h2><p>Create, verify, and restore WebSSH backup archives.</p></div></div>
             <div class="admin-backup-warning" role="alert">
                 <span class="material-icons" aria-hidden="true">warning</span>
                 <p data-i18n="backup.sensitiveWarning">Backup archives contain passwords, application secrets, SSH key metadata, and encrypted private keys. Store every downloaded archive encrypted and off-host.</p>
@@ -199,7 +250,10 @@
 
             <p id="restoreGlobalStatus" class="admin-backup-status" role="status" aria-live="polite"></p>
         </section>
+{% if not embedded %}
+        </div>
     </main>
+{% endif %}
 
     <div class="modal modal-small" id="addUserModal" role="dialog" aria-modal="true" aria-labelledby="addUserModalTitle" aria-hidden="true">
         <div class="modal-content">
@@ -332,11 +386,12 @@
         </div>
     </div>
 
+{% if not embedded %}
     <div id="notificationContainer" class="notification-container"></div>
-
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=33"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=34"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=7"></script>
 </body>
 </html>
+{% endif %}

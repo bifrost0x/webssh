@@ -113,6 +113,23 @@
         const modalId = modalByAsset[asset];
         if (!modalId) return;
 
+        const primaryWorkspace = window.primaryWorkspaceController;
+        if (primaryWorkspace) {
+            if (asset === 'hosts') {
+                ProfileManager.openManagement();
+                return;
+            }
+            ProfileManager.loadKeys();
+            if (asset === 'jump-hosts') {
+                window.JumpHostManager?.load();
+                window.JumpHostManager?.renderList();
+            }
+            const view = document.getElementById(modalId);
+            primaryWorkspace.open('hosts', view);
+            view?.querySelector('[aria-current="page"]')?.focus();
+            return;
+        }
+
         const currentModal = document.querySelector(
             '#profileManagementModal.show, #jumpHostManagementModal.show, #keyManagementModal.show',
         );
@@ -1263,6 +1280,13 @@
     let connectSeconds = 0;
 
     function closeProfileManagementModal() {
+        if (
+            window.primaryWorkspaceController
+            && window.primaryWorkspaceController.getActiveView() === 'hosts'
+        ) {
+            window.primaryWorkspaceController.showWorkspaces();
+            return;
+        }
         window.ModalManager?.close(
             document.getElementById('profileManagementModal'),
         );
@@ -2040,6 +2064,10 @@
             header.after(reconnectBar);
         }
 
+        window.primaryWorkspaceController = window.PrimaryWorkspaceController
+            ?.createController({window, document});
+        window.primaryWorkspaceController?.init();
+
         SessionManager.init();
         window.workspaceLayoutController = window.WorkspaceLayoutController?.createController({
             window,
@@ -2222,7 +2250,10 @@
         });
 
         document.getElementById('closeKeyModal').addEventListener('click', () => {
-            window.ModalManager.close(document.getElementById('keyManagementModal'));
+            const view = document.getElementById('keyManagementModal');
+            if (!window.primaryWorkspaceController?.close(view)) {
+                window.ModalManager.close(view);
+            }
         });
 
         document.getElementById('keyUploadForm').addEventListener('submit', (e) => {
@@ -2240,7 +2271,10 @@
         });
 
         document.getElementById('closeJumpHostModal')?.addEventListener('click', () => {
-            window.ModalManager.close(document.getElementById('jumpHostManagementModal'));
+            const view = document.getElementById('jumpHostManagementModal');
+            if (!window.primaryWorkspaceController?.close(view)) {
+                window.ModalManager.close(view);
+            }
         });
 
         document.querySelectorAll('input[name="jhAuthType"]').forEach(radio => {
@@ -2389,6 +2423,7 @@
 
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
+                if (e.target.classList.contains('primary-workspace-view')) return;
                 if (e.target.id === 'sshAuthBannerModal') return;
                 window.ModalManager.close(e.target);
                 if (e.target.id === 'connectionModal') {
@@ -2464,6 +2499,7 @@
                         if (
                             modal.id === 'sftpFileManager'
                             || modal.id === 'sshAuthBannerModal'
+                            || modal.classList.contains('primary-workspace-view')
                         ) return;
                         window.ModalManager.close(modal);
                     });

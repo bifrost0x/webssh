@@ -26,6 +26,7 @@ test('registers a passkey and signs in with a virtual authenticator', async ({
         await expect(page).toHaveURL(/\/$/);
 
         await page.goto(origin + '/security');
+        await page.locator('[data-account-section="factors"]').click();
         const ceremony = Promise.race([
             page.locator('#passkeyList').getByText('E2E passkey').waitFor()
                 .then(() => 'registered'),

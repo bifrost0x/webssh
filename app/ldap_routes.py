@@ -244,7 +244,7 @@ def ldap_login():
         'ldap',
         assurance=AssuranceLevel.BASIC,
         session_binding=binding,
-        remember=False,
+        remember=request.form.get('remember') == 'on',
         continuation='/',
         evidence={
             'provider': mapping.provider,
