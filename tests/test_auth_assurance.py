@@ -49,6 +49,98 @@ def test_pending_authentication_is_session_bound_and_single_use(app):
             consume_pending(token, 'browser-a')
 
 
+def test_mfa_back_action_invalidates_the_bound_pending_login(app, client):
+    from app.auth_assurance import (
+        AssuranceLevel,
+        begin_authentication,
+    )
+    from app.models import PendingAuthentication, User, db
+
+    user_id = _create_user(app, 'cancelled_mfa_login')
+    binding = 'browser-binding-for-cancelled-login'
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        token = begin_authentication(
+            user,
+            'password',
+            assurance=AssuranceLevel.BASIC,
+            remember=False,
+            continuation='/',
+            session_binding=binding,
+        )
+    with client.session_transaction() as browser_session:
+        browser_session['_pending_authentication'] = token
+        browser_session['_auth_binding'] = binding
+
+    response = client.post('/login/cancel')
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/login')
+    assert client.get('/login/cancel').status_code == 405
+    with client.session_transaction() as browser_session:
+        assert '_pending_authentication' not in browser_session
+        assert '_auth_binding' not in browser_session
+        assert '_user_id' not in browser_session
+    with app.app_context():
+        assert PendingAuthentication.query.count() == 0
+
+
+def test_mfa_back_action_requires_csrf_before_pending_login_is_deleted(
+    app,
+    client,
+):
+    from app.auth_assurance import AssuranceLevel, begin_authentication
+    from app.models import PendingAuthentication, User, db
+
+    user_id = _create_user(app, 'csrf_protected_mfa_cancel')
+    binding = 'browser-binding-for-csrf-protected-cancel'
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        token = begin_authentication(
+            user,
+            'password',
+            assurance=AssuranceLevel.BASIC,
+            remember=False,
+            continuation='/',
+            session_binding=binding,
+        )
+    with client.session_transaction() as browser_session:
+        browser_session['_pending_authentication'] = token
+        browser_session['_auth_binding'] = binding
+
+    app.config['WTF_CSRF_ENABLED'] = True
+    try:
+        response = client.post('/login/cancel')
+    finally:
+        app.config['WTF_CSRF_ENABLED'] = False
+
+    assert response.status_code == 400
+    with client.session_transaction() as browser_session:
+        assert browser_session['_pending_authentication'] == token
+        assert browser_session['_auth_binding'] == binding
+    with app.app_context():
+        assert PendingAuthentication.query.count() == 1
+
+
+def test_mfa_back_action_does_not_log_out_an_authenticated_user(app, client):
+    from app.models import AuthenticationSession
+
+    _create_user(app, 'active_login_cancel_guard')
+    login = client.post('/login', data={
+        'username': 'active_login_cancel_guard',
+        'password': 'password123',
+    })
+    assert login.status_code == 302
+
+    response = client.post('/login/cancel')
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/')
+    assert client.get('/').status_code == 200
+    with app.app_context():
+        assert AuthenticationSession.query.count() == 1
+
+
 @pytest.mark.parametrize(
     'unsafe_continuation',
     (

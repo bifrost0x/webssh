@@ -227,6 +227,8 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
     html = response.get_data(as_text=True)
     assert response.status_code == 200
     assert 'id="passkeyLoginBtn"' in html
+    assert 'id="cancelMfaLogin"' in html
+    assert 'action="/login/cancel"' in html
     assert 'id="passwordAuthenticationForms" class="hidden"' in html
     assert 'id="authMfaMethodSwitcher"' in html
     assert 'data-auth-mode="totp" aria-selected="true"' in html
@@ -239,6 +241,9 @@ def test_passkey_remains_visible_as_an_alternative_mfa_method(
         'id="passkeyLoginMode" class="login-mode auth-provider-mode hidden" '
         'data-auth-mode-panel="passkey" aria-hidden="true"'
     ) in html
+    assert 'data-mfa-layout="compact"' in html
+    assert 'id="totpMfaTab"' in html
+    assert 'aria-labelledby="totpMfaTab"' in html
 
 
 def test_deleting_last_totp_keeps_mfa_when_passkey_remains(

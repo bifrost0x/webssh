@@ -551,6 +551,25 @@ def create_app(
             auth_source='local' if request.method == 'POST' else None,
         )
 
+    @app.post('/login/cancel')
+    def cancel_login():
+        from .auth_assurance import cancel_pending_authentication
+
+        if current_user.is_authenticated:
+            return redirect(url_for('index'))
+        pending_token = session.get('_pending_authentication')
+        browser_binding = session.get('_auth_binding')
+        try:
+            cancel_pending_authentication(pending_token, browser_binding)
+        except Exception as exc:
+            db.session.rollback()
+            log_warning(
+                'Pending authentication cancellation failed',
+                error=type(exc).__name__,
+            )
+        clear_browser_authentication()
+        return redirect(url_for('login'))
+
     @app.route('/register', methods=['GET', 'POST'])
     def register():
         ongoing_registration = is_registration_enabled()

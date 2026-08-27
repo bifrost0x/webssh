@@ -1514,6 +1514,60 @@ test('source launcher identifies the existing connection that enables Move', () 
     }), 'Connected');
 });
 
+test('guided move opens the selected source in the other pane and preserves the selection', async () => {
+    const previousDocument = global.document;
+    let focused = false;
+    const opened = [];
+    const notifications = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const sourceState = filePane(manager, 'sftp-session:shared', {
+        path: '/source',
+        files: [{ name: 'report.txt', is_dir: false }],
+        selected: new Set([0]),
+    });
+    manager.workspace.openTab('left', sourceState.source, sourceState);
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        modal: null,
+        async openWorkspaceSource(pane, source) {
+            opened.push({ pane, source });
+            const targetState = filePane(this, source.sourceId, { path: '/' });
+            this.workspace.openTab(pane, source, targetState);
+            this.panes[pane] = targetState;
+        },
+        showNotification(message, level) { notifications.push({ message, level }); },
+        t(_key, fallback) { return fallback; },
+    });
+    global.document = {
+        getElementById(id) {
+            return id === 'fmRightPath' ? { focus() { focused = true; } } : null;
+        },
+    };
+
+    try {
+        const result = await manager.startGuidedMove('left');
+
+        assert.equal(result, true);
+        assert.equal(manager.workspace.layout, 'split');
+        assert.equal(opened.length, 1);
+        assert.equal(opened[0].pane, 'right');
+        assert.equal(opened[0].source.sourceId, 'sftp-session:shared');
+        assert.deepEqual(manager.guidedMove, {
+            sourcePane: 'left', targetPane: 'right', sourceId: 'sftp-session:shared',
+        });
+        assert.deepEqual(Array.from(manager.panes.left.selected), [0]);
+        assert.equal(focused, true);
+        assert.deepEqual(notifications, [{
+            message: 'Choose the destination folder in the other pane, then select Move.',
+            level: 'info',
+        }]);
+    } finally {
+        global.document = previousDocument;
+    }
+});
+
 test('same-source move is sequential, never replaces, and refreshes both panes once', async () => {
     const requests = [];
     const refreshes = [];

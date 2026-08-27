@@ -2851,13 +2851,13 @@ body:has(.auth-access-dock) {
 
 .auth-method-option strong {
     color: var(--ws2-text-secondary);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 650;
 }
 
 .auth-method-option small {
     color: var(--ws2-text-muted);
-    font-size: 9px;
+    font-size: 10px;
 }
 
 .auth-method-option:hover,
@@ -2882,6 +2882,67 @@ body:has(.auth-access-dock) {
     border: 1px solid var(--ws2-border);
     border-radius: var(--ws2-radius);
     background: color-mix(in srgb, var(--ws2-canvas) 46%, var(--ws2-surface));
+}
+
+.auth-mfa-back-form {
+    display: flex;
+    justify-content: flex-start;
+    margin: -2px 0 12px;
+}
+
+.auth-mfa-back {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border: 1px solid var(--ws2-border);
+    border-radius: var(--ws2-radius-sm);
+    background: transparent;
+    color: var(--ws2-text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.auth-mfa-back .material-icons {
+    font-size: 17px;
+}
+
+.auth-mfa-back:hover,
+.auth-mfa-back:focus-visible {
+    border-color: var(--ws2-accent);
+    background: var(--ws2-panel);
+    color: var(--ws2-text-primary);
+    outline: 0;
+}
+
+.auth-source-control .form-control {
+    padding-right: 42px;
+}
+
+.auth-remember-control {
+    display: flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 8px;
+}
+
+.auth-remember-control input {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    accent-color: var(--ws2-accent);
+}
+
+.auth-remember-control label {
+    margin: 0;
+    cursor: pointer;
+}
+
+.auth-credentials-zone[data-mfa-layout="compact"] .auth-provider-mode {
+    min-height: 0;
 }
 
 .auth-credentials-zone .login-mode > :last-child,

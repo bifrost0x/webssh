@@ -20,6 +20,8 @@ async function openWorkspaceWithSources(page) {
                         transfer_id: 'workspace-transfer',
                         source_id: payload.source_id,
                         destination_source_id: payload.destination_source_id,
+                        old_path: payload.old_path,
+                        new_path: payload.new_path,
                         request_id: payload.request_id,
                     });
                 }
@@ -51,6 +53,7 @@ async function openWorkspaceWithSources(page) {
             },
         ];
         window.sftpFileManager.renderSourceLauncher();
+        window.sftpFileManager.openSourceLauncher('left');
     });
 }
 
@@ -119,6 +122,7 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
 
     await page.locator('#fmLayoutSplit').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-split/);
+    await page.locator('[data-source-target="right"]').click();
     await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await expect(page.locator('#fmSourceLauncherPane')).toHaveText('Right side');
     await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
@@ -246,6 +250,7 @@ test('empty panes guide source selection and mobile split keeps both panes reach
 
     await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.locator('#fmLayoutSplit').click();
+    await page.locator('[data-source-target="right"]').click();
     await page.locator('[data-source-key="sftp-session:workspace-target"]').click();
     await page.setViewportSize({ width: 390, height: 844 });
 
@@ -308,6 +313,61 @@ test('file checkboxes support additive selection and select all', async ({ page 
     await page.keyboard.press('Enter');
     await expect(secondCheckbox).toHaveAttribute('aria-checked', 'true');
     await expect(page.locator('#fmLeftList .fm-file-item.selected')).toHaveCount(2);
+    await assertNoExternalRequests(page);
+});
+
+test('guided move opens the same source in the destination pane', async ({ page }) => {
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        Object.assign(manager.panes.left, {
+            loading: false,
+            autoHomeEligible: false,
+            pendingHomeRequestId: null,
+            path: '/srv/source',
+            files: [{
+                name: 'report.txt', is_dir: false, size: 12,
+                mode: 0o100640, modified: 1786598100,
+            }],
+            selected: new Set([0]),
+        });
+        manager.renderPane('left');
+    });
+
+    const moveAction = page.locator('[data-pane-toolbar="left"] [data-pane-action="move"]');
+    await expect(moveAction).toBeEnabled();
+    await moveAction.click();
+
+    await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-split/);
+    await expect(page.locator('#fmRightTabs')).toContainText('prod-web-01');
+    await expect(page.locator('#fmRightPane')).toHaveClass(/fm-guided-move-target/);
+    await expect(page.locator('#fmRightPath')).toBeFocused();
+    await expect(page.locator('#fmTransferHint')).toContainText('destination folder');
+    expect(await page.evaluate(() => Array.from(
+        window.sftpFileManager.panes.left.selected,
+    ))).toEqual([0]);
+
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        Object.assign(manager.panes.right, {
+            loading: false,
+            autoHomeEligible: false,
+            pendingHomeRequestId: null,
+            pendingDirectoryRequestId: null,
+            pendingDirectoryPath: null,
+            path: '/srv/archive',
+            files: [],
+        });
+        manager.renderPane('right');
+    });
+    await expect(page.locator('#fmTransferRight')).toBeEnabled();
+    await expect(page.locator('#fmTransferRight')).toContainText('Move');
+    await page.locator('#fmTransferRight').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__fileWorkspaceEvents.some(item => item.event === 'rename_file')
+    ))).toBe(true);
+    await expect(page.locator('#fmRightPane')).not.toHaveClass(/fm-guided-move-target/);
     await assertNoExternalRequests(page);
 });
 

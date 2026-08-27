@@ -155,9 +155,12 @@ def test_enabled_ldap_login_defaults_to_named_directory_source(
 
     assert response.status_code == 200
     assert b'id="authenticationSource"' in response.data
+    assert b'class="input-wrapper auth-source-control"' in response.data
+    assert b'>account_tree</span>' in response.data
     assert b'<option value="ldap" selected>corp-directory</option>' in response.data
     assert b'id="localLoginForm" class="auth-source-form hidden"' in response.data
     assert b'id="ldapLoginForm" class="auth-source-form"' in response.data
+    assert response.data.count(b'name="remember"') == 2
     assert b'id="ldapLoginBtn"' not in response.data
     assert b'id="ldapBackBtn"' not in response.data
 
@@ -235,6 +238,48 @@ def test_ldap_login_accepts_only_matching_explicit_identity(
         assert row.directory_username == "alice-renamed"
         assert row.distinguished_name == identity.distinguished_name
         assert row.last_verified_at is not None
+
+
+def test_ldap_login_can_create_a_remembered_session(
+    app,
+    client,
+    monkeypatch,
+):
+    user_id = _create_user(app, "remembered_directory_user")
+    identity = _DirectoryIdentity(
+        provider="default",
+        subject="stable-remembered-directory-id",
+        distinguished_name=(
+            "uid=remembered,ou=people,dc=example,dc=com"
+        ),
+    )
+    from app.models import LDAPIdentity, db
+
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider="default",
+            subject=identity.subject,
+            directory_username="remembered",
+            distinguished_name=identity.distinguished_name,
+        ))
+        db.session.commit()
+    _enable_ldap_blueprint(app, monkeypatch, _FakeDirectory(identity))
+
+    response = client.post(
+        "/login/ldap",
+        data={
+            "username": "remembered",
+            "password": "directory-password",
+            "remember": "on",
+        },
+    )
+
+    assert response.status_code == 302
+    assert any(
+        header.startswith("remember_token=")
+        for header in response.headers.getlist("Set-Cookie")
+    )
 
 
 def test_ldap_password_stays_pending_when_user_enabled_mfa(
