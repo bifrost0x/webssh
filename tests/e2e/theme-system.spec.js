@@ -272,7 +272,7 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
 
     await page.goto('/login');
     await page.getByRole('textbox', { name: 'Username' }).fill('e2e_mixed_mfa');
-    await page.getByRole('textbox', { name: 'Password' }).fill('browser-password');
+    await page.locator('#password').fill('browser-password');
     await page.getByRole('button', { name: 'Sign In' }).click();
     await expect(page.getByRole('button', { name: 'Back to sign in' })).toBeVisible();
     const mfaState = await readPaperAuthState(page);
