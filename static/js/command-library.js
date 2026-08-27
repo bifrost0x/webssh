@@ -116,7 +116,7 @@ const CommandLibrary = {
             this.loadCommands();
         }
 
-        window.CommandWorkspace.open('library');
+        window.CommandWorkspace.open('library', {primary: true});
 
         setTimeout(() => {
             document.getElementById('commandSearchInput').focus();
@@ -127,7 +127,7 @@ const CommandLibrary = {
         const command = this.commands.find(item => item.id === commandId);
         if (!command) return;
         this.returnToModalId = returnToModalId;
-        window.CommandWorkspace.open('library');
+        window.CommandWorkspace.open('library', {primary: !returnToModalId});
         if (command.isSystem) this.copyCommand(commandId);
         else this.editCommand(commandId);
     },
@@ -437,7 +437,11 @@ const CommandLibrary = {
         this.editingCommandId = null;
         this.pendingSaveCallback = null;
         const workspace = document.getElementById('commandWorkspaceModal');
-        if (workspace?.classList.contains('show') && window.ModalManager) {
+        if (
+            workspace?.classList.contains('show')
+            && window.ModalManager
+            && !window.primaryWorkspaceController?.isElementActive(workspace)
+        ) {
             window.ModalManager.activeModal = workspace;
         }
     },

@@ -1,7 +1,7 @@
 const { test, expect } = require('playwright/test');
 const { login, openProfileManagement } = require('./helpers');
 
-test('account menu exposes workspace pulse and persists close confirmation', async ({ page }) => {
+test('account menu opens the Settings Center and persists close confirmation', async ({ page }) => {
     await login(page);
 
     await page.locator('#accountBtnHeader').click();
@@ -11,9 +11,7 @@ test('account menu exposes workspace pulse and persists close confirmation', asy
         '#accountProfileCard',
         '#accountWorkspacePulse',
         '#accountSettingsBtn',
-        '#securityCenterBtn',
         '#accountShortcutsBtn',
-        '#adminPanelBtn',
         '#logoutBtn',
     ]) {
         await expect(page.locator(selector)).toBeVisible();
@@ -28,10 +26,10 @@ test('account menu exposes workspace pulse and persists close confirmation', asy
     await expect(page.locator('#accountSecurityToggle')).toHaveCount(0);
 
     await page.locator('#accountSettingsBtn').click();
-    const settingsModal = page.locator('#settingsModal');
     const closeConfirmation = page.locator('#confirmSessionCloseInput');
-    await expect(settingsModal).toHaveClass(/show/);
-    await expect(dropdown).toBeHidden();
+    await expect(page).toHaveURL(/\/settings#preferences$/);
+    await expect(page.getByText('Settings Center', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-account-panel="preferences"]')).toBeVisible();
     await expect(page.locator('#settingsThemeSelect')).toHaveValue('glass');
     await expect(page.locator('#settingsLanguageSelect')).not.toHaveValue('');
     await expect(page.locator('#scrollbackInput')).toHaveValue('500');
@@ -43,13 +41,14 @@ test('account menu exposes workspace pulse and persists close confirmation', asy
 
     await page.reload();
     await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'true');
-    await page.locator('#accountBtnHeader').click();
-    await page.locator('#accountSettingsBtn').click();
+    await expect(page.locator('[data-account-panel="preferences"]')).toBeVisible();
     await expect(closeConfirmation).toBeChecked();
     await closeConfirmation.uncheck();
     await expect(closeConfirmation).not.toBeDisabled();
-    await page.locator('#closeSettingsModal').click();
-    await expect(page.locator('#accountBtnHeader')).toBeFocused();
+
+    await page.getByRole('link', { name: 'Back to Workspaces' }).click();
+    await page.locator('#accountBtnHeader').click();
+    await expect(page.locator('#accountSettingsBtn')).toHaveAttribute('href', /\/settings#preferences$/);
 });
 
 test('hosts, jump hosts, and SSH keys switch through one asset navigation', async ({ page }) => {
@@ -87,7 +86,12 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
     await expect(page.locator('#logoutBtn')).toBeVisible();
 
     await page.locator('#accountSettingsBtn').click();
-    await expect(page.locator('#settingsModal')).toHaveClass(/show/);
+    await expect(page).toHaveURL(/\/settings#preferences$/);
     await expect(page.locator('#scrollbackInput')).toBeVisible();
     await expect(page.locator('#confirmSessionCloseInput')).toBeVisible();
+    const layout = await page.evaluate(() => ({
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+    }));
+    expect(layout.document).toBeLessThanOrEqual(layout.viewport);
 });

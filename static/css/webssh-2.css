@@ -12,6 +12,7 @@ body {
     --ws2-surface: var(--bg-secondary);
     --ws2-panel: var(--bg-tertiary);
     --ws2-raised: var(--bg-hover);
+    --ws2-row-hover: var(--bg-hover);
     --ws2-border: var(--border-color);
     --ws2-border-strong: var(--border-hover);
     --ws2-text: var(--text-primary);
@@ -603,7 +604,9 @@ body:has(.admin-main) {
 
 body:has(.admin-main) .header-content {
     min-height: 58px;
-    padding: 0 max(20px, calc((100vw - 1320px) / 2));
+    width: 100%;
+    max-width: none;
+    padding: 0 18px;
 }
 
 body:has(.admin-main) .app-title {
@@ -622,9 +625,9 @@ body:has(.admin-main) .app-title .material-icons {
 }
 
 .admin-main {
-    width: min(100%, 1320px);
-    max-width: 1320px;
-    padding: 26px 24px 64px;
+    width: 100%;
+    max-width: none;
+    padding: 0;
 }
 
 .admin-tabs {
@@ -1565,6 +1568,487 @@ body:has(.auth-container) {
 
     .notepad-section {
         padding: 12px;
+    }
+}
+
+/* Professional resource workspaces for Hosts and Commands. */
+.primary-workspace-surface .primary-workspace-view-hosts > .modal-content > .modal-body,
+.primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
+.primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body {
+    padding: 0;
+}
+
+.primary-workspace-surface .profile-management-modal-body,
+.primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
+.primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    align-items: stretch;
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    min-width: 0;
+    margin: 0;
+    padding: 18px 12px;
+    border: 0;
+    border-right: 1px solid var(--ws2-border);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--ws2-canvas) 88%, var(--ws2-surface));
+}
+
+.primary-workspace-surface .connection-asset-nav-label {
+    margin: 0 8px 7px;
+    color: var(--ws2-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 10px;
+    border-radius: 7px;
+    text-align: left;
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav-item .material-icons {
+    flex: 0 0 auto;
+    font-size: 18px;
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav-item.active {
+    background: color-mix(in srgb, var(--accent-primary) 15%, var(--ws2-surface));
+    color: var(--accent-primary);
+}
+
+.primary-workspace-surface #profileManagementView,
+.primary-workspace-surface #profileEditorView,
+.primary-workspace-surface .primary-workspace-view-hosts .connection-asset-layout {
+    min-width: 0;
+    padding: 20px;
+}
+
+.primary-workspace-surface .profile-management-toolbar {
+    gap: 10px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--ws2-border);
+}
+
+.primary-workspace-surface .profile-management-toolbar p {
+    flex-basis: 100%;
+    font-size: 13px;
+}
+
+.primary-workspace-surface .profile-management-search {
+    max-width: none;
+}
+
+.primary-workspace-surface .profile-management-list {
+    gap: 0;
+    margin-top: 14px;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--ws2-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ws2-canvas) 86%, var(--ws2-surface));
+}
+
+.primary-workspace-surface .profile-management-section {
+    gap: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.primary-workspace-surface .profile-management-section + .profile-management-section {
+    margin: 0;
+    border-top: 1px solid var(--ws2-border);
+}
+
+.primary-workspace-surface .profile-management-section-toggle {
+    min-height: 40px;
+    padding: 7px 12px;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--ws2-surface) 58%, transparent);
+    font-size: 12px;
+}
+
+.primary-workspace-surface .profile-management-section-count {
+    border: 0;
+    background: transparent;
+}
+
+.primary-workspace-surface .profile-management-section-items {
+    gap: 0;
+}
+
+.primary-workspace-surface .profile-management-item,
+.primary-workspace-surface .profile-management-item.is-derived-favorite {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    min-height: 68px;
+    padding: 10px 12px 10px 7px;
+    border: 0;
+    border-top: 1px solid var(--ws2-border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.primary-workspace-surface .profile-management-item.is-derived-favorite::before {
+    content: '';
+    width: 38px;
+}
+
+.primary-workspace-surface .profile-management-item:hover {
+    border-color: var(--ws2-border);
+    background: var(--ws2-row-hover);
+    box-shadow: none;
+}
+
+.primary-workspace-surface .profile-drop-slot {
+    height: 4px;
+    margin: -2px 8px;
+    z-index: 2;
+}
+
+.primary-workspace-surface .profile-management-info {
+    display: grid;
+    grid-template-columns: minmax(130px, .8fr) minmax(200px, 1.3fr) minmax(120px, .8fr);
+    align-items: center;
+    gap: 5px 16px;
+}
+
+.primary-workspace-surface .profile-management-info .profile-group-badge {
+    grid-row: 2;
+    grid-column: 1;
+    width: max-content;
+    max-width: 100%;
+}
+
+.primary-workspace-surface .profile-management-info > strong {
+    grid-row: 1;
+    grid-column: 1;
+}
+
+.primary-workspace-surface .profile-management-target {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+}
+
+.primary-workspace-surface .profile-management-post-connect {
+    grid-row: 1 / span 2;
+    grid-column: 3;
+}
+
+.primary-workspace-surface .profile-management-actions {
+    flex-wrap: nowrap;
+    gap: 6px;
+}
+
+.profile-action-menu,
+.command-set-action-menu {
+    position: relative;
+}
+
+.profile-action-menu > summary,
+.command-set-action-menu > summary {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    padding: 0;
+    list-style: none;
+    cursor: pointer;
+}
+
+.profile-action-menu > summary::-webkit-details-marker,
+.command-set-action-menu > summary::-webkit-details-marker {
+    display: none;
+}
+
+.profile-action-menu-items,
+.command-set-action-menu-items {
+    position: absolute;
+    z-index: 25;
+    top: calc(100% + 6px);
+    right: 0;
+    display: grid;
+    width: 170px;
+    padding: 6px;
+    border: 1px solid var(--ws2-border);
+    border-radius: 8px;
+    background: var(--ws2-surface);
+    box-shadow: var(--ws2-shadow);
+}
+
+.profile-action-menu-items .btn,
+.command-set-action-menu-items .btn {
+    width: 100%;
+    padding: 8px 10px;
+    border-color: transparent;
+    background: transparent;
+    text-align: left;
+}
+
+.profile-action-menu-items .btn:hover,
+.command-set-action-menu-items .btn:hover {
+    background: var(--ws2-row-hover);
+}
+
+.primary-workspace-surface .connection-asset-layout {
+    align-items: start;
+    overflow: auto;
+}
+
+.primary-workspace-surface .connection-asset-layout .manager-card {
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.primary-workspace-surface .command-workspace-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.primary-workspace-surface .command-workspace-layout {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: 210px minmax(0, 1fr);
+    min-height: 0;
+}
+
+.primary-workspace-surface .command-workspace-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 18px 12px;
+    border: 0;
+    border-right: 1px solid var(--ws2-border);
+    background: color-mix(in srgb, var(--ws2-canvas) 88%, var(--ws2-surface));
+}
+
+.primary-workspace-surface .management-resource-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0 8px 18px;
+    color: var(--ws2-text);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.primary-workspace-surface .management-resource-title .material-icons {
+    color: var(--ws2-accent-strong);
+}
+
+.primary-workspace-surface .command-workspace-nav-label {
+    margin: 0 8px 7px;
+    color: var(--ws2-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.primary-workspace-surface .command-workspace-tab {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 10px;
+    border: 0;
+    border-radius: 7px;
+    text-align: left;
+}
+
+.primary-workspace-surface .command-workspace-tab .material-icons {
+    font-size: 18px;
+}
+
+.primary-workspace-surface .command-workspace-tab.active {
+    border: 0;
+    background: color-mix(in srgb, var(--accent-primary) 15%, var(--ws2-surface));
+}
+
+.primary-workspace-surface .command-workspace-body {
+    min-width: 0;
+    padding: 20px;
+}
+
+.primary-workspace-surface .command-set-management-toolbar {
+    align-items: flex-start;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--ws2-border);
+}
+
+.primary-workspace-surface .command-set-management-toolbar h3 {
+    margin: 0 0 4px;
+    font-size: 18px;
+}
+
+.primary-workspace-surface .command-set-management-toolbar p {
+    margin: 0;
+}
+
+.primary-workspace-surface .command-set-search-toolbar {
+    display: flex;
+    margin-top: 14px;
+}
+
+.primary-workspace-surface .command-workspace-search {
+    position: relative;
+    flex: 1 1 auto;
+    max-width: 520px;
+}
+
+.primary-workspace-surface .command-workspace-search .material-icons {
+    position: absolute;
+    top: 50%;
+    left: 11px;
+    color: var(--ws2-text-muted);
+    font-size: 18px;
+    transform: translateY(-50%);
+}
+
+.primary-workspace-surface .command-workspace-search .form-control {
+    width: 100%;
+    padding-left: 38px;
+}
+
+.primary-workspace-surface .command-set-management-list {
+    gap: 0;
+    overflow: visible;
+    border: 1px solid var(--ws2-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ws2-canvas) 86%, var(--ws2-surface));
+}
+
+.primary-workspace-surface .command-set-management-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 66px;
+    padding: 11px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--ws2-border);
+    border-radius: 0;
+    background: transparent;
+}
+
+.primary-workspace-surface .command-set-management-item:last-child {
+    border-bottom: 0;
+}
+
+.primary-workspace-surface .command-set-management-item:hover {
+    background: var(--ws2-row-hover);
+}
+
+.primary-workspace-surface .command-set-management-item > div:first-child {
+    display: grid;
+    grid-template-columns: minmax(150px, .8fr) minmax(200px, 1.2fr) 90px;
+    align-items: center;
+    gap: 12px;
+}
+
+.primary-workspace-surface .command-set-management-item .command-set-sudo-badge {
+    grid-column: 1;
+    width: max-content;
+}
+
+.primary-workspace-surface .command-set-step-count {
+    white-space: nowrap;
+}
+
+.primary-workspace-surface #commandLibraryPanel {
+    gap: 14px;
+}
+
+.primary-workspace-surface .command-toolbar {
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--ws2-border);
+}
+
+@media (max-width: 900px) {
+    .primary-workspace-surface .profile-management-modal-body,
+    .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
+    .primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body,
+    .primary-workspace-surface .command-workspace-layout {
+        grid-template-columns: 170px minmax(0, 1fr);
+    }
+
+    .primary-workspace-surface .profile-management-info,
+    .primary-workspace-surface .command-set-management-item > div:first-child {
+        grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr);
+    }
+
+    .primary-workspace-surface .profile-management-post-connect,
+    .primary-workspace-surface .command-set-step-count {
+        display: none;
+    }
+}
+
+@media (max-width: 680px) {
+    .primary-workspace-surface .profile-management-modal-body,
+    .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
+    .primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body,
+    .primary-workspace-surface .command-workspace-layout {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav,
+    .primary-workspace-surface .command-workspace-tabs {
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 8px 10px;
+        border-right: 0;
+        border-bottom: 1px solid var(--ws2-border);
+    }
+
+    .primary-workspace-surface .connection-asset-nav-label,
+    .primary-workspace-surface .command-workspace-nav-label,
+    .primary-workspace-surface .management-resource-title {
+        display: none;
+    }
+
+    .primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav-item,
+    .primary-workspace-surface .command-workspace-tab {
+        width: auto;
+        white-space: nowrap;
+    }
+
+    .primary-workspace-surface #profileManagementView,
+    .primary-workspace-surface #profileEditorView,
+    .primary-workspace-surface .primary-workspace-view-hosts .connection-asset-layout,
+    .primary-workspace-surface .command-workspace-body {
+        padding: 12px;
+    }
+
+    .primary-workspace-surface .profile-management-item,
+    .primary-workspace-surface .profile-management-item.is-derived-favorite {
+        grid-template-columns: 34px minmax(0, 1fr);
+    }
+
+    .primary-workspace-surface .profile-management-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+    }
+
+    .primary-workspace-surface .profile-action-menu-items,
+    .primary-workspace-surface .command-set-action-menu-items {
+        position: static;
+        margin-top: 6px;
+        box-shadow: none;
     }
 }
 
@@ -3610,7 +4094,187 @@ body:has(.auth-access-dock) {
     }
 }
 
+/* Top-level application views share the exact shell area used by Workspaces. */
+.primary-workspace-surface {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--ws2-canvas);
+    isolation: isolate;
+}
+
+.primary-workspace-surface[hidden],
+.primary-workspace-surface .primary-workspace-view[hidden],
+.session-tabs-row[hidden],
+.main-content[hidden],
+.workspace-status-bar[hidden] {
+    display: none !important;
+}
+
+.primary-workspace-surface .primary-workspace-view {
+    position: relative;
+    inset: auto;
+    z-index: auto;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    align-items: stretch;
+    justify-content: stretch;
+    background: var(--ws2-canvas);
+    backdrop-filter: none;
+    animation: none;
+}
+
+.primary-workspace-surface .primary-workspace-view > .modal-content,
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode > .modal-content {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--ws2-canvas);
+    box-shadow: none;
+    animation: none;
+}
+
+.primary-workspace-surface .primary-workspace-view .modal-header {
+    flex: 0 0 auto;
+    min-height: 58px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--ws2-border);
+    background: color-mix(in srgb, var(--ws2-canvas) 88%, var(--ws2-surface));
+}
+
+.primary-workspace-surface .primary-workspace-view .modal-header h2 {
+    font-size: 18px;
+}
+
+.primary-workspace-surface .primary-workspace-view > .modal-content > .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 20px;
+}
+
+.primary-workspace-surface .primary-workspace-view > .modal-content > .modal-header .close,
+.primary-workspace-surface .primary-workspace-view .fm-workspace-close {
+    display: none;
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .connection-asset-nav,
+.primary-workspace-surface .primary-workspace-view-commands .command-workspace-tabs {
+    background: color-mix(in srgb, var(--ws2-canvas) 92%, var(--ws2-surface));
+}
+
+/* Keep Commands on the same persistent resource-rail pattern at every desktop width. */
+#primaryWorkspaceSurface .primary-workspace-view-commands .command-workspace-layout {
+    display: grid;
+    grid-template-columns: 228px minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+#primaryWorkspaceSurface .primary-workspace-view-commands .command-workspace-tabs {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--ws2-border);
+    border-bottom: 0;
+}
+
+#primaryWorkspaceSurface .primary-workspace-view-commands .command-workspace-body {
+    min-width: 0;
+    overflow: auto;
+}
+
+@media (max-width: 680px) {
+    #primaryWorkspaceSurface .primary-workspace-view-commands .command-workspace-layout {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #primaryWorkspaceSurface .primary-workspace-view-commands .command-workspace-tabs {
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--ws2-border);
+    }
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .profile-management-toolbar {
+    padding-top: 2px;
+}
+
+.primary-workspace-surface .primary-workspace-view-hosts .profile-management-list,
+.primary-workspace-surface .primary-workspace-view-commands .commands-table-body {
+    scrollbar-gutter: stable;
+}
+
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode {
+    background: var(--ws2-canvas);
+}
+
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .fm-workspace-header {
+    min-height: 58px;
+    padding: 10px 20px;
+    background: color-mix(in srgb, var(--ws2-canvas) 88%, var(--ws2-surface));
+    box-shadow: none;
+}
+
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .fm-workspace-title-icon,
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .fm-workspace-brand {
+    display: none;
+}
+
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .fm-workspace-title-copy {
+    display: block;
+    line-height: 1.2;
+}
+
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 12px 16px 10px;
+}
+
+@media (max-width: 767px) {
+    .primary-workspace-surface {
+        flex: 1 0 min(760px, calc(100dvh - 60px));
+    }
+
+    .primary-workspace-surface .primary-workspace-view .modal-header,
+    #primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .fm-workspace-header {
+        min-height: 52px;
+        padding: 10px 12px;
+    }
+
+    .primary-workspace-surface .primary-workspace-view > .modal-content > .modal-body {
+        padding: 12px;
+    }
+
+    #primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .fm-workspace-controls {
+        position: static;
+        margin-left: auto;
+        transform: none;
+    }
+}
+
 @media (max-width: 600px) {
+    .settings-center-navigation.admin-tabs {
+        display: none;
+    }
+
     .admin-tabs {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));

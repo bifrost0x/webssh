@@ -24,10 +24,17 @@ window.CommandWorkspace = {
         this.select('sets');
     },
 
-    open(section = 'sets') {
+    open(section = 'sets', options = {}) {
         this.select(section);
         const modal = document.getElementById('commandWorkspaceModal');
         if (!modal) return;
+        if (
+            options.primary !== false
+            && window.primaryWorkspaceController?.open('commands', modal)
+        ) {
+            return;
+        }
+        window.primaryWorkspaceController?.release(modal);
         if (window.ModalManager) window.ModalManager.open(modal);
         else modal.classList.add('show');
     },
@@ -66,6 +73,7 @@ window.CommandWorkspace = {
     close() {
         const modal = document.getElementById('commandWorkspaceModal');
         if (!modal) return;
+        if (window.primaryWorkspaceController?.close(modal)) return;
         if (window.ModalManager) window.ModalManager.close(modal);
         else modal.classList.remove('show');
     },

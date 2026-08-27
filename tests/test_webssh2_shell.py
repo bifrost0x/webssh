@@ -45,6 +45,8 @@ def test_workspace_exposes_one_context_tab_system_below_connection_tabs(
         b'id="sessionCommandsPanel"',
         b'id="sessionCommandsMount"',
         b'id="workspaceStatusBar"',
+        b'id="primaryWorkspaceSurface"',
+        b'js/primary-workspace-controller.js',
         b'js/workspace-layout-controller.js',
         b'js/webssh2-shell.js',
         b'css/webssh-2.css',
@@ -81,11 +83,14 @@ def test_workspace_header_uses_the_shipped_webssh_logo(app, client):
 def test_workspace_renders_the_disconnect_behavior_preference(app, client):
     _create_login(app, client)
 
-    response = client.get('/')
+    workspace = client.get('/')
+    settings = client.get('/settings')
 
-    assert response.status_code == 200
-    assert b'data-disconnect-session-action="retry"' in response.data
-    assert b'id="disconnectSessionActionSelect"' in response.data
+    assert workspace.status_code == 200
+    assert settings.status_code == 200
+    assert b'data-disconnect-session-action="retry"' in workspace.data
+    assert b'id="disconnectSessionActionSelect"' not in workspace.data
+    assert b'id="disconnectSessionActionSelect"' in settings.data
 
 
 def test_every_user_facing_page_loads_the_shared_webssh2_design_layer(
@@ -94,7 +99,7 @@ def test_every_user_facing_page_loads_the_shared_webssh2_design_layer(
 ):
     _create_login(app, client)
 
-    for path in ("/", "/security", "/admin", "/change-password"):
+    for path in ("/", "/security", "/settings", "/change-password"):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/webssh-2.css' in response.data
@@ -109,11 +114,11 @@ def test_every_user_facing_page_loads_the_shared_webssh2_design_layer(
 def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
     _create_login(app, client)
 
-    for path in ("/", "/security", "/admin", "/change-password"):
+    for path in ("/", "/security", "/settings", "/change-password"):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=16' in response.data
+        assert b'css/webssh-2.css?v=23' in response.data
         assert b'js/i18n.js?v=33' in response.data
 
     client.post("/logout")
@@ -121,8 +126,35 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=16' in response.data
+        assert b'css/webssh-2.css?v=23' in response.data
         assert b'js/i18n.js?v=33' in response.data
+
+
+def test_global_management_navigation_uses_one_primary_workspace_surface(
+    app,
+    client,
+):
+    _create_login(app, client)
+
+    response = client.get('/')
+
+    assert response.status_code == 200
+    assert b'id="primaryWorkspaceSurface"' in response.data
+    assert b'js/primary-workspace-controller.js?v=1' in response.data
+    assert b'id="profileManagementModal"' in response.data
+    assert b'id="commandWorkspaceModal"' in response.data
+    assert b'class="session-tabs-row"' in response.data
+
+
+def test_hosts_and_commands_share_the_resource_navigation_anatomy(app, client):
+    _create_login(app, client)
+
+    response = client.get('/')
+
+    assert response.status_code == 200
+    assert response.data.count(b'class="management-resource-title"') >= 4
+    assert response.data.count(b'Connection resources') >= 3
+    assert b'class="connection-asset-nav-item active"' in response.data
 
 
 def test_authentication_pages_use_the_shared_professional_auth_shell():
@@ -298,15 +330,31 @@ def test_security_actions_are_grouped_for_predictable_card_alignment():
     assert contents.count('class="admin-toolbar-actions"') == 2
 
 
-def test_admin_settings_use_a_balanced_responsive_grid():
+def test_security_center_uses_the_same_navigation_grid_as_administration():
+    project_root = Path(__file__).resolve().parents[1]
+    security = (project_root / "templates/security.html").read_text(encoding="utf-8")
+    admin = (project_root / "templates/admin.html").read_text(encoding="utf-8")
+    styles = (project_root / "static/css/admin.css").read_text(encoding="utf-8")
+
+    assert 'class="admin-main settings-center-main"' in security
+    assert 'class="admin-main"' in admin
+    assert 'class="admin-navigation"' in security
+    assert 'class="admin-navigation"' in admin
+    assert "grid-template-columns: 228px minmax(0, 1fr);" in styles
+
+
+def test_admin_settings_use_grouped_professional_navigation():
     project_root = Path(__file__).resolve().parents[1]
     contents = (project_root / "templates/admin.html").read_text(
         encoding="utf-8"
     )
 
     for marker in (
-        'class="admin-settings-grid"',
-        'class="admin-setting-row admin-auth-features"',
-        'class="admin-setting-row admin-audit-retention"',
+        'class="admin-navigation"',
+        'data-settings-section="authentication"',
+        'data-settings-panel="authentication"',
+        'data-settings-panel="registration"',
+        'data-settings-panel="retention"',
+        'data-settings-panel="host-trust"',
     ):
         assert marker in contents

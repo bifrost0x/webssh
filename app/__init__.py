@@ -12,7 +12,7 @@ from .auth import (init_auth, authenticate_user, register_user,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
-from .user_settings import get_user_settings
+from .user_settings import get_user_settings, save_user_settings
 from .app_settings import is_registration_enabled, set_registration_enabled
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
@@ -683,6 +683,7 @@ def create_app(
         return render_template('change_password.html', theme=theme)
 
     @app.route('/security')
+    @app.route('/settings')
     @login_required
     def security_center():
         from .auth_assurance import (
@@ -729,7 +730,60 @@ def create_app(
             ),
             authentication_primary_method=primary_method,
             account_mfa_enabled=bool(current_user.mfa_enabled),
+            confirm_session_close=settings.get(
+                'confirm_session_close',
+                False,
+            ),
+            disconnect_session_action=settings.get(
+                'disconnect_session_action',
+                'retry',
+            ),
+            is_admin=bool(current_user.is_admin),
         )
+
+    @app.route('/api/account/preferences', methods=['POST'])
+    @login_required
+    def account_preferences():
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid settings payload'}), 400
+        allowed = {
+            'theme',
+            'confirm_session_close',
+            'disconnect_session_action',
+        }
+        if not data or set(data) - allowed:
+            return jsonify({'error': 'Invalid settings payload'}), 400
+
+        updates = {}
+        if 'theme' in data:
+            valid_themes = {
+                'glass', 'retro', 'solar', 'paper', 'noir',
+                'arctic-ice', 'rose-gold', 'cyberpunk-neon',
+                'emerald-matrix', 'obsidian',
+            }
+            if data['theme'] not in valid_themes:
+                return jsonify({'error': 'Invalid theme'}), 400
+            updates['theme'] = data['theme']
+        if 'confirm_session_close' in data:
+            if not isinstance(data['confirm_session_close'], bool):
+                return jsonify({
+                    'error': 'Invalid close confirmation setting',
+                }), 400
+            updates['confirm_session_close'] = data[
+                'confirm_session_close'
+            ]
+        if 'disconnect_session_action' in data:
+            action = data['disconnect_session_action']
+            if action not in {'retry', 'close'}:
+                return jsonify({
+                    'error': 'Invalid disconnect session action',
+                }), 400
+            updates['disconnect_session_action'] = action
+
+        if not save_user_settings(current_user.id, updates):
+            return jsonify({'error': 'Failed to save settings'}), 500
+        return jsonify({'settings': get_user_settings(current_user.id)})
 
     from .decorators import admin_required, step_up_required
     from .models import User
@@ -751,9 +805,7 @@ def create_app(
     @admin_required
     @login_required
     def admin_page():
-        settings = get_user_settings(current_user.id)
-        theme = settings.get('theme', 'glass')
-        return render_template('admin.html', username=current_user.username, theme=theme)
+        return redirect(f"{url_for('security_center')}#users")
 
     @app.route('/admin/api/users', methods=['GET'])
     @admin_required

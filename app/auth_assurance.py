@@ -458,7 +458,10 @@ def recovery_route_allowed(path, method):
     """Allow only factor repair and logout during a Recovery session."""
     path = str(path or "")
     method = str(method or "GET").upper()
-    if path == "/security" or path == "/logout" or path.startswith("/static/"):
+    if (
+        path in {"/security", "/settings", "/logout"}
+        or path.startswith("/static/")
+    ):
         return True
     if path in {
         "/api/webauthn/register/options",

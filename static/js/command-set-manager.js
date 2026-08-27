@@ -8,6 +8,7 @@ window.CommandSetManager = {
     returnToConnection: false,
     currentOs: 'all',
     searchQuery: '',
+    managementSearchQuery: '',
     draggedStepIndex: null,
 
     t(key, fallback) {
@@ -59,6 +60,10 @@ window.CommandSetManager = {
             this.searchQuery = event.target.value;
             this.renderLibraryResults();
         });
+        document.getElementById('commandSetManagementSearch')?.addEventListener('input', event => {
+            this.managementSearchQuery = event.target.value;
+            this.renderManagementList();
+        });
         document.querySelectorAll('.command-set-os-filter').forEach(button => {
             button.addEventListener('click', () => {
                 document.querySelectorAll('.command-set-os-filter').forEach(item => {
@@ -80,6 +85,7 @@ window.CommandSetManager = {
         document.getElementById('commandSetManagementList')?.addEventListener('click', event => {
             const button = event.target.closest('button[data-command-set-action]');
             if (!button) return;
+            button.closest('details')?.removeAttribute('open');
             const id = button.dataset.commandSetId;
             if (button.dataset.commandSetAction === 'edit') this.openBuilder(id);
             if (button.dataset.commandSetAction === 'duplicate') this.duplicate(id);
@@ -249,7 +255,7 @@ window.CommandSetManager = {
     },
 
     openModal() {
-        window.CommandWorkspace.open('sets');
+        window.CommandWorkspace.open('sets', {primary: !this.returnToConnection});
     },
 
     close() {
@@ -277,16 +283,36 @@ window.CommandSetManager = {
             container.appendChild(empty);
             return;
         }
-        this.commandSets.forEach(commandSet => {
+        const managementQuery = String(this.managementSearchQuery || '').trim().toLowerCase();
+        const visibleCommandSets = managementQuery
+            ? this.commandSets.filter(commandSet => (
+                String(commandSet.name || '').toLowerCase().includes(managementQuery)
+                || String(commandSet.description || '').toLowerCase().includes(managementQuery)
+            ))
+            : this.commandSets;
+        if (!visibleCommandSets.length) {
+            const empty = document.createElement('p');
+            empty.className = 'no-items';
+            empty.textContent = this.t('commandSets.emptySearch', 'No command sets match this search.');
+            container.appendChild(empty);
+            return;
+        }
+        visibleCommandSets.forEach(commandSet => {
             const row = document.createElement('div');
             row.className = 'command-set-management-item';
             const info = document.createElement('div');
             const name = document.createElement('strong');
             name.textContent = commandSet.name;
             const description = document.createElement('span');
+            const stepLabel = commandSet.steps.length === 1
+                ? this.t('commandSets.step', 'step')
+                : this.t('commandSets.steps', 'steps');
             description.textContent = commandSet.description
-                || `${commandSet.steps.length} ${this.t('commandSets.steps', 'steps')}`;
-            info.append(name, description);
+                || `${commandSet.steps.length} ${stepLabel}`;
+            const count = document.createElement('span');
+            count.className = 'command-set-step-count';
+            count.textContent = `${commandSet.steps.length} ${stepLabel}`;
+            info.append(name, description, count);
             if (commandSet.use_sudo === true) {
                 const sudoBadge = document.createElement('span');
                 sudoBadge.className = 'command-set-sudo-badge';
@@ -295,6 +321,14 @@ window.CommandSetManager = {
             }
             const actions = document.createElement('div');
             actions.className = 'command-set-actions';
+            const menu = document.createElement('details');
+            menu.className = 'command-set-action-menu';
+            const summary = document.createElement('summary');
+            summary.className = 'btn btn-secondary btn-sm material-icons';
+            summary.setAttribute('aria-label', this.t('common.actions', 'Actions'));
+            summary.textContent = 'more_horiz';
+            const menuItems = document.createElement('div');
+            menuItems.className = 'command-set-action-menu-items';
             [['edit', 'common.edit', 'Edit'], ['duplicate', 'commandSets.duplicate', 'Duplicate'],
                 ['delete', 'common.delete', 'Delete']].forEach(([action, key, fallback]) => {
                 const button = document.createElement('button');
@@ -303,8 +337,10 @@ window.CommandSetManager = {
                 button.dataset.commandSetAction = action;
                 button.dataset.commandSetId = commandSet.id;
                 button.textContent = this.t(key, fallback);
-                actions.appendChild(button);
+                menuItems.appendChild(button);
             });
+            menu.append(summary, menuItems);
+            actions.appendChild(menu);
             row.append(info, actions);
             container.appendChild(row);
         });

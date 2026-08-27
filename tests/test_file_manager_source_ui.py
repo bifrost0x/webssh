@@ -40,6 +40,29 @@ def test_file_manager_trusts_only_server_supplied_source_capabilities():
     assert "source?.security?.hostKeyVerified || source?.kind === 'sftp'" not in source
 
 
+def test_file_manager_empty_source_uses_one_action_icon():
+    source = FILE_MANAGER_JS.read_text(encoding='utf-8')
+    empty_state = source[source.index("if (!this.getPaneSourceId(state))"):
+                         source.index("const sortedFiles =", source.index(
+                             "if (!this.getPaneSourceId(state))"
+                         ))]
+
+    assert empty_state.count('folder_open') == 1
+    assert 'fm-empty-icon-shell' not in empty_state
+
+
+def test_file_manager_does_not_open_source_launcher_implicitly():
+    source = FILE_MANAGER_JS.read_text(encoding='utf-8')
+    open_block = source[source.index('    open() {'):source.index(
+        '    close(options = {})'
+    )]
+    layout_block = source[source.index('    setWorkspaceLayout(layout) {'):
+                          source.index('    buildSourceCatalog()')]
+
+    assert 'openSourceLauncher' not in open_block
+    assert 'openSourceLauncher' not in layout_block
+
+
 def test_image_preview_keeps_listener_until_the_correlated_response_arrives():
     source = APP_JS.read_text(encoding='utf-8')
     handler = source[source.index('const handleBinaryDownload = (data) => {'):

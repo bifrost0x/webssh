@@ -621,7 +621,7 @@ test('captures seeded command and connection option surfaces at Full HD scale', 
     await expectCurrentCaptureTerminology(page);
     await captureDesktopStill(page, 'commandlibrary.png', testInfo);
 
-    await page.locator('#closeCommandWorkspaceModal').click();
+    await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
@@ -877,6 +877,7 @@ test('captures six current Command Sets animation frames without remote actions'
 
     const baselineSet = page.locator('#commandSetManagementList .command-set-management-item')
         .filter({ hasText: 'Baseline diagnostics' });
+    await baselineSet.locator('.command-set-action-menu > summary').click();
     await baselineSet.locator('[data-command-set-action="edit"]').click();
     await expect(page.locator('#commandSetEditorView')).toBeVisible();
     await expect(page.locator('#commandSetNameInput')).toHaveValue('Baseline diagnostics');
@@ -907,7 +908,7 @@ test('captures six current Command Sets animation frames without remote actions'
     });
     await captureCssFrame(page, frameDirectory, '05-three-step-order.png');
 
-    await page.locator('#closeCommandWorkspaceModal').click();
+    await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
@@ -948,17 +949,16 @@ test('captures a contained multi-session workspace and the current theme menu', 
 
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
-    await expect(page.locator('#settingsModal')).toHaveClass(/show/);
+    await expect(page).toHaveURL(/\/settings#preferences$/);
     await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
     await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
     await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
-    const themeBounds = await page.locator('#settingsModal .modal-content').boundingBox();
+    const themeBounds = await page.locator('.settings-center-content').boundingBox();
     expect(themeBounds).not.toBeNull();
     expect(themeBounds.x).toBeGreaterThanOrEqual(0);
     expect(themeBounds.y).toBeGreaterThanOrEqual(0);
     expect(themeBounds.x + themeBounds.width).toBeLessThanOrEqual(DESKTOP_VIEWPORT.width);
     expect(themeBounds.y + themeBounds.height).toBeLessThanOrEqual(DESKTOP_VIEWPORT.height);
-    await assertWorkspaceIsContained(page);
     await captureDesktopStill(page, 'themes.png', testInfo);
 
     await assertCaptureNetworkClean(page);

@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=16">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=8">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=16">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=23">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -78,10 +78,8 @@
                         </section>
 
                         <div class="account-divider" role="separator"></div>
-                        <button id="accountSettingsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">tune</span> <span data-i18n="settings.title">Settings</span></button>
-                        <a id="securityCenterBtn" class="account-item account-action" href="{{ url_for('security_center') }}"><span class="account-item-icon material-icons" aria-hidden="true">shield</span> <span data-i18n="security.title">Security</span></a>
+                        <a id="accountSettingsBtn" class="account-item account-action" href="{{ url_for('security_center') }}#preferences"><span class="account-item-icon material-icons" aria-hidden="true">settings</span> <span data-i18n="settings.title">Settings</span></a>
                         <button id="accountShortcutsBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">keyboard</span> <span data-i18n="shortcuts.title">Keyboard Shortcuts</span></button>
-                        {% if admin_panel_enabled and current_user.is_admin %}<a id="adminPanelBtn" class="account-item account-action" href="{{ url_for('admin_page') }}"><span class="account-item-icon material-icons" aria-hidden="true">admin_panel_settings</span> <span data-i18n="admin.title">Admin</span></a>{% endif %}
 
                         <div class="account-divider" role="separator"></div>
                         <button id="logoutBtn" class="account-item account-action" type="button"><span class="account-item-icon material-icons" aria-hidden="true">logout</span> <span data-i18n="auth.logout">Logout</span></button>
@@ -109,6 +107,8 @@
             </div>
         </div>
     </header>
+
+    <section id="primaryWorkspaceSurface" class="primary-workspace-surface" aria-label="Application workspace" hidden></section>
 
     <main class="main-content">
         <!-- session-meta kept hidden for JS references; visible session-bar only on mobile -->
@@ -663,74 +663,6 @@
         </div>
     </div>
 
-    <div class="modal modal-wide" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="settingsTitle" data-i18n="settings.title">Settings</h2>
-                <button type="button" class="close material-icons" id="closeSettingsModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
-            </div>
-            <div class="modal-body settings-modal-body">
-                <section class="settings-section manager-card" aria-labelledby="settingsAppearanceTitle">
-                    <div class="manager-card-header">
-                        <span class="material-icons" aria-hidden="true">palette</span>
-                        <h3 id="settingsAppearanceTitle" data-i18n="settings.appearance">Appearance</h3>
-                    </div>
-                    <div class="settings-field">
-                        <label for="settingsThemeSelect" data-i18n="account.theme">Theme</label>
-                        <select id="settingsThemeSelect" class="form-control">
-                            <optgroup label="Professional Themes">
-                                <option value="glass">Glass Ops</option>
-                                <option value="solar">Solar Drift</option>
-                                <option value="paper">Paper Ops</option>
-                                <option value="noir">Noir Terminal</option>
-                                <option value="arctic-ice">Arctic Ice</option>
-                                <option value="rose-gold">Rose Gold</option>
-                                <option value="obsidian">Obsidian</option>
-                            </optgroup>
-                            <optgroup label="Fun Themes">
-                                <option value="retro">Retro Future</option>
-                                <option value="cyberpunk-neon">Cyberpunk Neon</option>
-                                <option value="emerald-matrix">Emerald Matrix</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="settings-field">
-                        <label for="settingsLanguageSelect" data-i18n="account.language">Language</label>
-                        <select id="settingsLanguageSelect" class="form-control"></select>
-                    </div>
-                </section>
-                <section class="settings-section manager-card" aria-labelledby="settingsTerminalTitle">
-                    <div class="manager-card-header">
-                        <span class="material-icons" aria-hidden="true">terminal</span>
-                        <h3 id="settingsTerminalTitle" data-i18n="settings.terminal">Terminal</h3>
-                    </div>
-                    <div class="settings-field">
-                        <label for="scrollbackInput" data-i18n="account.scrollback">Scrollback</label>
-                        <div class="settings-number-control">
-                            <input type="number" id="scrollbackInput" class="form-control" min="50" max="10000" step="50" title="Terminal scrollback lines" data-i18n-title="account.scrollbackTitle">
-                            <span data-i18n="account.lines">lines</span>
-                        </div>
-                    </div>
-                    <label class="settings-toggle" for="confirmSessionCloseInput">
-                        <input type="checkbox" id="confirmSessionCloseInput">
-                        <span>
-                            <strong data-i18n="settings.closeConfirmation">Ask before closing a session</strong>
-                            <small data-i18n="settings.closeConfirmationHint">Show a confirmation before closing an SSH tab.</small>
-                        </span>
-                    </label>
-                    <div class="settings-field">
-                        <label for="disconnectSessionActionSelect" data-i18n="settings.disconnectBehavior">When an SSH connection ends</label>
-                        <select id="disconnectSessionActionSelect" class="form-control">
-                            <option value="retry" data-i18n="settings.disconnectRetry">Keep the tab open and offer Retry</option>
-                            <option value="close" data-i18n="settings.disconnectClose">Close the tab and switch to another session</option>
-                        </select>
-                        <small class="settings-field-hint" data-i18n="settings.disconnectBehaviorHint">Controls what happens after exit, logout, or an unexpected disconnect.</small>
-                    </div>
-                </section>
-            </div>
-        </div>
-    </div>
-
     <div class="modal modal-large" id="profileManagementModal" role="dialog" aria-modal="true" aria-labelledby="profileManagementTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
@@ -739,9 +671,11 @@
             </div>
             <div class="modal-body profile-management-modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
-                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="hosts" aria-current="page" data-i18n="connectionAssets.hosts">Hosts</button>
-                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
-                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button>
+                    <div class="management-resource-title"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></div>
+                    <p class="connection-asset-nav-label">Connection resources</p>
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="hosts" aria-current="page"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 </nav>
                 <section id="profileManagementView">
                     <div class="profile-management-toolbar">
@@ -919,9 +853,11 @@
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
-                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button>
-                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
-                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="keys" aria-current="page" data-i18n="connectionAssets.keys">SSH Keys</button>
+                    <div class="management-resource-title"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></div>
+                    <p class="connection-asset-nav-label">Connection resources</p>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="jump-hosts"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="keys" aria-current="page"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 </nav>
 
                 <div class="connection-asset-layout">
@@ -962,10 +898,13 @@
                 <h2 id="commandWorkspaceTitle" data-i18n="commands.workspace">Commands</h2>
                 <button type="button" class="close material-icons" id="closeCommandWorkspaceModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
             </div>
-            <div class="command-workspace-tabs" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
-                <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets" data-i18n="commandSets.manage">Command Sets</button>
-                <button type="button" id="commandLibraryTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandLibraryPanel" data-command-workspace-section="library" data-i18n="commands.library">Command Library</button>
-            </div>
+            <div class="command-workspace-layout">
+            <aside class="command-workspace-tabs management-resource-navigation" role="tablist" aria-label="Command management" data-i18n-aria-label="accessibility.commandManagement">
+                <div class="management-resource-title"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></div>
+                <p class="command-workspace-nav-label">Command resources</p>
+                <button type="button" id="commandSetsTab" class="command-workspace-tab active" role="tab" aria-selected="true" aria-controls="commandSetsPanel" data-command-workspace-section="sets"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="commandSets.manage">Command Sets</span></button>
+                <button type="button" id="commandLibraryTab" class="command-workspace-tab" role="tab" aria-selected="false" aria-controls="commandLibraryPanel" data-command-workspace-section="library"><span class="material-icons" aria-hidden="true">library_books</span><span data-i18n="commands.library">Command Library</span></button>
+            </aside>
             <div class="modal-body command-workspace-body">
                 <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
                     <div class="command-toolbar">
@@ -1002,8 +941,11 @@
                 <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
                 <section id="commandSetManagementView">
                     <div class="command-set-management-toolbar">
-                        <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p>
+                        <div><h3 data-i18n="commandSets.manage">Command Sets</h3><p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p></div>
                         <button type="button" id="newCommandSetBtn" class="btn btn-primary" data-i18n="commandSets.create">Create command set</button>
+                    </div>
+                    <div class="command-set-search-toolbar">
+                        <label class="command-workspace-search"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only">Search command sets</span><input id="commandSetManagementSearch" class="form-control" type="search" placeholder="Search command sets"></label>
                     </div>
                     <div id="commandSetManagementList" class="command-set-management-list"></div>
                 </section>
@@ -1057,6 +999,7 @@
                 </section>
                 </section>
             </div>
+            </div>
         </div>
     </div>
 
@@ -1068,9 +1011,11 @@
             </div>
             <div class="modal-body">
                 <nav class="connection-asset-nav" aria-label="Connection assets" data-i18n-aria-label="connectionAssets.navigation">
-                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts" data-i18n="connectionAssets.hosts">Hosts</button>
-                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="jump-hosts" aria-current="page" data-i18n="connectionAssets.jumpHosts">Jump Hosts</button>
-                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys" data-i18n="connectionAssets.keys">SSH Keys</button>
+                    <div class="management-resource-title"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></div>
+                    <p class="connection-asset-nav-label">Connection resources</p>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item active" data-connection-asset="jump-hosts" aria-current="page"><span class="material-icons" aria-hidden="true">alt_route</span><span data-i18n="connectionAssets.jumpHosts">Jump Hosts</span></button>
+                    <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 </nav>
                 <div class="connection-asset-layout">
                 <section class="key-upload-section manager-card">
@@ -1428,7 +1373,7 @@
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=3"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=10"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=12"></script>
@@ -1436,18 +1381,19 @@
     <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=14"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=17"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
-    <script src="{{ url_for('static', filename='js/command-library.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/command-library.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/smb-source-dialog.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=26"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=29"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=25"></script>
+    <script src="{{ url_for('static', filename='js/primary-workspace-controller.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=26"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {
@@ -1520,17 +1466,6 @@
             });
         }
 
-        function openSettingsModal(focusId) {
-            const modal = document.getElementById('settingsModal');
-            if (!modal) return;
-            closeAccountDropdownHeader();
-            document.getElementById('accountBtnHeader')?.focus();
-            window.ModalManager?.open(modal);
-            if (focusId) {
-                requestAnimationFrame(() => document.getElementById(focusId)?.focus());
-            }
-        }
-
         function closeAccountDropdownHeader() {
             document.getElementById('accountDropdownHeader')?.classList.remove('show');
             document.getElementById('accountBtnHeader')?.setAttribute('aria-expanded', 'false');
@@ -1578,12 +1513,6 @@
                 translate: key => window.i18n ? i18n.t(key) : key,
             });
             window.accountWorkspacePulse?.init();
-            document.getElementById('accountSettingsBtn')?.addEventListener('click', () => {
-                openSettingsModal();
-            });
-            document.getElementById('closeSettingsModal')?.addEventListener('click', () => {
-                window.ModalManager?.close(document.getElementById('settingsModal'));
-            });
         });
     </script>
 </body>

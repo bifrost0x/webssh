@@ -49,7 +49,7 @@ test('keeps saved-connection actions visible while its form scrolls', async ({ p
     expect(after.actionsTop).toBeCloseTo(before.actionsTop, 0);
 });
 
-test('uses paired cards for jump hosts, SSH keys, and settings on desktop', async ({ page }) => {
+test('uses paired cards for jump hosts and SSH keys plus full-page settings', async ({ page }) => {
     await page.setViewportSize({ width: 1180, height: 760 });
     await openProfileManagement(page);
     await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
@@ -69,10 +69,12 @@ test('uses paired cards for jump hosts, SSH keys, and settings on desktop', asyn
     )));
     expect(keyGeometry[0].right).toBeLessThanOrEqual(keyGeometry[1].left);
 
-    await page.locator('#closeKeyModal').click();
+    await page.locator('#workspaceNavBtn').click();
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
-    await expect(page.locator('#settingsModal .settings-section.manager-card')).toHaveCount(2);
+    await expect(page).toHaveURL(/\/settings#preferences$/);
+    await expect(page.locator('.settings-preferences-surface')).toHaveCount(2);
+    await expect(page.locator('.admin-navigation')).toBeVisible();
 });
 
 test('stacks asset manager cards without horizontal overflow on mobile', async ({ page }) => {

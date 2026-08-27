@@ -254,19 +254,36 @@
 
     // ---- Tabs ----
     function initTabs() {
-        document.querySelectorAll('.admin-tab').forEach(tab => {
+        document.querySelectorAll('.admin-tab[data-tab]').forEach(tab => {
             tab.addEventListener('click', () => {
-                document.querySelectorAll('.admin-tab').forEach(x => x.classList.remove('active'));
+                document.querySelectorAll('.admin-tab[data-tab]').forEach(x => x.classList.remove('active'));
                 tab.classList.add('active');
                 const name = tab.dataset.tab;
                 ['users', 'audit', 'settings', 'backup'].forEach(n => {
                     document.getElementById('tab-' + n)?.classList.toggle('hidden', n !== name);
                 });
+                const settingsSection = tab.dataset.settingsSection || 'authentication';
+                document.querySelectorAll('[data-settings-panel]').forEach(panel => {
+                    panel.classList.toggle(
+                        'hidden',
+                        name !== 'settings' || panel.dataset.settingsPanel !== settingsSection
+                    );
+                });
                 if (name === 'audit') { loadAudit(); }
                 if (name === 'settings') { loadSettings(); }
                 if (name === 'backup') { loadRestoreStatus(); }
+                const target = name === 'settings' ? settingsSection : name;
+                history.replaceState(null, '', `#${target}`);
             });
         });
+
+        const requested = String(location.hash || '').slice(1);
+        const requestedTab = Array.from(document.querySelectorAll('.admin-tab[data-tab]')).find(tab => (
+            tab.dataset.settingsSection === requested || tab.dataset.tab === requested
+        ));
+        if (requestedTab && !requestedTab.classList.contains('active')) {
+            requestedTab.click();
+        }
     }
 
     // ---- Users ----
@@ -297,7 +314,31 @@
             parts.push(`<button class="btn btn-secondary" data-act="mfa-reset">${escapeHtml(t('admin.mfaReset', 'Reset MFA'))}</button>`);
         }
         parts.push(`<button class="btn btn-danger" data-act="delete" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.delete', 'Delete'))}</button>`);
-        return `<div class="admin-actions">${parts.join('')}</div>`;
+        return `<details class="admin-action-menu"><summary class="btn btn-secondary material-icons" aria-label="${escapeHtml(t('admin.colActions', 'Actions'))}">more_horiz</summary><div class="admin-actions">${parts.join('')}</div></details>`;
+    }
+
+    function filterUsers() {
+        const query = (document.getElementById('adminUserSearch')?.value || '')
+            .trim().toLowerCase();
+        const filter = document.getElementById('adminUserFilter')?.value || 'all';
+        const rows = Array.from(document.querySelectorAll('#adminUsersBody tr'));
+        let visible = 0;
+        rows.forEach(row => {
+            const matchesQuery = !query || (row.dataset.username || '').toLowerCase().includes(query);
+            const matchesFilter = (
+                filter === 'all'
+                || filter === row.dataset.role
+                || (filter === 'locked' && row.dataset.locked === 'true')
+            );
+            row.hidden = !(matchesQuery && matchesFilter);
+            if (!row.hidden) { visible += 1; }
+        });
+        const status = document.getElementById('adminUserFilterStatus');
+        if (status) {
+            status.textContent = (query || filter !== 'all')
+                ? `${visible} of ${rows.length} users`
+                : `${rows.length} ${rows.length === 1 ? 'user' : 'users'}`;
+        }
     }
 
     function renderUsers(users) {
@@ -307,6 +348,8 @@
             const tr = document.createElement('tr');
             tr.dataset.userId = u.id;
             tr.dataset.username = u.username;
+            tr.dataset.role = u.is_admin ? 'admin' : 'user';
+            tr.dataset.locked = String(u.is_locked === true);
             const role = u.is_admin
                 ? `<span class="admin-badge admin">${escapeHtml(t('admin.roleAdmin', 'Admin'))}</span>`
                 : `<span class="admin-badge">${escapeHtml(t('admin.roleUser', 'User'))}</span>`;
@@ -324,6 +367,7 @@
             body.appendChild(tr);
         });
         labelResponsiveTableRows(document.getElementById('adminUsersTable'));
+        filterUsers();
     }
 
     async function loadUsers() {
@@ -634,8 +678,17 @@
     function initUsers() {
         document.getElementById('adminRefreshUsers')?.addEventListener('click', loadUsers);
         document.getElementById('adminUsersBody')?.addEventListener('click', (e) => {
+            const summary = e.target.closest('.admin-action-menu > summary');
+            if (summary) {
+                document.querySelectorAll('.admin-action-menu[open]').forEach(menu => {
+                    if (menu !== summary.parentElement) { menu.open = false; }
+                });
+                return;
+            }
             const btn = e.target.closest('button[data-act]');
             if (!btn || btn.disabled) { return; }
+            const actionMenu = btn.closest('.admin-action-menu');
+            if (actionMenu) { actionMenu.open = false; }
             const tr = btn.closest('tr');
             const userId = tr?.dataset.userId;
             const username = tr?.dataset.username;
@@ -810,10 +863,10 @@
         for (const feature of securityFeatureSnapshot) {
             const state = window.WebSSHSecurityUI.featureToggleState(feature);
             const row = document.createElement('div');
-            row.style.marginTop = '12px';
+            row.className = 'admin-auth-feature-row';
 
             const label = document.createElement('label');
-            label.className = 'admin-checkbox';
+            label.className = 'admin-auth-feature-label';
             const input = document.createElement('input');
             input.type = 'checkbox';
             input.dataset.securityFeature = state.name;
@@ -833,21 +886,25 @@
             );
             row.append(label, reason);
             if (['oidc', 'ldap'].includes(state.name)) {
-                const configuration = document.createElement('p');
-                configuration.className = 'admin-muted';
-                configuration.append(t(
+                const configuration = document.createElement('details');
+                configuration.className = 'admin-feature-config';
+                const summary = document.createElement('summary');
+                summary.textContent = t(
                     'admin.deploymentConfiguration',
                     'Deployment configuration'
-                ), ': ');
+                );
+                const configurationBody = document.createElement('p');
+                configurationBody.className = 'admin-muted';
                 const keys = document.createElement('code');
                 keys.textContent = (feature.configuration_keys || []).join(', ');
-                configuration.append(keys, ' · ');
+                configurationBody.append(keys, ' · ');
                 const guide = document.createElement('a');
                 guide.href = feature.documentation_url;
                 guide.target = '_blank';
                 guide.rel = 'noopener noreferrer';
                 guide.textContent = t('admin.openSetupGuide', 'Open setup guide');
-                configuration.appendChild(guide);
+                configurationBody.appendChild(guide);
+                configuration.append(summary, configurationBody);
                 row.appendChild(configuration);
             }
             list.appendChild(row);
@@ -1354,6 +1411,8 @@
         initAudit();
         initSettings();
         initBackupRestore();
+        document.getElementById('adminUserSearch')?.addEventListener('input', filterUsers);
+        document.getElementById('adminUserFilter')?.addEventListener('change', filterUsers);
         document.getElementById('globalHostKeyAdd')?.addEventListener(
             'click', addGlobalHostKey
         );

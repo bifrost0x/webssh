@@ -32,6 +32,16 @@ async function dragProfileTo(page, handle, target) {
     }
 }
 
+async function clickProfileMenuAction(profile, action) {
+    await profile.locator('.profile-action-menu > summary').click();
+    await profile.locator(`[data-profile-action="${action}"]`).click();
+}
+
+async function clickCommandSetMenuAction(commandSet, action) {
+    await commandSet.locator('.command-set-action-menu > summary').click();
+    await commandSet.locator(`[data-command-set-action="${action}"]`).click();
+}
+
 test.beforeEach(async ({ page }) => {
     await login(page);
     await installSshConnectTrap(page);
@@ -149,7 +159,7 @@ test('creates, edits, and deletes a profile through the management UI', async ({
 
     const created = page.locator('.profile-management-item').filter({ hasText: 'Browser CRUD' });
     await expect(created).toContainText('tester@crud.local:2222');
-    await created.locator('[data-profile-action="edit"]').click();
+    await clickProfileMenuAction(created, 'edit');
     await page.locator('#profileEditorName').fill('Browser CRUD edited');
     await page.locator('#profileEditorHost').fill('edited.local');
     await page.locator('#profileEditorForm button[type="submit"]').click();
@@ -159,7 +169,7 @@ test('creates, edits, and deletes a profile through the management UI', async ({
     });
     await expect(edited).toContainText('tester@edited.local:2222');
     page.once('dialog', dialog => dialog.accept());
-    await edited.locator('[data-profile-action="delete"]').click();
+    await clickProfileMenuAction(edited, 'delete');
     await expect(edited).toHaveCount(0);
 });
 
@@ -248,7 +258,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     );
     await expect(operationNames).toHaveText(['Ops second', 'Ops first']);
 
-    await page.locator('#closeProfileManagementModal').click();
+    await page.locator('#workspaceNavBtn').click();
     const launcherOperations = page.locator('.profile-launcher-section').filter({
         has: page.locator('.profile-launcher-section-title', {hasText: 'Operations'}),
     });
@@ -448,7 +458,7 @@ test('inline key upload preserves the saved connection draft and focuses the new
     await installKeyUploadTrap(page);
     await openProfileManagement(page);
     const usable = page.locator('.profile-management-item').filter({ hasText: 'Usable key' });
-    await usable.locator('[data-profile-action="edit"]').click();
+    await clickProfileMenuAction(usable, 'edit');
     await page.locator('#profileEditorName').fill('Unsaved browser draft');
     await page.locator('#profileEditorHost').fill('draft.local');
     await page.locator('#profileEditorPort').fill('2202');
@@ -590,7 +600,7 @@ test('referenced commands and command sets cannot be deleted', async ({ page }) 
     });
     await expect(guardedSet).toHaveCount(1);
     page.once('dialog', dialog => dialog.accept());
-    await guardedSet.locator('[data-command-set-action="delete"]').click();
+    await clickCommandSetMenuAction(guardedSet, 'delete');
     await expect(page.locator('.notification-error').last()).toContainText(
         'Command set is used by 1 profile',
     );
@@ -610,7 +620,7 @@ test('referenced commands and command sets cannot be deleted', async ({ page }) 
     await expect(guardedCommand).toHaveCount(1);
 });
 
-test('modals restore focus and close by Escape or overlay while containing scroll', async ({ page }) => {
+test('the Hosts workspace contains scroll and exits only through top-level navigation', async ({ page }) => {
     const trigger = page.locator('#manageProfilesBtn');
     await trigger.focus();
     await trigger.click();
@@ -650,13 +660,14 @@ test('modals restore focus and close by Escape or overlay while containing scrol
     expect(scrollState.headerTop).toBeGreaterThanOrEqual(scrollState.contentTop);
 
     await page.keyboard.press('Escape');
-    await expect(modal).not.toHaveClass(/show/);
-    await expect(trigger).toBeFocused();
+    await expect(modal).toHaveClass(/show/);
+    await expect(trigger).toHaveAttribute('aria-current', 'page');
 
-    await trigger.click();
     await modal.click({ position: { x: 4, y: 4 } });
+    await expect(modal).toHaveClass(/show/);
+    await page.locator('#workspaceNavBtn').click();
     await expect(modal).not.toHaveClass(/show/);
-    await expect(trigger).toBeFocused();
+    await expect(page.locator('#workspaceNavBtn')).toBeFocused();
 });
 
 test('the profile launcher remains contained and readable at 375px', async ({ page }) => {
@@ -710,7 +721,8 @@ test('inline key upload and rename actions stay touchable at 375px', async ({ pa
     expect(inlineLayout.actionHeights.every(height => height >= 44)).toBe(true);
     expect(inlineLayout.documentWidth).toBeLessThanOrEqual(inlineLayout.viewportWidth);
 
-    await page.locator('#closeProfileManagementModal').click();
+    await page.locator('#mobileMenuBtn').click();
+    await page.locator('#workspaceNavBtn').click();
     await openKeyManagement(page);
     let keyItem = page.locator('#keysList .key-item').filter({ hasText: 'E2E usable key' });
     const keyId = await keyItem.locator('[data-key-id]').first().getAttribute('data-key-id');

@@ -339,8 +339,6 @@ class SFTPFileManager {
                 this.renderPane(sourcePane);
                 this.renderPane(targetPane);
                 this.setActivePane(targetPane);
-            } else if (!this.workspace.getActiveTab(targetPane)) {
-                this.openSourceLauncher(targetPane);
             }
         }
         this.renderWorkspaceChrome();
@@ -730,7 +728,6 @@ class SFTPFileManager {
         this.updatePaneBadge(pane);
         this.renderPane(pane);
         this.renderWorkspaceChrome();
-        if (!result.active && this.workspace.layout === 'single') this.openSourceLauncher(pane);
         return result.closed;
     }
 
@@ -1455,7 +1452,10 @@ class SFTPFileManager {
     setupEventListeners() {
         document.getElementById('fmClose').addEventListener('click', () => this.close());
         this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
+            if (
+                e.target === this.modal
+                && !window.primaryWorkspaceController?.isElementActive(this.modal)
+            ) this.close();
         });
 
         document.getElementById('fmRefresh').addEventListener('click', () => this.refreshBothPanes());
@@ -1856,7 +1856,7 @@ class SFTPFileManager {
                 if (this.displayMode === 'embedded') {
                     window.dispatchEvent?.(new CustomEvent('session-sftp-request-close'));
                     if (this.displayMode === 'embedded') this.closeEmbedded();
-                } else {
+                } else if (!window.primaryWorkspaceController?.isElementActive(this.modal)) {
                     this.close();
                 }
             }
@@ -1931,7 +1931,9 @@ class SFTPFileManager {
         this.modal.classList.add('fm-workspace-mode');
         if (this.isMobile()) this.modal.classList.add('fm-mobile-mode');
         else this.modal.classList.remove('fm-mobile-mode');
-        if (window.ModalManager) {
+        if (window.primaryWorkspaceController?.open('files', this.modal)) {
+            // The full manager is a top-level application view.
+        } else if (window.ModalManager) {
             window.ModalManager.open(this.modal);
         } else {
             this.modal.classList.add('show');
@@ -1948,24 +1950,23 @@ class SFTPFileManager {
         });
         this.setActivePane(this.workspace.activePane || 'left');
         this.renderWorkspaceChrome();
-        if (!this.workspace.getActiveTab(this.workspace.activePane)) {
-            this.openSourceLauncher(this.workspace.activePane);
-        }
     }
 
-    close() {
+    close(options = {}) {
         if (this.displayMode === 'embedded') {
             this.closeEmbedded();
             return;
         }
+        const primaryWorkspace = window.primaryWorkspaceController;
+        const wasPrimaryWorkspace = primaryWorkspace?.isElementActive(this.modal) === true;
         const embeddedTarget = this.suspendedEmbeddedTarget;
         this.suspendedEmbeddedTarget = null;
         this.isOpen = false;
         this.displayMode = 'closed';
         this.closeSourceLauncher();
-        if (window.ModalManager) {
+        if (!wasPrimaryWorkspace && window.ModalManager) {
             window.ModalManager.close(this.modal);
-        } else {
+        } else if (!wasPrimaryWorkspace) {
             this.modal.classList.remove('show');
             this.modal.setAttribute('aria-hidden', 'true');
         }
@@ -1993,6 +1994,9 @@ class SFTPFileManager {
                 embeddedTarget.sessionId,
                 embeddedTarget.session,
             );
+        }
+        if (wasPrimaryWorkspace && options.restorePrimaryWorkspace !== false) {
+            primaryWorkspace.showWorkspaces({skipFileManagerClose: true});
         }
     }
 
@@ -2689,7 +2693,6 @@ class SFTPFileManager {
                 : openSourceLabel;
             container.innerHTML = `
                 <div class="fm-empty fm-source-empty-state">
-                    <span class="fm-empty-icon-shell"><span class="material-icons fm-empty-icon" aria-hidden="true">folder_open</span></span>
                     <strong>${this.escapeHtml(this.t('fm.selectSourceAbove', 'Select a source above'))}</strong>
                     <p>${this.escapeHtml(this.t('fm.workspace.sourceHint', 'Choose an active SSH session or a saved host.'))}</p>
                     <button type="button" class="btn btn-primary fm-empty-source-cta" aria-label="${this.escapeHtml(chooseLabel)}">

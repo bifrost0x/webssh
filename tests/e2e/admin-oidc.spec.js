@@ -9,6 +9,11 @@ async function completePasswordStepUp(page) {
     await expect(modal).not.toHaveClass(/show/);
 }
 
+async function clickUserAction(row, action) {
+    await row.locator('.admin-action-menu > summary').click();
+    await row.locator(`button[data-act="${action}"]`).click();
+}
+
 test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => {
     await login(page);
     await page.goto('/admin');
@@ -16,7 +21,7 @@ test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => 
     const targetRow = page.locator('#adminUsersBody tr').filter({
         hasText: 'e2e_user',
     });
-    await targetRow.locator('button[data-act="oidc-link"]').click();
+    await clickUserAction(targetRow, 'oidc-link');
     const modal = page.locator('#securityActionModal');
     await expect(modal).toHaveClass(/show/);
     await expect(modal.getByText('existing-e2e-subject')).toBeVisible();
@@ -112,7 +117,7 @@ test('a delayed recovery response cannot populate another user modal', async ({ 
     });
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
     await completePasswordStepUp(page);
@@ -120,7 +125,7 @@ test('a delayed recovery response cannot populate another user modal', async ({ 
 
     await page.locator('#closeSecurityAction').click();
     const adminRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_admin' });
-    await adminRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(adminRow, 'recovery');
     await expect(page.locator('#securityActionHint')).toContainText('e2e_admin');
 
     const responseFinished = page.waitForResponse(response => (
@@ -157,7 +162,7 @@ test('recovery submission is single-flight and clears reauthentication fields', 
     });
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
     await completePasswordStepUp(page);
@@ -195,14 +200,14 @@ test('closing and reopening cannot overlap recovery rotations', async ({ page })
     });
 
     const userRow = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await page.locator('#securityActionConfirmation').fill('e2e_user');
     await page.locator('#submitSecurityAction').click();
     await completePasswordStepUp(page);
     await requestStarted;
 
     await page.locator('#closeSecurityAction').click();
-    await userRow.locator('button[data-act="recovery"]').click();
+    await clickUserAction(userRow, 'recovery');
     await expect(page.locator('#submitSecurityAction')).toBeDisabled();
     await page.locator('#submitSecurityAction').click({ force: true });
     expect(requestCount).toBe(1);

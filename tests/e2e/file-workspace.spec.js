@@ -69,12 +69,14 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect.poll(() => page.evaluate(() => {
         const panel = document.querySelector('.fm-source-launcher-panel')?.getBoundingClientRect();
         if (!panel) return false;
-        const viewportCenter = window.innerWidth / 2;
+        const launcher = document.querySelector('#fmSourceLauncher')?.getBoundingClientRect();
+        if (!launcher) return false;
+        const workspaceCenterX = launcher.left + (launcher.width / 2);
+        const workspaceCenterY = launcher.top + (launcher.height / 2);
         const panelCenter = panel.left + (panel.width / 2);
-        const workspaceCenter = 70 + ((window.innerHeight - 70) / 2);
         const panelMiddle = panel.top + (panel.height / 2);
-        return Math.abs(panelCenter - viewportCenter) <= 2
-            && Math.abs(panelMiddle - workspaceCenter) <= 2;
+        return Math.abs(panelCenter - workspaceCenterX) <= 2
+            && Math.abs(panelMiddle - workspaceCenterY) <= 2;
     })).toBe(true);
     await expect(page.locator('#fmSourceGroups .fm-source-group')).toHaveCount(2);
     await expect(page.locator('#fm-source-group-active')).toContainText('Active SSH sessions');
@@ -164,7 +166,7 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
 
     await page.locator('#fmLayoutSingle').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-single/);
-    await page.locator('#fmClose').click();
+    await page.locator('#workspaceNavBtn').click();
     await expect(page.locator('#sftpFileManager')).not.toHaveClass(/show/);
     await page.evaluate(() => openFileManager());
     await expect(page.locator('#fmLeftTabs')).toContainText('prod-web-01');

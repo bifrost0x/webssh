@@ -401,7 +401,7 @@ test('embedded pane state cannot overwrite standalone workspace tabs', () => {
     assert.equal(manager.panes.left.path, '/srv/workspace');
 });
 
-test('split layout preserves tabs and requests a source only for an empty pane', () => {
+test('split layout preserves tabs and leaves an empty pane inline', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     const tab = manager.workspace.openTab(
@@ -420,10 +420,10 @@ test('split layout preserves tabs and requests a source only for an empty pane',
 
     assert.equal(manager.workspace.layout, 'split');
     assert.equal(manager.workspace.getActiveTab('left').id, tab.id);
-    assert.deepEqual(launcherTargets, ['right']);
+    assert.deepEqual(launcherTargets, []);
 });
 
-test('cancelling the empty-side launcher keeps the populated side active', () => {
+test('split and single layout changes keep the populated side active', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
     manager.workspace.openTab(
@@ -460,7 +460,7 @@ test('cancelling the empty-side launcher keeps the populated side active', () =>
 
     try {
         manager.setWorkspaceLayout('split');
-        assert.equal(manager.sourceLauncherPane, 'right');
+        assert.equal(manager.sourceLauncherPane, undefined);
         assert.equal(manager.workspace.activePane, 'left');
         manager.closeSourceLauncher();
         manager.setWorkspaceLayout('single');

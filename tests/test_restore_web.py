@@ -49,7 +49,9 @@ def test_session_epoch_invalidates_existing_login(app, client):
     assert client.post('/login', data={
         'username': 'epoch_admin', 'password': 'password123'
     }).status_code == 302
-    assert client.get('/admin').status_code == 200
+    admin = client.get('/admin')
+    assert admin.status_code == 302
+    assert admin.headers['Location'].endswith('/settings#users')
 
     rotate_epoch()
 
