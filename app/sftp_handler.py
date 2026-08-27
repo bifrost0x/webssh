@@ -1596,8 +1596,8 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
         return success, error
 
-    except TransferCancelled:
-        return False, 'Transfer cancelled'
+    except TransferCancelled as error:
+        return False, error
     except TransferSizeExceeded:
         return False, 'Transfer exceeds configured size limit'
     except TransferMemberLimitExceeded:

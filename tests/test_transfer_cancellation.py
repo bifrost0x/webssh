@@ -958,7 +958,7 @@ def test_server_copy_cancellation_removes_partial_destination(monkeypatch):
     )
 
     assert success is False
-    assert error == 'Transfer cancelled'
+    assert isinstance(error, sftp_handler.TransferCancelled)
     assert '/to.txt' not in destination.files
     assert len(destination.removed) == 1
     assert destination.removed[0].startswith('/to.txt.webssh-transfer-')
@@ -990,7 +990,7 @@ def test_server_directory_cancellation_leaves_temporary_tree_untouched(monkeypat
     )
 
     assert success is False
-    assert error == 'Transfer cancelled'
+    assert isinstance(error, sftp_handler.TransferCancelled)
     assert destination.files == {}
     assert len(destination.dirs) == 1
     assert next(iter(destination.dirs)).startswith('/copy.webssh-transfer-')
@@ -1442,7 +1442,10 @@ def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
     monkeypatch.setattr(
         socket_events.sftp_handler,
         'transfer_server_to_server',
-        lambda **kwargs: (observed.update(kwargs) or (False, 'Transfer cancelled')),
+        lambda **kwargs: (
+            observed.update(kwargs)
+            or (False, socket_events.sftp_handler.TransferCancelled())
+        ),
     )
     monkeypatch.setitem(app.extensions, 'runtime_lifecycle', ImmediateLifecycle())
 
@@ -1460,6 +1463,99 @@ def test_server_copy_observes_lifecycle_shutdown_cancellation(app, monkeypatch):
     assert observed['cancel_event'].is_set()
     assert reservation.release_calls == 1
     assert manager._records == {}
+
+
+def test_active_legacy_server_copy_finishes_as_cancelled(app, monkeypatch):
+    """A legacy SFTP worker must preserve cancellation after the ack."""
+    import app.socket_events as socket_events
+    from app.transfer_manager import TransferManager
+
+    class Reservation:
+        release_calls = 0
+
+        def release(self):
+            self.release_calls += 1
+
+    class ThreadLifecycle:
+        def __init__(self):
+            self.thread = None
+
+        def start_job(self, _name, target, *, owner_id=None):
+            del owner_id
+            lifecycle_cancel = threading.Event()
+            self.thread = threading.Thread(
+                target=target,
+                args=(lifecycle_cancel,),
+            )
+            self.thread.start()
+            return SimpleNamespace(cancel_event=lifecycle_cancel)
+
+    reservation = Reservation()
+    lifecycle = ThreadLifecycle()
+    manager = TransferManager()
+    started = threading.Event()
+    emitted = []
+
+    def cancelled_copy(**kwargs):
+        started.set()
+        assert kwargs['cancel_event'].wait(1)
+        return False, socket_events.sftp_handler.TransferCancelled()
+
+    _allow_s2s_sources(monkeypatch, socket_events)
+    monkeypatch.setattr(socket_events, 'transfer_manager', manager)
+    monkeypatch.setattr(
+        socket_events,
+        'quota_manager',
+        SimpleNamespace(reserve=lambda *_args, **_kwargs: reservation),
+    )
+    monkeypatch.setattr(
+        socket_events.sftp_handler,
+        'transfer_server_to_server',
+        cancelled_copy,
+    )
+    monkeypatch.setattr(
+        socket_events.socketio,
+        'emit',
+        lambda event, payload, room=None: emitted.append(
+            (event, payload, room)
+        ),
+    )
+    monkeypatch.setitem(app.extensions, 'runtime_lifecycle', lifecycle)
+
+    user = SimpleNamespace(id=7, username='copy-user')
+    with app.test_request_context('/socket.io'):
+        result = socket_events.handle_transfer_server_to_server.__wrapped__({
+            'source_id': 'sftp-session:source',
+            'request_id': 's2s:cancel',
+            'source_path': '/from.bin',
+            'destination_source_id': 'sftp-session:destination',
+            'dest_path': '/to.bin',
+            'is_dir': False,
+        }, current_user=user)
+
+    assert result['success'] is True
+    assert started.wait(1)
+    cancellation = manager.cancel_with_result(result['transfer_id'], user.id)
+    assert cancellation.accepted is True
+    assert cancellation.state == 'cancelling'
+    lifecycle.thread.join(timeout=1)
+    assert lifecycle.thread.is_alive() is False
+
+    terminal = next(
+        payload for event, payload, _room in emitted
+        if event == 'transfer_finished'
+    )
+    visible = next(
+        payload for event, payload, _room in emitted
+        if event == 's2s_transfer_error'
+    )
+    assert terminal['status'] == 'cancelled'
+    assert terminal['error_code'] == 'CANCELLED'
+    assert visible['error_code'] == 'CANCELLED'
+    assert manager.cancel_with_result(
+        result['transfer_id'], user.id
+    ).state == 'cancelled'
+    assert reservation.release_calls == 1
 
 
 def test_server_copy_runs_on_the_app_lifecycle_executor(app, monkeypatch):

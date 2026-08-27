@@ -3789,6 +3789,8 @@ def handle_transfer_server_to_server(data, current_user=None):
                         event_context=response_context,
                         conflict_policy=conflict_policy,
                     )
+                    if isinstance(error, sftp_handler.TransferCancelled):
+                        raise RemoteTransferCancelled('Transfer cancelled')
 
                 if success and _terminalize(
                     record, user_id, 'completed', manager=transfer_manager
