@@ -637,10 +637,16 @@ test('duplicate completion error and cancellation signals release one queue slot
     assert.equal(transport.preparations.length, 3);
     assert.equal(client.activeTransfers.has(third), true);
     transport.cancellations[0].acknowledgement({
-        success: true, state: 'cancelled',
+        success: true, state: 'cancelling',
     });
     await flushTasks();
-    assert.equal(client.activeTransfers.has(third), false);
+    assert.equal(client.activeTransfers.has(third), true);
+    assert.equal(transport.preparations.length, 3);
+
+    transport.receive('transfer_finished', {
+        transfer_id: 'third-server', status: 'cancelled',
+    });
+    await flushTasks();
     assert.equal(transport.preparations.length, 4);
     assert.equal(transport.preparations[3].payload.remote_path, '/fourth.bin');
 
@@ -708,10 +714,10 @@ test('cancelling during preparation emits once after the server id arrives', asy
     assert.equal(client.activeTransfers.has(localId), true);
 
     transport.cancellations[0].acknowledgement({
-        success: true, state: 'cancelled',
+        success: true, state: 'cancelling',
     });
     await flushTasks();
-    assert.equal(client.activeTransfers.has(localId), false);
+    assert.equal(client.activeTransfers.has(localId), true);
 
     transport.receive('transfer_finished', {
         transfer_id: 'slow-server', status: 'cancelled',

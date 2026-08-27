@@ -311,7 +311,7 @@ def _terminalize(record, user_id, outcome, manager=None, failure=None):
                     record.transfer_id, user_id
                 )
             elif outcome == 'cancelled':
-                transitioned = manager.cancel(
+                transitioned = manager.finish_cancelled(
                     record.transfer_id, user_id
                 )
             else:

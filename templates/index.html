@@ -1307,7 +1307,7 @@
                         <div class="form-group flex-1">
                             <label for="smbSourceUsername" data-i18n="smb.username">Username</label>
                             <input type="text" class="form-control" id="smbSourceUsername" maxlength="256" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="user or user@example.com" data-i18n-placeholder="smb.usernamePlaceholder" required>
-                            <small data-i18n="smb.usernameHint">For Active Directory or TrueNAS, include the realm when required, for example user@example.com.</small>
+                            <small data-i18n="smb.usernameHint">For Active Directory or TrueNAS, try DNS domain example.com with username alice; alternatively leave Domain empty and use alice@example.com. NetBIOS names may not be accepted.</small>
                         </div>
                     </div>
 
@@ -1412,7 +1412,7 @@
     <script>
         window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
     </script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=32"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=33"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=6"></script>
@@ -1445,7 +1445,7 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/smb-source-dialog.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=25"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=26"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=25"></script>
     <script>

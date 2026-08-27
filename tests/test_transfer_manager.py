@@ -344,8 +344,36 @@ def test_cancel_and_completion_race_has_one_terminal_winner():
 
         cancel_result = next(value for name, value in observed if name == 'cancel')
         completion_won = next(value for name, value in observed if name == 'complete')
-        assert (cancel_result.accepted, completion_won).count(True) == 1
-        assert cancel_result.state in {'cancelled', 'completed'}
+        assert completion_won is True
+        assert cancel_result.state in {'cancelling', 'completed'}
+        assert record.state is TransferState.COMPLETED
+
+
+def test_cancel_confirmation_and_completion_race_has_one_terminal_winner():
+    for _iteration in range(20):
+        manager = make_manager()
+        record = manager.create(7, 'sftp-quick:source-a', 'download', {})
+        manager.consume_token(record.token, 7)
+        assert manager.cancel_with_result(record.transfer_id, 7).state == 'cancelling'
+        barrier = threading.Barrier(2)
+        observed = []
+
+        def finish_cancelled():
+            barrier.wait()
+            observed.append(manager.finish_cancelled(record.transfer_id, 7))
+
+        def complete():
+            barrier.wait()
+            observed.append(manager.complete(record.transfer_id, 7))
+
+        threads = [threading.Thread(target=finish_cancelled), threading.Thread(target=complete)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert observed.count(True) == 1
+        assert record.state in {TransferState.CANCELLED, TransferState.COMPLETED}
 
 
 def test_token_expiry_releases_source_holds():
@@ -572,17 +600,35 @@ def test_concurrent_token_consumption_has_exactly_one_winner(iteration):
     assert manager.complete(record.transfer_id, 7) is True
 
 
-@pytest.mark.parametrize('initial_state', ['pending', 'running'])
-def test_cancel_sets_event_and_releases_quota_once(initial_state):
+def test_pending_cancel_sets_event_and_releases_quota_once():
     quota = SpyQuotaManager()
     manager = make_manager(quota_manager=quota)
     record = manager.create(7, 'session-1', 'download', {})
-    if initial_state == 'running':
-        manager.consume_token(record.token, 7)
-
     assert manager.cancel(record.transfer_id, 7) is True
     assert record.state is TransferState.CANCELLED
     assert record.cancel_event.is_set() is True
+    assert quota.reservations[0].release_calls == 1
+
+
+def test_running_cancel_retains_quota_until_worker_confirms_terminal_state():
+    quota = SpyQuotaManager()
+    manager = make_manager(quota_manager=quota)
+    record = manager.create(7, 'session-1', 'download', {})
+    manager.consume_token(record.token, 7)
+
+    first = manager.cancel_with_result(record.transfer_id, 7)
+    second = manager.cancel_with_result(record.transfer_id, 7)
+
+    assert (first.accepted, first.state) == (True, 'cancelling')
+    assert (second.accepted, second.state) == (False, 'cancelling')
+    assert record.state is TransferState.CANCELLING
+    assert record.cancel_event.is_set() is True
+    assert quota.reservations[0].release_calls == 0
+
+    assert manager.finish_cancelled(record.transfer_id, 7) is True
+    assert record.state is TransferState.CANCELLED
+    assert quota.reservations[0].release_calls == 1
+    assert manager.finish_cancelled(record.transfer_id, 7) is False
     assert quota.reservations[0].release_calls == 1
 
     assert manager.cancel(record.transfer_id, 7) is False
@@ -647,7 +693,7 @@ def test_concurrent_terminal_transitions_have_one_winner(iteration):
     barrier = threading.Barrier(30)
     results = []
     results_lock = threading.Lock()
-    operations = (manager.cancel, manager.complete, manager.fail)
+    operations = (manager.finish_cancelled, manager.complete, manager.fail)
 
     def transition(operation):
         barrier.wait()

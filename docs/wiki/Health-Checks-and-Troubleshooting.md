@@ -89,8 +89,9 @@ not expose an SMB port.
 Use the workspace result to narrow the failure:
 
 - connection rejected: verify allowlist, DNS, TCP 445, credentials, SMB 3.1.1,
-  signing, encryption, and secure negotiation; Active Directory and TrueNAS
-  may require a UPN username such as `user@example.com`;
+  signing, encryption, and secure negotiation; for Active Directory or TrueNAS,
+  try DNS domain `example.com` with username `alice`, or leave the domain empty
+  and use a UPN such as `alice@example.com`; NetBIOS names may not be accepted;
 - connection opens but listing fails: verify share name and list/read ACLs;
 - root is labeled read-only: the account can list the root but the server
   denied both file and directory creation there;

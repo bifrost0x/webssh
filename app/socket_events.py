@@ -2232,7 +2232,7 @@ def handle_cancel_transfer(data, current_user=None):
         log_error('Transfer cancellation failed', user_id=current_user.id,
                   exception_type=type(error).__name__)
         return {'success': False, 'state': 'unavailable'}
-    if result.accepted:
+    if result.accepted and result.state == 'cancelled':
         socketio.emit('transfer_finished', {
             'transfer_id': transfer_id,
             'status': 'cancelled',
@@ -3789,6 +3789,8 @@ def handle_transfer_server_to_server(data, current_user=None):
                         event_context=response_context,
                         conflict_policy=conflict_policy,
                     )
+                    if isinstance(error, sftp_handler.TransferCancelled):
+                        raise RemoteTransferCancelled('Transfer cancelled')
 
                 if success and _terminalize(
                     record, user_id, 'completed', manager=transfer_manager
