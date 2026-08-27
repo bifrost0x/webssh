@@ -199,12 +199,20 @@ test('new login, security, and admin controls honor the stored locale', async ({
 
     await login(page);
     await page.goto('/security');
-    await expect(page.locator('h1')).toContainText('Sicherheit');
+    await expect(page.getByRole('link', { name: 'Zurück zum Terminal' })).toBeVisible();
+
+    await page.locator('[data-account-section="ssh-host-trust"]').click();
     await expect(page.locator('#hostKeyRefresh')).toHaveText('Aktualisieren');
+
+    await page.locator('[data-account-section="factors"]').click();
     await expect(page.locator('#passkeyAddBtn')).toHaveText('Passkey hinzufügen');
+
+    await page.locator('[data-account-section="recovery"]').click();
     await expect(page.locator('#recoveryGenerateBtn')).toHaveText(
         'Wiederherstellungscodes erstellen'
     );
+
+    await page.locator('[data-account-section="factors"]').click();
     await page.locator('#passkeyAddBtn').click();
     await expect(page.locator('#securityConfirmationTitle')).toHaveText(
         'Sicherheitsaktion bestätigen'

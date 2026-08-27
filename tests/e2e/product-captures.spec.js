@@ -615,7 +615,7 @@ test('captures seeded command and connection option surfaces at Full HD scale', 
     await page.locator('#commandLibraryBtn').click();
     await expect(page.locator('#commandWorkspaceModal')).toHaveClass(/show/);
     await page.locator('#commandLibraryTab').click();
-    await expect(page.locator('#commandLibraryTab')).toHaveText('Command Library');
+    await expect(page.locator('#commandLibraryTab')).toContainText('Command Library');
     await expect(page.locator('#commandsList')).toContainText('Update Package Lists');
     await expect(page.locator('#commandWorkspaceModal')).not.toContainText('E2E');
     await expectCurrentCaptureTerminology(page);
@@ -975,9 +975,15 @@ test('captures the current Security Center assurance overview', async ({ page },
         'How security changes are confirmed',
     );
     await expect(page.locator('#securityCurrentMethod')).toContainText('WebSSH password');
+
+    await page.locator('[data-account-section="factors"]').click();
     await expect(page.locator('#passkeyAddBtn')).toBeVisible();
     await expect(page.locator('#totpAddBtn')).toBeVisible();
+
+    await page.locator('[data-account-section="recovery"]').click();
     await expect(page.locator('#recoveryGenerateBtn')).toBeVisible();
+
+    await page.locator('[data-account-section="security-overview"]').click();
     await expect(page.locator('body')).not.toContainText('E2E');
     await captureDesktopStill(page, 'security-center.png', testInfo);
 

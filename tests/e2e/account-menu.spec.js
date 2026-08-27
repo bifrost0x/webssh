@@ -46,7 +46,7 @@ test('account menu opens the Settings Center and persists close confirmation', a
     await closeConfirmation.uncheck();
     await expect(closeConfirmation).not.toBeDisabled();
 
-    await page.getByRole('link', { name: 'Back to Workspaces' }).click();
+    await page.getByRole('link', { name: 'Back to Terminal' }).click();
     await page.locator('#accountBtnHeader').click();
     await expect(page.locator('#accountSettingsBtn')).toHaveAttribute('href', /\/settings#preferences$/);
 });

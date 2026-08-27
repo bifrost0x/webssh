@@ -46,25 +46,24 @@ test('admin navigation and users become readable cards on a mobile viewport', as
     await login(page);
     await page.goto('/admin');
 
-    const navigation = await page.locator('.admin-tabs').evaluate(element => {
-        const bounds = [...element.querySelectorAll('.admin-tab')].map(tab => {
-            const rect = tab.getBoundingClientRect();
-            return { left: rect.left, right: rect.right };
-        });
+    await expect(page.locator('.admin-tabs')).toBeHidden();
+    const mobileSelect = page.locator('#settingsMobileSection');
+    await expect(page.locator('.settings-mobile-navigation')).toBeVisible();
+    await expect(mobileSelect).toBeVisible();
+    await expect(mobileSelect).toHaveValue('users');
+    const navigation = await mobileSelect.evaluate(element => {
+        const rect = element.getBoundingClientRect();
         return {
-            display: getComputedStyle(element).display,
-            clientWidth: element.clientWidth,
-            scrollWidth: element.scrollWidth,
-            bounds,
+            bounds: { left: rect.left, right: rect.right },
+            optionLabels: [...element.options].map(option => option.textContent.trim()),
             viewportWidth: window.innerWidth,
         };
     });
-    expect(navigation.display).toBe('grid');
-    expect(navigation.scrollWidth).toBeLessThanOrEqual(navigation.clientWidth);
-    for (const bounds of navigation.bounds) {
-        expect(bounds.left).toBeGreaterThanOrEqual(0);
-        expect(bounds.right).toBeLessThanOrEqual(navigation.viewportWidth);
-    }
+    expect(navigation.bounds.left).toBeGreaterThanOrEqual(0);
+    expect(navigation.bounds.right).toBeLessThanOrEqual(navigation.viewportWidth);
+    expect(navigation.optionLabels).toContain('Preferences');
+    expect(navigation.optionLabels).toContain('Users');
+    expect(navigation.optionLabels).toContain('Backup & Restore');
 
     const row = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
     await expect(row).toBeVisible();

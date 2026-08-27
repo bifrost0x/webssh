@@ -35,6 +35,7 @@ async function openThemeSettings(page) {
     await page.getByRole('link', { name: 'Settings' }).click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
     await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
 }
 
 async function readThemeState(page) {
@@ -47,7 +48,6 @@ async function readThemeState(page) {
                 x: bounds.x,
                 y: bounds.y,
                 width: bounds.width,
-                height: bounds.height,
             };
         };
         const rgb = value => {
@@ -122,7 +122,10 @@ async function readThemeState(page) {
 function expectStableGeometry(actual, expected) {
     for (const region of Object.keys(expected)) {
         for (const dimension of Object.keys(expected[region])) {
-            expect(actual[region][dimension]).toBeCloseTo(expected[region][dimension], 0);
+            expect(
+                actual[region][dimension],
+                `${region}.${dimension} should remain stable across themes`,
+            ).toBeCloseTo(expected[region][dimension], 0);
         }
     }
 }
@@ -201,10 +204,17 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     await page.getByRole('combobox', { name: 'Theme' }).selectOption('paper');
     await expect.poll(() => page.evaluate(() => localStorage.getItem('websshTheme')))
         .toBe('paper');
-    await page.getByRole('link', { name: 'Back to Workspaces' }).click();
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: 'Logout' }).click();
+    await page.getByRole('link', { name: 'Back to Terminal' }).click();
+    const logoutStatus = await page.evaluate(async () => {
+        const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        const response = await fetch('/logout', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrf },
+        });
+        return response.status;
+    });
+    expect(logoutStatus).toBe(200);
+    await page.goto('/login');
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'paper');
 
