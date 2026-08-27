@@ -1439,7 +1439,7 @@ test('workspace operation distinguishes same-source move from cross-source copy'
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), true);
 });
 
-test('same-source move is named visibly on the directional action and hint', () => {
+test('same-source move hides the directional action and gives a drag hint', () => {
     const previousDocument = global.document;
     const hint = { textContent: '' };
     const icon = { textContent: '' };
@@ -1489,11 +1489,12 @@ test('same-source move is named visibly on the directional action and hint', () 
         assert.equal(icon.textContent, 'drive_file_move');
         assert.equal(text.textContent, 'Move');
         assert.equal(button.title, 'Move left to right');
-        assert.equal(hint.textContent, 'Move 1 selected');
+        assert.equal(button.hidden, true);
+        assert.equal(hint.textContent, 'Drag items onto a folder to move them');
 
         manager.panes.left.selected.clear();
         manager.updateWorkspaceActions();
-        assert.equal(hint.textContent, 'Select items to move');
+        assert.equal(hint.textContent, 'Drag items onto a folder to move them');
     } finally {
         global.document = previousDocument;
     }
@@ -1514,58 +1515,70 @@ test('source launcher identifies the existing connection that enables Move', () 
     }), 'Connected');
 });
 
-test('guided move opens the selected source in the other pane and preserves the selection', async () => {
-    const previousDocument = global.document;
-    let focused = false;
-    const opened = [];
-    const notifications = [];
+test('same-pane folder drop moves the dragged selection and refreshes once', async () => {
+    const requests = [];
+    const refreshes = [];
     const manager = Object.create(SFTPFileManager.prototype);
-    manager.initializeWorkspaceState();
     const sourceState = filePane(manager, 'sftp-session:shared', {
         path: '/source',
-        files: [{ name: 'report.txt', is_dir: false }],
-        selected: new Set([0]),
+        files: [
+            { name: 'report.txt', is_dir: false },
+            { name: 'archive', is_dir: true },
+        ],
     });
-    manager.workspace.openTab('left', sourceState.source, sourceState);
-    manager.syncPaneFromWorkspace('left');
     Object.assign(manager, {
-        displayMode: 'modal',
-        modal: null,
-        async openWorkspaceSource(pane, source) {
-            opened.push({ pane, source });
-            const targetState = filePane(this, source.sourceId, { path: '/' });
-            this.workspace.openTab(pane, source, targetState);
-            this.panes[pane] = targetState;
-        },
-        showNotification(message, level) { notifications.push({ message, level }); },
+        requestSequence: 0,
+        panes: { left: sourceState },
+        socket: { emit(event, payload, acknowledgement) {
+            requests.push({ event, payload });
+            acknowledgement({
+                success: true,
+                source_id: payload.source_id,
+                old_path: payload.old_path,
+                new_path: payload.new_path,
+                request_id: payload.request_id,
+            });
+        } },
+        refreshPane(pane) { refreshes.push(pane); },
+        showNotification() {},
+        resolveUploadConflict() { return Promise.resolve('cancel'); },
         t(_key, fallback) { return fallback; },
     });
-    global.document = {
-        getElementById(id) {
-            return id === 'fmRightPath' ? { focus() { focused = true; } } : null;
+
+    const result = await manager.moveSelectedToDirectory(
+        'left',
+        1,
+        [sourceState.files[0]],
+    );
+
+    assert.equal(result, 'complete');
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].event, 'rename_file');
+    assert.equal(requests[0].payload.old_path, '/source/report.txt');
+    assert.equal(requests[0].payload.new_path, '/source/archive/report.txt');
+    assert.deepEqual(refreshes, ['left']);
+});
+
+test('directory drop accepts only writable same-pane sibling folders', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const file = { name: 'report.txt', is_dir: false };
+    const directory = { name: 'archive', is_dir: true };
+    Object.assign(manager, {
+        dragSource: 'left',
+        draggedItems: [file],
+        panes: {
+            left: filePane(manager, 'sftp-session:shared', {
+                path: '/source', files: [file, directory],
+            }),
         },
-    };
+    });
 
-    try {
-        const result = await manager.startGuidedMove('left');
+    assert.equal(manager.canDropDraggedItemsOnDirectory('left', 1), true);
+    assert.equal(manager.canDropDraggedItemsOnDirectory('left', 0), false);
+    assert.equal(manager.canDropDraggedItemsOnDirectory('right', 1), false);
 
-        assert.equal(result, true);
-        assert.equal(manager.workspace.layout, 'split');
-        assert.equal(opened.length, 1);
-        assert.equal(opened[0].pane, 'right');
-        assert.equal(opened[0].source.sourceId, 'sftp-session:shared');
-        assert.deepEqual(manager.guidedMove, {
-            sourcePane: 'left', targetPane: 'right', sourceId: 'sftp-session:shared',
-        });
-        assert.deepEqual(Array.from(manager.panes.left.selected), [0]);
-        assert.equal(focused, true);
-        assert.deepEqual(notifications, [{
-            message: 'Choose the destination folder in the other pane, then select Move.',
-            level: 'info',
-        }]);
-    } finally {
-        global.document = previousDocument;
-    }
+    manager.draggedItems = [directory];
+    assert.equal(manager.canDropDraggedItemsOnDirectory('left', 1), false);
 });
 
 test('same-source move is sequential, never replaces, and refreshes both panes once', async () => {

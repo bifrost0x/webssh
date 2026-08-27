@@ -118,16 +118,16 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=24' in response.data
-        assert b'js/i18n.js?v=34' in response.data
+        assert b'css/webssh-2.css?v=25' in response.data
+        assert b'js/i18n.js?v=35' in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=24' in response.data
-        assert b'js/i18n.js?v=34' in response.data
+        assert b'css/webssh-2.css?v=25' in response.data
+        assert b'js/i18n.js?v=35' in response.data
 
 
 def test_global_management_navigation_uses_one_primary_workspace_surface(
@@ -187,6 +187,8 @@ def test_authentication_pages_use_the_shared_professional_auth_shell():
     assert 'name="webauthn-configured-origin"' in login
     assert 'id="localLoginForm"' in login
     assert 'id="ldapLoginForm"' in login
+    assert 'id="loginUsernameHint"' not in login
+    assert 'id="loginPasswordHint"' not in login
     assert 'id="registerForm"' in register
     assert "Join us and start your journey" not in register
     assert 'class="auth-context-copy"' in login
@@ -225,6 +227,25 @@ def test_auth_brand_lockup_keeps_logo_and_tagline_as_one_centered_unit():
     assert "align-content: center;" in lockup
     assert "min-height: 0;" in lockup
     assert "min-height: 0;" in product_brand
+
+
+def test_auth_context_keeps_readable_dark_surface_tokens_in_light_themes():
+    project_root = Path(__file__).resolve().parents[1]
+    css = (project_root / "static/css/webssh-2.css").read_text(encoding="utf-8")
+
+    context_panel = css.split(".auth-context-panel {", 1)[1].split("}", 1)[0]
+    for token in (
+        "--auth-context-text-primary: #f2f6fb;",
+        "--auth-context-text-secondary: #c4d0dc;",
+        "--auth-context-text-muted: #91a4b7;",
+        "--auth-context-accent:",
+        "--auth-context-border:",
+    ):
+        assert token in context_panel
+
+    assert 'body[data-theme="paper"]:has(.auth-access-dock)' in css
+    assert "color: var(--auth-context-text-primary);" in css
+    assert "color: var(--auth-context-text-muted);" in css
 
 
 def test_login_and_registration_present_the_webssh_product_workspace():

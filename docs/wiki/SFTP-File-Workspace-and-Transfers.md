@@ -79,7 +79,8 @@ Supported operations include:
 - directory listing and navigation;
 - create directory;
 - rename;
-- move files or folders between directories on the same source;
+- move files or folders on the same source by dragging them onto a destination
+  folder in the current pane or into the other pane;
 - delete;
 - drag-and-drop file and folder upload;
 - single and batch download;

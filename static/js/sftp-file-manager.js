@@ -323,7 +323,6 @@ class SFTPFileManager {
     setWorkspaceLayout(layout) {
         const previousLayout = this.workspace.layout;
         this.workspace.setLayout(layout);
-        if (layout === 'single') this.guidedMove = null;
         if (layout === 'split' && previousLayout === 'single' && this.displayMode === 'modal') {
             const sourcePane = this.workspace.activePane;
             const targetPane = sourcePane === 'left' ? 'right' : 'left';
@@ -662,10 +661,6 @@ class SFTPFileManager {
             const activeTab = this.workspace.getActiveTab(pane);
             const legacySelect = document.getElementById(`fm${this.capitalize(pane)}Source`);
             if (legacySelect) legacySelect.value = activeTab?.source.sourceId || '';
-            document.getElementById(`fm${this.capitalize(pane)}Pane`)?.classList.toggle(
-                'fm-guided-move-target',
-                this.guidedMove?.targetPane === pane,
-            );
         });
         this.updateWorkspaceActions();
     }
@@ -881,6 +876,7 @@ class SFTPFileManager {
         if (text) text.textContent = label;
         button.classList?.toggle?.('is-move', moving);
         button.dataset.operation = available ? operation : 'unavailable';
+        if (direction) button.hidden = moving;
         if (direction) {
             const key = moving
                 ? `fm.workspace.move${direction}`
@@ -956,9 +952,6 @@ class SFTPFileManager {
                     download: !this.sourceCan(paneState, 'read') || paneSelection === 0,
                     preview: !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
                     rename: !this.sourceCan(paneState, 'rename') || paneSelection !== 1,
-                    move: this.displayMode !== 'modal'
-                        || !this.sourceCan(paneState, 'rename')
-                        || paneSelection === 0,
                     delete: !this.sourceCan(paneState, 'delete') || paneSelection === 0,
                 }[action];
                 button.disabled = Boolean(disabled);
@@ -981,20 +974,11 @@ class SFTPFileManager {
             const transferSelection = Math.max(leftSelection, rightSelection);
             const selectedOperation = leftSelection >= rightSelection
                 ? leftOperation : rightOperation;
-            const guided = this.guidedMove;
-            const guidedSource = guided ? this.panes[guided.sourcePane] : null;
-            const guidedTarget = guided ? this.panes[guided.targetPane] : null;
-            const guidedReady = guided
-                && this.getPaneSourceId(guidedSource) === guided.sourceId
-                && this.getPaneSourceId(guidedTarget) === guided.sourceId
-                && this.workspaceOperationBetweenPanes(
-                    guided.sourcePane,
-                    guided.targetPane,
-                ) === 'move';
-            hint.textContent = guided && !guidedReady
+            const moveOnly = leftOperation === 'move' && rightOperation === 'move';
+            hint.textContent = moveOnly
                 ? this.t(
-                    'fm.workspace.chooseMoveDestination',
-                    'Browse to the destination folder',
+                    'fm.workspace.dragToMove',
+                    'Drag items onto a folder to move them',
                 )
                 : transferSelection > 0
                 ? `${this.t(
@@ -1002,46 +986,12 @@ class SFTPFileManager {
                     selectedOperation === 'move' ? 'Move' : 'Transfer',
                 )} ${transferSelection} ${this.t('fm.selected', 'selected')}`
                 : selectedOperation === 'move'
-                    ? this.t('fm.workspace.selectItemsToMove', 'Select items to move')
+                    ? this.t(
+                        'fm.workspace.dragToMove',
+                        'Drag items onto a folder to move them',
+                    )
                     : this.t('fm.workspace.selectFiles', 'Select files');
         }
-    }
-
-    async startGuidedMove(sourcePane = this.activePane) {
-        if (this.displayMode !== 'modal' || !this.workspace) return false;
-        const sourceState = this.panes[sourcePane];
-        const sourceTab = this.workspace.getActiveTab(sourcePane);
-        const selectedCount = sourceState?.selected?.size || 0;
-        if (!sourceTab || selectedCount === 0 || !this.sourceCan(sourceState, 'rename')) {
-            this.showNotification(
-                this.t('fm.workspace.selectItemsToMove', 'Select items to move'),
-                'warning',
-            );
-            return false;
-        }
-
-        const targetPane = sourcePane === 'left' ? 'right' : 'left';
-        const sourceId = this.getPaneSourceId(sourceState);
-        this.guidedMove = { sourcePane, targetPane, sourceId };
-        if (this.workspace.layout !== 'split') this.setWorkspaceLayout('split');
-
-        const targetTab = this.workspace.getActiveTab(targetPane);
-        if (targetTab?.source?.sourceId !== sourceId) {
-            await this.openWorkspaceSource(targetPane, { ...sourceTab.source });
-        } else {
-            this.setActivePane(targetPane);
-        }
-
-        this.renderWorkspaceChrome();
-        this.showNotification(
-            this.t(
-                'fm.workspace.moveDestinationGuidance',
-                'Choose the destination folder in the other pane, then select Move.',
-            ),
-            'info',
-        );
-        document.getElementById(`fm${this.capitalize(targetPane)}Path`)?.focus?.();
-        return true;
     }
 
     init() {
@@ -1195,7 +1145,6 @@ class SFTPFileManager {
                                 <button type="button" data-pane-action="download"><span class="material-icons">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview"><span class="material-icons">preview</span><span data-i18n="fm.preview">Preview</span></button>
                                 <button type="button" data-pane-action="rename"><span class="material-icons">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
-                                <button type="button" data-pane-action="move"><span class="material-icons">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
                                 <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
@@ -1266,7 +1215,6 @@ class SFTPFileManager {
                                 <button type="button" data-pane-action="download"><span class="material-icons">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview"><span class="material-icons">preview</span><span data-i18n="fm.preview">Preview</span></button>
                                 <button type="button" data-pane-action="rename"><span class="material-icons">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
-                                <button type="button" data-pane-action="move"><span class="material-icons">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
                                 <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
@@ -1552,7 +1500,6 @@ class SFTPFileManager {
                 download: () => this.downloadSelected(),
                 preview: () => this.previewSelected(),
                 rename: () => this.renameSelected(),
-                move: () => this.startGuidedMove(pane),
                 delete: () => this.deleteSelected(),
             };
             actions[actionButton.dataset.paneAction]?.();
@@ -2837,6 +2784,10 @@ class SFTPFileManager {
             item.addEventListener('dblclick', (e) => this.handleItemDoubleClickEvent(e, pane, index));
             item.addEventListener('contextmenu', (e) => this.showContextMenu(e, pane, index));
             item.addEventListener('dragstart', (e) => this.handleDragStart(e, pane, index));
+            item.addEventListener('dragend', () => this.clearInternalDragState());
+            if (item.dataset.type === 'directory') {
+                this.setupDirectoryDropTarget(item, pane, index);
+            }
         });
 
         this.updatePaneStatus(pane);
@@ -3218,15 +3169,9 @@ class SFTPFileManager {
         }
 
         if (operation === 'move') {
-            const outcome = await this.moveSelectedBetweenPanes(
+            return this.moveSelectedBetweenPanes(
                 sourcePane, targetPane, selectedItems,
             );
-            if (this.guidedMove?.sourcePane === sourcePane
-                    && this.guidedMove?.targetPane === targetPane) {
-                this.guidedMove = null;
-                this.renderWorkspaceChrome();
-            }
-            return outcome;
         }
 
         this.showNotification(`${this.t('fm.startingTransfer', 'Starting transfer of')} ${selectedItems.length} ${this.t('fm.items', 'item(s)')}...`, 'info');
@@ -3264,14 +3209,71 @@ class SFTPFileManager {
             || source.path === target.path
         ) return 'unavailable';
 
+        return this.moveItemsWithinSource(
+            sourceId,
+            source.path,
+            target.path,
+            selectedItems,
+            [sourcePane, targetPane],
+        );
+    }
+
+    async moveSelectedToDirectory(pane, targetIndex, selectedItems) {
+        if (this.transferExecutionInProgress) return 'unavailable';
+        const state = this.panes[pane];
+        const directory = state?.files?.[targetIndex];
+        const sourceId = this.getPaneSourceId(state);
+        if (
+            !sourceId
+            || !directory?.is_dir
+            || !this.sourceCan(state, 'rename')
+            || !this.sourceCan(state, 'write')
+            || !Array.isArray(selectedItems)
+            || selectedItems.length === 0
+        ) return 'unavailable';
+        if (selectedItems.some(item => item?.name === directory.name)) {
+            this.showNotification(
+                this.t(
+                    'fm.workspace.cannotMoveIntoItself',
+                    'A folder cannot be moved into itself.',
+                ),
+                'warning',
+            );
+            return 'unavailable';
+        }
+
+        return this.moveItemsWithinSource(
+            sourceId,
+            state.path,
+            this.joinPath(state.path, directory.name),
+            selectedItems,
+            [pane],
+        );
+    }
+
+    async moveItemsWithinSource(
+        sourceId,
+        sourcePath,
+        targetPath,
+        selectedItems,
+        panesToRefresh,
+    ) {
+        if (
+            this.transferExecutionInProgress
+            || !sourceId
+            || sourcePath === targetPath
+            || !Array.isArray(selectedItems)
+            || selectedItems.length === 0
+        ) return 'unavailable';
+
         this.transferExecutionInProgress = true;
         this.conflictAction = null;
         this.applyToAll = false;
         let outcome = 'complete';
         try {
             for (const item of selectedItems) {
-                const oldPath = this.joinPath(source.path, item.name);
-                const newPath = this.joinPath(target.path, item.name);
+                const oldPath = this.joinPath(sourcePath, item.name);
+                const newPath = this.joinPath(targetPath, item.name);
                 const requestId = this.nextRequestId('workspace', 'move');
                 const response = await new Promise(resolve => {
                     let settled = false;
@@ -3330,8 +3332,7 @@ class SFTPFileManager {
             }
         } finally {
             this.transferExecutionInProgress = false;
-            this.refreshPane(sourcePane);
-            this.refreshPane(targetPane);
+            [...new Set(panesToRefresh)].forEach(pane => this.refreshPane(pane));
         }
         if (outcome === 'complete') {
             this.showNotification(
@@ -3484,8 +3485,7 @@ class SFTPFileManager {
         if (this.dragSource && this.dragSource !== targetPane && this.draggedItems.length > 0) {
             this.activePane = this.dragSource;
             this.executeTransfer();
-            this.draggedItems = [];
-            this.dragSource = null;
+            this.clearInternalDragState();
             return;
         }
 
@@ -3514,8 +3514,7 @@ class SFTPFileManager {
             this.showNotification(this.t('fm.selectSourceFirst', 'Please select a source first'), 'warning');
         }
 
-        this.draggedItems = [];
-        this.dragSource = null;
+        this.clearInternalDragState();
     }
 
     async uploadDesktopItemsToSSH(entries, targetPane) {
@@ -3712,6 +3711,57 @@ class SFTPFileManager {
             return 'right';
         }
         return null;
+    }
+
+    canDropDraggedItemsOnDirectory(pane, index) {
+        const state = this.panes?.[pane];
+        const directory = state?.files?.[index];
+        if (
+            this.dragSource !== pane
+            || !directory?.is_dir
+            || this.draggedItems.length === 0
+            || !this.sourceCan(state, 'rename')
+            || !this.sourceCan(state, 'write')
+        ) return false;
+        return !this.draggedItems.some(item => item?.name === directory.name);
+    }
+
+    setupDirectoryDropTarget(element, pane, index) {
+        element.addEventListener('dragover', event => {
+            if (!this.canDropDraggedItemsOnDirectory(pane, index)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            element.classList.add('fm-directory-drop-target');
+        });
+        element.addEventListener('dragleave', event => {
+            if (!element.contains(event.relatedTarget)) {
+                element.classList.remove('fm-directory-drop-target');
+            }
+        });
+        element.addEventListener('drop', event => {
+            if (!this.canDropDraggedItemsOnDirectory(pane, index)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            element.classList.remove('fm-directory-drop-target');
+            this.handleDirectoryDrop(pane, index);
+        });
+    }
+
+    clearInternalDragState() {
+        if (typeof document !== 'undefined' && document.querySelectorAll) {
+            document.querySelectorAll('.fm-directory-drop-target').forEach(element => {
+                element.classList.remove('fm-directory-drop-target');
+            });
+        }
+        this.draggedItems = [];
+        this.dragSource = null;
+    }
+
+    handleDirectoryDrop(pane, index) {
+        const items = [...this.draggedItems];
+        this.clearInternalDragState();
+        return this.moveSelectedToDirectory(pane, index, items);
     }
 
     handleDragStart(e, pane, index) {

@@ -64,12 +64,13 @@ def test_file_manager_does_not_open_source_launcher_implicitly():
     assert 'openSourceLauncher' not in layout_block
 
 
-def test_file_manager_exposes_guided_move_and_concise_smb_help():
+def test_file_manager_exposes_folder_drop_move_and_concise_smb_help():
     source = FILE_MANAGER_JS.read_text(encoding='utf-8')
     template = INDEX_TEMPLATE.read_text(encoding='utf-8')
 
-    assert source.count('data-pane-action="move"') == 2
-    assert 'startGuidedMove(sourcePane = this.activePane)' in source
+    assert 'data-pane-action="move"' not in source
+    assert 'setupDirectoryDropTarget(item, pane, index)' in source
+    assert 'moveSelectedToDirectory(pane, targetIndex, selectedItems)' in source
     assert 'SFTP-File-Workspace-and-Transfers' in template
     assert 'target="_blank" rel="noopener noreferrer"' in template
     assert 'For Active Directory or TrueNAS, try DNS domain' not in template

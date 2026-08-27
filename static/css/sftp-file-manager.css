@@ -1992,10 +1992,6 @@
     color: var(--error-color);
 }
 
-.fm-pane-toolbar button[data-pane-action="move"]:not(:disabled) {
-    color: var(--accent-color);
-}
-
 .fm-pane-toolbar .material-icons {
     font-size: 17px;
 }
@@ -2129,15 +2125,6 @@
     text-align: center;
 }
 
-.fm-pane.fm-guided-move-target {
-    border-color: color-mix(in srgb, var(--accent-color) 72%, var(--border-color));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 32%, transparent);
-}
-
-.fm-pane.fm-guided-move-target .fm-path-input {
-    border-color: var(--accent-color);
-}
-
 .fm-transfer-direction {
     z-index: 1;
     display: flex;
@@ -2151,6 +2138,10 @@
     border: 1px solid var(--border-color);
     border-radius: 9px;
     background: var(--bg-secondary);
+}
+
+.fm-transfer-direction[hidden] {
+    display: none;
 }
 
 .fm-transfer-direction .btn-text {
@@ -2172,6 +2163,22 @@
 .fm-transfer-direction:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-item.directory.fm-directory-drop-target {
+    color: var(--accent-on-text, #fff);
+    background: color-mix(in srgb, var(--accent-primary) 84%, var(--bg-secondary));
+    box-shadow:
+        inset 3px 0 var(--accent-on-text, #fff),
+        inset 0 0 0 1px color-mix(in srgb, var(--accent-on-text, #fff) 42%, transparent);
+}
+
+#sftpFileManager.fm-workspace-mode .fm-file-item.directory.fm-directory-drop-target .fm-file-name,
+#sftpFileManager.fm-workspace-mode .fm-file-item.directory.fm-directory-drop-target .fm-file-icon,
+#sftpFileManager.fm-workspace-mode .fm-file-item.directory.fm-directory-drop-target .fm-file-size,
+#sftpFileManager.fm-workspace-mode .fm-file-item.directory.fm-directory-drop-target .fm-file-modified,
+#sftpFileManager.fm-workspace-mode .fm-file-item.directory.fm-directory-drop-target .fm-file-permissions {
+    color: inherit;
 }
 
 #sftpFileManager.fm-workspace-mode .fm-pane-footer {

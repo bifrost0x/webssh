@@ -18,9 +18,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=17">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=18">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=8">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=24">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=25">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -1360,7 +1360,7 @@
     <script>
         window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
     </script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=34"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=35"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=6"></script>
@@ -1393,7 +1393,7 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/smb-source-dialog.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=30"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=31"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/primary-workspace-controller.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=26"></script>

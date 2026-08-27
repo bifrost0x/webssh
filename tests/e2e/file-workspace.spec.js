@@ -316,7 +316,7 @@ test('file checkboxes support additive selection and select all', async ({ page 
     await assertNoExternalRequests(page);
 });
 
-test('guided move opens the same source in the destination pane', async ({ page }) => {
+test('same-pane drag moves the selection into a folder without a Move toolbar action', async ({ page }) => {
     await openWorkspaceWithSources(page);
     await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.evaluate(() => {
@@ -326,48 +326,49 @@ test('guided move opens the same source in the destination pane', async ({ page 
             autoHomeEligible: false,
             pendingHomeRequestId: null,
             path: '/srv/source',
-            files: [{
-                name: 'report.txt', is_dir: false, size: 12,
-                mode: 0o100640, modified: 1786598100,
-            }],
-            selected: new Set([0]),
+            files: [
+                {
+                    name: 'report.txt', is_dir: false, size: 12,
+                    mode: 0o100640, modified: 1786598100,
+                },
+                {
+                    name: 'archive', is_dir: true, size: 0,
+                    mode: 0o40750, modified: 1786598100,
+                },
+            ],
+            selected: new Set(),
         });
         manager.renderPane('left');
     });
 
-    const moveAction = page.locator('[data-pane-toolbar="left"] [data-pane-action="move"]');
-    await expect(moveAction).toBeEnabled();
-    await moveAction.click();
-
-    await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-split/);
-    await expect(page.locator('#fmRightTabs')).toContainText('prod-web-01');
-    await expect(page.locator('#fmRightPane')).toHaveClass(/fm-guided-move-target/);
-    await expect(page.locator('#fmRightPath')).toBeFocused();
-    await expect(page.locator('#fmTransferHint')).toContainText('destination folder');
-    expect(await page.evaluate(() => Array.from(
-        window.sftpFileManager.panes.left.selected,
-    ))).toEqual([0]);
-
-    await page.evaluate(() => {
-        const manager = window.sftpFileManager;
-        Object.assign(manager.panes.right, {
-            loading: false,
-            autoHomeEligible: false,
-            pendingHomeRequestId: null,
-            pendingDirectoryRequestId: null,
-            pendingDirectoryPath: null,
-            path: '/srv/archive',
-            files: [],
-        });
-        manager.renderPane('right');
+    await expect(page.locator('[data-pane-action="move"]')).toHaveCount(0);
+    const highlighted = await page.evaluate(() => {
+        const source = document.querySelector('#fmLeftList .fm-file-item[data-index="0"]');
+        const target = document.querySelector('#fmLeftList .fm-file-item[data-index="1"]');
+        const dataTransfer = new DataTransfer();
+        source.dispatchEvent(new DragEvent('dragstart', {
+            bubbles: true, cancelable: true, dataTransfer,
+        }));
+        target.dispatchEvent(new DragEvent('dragover', {
+            bubbles: true, cancelable: true, dataTransfer,
+        }));
+        const active = target.classList.contains('fm-directory-drop-target');
+        target.dispatchEvent(new DragEvent('drop', {
+            bubbles: true, cancelable: true, dataTransfer,
+        }));
+        source.dispatchEvent(new DragEvent('dragend', {
+            bubbles: true, cancelable: true, dataTransfer,
+        }));
+        return active;
     });
-    await expect(page.locator('#fmTransferRight')).toBeEnabled();
-    await expect(page.locator('#fmTransferRight')).toContainText('Move');
-    await page.locator('#fmTransferRight').click();
+    expect(highlighted).toBe(true);
     await expect.poll(() => page.evaluate(() => (
-        window.__fileWorkspaceEvents.some(item => item.event === 'rename_file')
-    ))).toBe(true);
-    await expect(page.locator('#fmRightPane')).not.toHaveClass(/fm-guided-move-target/);
+        window.__fileWorkspaceEvents.find(item => item.event === 'rename_file')?.payload
+    ))).toMatchObject({
+        old_path: '/srv/source/report.txt',
+        new_path: '/srv/source/archive/report.txt',
+    });
+    await expect(page.locator('.fm-directory-drop-target')).toHaveCount(0);
     await assertNoExternalRequests(page);
 });
 
