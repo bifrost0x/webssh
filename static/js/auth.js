@@ -99,41 +99,6 @@
         });
     }
 
-    function setupLoginValidation() {
-        const username = document.getElementById('username');
-        const password = document.getElementById('password');
-        const usernameHint = document.getElementById('loginUsernameHint');
-        const passwordHint = document.getElementById('loginPasswordHint');
-
-        if (!username || !password) {
-            return;
-        }
-
-        username.addEventListener('input', () => {
-            const value = username.value.trim();
-            setFieldState(
-                username,
-                usernameHint,
-                value
-                    ? t('auth.validationLooksGood', 'Looks good')
-                    : t('auth.usernameRequired', 'Username required'),
-                Boolean(value)
-            );
-        });
-
-        password.addEventListener('input', () => {
-            const value = password.value;
-            setFieldState(
-                password,
-                passwordHint,
-                value
-                    ? t('auth.validationReady', 'Ready')
-                    : t('auth.passwordRequired', 'Password required'),
-                Boolean(value)
-            );
-        });
-    }
-
     function setupRegisterValidation() {
         const username = document.getElementById('username');
         const password = document.getElementById('password');
@@ -592,7 +557,6 @@
         setupAuthMethodSwitcher();
         setupAuthenticationSources();
         setupPasswordToggles();
-        setupLoginValidation();
         setupRegisterValidation();
         setupChangePasswordValidation();
         setupTotpMfa();

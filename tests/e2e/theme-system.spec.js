@@ -119,6 +119,41 @@ async function readThemeState(page) {
     });
 }
 
+async function readPaperAuthState(page) {
+    return page.evaluate(() => {
+        const rgb = value => value.match(/[\d.]+/g).map(Number).slice(0, 3);
+        const luminance = value => {
+            const channels = rgb(value).map(channel => {
+                const normalized = channel / 255;
+                return normalized <= 0.04045
+                    ? normalized / 12.92
+                    : ((normalized + 0.055) / 1.055) ** 2.4;
+            });
+            return (0.2126 * channels[0])
+                + (0.7152 * channels[1])
+                + (0.0722 * channels[2]);
+        };
+        const contrast = (foreground, background) => {
+            const foregroundLuminance = luminance(foreground);
+            const backgroundLuminance = luminance(background);
+            return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+                / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+        };
+        const darkContextSurface = 'rgb(7, 12, 21)';
+        const contrastFor = selector => contrast(
+            getComputedStyle(document.querySelector(selector)).color,
+            darkContextSurface,
+        );
+
+        return {
+            bodyBackground: getComputedStyle(document.body).backgroundColor,
+            titleContrast: contrastFor('.auth-context-copy h1'),
+            itemContrast: contrastFor('.auth-context-panel :is(.auth-product-pillars, .auth-path-list) strong'),
+            footerContrast: contrastFor('.auth-context-footer'),
+        };
+    });
+}
+
 function expectStableGeometry(actual, expected) {
     for (const region of Object.keys(expected)) {
         for (const dimension of Object.keys(expected[region])) {
@@ -224,6 +259,27 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     }));
     expect(authTheme.backdropImage).toContain('paper-blueprint.png');
     expect(authTheme.cardImage).toContain('paper-blueprint.png');
+
+    for (const path of ['/login', '/register']) {
+        await page.goto(path);
+        await expect(page.locator('body')).toHaveAttribute('data-theme', 'paper');
+        const authState = await readPaperAuthState(page);
+        expect(authState.bodyBackground).toBe('rgb(220, 229, 238)');
+        expect(authState.titleContrast).toBeGreaterThanOrEqual(7);
+        expect(authState.itemContrast).toBeGreaterThanOrEqual(7);
+        expect(authState.footerContrast).toBeGreaterThanOrEqual(4.5);
+    }
+
+    await page.goto('/login');
+    await page.getByRole('textbox', { name: 'Username' }).fill('e2e_mixed_mfa');
+    await page.getByRole('textbox', { name: 'Password' }).fill('browser-password');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+    await expect(page.getByRole('button', { name: 'Back to sign in' })).toBeVisible();
+    const mfaState = await readPaperAuthState(page);
+    expect(mfaState.bodyBackground).toBe('rgb(220, 229, 238)');
+    expect(mfaState.titleContrast).toBeGreaterThanOrEqual(7);
+    expect(mfaState.itemContrast).toBeGreaterThanOrEqual(7);
+    expect(mfaState.footerContrast).toBeGreaterThanOrEqual(4.5);
 });
 
 test('fun themes use local decorative backgrounds that cannot intercept input', async ({ page }) => {

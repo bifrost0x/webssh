@@ -2467,6 +2467,14 @@ body:has(.auth-access-dock) {
     background-size: auto, auto, cover;
 }
 
+body[data-theme="paper"]:has(.auth-access-dock) {
+    background-color: var(--ws2-canvas);
+    background-image:
+        radial-gradient(circle at 50% 58%, rgb(255 255 255 / 42%), transparent 46%),
+        linear-gradient(180deg, rgb(228 236 244 / 34%), rgb(202 216 229 / 76%)),
+        var(--theme-background-image);
+}
+
 .auth-utility-bar {
     position: relative;
     z-index: 100;
@@ -2586,6 +2594,11 @@ body:has(.auth-access-dock) {
 }
 
 .auth-context-panel {
+    --auth-context-text-primary: #f2f6fb;
+    --auth-context-text-secondary: #c4d0dc;
+    --auth-context-text-muted: #91a4b7;
+    --auth-context-accent: color-mix(in srgb, var(--ws2-accent) 58%, white);
+    --auth-context-border: rgb(151 176 204 / 42%);
     position: relative;
     display: flex;
     min-width: 0;
@@ -2663,7 +2676,7 @@ body:has(.auth-access-dock) {
 .auth-context-copy h1 {
     max-width: 18ch;
     margin: 14px 0 0;
-    color: var(--ws2-text-primary);
+    color: var(--auth-context-text-primary);
     font-size: clamp(25px, 2.25vw, 42px);
     font-weight: 650;
     letter-spacing: -0.04em;
@@ -2673,7 +2686,7 @@ body:has(.auth-access-dock) {
 .auth-context-copy > p {
     max-width: 46ch;
     margin: 16px 0 0;
-    color: var(--ws2-text-secondary);
+    color: var(--auth-context-text-secondary);
     font-size: 13px;
     line-height: 1.6;
 }
@@ -2695,19 +2708,19 @@ body:has(.auth-access-dock) {
     gap: 10px;
     padding: 13px 14px;
     overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--ws2-border-strong) 86%, transparent);
+    border: 1px solid var(--auth-context-border);
     border-radius: var(--ws2-radius-sm);
     background: rgb(7 12 21 / 68%);
 }
 
 .auth-product-pillars .material-icons {
-    color: var(--ws2-accent-strong);
+    color: var(--auth-context-accent);
     font-size: 20px;
 }
 
 .auth-product-pillars strong {
     min-width: 0;
-    color: var(--ws2-text-primary);
+    color: var(--auth-context-text-primary);
     font-size: clamp(11px, 0.72vw, 14px);
     font-weight: 680;
     line-height: 1.3;
@@ -2728,13 +2741,13 @@ body:has(.auth-access-dock) {
     align-items: center;
     gap: 10px;
     padding: 10px 11px;
-    border: 1px solid color-mix(in srgb, var(--ws2-border-strong) 86%, transparent);
+    border: 1px solid var(--auth-context-border);
     border-radius: var(--ws2-radius-sm);
     background: rgb(7 12 21 / 72%);
 }
 
 .auth-path-list .material-icons {
-    color: var(--ws2-accent-strong);
+    color: var(--auth-context-accent);
     font-size: 20px;
 }
 
@@ -2745,25 +2758,29 @@ body:has(.auth-access-dock) {
 }
 
 .auth-path-list strong {
-    color: var(--ws2-text-primary);
+    color: var(--auth-context-text-primary);
     font-size: 11px;
     font-weight: 700;
 }
 
 .auth-path-list small {
-    color: var(--ws2-text-muted);
+    color: var(--auth-context-text-muted);
     font-size: 9px;
     line-height: 1.35;
 }
 
 .auth-context-footer {
     margin: 0;
-    color: var(--ws2-text-muted);
+    color: var(--auth-context-text-muted);
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.04em;
     line-height: 1.3;
     text-align: center;
+}
+
+.auth-context-panel .auth-brand-eyebrow {
+    color: var(--auth-context-accent);
 }
 
 .auth-access-dock .auth-form-panel {
