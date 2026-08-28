@@ -254,6 +254,17 @@ async function seedLinuxSession(page, options = {}) {
                     });
                     return window.socket;
                 }
+                if (event === 'rename_file') {
+                    const acknowledgement = rest.find(value => typeof value === 'function');
+                    acknowledgement?.({
+                        success: true,
+                        source_id: payload.source_id,
+                        old_path: payload.old_path,
+                        new_path: payload.new_path,
+                        request_id: payload.request_id,
+                    });
+                    return window.socket;
+                }
                 if (['ssh_input', 'ssh_resize'].includes(event)) return window.socket;
             }
             return originalEmit(event, payload, ...rest);
@@ -477,6 +488,29 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     await expect(filesTab).toBeEnabled();
     await expect(filesTab).toHaveAttribute('aria-selected', 'false');
     await expect(page.locator('#sessionFilesPanel')).toBeHidden();
+    await assertNoExternalRequests(page);
+});
+
+test('embedded Workspace SFTP moves a file by dropping it onto a sibling folder', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('[data-pane-action="move"]')).toHaveCount(0);
+    await expect(page.locator('#fmTransferBetween')).toBeHidden();
+
+    const source = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
+    const target = page.locator('#fmLeftList .fm-file-item[data-index="0"]');
+    await source.dragTo(target);
+
+    await expect.poll(() => page.evaluate(() => (
+        window.__workspaceEvents.find(event => event.event === 'rename_file')?.payload
+    ))).toMatchObject({
+        source_id: 'sftp-session:workspace-linux',
+        old_path: '/srv/webssh/current/compose.yaml',
+        new_path: '/srv/webssh/current/releases/compose.yaml',
+    });
+    await expect(page.locator('.fm-directory-drop-target')).toHaveCount(0);
     await assertNoExternalRequests(page);
 });
 

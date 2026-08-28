@@ -44,7 +44,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/session-manager.js'": '?v=12',
         "filename='js/terminal-manager.js'": '?v=10',
         "filename='js/smb-source-dialog.js'": '?v=5',
-        "filename='js/sftp-file-manager.js'": '?v=31',
+        "filename='js/sftp-file-manager.js'": '?v=32',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=4',
         "filename='js/command-set-manager.js'": '?v=6',

@@ -1439,7 +1439,7 @@ test('workspace operation distinguishes same-source move from cross-source copy'
     assert.equal(manager.canTransferBetweenPanes('left', 'right'), true);
 });
 
-test('same-source move hides the directional action and gives a drag hint', () => {
+test('one contextual inter-pane action follows the active selection', () => {
     const previousDocument = global.document;
     const hint = { textContent: '' };
     const icon = { textContent: '' };
@@ -1447,6 +1447,8 @@ test('same-source move hides the directional action and gives a drag hint', () =
     const button = {
         dataset: {},
         title: '',
+        disabled: true,
+        hidden: true,
         classList: classList(),
         querySelector(selector) {
             return selector === '.material-icons' ? icon : text;
@@ -1455,7 +1457,9 @@ test('same-source move hides the directional action and gives a drag hint', () =
     };
     global.document = {
         getElementById(id) {
-            return id === 'fmTransferHint' ? hint : null;
+            if (id === 'fmTransferHint') return hint;
+            if (id === 'fmTransferBetween') return button;
+            return null;
         },
         querySelectorAll() { return []; },
         querySelector() { return null; },
@@ -1479,22 +1483,33 @@ test('same-source move hides the directional action and gives a drag hint', () =
     );
     Object.assign(manager, {
         displayMode: 'modal',
+        activePane: 'right',
         t(_key, fallback) { return fallback; },
     });
 
     try {
-        manager.updateWorkspaceOperationButton(button, 'move', 'LeftToRight');
         manager.updateWorkspaceActions();
 
-        assert.equal(icon.textContent, 'drive_file_move');
+        assert.equal(icon.textContent, 'arrow_forward');
         assert.equal(text.textContent, 'Move');
         assert.equal(button.title, 'Move left to right');
-        assert.equal(button.hidden, true);
-        assert.equal(hint.textContent, 'Drag items onto a folder to move them');
+        assert.equal(button.hidden, false);
+        assert.equal(button.disabled, false);
+        assert.equal(button.dataset.sourcePane, 'left');
+        assert.equal(hint.textContent, 'Move 1 selected');
 
         manager.panes.left.selected.clear();
         manager.updateWorkspaceActions();
-        assert.equal(hint.textContent, 'Drag items onto a folder to move them');
+        assert.equal(button.hidden, true);
+        assert.equal(button.disabled, true);
+        assert.equal(hint.textContent, 'Select files');
+
+        manager.panes.right.files = [{ name: 'archive.txt', is_dir: false }];
+        manager.panes.right.selected.add(0);
+        manager.updateWorkspaceActions();
+        assert.equal(icon.textContent, 'arrow_back');
+        assert.equal(button.hidden, false);
+        assert.equal(button.dataset.sourcePane, 'right');
     } finally {
         global.document = previousDocument;
     }
@@ -1734,6 +1749,32 @@ test('same-source drag advertises a move instead of a copy', () => {
 
     manager.handleDragStart({ dataTransfer }, 'left', 0);
 
+    assert.equal(dataTransfer.effectAllowed, 'move');
+});
+
+test('embedded same-pane drag advertises a move without a second pane', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const item = { name: 'report.txt', is_dir: false };
+    manager.panes.left = filePane(manager, 'sftp-session:embedded', {
+        path: '/source',
+        files: [item, { name: 'archive', is_dir: true }],
+        selected: new Set([0]),
+    });
+    manager.panes.right = manager.createEmptyPaneState();
+    Object.assign(manager, {
+        displayMode: 'embedded',
+        draggedItems: [],
+        dragSource: null,
+    });
+    const dataTransfer = {
+        effectAllowed: '',
+        setData() {},
+    };
+
+    manager.handleDragStart({ dataTransfer }, 'left', 0);
+
+    assert.equal(manager.workspace.layout, 'single');
     assert.equal(dataTransfer.effectAllowed, 'move');
 });
 
