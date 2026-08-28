@@ -1005,6 +1005,11 @@ class SFTPFileManager {
         this.setupSocketListeners();
         this.setupKeyboardShortcuts();
         this.loadWorkspaceSmbShares();
+        window.addEventListener('languageChanged', () => {
+            this.applyTranslations();
+            if (this.workspace) { this.updateLayoutControls(); }
+            if (this.sourceLauncherPane) { this.renderSourceLauncher(); }
+        });
     }
 
     createModal() {
@@ -1100,8 +1105,8 @@ class SFTPFileManager {
                         <!-- Left Pane -->
                         <div class="fm-pane active" id="fmLeftPane" data-pane="left">
                             <div class="fm-pane-header">
-                                <div class="fm-source-tabs" id="fmLeftTabs" role="tablist" aria-label="Left side sources"></div>
-                                <button type="button" class="fm-source-tab-add" data-source-target="left" aria-label="Open source" title="Open source">
+                                <div class="fm-source-tabs" id="fmLeftTabs" role="tablist" aria-label="Left side sources" data-i18n-aria-label="fm.workspace.leftSources"></div>
+                                <button type="button" class="fm-source-tab-add" data-source-target="left" aria-label="Open source" title="Open source" data-i18n-aria-label="fm.workspace.openSource" data-i18n-title="fm.workspace.openSource">
                                     <span class="material-icons" aria-hidden="true">add</span>
                                 </button>
                                 <select class="fm-source-select form-control fm-legacy-source-select" id="fmLeftSource" tabindex="-1" aria-hidden="true">
@@ -1157,7 +1162,7 @@ class SFTPFileManager {
 
                         <div class="fm-transfer-rail" aria-label="Transfer between panes" data-i18n-aria-label="fm.workspace.transferBetween">
                             <span class="fm-transfer-hint" id="fmTransferHint" aria-live="polite">Select files</span>
-                            <button type="button" class="fm-transfer-direction" id="fmTransferBetween" aria-label="Transfer left to right" title="Transfer left to right" hidden>
+                            <button type="button" class="fm-transfer-direction" id="fmTransferBetween" aria-label="Transfer left to right" title="Transfer left to right" data-i18n-aria-label="fm.workspace.transferLeftToRight" data-i18n-title="fm.workspace.transferLeftToRight" hidden>
                                 <span class="material-icons" aria-hidden="true">arrow_forward</span>
                                 <span class="btn-text" data-i18n="fm.transfer">Transfer</span>
                             </button>
@@ -1166,8 +1171,8 @@ class SFTPFileManager {
                         <!-- Right Pane -->
                         <div class="fm-pane" id="fmRightPane" data-pane="right">
                             <div class="fm-pane-header">
-                                <div class="fm-source-tabs" id="fmRightTabs" role="tablist" aria-label="Right side sources"></div>
-                                <button type="button" class="fm-source-tab-add" data-source-target="right" aria-label="Open source" title="Open source">
+                                <div class="fm-source-tabs" id="fmRightTabs" role="tablist" aria-label="Right side sources" data-i18n-aria-label="fm.workspace.rightSources"></div>
+                                <button type="button" class="fm-source-tab-add" data-source-target="right" aria-label="Open source" title="Open source" data-i18n-aria-label="fm.workspace.openSource" data-i18n-title="fm.workspace.openSource">
                                     <span class="material-icons" aria-hidden="true">add</span>
                                 </button>
                                 <select class="fm-source-select form-control fm-legacy-source-select" id="fmRightSource" tabindex="-1" aria-hidden="true">

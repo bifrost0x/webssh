@@ -14,6 +14,7 @@ def _create_user(app, username, *, is_admin=False):
         assert error is None
         user.is_admin = is_admin
         db.session.commit()
+        return user.id
 
 
 def _login(client, username):
@@ -81,8 +82,34 @@ def test_settings_center_combines_preferences_security_and_admin_navigation(
     assert b'settings-back-link' in response.data
     assert b'id="settingsMobileSection"' in response.data
     assert b'id="adminUserFilterStatus"' in response.data
+    assert b'<details class="github-auth-setup-guide" id="githubAuthSetupGuide">' in response.data
+    assert b'<details class="github-auth-setup-guide" open' not in response.data
     assert b'href="/admin#' not in response.data
     assert b'id="settingsModal"' not in response.data
+
+
+def test_linked_github_identity_is_presented_as_a_security_method(app, client):
+    from app.models import GitHubIdentity, db
+
+    user_id = _create_user(app, "github_security_user")
+    with app.app_context():
+        db.session.add(GitHubIdentity(
+            user_id=user_id,
+            github_user_id="424242",
+            login="octo-user",
+        ))
+        db.session.commit()
+    _login(client, "github_security_user")
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    methods = response.data.index(b'id="settingsSecurityMethodsTitle"')
+    github = response.data.index(b'id="github"')
+    assert methods < github
+    assert b'class="admin-settings-row settings-security-method-row settings-security-method-row-github"' in response.data
+    assert b'data-i18n="security.manageGithubHint"' in response.data
+    assert b'class="github-identity-action-label"' in response.data
 
 
 def test_standard_user_settings_do_not_expose_administration_navigation(

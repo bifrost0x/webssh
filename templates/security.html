@@ -10,16 +10,16 @@
     <meta name="oidc-enabled" content="{{ 'true' if oidc_enabled else 'false' }}">
     <meta name="ldap-enabled" content="{{ 'true' if ldap_enabled else 'false' }}">
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
-    <title>Settings · Web SSH Terminal</title>
+    <title data-i18n="settings.pageTitle">Settings · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=8">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=25">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}">
     <header class="header">
         <div class="header-content">
-            <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces">
+            <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">
                 <img class="app-brand-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}" alt="WebSSH">
             </a>
             {% if recovery_mode %}
@@ -33,21 +33,21 @@
         </div>
     </header>
     <main class="admin-main settings-center-main">
-        <aside class="admin-navigation" aria-label="Settings">
-            <div class="admin-navigation-title"><span class="material-icons" aria-hidden="true">settings</span><span>Settings Center</span></div>
+        <aside class="admin-navigation" aria-label="Settings" data-i18n-aria-label="settings.title">
+            <div class="admin-navigation-title"><span class="material-icons" aria-hidden="true">settings</span><span data-i18n="settings.center">Settings Center</span></div>
             <div class="settings-mobile-navigation">
-                <label for="settingsMobileSection">Settings section</label>
-                <select id="settingsMobileSection" class="form-control" aria-label="Settings section"></select>
+                <label for="settingsMobileSection" data-i18n="settings.section">Settings section</label>
+                <select id="settingsMobileSection" class="form-control" aria-label="Settings section" data-i18n-aria-label="settings.section"></select>
             </div>
             <div class="admin-tabs settings-center-navigation">
             {% if recovery_mode %}
-            <p class="admin-nav-group">Restore access</p>
+            <p class="admin-nav-group" data-i18n="settings.restoreAccess">Restore access</p>
             <button class="admin-tab active" type="button" data-account-section="factors"><span class="material-icons" aria-hidden="true">health_and_safety</span><span data-i18n="security.recoverySession">Recovery session</span></button>
             {% else %}
-            <p class="admin-nav-group">My account</p>
-            <button class="admin-tab" type="button" data-account-section="preferences"><span class="material-icons" aria-hidden="true">tune</span><span>Preferences</span></button>
-            <button class="admin-tab active" type="button" data-account-section="security-overview"><span class="material-icons" aria-hidden="true">shield</span><span>Security overview</span></button>
-            <button class="admin-tab" type="button" data-account-section="factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span>Passkeys &amp; MFA</span></button>
+            <p class="admin-nav-group" data-i18n="settings.myAccount">My account</p>
+            <button class="admin-tab" type="button" data-account-section="preferences"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="account.preferences">Preferences</span></button>
+            <button class="admin-tab active" type="button" data-account-section="security-overview"><span class="material-icons" aria-hidden="true">shield</span><span data-i18n="settings.securityOverview">Security overview</span></button>
+            <button class="admin-tab" type="button" data-account-section="factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span data-i18n="security.passkeysAndMfa">Passkeys &amp; MFA</span></button>
             {% if recovery_codes_enabled %}
             <button class="admin-tab" type="button" data-account-section="recovery"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="security.recoveryCodes">Recovery codes</span></button>
             {% endif %}
@@ -55,17 +55,17 @@
             <button class="admin-tab" type="button" data-account-section="password"><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="security.password">Password</span></button>
             {% endif %}
             {% if host_key_management_enabled %}
-            <button class="admin-tab" type="button" data-account-section="ssh-host-trust"><span class="material-icons" aria-hidden="true">dns</span><span>Personal SSH trust</span></button>
+            <button class="admin-tab" type="button" data-account-section="ssh-host-trust"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="security.personalSshTrust">Personal SSH trust</span></button>
             {% endif %}
             {% if admin_panel_enabled and is_admin %}
-            <p class="admin-nav-group"><span>Administration</span><small>Admin only</small></p>
+            <p class="admin-nav-group"><span data-i18n="settings.administration">Administration</span><small data-i18n="settings.adminOnly">Admin only</small></p>
             <button class="admin-tab" type="button" data-tab="users"><span class="material-icons" aria-hidden="true">group</span><span data-i18n="admin.users">Users</span></button>
-            <button class="admin-tab" type="button" data-tab="settings" data-settings-section="authentication"><span class="material-icons" aria-hidden="true">key</span><span>Authentication</span></button>
-            <button class="admin-tab" type="button" data-tab="settings" data-settings-section="registration"><span class="material-icons" aria-hidden="true">person_add</span><span>Registration</span></button>
-            {% if host_key_management_enabled %}<button class="admin-tab" type="button" data-tab="settings" data-settings-section="host-trust"><span class="material-icons" aria-hidden="true">verified_user</span><span>Global SSH trust</span></button>{% endif %}
+            <button class="admin-tab" type="button" data-tab="settings" data-settings-section="authentication"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="admin.authentication">Authentication</span></button>
+            <button class="admin-tab" type="button" data-tab="settings" data-settings-section="registration"><span class="material-icons" aria-hidden="true">person_add</span><span data-i18n="admin.registration">Registration</span></button>
+            {% if host_key_management_enabled %}<button class="admin-tab" type="button" data-tab="settings" data-settings-section="host-trust"><span class="material-icons" aria-hidden="true">verified_user</span><span data-i18n="admin.globalSshTrust">Global SSH trust</span></button>{% endif %}
             {% if audit_export_enabled %}
             <button class="admin-tab" type="button" data-tab="audit"><span class="material-icons" aria-hidden="true">receipt_long</span><span data-i18n="admin.auditLogs">Audit Logs</span></button>
-            <button class="admin-tab" type="button" data-tab="settings" data-settings-section="retention"><span class="material-icons" aria-hidden="true">inventory_2</span><span>Audit retention</span></button>
+            <button class="admin-tab" type="button" data-tab="settings" data-settings-section="retention"><span class="material-icons" aria-hidden="true">inventory_2</span><span data-i18n="admin.auditRetention">Audit retention</span></button>
             {% endif %}
             <button class="admin-tab" type="button" data-tab="backup"><span class="material-icons" aria-hidden="true">backup</span><span data-i18n="backup.title">Backup &amp; Restore</span></button>
             {% endif %}
@@ -76,34 +76,34 @@
         <div class="admin-content settings-center-content">
         {% if not recovery_mode %}
         <section class="admin-panel settings-account-panel hidden" data-account-panel="preferences">
-            <div class="admin-page-header"><div><h2>Preferences</h2><p>Personalize WebSSH and choose how terminal sessions behave.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="account.preferences">Preferences</h2><p data-i18n="settings.preferencesHint">Personalize WebSSH and choose how terminal sessions behave.</p></div></div>
             <div class="admin-settings-surface settings-preferences-surface">
-                <div class="admin-settings-intro"><h3 data-i18n="settings.appearance">Appearance</h3><p class="admin-muted">Theme and language apply to your signed-in WebSSH experience.</p></div>
+                <div class="admin-settings-intro"><h3 data-i18n="settings.appearance">Appearance</h3><p class="admin-muted" data-i18n="settings.appearanceHint">Theme and language apply to your signed-in WebSSH experience.</p></div>
                 <div class="admin-settings-row">
-                    <div><label for="settingsThemeSelect"><strong data-i18n="account.theme">Theme</strong></label><p class="admin-muted">Choose the visual theme used across workspaces and settings.</p></div>
+                    <div><label for="settingsThemeSelect"><strong data-i18n="account.theme">Theme</strong></label><p class="admin-muted" data-i18n="settings.themeHint">Choose the visual theme used across workspaces and settings.</p></div>
                     <select id="settingsThemeSelect" class="form-control settings-preference-control">
-                        <optgroup label="Professional Themes">
+                        <optgroup label="Professional Themes" data-i18n-label="settings.professionalThemes">
                             <option value="glass">Glass Ops</option><option value="solar">Solar Drift</option><option value="paper">Paper Ops</option><option value="noir">Noir Terminal</option><option value="arctic-ice">Arctic Ice</option><option value="rose-gold">Rose Gold</option><option value="obsidian">Obsidian</option>
                         </optgroup>
-                        <optgroup label="Fun Themes">
+                        <optgroup label="Fun Themes" data-i18n-label="settings.funThemes">
                             <option value="retro">Retro Future</option><option value="cyberpunk-neon">Cyberpunk Neon</option><option value="emerald-matrix">Emerald Matrix</option>
                         </optgroup>
                     </select>
                 </div>
                 <div class="admin-settings-row">
-                    <div><label for="settingsLanguageSelect"><strong data-i18n="account.language">Language</strong></label><p class="admin-muted">Change interface labels without reloading the page.</p></div>
+                    <div><label for="settingsLanguageSelect"><strong data-i18n="account.language">Language</strong></label><p class="admin-muted" data-i18n="settings.languageHint">Change interface labels without reloading the page.</p></div>
                     <select id="settingsLanguageSelect" class="form-control settings-preference-control"></select>
                 </div>
             </div>
             <div class="admin-settings-surface settings-preferences-surface">
-                <div class="admin-settings-intro"><h3 data-i18n="settings.terminal">Terminal</h3><p class="admin-muted">Control terminal history and what happens when sessions close.</p></div>
+                <div class="admin-settings-intro"><h3 data-i18n="settings.terminal">Terminal</h3><p class="admin-muted" data-i18n="settings.terminalHint">Control terminal history and what happens when sessions close.</p></div>
                 <div class="admin-settings-row">
-                    <div><label for="scrollbackInput"><strong data-i18n="account.scrollback">Scrollback</strong></label><p class="admin-muted">Number of terminal lines kept in this browser.</p></div>
+                    <div><label for="scrollbackInput"><strong data-i18n="account.scrollback">Scrollback</strong></label><p class="admin-muted" data-i18n="settings.scrollbackHint">Number of terminal lines kept in this browser.</p></div>
                     <div class="admin-inline-control"><input type="number" id="scrollbackInput" class="form-control" min="50" max="10000" step="50"><span data-i18n="account.lines">lines</span></div>
                 </div>
                 <div class="admin-settings-row">
                     <div><strong data-i18n="settings.closeConfirmation">Ask before closing a session</strong><p class="admin-muted" data-i18n="settings.closeConfirmationHint">Show a confirmation before closing an SSH tab.</p></div>
-                    <label class="admin-switch"><input type="checkbox" id="confirmSessionCloseInput"><span>Enabled</span></label>
+                    <label class="admin-switch"><input type="checkbox" id="confirmSessionCloseInput"><span data-i18n="common.enabled">Enabled</span></label>
                 </div>
                 <div class="admin-settings-row">
                     <div><label for="disconnectSessionActionSelect"><strong data-i18n="settings.disconnectBehavior">When an SSH connection ends</strong></label><p class="admin-muted" data-i18n="settings.disconnectBehaviorHint">Controls what happens after exit, logout, or an unexpected disconnect.</p></div>
@@ -115,7 +115,7 @@
         {% endif %}
 
         <section class="admin-panel settings-account-panel{% if recovery_mode %} hidden{% endif %}" data-account-panel="security-overview">
-            <div class="admin-page-header"><div><h2>Security overview</h2><p>Review how this account signs in and confirms protected changes.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="settings.securityOverview">Security overview</h2><p data-i18n="settings.securityOverviewHint">Review how this account signs in and confirms protected changes.</p></div></div>
         <section class="security-assurance-overview" id="securityAssuranceOverview" aria-labelledby="securityAssuranceTitle">
             <div class="security-overview-heading">
                 <div>
@@ -184,37 +184,34 @@
             {% if recovery_codes_enabled and not recovery_mode %}
             <pre id="passkeyMfaRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
             {% endif %}
-            {% if github_auth_enabled or github_identity_linked %}
-            <div class="admin-settings-row" id="github">
-                <div>
-                    <strong data-i18n="security.methodGithub">GitHub</strong>
-                    <p class="admin-muted" id="githubIdentityStatus">Loading linked account…</p>
-                </div>
-                <button class="btn btn-secondary" type="button" id="githubIdentityAction">Manage</button>
-            </div>
-            {% endif %}
         </section>
         <section class="admin-settings-surface settings-security-methods" aria-labelledby="settingsSecurityMethodsTitle">
-            <div class="admin-settings-intro"><h3 id="settingsSecurityMethodsTitle">Security methods</h3><p class="admin-muted">Review the credentials and recovery options available to this account.</p></div>
-            <div class="admin-settings-row">
-                <div><strong>Passkeys</strong><p class="admin-muted">Manage passwordless sign-in credentials.</p></div>
-                <button class="btn btn-secondary" type="button" data-account-jump="factors">Manage</button>
+            <div class="admin-settings-intro"><h3 id="settingsSecurityMethodsTitle" data-i18n="settings.securityMethods">Security methods</h3><p class="admin-muted" data-i18n="settings.securityMethodsHint">Review the credentials and recovery options available to this account.</p></div>
+            <div class="admin-settings-row settings-security-method-row">
+                <div class="settings-security-method-summary"><span class="material-icons settings-security-method-icon" aria-hidden="true">fingerprint</span><div><strong data-i18n="security.passkeys">Passkeys</strong><p class="admin-muted" data-i18n="security.managePasskeysHint">Manage passwordless sign-in credentials.</p></div></div>
+                <button class="btn btn-secondary" type="button" data-account-jump="factors" data-i18n="common.manage">Manage</button>
             </div>
-            <div class="admin-settings-row">
-                <div><strong>Authenticator app</strong><p class="admin-muted">Manage time-based one-time codes.</p></div>
-                <button class="btn btn-secondary" type="button" data-account-jump="factors">Manage</button>
+            <div class="admin-settings-row settings-security-method-row">
+                <div class="settings-security-method-summary"><span class="material-icons settings-security-method-icon" aria-hidden="true">phonelink_lock</span><div><strong data-i18n="security.authenticatorDefaultName">Authenticator app</strong><p class="admin-muted" data-i18n="security.manageAuthenticatorHint">Manage time-based one-time codes.</p></div></div>
+                <button class="btn btn-secondary" type="button" data-account-jump="factors" data-i18n="common.manage">Manage</button>
             </div>
+            {% if github_auth_enabled or github_identity_linked %}
+            <div class="admin-settings-row settings-security-method-row settings-security-method-row-github" id="github">
+                <div class="settings-security-method-summary"><span class="material-icons settings-security-method-icon" aria-hidden="true">link</span><div><strong data-i18n="security.methodGithub">GitHub</strong><p class="admin-muted" data-i18n="security.manageGithubHint">Connect or disconnect the GitHub identity used with this WebSSH account.</p><p class="settings-security-method-status" id="githubIdentityStatus" role="status" aria-live="polite" data-i18n="security.loadingLinkedAccount">Loading linked account…</p></div></div>
+                <button class="btn btn-secondary settings-security-method-action" type="button" id="githubIdentityAction" aria-describedby="githubIdentityStatus"><span class="material-icons" aria-hidden="true">link</span><span class="github-identity-action-label" data-i18n="security.connectGithub">Connect GitHub</span></button>
+            </div>
+            {% endif %}
             {% if recovery_codes_enabled %}
-            <div class="admin-settings-row">
-                <div><strong data-i18n="security.recoveryCodes">Recovery codes</strong><p class="admin-muted">Generate and store emergency sign-in codes.</p></div>
-                <button class="btn btn-secondary" type="button" data-account-jump="recovery">Manage</button>
+            <div class="admin-settings-row settings-security-method-row">
+                <div class="settings-security-method-summary"><span class="material-icons settings-security-method-icon" aria-hidden="true">vpn_key</span><div><strong data-i18n="security.recoveryCodes">Recovery codes</strong><p class="admin-muted" data-i18n="security.manageRecoveryCodesHint">Generate and store emergency sign-in codes.</p></div></div>
+                <button class="btn btn-secondary" type="button" data-account-jump="recovery" data-i18n="common.manage">Manage</button>
             </div>
             {% endif %}
         </section>
         </section>
 
         <section class="admin-panel settings-account-panel{% if not recovery_mode %} hidden{% endif %}" data-account-panel="factors">
-            <div class="admin-page-header"><div><h2>{% if recovery_mode %}<span data-i18n="security.recoverySession">Recovery session</span>{% else %}Passkeys &amp; MFA{% endif %}</h2><p>{% if recovery_mode %}Add a replacement factor before normal access continues.{% else %}Add, review, and remove strong authentication factors for this account.{% endif %}</p></div></div>
+            <div class="admin-page-header"><div><h2>{% if recovery_mode %}<span data-i18n="security.recoverySession">Recovery session</span>{% else %}<span data-i18n="security.passkeysAndMfa">Passkeys &amp; MFA</span>{% endif %}</h2><p>{% if recovery_mode %}<span data-i18n="security.confirmationRecovery">Add a replacement factor before normal access continues.</span>{% else %}<span data-i18n="security.factorsHint">Add, review, and remove strong authentication factors for this account.</span>{% endif %}</p></div></div>
         {% if recovery_mode %}
         <section class="admin-setting-row" id="recoveryRequiredNotice" style="max-width:none;">
             <h2 data-i18n="security.recoverySession">Recovery session</h2>
@@ -229,8 +226,8 @@
         </section>
         {% elif authentication_primary_method == 'github' %}
         <section class="admin-setting-row" id="githubManagedNotice" style="max-width:none;">
-            <h2>GitHub sign-in</h2>
-            <p class="admin-muted">GitHub controls this primary sign-in. WebSSH discards the temporary GitHub token after identity and organization checks.</p>
+            <h2 data-i18n="security.githubManagedTitle">GitHub sign-in</h2>
+            <p class="admin-muted" data-i18n="security.githubManagedHint">GitHub controls this primary sign-in. WebSSH discards the temporary GitHub token after identity and organization checks.</p>
         </section>
         {% elif ldap_managed %}
         <section class="admin-setting-row" id="ldapManagedNotice" style="max-width:none;">
@@ -290,7 +287,7 @@
 
         {% if recovery_codes_enabled and not recovery_mode %}
         <section class="admin-panel settings-account-panel hidden" data-account-panel="recovery">
-            <div class="admin-page-header"><div><h2 data-i18n="security.recoveryCodes">Recovery codes</h2><p>Generate and securely store one-time codes for emergency sign-in.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="security.recoveryCodes">Recovery codes</h2><p data-i18n="security.recoveryCodesPageHint">Generate and securely store one-time codes for emergency sign-in.</p></div></div>
         <section class="admin-setting-row" style="max-width:none;">
             <h2 data-i18n="security.recoveryCodes">Recovery codes</h2>
             <p class="admin-muted" data-i18n="security.recoveryCodesHint">Generating new codes invalidates all previous codes. Each code works once.</p>
@@ -301,7 +298,7 @@
         {% endif %}
         {% if not recovery_mode and authentication_primary_method != 'oidc' and not ldap_managed and not github_managed %}
         <section class="admin-panel settings-account-panel hidden" data-account-panel="password">
-            <div class="admin-page-header"><div><h2 data-i18n="security.password">Password</h2><p>Update the local password used to sign in to this account.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="security.password">Password</h2><p data-i18n="security.passwordHint">Update the local password used to sign in to this account.</p></div></div>
         <section class="admin-setting-row" id="password" style="max-width:none;">
             <div class="admin-toolbar">
                 <div>
@@ -315,7 +312,7 @@
         {% endif %}
         {% if host_key_management_enabled and not recovery_mode %}
         <section class="admin-panel settings-account-panel hidden" data-account-panel="ssh-host-trust">
-            <div class="admin-page-header"><div><h2>Personal SSH trust</h2><p>Review SSH host keys trusted by this account.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="security.personalSshTrust">Personal SSH trust</h2><p data-i18n="security.personalSshTrustHint">Review SSH host keys trusted by this account.</p></div></div>
         <section class="admin-setting-row" style="max-width:none;">
             <div class="admin-toolbar">
                 <h2 data-i18n="security.sshHostTrust">SSH host trust</h2>
@@ -335,31 +332,41 @@
         {% endif %}
 
         {% if not recovery_mode %}
-        <aside class="settings-context-rail" aria-label="Settings context">
+        <aside class="settings-context-rail" aria-label="Settings context" data-i18n-aria-label="settings.context">
             <section class="settings-context-card settings-account-card">
-                <span class="settings-context-eyebrow">Signed-in account</span>
+                <span class="settings-context-eyebrow" data-i18n="settings.signedInAccount">Signed-in account</span>
                 <div class="settings-context-account">
                     <span class="settings-context-avatar" aria-hidden="true">{{ username[:1]|upper }}</span>
-                    <div><strong>{{ username }}</strong><span>{% if is_admin %}Administrator{% else %}Standard user{% endif %}</span></div>
+                    <div><strong>{{ username }}</strong><span>{% if is_admin %}<span data-i18n="account.roleAdmin">Administrator</span>{% else %}<span data-i18n="admin.standardUser">Standard user</span>{% endif %}</span></div>
                 </div>
                 <dl class="settings-context-facts">
-                    <div><dt>Primary sign-in</dt><dd>{{ authentication_methods[0].label }}</dd></div>
-                    <div><dt>Account protection</dt><dd>{% if account_mfa_enabled %}MFA enabled{% else %}MFA optional{% endif %}</dd></div>
-                    <div><dt>Settings scope</dt><dd>{% if is_admin %}Personal + administration{% else %}Personal{% endif %}</dd></div>
+                    <div><dt data-i18n="settings.primarySignIn">Primary sign-in</dt><dd>
+                        {% set primary_method = authentication_methods[0] %}
+                        {% if primary_method.i18n_key == 'security.methodLdap' %}<span data-i18n="security.methodLdap">{{ primary_method.label }}</span>
+                        {% elif primary_method.i18n_key == 'security.methodOidc' %}<span data-i18n="security.methodOidc">{{ primary_method.label }}</span>
+                        {% elif primary_method.i18n_key == 'security.methodGithub' %}<span data-i18n="security.methodGithub">{{ primary_method.label }}</span>
+                        {% elif primary_method.i18n_key == 'security.methodPasskey' %}<span data-i18n="security.methodPasskey">{{ primary_method.label }}</span>
+                        {% elif primary_method.i18n_key == 'security.methodPassword' %}<span data-i18n="security.methodPassword">{{ primary_method.label }}</span>
+                        {% elif primary_method.i18n_key == 'security.methodTotp' %}<span data-i18n="security.methodTotp">{{ primary_method.label }}</span>
+                        {% elif primary_method.i18n_key == 'security.methodRecoveryCode' %}<span data-i18n="security.methodRecoveryCode">{{ primary_method.label }}</span>
+                        {% else %}<span data-i18n="security.methodUnknown">{{ primary_method.label }}</span>{% endif %}
+                    </dd></div>
+                    <div><dt data-i18n="security.accountProtection">Account protection</dt><dd>{% if account_mfa_enabled %}<span data-i18n="security.mfaEnabled">MFA enabled</span>{% else %}<span data-i18n="security.mfaOptional">MFA optional</span>{% endif %}</dd></div>
+                    <div><dt data-i18n="settings.scope">Settings scope</dt><dd>{% if admin_panel_enabled and is_admin %}<span data-i18n="settings.personalAndAdministration">Personal + administration</span>{% else %}<span data-i18n="settings.personal">Personal</span>{% endif %}</dd></div>
                 </dl>
             </section>
             <section class="settings-context-card">
-                <span class="settings-context-eyebrow">Quick access</span>
-                <button type="button" class="settings-quick-link" data-account-jump="preferences"><span class="material-icons" aria-hidden="true">tune</span><span>Preferences</span></button>
-                <button type="button" class="settings-quick-link" data-account-jump="factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span>Passkeys &amp; MFA</span></button>
+                <span class="settings-context-eyebrow" data-i18n="settings.quickAccess">Quick access</span>
+                <button type="button" class="settings-quick-link" data-account-jump="preferences"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="account.preferences">Preferences</span></button>
+                <button type="button" class="settings-quick-link" data-account-jump="factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span data-i18n="security.passkeysAndMfa">Passkeys &amp; MFA</span></button>
                 {% if admin_panel_enabled and is_admin %}
-                <button type="button" class="settings-quick-link" data-admin-jump="users"><span class="material-icons" aria-hidden="true">group</span><span>User management</span></button>
-                <button type="button" class="settings-quick-link" data-admin-jump="authentication"><span class="material-icons" aria-hidden="true">key</span><span>Authentication policy</span></button>
+                <button type="button" class="settings-quick-link" data-admin-jump="users"><span class="material-icons" aria-hidden="true">group</span><span data-i18n="settings.userManagement">User management</span></button>
+                <button type="button" class="settings-quick-link" data-admin-jump="authentication"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="settings.authenticationPolicy">Authentication policy</span></button>
                 {% endif %}
             </section>
             <section class="settings-context-card settings-context-note">
                 <span class="material-icons" aria-hidden="true">info</span>
-                <p>Personal preferences, account security, and administrative controls now share one Settings Center.</p>
+                <p data-i18n="settings.centerSummary">Personal preferences, account security, and administrative controls now share one Settings Center.</p>
             </section>
         </aside>
         {% endif %}
@@ -387,7 +394,7 @@
                         <input id="securityConfirmationTotp" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
                     </div>
                     <div class="form-group hidden" id="securityConfirmationLabelGroup">
-                        <label for="securityConfirmationLabel" id="securityConfirmationLabelText">Name</label>
+                        <label for="securityConfirmationLabel" id="securityConfirmationLabelText" data-i18n="common.name">Name</label>
                         <input type="text" id="securityConfirmationLabel" class="form-control" autocomplete="off" maxlength="120">
                     </div>
                     <div class="form-group hidden" id="securityConfirmationAccountGroup">
@@ -405,13 +412,13 @@
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=36"></script>
-    <script src="{{ url_for('static', filename='js/settings-center.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=38"></script>
+    <script src="{{ url_for('static', filename='js/settings-center.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=7"></script>
     {% if admin_panel_enabled and is_admin and not recovery_mode %}
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=9"></script>
     {% endif %}
 </body>
 </html>

@@ -303,6 +303,7 @@ def main():
         app = create_app()
         with app.app_context():
             from app.models import (
+                GitHubIdentity,
                 OIDCIdentity,
                 SecurityFeatureState,
                 TOTPAuthenticator,
@@ -332,6 +333,11 @@ def main():
                 raise RuntimeError('E2E user roles were not seeded deterministically')
             mixed_mfa_user.mfa_enabled = True
             db.session.add_all((
+                GitHubIdentity(
+                    user_id=admin.id,
+                    github_user_id='424242',
+                    login='e2e-github',
+                ),
                 OIDCIdentity(
                     user_id=user.id,
                     issuer='https://issuer.example',

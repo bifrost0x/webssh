@@ -4,6 +4,10 @@
     const APP_ROOT = (document.querySelector('meta[name="app-root"]')?.content || '')
         .replace(/\/$/, '');
     const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const t = (key, fallback) => {
+        const translated = window.i18n?.t?.(key);
+        return translated && translated !== key ? translated : (fallback || key);
+    };
 
     function setPreferenceStatus(message, isError) {
         const status = document.getElementById('settingsPreferenceStatus');
@@ -65,7 +69,9 @@
             }
         };
 
-        if (mobileSelect) {
+        const renderMobileSelect = () => {
+            if (!mobileSelect) { return; }
+            const selected = mobileSelect.value;
             mobileSelect.replaceChildren();
             let currentGroup = null;
             Array.from(document.querySelector('.settings-center-navigation')?.children || [])
@@ -86,7 +92,10 @@
                         || item.textContent.trim();
                     (currentGroup || mobileSelect).appendChild(option);
                 });
-        }
+            if (selected) { mobileSelect.value = selected; }
+        };
+        renderMobileSelect();
+        window.addEventListener('languageChanged', renderMobileSelect);
 
         const show = (requested, updateHistory) => {
             const requestedAdminTab = adminTabFor(requested);
@@ -166,7 +175,7 @@
         select.value = i18n.getLanguage();
         select.addEventListener('change', () => {
             i18n.setLanguage(select.value);
-            setPreferenceStatus('Language updated.');
+            setPreferenceStatus(t('settings.languageUpdated', 'Language updated.'));
         });
     }
 
@@ -180,10 +189,10 @@
             select.disabled = true;
             document.body.dataset.theme = requested;
             window.ThemePreference?.store(requested);
-            setPreferenceStatus('Saving theme…');
+            setPreferenceStatus(t('settings.savingTheme', 'Saving theme…'));
             try {
                 await savePreference({theme: requested});
-                setPreferenceStatus('Theme saved.');
+                setPreferenceStatus(t('settings.themeSaved', 'Theme saved.'));
             } catch (error) {
                 document.body.dataset.theme = previous;
                 select.value = previous;
@@ -205,7 +214,10 @@
             if (value > 10000) { value = 10000; }
             input.value = String(value);
             localStorage.setItem('terminalScrollback', String(value));
-            setPreferenceStatus('Scrollback saved in this browser.');
+            setPreferenceStatus(t(
+                'settings.scrollbackSaved',
+                'Scrollback saved in this browser.'
+            ));
         });
     }
 
@@ -217,11 +229,11 @@
             const previous = document.body.dataset[datasetKey] === 'true';
             const requested = input.checked;
             input.disabled = true;
-            setPreferenceStatus('Saving setting…');
+            setPreferenceStatus(t('settings.saving', 'Saving setting…'));
             try {
                 await savePreference({[payloadKey]: requested});
                 document.body.dataset[datasetKey] = String(requested);
-                setPreferenceStatus('Setting saved.');
+                setPreferenceStatus(t('settings.saved', 'Setting saved.'));
             } catch (error) {
                 input.checked = previous;
                 setPreferenceStatus(error.message, true);
@@ -239,11 +251,11 @@
             const previous = document.body.dataset.disconnectSessionAction || 'retry';
             const requested = select.value;
             select.disabled = true;
-            setPreferenceStatus('Saving setting…');
+            setPreferenceStatus(t('settings.saving', 'Saving setting…'));
             try {
                 await savePreference({disconnect_session_action: requested});
                 document.body.dataset.disconnectSessionAction = requested;
-                setPreferenceStatus('Setting saved.');
+                setPreferenceStatus(t('settings.saved', 'Setting saved.'));
             } catch (error) {
                 select.value = previous;
                 setPreferenceStatus(error.message, true);

@@ -70,6 +70,16 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await page.locator('#fmLayoutSplit').click();
     await expect(page.locator('#fmSourceLauncher')).not.toHaveClass(/show/);
     await expect(page.locator('#fmRightList .fm-empty-source-cta')).toBeVisible();
+    await page.evaluate(() => window.i18n.setLanguage('de'));
+    await expect(page.locator('#fmLeftTabs')).toHaveAttribute(
+        'aria-label',
+        'Quellen auf der linken Seite',
+    );
+    await expect(page.locator('[data-source-target="left"]')).toHaveAttribute(
+        'title',
+        'Quelle öffnen',
+    );
+    await page.evaluate(() => window.i18n.setLanguage('en'));
     await page.keyboard.press('Escape');
     await expect(page.locator('#sftpFileManager')).toBeVisible();
 
@@ -116,6 +126,37 @@ test('mobile Settings uses one categorized selector and the user filters report 
 
     await page.locator('#adminUserSearch').fill('no-such-e2e-user');
     await expect(page.locator('#adminUserFilterStatus')).toHaveText(/0 of \d+ users/);
+
+    await mobileSection.selectOption('preferences');
+    await page.locator('#settingsLanguageSelect').selectOption('de');
+    await expect(page.locator('#settingsMobileSection optgroup[label="Mein Konto"]')).toHaveCount(1);
+    await expect(page.locator('#settingsMobileSection option[value="security-overview"]')).toHaveText('Sicherheitsübersicht');
+    await expect(page.locator('#settingsThemeSelect optgroup[label="Professionelle Designs"]')).toHaveCount(1);
+    await expect(page).toHaveTitle('Einstellungen · Web SSH Terminal');
+    await page.locator('#settingsLanguageSelect').selectOption('en');
+});
+
+test('Settings presents GitHub as a security method and collapses its admin guide', async ({ page }) => {
+    await page.goto('/settings');
+
+    const githubMethod = page.locator('.settings-security-methods #github');
+    await expect(githubMethod).toBeVisible();
+    await expect(page.locator('#securityAssuranceOverview #github')).toHaveCount(0);
+    await expect(page.locator('#githubIdentityStatus')).toHaveText('Connected as e2e-github');
+    await expect(page.locator('#githubIdentityAction')).toContainText('Disconnect GitHub');
+
+    await page.evaluate(() => window.i18n.setLanguage('de'));
+    await expect(page.locator('#githubIdentityStatus')).toHaveText('Verbunden als e2e-github');
+    await expect(page.locator('#githubIdentityAction')).toContainText('GitHub trennen');
+    await page.evaluate(() => window.i18n.setLanguage('en'));
+
+    await page.locator('[data-settings-section="authentication"]').click();
+    const githubGuide = page.locator('#githubAuthSetupGuide');
+    await expect(githubGuide).toBeVisible();
+    await expect(githubGuide).not.toHaveAttribute('open', '');
+    await expect(githubGuide.locator('.github-auth-setup-body')).toBeHidden();
+    await githubGuide.locator('summary').click();
+    await expect(githubGuide.locator('.github-auth-setup-body')).toBeVisible();
 });
 
 test('return-to-connection command-set editing still behaves as a nested modal', async ({ page }) => {

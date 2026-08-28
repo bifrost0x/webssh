@@ -10,10 +10,10 @@
     <meta name="oidc-enabled" content="{{ 'true' if oidc_enabled else 'false' }}">
     <meta name="ldap-enabled" content="{{ 'true' if ldap_enabled else 'false' }}">
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
-    <title>Settings · Web SSH Terminal</title>
+    <title data-i18n="settings.pageTitle">Settings · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=8">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=25">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
@@ -29,26 +29,26 @@
     </header>
 
     <main class="admin-main">
-        <aside class="admin-navigation" aria-label="Settings">
-            <div class="admin-navigation-title"><span class="material-icons" aria-hidden="true">settings</span><span>Settings Center</span></div>
+        <aside class="admin-navigation" aria-label="Settings" data-i18n-aria-label="settings.title">
+            <div class="admin-navigation-title"><span class="material-icons" aria-hidden="true">settings</span><span data-i18n="settings.center">Settings Center</span></div>
             <div class="admin-tabs settings-center-navigation">
-            <p class="admin-nav-group">My account</p>
-            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#preferences"><span class="material-icons" aria-hidden="true">tune</span><span>Preferences</span></a>
-            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#security-overview"><span class="material-icons" aria-hidden="true">shield</span><span>Security overview</span></a>
-            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span>Passkeys &amp; MFA</span></a>
+            <p class="admin-nav-group" data-i18n="settings.myAccount">My account</p>
+            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#preferences"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="account.preferences">Preferences</span></a>
+            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#security-overview"><span class="material-icons" aria-hidden="true">shield</span><span data-i18n="settings.securityOverview">Security overview</span></a>
+            <a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#factors"><span class="material-icons" aria-hidden="true">fingerprint</span><span data-i18n="security.passkeysAndMfa">Passkeys &amp; MFA</span></a>
             {% if recovery_codes_enabled %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#recovery"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="security.recoveryCodes">Recovery codes</span></a>{% endif %}
             {% if authentication_primary_method != 'oidc' and not ldap_managed %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#password"><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="security.password">Password</span></a>{% endif %}
-            {% if host_key_management_enabled %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#ssh-host-trust"><span class="material-icons" aria-hidden="true">dns</span><span>Personal SSH trust</span></a>{% endif %}
-            <p class="admin-nav-group"><span>Administration</span><small>Admin only</small></p>
+            {% if host_key_management_enabled %}<a class="admin-tab settings-center-nav-link" href="{{ url_for('security_center') }}#ssh-host-trust"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="security.personalSshTrust">Personal SSH trust</span></a>{% endif %}
+            <p class="admin-nav-group"><span data-i18n="settings.administration">Administration</span><small data-i18n="settings.adminOnly">Admin only</small></p>
             <button class="admin-tab active" data-tab="users"><span class="material-icons" aria-hidden="true">group</span><span data-i18n="admin.users">Users</span></button>
-            <button class="admin-tab" data-tab="settings" data-settings-section="authentication"><span class="material-icons" aria-hidden="true">key</span><span>Authentication</span></button>
-            <button class="admin-tab" data-tab="settings" data-settings-section="registration"><span class="material-icons" aria-hidden="true">person_add</span><span>Registration</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="authentication"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="admin.authentication">Authentication</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="registration"><span class="material-icons" aria-hidden="true">person_add</span><span data-i18n="admin.registration">Registration</span></button>
             {% if host_key_management_enabled %}
-            <button class="admin-tab" data-tab="settings" data-settings-section="host-trust"><span class="material-icons" aria-hidden="true">verified_user</span><span>Global SSH trust</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="host-trust"><span class="material-icons" aria-hidden="true">verified_user</span><span data-i18n="admin.globalSshTrust">Global SSH trust</span></button>
             {% endif %}
             {% if audit_export_enabled %}
             <button class="admin-tab" data-tab="audit"><span class="material-icons" aria-hidden="true">receipt_long</span><span data-i18n="admin.auditLogs">Audit Logs</span></button>
-            <button class="admin-tab" data-tab="settings" data-settings-section="retention"><span class="material-icons" aria-hidden="true">inventory_2</span><span>Audit retention</span></button>
+            <button class="admin-tab" data-tab="settings" data-settings-section="retention"><span class="material-icons" aria-hidden="true">inventory_2</span><span data-i18n="admin.auditRetention">Audit retention</span></button>
             {% endif %}
             <button class="admin-tab" data-tab="backup"><span class="material-icons" aria-hidden="true">backup</span><span data-i18n="backup.title">Backup &amp; Restore</span></button>
             </div>
@@ -59,19 +59,19 @@
 
         <section class="admin-panel{% if embedded %} hidden{% endif %}" id="tab-users">
             <div class="admin-page-header">
-                <div><h2 data-i18n="admin.users">Users</h2><p>Manage accounts, roles, access state, and recovery actions.</p></div>
+                <div><h2 data-i18n="admin.users">Users</h2><p data-i18n="admin.usersHint">Manage accounts, roles, access state, and recovery actions.</p></div>
                 <div class="admin-page-actions">
                     <button class="btn btn-secondary" id="adminRefreshUsers"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button>
                     <button class="btn btn-primary" id="adminAddUserBtn"><span class="material-icons" aria-hidden="true">person_add</span><span data-i18n="admin.addUser">Add User</span></button>
                 </div>
             </div>
-            <div class="admin-toolbar admin-user-toolbar" role="search" aria-label="Filter users">
-                <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only">Search users</span><input type="search" id="adminUserSearch" class="form-control" placeholder="Search users"></label>
-                <label class="admin-user-filter-field"><span>Access</span><select id="adminUserFilter" class="form-control" aria-label="Filter users">
-                        <option value="all">All users</option>
-                        <option value="admin">Administrators</option>
-                        <option value="user">Standard users</option>
-                        <option value="locked">Locked accounts</option>
+            <div class="admin-toolbar admin-user-toolbar" role="search" aria-label="Filter users" data-i18n-aria-label="admin.filterUsers">
+                <label class="admin-search-field"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="admin.searchUsers">Search users</span><input type="search" id="adminUserSearch" class="form-control" placeholder="Search users" data-i18n-placeholder="admin.searchUsers"></label>
+                <label class="admin-user-filter-field"><span data-i18n="admin.access">Access</span><select id="adminUserFilter" class="form-control" aria-label="Filter users" data-i18n-aria-label="admin.filterUsers">
+                        <option value="all" data-i18n="admin.allUsers">All users</option>
+                        <option value="admin" data-i18n="admin.administrators">Administrators</option>
+                        <option value="user" data-i18n="admin.standardUsers">Standard users</option>
+                        <option value="locked" data-i18n="admin.lockedAccounts">Locked accounts</option>
                     </select></label>
                 <output id="adminUserFilterStatus" class="admin-filter-count" aria-live="polite"></output>
             </div>
@@ -96,7 +96,7 @@
         {% if audit_export_enabled %}
         <section class="admin-panel hidden" id="tab-audit">
             <div class="admin-page-header">
-                <div><h2 data-i18n="admin.auditLogs">Audit Logs</h2><p>Review security and administrative activity.</p></div>
+                <div><h2 data-i18n="admin.auditLogs">Audit Logs</h2><p data-i18n="admin.auditLogsHint">Review security and administrative activity.</p></div>
                 <div class="admin-page-actions">
                     <button class="btn btn-secondary" id="auditRefresh"><span class="material-icons" aria-hidden="true">refresh</span><span data-i18n="admin.refresh">Refresh</span></button>
                     <button class="btn btn-secondary" id="auditExportBtn"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="admin.exportJsonl">Export JSONL</span></button>
@@ -135,7 +135,7 @@
         <section class="admin-panel hidden" id="tab-settings">
             <section class="admin-settings-subpanel" data-settings-panel="authentication">
                 <div class="admin-page-header">
-                    <div><h2>Authentication</h2><p>Manage the sign-in methods available to WebSSH users.</p></div>
+                    <div><h2 data-i18n="admin.authentication">Authentication</h2><p data-i18n="admin.authenticationHint">Manage the sign-in methods available to WebSSH users.</p></div>
                 </div>
                 <div class="admin-settings-surface">
                     <div class="admin-settings-intro">
@@ -146,7 +146,7 @@
                     <p id="securityFeatureStatus" class="admin-muted admin-settings-status" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</p>
                     {% if ldap_enabled %}
                     <details class="admin-config-disclosure" id="ldapStatusPanel">
-                        <summary><span><strong data-i18n="admin.ldapDirectory">LDAP directory</strong><small>Deployment connection check</small></span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
+                        <summary><span><strong data-i18n="admin.ldapDirectory">LDAP directory</strong><small data-i18n="admin.deploymentConnectionCheck">Deployment connection check</small></span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
                         <div class="admin-config-disclosure-body">
                             <p class="admin-muted" data-i18n="admin.ldapCheckHint">Run a read-only TLS and service-bind check. Credentials and directory names are never returned to the browser.</p>
                             <div class="admin-toolbar">
@@ -159,79 +159,79 @@
                 </div>
                 <div class="admin-settings-surface" id="githubAuthConfiguration">
                     <div class="admin-settings-intro">
-                        <h3>GitHub authentication</h3>
-                        <p class="admin-muted">Configure the GitHub App at runtime. The client secret is encrypted with WebSSH's persistent secret and is never returned to the browser.</p>
+                        <h3 data-i18n="admin.githubAuthentication">GitHub authentication</h3>
+                        <p class="admin-muted" data-i18n="admin.githubAuthenticationHint">Configure the GitHub App at runtime. The client secret is encrypted with WebSSH's persistent secret and is never returned to the browser.</p>
                     </div>
-                    <details class="github-auth-setup-guide" open>
+                    <details class="github-auth-setup-guide" id="githubAuthSetupGuide">
                         <summary>
-                            <span><strong>Set up the GitHub side first</strong><small>Exact GitHub menus, values, permissions, and installation</small></span>
+                            <span><strong data-i18n="admin.githubSetupTitle">Set up the GitHub side first</strong><small data-i18n="admin.githubSetupHint">Exact GitHub menus, values, permissions, and installation</small></span>
                             <span class="material-icons" aria-hidden="true">expand_more</span>
                         </summary>
                         <div class="github-auth-setup-body">
                             <ol>
-                                <li><strong>Choose the public WebSSH URL.</strong> Use HTTPS and form the callback as <code>https://your-webssh-host/auth/github/callback</code>. If WebSSH uses an application-root prefix, place it before <code>/auth/github/callback</code>.</li>
-                                <li><strong>Create a GitHub App.</strong> For a personal app, open <strong>Profile picture → Settings → Developer settings → GitHub Apps → New GitHub App</strong>. For an organization-owned app, open <strong>Profile picture → Your organizations → Settings → Developer settings → GitHub Apps → New GitHub App</strong>. Organization owners or designated GitHub App managers can create it.</li>
-                                <li><strong>Complete “Basic information”.</strong> Give the app a unique name, set <strong>Homepage URL</strong> to the public WebSSH base URL, and set <strong>Callback URL</strong> to the exact value used below. Leave <strong>Setup URL</strong> empty and clear <strong>Active</strong> under <strong>Webhook</strong>; WebSSH does not receive webhooks.</li>
-                                <li><strong>Grant the minimum permissions.</strong> Keep all repository and account permissions at <strong>No access</strong>. Only when using <strong>Allowed organizations</strong>, open <strong>Permissions &amp; events → Organization permissions</strong> and set <strong>Members</strong> to <strong>Read-only</strong> (<strong>Members: read</strong>).</li>
-                                <li><strong>Create and install the app.</strong> Finish with <strong>Create GitHub App</strong>, then open <strong>Install App</strong> and install it on the personal account or organization whose resources and membership policy it should use. An organization owner must approve an installation that requests organization permissions.</li>
-                                <li><strong>Copy the two credentials.</strong> On the app's <strong>General</strong> page copy <strong>Client ID</strong>—not <strong>App ID</strong>. Under <strong>Client secrets</strong>, choose <strong>Generate a new client secret</strong> and copy it immediately. WebSSH does not need an App private key, webhook secret, or PEM file.</li>
-                                <li><strong>Finish here.</strong> Paste the Client ID, generated client secret, and identical callback URL below. Add exact organization logins only if the allowlist should be enforced, choose whether to auto-provision non-admin users, enable GitHub sign-in, and save. WebSSH will request administrator reauthentication before accepting the configuration.</li>
+                                <li data-i18n="admin.githubSetupUrl">Choose the public WebSSH URL. Use HTTPS and form the callback as https://your-webssh-host/auth/github/callback. If WebSSH uses an application-root prefix, place it before /auth/github/callback.</li>
+                                <li data-i18n="admin.githubSetupApp">Create a GitHub App. For a personal app, open Profile picture → Settings → Developer settings → GitHub Apps → New GitHub App. For an organization-owned app, open Profile picture → Your organizations → Settings → Developer settings → GitHub Apps → New GitHub App. Organization owners or designated GitHub App managers can create it.</li>
+                                <li data-i18n="admin.githubSetupBasic">Complete “Basic information”. Give the app a unique name, set Homepage URL to the public WebSSH base URL, and set Callback URL to the exact value used below. Leave Setup URL empty and clear Active under Webhook; WebSSH does not receive webhooks.</li>
+                                <li data-i18n="admin.githubSetupPermissions">Grant the minimum permissions. Keep all repository and account permissions at No access. Only when using Allowed organizations, open Permissions &amp; events → Organization permissions and set Members to Read-only (Members: read).</li>
+                                <li data-i18n="admin.githubSetupInstall">Create and install the app. Finish with Create GitHub App, then open Install App and install it on the personal account or organization whose resources and membership policy it should use. An organization owner must approve an installation that requests organization permissions.</li>
+                                <li data-i18n="admin.githubSetupCredentials">Copy the two credentials. On the app's General page copy Client ID—not App ID. Under Client secrets, choose Generate a new client secret and copy it immediately. WebSSH does not need an App private key, webhook secret, or PEM file.</li>
+                                <li data-i18n="admin.githubSetupFinish">Finish here. Paste the Client ID, generated client secret, and identical callback URL below. Add exact organization logins only if the allowlist should be enforced, choose whether to auto-provision non-admin users, enable GitHub sign-in, and save. WebSSH will request administrator reauthentication before accepting the configuration.</li>
                             </ol>
                             <div class="github-auth-setup-links">
-                                <a class="btn btn-secondary" href="https://github.com/settings/apps/new" target="_blank" rel="noopener noreferrer">Create a personal GitHub App</a>
-                                <a class="btn btn-secondary" href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app" target="_blank" rel="noopener noreferrer">GitHub registration documentation</a>
-                                <a class="btn btn-secondary" href="https://github.com/bifrost0x/webssh/wiki/GitHub-Authentication" target="_blank" rel="noopener noreferrer">Full WebSSH setup guide</a>
+                                <a class="btn btn-secondary" href="https://github.com/settings/apps/new" target="_blank" rel="noopener noreferrer" data-i18n="admin.githubCreatePersonalApp">Create a personal GitHub App</a>
+                                <a class="btn btn-secondary" href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app" target="_blank" rel="noopener noreferrer" data-i18n="admin.githubRegistrationDocs">GitHub registration documentation</a>
+                                <a class="btn btn-secondary" href="https://github.com/bifrost0x/webssh/wiki/GitHub-Authentication" target="_blank" rel="noopener noreferrer" data-i18n="admin.githubFullGuide">Full WebSSH setup guide</a>
                             </div>
                         </div>
                     </details>
                     <div class="admin-settings-row">
-                        <div><strong>Enable GitHub sign-in</strong><p class="admin-muted">The login button appears only after every required value is saved.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled"><span>Enabled</span></label>
+                        <div><strong data-i18n="admin.githubEnable">Enable GitHub sign-in</strong><p class="admin-muted" data-i18n="admin.githubEnableHint">The login button appears only after every required value is saved.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled"><span data-i18n="common.enabled">Enabled</span></label>
                     </div>
                     <div class="form-group">
-                        <label for="githubAuthClientId">GitHub App client ID</label>
+                        <label for="githubAuthClientId" data-i18n="admin.githubClientId">GitHub App client ID</label>
                         <input class="form-control" id="githubAuthClientId" type="text" maxlength="128" autocomplete="off" spellcheck="false">
                     </div>
                     <div class="form-group">
-                        <label for="githubAuthClientSecret">Client secret</label>
-                        <input class="form-control" id="githubAuthClientSecret" type="password" maxlength="512" autocomplete="new-password" placeholder="Leave blank to keep the stored secret">
-                        <p class="admin-muted" id="githubAuthSecretState">No client secret stored</p>
+                        <label for="githubAuthClientSecret" data-i18n="admin.githubClientSecret">Client secret</label>
+                        <input class="form-control" id="githubAuthClientSecret" type="password" maxlength="512" autocomplete="new-password" placeholder="Leave blank to keep the stored secret" data-i18n-placeholder="admin.githubSecretPlaceholder">
+                        <p class="admin-muted" id="githubAuthSecretState" data-i18n="admin.githubNoSecret">No client secret stored</p>
                     </div>
                     <div class="form-group">
-                        <label for="githubAuthRedirectUri">Callback URL</label>
+                        <label for="githubAuthRedirectUri" data-i18n="admin.githubCallbackUrl">Callback URL</label>
                         <input class="form-control" id="githubAuthRedirectUri" type="url" maxlength="2048" autocomplete="off" spellcheck="false" placeholder="https://ssh.example.com/auth/github/callback">
-                        <p class="admin-muted">Enter this exact URL as a GitHub App callback URL. Production callbacks must use HTTPS.</p>
+                        <p class="admin-muted" data-i18n="admin.githubCallbackHint">Enter this exact URL as a GitHub App callback URL. Production callbacks must use HTTPS.</p>
                     </div>
                     <div class="form-group">
-                        <label for="githubAuthAllowedOrgs">Allowed organizations</label>
+                        <label for="githubAuthAllowedOrgs" data-i18n="admin.githubAllowedOrgs">Allowed organizations</label>
                         <input class="form-control" id="githubAuthAllowedOrgs" type="text" maxlength="2000" autocomplete="off" spellcheck="false" placeholder="example-org, another-org">
-                        <p class="admin-muted">Optional. Private membership checks require the GitHub App organization permission <strong>Members: read</strong>.</p>
+                        <p class="admin-muted" data-i18n="admin.githubAllowedOrgsHint">Optional. Private membership checks require the GitHub App organization permission Members: read.</p>
                     </div>
                     <div class="admin-settings-row">
-                        <div><strong>Automatically provision users</strong><p class="admin-muted">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision"><span>Enabled</span></label>
+                        <div><strong data-i18n="admin.githubAutoProvision">Automatically provision users</strong><p class="admin-muted" data-i18n="admin.githubAutoProvisionHint">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision"><span data-i18n="common.enabled">Enabled</span></label>
                     </div>
                     <div class="admin-toolbar">
-                        <button class="btn btn-primary" id="githubAuthSave" type="button">Save GitHub configuration</button>
-                        <button class="btn btn-danger" id="githubAuthClearSecret" type="button">Disable and remove secret</button>
-                        <span class="admin-muted" id="githubAuthStatus" role="status" aria-live="polite">Not loaded</span>
+                        <button class="btn btn-primary" id="githubAuthSave" type="button" data-i18n="admin.githubSave">Save GitHub configuration</button>
+                        <button class="btn btn-danger" id="githubAuthClearSecret" type="button" data-i18n="admin.githubDisableRemoveSecret">Disable and remove secret</button>
+                        <span class="admin-muted" id="githubAuthStatus" role="status" aria-live="polite" data-i18n="admin.featureStatusNotLoaded">Not loaded</span>
                     </div>
                 </div>
             </section>
 
             <section class="admin-settings-subpanel hidden" data-settings-panel="registration">
-                <div class="admin-page-header"><div><h2>Registration</h2><p>Control who can create a local WebSSH account.</p></div></div>
+                <div class="admin-page-header"><div><h2 data-i18n="admin.registration">Registration</h2><p data-i18n="admin.registrationHint">Control who can create a local WebSSH account.</p></div></div>
                 <div class="admin-settings-surface">
                     <div class="admin-settings-row">
                         <div><strong data-i18n="admin.allowRegistration">Allow self-registration</strong><p class="admin-muted" data-i18n="admin.allowRegistrationHint">When disabled, the public registration page and the "Register" link are turned off. Admins can still create users on the Users tab.</p></div>
-                        <label class="admin-switch"><input type="checkbox" id="settingRegistration"><span>Enabled</span></label>
+                        <label class="admin-switch"><input type="checkbox" id="settingRegistration"><span data-i18n="common.enabled">Enabled</span></label>
                     </div>
                 </div>
             </section>
 
             {% if audit_export_enabled %}
             <section class="admin-settings-subpanel hidden" data-settings-panel="retention">
-                <div class="admin-page-header"><div><h2>Audit retention</h2><p>Define how many rotated audit archives WebSSH keeps.</p></div></div>
+                <div class="admin-page-header"><div><h2 data-i18n="admin.auditRetention">Audit retention</h2><p data-i18n="admin.auditRetentionPageHint">Define how many rotated audit archives WebSSH keeps.</p></div></div>
                 <div class="admin-settings-surface">
                     <div class="admin-settings-row admin-audit-retention">
                         <div><label for="auditRetention"><strong data-i18n="admin.auditRetentionBackups">Audit retention backups</strong></label><p class="admin-muted" data-i18n="admin.auditRetentionHint">The new limit applies immediately; older rotated archives beyond it are removed.</p></div>
@@ -263,7 +263,7 @@
         </section>
 
         <section class="admin-panel hidden" id="tab-backup">
-            <div class="admin-page-header"><div><h2 data-i18n="backup.title">Backup &amp; Restore</h2><p>Create, verify, and restore WebSSH backup archives.</p></div></div>
+            <div class="admin-page-header"><div><h2 data-i18n="backup.title">Backup &amp; Restore</h2><p data-i18n="backup.pageHint">Create, verify, and restore WebSSH backup archives.</p></div></div>
             <div class="admin-backup-warning" role="alert">
                 <span class="material-icons" aria-hidden="true">warning</span>
                 <p data-i18n="backup.sensitiveWarning">Backup archives contain passwords, application secrets, SSH key metadata, and encrypted private keys. Store every downloaded archive encrypted and off-host.</p>
@@ -448,10 +448,10 @@
 
 {% if not embedded %}
     <div id="notificationContainer" class="notification-container"></div>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=36"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=38"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=8"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=9"></script>
 </body>
 </html>
 {% endif %}

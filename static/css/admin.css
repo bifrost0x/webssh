@@ -591,6 +591,79 @@
     grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.settings-security-method-row {
+    min-height: 76px;
+    transition: background-color .18s ease;
+}
+
+.settings-security-method-row:hover {
+    background: color-mix(in srgb, var(--accent-primary) 4%, transparent);
+}
+
+.settings-security-method-summary {
+    display: flex;
+    align-items: flex-start;
+    min-width: 0;
+    gap: 13px;
+}
+
+.settings-security-method-summary > div {
+    min-width: 0;
+}
+
+.settings-security-method-icon {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-tertiary));
+    color: var(--accent-primary);
+    font-size: 19px;
+}
+
+.settings-security-method-row-github {
+    background: color-mix(in srgb, var(--accent-primary) 3%, transparent);
+}
+
+.settings-security-method-row-github .settings-security-method-icon {
+    background: color-mix(in srgb, var(--accent-primary) 18%, var(--bg-tertiary));
+}
+
+.settings-security-method-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 7px !important;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.settings-security-method-status::before {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    content: '';
+}
+
+.settings-security-method-row-github:has(#githubIdentityAction[data-connected="true"]) .settings-security-method-status::before {
+    background: var(--success-color, #22c55e);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color, #22c55e) 16%, transparent);
+}
+
+.settings-security-method-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.settings-security-method-action .material-icons {
+    font-size: 17px;
+}
+
 .admin-page-header {
     display: flex;
     align-items: flex-start;
@@ -1017,6 +1090,10 @@
         grid-template-columns: 1fr;
     }
 
+    .settings-security-methods .admin-settings-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
     .admin-feature-config {
         margin-left: 0;
     }
@@ -1072,6 +1149,15 @@
 
     .admin-page-actions {
         margin: 14px 0 0;
+    }
+
+    .settings-security-methods .admin-settings-row {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-security-methods .admin-settings-row > .btn {
+        width: 100%;
+        justify-content: center;
     }
 
     .admin-user-toolbar {
