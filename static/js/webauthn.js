@@ -645,6 +645,26 @@
         notify(t('security.mfaDisabled', 'MFA requirement disabled'), 'success');
     }
 
+    function renderGitHubIdentity() {
+        const button = document.getElementById('githubIdentityAction');
+        const status = document.getElementById('githubIdentityStatus');
+        if (!button || !status) { return; }
+        const connected = button.dataset.connected === 'true';
+        const actionLabel = button.querySelector('.github-identity-action-label');
+        const label = connected
+            ? t('security.disconnectGithub', 'Disconnect GitHub')
+            : t('security.connectGithub', 'Connect GitHub');
+        if (actionLabel) {
+            actionLabel.textContent = label;
+        } else {
+            button.textContent = label;
+        }
+        status.textContent = connected
+            ? t('security.githubConnectedAs', 'Connected as {login}')
+                .replace('{login}', button.dataset.githubLogin || '')
+            : t('security.githubNotConnected', 'Not connected');
+    }
+
     async function loadGitHubIdentity() {
         const button = document.getElementById('githubIdentityAction');
         const status = document.getElementById('githubIdentityStatus');
@@ -652,13 +672,8 @@
         const data = await api('/api/account/github');
         const identity = data.identity;
         button.dataset.connected = identity ? 'true' : 'false';
-        button.textContent = identity
-            ? t('security.disconnectGithub', 'Disconnect GitHub')
-            : t('security.connectGithub', 'Connect GitHub');
-        status.textContent = identity
-            ? t('security.githubConnectedAs', 'Connected as {login}')
-                .replace('{login}', identity.login)
-            : t('security.githubNotConnected', 'Not connected');
+        button.dataset.githubLogin = identity?.login || '';
+        renderGitHubIdentity();
     }
 
     async function changeGitHubIdentity() {
@@ -669,7 +684,10 @@
             10
         );
         if (!Number.isInteger(userId)) {
-            throw new Error('Account identity is unavailable');
+            throw new Error(t(
+                'security.accountIdentityUnavailable',
+                'Account identity is unavailable'
+            ));
         }
         if (button.dataset.connected === 'true') {
             if (!window.confirm(t(
@@ -713,6 +731,7 @@
         document.getElementById('githubIdentityAction')?.addEventListener('click', () => {
             changeGitHubIdentity().catch(error => notify(error.message, 'error'));
         });
+        window.addEventListener('languageChanged', renderGitHubIdentity);
         loadGitHubIdentity().catch(error => notify(error.message, 'error'));
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {

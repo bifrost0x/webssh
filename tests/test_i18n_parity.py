@@ -252,6 +252,7 @@ def test_all_popup_translation_references_exist_in_every_locale():
         Path('static/js/file-transfer.js'),
         Path('static/js/security-ui.js'),
         Path('static/js/session-diagnostics.js'),
+        Path('static/js/settings-center.js'),
         Path('static/js/ssh-error-ui.js'),
         Path('static/js/session-command-launcher.js'),
         Path('static/js/smb-source-dialog.js'),
@@ -298,6 +299,45 @@ def test_all_popup_translation_references_exist_in_every_locale():
             missing_by_locale[match.group(1)] = missing
 
     assert missing_by_locale == {}
+
+
+def test_recent_settings_and_github_surfaces_are_runtime_localized():
+    admin_template = Path('templates/admin.html').read_text(encoding='utf-8')
+    security_template = Path('templates/security.html').read_text(encoding='utf-8')
+    admin_source = Path('static/js/admin.js').read_text(encoding='utf-8')
+    settings_source = Path('static/js/settings-center.js').read_text(encoding='utf-8')
+    file_manager_source = Path('static/js/sftp-file-manager.js').read_text(
+        encoding='utf-8'
+    )
+
+    for key in (
+        'admin.filterUsers',
+        'admin.githubAuthentication',
+        'admin.githubSetupFinish',
+        'admin.githubSave',
+        'settings.center',
+        'settings.securityOverview',
+        'settings.professionalThemes',
+        'security.passkeysAndMfa',
+        'security.githubManagedHint',
+        'security.manageGithubHint',
+    ):
+        assert re.search(
+            rf'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="{re.escape(key)}"',
+            admin_template + security_template,
+        )
+
+    assert "t('admin.filteredUserCount'" in admin_source
+    assert "'admin.githubSecretStored'" in admin_source
+    assert "'admin.githubClearSecretConfirm'" in admin_source
+    assert "t('settings.languageUpdated'" in settings_source
+    assert "t('settings.savingTheme'" in settings_source
+    assert "window.addEventListener('languageChanged', renderMobileSelect)" in settings_source
+    assert "window.addEventListener('languageChanged', renderGitHubIdentity)" in Path(
+        'static/js/webauthn.js'
+    ).read_text(encoding='utf-8')
+    assert "window.addEventListener('languageChanged'" in file_manager_source
+    assert 'data-i18n-aria-label="fm.workspace.leftSources"' in file_manager_source
 
 
 def test_popup_inputs_use_explicit_placeholder_translation_attribute():

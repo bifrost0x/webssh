@@ -307,7 +307,9 @@
             parts.push(`<button class="btn btn-secondary" data-act="oidc-link">${escapeHtml(t('admin.oidcLink', 'Link OIDC'))}</button>`);
         }
         if (LDAP_ENABLED && !u.is_admin && !u.github_managed) {
-            const label = u.ldap_managed ? 'Manage LDAP' : 'Link LDAP';
+            const label = u.ldap_managed
+                ? t('admin.ldapManage', 'Manage LDAP identity')
+                : t('admin.ldapLink', 'Link LDAP');
             parts.push(`<button class="btn btn-secondary" data-act="ldap-link">${escapeHtml(label)}</button>`);
         }
         if (u.mfa_enabled) {
@@ -336,8 +338,13 @@
         const status = document.getElementById('adminUserFilterStatus');
         if (status) {
             status.textContent = (query || filter !== 'all')
-                ? `${visible} of ${rows.length} users`
-                : `${rows.length} ${rows.length === 1 ? 'user' : 'users'}`;
+                ? t('admin.filteredUserCount', '{visible} of {total} users')
+                    .replace('{visible}', String(visible))
+                    .replace('{total}', String(rows.length))
+                : (rows.length === 1
+                    ? t('admin.oneUser', '1 user')
+                    : t('admin.userCount', '{count} users')
+                        .replace('{count}', String(rows.length)));
         }
     }
 
@@ -951,11 +958,14 @@
             document.getElementById('githubAuthAllowedOrgs').value = (item.allowed_orgs || []).join(', ');
             document.getElementById('githubAuthAutoProvision').checked = !!item.auto_provision;
             document.getElementById('githubAuthSecretState').textContent = item.client_secret_configured
-                ? 'A client secret is stored. Enter a value only to replace it.'
-                : 'No client secret stored';
+                ? t(
+                    'admin.githubSecretStored',
+                    'A client secret is stored. Enter a value only to replace it.'
+                )
+                : t('admin.githubNoSecret', 'No client secret stored');
             status.textContent = item.active
-                ? 'GitHub sign-in is active'
-                : (item.error || 'GitHub sign-in is disabled');
+                ? t('admin.githubSignInActive', 'GitHub sign-in is active')
+                : (item.error || t('admin.githubSignInDisabled', 'GitHub sign-in is disabled'));
         } catch (error) {
             status.textContent = error.message;
         }
@@ -980,15 +990,16 @@
     }
 
     async function clearGitHubSecret() {
-        if (!window.confirm(
+        if (!window.confirm(t(
+            'admin.githubClearSecretConfirm',
             'Disable GitHub sign-in and permanently remove the stored client secret?'
-        )) { return; }
+        ))) { return; }
         await stepUpApi('github.config', 'global', '/admin/api/github-auth/config', {
             method: 'POST',
             body: { enabled: false, clear_client_secret: true }
         });
         await loadGitHubConfig();
-        notify('GitHub client secret removed', 'success');
+        notify(t('admin.githubSecretRemoved', 'GitHub client secret removed'), 'success');
     }
 
     function initSettings() {
@@ -1480,6 +1491,8 @@
         loadGlobalHostKeys();
         window.addEventListener('languageChanged', () => {
             renderSecurityFeatures(securityFeatureSnapshot);
+            filterUsers();
+            loadGitHubConfig();
         });
     });
 })();
