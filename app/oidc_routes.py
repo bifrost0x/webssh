@@ -461,9 +461,9 @@ def link_oidc_identity(user_id):
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404
-    if target.is_ldap_managed:
+    if target.is_ldap_managed or target.is_github_managed:
         return jsonify({
-            "error": "OIDC identities cannot be linked to LDAP accounts"
+            "error": "OIDC identities cannot be linked to externally managed accounts"
         }), 400
     if data.get("confirm_username") != target.username:
         return jsonify({"error": "Target confirmation does not match"}), 400

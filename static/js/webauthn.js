@@ -147,6 +147,7 @@
         methodSelect.replaceChildren();
         const methodLabels = {
             oidc: t('security.methodOidc', 'Identity provider'),
+            github: t('security.methodGithub', 'GitHub'),
             passkey: t('security.methodPasskey', 'Passkey'),
             totp: t('security.methodTotp', 'Authenticator app'),
             ldap: t('security.methodLdap', 'Directory password'),
@@ -644,6 +645,52 @@
         notify(t('security.mfaDisabled', 'MFA requirement disabled'), 'success');
     }
 
+    async function loadGitHubIdentity() {
+        const button = document.getElementById('githubIdentityAction');
+        const status = document.getElementById('githubIdentityStatus');
+        if (!button || !status) { return; }
+        const data = await api('/api/account/github');
+        const identity = data.identity;
+        button.dataset.connected = identity ? 'true' : 'false';
+        button.textContent = identity
+            ? t('security.disconnectGithub', 'Disconnect GitHub')
+            : t('security.connectGithub', 'Connect GitHub');
+        status.textContent = identity
+            ? t('security.githubConnectedAs', 'Connected as {login}')
+                .replace('{login}', identity.login)
+            : t('security.githubNotConnected', 'Not connected');
+    }
+
+    async function changeGitHubIdentity() {
+        const button = document.getElementById('githubIdentityAction');
+        if (!button) { return; }
+        const userId = Number.parseInt(
+            document.querySelector('meta[name="current-user-id"]')?.content || '',
+            10
+        );
+        if (!Number.isInteger(userId)) {
+            throw new Error('Account identity is unavailable');
+        }
+        if (button.dataset.connected === 'true') {
+            if (!window.confirm(t(
+                'security.disconnectGithubConfirm',
+                'Disconnect this GitHub identity from your WebSSH account?'
+            ))) { return; }
+            const headers = await stepUpHeaders('github.unlink', userId);
+            if (headers === null) { return; }
+            await api('/api/account/github', { method: 'DELETE', headers });
+            await loadGitHubIdentity();
+            notify(t('security.githubDisconnected', 'GitHub disconnected'), 'success');
+            return;
+        }
+        const headers = await stepUpHeaders('github.link', userId);
+        if (headers === null) { return; }
+        const started = await api('/api/account/github/link/start', {
+            method: 'POST', headers, body: {}
+        });
+        window.location.assign(started.authorization_url);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('securityConfirmationForm')?.addEventListener('submit', event => {
             event.preventDefault();
@@ -663,6 +710,10 @@
         if (document.getElementById('hostKeyList')) {
             loadHostKeys().catch(error => notify(error.message, 'error'));
         }
+        document.getElementById('githubIdentityAction')?.addEventListener('click', () => {
+            changeGitHubIdentity().catch(error => notify(error.message, 'error'));
+        });
+        loadGitHubIdentity().catch(error => notify(error.message, 'error'));
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {
                 const headers = await stepUpHeaders('recovery.rotate');

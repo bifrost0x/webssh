@@ -310,7 +310,8 @@ def rotate_secret_key(confirm_offline):
     )
     click.echo(
         f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys and '
-        f'{report.rotated_totp_secrets} TOTP secrets. '
+        f'{report.rotated_totp_secrets} TOTP secrets and '
+        f'{report.rotated_github_secrets} GitHub client secrets. '
         f'Verified backup: {report.backup_path}'
     )
     click.echo(

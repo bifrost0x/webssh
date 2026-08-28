@@ -30,8 +30,10 @@ from .auth_assurance import (
     current_authentication_session,
 )
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
+from .github_auth_service import github_auth_is_active
 from .models import (
     LDAPIdentity,
+    GitHubIdentity,
     OIDCIdentity,
     TOTPAuthenticator,
     User,
@@ -140,6 +142,12 @@ def _allowed_methods(user, auth_session, required_assurance):
         and OIDCIdentity.query.filter_by(user_id=user.id).first() is not None
     ):
         return ["oidc"]
+    if (
+        "github" in methods
+        and github_auth_is_active()
+        and GitHubIdentity.query.filter_by(user_id=user.id).first() is not None
+    ):
+        return ["github"]
     if (
         "ldap" in methods
         and feature_is_active("ldap")
@@ -525,13 +533,16 @@ def oidc_step_up_status():
             return jsonify({"status": "pending"})
         if status != "approved":
             return _error("step_up_expired", 410)
+        approved = account_step_up_intent(
+            token, auth_session, status="approved"
+        )
         grant = claim_account_step_up_grant(token, auth_session)
     except StepUpError:
         return _error("step_up_expired", 410)
     log_security_event(
         "ACCOUNT_STEP_UP_CONSUMED",
         user=current_user.username,
-        method="oidc",
+        method=approved.approved_method or "provider",
     )
     return jsonify({
         "status": "completed",

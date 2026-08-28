@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="current-user" content="{{ username }}">
+    <meta name="current-user-id" content="{{ current_user.id }}">
     <meta name="oidc-enabled" content="{{ 'true' if oidc_enabled else 'false' }}">
     <meta name="ldap-enabled" content="{{ 'true' if ldap_enabled else 'false' }}">
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
@@ -50,7 +51,7 @@
             {% if recovery_codes_enabled %}
             <button class="admin-tab" type="button" data-account-section="recovery"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="security.recoveryCodes">Recovery codes</span></button>
             {% endif %}
-            {% if authentication_primary_method != 'oidc' and not ldap_managed %}
+            {% if authentication_primary_method != 'oidc' and not ldap_managed and not github_managed %}
             <button class="admin-tab" type="button" data-account-section="password"><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="security.password">Password</span></button>
             {% endif %}
             {% if host_key_management_enabled %}
@@ -145,6 +146,7 @@
                         {% for method in authentication_methods %}
                             {% if method.i18n_key == 'security.methodLdap' %}<span data-i18n="security.methodLdap">{{ method.label }}</span>
                             {% elif method.i18n_key == 'security.methodOidc' %}<span data-i18n="security.methodOidc">{{ method.label }}</span>
+                            {% elif method.i18n_key == 'security.methodGithub' %}<span data-i18n="security.methodGithub">{{ method.label }}</span>
                             {% elif method.i18n_key == 'security.methodPasskey' %}<span data-i18n="security.methodPasskey">{{ method.label }}</span>
                             {% elif method.i18n_key == 'security.methodPassword' %}<span data-i18n="security.methodPassword">{{ method.label }}</span>
                             {% elif method.i18n_key == 'security.methodTotp' %}<span data-i18n="security.methodTotp">{{ method.label }}</span>
@@ -158,6 +160,8 @@
                     <dt data-i18n="security.changeConfirmation">For protected changes</dt>
                     {% if authentication_primary_method == 'oidc' %}
                     <dd data-i18n="security.confirmationOidc">Your identity provider session is used. No local WebSSH password is required.</dd>
+                    {% elif authentication_primary_method == 'github' %}
+                    <dd data-i18n="security.confirmationGithub">Your GitHub session is used. No GitHub token is stored by WebSSH.</dd>
                     {% elif authentication_primary_method == 'ldap' %}
                     <dd data-i18n="security.confirmationLdap">Your directory sign-in is used. No separate WebSSH password is required.</dd>
                     {% elif authentication_primary_method == 'passkey' %}
@@ -179,6 +183,15 @@
             </dl>
             {% if recovery_codes_enabled and not recovery_mode %}
             <pre id="passkeyMfaRecoveryCodes" role="status" aria-live="polite" style="white-space:pre-wrap;word-break:break-word;"></pre>
+            {% endif %}
+            {% if github_auth_enabled or github_identity_linked %}
+            <div class="admin-settings-row" id="github">
+                <div>
+                    <strong data-i18n="security.methodGithub">GitHub</strong>
+                    <p class="admin-muted" id="githubIdentityStatus">Loading linked account…</p>
+                </div>
+                <button class="btn btn-secondary" type="button" id="githubIdentityAction">Manage</button>
+            </div>
             {% endif %}
         </section>
         <section class="admin-settings-surface settings-security-methods" aria-labelledby="settingsSecurityMethodsTitle">
@@ -213,6 +226,11 @@
         <section class="admin-setting-row" id="oidcManagedNotice" style="max-width:none;">
             <h2 data-i18n="security.identityManagedAccount">Identity-provider account</h2>
             <p class="admin-muted" data-i18n="security.identityManagedHint">Your identity provider controls your primary sign-in. WebSSH never asks for a separate local password when you manage Passkeys, authenticator apps, or recovery codes.</p>
+        </section>
+        {% elif authentication_primary_method == 'github' %}
+        <section class="admin-setting-row" id="githubManagedNotice" style="max-width:none;">
+            <h2>GitHub sign-in</h2>
+            <p class="admin-muted">GitHub controls this primary sign-in. WebSSH discards the temporary GitHub token after identity and organization checks.</p>
         </section>
         {% elif ldap_managed %}
         <section class="admin-setting-row" id="ldapManagedNotice" style="max-width:none;">
@@ -281,7 +299,7 @@
         </section>
         </section>
         {% endif %}
-        {% if not recovery_mode and authentication_primary_method != 'oidc' and not ldap_managed %}
+        {% if not recovery_mode and authentication_primary_method != 'oidc' and not ldap_managed and not github_managed %}
         <section class="admin-panel settings-account-panel hidden" data-account-panel="password">
             <div class="admin-page-header"><div><h2 data-i18n="security.password">Password</h2><p>Update the local password used to sign in to this account.</p></div></div>
         <section class="admin-setting-row" id="password" style="max-width:none;">
@@ -387,13 +405,13 @@
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=35"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=36"></script>
     <script src="{{ url_for('static', filename='js/settings-center.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=6"></script>
     {% if admin_panel_enabled and is_admin and not recovery_mode %}
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=7"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=8"></script>
     {% endif %}
 </body>
 </html>

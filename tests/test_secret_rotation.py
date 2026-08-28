@@ -9,6 +9,10 @@ import pytest
 from app.backup_manager import verify_backup
 from app.key_encryption import _derive_key
 from app.mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
+from app.github_auth_crypto import (
+    decrypt_client_secret,
+    encrypt_client_secret,
+)
 from app.secret_rotation import SecretRotationError, rotate_secret
 
 
@@ -179,6 +183,39 @@ def test_rotation_reencrypts_active_and_pending_totp_secrets(tmp_path):
     assert decrypt_totp_secret(
         2, pending_ciphertext, master_secret=new_secret
     ) == pending_secret
+
+
+def test_rotation_reencrypts_admin_managed_github_client_secret(tmp_path):
+    data_dir, old_secret, new_secret, _ = _rotation_data(tmp_path)
+    plaintext = 'github-client-secret-for-rotation'
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        database.execute(
+            'CREATE TABLE github_auth_configuration ('
+            'id INTEGER PRIMARY KEY, encrypted_client_secret BLOB)'
+        )
+        database.execute(
+            'INSERT INTO github_auth_configuration VALUES (1, ?)',
+            (encrypt_client_secret(plaintext, master_secret=old_secret),),
+        )
+        database.commit()
+    finally:
+        database.close()
+
+    report = rotate_secret(old_secret, new_secret, data_dir)
+
+    database = sqlite3.connect(data_dir / 'app.db')
+    try:
+        ciphertext = database.execute(
+            'SELECT encrypted_client_secret '
+            'FROM github_auth_configuration WHERE id = 1'
+        ).fetchone()[0]
+    finally:
+        database.close()
+    assert report.rotated_github_secrets == 1
+    assert decrypt_client_secret(
+        ciphertext, master_secret=new_secret
+    ) == plaintext
 
 
 def test_corrupt_totp_ciphertext_aborts_rotation_before_replacement(tmp_path):

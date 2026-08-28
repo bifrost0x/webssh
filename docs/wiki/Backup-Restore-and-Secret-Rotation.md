@@ -2,7 +2,7 @@
 
 WebSSH provides native administrator and CLI workflows for backing up persistent state, validating archives, restoring an installation, and rotating a container-managed `SECRET_KEY`.
 
-Backups are highly sensitive. An archive can contain user configuration, host information, the database, encrypted private keys, and the persisted application secret. Store it like a credential vault export.
+Backups are highly sensitive. An archive can contain user configuration, host information, the database, encrypted private keys, an admin-managed encrypted GitHub client secret, and the persisted application secret. Store it like a credential vault export.
 
 ## What a native backup contains
 
@@ -83,7 +83,7 @@ flask --app start:app rotate-secret-key --help
 
 All WebSSH processes must be stopped. Take and verify a backup first. The command changes the root used for encrypted per-user SSH keys and invalidates signed session state, so a partial or interrupted manual replacement can make persisted credentials unreadable.
 
-If `SECRET_KEY` comes from an external environment variable or secret manager, rotating only the external value is not sufficient. Plan a controlled migration that keeps the old key available while persisted secrets are re-encrypted. The built-in command is scoped to the container-managed persisted secret.
+If `SECRET_KEY` comes from an external environment variable or secret manager, rotating only the external value is not sufficient. Plan a controlled migration that keeps the old key available while persisted SSH keys, TOTP values, and the GitHub App client secret are re-encrypted. The built-in command is scoped to the container-managed persisted secret.
 
 ## Restore drill
 

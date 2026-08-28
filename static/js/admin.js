@@ -292,7 +292,7 @@
         const parts = [];
         if (u.is_admin) {
             parts.push(`<button class="btn btn-secondary" data-act="demote" ${isSelf ? 'disabled' : ''}>${escapeHtml(t('admin.demote', 'Demote'))}</button>`);
-        } else if (!u.ldap_managed) {
+        } else if (!u.ldap_managed && !u.github_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="promote">${escapeHtml(t('admin.promote', 'Promote'))}</button>`);
         }
         if (u.is_locked) {
@@ -303,10 +303,10 @@
         if (RECOVERY_ENABLED && !u.ldap_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="recovery">${escapeHtml(t('admin.recovery', 'Recovery'))}</button>`);
         }
-        if (OIDC_ENABLED && !u.ldap_managed) {
+        if (OIDC_ENABLED && !u.ldap_managed && !u.github_managed) {
             parts.push(`<button class="btn btn-secondary" data-act="oidc-link">${escapeHtml(t('admin.oidcLink', 'Link OIDC'))}</button>`);
         }
-        if (LDAP_ENABLED && !u.is_admin) {
+        if (LDAP_ENABLED && !u.is_admin && !u.github_managed) {
             const label = u.ldap_managed ? 'Manage LDAP' : 'Link LDAP';
             parts.push(`<button class="btn btn-secondary" data-act="ldap-link">${escapeHtml(label)}</button>`);
         }
@@ -358,7 +358,7 @@
                 : `<span class="admin-badge">${escapeHtml(t('admin.statusActive', 'Active'))}</span>`;
             tr.innerHTML =
                 `<td>${u.id}</td>` +
-                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
+                `<td>${escapeHtml(u.username)}${u.ldap_managed ? ' <span class="admin-muted">(LDAP)</span>' : ''}${u.github_managed ? ' <span class="admin-muted">(GitHub)</span>' : ''}${u.username === CURRENT_USER ? ' <span class="admin-muted">(' + escapeHtml(t('admin.you', 'you')) + ')</span>' : ''}</td>` +
                 `<td>${role}</td>` +
                 `<td>${status}</td>` +
                 `<td>${escapeHtml(fmtDate(u.created_at))}</td>` +
@@ -935,10 +935,70 @@
             notify(e.message, 'error');
         }
         await loadSecurityFeatures();
+        await loadGitHubConfig();
+    }
+
+    async function loadGitHubConfig() {
+        const status = document.getElementById('githubAuthStatus');
+        if (!status) { return; }
+        try {
+            const data = await api('/admin/api/github-auth/config');
+            const item = data.configuration || {};
+            document.getElementById('githubAuthEnabled').checked = !!item.enabled;
+            document.getElementById('githubAuthClientId').value = item.client_id || '';
+            document.getElementById('githubAuthClientSecret').value = '';
+            document.getElementById('githubAuthRedirectUri').value = item.redirect_uri || '';
+            document.getElementById('githubAuthAllowedOrgs').value = (item.allowed_orgs || []).join(', ');
+            document.getElementById('githubAuthAutoProvision').checked = !!item.auto_provision;
+            document.getElementById('githubAuthSecretState').textContent = item.client_secret_configured
+                ? 'A client secret is stored. Enter a value only to replace it.'
+                : 'No client secret stored';
+            status.textContent = item.active
+                ? 'GitHub sign-in is active'
+                : (item.error || 'GitHub sign-in is disabled');
+        } catch (error) {
+            status.textContent = error.message;
+        }
+    }
+
+    async function saveGitHubConfig() {
+        const secret = document.getElementById('githubAuthClientSecret').value;
+        const body = {
+            enabled: document.getElementById('githubAuthEnabled').checked,
+            client_id: document.getElementById('githubAuthClientId').value.trim(),
+            redirect_uri: document.getElementById('githubAuthRedirectUri').value.trim(),
+            allowed_orgs: document.getElementById('githubAuthAllowedOrgs').value
+                .split(',').map(value => value.trim()).filter(Boolean),
+            auto_provision: document.getElementById('githubAuthAutoProvision').checked
+        };
+        if (secret) { body.client_secret = secret; }
+        await stepUpApi('github.config', 'global', '/admin/api/github-auth/config', {
+            method: 'POST', body
+        });
+        await loadGitHubConfig();
+        notify(t('admin.settingsSaved', 'Settings saved'), 'success');
+    }
+
+    async function clearGitHubSecret() {
+        if (!window.confirm(
+            'Disable GitHub sign-in and permanently remove the stored client secret?'
+        )) { return; }
+        await stepUpApi('github.config', 'global', '/admin/api/github-auth/config', {
+            method: 'POST',
+            body: { enabled: false, clear_client_secret: true }
+        });
+        await loadGitHubConfig();
+        notify('GitHub client secret removed', 'success');
     }
 
     function initSettings() {
         document.getElementById('ldapStatusCheck')?.addEventListener('click', checkLdapStatus);
+        document.getElementById('githubAuthSave')?.addEventListener('click', () => {
+            saveGitHubConfig().catch(error => notify(error.message, 'error'));
+        });
+        document.getElementById('githubAuthClearSecret')?.addEventListener('click', () => {
+            clearGitHubSecret().catch(error => notify(error.message, 'error'));
+        });
         document.getElementById('securityFeatureList')?.addEventListener('change', async (event) => {
             const target = event.target;
             if (!target.matches('input[data-security-feature]')) { return; }

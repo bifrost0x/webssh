@@ -293,7 +293,10 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
     if (
         user is None
         or user.is_locked
-        or (user.is_admin and user.is_ldap_managed)
+        or (
+            user.is_admin
+            and (user.is_ldap_managed or user.is_github_managed)
+        )
         or int(user.auth_generation or 0) != expected_generation
     ):
         raise AuthenticationFinalizationError('account is no longer eligible')

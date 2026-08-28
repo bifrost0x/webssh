@@ -33,6 +33,7 @@ WIKI_PAGE_NAMES = {
     "Upgrading-Rollback-and-FAQ.md",
     "Users-and-Account-Management.md",
     "Authentication-Overview.md",
+    "GitHub-Authentication.md",
     "LDAP-and-Active-Directory.md",
     "OpenID-Connect.md",
     "Passkeys-and-Recovery-Codes.md",

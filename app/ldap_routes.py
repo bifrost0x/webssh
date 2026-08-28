@@ -294,6 +294,10 @@ def link_ldap_identity(user_id):
         return jsonify({'error': 'Directory username is required'}), 400
     if target.ldap_identity is not None:
         return jsonify({'error': 'User already has an LDAP identity'}), 409
+    if target.is_github_managed:
+        return jsonify({
+            'error': 'LDAP cannot be linked to a GitHub-managed account'
+        }), 409
 
     try:
         resolved = get_directory().lookup(directory_username)

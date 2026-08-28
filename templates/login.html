@@ -168,6 +168,12 @@
                     <span><strong data-i18n="security.methodOidc">Identity provider</strong><small data-i18n="auth.organizationSso">SSO with your organization</small></span>
                 </button>
                 {% endif %}
+                {% if github_auth_enabled %}
+                <button class="auth-method-option" type="button" role="tab" data-auth-mode="github" aria-selected="false" aria-controls="githubLoginMode">
+                    <span class="material-icons" aria-hidden="true">code</span>
+                    <span><strong data-i18n="security.methodGithub">GitHub</strong><small data-i18n="auth.githubSignInHint">Use your linked GitHub account</small></span>
+                </button>
+                {% endif %}
             </div>
             {% endif %}
 
@@ -292,6 +298,14 @@
                 <a class="auth-provider-button" id="oidcLoginBtn" href="{{ url_for('oidc.oidc_login') }}"><span class="material-icons" aria-hidden="true">verified_user</span><span data-i18n="auth.signInWithIdentityProvider">Sign in with identity provider</span></a>
             </section>
             {% endif %}
+            {% if github_auth_enabled and not mfa_required %}
+            <section id="githubLoginMode" class="login-mode auth-provider-mode hidden" data-auth-mode-panel="github" aria-hidden="true">
+                <span class="auth-provider-mode-icon material-icons" aria-hidden="true">code</span>
+                <h2 data-i18n="auth.githubPrompt">Continue with GitHub</h2>
+                <p data-i18n="auth.githubPromptHint">WebSSH uses your GitHub App authorization only to verify your identity and configured organization membership.</p>
+                <a class="auth-provider-button" id="githubLoginBtn" href="{{ url_for('github_auth.github_login') }}"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="auth.signInWithGithub">Sign in with GitHub</span></a>
+            </section>
+            {% endif %}
             </div>
             <div class="auth-footer{% if mfa_required %} hidden{% endif %}">
                 {% if registration_enabled %}
@@ -306,9 +320,9 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=35"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=36"></script>
     <script src="{{ url_for('static', filename='js/auth.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=3"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=6"></script>
 </body>
 </html>

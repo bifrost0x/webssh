@@ -157,6 +157,44 @@
                     </details>
                     {% endif %}
                 </div>
+                <div class="admin-settings-surface" id="githubAuthConfiguration">
+                    <div class="admin-settings-intro">
+                        <h3>GitHub authentication</h3>
+                        <p class="admin-muted">Configure the GitHub App at runtime. The client secret is encrypted with WebSSH's persistent secret and is never returned to the browser.</p>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><strong>Enable GitHub sign-in</strong><p class="admin-muted">The login button appears only after every required value is saved.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled"><span>Enabled</span></label>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthClientId">GitHub App client ID</label>
+                        <input class="form-control" id="githubAuthClientId" type="text" maxlength="128" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthClientSecret">Client secret</label>
+                        <input class="form-control" id="githubAuthClientSecret" type="password" maxlength="512" autocomplete="new-password" placeholder="Leave blank to keep the stored secret">
+                        <p class="admin-muted" id="githubAuthSecretState">No client secret stored</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthRedirectUri">Callback URL</label>
+                        <input class="form-control" id="githubAuthRedirectUri" type="url" maxlength="2048" autocomplete="off" spellcheck="false" placeholder="https://ssh.example.com/auth/github/callback">
+                        <p class="admin-muted">Enter this exact URL as a GitHub App callback URL. Production callbacks must use HTTPS.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="githubAuthAllowedOrgs">Allowed organizations</label>
+                        <input class="form-control" id="githubAuthAllowedOrgs" type="text" maxlength="2000" autocomplete="off" spellcheck="false" placeholder="example-org, another-org">
+                        <p class="admin-muted">Optional. Private membership checks require the GitHub App organization permission <strong>Members: read</strong>.</p>
+                    </div>
+                    <div class="admin-settings-row">
+                        <div><strong>Automatically provision users</strong><p class="admin-muted">Disabled by default. New GitHub users are always created as non-admin accounts.</p></div>
+                        <label class="admin-switch"><input type="checkbox" id="githubAuthAutoProvision"><span>Enabled</span></label>
+                    </div>
+                    <div class="admin-toolbar">
+                        <button class="btn btn-primary" id="githubAuthSave" type="button">Save GitHub configuration</button>
+                        <button class="btn btn-danger" id="githubAuthClearSecret" type="button">Disable and remove secret</button>
+                        <span class="admin-muted" id="githubAuthStatus" role="status" aria-live="polite">Not loaded</span>
+                    </div>
+                </div>
             </section>
 
             <section class="admin-settings-subpanel hidden" data-settings-panel="registration">
@@ -388,10 +426,10 @@
 
 {% if not embedded %}
     <div id="notificationContainer" class="notification-container"></div>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=35"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=36"></script>
+    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=7"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=8"></script>
 </body>
 </html>
 {% endif %}

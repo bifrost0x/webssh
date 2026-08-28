@@ -46,6 +46,8 @@ ACCOUNT_STEP_UP_ACTIONS = frozenset({
     "totp.delete",
     "mfa.disable",
     "recovery.rotate",
+    "github.link",
+    "github.unlink",
 })
 
 

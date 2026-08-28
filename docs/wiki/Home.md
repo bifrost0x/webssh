@@ -20,7 +20,7 @@ overview, screenshots, release badges, and source code, visit the
 - Linux session diagnostics for resources, processes, systemd services, and
   Docker containers.
 - Local accounts, optional Passkeys and authenticator apps (TOTP), Recovery
-  Codes, OIDC, and optional LDAP/Active Directory authentication with
+  Codes, OIDC, GitHub App sign-in, and optional LDAP/Active Directory authentication with
   conservative authentication assurance.
 - Administrative user management, structured audit logs, backup and restore,
   and security controls suitable for a trusted self-hosted deployment.
@@ -41,6 +41,7 @@ selected SSH session across desktop, tablet, and mobile layouts.
 | Configure every environment setting | [Configuration Reference](Configuration-Reference) |
 | Connect to SSH hosts safely | [SSH Connections and Host Keys](SSH-Connections-and-Host-Keys) |
 | Enable LDAP or Active Directory | [LDAP and Active Directory](LDAP-and-Active-Directory) |
+| Enable GitHub App sign-in | [GitHub Authentication](GitHub-Authentication) |
 | Operate backups and recovery | [Backup, Restore and Secret Rotation](Backup-Restore-and-Secret-Rotation) |
 | Diagnose an unhealthy instance | [Health Checks and Troubleshooting](Health-Checks-and-Troubleshooting) |
 | Contribute code or documentation | [Development and Testing](Development-and-Testing) |

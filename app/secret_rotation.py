@@ -17,6 +17,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from .backup_manager import create_backup
 from .key_encryption import _derive_key, is_encrypted, key_operation_lock
 from .mfa_crypto import decrypt_totp_secret, encrypt_totp_secret
+from .github_auth_crypto import decrypt_client_secret, encrypt_client_secret
 from .storage_migrations import CURRENT_STORAGE_VERSIONS, migrate_document
 from .storage_utils import atomic_write_bytes
 
@@ -30,6 +31,7 @@ class RotationReport:
     rotated_keys: int
     backup_path: Path
     rotated_totp_secrets: int = 0
+    rotated_github_secrets: int = 0
 
 
 _MIGRATION_BACKUP_PATTERN = re.compile(
@@ -291,6 +293,61 @@ def _apply_staged_totp_rotation(connection, staged):
             raise SecretRotationError('TOTP storage changed during rotation')
 
 
+def _stage_github_rotation(connection, old_secret, new_secret):
+    tables = {
+        row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    if 'github_auth_configuration' not in tables:
+        return []
+    try:
+        rows = connection.execute(
+            'SELECT id, encrypted_client_secret '
+            'FROM github_auth_configuration '
+            'WHERE encrypted_client_secret IS NOT NULL'
+        ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise SecretRotationError(
+            'GitHub authentication storage schema is invalid'
+        ) from exc
+    staged = []
+    for row_id, ciphertext in rows:
+        try:
+            plaintext = decrypt_client_secret(
+                ciphertext, master_secret=old_secret
+            )
+            replacement = encrypt_client_secret(
+                plaintext, master_secret=new_secret
+            )
+            verified = decrypt_client_secret(
+                replacement, master_secret=new_secret
+            )
+        except Exception as exc:
+            raise SecretRotationError(
+                'GitHub client secret could not be decrypted and verified'
+            ) from exc
+        if not hmac.compare_digest(plaintext, verified):
+            raise SecretRotationError(
+                'staged GitHub client secret verification failed'
+            )
+        staged.append((int(row_id), replacement))
+    return staged
+
+
+def _apply_staged_github_rotation(connection, staged):
+    for row_id, ciphertext in staged:
+        cursor = connection.execute(
+            'UPDATE github_auth_configuration '
+            'SET encrypted_client_secret = ? WHERE id = ?',
+            (sqlite3.Binary(ciphertext), row_id),
+        )
+        if cursor.rowcount != 1:
+            raise SecretRotationError(
+                'GitHub authentication storage changed during rotation'
+            )
+
+
 def _rotate_secret_locked(old_secret, new_secret, data_dir):
     _validate_secret(old_secret, 'old')
     _validate_secret(new_secret, 'new')
@@ -325,6 +382,11 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
         connection = sqlite3.connect(database_path, timeout=30)
         try:
             staged_totp = _stage_totp_rotation(
+                connection,
+                old_secret,
+                new_secret,
+            )
+            staged_github = _stage_github_rotation(
                 connection,
                 old_secret,
                 new_secret,
@@ -367,6 +429,7 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
                 committed = False
                 try:
                     _apply_staged_totp_rotation(connection, staged_totp)
+                    _apply_staged_github_rotation(connection, staged_github)
                     for path, staged in staged_files.items():
                         atomic_write_bytes(
                             path,
@@ -410,11 +473,12 @@ def _rotate_secret_locked(old_secret, new_secret, data_dir):
         finally:
             connection.close()
 
-    return RotationReport(
-        rotated_keys=len(key_files),
-        backup_path=backup_path,
-        rotated_totp_secrets=len(staged_totp),
-    )
+        return RotationReport(
+            rotated_keys=len(key_files),
+            backup_path=backup_path,
+            rotated_totp_secrets=len(staged_totp),
+            rotated_github_secrets=len(staged_github),
+        )
 
 
 def rotate_secret(old_secret, new_secret, data_dir):
