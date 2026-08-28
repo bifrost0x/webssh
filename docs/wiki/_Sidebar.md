@@ -15,6 +15,7 @@
 
 - [Users and Account Management](Users-and-Account-Management)
 - [Authentication Overview](Authentication-Overview)
+- [GitHub Authentication](GitHub-Authentication)
 - [LDAP and Active Directory](LDAP-and-Active-Directory)
 - [OpenID Connect](OpenID-Connect)
 - [Passkeys and Recovery Codes](Passkeys-and-Recovery-Codes)

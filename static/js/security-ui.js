@@ -175,8 +175,8 @@
                 );
                 return completed.grant;
             }
-            if (method === 'oidc') {
-                const started = await api('/api/account/step-up/oidc/start', {
+            if (method === 'oidc' || method === 'github') {
+                const started = await api(`/api/account/step-up/${method}/start`, {
                     method: 'POST',
                     body: {
                         intent: created.intent,

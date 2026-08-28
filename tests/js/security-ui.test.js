@@ -107,6 +107,36 @@ test('OIDC account step-up never asks for a local password', async () => {
     assert.equal(polls, 2);
 });
 
+test('GitHub account step-up uses the dedicated authorization endpoint', async () => {
+    const calls = [];
+    let polls = 0;
+    const client = createAccountStepUpClient({
+        api: async (path, options) => {
+            calls.push([path, options]);
+            if (path.endsWith('/intents')) {
+                return {
+                    intent: 'intent-github',
+                    preferred_method: 'github',
+                    methods: ['github']
+                };
+            }
+            if (path.endsWith('/github/start')) {
+                return { authorization_url: 'https://github.com/login/oauth/authorize' };
+            }
+            polls += 1;
+            return polls === 1
+                ? { status: 'pending' }
+                : { status: 'completed', grant: 'grant-github' };
+        },
+        openAuthorization: () => {},
+        wait: async () => {}
+    });
+
+    assert.equal(await client.authorize('github.unlink', 17), 'grant-github');
+    assert.equal(calls[1][0], '/api/account/step-up/github/start');
+    assert.equal(polls, 2);
+});
+
 test('passkey step-up serializes the assertion and returns an exact grant header', async () => {
     const calls = [];
     const client = createAccountStepUpClient({

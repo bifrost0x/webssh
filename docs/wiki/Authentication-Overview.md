@@ -17,6 +17,7 @@ upgrade a session silently.
 | Authenticator app (TOTP) | Disabled | Encrypted secret owned by a local account | Optional second factor after password, LDAP, or basic OIDC |
 | Recovery code | Enabled | One-time code owned by a local account | Second-factor recovery after valid primary login |
 | OIDC | Disabled | Exact issuer and subject linked by an admin | Existing OpenID Provider |
+| GitHub App | Disabled | Immutable numeric GitHub user ID | Linked GitHub identities and optional controlled provisioning |
 | LDAP/Active Directory | Disabled | Stable directory ID linked by an admin | Lab or organization directory authentication |
 
 ## Common controls
@@ -125,14 +126,26 @@ password.
 
 See [LDAP and Active Directory](LDAP-and-Active-Directory).
 
+## GitHub App authentication
+
+GitHub is configured at runtime in the Admin Panel and does not require a
+Compose overlay, environment variables, or an additional secret mount. The
+authorization-code flow uses PKCE and server-side one-use state. WebSSH keeps
+only the immutable numeric GitHub user ID and display metadata; temporary user
+access tokens are discarded after identity and optional organization checks.
+
+Username or email equality never links accounts. Auto-provisioning is disabled
+by default and can create only non-admin users. See
+[GitHub Authentication](GitHub-Authentication).
+
 ## Login-mode separation
 
 The login UI presents optional identity methods as deliberate modes. A user who
 chooses LDAP enters a dedicated LDAP form with a clear way back instead of
 mixing directory fields into the local login form.
 
-This separation matters operationally: local, OIDC, Passkey, TOTP, Recovery,
-and LDAP flows have different failure and recovery semantics.
+This separation matters operationally: local, OIDC, GitHub, Passkey, TOTP,
+Recovery, and LDAP flows have different failure and recovery semantics.
 
 ## Administrator step-up
 

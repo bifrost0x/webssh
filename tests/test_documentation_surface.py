@@ -33,6 +33,7 @@ WIKI_PAGE_NAMES = {
     "Upgrading-Rollback-and-FAQ.md",
     "Users-and-Account-Management.md",
     "Authentication-Overview.md",
+    "GitHub-Authentication.md",
     "LDAP-and-Active-Directory.md",
     "OpenID-Connect.md",
     "Passkeys-and-Recovery-Codes.md",
@@ -109,6 +110,32 @@ def test_wiki_has_no_unresolved_placeholders():
         if forbidden.search(page.read_text(encoding="utf-8")):
             findings.append(page.name)
     assert findings == []
+
+
+def test_github_setup_is_actionable_in_admin_and_wiki():
+    """GitHub setup must name the exact menus and credentials in both places."""
+    admin = (ROOT / "templates" / "admin.html").read_text(encoding="utf-8")
+    guide = wiki_text("GitHub-Authentication.md")
+
+    for phrase in (
+        "Developer settings",
+        "New GitHub App",
+        "Homepage URL",
+        "Callback URL",
+        "Generate a new client secret",
+        "Client ID",
+        "App ID",
+        "Members: read",
+        "Install App",
+        "WebSSH does not need",
+    ):
+        assert phrase in admin
+        assert phrase in guide
+
+    assert "https://github.com/settings/apps/new" in admin
+    assert "https://github.com/settings/apps/new" in guide
+    assert "https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app" in admin
+    assert "https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app" in guide
 
 
 def wiki_text(name: str) -> str:

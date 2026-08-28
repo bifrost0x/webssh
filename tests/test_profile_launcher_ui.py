@@ -34,7 +34,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     expected_versions = {
         "filename='css/style.css'": '?v=24',
         "filename='css/sftp-file-manager.css'": '?v=18',
-        "filename='js/i18n.js'": '?v=35',
+        "filename='js/i18n.js'": '?v=36',
         "filename='js/command-workspace.js'": '?v=3',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',

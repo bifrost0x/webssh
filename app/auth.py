@@ -127,7 +127,7 @@ def load_user(user_id):
 
     user = db.session.get(User, parsed_user_id)
     if user is None or user.is_locked or (
-        user.is_admin and user.is_ldap_managed
+        user.is_admin and (user.is_ldap_managed or user.is_github_managed)
     ):
         return None
     if int(user.auth_generation or 0) != parsed_generation:
@@ -230,6 +230,7 @@ def ensure_initial_admin():
             User.query
             .filter_by(is_admin=True)
             .filter(~User.ldap_identity.has())
+            .filter(~User.github_identity.has(provisioned_by_github=True))
             .order_by(User.id)
             .first()
         )
@@ -239,6 +240,7 @@ def ensure_initial_admin():
         oldest_user = (
             User.query
             .filter(~User.ldap_identity.has())
+            .filter(~User.github_identity.has(provisioned_by_github=True))
             .order_by(User.id)
             .first()
         )
@@ -275,7 +277,7 @@ def authenticate_user(username, password):
     # A directory-managed identity must never silently fall back to the local
     # password database. Keep this boundary in the shared authenticator so it
     # also protects reauthentication and future password-based entry points.
-    if user.ldap_identity is not None:
+    if user.ldap_identity is not None or user.is_github_managed:
         return None, "Invalid username or password"
     if password_matches:
         if getattr(user, 'is_locked', False):
@@ -295,7 +297,11 @@ def sync_admin_users():
     changed = False
     for name in getattr(config, 'ADMIN_USERS', []):
         u = User.query.filter_by(username=name).first()
-        if u and not u.is_admin and not u.is_ldap_managed:
+        if (
+            u and not u.is_admin
+            and not u.is_ldap_managed
+            and not u.is_github_managed
+        ):
             u.is_admin = True
             changed = True
             log_info("Admin granted via ADMIN_USERS", user=name)

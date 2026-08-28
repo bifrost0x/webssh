@@ -117,6 +117,7 @@ def create_app(
     @app.context_processor
     def inject_url_prefix():
         from .security_features import feature_is_active
+        from .github_auth_service import github_auth_is_active
 
         registration_available = (
             is_registration_enabled()
@@ -133,6 +134,7 @@ def create_app(
             'webauthn_rp_id': config.WEBAUTHN_RP_ID,
             'totp_enabled': feature_is_active('totp'),
             'oidc_enabled': feature_is_active('oidc'),
+            'github_auth_enabled': github_auth_is_active(),
             'ldap_enabled': feature_is_active('ldap'),
             'ldap_provider_id': config.LDAP_PROVIDER_ID,
             'ldap_managed': bool(
@@ -283,6 +285,7 @@ def create_app(
     from .account_step_up_routes import account_step_up_blueprint
     from .health import health_blueprint
     from .host_key_routes import host_key_blueprint
+    from .github_auth_routes import github_auth_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
     from .recovery_routes import recovery_blueprint
     from .step_up_routes import step_up_blueprint
@@ -299,6 +302,7 @@ def create_app(
     app.register_blueprint(admin_backup_blueprint)
     app.register_blueprint(health_blueprint)
     app.register_blueprint(host_key_blueprint)
+    app.register_blueprint(github_auth_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)
     app.register_blueprint(step_up_blueprint)
@@ -655,7 +659,7 @@ def create_app(
     @app.route('/change-password', methods=['GET', 'POST'])
     @login_required
     def change_password():
-        if current_user.is_ldap_managed:
+        if current_user.is_ldap_managed or current_user.is_github_managed:
             abort(403)
         if request.method == 'POST':
             client_ip = get_client_ip()
@@ -717,6 +721,7 @@ def create_app(
             'password': 'WebSSH password',
             'ldap': 'LDAP directory',
             'oidc': 'Identity provider (OIDC)',
+            'github': 'GitHub',
             'passkey': 'Passkey',
             'totp': 'Authenticator app',
             'recovery_code': 'Recovery code',
@@ -725,6 +730,7 @@ def create_app(
             'password': 'security.methodPassword',
             'ldap': 'security.methodLdap',
             'oidc': 'security.methodOidc',
+            'github': 'security.methodGithub',
             'passkey': 'security.methodPasskey',
             'totp': 'security.methodTotp',
             'recovery_code': 'security.methodRecoveryCode',
@@ -749,6 +755,8 @@ def create_app(
             ),
             authentication_primary_method=primary_method,
             account_mfa_enabled=bool(current_user.mfa_enabled),
+            github_identity_linked=current_user.github_identity is not None,
+            github_managed=bool(current_user.is_github_managed),
             confirm_session_close=settings.get(
                 'confirm_session_close',
                 False,
@@ -822,6 +830,7 @@ def create_app(
             'is_locked': bool(u.is_locked),
             'mfa_enabled': bool(u.mfa_enabled),
             'ldap_managed': bool(u.is_ldap_managed),
+            'github_managed': bool(u.is_github_managed),
             'created_at': u.created_at.isoformat() if u.created_at else None,
             'last_login': u.last_login.isoformat() if u.last_login else None,
         }
@@ -893,6 +902,13 @@ def create_app(
                     'error': (
                         'LDAP accounts cannot be administrators; keep a '
                         'local break-glass administrator'
+                    )
+                }), 400
+            if target.is_github_managed:
+                return jsonify({
+                    'error': (
+                        'GitHub-managed accounts cannot be administrators; '
+                        'keep a local break-glass administrator'
                     )
                 }), 400
             target.is_admin = True

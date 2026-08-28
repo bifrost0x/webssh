@@ -59,6 +59,12 @@ class User(db.Model, UserMixin):
         cascade='all, delete-orphan',
         uselist=False,
     )
+    github_identity = db.relationship(
+        'GitHubIdentity',
+        backref='user',
+        cascade='all, delete-orphan',
+        uselist=False,
+    )
     pending_authentications = db.relationship(
         'PendingAuthentication',
         backref='user',
@@ -100,6 +106,14 @@ class User(db.Model, UserMixin):
     def is_ldap_managed(self):
         """Return whether this account is exclusively directory-managed."""
         return self.ldap_identity is not None
+
+    @property
+    def is_github_managed(self):
+        """Return whether GitHub is this account's only original primary."""
+        return bool(
+            self.github_identity is not None
+            and self.github_identity.provisioned_by_github
+        )
 
     def get_data_dir(self):
         """Get user-specific data directory."""
@@ -314,6 +328,91 @@ class SecurityFeatureState(db.Model):
     )
 
 
+class GitHubAuthConfiguration(db.Model):
+    """Singleton runtime configuration managed through the admin panel."""
+
+    __tablename__ = 'github_auth_configuration'
+
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
+    client_id = db.Column(db.String(128), nullable=False, default='')
+    encrypted_client_secret = db.Column(db.LargeBinary)
+    redirect_uri = db.Column(db.String(2048), nullable=False, default='')
+    auto_provision = db.Column(db.Boolean, nullable=False, default=False)
+    allowed_orgs_json = db.Column(db.Text, nullable=False, default='[]')
+    generation = db.Column(db.Integer, nullable=False, default=1)
+    updated_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    secret_updated_at = db.Column(db.DateTime)
+
+
+class GitHubIdentity(db.Model):
+    """A WebSSH account binding keyed by GitHub's immutable numeric ID."""
+
+    __tablename__ = 'github_identities'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    github_user_id = db.Column(
+        db.String(32),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    login = db.Column(db.String(128), nullable=False)
+    display_name = db.Column(db.String(256))
+    provisioned_by_github = db.Column(
+        db.Boolean, nullable=False, default=False, server_default='0'
+    )
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    last_verified_at = db.Column(db.DateTime)
+
+
+class GitHubOAuthState(db.Model):
+    """Short-lived, single-use GitHub OAuth intent stored server-side."""
+
+    __tablename__ = 'github_oauth_states'
+
+    id = db.Column(db.Integer, primary_key=True)
+    state_hash = db.Column(db.String(64), unique=True, nullable=False)
+    session_binding_hash = db.Column(db.String(64), nullable=False, index=True)
+    code_verifier = db.Column(db.String(128), nullable=False)
+    purpose = db.Column(db.String(24), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    step_up_intent_id = db.Column(
+        db.Integer,
+        db.ForeignKey('step_up_intents.id'),
+        nullable=True,
+        index=True,
+    )
+    continuation = db.Column(
+        db.String(512), nullable=False, default='/', server_default='/'
+    )
+    configuration_generation = db.Column(db.Integer, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+
+
 class PendingAuthentication(db.Model):
     """Short-lived, server-owned evidence awaiting login finalization."""
 
@@ -513,6 +612,7 @@ def cleanup_expired_security_rows(limit=500, now=None):
     for model in (
         StepUpIntent,
         StepUpGrant,
+        GitHubOAuthState,
         PendingAuthentication,
         TOTPEnrollment,
         AuthenticationSession,

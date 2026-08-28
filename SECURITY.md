@@ -52,6 +52,7 @@ Instead, report vulnerabilities via:
 | Recovery | Single-use codes hashed at rest; usable only after valid primary authentication and restricted until factor replacement or explicit MFA disable |
 | LDAP | Optional StartTLS/LDAPS authentication with certificate verification, stable directory identities, and fail-closed session revalidation |
 | OIDC | Optional authorization-code flow with PKCE, nonce/state validation, explicit issuer/subject linking, and operator-defined signed `acr`/`amr` assurance |
+| GitHub | Optional admin-configured GitHub App flow with PKCE, server-side one-use state, immutable numeric identity links, fail-closed organization policy, and non-admin-only provisioning |
 | Admin Step-up | One-use five-minute grants bound to the current authentication session, exact action, exact target, and required assurance |
 
 ### Data Protection
@@ -59,6 +60,7 @@ Instead, report vulnerabilities via:
 | Data | Protection |
 |------|------------|
 | SSH Private Keys | Encrypted at rest using Fernet (AES-128-CBC + HMAC) |
+| GitHub Client Secret | Encrypted in the application database with a domain-separated key derived from the persisted `SECRET_KEY`; write-only in the Admin API |
 | Key Derivation | PBKDF2-SHA256 with 600,000 iterations |
 | Per-User Isolation | Keys derived from `SECRET_KEY + user_id` |
 | File Permissions | Keys stored with 0600, directories with 0700 |
@@ -164,11 +166,11 @@ Instead, report vulnerabilities via:
     that manager and a separately controlled key migration.
 
 11. **Keep a tested local break-glass administrator**
-    OIDC and LDAP remain deployment-gated and can fail independently of
-    WebSSH. Keep at least one local administrator with a strong password and
-    tested Passkey or TOTP factor. Store its Recovery Codes offline. Enabling a
-    provider in the Admin Panel is impossible unless the matching deployment
-    configuration was present and validated at startup.
+    OIDC and LDAP remain deployment-gated, while GitHub App authentication is
+    configured at runtime in the Admin Panel. Every provider can fail
+    independently of WebSSH. Keep at least one local administrator with a
+    strong password and tested Passkey or TOTP factor. Store its Recovery Codes
+    offline. GitHub-provisioned accounts can never become administrators.
 
 ### Optional MFA and assurance
 
@@ -229,7 +231,8 @@ upgrade. No persistent-data rollback or format rewrite is required.
 |------------|-------------|------------|
 | In-Memory Rate Limiting | Bypassed with multiple workers | Use single worker (default) |
 | TOFU Host Keys | First connection auto-accepted | Review logs for new host keys |
-| Optional identity features | Passkeys, TOTP, OIDC, and LDAP require both deployment allowance and Admin activation | Configure exact origins/provider settings, validate readiness, and keep local administrator recovery tested before activation |
+| Deployment-gated identity features | Passkeys, TOTP, OIDC, and LDAP require both deployment allowance and Admin activation | Configure exact origins/provider settings, validate readiness, and keep local administrator recovery tested before activation |
+| Runtime GitHub authentication | A bad callback, revoked client secret, missing organization permission, or GitHub outage can prevent provider login | Configure the GitHub App in the Admin Panel, use the exact callback, validate organization policy, and keep local administrator recovery tested |
 | OIDC claim semantics vary | `acr` and `amr` do not have universal assurance meanings | Allowlist only values documented and tested for the configured provider; otherwise WebSSH treats the login as basic assurance |
 | In-process live sessions | Active SSH state requires exactly one WebSSH worker | Keep the documented single `gthread` worker and use the normal session lifetime instead of policy-triggered mass termination |
 

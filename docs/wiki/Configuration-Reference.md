@@ -156,16 +156,17 @@ Bulk uploads and downloads are streamed over HTTP; Socket.IO carries control eve
 
 Audit export scans at most 50,000 records and declares truncation in response metadata. Backup safety limits also cap archive member count, individual size, total size, compression ratio, and manifest size.
 
-## OIDC, LDAP, Passkeys, and Tailscale
+## OIDC, GitHub, LDAP, Passkeys, and Tailscale
 
 Identity-provider variables are grouped in their dedicated pages:
 
 - [LDAP and Active Directory](LDAP-and-Active-Directory)
 - [OpenID Connect](OpenID-Connect)
+- [GitHub Authentication](GitHub-Authentication)
 - [Passkeys and Recovery Codes](Passkeys-and-Recovery-Codes)
 - [Tailscale SSH](Tailscale-SSH)
 
-All optional identity providers are disabled until explicitly configured. Do not place bind passwords, OIDC client secrets, or other reusable credentials directly in Compose YAML committed to source control.
+All optional identity providers are disabled until explicitly configured. GitHub is the exception to the environment-variable model: its complete configuration and encrypted client secret are managed in the Admin Panel, so no Compose or `.env` entries are required. Do not place bind passwords, OIDC client secrets, or other reusable credentials directly in Compose YAML committed to source control.
 
 ## Validate effective configuration
 

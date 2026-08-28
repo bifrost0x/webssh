@@ -131,6 +131,10 @@ def create_admin(username, password_file):
             raise click.ClickException(
                 'LDAP-managed accounts cannot be administrators.'
             )
+        if user.is_github_managed:
+            raise click.ClickException(
+                'GitHub-managed accounts cannot be administrators.'
+            )
         if password_file is not None:
             raise click.ClickException(
                 '--password-file cannot be used when promoting an existing '
@@ -310,7 +314,8 @@ def rotate_secret_key(confirm_offline):
     )
     click.echo(
         f'SECRET_KEY rotated for {report.rotated_keys} stored SSH keys and '
-        f'{report.rotated_totp_secrets} TOTP secrets. '
+        f'{report.rotated_totp_secrets} TOTP secrets and '
+        f'{report.rotated_github_secrets} GitHub client secrets. '
         f'Verified backup: {report.backup_path}'
     )
     click.echo(

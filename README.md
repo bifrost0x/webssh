@@ -114,7 +114,7 @@ run it only on a trusted host and allowlist only trusted shares.
 - Local multi-user accounts with isolated profiles, keys, files, settings, and
   SSH host trust.
 - Optional Passkeys, authenticator apps (TOTP), and one-time Recovery Codes.
-- Optional OIDC and LDAP/Active Directory sign-in with conservative account
+- Optional OIDC, admin-configured GitHub App, and LDAP/Active Directory sign-in with conservative account
   linking and assurance handling.
 - Action-bound confirmation for protected account and administrative changes.
 - Encrypted SSH private-key storage and per-user known-host decisions.
