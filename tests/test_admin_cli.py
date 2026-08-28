@@ -188,6 +188,40 @@ def test_create_admin_rejects_promoting_ldap_managed_user(app):
     assert user.is_admin is False
 
 
+def test_create_admin_rejects_promoting_github_managed_user(app):
+    from app.auth import register_user
+    from app.models import GitHubIdentity, db
+
+    with app.app_context():
+        admin, admin_error = register_user(
+            'githubbreakglass',
+            'local-admin-password',
+        )
+        assert admin_error is None
+        assert admin.is_admin is True
+        user, error = register_user(
+            'githubmanageduser',
+            'existing-user-password',
+        )
+        assert error is None
+        db.session.add(GitHubIdentity(
+            user_id=user.id,
+            github_user_id='424242',
+            login='github-managed-user',
+            provisioned_by_github=True,
+        ))
+        db.session.commit()
+
+    result = app.test_cli_runner().invoke(
+        args=['create-admin', '--username', 'githubmanageduser'],
+    )
+
+    assert result.exit_code != 0
+    assert 'GitHub-managed accounts cannot be administrators' in result.output
+    user = _admin(app, 'githubmanageduser')
+    assert user.is_admin is False
+
+
 def test_create_admin_reads_password_file_and_strips_one_newline(
     app,
     tmp_path,

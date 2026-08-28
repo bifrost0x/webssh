@@ -223,6 +223,26 @@ def test_admin_configuration_api_is_step_up_protected_and_secret_is_write_only(
     assert cleared_configuration['client_secret_configured'] is False
 
 
+def test_admin_configuration_validation_does_not_expose_exception_details(
+    app, client,
+):
+    admin_id = _create_user(app, 'github_validation_admin', is_admin=True)
+    _login(client, 'github_validation_admin')
+    headers = password_step_up_headers(
+        client, 'github.config', 'global'
+    )[0]
+
+    response = client.post(
+        '/admin/api/github-auth/config',
+        json={'enabled': 'not-a-boolean'},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'Invalid GitHub configuration'}
+    assert b'enabled must be a boolean' not in response.data
+
+
 def test_org_rejection_fails_closed(app, client, monkeypatch):
     from app.github_auth_service import GitHubOrganizationRejected
 

@@ -131,6 +131,10 @@ def create_admin(username, password_file):
             raise click.ClickException(
                 'LDAP-managed accounts cannot be administrators.'
             )
+        if user.is_github_managed:
+            raise click.ClickException(
+                'GitHub-managed accounts cannot be administrators.'
+            )
         if password_file is not None:
             raise click.ClickException(
                 '--password-file cannot be used when promoting an existing '

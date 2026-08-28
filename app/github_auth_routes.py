@@ -439,9 +439,9 @@ def github_admin_update_config():
     data = request.get_json(silent=True)
     try:
         settings = update_settings(data, current_user.id)
-    except GitHubConfigurationError as exc:
+    except GitHubConfigurationError:
         db.session.rollback()
-        return jsonify({'error': str(exc)}), 400
+        return jsonify({'error': 'Invalid GitHub configuration'}), 400
     except Exception as exc:
         db.session.rollback()
         log_security_event(
