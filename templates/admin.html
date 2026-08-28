@@ -13,7 +13,7 @@
     <title>Settings · Web SSH Terminal</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=7">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=25">
 </head>
 <body data-theme="{{ theme|default('glass') }}">
@@ -162,6 +162,28 @@
                         <h3>GitHub authentication</h3>
                         <p class="admin-muted">Configure the GitHub App at runtime. The client secret is encrypted with WebSSH's persistent secret and is never returned to the browser.</p>
                     </div>
+                    <details class="github-auth-setup-guide" open>
+                        <summary>
+                            <span><strong>Set up the GitHub side first</strong><small>Exact GitHub menus, values, permissions, and installation</small></span>
+                            <span class="material-icons" aria-hidden="true">expand_more</span>
+                        </summary>
+                        <div class="github-auth-setup-body">
+                            <ol>
+                                <li><strong>Choose the public WebSSH URL.</strong> Use HTTPS and form the callback as <code>https://your-webssh-host/auth/github/callback</code>. If WebSSH uses an application-root prefix, place it before <code>/auth/github/callback</code>.</li>
+                                <li><strong>Create a GitHub App.</strong> For a personal app, open <strong>Profile picture → Settings → Developer settings → GitHub Apps → New GitHub App</strong>. For an organization-owned app, open <strong>Profile picture → Your organizations → Settings → Developer settings → GitHub Apps → New GitHub App</strong>. Organization owners or designated GitHub App managers can create it.</li>
+                                <li><strong>Complete “Basic information”.</strong> Give the app a unique name, set <strong>Homepage URL</strong> to the public WebSSH base URL, and set <strong>Callback URL</strong> to the exact value used below. Leave <strong>Setup URL</strong> empty and clear <strong>Active</strong> under <strong>Webhook</strong>; WebSSH does not receive webhooks.</li>
+                                <li><strong>Grant the minimum permissions.</strong> Keep all repository and account permissions at <strong>No access</strong>. Only when using <strong>Allowed organizations</strong>, open <strong>Permissions &amp; events → Organization permissions</strong> and set <strong>Members</strong> to <strong>Read-only</strong> (<strong>Members: read</strong>).</li>
+                                <li><strong>Create and install the app.</strong> Finish with <strong>Create GitHub App</strong>, then open <strong>Install App</strong> and install it on the personal account or organization whose resources and membership policy it should use. An organization owner must approve an installation that requests organization permissions.</li>
+                                <li><strong>Copy the two credentials.</strong> On the app's <strong>General</strong> page copy <strong>Client ID</strong>—not <strong>App ID</strong>. Under <strong>Client secrets</strong>, choose <strong>Generate a new client secret</strong> and copy it immediately. WebSSH does not need an App private key, webhook secret, or PEM file.</li>
+                                <li><strong>Finish here.</strong> Paste the Client ID, generated client secret, and identical callback URL below. Add exact organization logins only if the allowlist should be enforced, choose whether to auto-provision non-admin users, enable GitHub sign-in, and save. WebSSH will request administrator reauthentication before accepting the configuration.</li>
+                            </ol>
+                            <div class="github-auth-setup-links">
+                                <a class="btn btn-secondary" href="https://github.com/settings/apps/new" target="_blank" rel="noopener noreferrer">Create a personal GitHub App</a>
+                                <a class="btn btn-secondary" href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app" target="_blank" rel="noopener noreferrer">GitHub registration documentation</a>
+                                <a class="btn btn-secondary" href="https://github.com/bifrost0x/webssh/wiki/GitHub-Authentication" target="_blank" rel="noopener noreferrer">Full WebSSH setup guide</a>
+                            </div>
+                        </div>
+                    </details>
                     <div class="admin-settings-row">
                         <div><strong>Enable GitHub sign-in</strong><p class="admin-muted">The login button appears only after every required value is saved.</p></div>
                         <label class="admin-switch"><input type="checkbox" id="githubAuthEnabled"><span>Enabled</span></label>

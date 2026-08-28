@@ -794,6 +794,77 @@
     margin: 0;
 }
 
+.github-auth-setup-guide {
+    margin: 16px 18px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 42%, var(--border-color));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent-primary) 7%, var(--bg-secondary));
+}
+
+.github-auth-setup-guide > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.github-auth-setup-guide > summary::-webkit-details-marker {
+    display: none;
+}
+
+.github-auth-setup-guide > summary span:first-child {
+    display: grid;
+    gap: 3px;
+}
+
+.github-auth-setup-guide > summary small {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.github-auth-setup-guide[open] > summary {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.github-auth-setup-guide[open] > summary .material-icons {
+    transform: rotate(180deg);
+}
+
+.github-auth-setup-body {
+    padding: 4px 16px 16px;
+}
+
+.github-auth-setup-body ol {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0 16px;
+    padding-left: 22px;
+}
+
+.github-auth-setup-body li {
+    padding-left: 4px;
+    color: var(--text-muted);
+    line-height: 1.55;
+}
+
+.github-auth-setup-body li strong {
+    color: var(--text-primary);
+}
+
+.github-auth-setup-body code {
+    overflow-wrap: anywhere;
+}
+
+.github-auth-setup-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .admin-auth-feature-row,
 .admin-settings-row {
     display: grid;
