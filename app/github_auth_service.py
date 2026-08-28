@@ -342,13 +342,14 @@ def consume_oauth_state(*, state, session_binding, generation, now=None):
 
 
 def authorization_url(settings, *, state, code_challenge):
-    return f'{AUTHORIZE_URL}?{urlencode({
+    query = urlencode({
         "client_id": settings.client_id,
         "redirect_uri": settings.redirect_uri,
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
-    })}'
+    })
+    return f'{AUTHORIZE_URL}?{query}'
 
 
 def _headers(token=None):
