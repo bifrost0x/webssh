@@ -1007,7 +1007,7 @@ class SFTPFileManager {
         this.loadWorkspaceSmbShares();
         window.addEventListener('languageChanged', () => {
             this.applyTranslations();
-            if (this.workspace) { this.updateLayoutControls(); }
+            if (this.workspace) { this.renderWorkspaceChrome(); }
             if (this.sourceLauncherPane) { this.renderSourceLauncher(); }
         });
     }

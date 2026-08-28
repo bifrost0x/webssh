@@ -70,6 +70,10 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await page.locator('#fmLayoutSplit').click();
     await expect(page.locator('#fmSourceLauncher')).not.toHaveClass(/show/);
     await expect(page.locator('#fmRightList .fm-empty-source-cta')).toBeVisible();
+    const languageErrors = [];
+    page.on('pageerror', error => languageErrors.push(error.message));
+    await page.locator('[data-source-target="left"]').click();
+    await expect(page.locator('#fmSourceLauncher')).toHaveClass(/show/);
     await page.evaluate(() => window.i18n.setLanguage('de'));
     await expect(page.locator('#fmLeftTabs')).toHaveAttribute(
         'aria-label',
@@ -79,6 +83,8 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
         'title',
         'Quelle öffnen',
     );
+    await expect(page.locator('#fmSourceLauncher')).toContainText('Gespeicherte SSH-Hosts');
+    expect(languageErrors).toEqual([]);
     await page.evaluate(() => window.i18n.setLanguage('en'));
     await page.keyboard.press('Escape');
     await expect(page.locator('#sftpFileManager')).toBeVisible();
