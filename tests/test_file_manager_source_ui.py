@@ -71,6 +71,10 @@ def test_file_manager_exposes_folder_drop_move_and_concise_smb_help():
     assert 'data-pane-action="move"' not in source
     assert 'setupDirectoryDropTarget(item, pane, index)' in source
     assert 'moveSelectedToDirectory(pane, targetIndex, selectedItems)' in source
+    assert source.count('id="fmTransferBetween"') == 1
+    assert 'id="fmTransferRight"' not in source
+    assert 'id="fmTransferLeft"' not in source
+    assert 'canStartSamePaneMove(pane)' in source
     assert 'SFTP-File-Workspace-and-Transfers' in template
     assert 'target="_blank" rel="noopener noreferrer"' in template
     assert 'For Active Directory or TrueNAS, try DNS domain' not in template

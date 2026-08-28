@@ -161,9 +161,11 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
         manager.renderPane('left');
         manager.renderPane('right');
     });
-    await expect(page.locator('#fmTransferRight')).toBeEnabled();
+    await expect(page.locator('#fmTransferBetween')).toBeVisible();
+    await expect(page.locator('#fmTransferBetween')).toBeEnabled();
+    await expect(page.locator('.fm-transfer-rail .fm-transfer-direction')).toHaveCount(1);
     await expect(page.locator('#fmTransferHint')).toContainText('1 selected');
-    await page.locator('#fmTransferRight').click();
+    await page.locator('#fmTransferBetween').click();
     await expect.poll(() => page.evaluate(() => (
         window.__fileWorkspaceEvents.some(item => item.event === 'transfer_server_to_server')
     ))).toBe(true);
@@ -342,26 +344,9 @@ test('same-pane drag moves the selection into a folder without a Move toolbar ac
     });
 
     await expect(page.locator('[data-pane-action="move"]')).toHaveCount(0);
-    const highlighted = await page.evaluate(() => {
-        const source = document.querySelector('#fmLeftList .fm-file-item[data-index="0"]');
-        const target = document.querySelector('#fmLeftList .fm-file-item[data-index="1"]');
-        const dataTransfer = new DataTransfer();
-        source.dispatchEvent(new DragEvent('dragstart', {
-            bubbles: true, cancelable: true, dataTransfer,
-        }));
-        target.dispatchEvent(new DragEvent('dragover', {
-            bubbles: true, cancelable: true, dataTransfer,
-        }));
-        const active = target.classList.contains('fm-directory-drop-target');
-        target.dispatchEvent(new DragEvent('drop', {
-            bubbles: true, cancelable: true, dataTransfer,
-        }));
-        source.dispatchEvent(new DragEvent('dragend', {
-            bubbles: true, cancelable: true, dataTransfer,
-        }));
-        return active;
-    });
-    expect(highlighted).toBe(true);
+    const source = page.locator('#fmLeftList .fm-file-item[data-index="0"]');
+    const target = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
+    await source.dragTo(target);
     await expect.poll(() => page.evaluate(() => (
         window.__fileWorkspaceEvents.find(item => item.event === 'rename_file')?.payload
     ))).toMatchObject({

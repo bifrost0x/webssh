@@ -80,7 +80,8 @@ Supported operations include:
 - create directory;
 - rename;
 - move files or folders on the same source by dragging them onto a destination
-  folder in the current pane or into the other pane;
+  folder in the current File Workspace pane, the embedded active-session SFTP
+  browser, or the other pane;
 - delete;
 - drag-and-drop file and folder upload;
 - single and batch download;

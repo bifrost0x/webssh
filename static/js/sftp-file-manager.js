@@ -872,11 +872,15 @@ class SFTPFileManager {
             : this.t('fm.transfer', 'Transfer');
         const icon = button.querySelector?.('.material-icons');
         const text = button.querySelector?.('.btn-text');
-        if (icon) icon.textContent = moving ? 'drive_file_move' : 'swap_horiz';
+        if (icon) {
+            icon.textContent = direction === 'RightToLeft'
+                ? 'arrow_back'
+                : direction === 'LeftToRight' ? 'arrow_forward'
+                    : moving ? 'drive_file_move' : 'swap_horiz';
+        }
         if (text) text.textContent = label;
         button.classList?.toggle?.('is-move', moving);
         button.dataset.operation = available ? operation : 'unavailable';
-        if (direction) button.hidden = moving;
         if (direction) {
             const key = moving
                 ? `fm.workspace.move${direction}`
@@ -902,8 +906,19 @@ class SFTPFileManager {
         const activeOperation = this.workspaceOperationBetweenPanes(
             this.activePane, targetPane,
         );
-        const transferAvailable = activeOperation !== 'unavailable'
+        const activeTransferAvailable = activeOperation !== 'unavailable'
             && selectedCount > 0;
+        const transferSourcePane = selectedCount > 0
+            ? this.activePane
+            : (this.panes[targetPane]?.selected?.size || 0) > 0
+                ? targetPane : this.activePane;
+        const transferTargetPane = transferSourcePane === 'left' ? 'right' : 'left';
+        const transferSelectedCount = this.panes[transferSourcePane]?.selected?.size || 0;
+        const transferOperation = this.workspaceOperationBetweenPanes(
+            transferSourcePane, transferTargetPane,
+        );
+        const transferAvailable = transferOperation !== 'unavailable'
+            && transferSelectedCount > 0;
         const setDisabled = (id, disabled) => {
             const element = document.getElementById(id);
             if (element) element.disabled = disabled;
@@ -914,29 +929,20 @@ class SFTPFileManager {
         setDisabled('fmPreview', !this.sourceCan(state, 'preview') || !selectedFile || selectedFile.is_dir);
         setDisabled('fmRename', !this.sourceCan(state, 'rename') || selectedCount !== 1);
         setDisabled('fmDelete', !this.sourceCan(state, 'delete') || selectedCount === 0);
-        setDisabled('fmTransfer', !transferAvailable);
-        const rightOperation = this.workspaceOperationBetweenPanes('left', 'right');
-        const leftOperation = this.workspaceOperationBetweenPanes('right', 'left');
-        setDisabled('fmTransferRight', !(
-            rightOperation !== 'unavailable'
-            && this.panes.left.selected.size > 0
-        ));
-        setDisabled('fmTransferLeft', !(
-            leftOperation !== 'unavailable'
-            && this.panes.right.selected.size > 0
-        ));
+        setDisabled('fmTransfer', !activeTransferAvailable);
         this.updateWorkspaceOperationButton(
             document.getElementById('fmTransfer'), activeOperation,
         );
+        const betweenButton = document.getElementById('fmTransferBetween');
+        if (betweenButton) {
+            betweenButton.disabled = !transferAvailable;
+            betweenButton.hidden = !transferAvailable;
+            betweenButton.dataset.sourcePane = transferSourcePane;
+        }
         this.updateWorkspaceOperationButton(
-            document.getElementById('fmTransferRight'),
-            rightOperation,
-            'LeftToRight',
-        );
-        this.updateWorkspaceOperationButton(
-            document.getElementById('fmTransferLeft'),
-            leftOperation,
-            'RightToLeft',
+            betweenButton,
+            transferOperation,
+            transferSourcePane === 'left' ? 'LeftToRight' : 'RightToLeft',
         );
         ['left', 'right'].forEach(pane => {
             const paneState = this.panes[pane];
@@ -965,32 +971,12 @@ class SFTPFileManager {
         });
         const hint = document.getElementById('fmTransferHint');
         if (hint) {
-            const leftOperation = this.workspaceOperationBetweenPanes('left', 'right');
-            const rightOperation = this.workspaceOperationBetweenPanes('right', 'left');
-            const leftSelection = leftOperation !== 'unavailable'
-                ? this.panes.left.selected.size : 0;
-            const rightSelection = rightOperation !== 'unavailable'
-                ? this.panes.right.selected.size : 0;
-            const transferSelection = Math.max(leftSelection, rightSelection);
-            const selectedOperation = leftSelection >= rightSelection
-                ? leftOperation : rightOperation;
-            const moveOnly = leftOperation === 'move' && rightOperation === 'move';
-            hint.textContent = moveOnly
-                ? this.t(
-                    'fm.workspace.dragToMove',
-                    'Drag items onto a folder to move them',
-                )
-                : transferSelection > 0
+            hint.textContent = transferAvailable
                 ? `${this.t(
-                    selectedOperation === 'move' ? 'fm.move' : 'fm.transfer',
-                    selectedOperation === 'move' ? 'Move' : 'Transfer',
-                )} ${transferSelection} ${this.t('fm.selected', 'selected')}`
-                : selectedOperation === 'move'
-                    ? this.t(
-                        'fm.workspace.dragToMove',
-                        'Drag items onto a folder to move them',
-                    )
-                    : this.t('fm.workspace.selectFiles', 'Select files');
+                    transferOperation === 'move' ? 'fm.move' : 'fm.transfer',
+                    transferOperation === 'move' ? 'Move' : 'Transfer',
+                )} ${transferSelectedCount} ${this.t('fm.selected', 'selected')}`
+                : this.t('fm.workspace.selectFiles', 'Select files');
         }
     }
 
@@ -1171,12 +1157,8 @@ class SFTPFileManager {
 
                         <div class="fm-transfer-rail" aria-label="Transfer between panes" data-i18n-aria-label="fm.workspace.transferBetween">
                             <span class="fm-transfer-hint" id="fmTransferHint" aria-live="polite">Select files</span>
-                            <button type="button" class="fm-transfer-direction" id="fmTransferRight" aria-label="Transfer left to right" title="Transfer left to right">
+                            <button type="button" class="fm-transfer-direction" id="fmTransferBetween" aria-label="Transfer left to right" title="Transfer left to right" hidden>
                                 <span class="material-icons" aria-hidden="true">arrow_forward</span>
-                                <span class="btn-text" data-i18n="fm.transfer">Transfer</span>
-                            </button>
-                            <button type="button" class="fm-transfer-direction" id="fmTransferLeft" aria-label="Transfer right to left" title="Transfer right to left">
-                                <span class="material-icons" aria-hidden="true">arrow_back</span>
                                 <span class="btn-text" data-i18n="fm.transfer">Transfer</span>
                             </button>
                         </div>
@@ -1480,12 +1462,10 @@ class SFTPFileManager {
         document.querySelectorAll('[data-source-target]').forEach(button => {
             button.addEventListener('click', () => this.openSourceLauncher(button.dataset.sourceTarget));
         });
-        document.getElementById('fmTransferRight').addEventListener('click', () => {
-            this.setActivePane('left');
-            this.executeTransfer();
-        });
-        document.getElementById('fmTransferLeft').addEventListener('click', () => {
-            this.setActivePane('right');
+        document.getElementById('fmTransferBetween').addEventListener('click', event => {
+            const sourcePane = event.currentTarget.dataset.sourcePane;
+            if (!['left', 'right'].includes(sourcePane)) return;
+            this.setActivePane(sourcePane);
             this.executeTransfer();
         });
         document.querySelector('.fm-panes').addEventListener('click', event => {
@@ -3726,6 +3706,18 @@ class SFTPFileManager {
         return !this.draggedItems.some(item => item?.name === directory.name);
     }
 
+    canStartSamePaneMove(pane) {
+        const state = this.panes?.[pane];
+        return Boolean(
+            this.getPaneSourceId(state)
+            && !state.loading
+            && !state.error
+            && typeof state.path === 'string'
+            && this.sourceCan(state, 'rename')
+            && this.sourceCan(state, 'write'),
+        );
+    }
+
     setupDirectoryDropTarget(element, pane, index) {
         element.addEventListener('dragover', event => {
             if (!this.canDropDraggedItemsOnDirectory(pane, index)) return;
@@ -3777,9 +3769,13 @@ class SFTPFileManager {
         this.draggedItems = Array.from(state.selected).map(i => state.files[i]).filter(f => f);
         const targetPane = pane === 'left' ? 'right' : 'left';
         const operation = this.workspaceOperationBetweenPanes(pane, targetPane);
-        e.dataTransfer.effectAllowed = operation === 'move'
-            ? 'move'
-            : operation === 'copy' ? 'copy' : 'none';
+        const samePaneMove = this.draggedItems.length > 0
+            && this.canStartSamePaneMove(pane);
+        e.dataTransfer.effectAllowed = samePaneMove && operation === 'copy'
+            ? 'copyMove'
+            : samePaneMove || operation === 'move'
+                ? 'move'
+                : operation === 'copy' ? 'copy' : 'none';
         e.dataTransfer.setData('text/plain', this.draggedItems.map(f => f.name).join(', '));
     }
 
