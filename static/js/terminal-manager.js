@@ -509,6 +509,8 @@ const TerminalManager = {
                 deltaMode: 0,
                 deltaX: 0,
                 deltaY,
+                clientX: event.clientX,
+                clientY: event.clientY,
             });
             surface.dispatchEvent(wheelEvent);
             event.preventDefault?.();

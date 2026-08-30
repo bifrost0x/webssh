@@ -68,6 +68,8 @@ test('touch dragging the terminal is bridged into cancelable wheel input', () =>
     assert.equal(dispatched[0].type, 'wheel');
     assert.equal(dispatched[0].deltaY, 28);
     assert.equal(dispatched[0].deltaMode, 0);
+    assert.equal(dispatched[0].clientX, 42);
+    assert.equal(dispatched[0].clientY, 92);
     assert.equal(dispatched[0].bubbles, true);
     assert.equal(dispatched[0].cancelable, true);
     assert.equal(prevented, true);
