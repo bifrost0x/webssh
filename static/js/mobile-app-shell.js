@@ -12,6 +12,14 @@
         files: 'fileTransferBtn',
         commands: 'commandLibraryBtn',
     });
+    const SESSION_TOOL_TARGETS = Object.freeze({
+        'session-files': {context: 'files', targetId: 'contextFilesTab'},
+        'session-commands': {context: 'commands', targetId: 'contextCommandsTab'},
+        'session-diagnostics': {
+            context: 'diagnostics',
+            targetId: 'contextDiagnosticsTab',
+        },
+    });
 
     function createController(options = {}) {
         const windowRef = options.window || window;
@@ -48,6 +56,8 @@
         let commandOpen = false;
         let moreOpen = false;
         let moreReturnFocus = null;
+        let primaryView = elements.body?.dataset?.primaryWorkspace || 'workspaces';
+        let activeContext = null;
 
         function listen(target, name, listener) {
             target?.addEventListener?.(name, listener);
@@ -75,6 +85,46 @@
                     ),
                     force: true,
                 });
+            });
+        }
+
+        function renderDockSelection() {
+            const sessionView = activeContext ? `session-${activeContext}` : null;
+            const contextLivesInMore = Boolean(
+                activeContext && !SESSION_TOOL_TARGETS[sessionView],
+            );
+            elements.dockItems.forEach(button => {
+                const view = button.dataset.mobileView;
+                let selected = false;
+                if (view === 'more') {
+                    selected = moreOpen || primaryView !== 'workspaces' || contextLivesInMore;
+                } else if (SESSION_TOOL_TARGETS[view]) {
+                    selected = primaryView === 'workspaces' && sessionView === view;
+                } else {
+                    selected = primaryView === view && !activeContext;
+                }
+                button.classList.toggle('active', selected);
+                if (selected) button.setAttribute('aria-current', 'page');
+                else button.removeAttribute('aria-current');
+            });
+        }
+
+        function syncSessionToolAvailability() {
+            const hasSession = Boolean(sessionManager?.getActiveSession?.());
+            Object.entries(SESSION_TOOL_TARGETS).forEach(([view, config]) => {
+                const button = elements.dockItems.find(
+                    item => item.dataset.mobileView === view,
+                );
+                const tab = byId(config.targetId);
+                const available = Boolean(
+                    hasSession
+                    && tab
+                    && !tab.disabled
+                    && tab.getAttribute?.('aria-disabled') !== 'true',
+                );
+                if (!button) return;
+                button.disabled = !available;
+                button.setAttribute('aria-disabled', String(!available));
             });
         }
 
@@ -107,16 +157,13 @@
             );
             if (elements.commandToggle) elements.commandToggle.disabled = !session;
             if (!session) setCommandOpen(false);
+            syncSessionToolAvailability();
+            renderDockSelection();
         }
 
         function setActiveView(view = 'workspaces') {
-            elements.dockItems.forEach(button => {
-                if (button.dataset.mobileView === 'more') return;
-                const selected = button.dataset.mobileView === view;
-                button.classList.toggle('active', selected);
-                if (selected) button.setAttribute('aria-current', 'page');
-                else button.removeAttribute('aria-current');
-            });
+            primaryView = view;
+            renderDockSelection();
         }
 
         function setCommandOpen(open) {
@@ -226,7 +273,7 @@
             elements.body?.classList.toggle('mobile-more-open', moreOpen);
             elements.menuButton?.setAttribute('aria-expanded', String(moreOpen));
             elements.moreButton?.setAttribute('aria-expanded', String(moreOpen));
-            elements.moreButton?.classList.toggle('active', moreOpen);
+            renderDockSelection();
             if (elements.menuBackdrop) elements.menuBackdrop.hidden = !moreOpen;
             if (!moreOpen) windowRef.closeAccountDropdownHeader?.();
             if (moreOpen && focus) {
@@ -247,9 +294,20 @@
                 setMoreOpen(!moreOpen, {focus: true});
                 return;
             }
+            const sessionTool = SESSION_TOOL_TARGETS[view];
+            if (sessionTool) {
+                if (event.currentTarget?.disabled) return;
+                setMoreOpen(false);
+                byId(VIEW_TARGETS.workspaces)?.click?.();
+                byId(sessionTool.targetId)?.click?.();
+                return;
+            }
             const targetId = VIEW_TARGETS[view];
             if (!targetId) return;
             setMoreOpen(false);
+            if (view === 'workspaces') {
+                windowRef.workspaceLayoutController?.closeContext?.('user');
+            }
             byId(targetId)?.click?.();
         }
 
@@ -271,6 +329,16 @@
             listen(windowRef, 'session-workspace-change', updateSessionSummary);
             listen(windowRef, 'session-removed', updateSessionSummary);
             listen(windowRef, 'languageChanged', updateSessionSummary);
+            listen(documentRef, 'workspace-context-change', event => {
+                activeContext = event.detail?.activeContext || null;
+                syncSessionToolAvailability();
+                renderDockSelection();
+            });
+            listen(
+                documentRef,
+                'workspace-context-availability-change',
+                syncSessionToolAvailability,
+            );
             listen(windowRef, 'primary-workspace-change', event => {
                 const view = event.detail?.view || 'workspaces';
                 setMoreOpen(false, {restoreFocus: false});
@@ -322,5 +390,5 @@
         return controller;
     }
 
-    return {createController, VIEW_TARGETS};
+    return {createController, VIEW_TARGETS, SESSION_TOOL_TARGETS};
 }));
