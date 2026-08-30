@@ -532,6 +532,72 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await expect(page.locator('#mobileCommandToggle')).toBeVisible();
     await expect(page.locator('.split-controls')).toBeHidden();
 
+    const terminalDock = page.locator('[data-mobile-view="workspaces"]');
+    const sftpDock = page.locator('[data-mobile-view="session-files"]');
+    const commandsDock = page.locator('[data-mobile-view="session-commands"]');
+    const metricsDock = page.locator('[data-mobile-view="session-diagnostics"]');
+    await expect(terminalDock).toContainText('Terminal');
+    await expect(sftpDock).toContainText('SFTP');
+    await expect(commandsDock).toContainText('Commands');
+    await expect(metricsDock).toContainText('Metrics');
+    await expect(sftpDock).toBeEnabled();
+    await expect(commandsDock).toBeEnabled();
+    await expect(metricsDock).toBeEnabled();
+
+    await sftpDock.click();
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(sftpDock).toHaveClass(/active/);
+    await metricsDock.click();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect(metricsDock).toHaveClass(/active/);
+    await terminalDock.click();
+    await expect(page.locator('#contextWorkspace')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeHidden();
+    await expect(terminalDock).toHaveClass(/active/);
+
+    await page.evaluate(() => {
+        TerminalManager.writeOutput(
+            'workspace-linux',
+            Array.from({ length: 160 }, (_, index) => `mobile history line ${index + 1}`)
+                .join('\r\n'),
+        );
+    });
+    await expect.poll(() => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux']?.[0];
+        return TerminalManager.terminals[terminalKey]?.buffer?.active?.baseY || 0;
+    })).toBeGreaterThan(0);
+    const scrollBeforeTouch = await page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const terminal = TerminalManager.terminals[terminalKey];
+        terminal.scrollToBottom();
+        return terminal.buffer.active.viewportY;
+    });
+    await page.locator('.terminal-pane.active .xterm').evaluate(surface => {
+        const eventOptions = {
+            bubbles: true,
+            cancelable: true,
+            pointerType: 'touch',
+            pointerId: 41,
+            clientX: 180,
+        };
+        surface.dispatchEvent(new PointerEvent('pointerdown', {
+            ...eventOptions,
+            clientY: 180,
+        }));
+        surface.dispatchEvent(new PointerEvent('pointermove', {
+            ...eventOptions,
+            clientY: 300,
+        }));
+        surface.dispatchEvent(new PointerEvent('pointerup', {
+            ...eventOptions,
+            clientY: 300,
+        }));
+    });
+    await expect.poll(() => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        return TerminalManager.terminals[terminalKey].buffer.active.viewportY;
+    })).toBeLessThan(scrollBeforeTouch);
+
     await page.locator('#mobileCommandToggle').click();
     await expect(page.locator('#mobileInputBar')).toBeVisible();
     await expect(page.locator('#mobileInputCloseBtn')).toBeVisible();
@@ -552,6 +618,10 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await expect(page.locator('#headerButtons')).toHaveAttribute('aria-modal', 'true');
     await expect(page.locator('.main-content')).toHaveAttribute('inert', '');
     await expect(page.locator('#workspaceNavBtn')).toBeFocused();
+    await expect(page.locator('#manageProfilesBtn')).toBeVisible();
+    await expect(page.locator('#fileTransferBtn')).toBeVisible();
+    await expect(page.locator('#commandLibraryBtn')).toBeVisible();
+    await expect(page.locator('#mobileToolsAction')).toContainText('Notes');
     await page.locator('#accountBtnHeader').focus();
     await page.keyboard.press('Tab');
     await expect(page.locator('#workspaceNavBtn')).toBeFocused();
@@ -559,10 +629,9 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await expect(page.locator('#headerButtons')).not.toHaveClass(/is-open/);
     await expect(page.locator('.main-content')).not.toHaveAttribute('inert', '');
     await expect(page.locator('#mobileMoreBtn')).toBeFocused();
-    await page.locator('#mobileMoreBtn').click();
-    await page.locator('#mobileToolsAction').click();
-    await page.locator('#contextCommandsTab').click();
+    await commandsDock.click();
     await expect(page.locator('#sessionCommandsPanel')).toBeVisible();
+    await expect(commandsDock).toHaveClass(/active/);
     await page.evaluate(() => window.showNotification(
         'Connected to testuser@host.example',
         'success',

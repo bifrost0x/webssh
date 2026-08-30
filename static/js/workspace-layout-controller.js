@@ -152,6 +152,16 @@
             }));
         }
 
+        function contextAvailabilityEvent(name) {
+            const EventConstructor = windowRef.CustomEvent
+                || globalThis.CustomEvent;
+            if (!EventConstructor) return;
+            documentRef.dispatchEvent?.(new EventConstructor(
+                'workspace-context-availability-change',
+                { detail: { name, available: Boolean(availability.get(name)) } },
+            ));
+        }
+
         function availableContexts() {
             return CONTEXTS.filter(name => availability.get(name));
         }
@@ -277,6 +287,7 @@
                 && activeContext !== name
             ) {
                 openContext(name);
+                contextAvailabilityEvent(name);
                 return;
             }
             if (!normalized && activeContext === name) {
@@ -290,9 +301,11 @@
                     contextEvent(previousContext);
                     scheduleTerminalSync(true);
                 }
+                contextAvailabilityEvent(name);
                 return;
             }
             render();
+            contextAvailabilityEvent(name);
         }
 
         function reconcile() {

@@ -5197,6 +5197,11 @@ body[data-theme="paper"]:has(.auth-access-dock) {
         color: var(--ws2-accent-strong);
     }
 
+    .mobile-dock-item:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
+    }
+
     .mobile-dock-item.active::before {
         position: absolute;
         top: 1px;

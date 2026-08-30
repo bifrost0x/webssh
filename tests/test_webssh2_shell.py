@@ -118,16 +118,16 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=28' in response.data
-        assert b'js/i18n.js?v=40' in response.data
+        assert b'css/webssh-2.css?v=29' in response.data
+        assert b'js/i18n.js?v=41' in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=28' in response.data
-        assert b'js/i18n.js?v=40' in response.data
+        assert b'css/webssh-2.css?v=29' in response.data
+        assert b'js/i18n.js?v=41' in response.data
 
 
 def test_compact_workspace_controls_keep_accessible_names_and_close_command_input(
@@ -152,7 +152,7 @@ def test_compact_workspace_controls_keep_accessible_names_and_close_command_inpu
         b'data-i18n-aria-label="terminal.hideInput"',
         b'id="mobileSendBtn"',
         b'data-i18n-aria-label="terminal.sendInput"',
-        b'js/mobile-app-shell.js?v=6',
+        b'js/mobile-app-shell.js?v=7',
     ):
         assert marker in response.data
 

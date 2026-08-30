@@ -54,7 +54,13 @@ function fixture() {
     const windowListeners = new Map();
     const documentListeners = new Map();
     const focusState = {activeElement: null};
-    const views = ['workspaces', 'hosts', 'files', 'commands', 'more'].map(view => {
+    const views = [
+        'workspaces',
+        'session-files',
+        'session-commands',
+        'session-diagnostics',
+        'more',
+    ].map(view => {
         const button = element(`dock-${view}`, focusState);
         button.dataset.mobileView = view;
         return button;
@@ -65,6 +71,7 @@ function fixture() {
         'mobileSessionSummaryLabel', 'workspaceNavBtn', 'manageProfilesBtn',
         'fileTransferBtn', 'commandLibraryBtn', 'mobileQuickConnectAction',
         'mobileToolsAction', 'mobileBroadcastAction', 'mobileTranscriptAction',
+        'contextFilesTab', 'contextCommandsTab', 'contextDiagnosticsTab',
         'accountBtnHeader',
         'newTabBtn', 'contextWorkspaceLauncher', 'broadcastToggleBtn', 'saveTranscriptBtn',
         'tab-active', 'primaryWorkspaceSurface', 'workspaceStatusBar', 'mobileAppDock',
@@ -130,7 +137,7 @@ function fixture() {
     };
 }
 
-test('phone shell keeps primary destinations and optional command input functional', () => {
+test('phone shell keeps active-session tools and optional command input functional', () => {
     const {createController} = require('../../static/js/mobile-app-shell.js');
     const state = fixture();
     const controller = createController({
@@ -145,8 +152,9 @@ test('phone shell keeps primary destinations and optional command input function
     assert.equal(state.status.classList.contains('connected'), true);
     assert.equal(state.elements.mobileCommandToggle.disabled, false);
 
-    state.views.find(button => button.dataset.mobileView === 'hosts').dispatch('click');
-    assert.equal(state.elements.manageProfilesBtn.clicks, 1);
+    state.views.find(button => button.dataset.mobileView === 'session-files').dispatch('click');
+    assert.equal(state.elements.workspaceNavBtn.clicks, 1);
+    assert.equal(state.elements.contextFilesTab.clicks, 1);
 
     state.elements.mobileCommandToggle.dispatch('click');
     assert.equal(state.body.classList.contains('mobile-command-open'), true);
@@ -199,7 +207,7 @@ test('phone More dialog traps focus and restores the trigger on Escape', () => {
     assert.equal(state.documentRef.activeElement, more);
 });
 
-test('primary workspace changes keep the mobile dock selection synchronized', () => {
+test('session context and global workspace changes keep mobile dock selection synchronized', () => {
     const {createController} = require('../../static/js/mobile-app-shell.js');
     const state = fixture();
     const controller = createController({
@@ -208,13 +216,47 @@ test('primary workspace changes keep the mobile dock selection synchronized', ()
         sessionManager: state.sessionManager,
     });
     controller.init();
-    state.windowListeners.get('primary-workspace-change')({detail: {view: 'files'}});
+    state.documentListeners.get('workspace-context-change')({
+        detail: {activeContext: 'commands'},
+    });
 
-    const files = state.views.find(button => button.dataset.mobileView === 'files');
+    const commands = state.views.find(
+        button => button.dataset.mobileView === 'session-commands',
+    );
     const terminal = state.views.find(button => button.dataset.mobileView === 'workspaces');
-    assert.equal(files.classList.contains('active'), true);
-    assert.equal(files.getAttribute('aria-current'), 'page');
+    assert.equal(commands.classList.contains('active'), true);
+    assert.equal(commands.getAttribute('aria-current'), 'page');
     assert.equal(terminal.classList.contains('active'), false);
+
+    state.windowListeners.get('primary-workspace-change')({detail: {view: 'files'}});
+    const more = state.views.find(button => button.dataset.mobileView === 'more');
+    assert.equal(commands.classList.contains('active'), false);
+    assert.equal(more.classList.contains('active'), true);
+});
+
+test('session tool dock availability follows the active session context', () => {
+    const {createController} = require('../../static/js/mobile-app-shell.js');
+    const state = fixture();
+    state.elements.contextFilesTab.disabled = true;
+    state.elements.contextFilesTab.setAttribute('aria-disabled', 'true');
+    const controller = createController({
+        window: state.windowRef,
+        document: state.documentRef,
+        sessionManager: state.sessionManager,
+    });
+    controller.init();
+
+    const files = state.views.find(button => button.dataset.mobileView === 'session-files');
+    assert.equal(files.disabled, true);
+    assert.equal(files.getAttribute('aria-disabled'), 'true');
+
+    state.elements.contextFilesTab.disabled = false;
+    state.elements.contextFilesTab.setAttribute('aria-disabled', 'false');
+    state.documentListeners.get('workspace-context-availability-change')({
+        detail: {name: 'files', available: true},
+    });
+    assert.equal(files.disabled, false);
+    assert.equal(files.getAttribute('aria-disabled'), 'false');
 });
 
 test('short coarse-pointer landscape keeps the phone shell above 767px', () => {
