@@ -11,6 +11,7 @@ const TerminalManager = {
     sequencedOutputSizes: {},
     lastOutputSequences: {},
     syncedSizes: {},
+    scrollbarDisposers: {},
 
     isVirtualKeyboardVisible(visualViewportHeight, layoutViewportHeight) {
         if (visualViewportHeight <= 0 || layoutViewportHeight <= 0) {
@@ -461,8 +462,75 @@ const TerminalManager = {
         this.clearSyncedSize(sessionId);
     },
 
+    setupTouchScroll(container, terminal) {
+        const surface = terminal.element || container.querySelector?.('.xterm') || container;
+        if (!surface?.addEventListener) return () => {};
+
+        let pointerId = null;
+        let lastX = 0;
+        let lastY = 0;
+        let verticalGesture = false;
+
+        const reset = event => {
+            if (pointerId === null || (
+                event?.pointerId !== undefined && event.pointerId !== pointerId
+            )) return;
+            surface.releasePointerCapture?.(pointerId);
+            pointerId = null;
+            verticalGesture = false;
+        };
+
+        const pointerDown = event => {
+            if (event.pointerType !== 'touch') return;
+            pointerId = event.pointerId;
+            lastX = event.clientX;
+            lastY = event.clientY;
+            verticalGesture = false;
+            surface.setPointerCapture?.(pointerId);
+        };
+
+        const pointerMove = event => {
+            if (pointerId === null || event.pointerId !== pointerId) return;
+            const deltaX = event.clientX - lastX;
+            const deltaY = lastY - event.clientY;
+            lastX = event.clientX;
+            lastY = event.clientY;
+            if (!verticalGesture) {
+                if (Math.abs(deltaY) < 3 || Math.abs(deltaY) <= Math.abs(deltaX)) return;
+                verticalGesture = true;
+            }
+
+            const WheelConstructor = window.WheelEvent || globalThis.WheelEvent;
+            if (typeof WheelConstructor !== 'function') return;
+            const wheelEvent = new WheelConstructor('wheel', {
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+                deltaMode: 0,
+                deltaX: 0,
+                deltaY,
+            });
+            surface.dispatchEvent(wheelEvent);
+            event.preventDefault?.();
+        };
+
+        surface.addEventListener('pointerdown', pointerDown);
+        surface.addEventListener('pointermove', pointerMove, {passive: false});
+        surface.addEventListener('pointerup', reset);
+        surface.addEventListener('pointercancel', reset);
+
+        return () => {
+            surface.removeEventListener('pointerdown', pointerDown);
+            surface.removeEventListener('pointermove', pointerMove, {passive: false});
+            surface.removeEventListener('pointerup', reset);
+            surface.removeEventListener('pointercancel', reset);
+        };
+    },
+
     setupScrollbar(container, terminal, terminalKey) {
-        // Create custom scrollbar overlay on the right side
+        this.scrollbarDisposers[terminalKey]?.();
+
+        // Create a pointer-capable scrollbar overlay on the right side.
         const scrollbar = document.createElement('div');
         scrollbar.className = 'terminal-scrollbar';
         scrollbar.innerHTML = '<div class="terminal-scrollbar-thumb"></div>';
@@ -471,6 +539,7 @@ const TerminalManager = {
 
         const thumb = scrollbar.querySelector('.terminal-scrollbar-thumb');
         let isDragging = false;
+        let dragPointerId = null;
         let startY = 0;
         let startScroll = 0;
 
@@ -496,8 +565,8 @@ const TerminalManager = {
         };
 
         // Update scrollbar on terminal output and scroll
-        terminal.onScroll(() => updateScrollbar());
-        terminal.onResize(() => updateScrollbar());
+        const scrollDisposable = terminal.onScroll(() => updateScrollbar());
+        const resizeDisposable = terminal.onResize(() => updateScrollbar());
 
         // Also update periodically for output-driven changes
         const intervalId = setInterval(() => {
@@ -508,50 +577,91 @@ const TerminalManager = {
             updateScrollbar();
         }, 500);
 
-        // Drag to scroll
-        thumb.addEventListener('mousedown', (e) => {
+        // Drag the thumb with mouse, pen, or touch.
+        const pointerDown = event => {
+            if (event.button !== undefined && event.button !== 0) return;
             isDragging = true;
-            startY = e.clientY;
+            dragPointerId = event.pointerId ?? 'mouse';
+            startY = event.clientY;
             startScroll = terminal.buffer.active.viewportY;
-            e.preventDefault();
-        });
+            thumb.setPointerCapture?.(event.pointerId);
+            event.preventDefault?.();
+            event.stopPropagation?.();
+        };
 
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
+        const pointerMove = event => {
+            if (!isDragging || (
+                event.pointerId !== undefined && event.pointerId !== dragPointerId
+            )) return;
             const buffer = terminal.buffer.active;
             const totalLines = buffer.length;
             const maxScroll = totalLines - terminal.rows;
             const trackHeight = scrollbar.clientHeight;
             const thumbHeight = Math.max(30, (terminal.rows / totalLines) * trackHeight);
-            const deltaY = e.clientY - startY;
-            const scrollDelta = (deltaY / (trackHeight - thumbHeight)) * maxScroll;
+            const usableTrack = Math.max(1, trackHeight - thumbHeight);
+            const deltaY = event.clientY - startY;
+            const scrollDelta = (deltaY / usableTrack) * maxScroll;
             const newScroll = Math.max(0, Math.min(maxScroll, Math.round(startScroll + scrollDelta)));
             const currentScroll = buffer.viewportY;
             terminal.scrollLines(newScroll - currentScroll);
-        });
+            event.preventDefault?.();
+        };
 
-        document.addEventListener('mouseup', () => {
+        const pointerUp = event => {
+            if (!isDragging || (
+                event?.pointerId !== undefined && event.pointerId !== dragPointerId
+            )) return;
+            thumb.releasePointerCapture?.(event?.pointerId);
             isDragging = false;
-        });
+            dragPointerId = null;
+        };
 
-        // Click on track to scroll
-        scrollbar.addEventListener('click', (e) => {
-            if (e.target === thumb) return;
+        // Tapping or clicking the track jumps to that position.
+        const trackPointerDown = event => {
+            if (event.target === thumb) return;
+            if (event.button !== undefined && event.button !== 0) return;
             const rect = scrollbar.getBoundingClientRect();
-            const clickY = e.clientY - rect.top;
+            const clickY = event.clientY - rect.top;
             const trackHeight = rect.height;
             const buffer = terminal.buffer.active;
-            const maxScroll = buffer.length - terminal.rows;
+            const maxScroll = Math.max(0, buffer.length - terminal.rows);
             const targetScroll = Math.round((clickY / trackHeight) * maxScroll);
             const currentScroll = buffer.viewportY;
             terminal.scrollLines(targetScroll - currentScroll);
-        });
+            event.preventDefault?.();
+        };
+
+        thumb.addEventListener('pointerdown', pointerDown);
+        thumb.addEventListener('pointermove', pointerMove, {passive: false});
+        thumb.addEventListener('pointerup', pointerUp);
+        thumb.addEventListener('pointercancel', pointerUp);
+        scrollbar.addEventListener('pointerdown', trackPointerDown);
+
+        const disposeTouchScroll = this.setupTouchScroll(container, terminal);
+        const dispose = () => {
+            clearInterval(intervalId);
+            scrollDisposable?.dispose?.();
+            resizeDisposable?.dispose?.();
+            disposeTouchScroll?.();
+            thumb.removeEventListener('pointerdown', pointerDown);
+            thumb.removeEventListener('pointermove', pointerMove, {passive: false});
+            thumb.removeEventListener('pointerup', pointerUp);
+            thumb.removeEventListener('pointercancel', pointerUp);
+            scrollbar.removeEventListener('pointerdown', trackPointerDown);
+            scrollbar.remove?.();
+            if (this.scrollbarDisposers[terminalKey] === dispose) {
+                delete this.scrollbarDisposers[terminalKey];
+            }
+        };
+        this.scrollbarDisposers[terminalKey] = dispose;
 
         updateScrollbar();
+        return dispose;
     },
 
     destroyTerminalKey(terminalKey, sessionId) {
         const terminal = this.terminals[terminalKey];
+        this.scrollbarDisposers[terminalKey]?.();
         if (terminal) {
             terminal.dispose();
         }

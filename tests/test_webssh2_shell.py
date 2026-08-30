@@ -118,16 +118,43 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=25' in response.data
-        assert b'js/i18n.js?v=38' in response.data
+        assert b'css/webssh-2.css?v=28' in response.data
+        assert b'js/i18n.js?v=40' in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=25' in response.data
-        assert b'js/i18n.js?v=38' in response.data
+        assert b'css/webssh-2.css?v=28' in response.data
+        assert b'js/i18n.js?v=40' in response.data
+
+
+def test_compact_workspace_controls_keep_accessible_names_and_close_command_input(
+    app,
+    client,
+):
+    _create_login(app, client)
+
+    response = client.get('/')
+
+    assert response.status_code == 200
+    for marker in (
+        b'id="workspaceNavBtn"',
+        b'data-i18n-aria-label="navigation.workspaces"',
+        b'id="fileTransferBtn"',
+        b'data-i18n-aria-label="files.fileManager"',
+        b'id="manageProfilesBtn"',
+        b'data-i18n-aria-label="connectionAssets.hosts"',
+        b'id="commandLibraryBtn"',
+        b'data-i18n-aria-label="commands.workspace"',
+        b'id="mobileInputCloseBtn"',
+        b'data-i18n-aria-label="terminal.hideInput"',
+        b'id="mobileSendBtn"',
+        b'data-i18n-aria-label="terminal.sendInput"',
+        b'js/mobile-app-shell.js?v=6',
+    ):
+        assert marker in response.data
 
 
 def test_global_management_navigation_uses_one_primary_workspace_surface(

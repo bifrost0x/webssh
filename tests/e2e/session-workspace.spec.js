@@ -527,10 +527,40 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await expect(page.locator('#contextCommandsTab')).toBeEnabled();
     await expect(page.locator('#contextNotesTab')).toBeEnabled();
     await expect(page.locator('#contextWorkspace')).toBeHidden();
-    await expect(page.locator('#contextWorkspaceLauncher')).toBeVisible();
-    await expect(page.locator('#contextWorkspaceLauncher')).toContainText('Tools');
+    await expect(page.locator('#contextWorkspaceLauncher')).toBeHidden();
+    await expect(page.locator('#mobileAppDock')).toBeVisible();
+    await expect(page.locator('#mobileCommandToggle')).toBeVisible();
+    await expect(page.locator('.split-controls')).toBeHidden();
 
-    await page.locator('#contextWorkspaceLauncher').click();
+    await page.locator('#mobileCommandToggle').click();
+    await expect(page.locator('#mobileInputBar')).toBeVisible();
+    await expect(page.locator('#mobileInputCloseBtn')).toBeVisible();
+    await expect(page.locator('#mobileCommandToggle')).toBeHidden();
+    const sendHitTarget = await page.locator('#mobileSendBtn').evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        return document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+        )?.closest('button')?.id;
+    });
+    expect(sendHitTarget).toBe('mobileSendBtn');
+    await page.locator('#mobileInputCloseBtn').click();
+    await expect(page.locator('#mobileCommandToggle')).toBeVisible();
+
+    await page.locator('#mobileMoreBtn').click();
+    await expect(page.locator('#headerButtons')).toHaveAttribute('role', 'dialog');
+    await expect(page.locator('#headerButtons')).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('.main-content')).toHaveAttribute('inert', '');
+    await expect(page.locator('#workspaceNavBtn')).toBeFocused();
+    await page.locator('#accountBtnHeader').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#workspaceNavBtn')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#headerButtons')).not.toHaveClass(/is-open/);
+    await expect(page.locator('.main-content')).not.toHaveAttribute('inert', '');
+    await expect(page.locator('#mobileMoreBtn')).toBeFocused();
+    await page.locator('#mobileMoreBtn').click();
+    await page.locator('#mobileToolsAction').click();
     await page.locator('#contextCommandsTab').click();
     await expect(page.locator('#sessionCommandsPanel')).toBeVisible();
     await page.evaluate(() => window.showNotification(
@@ -579,6 +609,10 @@ test('360px mobile workspace keeps tools available and preserves context across 
         .toBe('tablet');
     await expect(page.locator('#contextCommandsTab')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#sessionCommandsPanel')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Workspaces', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'File Manager', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Hosts', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Commands', exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__workspaceResizeContinuity)).toBe('preserved-without-reload');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(900);
 
@@ -606,10 +640,12 @@ test('desktop-to-mobile resize is not mistaken for an open virtual keyboard', as
     await expect(page.locator('header.header')).toBeVisible();
     await expect(page.locator('#contextWorkspace')).toBeHidden();
     await expect(page.locator('#contextNotesPanel')).toBeHidden();
-    await expect(page.locator('#contextWorkspaceLauncher')).toBeVisible();
+    await expect(page.locator('#contextWorkspaceLauncher')).toBeHidden();
+    await expect(page.locator('#mobileAppDock')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 
-    await page.locator('#contextWorkspaceLauncher').click();
+    await page.locator('#mobileMoreBtn').click();
+    await page.locator('#mobileToolsAction').click();
     await expect(page.locator('#contextNotesPanel')).toBeVisible();
     await page.locator('#contextWorkspaceClose').click();
     await expect(page.locator('header.header')).toBeVisible();

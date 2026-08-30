@@ -204,4 +204,51 @@ and context navigation no longer compete in one toolbar.
 - Post-fix evidence: the browser showed a single visible content panel for every tested hash, the complete admin users table inside the Settings Center, the Commands resource rail beside its content, and a clean browser console. Focused regressions passed 158/158, adjacent UI regressions passed 73/73, all 33 JavaScript test files passed, and `git diff --check` passed.
 - Remaining P0/P1/P2 findings: none.
 
+## Mobile Terminal Dock QA (2026-08-30)
+
+## Reference and implementation evidence
+
+- Selected reference: `/home/heimdall/.codex/generated_images/01a051b3-0d40-71d1-a2dd-60932f92f699/exec-439decfd-4875-4539-b8a9-0a6da7f46c7b.png` (853 x 1844 px).
+- Implemented phone state: `/tmp/webssh-mobile-build-active-final.png` (390 x 844 CSS px, device scale factor 1, connected local SSH session).
+- Side-by-side comparison: `/tmp/webssh-mobile-reference-comparison-final.jpg` (reference left, implementation right, both normalized to 390 x 844 px).
+- Supporting states: `/tmp/webssh-mobile-menu-layer-final.png`, `/tmp/webssh-mobile-tools-working-final.png`, `/tmp/webssh-mobile-build-hosts-fixed.png`, `/tmp/webssh-tablet-build-834.png`, and `/tmp/webssh-desktop-build-1440.png`.
+
+## Comparison history
+
+### Pass 1
+
+- P1: The previous phone layout spent too much vertical space on desktop navigation and controls, leaving the terminal difficult to use. Replaced it with a 52 px app bar, a 48 px session rail, an edge-to-edge terminal, a compact status capsule, and a five-destination bottom dock.
+- P1: The existing Hosts workspace wrapped and overflowed horizontally at phone width. Converted the toolbar and profile cards to narrow single-column layouts and verified a 390 px document width with no horizontal overflow.
+- P1: Terminal history was not reliably reachable with touch. Added a touch-to-wheel bridge that preserves xterm scrollback, alternate-buffer, and mouse-tracking semantics; horizontal gestures remain untouched.
+- P2: The first More sheet placed its backdrop above the header stacking context, dimming the sheet and intercepting actions. Raised the header only while the mobile sheet is open and re-ran every sheet action in the browser.
+- P2: The Tools icon exceeded its grid cell and produced internal overflow. Constrained the icon box and confirmed the sheet client and scroll widths match.
+
+### Final pass
+
+- Phone portrait (390 x 844): connected terminal, session switcher, command-input toggle, Hosts, File Manager, Commands, More, Quick Connect, Notes/Tools, Broadcast, transcript fallback, and account access verified.
+- Tablet portrait (834 x 1194): compact static navigation and session rail verified; bottom phone dock is absent and the workspace remains full-width.
+- Desktop (1440 x 1024): existing desktop navigation, split controls, and side tools remain unchanged.
+- Responsive behavior is capability/viewport based rather than user-agent based: phone below 768 px (plus short, coarse-pointer phone landscape), tablet from 768 through 1023 px, and desktop from 1024 px.
+- Browser console log after the final mobile interaction pass: empty.
+- Typography, colors, borders, radii, logo, and icons reuse the existing WebSSH design tokens and assets. No placeholder or newly fabricated visual assets were introduced.
+- New navigation and command-input labels are present in all six locale blocks.
+
+## Automated checks
+
+- JavaScript syntax and ESLint checks cover the changed frontend controllers.
+- All 34 JavaScript test files pass, including mobile shell navigation and vertical/horizontal touch-scroll behavior.
+- Focused Python UI, asset-version, and locale-parity checks: 74 passed.
+- Full Python suite: 2,270 passed, 29 skipped, and four loopback/socket cases were blocked only by the restricted workspace sandbox. The exact four authorized reruns passed, for an effective result of 2,274 passed and 29 skipped; the three warnings are the existing upstream Flask-Login `datetime.utcnow()` deprecation.
+- Full Playwright browser suite: 100 passed in 5.1 minutes across phone, tablet, desktop, authentication, workspace, File Manager, Settings/Admin, theme, and SMB flows.
+
+## Final correction and acceptance pass
+
+- P1 command-entry overlap: fixed. The floating keyboard toggle is removed from hit testing while the command bar is expanded, the Send action remains reachable, and an internal 46 x 46 px close action provides an explicit exit.
+- P1 tablet accessibility: fixed. Every icon-only global navigation action retains a localized accessible name through the entire 768-1023 px tablet range.
+- P2 More-sheet semantics: fixed. The sheet now receives dialog and modal semantics, makes the application background inert and hidden from assistive technology, traps Tab and Shift+Tab, closes on Escape/resize/view changes, and restores focus after a normal close.
+- P2 Admin/Settings compact layout: fixed. The Users search field no longer inherits the desktop flex basis, and the compact Settings header uses the same one-row app-like hierarchy.
+- P1 File Manager containment discovered by the complete browser run: fixed. The phone single-pane view now resets the pre-existing two-row tablet grid to one `minmax(0, 1fr)` row, so the active pane consumes the complete available height and the empty-state source action remains visible and clickable.
+- Interactive browser measurements at 390 x 844 confirm that the File Manager pane and pane grid both use the full 590 px workspace height; the file list has 323 px available and the source action is fully contained. Tablet navigation names, More-sheet focus lifecycle, command Send hit testing, and Admin toolbar spacing were also verified in the rendered application.
+- Remaining P0/P1/P2 findings: none.
+
 final result: passed

@@ -64,7 +64,11 @@
                 if (selected) button.setAttribute('aria-current', 'page');
                 else button.removeAttribute('aria-current');
             });
-            browserDocument.querySelector('.header-buttons')?.classList.remove('is-open');
+            if (browserWindow.mobileAppShell?.closeMoreMenu) {
+                browserWindow.mobileAppShell.closeMoreMenu();
+            } else {
+                browserDocument.querySelector('.header-buttons')?.classList.remove('is-open');
+            }
         }
 
         function hideElement(element) {
