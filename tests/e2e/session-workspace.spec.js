@@ -532,6 +532,49 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await expect(page.locator('#mobileCommandToggle')).toBeVisible();
     await expect(page.locator('.split-controls')).toBeHidden();
 
+    await page.evaluate(() => {
+        TerminalManager.writeOutput(
+            'workspace-linux',
+            Array.from({ length: 160 }, (_, index) => `mobile history line ${index + 1}`)
+                .join('\r\n'),
+        );
+    });
+    await expect.poll(() => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux']?.[0];
+        return TerminalManager.terminals[terminalKey]?.buffer?.active?.baseY || 0;
+    })).toBeGreaterThan(0);
+    const scrollBeforeTouch = await page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const terminal = TerminalManager.terminals[terminalKey];
+        terminal.scrollToBottom();
+        return terminal.buffer.active.viewportY;
+    });
+    await page.locator('.terminal-pane.active .xterm').evaluate(surface => {
+        const eventOptions = {
+            bubbles: true,
+            cancelable: true,
+            pointerType: 'touch',
+            pointerId: 41,
+            clientX: 180,
+        };
+        surface.dispatchEvent(new PointerEvent('pointerdown', {
+            ...eventOptions,
+            clientY: 180,
+        }));
+        surface.dispatchEvent(new PointerEvent('pointermove', {
+            ...eventOptions,
+            clientY: 300,
+        }));
+        surface.dispatchEvent(new PointerEvent('pointerup', {
+            ...eventOptions,
+            clientY: 300,
+        }));
+    });
+    await expect.poll(() => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        return TerminalManager.terminals[terminalKey].buffer.active.viewportY;
+    })).toBeLessThan(scrollBeforeTouch);
+
     await page.locator('#mobileCommandToggle').click();
     await expect(page.locator('#mobileInputBar')).toBeVisible();
     await expect(page.locator('#mobileInputCloseBtn')).toBeVisible();

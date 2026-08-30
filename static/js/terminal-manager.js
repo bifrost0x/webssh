@@ -470,6 +470,26 @@ const TerminalManager = {
         let lastX = 0;
         let lastY = 0;
         let verticalGesture = false;
+        let scrollRemainder = 0;
+
+        const shouldForwardWheel = () => {
+            const mouseTrackingMode = terminal.modes?.mouseTrackingMode || 'none';
+            const activeBufferType = terminal.buffer?.active?.type || 'normal';
+            return mouseTrackingMode !== 'none' || activeBufferType === 'alternate';
+        };
+
+        const getLineHeight = () => {
+            const renderedHeight = Number(
+                terminal._core?._renderService?.dimensions?.css?.cell?.height,
+            );
+            if (Number.isFinite(renderedHeight) && renderedHeight > 0) {
+                return renderedHeight;
+            }
+            const fontSize = Number(terminal.options?.fontSize);
+            return Number.isFinite(fontSize) && fontSize > 0
+                ? Math.max(8, fontSize * 1.2)
+                : 16;
+        };
 
         const reset = event => {
             if (pointerId === null || (
@@ -478,6 +498,7 @@ const TerminalManager = {
             surface.releasePointerCapture?.(pointerId);
             pointerId = null;
             verticalGesture = false;
+            scrollRemainder = 0;
         };
 
         const pointerDown = event => {
@@ -486,7 +507,12 @@ const TerminalManager = {
             lastX = event.clientX;
             lastY = event.clientY;
             verticalGesture = false;
-            surface.setPointerCapture?.(pointerId);
+            scrollRemainder = 0;
+            try {
+                surface.setPointerCapture?.(pointerId);
+            } catch {
+                // Synthetic and older browser pointer events may not be capturable.
+            }
         };
 
         const pointerMove = event => {
@@ -500,19 +526,35 @@ const TerminalManager = {
                 verticalGesture = true;
             }
 
-            const WheelConstructor = window.WheelEvent || globalThis.WheelEvent;
-            if (typeof WheelConstructor !== 'function') return;
-            const wheelEvent = new WheelConstructor('wheel', {
-                bubbles: true,
-                cancelable: true,
-                composed: true,
-                deltaMode: 0,
-                deltaX: 0,
-                deltaY,
-                clientX: event.clientX,
-                clientY: event.clientY,
-            });
-            surface.dispatchEvent(wheelEvent);
+            if (shouldForwardWheel()) {
+                // Full-screen applications consume wheel input themselves. Keep the
+                // pointer coordinates so tmux/Vim mouse tracking receives the gesture.
+                const WheelConstructor = window.WheelEvent || globalThis.WheelEvent;
+                if (typeof WheelConstructor !== 'function') return;
+                const wheelEvent = new WheelConstructor('wheel', {
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true,
+                    deltaMode: 0,
+                    deltaX: 0,
+                    deltaY,
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                });
+                surface.dispatchEvent(wheelEvent);
+            } else {
+                // Synthetic wheel events do not perform the browser's native scroll
+                // default action, so normal xterm scrollback must move explicitly.
+                scrollRemainder += deltaY;
+                const lineHeight = getLineHeight();
+                const lines = scrollRemainder < 0
+                    ? Math.ceil(scrollRemainder / lineHeight)
+                    : Math.floor(scrollRemainder / lineHeight);
+                if (lines !== 0) {
+                    terminal.scrollLines(lines);
+                    scrollRemainder -= lines * lineHeight;
+                }
+            }
             event.preventDefault?.();
         };
 

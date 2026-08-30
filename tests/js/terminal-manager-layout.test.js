@@ -31,7 +31,48 @@ test('virtual keyboard detection follows visual viewport occlusion, not browser 
     assert.equal(TerminalManager.isVirtualKeyboardVisible(0, 640), false);
 });
 
-test('touch dragging the terminal is bridged into cancelable wheel input', () => {
+test('touch dragging normal terminal scrollback moves xterm lines directly', () => {
+    const listeners = new Map();
+    const dispatched = [];
+    const scrolled = [];
+    const surface = {
+        addEventListener(name, listener) { listeners.set(name, listener); },
+        removeEventListener(name, listener) {
+            if (listeners.get(name) === listener) listeners.delete(name);
+        },
+        dispatchEvent(event) { dispatched.push(event); return true; },
+        setPointerCapture() {},
+        releasePointerCapture() {},
+    };
+    const terminal = {
+        element: surface,
+        buffer: { active: { type: 'normal' } },
+        modes: { mouseTrackingMode: 'none' },
+        options: { fontSize: 10 },
+        scrollLines(lines) { scrolled.push(lines); },
+    };
+    let prevented = false;
+
+    const dispose = TerminalManager.setupTouchScroll(surface, terminal);
+    listeners.get('pointerdown')({
+        pointerType: 'touch', pointerId: 7, clientX: 40, clientY: 100,
+    });
+    listeners.get('pointermove')({
+        pointerId: 7,
+        clientX: 42,
+        clientY: 130,
+        preventDefault() { prevented = true; },
+    });
+
+    assert.deepEqual(scrolled, [-2]);
+    assert.equal(dispatched.length, 0);
+    assert.equal(prevented, true);
+
+    dispose();
+    assert.equal(listeners.size, 0);
+});
+
+test('touch dragging a mouse-tracked terminal is bridged into cancelable wheel input', () => {
     const listeners = new Map();
     const dispatched = [];
     const surface = {
@@ -53,7 +94,11 @@ test('touch dragging the terminal is bridged into cancelable wheel input', () =>
     global.window.WheelEvent = FakeWheelEvent;
     let prevented = false;
 
-    const dispose = TerminalManager.setupTouchScroll(surface, {element: surface});
+    const dispose = TerminalManager.setupTouchScroll(surface, {
+        element: surface,
+        buffer: { active: { type: 'normal' } },
+        modes: { mouseTrackingMode: 'any' },
+    });
     listeners.get('pointerdown')({
         pointerType: 'touch', pointerId: 7, clientX: 40, clientY: 120,
     });
