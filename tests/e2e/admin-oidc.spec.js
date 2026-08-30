@@ -65,6 +65,24 @@ test('admin navigation and users become readable cards on a mobile viewport', as
     expect(navigation.optionLabels).toContain('Users');
     expect(navigation.optionLabels).toContain('Backup & Restore');
 
+    const compactLayout = await page.evaluate(() => {
+        const header = document.querySelector('header .header-content').getBoundingClientRect();
+        const brand = document.querySelector('.settings-brand').getBoundingClientRect();
+        const back = document.querySelector('.settings-back-link').getBoundingClientRect();
+        const search = document.querySelector('.admin-search-field').getBoundingClientRect();
+        const filter = document.querySelector('.admin-user-filter-field').getBoundingClientRect();
+        return {
+            headerHeight: header.height,
+            headerAligned: brand.top < back.bottom && back.top < brand.bottom,
+            searchHeight: search.height,
+            filterGap: filter.top - search.bottom,
+        };
+    });
+    expect(compactLayout.headerHeight).toBeLessThanOrEqual(64);
+    expect(compactLayout.headerAligned).toBe(true);
+    expect(compactLayout.searchHeight).toBeLessThanOrEqual(70);
+    expect(compactLayout.filterGap).toBeLessThanOrEqual(12);
+
     const row = page.locator('#adminUsersBody tr').filter({ hasText: 'e2e_user' });
     await expect(row).toBeVisible();
     const state = await row.evaluate(element => {

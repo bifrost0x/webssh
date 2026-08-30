@@ -31,6 +31,75 @@ test('virtual keyboard detection follows visual viewport occlusion, not browser 
     assert.equal(TerminalManager.isVirtualKeyboardVisible(0, 640), false);
 });
 
+test('touch dragging the terminal is bridged into cancelable wheel input', () => {
+    const listeners = new Map();
+    const dispatched = [];
+    const surface = {
+        addEventListener(name, listener) { listeners.set(name, listener); },
+        removeEventListener(name, listener) {
+            if (listeners.get(name) === listener) listeners.delete(name);
+        },
+        dispatchEvent(event) { dispatched.push(event); return true; },
+        setPointerCapture() {},
+        releasePointerCapture() {},
+    };
+    class FakeWheelEvent {
+        constructor(type, options) {
+            this.type = type;
+            Object.assign(this, options);
+        }
+    }
+    const originalWheelEvent = global.window.WheelEvent;
+    global.window.WheelEvent = FakeWheelEvent;
+    let prevented = false;
+
+    const dispose = TerminalManager.setupTouchScroll(surface, {element: surface});
+    listeners.get('pointerdown')({
+        pointerType: 'touch', pointerId: 7, clientX: 40, clientY: 120,
+    });
+    listeners.get('pointermove')({
+        pointerId: 7,
+        clientX: 42,
+        clientY: 92,
+        preventDefault() { prevented = true; },
+    });
+
+    assert.equal(dispatched.length, 1);
+    assert.equal(dispatched[0].type, 'wheel');
+    assert.equal(dispatched[0].deltaY, 28);
+    assert.equal(dispatched[0].deltaMode, 0);
+    assert.equal(dispatched[0].clientX, 42);
+    assert.equal(dispatched[0].clientY, 92);
+    assert.equal(dispatched[0].bubbles, true);
+    assert.equal(dispatched[0].cancelable, true);
+    assert.equal(prevented, true);
+
+    dispose();
+    assert.equal(listeners.size, 0);
+    global.window.WheelEvent = originalWheelEvent;
+});
+
+test('horizontal touch movement does not synthesize terminal scrolling', () => {
+    const listeners = new Map();
+    const dispatched = [];
+    const surface = {
+        addEventListener(name, listener) { listeners.set(name, listener); },
+        removeEventListener(name) { listeners.delete(name); },
+        dispatchEvent(event) { dispatched.push(event); },
+        setPointerCapture() {},
+        releasePointerCapture() {},
+    };
+    const dispose = TerminalManager.setupTouchScroll(surface, {element: surface});
+    listeners.get('pointerdown')({
+        pointerType: 'touch', pointerId: 8, clientX: 10, clientY: 50,
+    });
+    listeners.get('pointermove')({
+        pointerId: 8, clientX: 45, clientY: 46, preventDefault() {},
+    });
+    assert.equal(dispatched.length, 0);
+    dispose();
+});
+
 function terminalInWrapper(unassigned) {
     return {
         cols: 120,

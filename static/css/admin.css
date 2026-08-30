@@ -1165,6 +1165,10 @@
         flex-direction: column;
     }
 
+    .admin-user-toolbar .admin-search-field {
+        flex: 0 0 auto;
+    }
+
     .admin-user-filter-field {
         flex-basis: auto;
         width: 100%;

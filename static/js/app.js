@@ -2069,6 +2069,13 @@
         window.primaryWorkspaceController?.init();
 
         SessionManager.init();
+        window.mobileAppShell = window.MobileAppShell?.createController({
+            window,
+            document,
+            sessionManager: SessionManager,
+            terminalManager: TerminalManager,
+        });
+        window.mobileAppShell?.init();
         window.workspaceLayoutController = window.WorkspaceLayoutController?.createController({
             window,
             document,
@@ -2510,7 +2517,16 @@
         });
 
         document.getElementById('mobileMenuBtn').addEventListener('click', () => {
-            document.querySelector('.header-buttons').classList.toggle('is-open');
+            if (window.mobileAppShell?.isPhone?.()) {
+                window.mobileAppShell.toggleMoreMenu();
+                return;
+            }
+            const menu = document.querySelector('.header-buttons');
+            const open = menu.classList.toggle('is-open');
+            document.getElementById('mobileMenuBtn').setAttribute(
+                'aria-expanded',
+                String(open),
+            );
         });
 
         document.getElementById('sshAuthBannerCancel')?.addEventListener(
@@ -2527,7 +2543,14 @@
                 return;
             }
             if (!e.target.closest('.header-buttons') && !menuBtn.contains(e.target)) {
-                menu.classList.remove('is-open');
+                if (window.mobileAppShell?.isPhone?.()) {
+                    if (!e.target.closest('#mobileMoreBtn')) {
+                        window.mobileAppShell.closeMoreMenu();
+                    }
+                } else {
+                    menu.classList.remove('is-open');
+                    menuBtn.setAttribute('aria-expanded', 'false');
+                }
             }
         });
 

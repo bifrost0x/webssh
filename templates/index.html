@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=18">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=8">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=25">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=28">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -32,15 +32,27 @@
                     <img class="app-brand-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}" alt="" aria-hidden="true">
                     <span><small data-i18n="brand.tagline">Your shell. Your rules.</small></span>
                 </a>
-                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu" data-i18n-aria-label="navigation.toggleMenu"><span class="material-icons" aria-hidden="true">menu</span></button>
+                <button id="mobileSessionSummary" class="mobile-session-summary" type="button" disabled>
+                    <span class="mobile-session-status" aria-hidden="true"></span>
+                    <span id="mobileSessionSummaryLabel" data-i18n="workspace.noActiveSession">No active session</span>
+                    <span class="material-icons" aria-hidden="true">expand_more</span>
+                </button>
+                <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu" data-i18n-aria-label="navigation.toggleMenu" aria-expanded="false" aria-controls="headerButtons"><span class="material-icons" aria-hidden="true">more_vert</span></button>
             </div>
-            <div class="header-buttons">
+            <div class="header-buttons" id="headerButtons">
                 <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
-                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
-                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
-                    <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
-                    <button id="commandLibraryBtn" class="global-nav-item" type="button"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
+                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
+                    <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+                    <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
                 </nav>
+
+                <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
+                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button" onclick="document.getElementById('newTabBtn').click(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
+                    <button id="mobileToolsAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.workspaceLayoutController?.setNotesOpen(true, 'user'); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">dock_to_right</span><span data-i18n="workspace.tools">Tools</span></button>
+                    <button id="mobileBroadcastAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.BroadcastInput?.toggle(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
+                    <button id="mobileTranscriptAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); document.getElementById('saveTranscriptBtn').click(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">save</span><span data-i18n="terminal.saveTranscript">Save Transcript</span></button>
+                </div>
 
                 <span class="header-divider" aria-hidden="true"></span>
 
@@ -117,10 +129,13 @@
         </div>
         <div class="session-bar hidden" id="sessionBar">
             <div class="mobile-input-bar" id="mobileInputBar">
+                <button class="btn btn-secondary mobile-input-close" id="mobileInputCloseBtn" type="button" aria-label="Hide command input" data-i18n-aria-label="terminal.hideInput">
+                    <span class="material-icons" aria-hidden="true">keyboard_hide</span>
+                </button>
                 <input type="text" id="mobileInput" data-i18n-placeholder="terminal.mobileInputPlaceholder" placeholder="Type or paste here..."
                        maxlength="4096" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-                <button class="btn btn-primary mobile-send-btn" id="mobileSendBtn" aria-label="Send">
-                    <span class="material-icons">send</span>
+                <button class="btn btn-primary mobile-send-btn" id="mobileSendBtn" type="button" aria-label="Send command" data-i18n-aria-label="terminal.sendInput">
+                    <span class="material-icons" aria-hidden="true">send</span>
                 </button>
             </div>
         </div>
@@ -242,6 +257,18 @@
         <span class="workspace-status-spacer"></span>
         <span><span class="material-icons" aria-hidden="true">sync_alt</span> <span data-i18n="workspace.transfers">Transfers</span></span>
     </footer>
+
+    <button id="mobileMenuBackdrop" class="mobile-menu-backdrop" type="button" tabindex="-1" aria-hidden="true" hidden></button>
+    <button id="mobileCommandToggle" class="mobile-command-toggle" type="button" aria-expanded="false" aria-controls="mobileInputBar" aria-label="Show command input" data-i18n-aria-label="terminal.showInput" disabled>
+        <span class="material-icons" aria-hidden="true">keyboard</span>
+    </button>
+    <nav class="mobile-app-dock" id="mobileAppDock" aria-label="Mobile navigation" data-i18n-aria-label="navigation.mobile">
+        <button class="mobile-dock-item active" type="button" data-mobile-view="workspaces" aria-current="page"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.terminal">Terminal</span></button>
+        <button class="mobile-dock-item" type="button" data-mobile-view="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
+        <button class="mobile-dock-item" type="button" data-mobile-view="files"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
+        <button class="mobile-dock-item" type="button" data-mobile-view="commands"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
+        <button class="mobile-dock-item" id="mobileMoreBtn" type="button" data-mobile-view="more" aria-expanded="false" aria-controls="headerButtons"><span class="material-icons" aria-hidden="true">more_horiz</span><span data-i18n="navigation.more">More</span></button>
+    </nav>
 
     <div class="session-diagnostics-overlay hidden" id="sessionDiagnosticsOverlay" aria-hidden="true">
         <div class="session-diagnostics-backdrop" id="sessionDiagnosticsBackdrop"></div>
@@ -1360,7 +1387,7 @@
     <script>
         window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
     </script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=38"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=40"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=6"></script>
@@ -1378,9 +1405,10 @@
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=3"></script>
 
-    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=11"></script>
     <script src="{{ url_for('static', filename='js/session-manager.js') }}?v=12"></script>
     <script src="{{ url_for('static', filename='js/workspace-layout-controller.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/mobile-app-shell.js') }}?v=6"></script>
     <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
@@ -1396,7 +1424,7 @@
     <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=33"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/primary-workspace-controller.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=26"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=27"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {
