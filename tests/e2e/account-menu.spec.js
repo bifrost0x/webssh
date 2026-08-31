@@ -87,6 +87,7 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
 
     await page.locator('#accountSettingsBtn').click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
+    await expect(page.locator('[data-account-panel="preferences"]')).not.toHaveClass(/\bhidden\b/);
     await expect(page.locator('#scrollbackInput')).toBeVisible();
     await expect(page.locator('#confirmSessionCloseInput')).toBeVisible();
     const layout = await page.evaluate(() => ({
