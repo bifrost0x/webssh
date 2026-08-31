@@ -34,17 +34,30 @@ async function openThemeSettings(page) {
     await page.getByRole('button', { name: 'Account menu' }).click();
     await page.getByRole('link', { name: 'Settings' }).click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
+    await page.waitForLoadState('load');
     await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily))
+        .toContain('Inter');
 }
 
 async function selectTheme(page, selector, themeId) {
+    const status = page.locator('#settingsPreferenceStatus');
+    await expect(selector).toBeEnabled();
     const alreadySelected = await selector.inputValue() === themeId;
+    await status.evaluate(element => {
+        element.textContent = '';
+    });
+    const preferenceResponse = page.waitForResponse(response => (
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname.endsWith('/api/account/preferences')
+    ));
     await selector.selectOption(themeId);
     if (alreadySelected) {
         await selector.dispatchEvent('change');
     }
-    await expect(page.locator('#settingsPreferenceStatus')).toHaveText('Theme saved.');
+    expect((await preferenceResponse).ok()).toBe(true);
+    await expect(status).toHaveText('Theme saved.');
     await expect(selector).toBeEnabled();
     await expect(page.locator('body')).toHaveAttribute('data-theme', themeId);
     await expect.poll(() => page.evaluate(() => localStorage.getItem('websshTheme')))
