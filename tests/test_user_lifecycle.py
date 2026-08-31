@@ -80,8 +80,8 @@ class TestLockedUserRejection:
 
 
 class TestUserAccessRevocation:
-    def test_revocation_cancels_only_target_user_transfers(self, app):
-        with app.app_context():
+    def test_revocation_cancels_only_target_user_transfers(self, runtime_app):
+        with runtime_app.app_context():
             from app.transfer_routes import transfer_manager
             from app.user_lifecycle import revoke_user_access
 

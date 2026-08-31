@@ -1,4 +1,6 @@
+import importlib
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -89,16 +91,52 @@ def pytest_unconfigure(config):
     _SESSION_DATA_DIRECTORY.cleanup()
 
 
-@pytest.fixture
-def app(monkeypatch):
-    """Create Flask test application."""
+@pytest.fixture(scope='session')
+def database_template(tmp_path_factory):
+    """Create one empty, initialized database template per pytest worker."""
+    template_root = tmp_path_factory.mktemp('webssh-database-template')
+    original_data_dir = os.environ.get('DATA_DIR')
+    os.environ['DATA_DIR'] = str(template_root)
+
+    import config
+    importlib.reload(config)
+    from app import app_settings, create_app
+    from app.models import db
+
+    original_settings_file = app_settings._SETTINGS_FILE
+    app_settings._SETTINGS_FILE = config.DATA_DIR / 'app_settings.json'
+    try:
+        template_app = create_app(start_runtime=False)
+        runtime_lifecycle = template_app.extensions['runtime_lifecycle']
+        runtime_lifecycle.begin_shutdown(
+            config.RUNTIME_SHUTDOWN_GRACE_SECONDS
+        )
+        with template_app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+    finally:
+        app_settings._SETTINGS_FILE = original_settings_file
+        if original_data_dir is None:
+            os.environ.pop('DATA_DIR', None)
+        else:
+            os.environ['DATA_DIR'] = original_data_dir
+        importlib.reload(config)
+
+    database_path = template_root / 'app.db'
+    if not database_path.is_file():
+        raise RuntimeError('test database template was not created')
+    return database_path
+
+
+def _isolated_test_app(monkeypatch, database_template, *, start_runtime):
+    """Yield a fully isolated app backed by a cloned empty database."""
     # ignore_cleanup_errors: on Windows the SQLite file can still be locked at
     # teardown; disposing the engine below handles the normal case, this is a
     # belt-and-suspenders guard so a stray handle never fails the test.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+        shutil.copyfile(database_template, Path(tmpdir) / 'app.db')
         monkeypatch.setenv('DATA_DIR', tmpdir)
         # Re-import config to pick up test DATA_DIR
-        import importlib
         import config
         importlib.reload(config)
 
@@ -108,16 +146,15 @@ def app(monkeypatch):
             '_SETTINGS_FILE',
             config.DATA_DIR / 'app_settings.json',
         )
-        app = create_app()
-        runtime_lifecycle = app.extensions['runtime_lifecycle']
-        app.config['TESTING'] = True
-        app.config['WTF_CSRF_ENABLED'] = False
+        test_app = create_app(start_runtime=start_runtime)
+        runtime_lifecycle = test_app.extensions['runtime_lifecycle']
+        test_app.config['TESTING'] = True
+        test_app.config['WTF_CSRF_ENABLED'] = False
 
         from app.models import db
-        with app.app_context():
-            db.create_all()
+        with test_app.app_context():
             try:
-                yield app
+                yield test_app
             finally:
                 runtime_lifecycle.begin_shutdown(
                     config.RUNTIME_SHUTDOWN_GRACE_SECONDS
@@ -126,6 +163,26 @@ def app(monkeypatch):
                 # the temp dir is removed (required on Windows, harmless on POSIX).
                 db.session.remove()
                 db.engine.dispose()
+
+
+@pytest.fixture
+def app(monkeypatch, database_template):
+    """Create an isolated Flask test app without background workers."""
+    yield from _isolated_test_app(
+        monkeypatch,
+        database_template,
+        start_runtime=False,
+    )
+
+
+@pytest.fixture
+def runtime_app(monkeypatch, database_template):
+    """Create an isolated app whose background runtime is under test."""
+    yield from _isolated_test_app(
+        monkeypatch,
+        database_template,
+        start_runtime=True,
+    )
 
 
 @pytest.fixture
@@ -163,7 +220,7 @@ def _serialize_private_key(private_key, private_format,
     ).decode('utf-8')
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def rsa_private_key_pem():
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return _serialize_private_key(
@@ -172,19 +229,19 @@ def rsa_private_key_pem():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def rsa_openssh_private_key_pem():
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return _serialize_private_key(key, serialization.PrivateFormat.OpenSSH)
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def ed25519_private_key_pem():
     key = ed25519.Ed25519PrivateKey.generate()
     return _serialize_private_key(key, serialization.PrivateFormat.OpenSSH)
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def ecdsa_private_key_pem():
     key = ec.generate_private_key(ec.SECP256R1())
     return _serialize_private_key(
@@ -193,13 +250,13 @@ def ecdsa_private_key_pem():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def ecdsa_openssh_private_key_pem():
     key = ec.generate_private_key(ec.SECP256R1())
     return _serialize_private_key(key, serialization.PrivateFormat.OpenSSH)
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def dsa_private_key_pem():
     key = dsa.generate_private_key(key_size=2048)
     return _serialize_private_key(
@@ -208,7 +265,7 @@ def dsa_private_key_pem():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def encrypted_rsa_private_key_pem():
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return _serialize_private_key(
