@@ -164,7 +164,7 @@ def test_container_build_inputs_and_ci_services_are_digest_pinned():
 
     tests_workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     redis_references = re.findall(r'redis:[78]-alpine[^\s#]*', tests_workflow)
-    assert len(redis_references) >= 3
+    assert len(redis_references) == 2
     assert all(IMAGE_DIGEST.search(reference) for reference in redis_references)
 
 
@@ -184,6 +184,8 @@ def test_security_workflow_gates_publish_and_preserves_scan_evidence():
     assert re.search(r'permissions:\s*\n\s+contents:\s+read\b', security)
     assert not re.search(r'^\s+\w[\w-]*:\s+write\b', security, re.MULTILINE)
     assert 'docker/setup-qemu-action@' in security
+    assert 'image-security-amd64:' in security
+    assert 'image-security-arm64:' in security
     assert re.search(r'platforms:\s*linux/amd64\b', security)
     assert re.search(r'platforms:\s*linux/arm64\b', security)
     assert (
@@ -216,6 +218,12 @@ def test_security_workflow_gates_publish_and_preserves_scan_evidence():
     )
     assert re.search(
         r'build-and-push:.*?\n\s+needs:\s+security-scan\b',
+        publish,
+        re.DOTALL,
+    )
+    assert re.search(
+        r'build-and-push:.*?\n\s+needs:\s+security-scan\s*\n'
+        r"\s+if:\s+github\.event_name\s+!=\s+'pull_request'",
         publish,
         re.DOTALL,
     )
@@ -472,3 +480,20 @@ def test_browser_ci_runs_javascript_units_before_playwright():
     browser_step = browser_job.index('run: npm run test:e2e')
 
     assert unit_step < browser_step
+
+
+def test_slow_test_gates_are_sharded_without_duplicate_redis_unit_runs():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    playwright = (ROOT / 'playwright.config.js').read_text(encoding='utf-8')
+
+    assert '--ignore=tests/integration' in workflow
+    assert '-n 2' in workflow
+    assert '--dist=loadscope' in workflow
+    assert '--durations=30' in workflow
+    assert workflow.count(
+        'tests/test_rate_limiter.py::'
+        'test_real_redis_does_not_store_denied_requests'
+    ) == 1
+    assert 'name: browser-e2e (${{ matrix.shard }}/2)' in workflow
+    assert 'npm run test:e2e -- --shard=${{ matrix.shard }}/2' in workflow
+    assert 'fullyParallel: true' in playwright

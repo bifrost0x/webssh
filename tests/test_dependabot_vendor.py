@@ -117,6 +117,16 @@ def test_valid_dependabot_npm_run_emits_sanitized_push_coordinates(tmp_path):
     ]
 
 
+def test_valid_sharded_browser_job_is_accepted(tmp_path):
+    def mutate(_event, _pull_request, _files, jobs):
+        jobs['jobs'][0]['name'] = 'browser-e2e (1/2)'
+
+    result, output = _run_validator(tmp_path, mutate)
+
+    assert result.returncode == 0, result.stderr
+    assert output.exists()
+
+
 def test_gate_rejects_pr_code_outside_manifests_and_generated_vendor(tmp_path):
     def add_untrusted_script(_event, pull_request, files, _jobs):
         files.append({'filename': 'scripts/vendor.js', 'status': 'modified'})

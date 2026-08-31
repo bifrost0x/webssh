@@ -10,7 +10,8 @@ const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
 
 module.exports = {
     testDir: './tests/e2e',
-    fullyParallel: false,
+    // Test-level sharding keeps both isolated CI servers evenly loaded.
+    fullyParallel: true,
     workers: 1,
     forbidOnly: true,
     retries: process.env.CI ? 1 : 0,

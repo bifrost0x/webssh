@@ -72,19 +72,6 @@ jobs:
             check_name: pytest
           - python_version: '3.11'
             check_name: pytest (Python 3.11 minimum)
-    env:
-      TEST_REDIS_URL: redis://localhost:6379/15
-    services:
-      redis:
-        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -109,7 +96,13 @@ jobs:
           python -m pip install --require-hashes -r requirements-test.txt
 
       - name: Run tests
-        run: pytest tests/ -v
+        run: >-
+          pytest tests/
+          --ignore=tests/integration
+          -q
+          -n 2
+          --dist=loadscope
+          --durations=30
 
   redis-rate-limiter:
     needs: dispatch-integrity
@@ -161,7 +154,10 @@ jobs:
           python -m pip install --require-hashes -r requirements-test.txt
 
       - name: Run Redis rate limiter tests
-        run: pytest tests/test_rate_limiter.py -v
+        run: >-
+          pytest
+          tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
+          -q
 
   ssh-integration:
     needs: dispatch-integrity
@@ -215,9 +211,22 @@ jobs:
 
   browser-e2e:
     needs: dispatch-integrity
+    name: browser-e2e (${{ matrix.shard }}/2)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            e2e_port: 4173
+            run_static_checks: true
+          - shard: 2
+            e2e_port: 4174
+            run_static_checks: false
+    env:
+      WEBSSH_E2E_PORT: ${{ matrix.e2e_port }}
 
     steps:
       - name: Checkout repository
@@ -252,22 +261,24 @@ jobs:
         run: npm ci
 
       - name: Check vendored frontend assets
+        if: matrix.run_static_checks
         run: npm run vendor:check
 
       - name: Run JavaScript unit tests
+        if: matrix.run_static_checks
         run: npm run test:js
 
       - name: Install locked Playwright Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Run required local browser gate
-        run: npm run test:e2e
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
 
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-e2e-failure
+          name: browser-e2e-${{ matrix.shard }}-failure
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7

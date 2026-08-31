@@ -126,7 +126,10 @@ def validate(event, pull_request, files, jobs):
     job_items = jobs.get('jobs')
     _require(isinstance(job_items, list), 'workflow jobs have an invalid shape')
     failed_vendor_check = any(
-        job.get('name') == 'browser-e2e'
+        re.fullmatch(
+            r'browser-e2e(?: \([1-9][0-9]*/[1-9][0-9]*\))?',
+            str(job.get('name', '')),
+        )
         and job.get('conclusion') == 'failure'
         and any(
             step.get('name') == 'Check vendored frontend assets'
