@@ -39,7 +39,11 @@ async function openThemeSettings(page) {
 }
 
 async function selectTheme(page, selector, themeId) {
+    const alreadySelected = await selector.inputValue() === themeId;
     await selector.selectOption(themeId);
+    if (alreadySelected) {
+        await selector.dispatchEvent('change');
+    }
     await expect(page.locator('#settingsPreferenceStatus')).toHaveText('Theme saved.');
     await expect(selector).toBeEnabled();
     await expect(page.locator('body')).toHaveAttribute('data-theme', themeId);
