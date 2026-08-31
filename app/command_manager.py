@@ -7,6 +7,10 @@ import uuid
 from datetime import datetime, timezone
 import config
 from .audit_logger import log_error
+from .command_storage_policy import (
+    enforce_store_transition,
+    validate_user_command,
+)
 from .storage_utils import atomic_write_json, load_json_strict, storage_lock
 from .storage_migrations import backup_before_migration
 
@@ -121,11 +125,26 @@ def _load_user_commands_for_write(user_id):
         return None, 'User not found'
     return _load_user_commands_with_lock_held(user_id), None
 
-def save_user_commands(user_id, commands):
+def save_user_commands(
+    user_id,
+    commands,
+    *,
+    previous_size=None,
+    previous_count=None,
+):
     """Save user-specific commands."""
     user_commands_file = get_user_commands_file(user_id)
     if not user_commands_file or not _valid_commands(commands):
         return False
+    enforce_store_transition(
+        path=user_commands_file,
+        prospective_document=commands,
+        prospective_count=len(commands),
+        maximum_count=config.COMMAND_MAX_RECORDS,
+        other_path=user_commands_file.parent / 'command_sets.json',
+        previous_size=previous_size,
+        previous_count=previous_count,
+    )
     user_commands_file.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(user_commands_file, commands)
     return True
@@ -194,14 +213,20 @@ def add_user_command(user_id, name, command, parameters, description, os_list, c
             tzinfo=None
         ).isoformat()
     }
+    validate_user_command(new_cmd)
 
     with storage_lock(f'command-config:{user_id}'):
         with storage_lock(f'commands:{user_id}'):
             user_cmds, error = _load_user_commands_for_write(user_id)
             if error:
                 return None
+            previous_count = len(user_cmds)
             user_cmds.append(new_cmd)
-            return new_cmd if save_user_commands(user_id, user_cmds) else None
+            return new_cmd if save_user_commands(
+                user_id,
+                user_cmds,
+                previous_count=previous_count,
+            ) else None
 
 def update_user_command(user_id, command_id, name, command, parameters, description, os_list, category):
     """Update an existing user command."""
@@ -217,18 +242,28 @@ def update_user_command(user_id, command_id, name, command, parameters, descript
 
             for cmd in user_cmds:
                 if cmd['id'] == command_id:
-                    cmd['name'] = name
-                    cmd['command'] = command
-                    cmd['parameters'] = parameters or ''
-                    cmd['description'] = description
-                    cmd['os'] = os_list
-                    cmd['category'] = category or 'custom'
+                    updated = {
+                        **cmd,
+                        'name': name,
+                        'command': command,
+                        'parameters': parameters or '',
+                        'description': description,
+                        'os': os_list,
+                        'category': category or 'custom',
+                    }
+                    validate_user_command(updated, legacy=cmd)
+                    cmd.clear()
+                    cmd.update(updated)
                     break
             else:
                 return None, 'Command not found'
 
             try:
-                saved = save_user_commands(user_id, user_cmds)
+                saved = save_user_commands(
+                    user_id,
+                    user_cmds,
+                    previous_count=len(user_cmds),
+                )
             except OSError as exc:
                 log_error(
                     'Error saving user command',
@@ -267,6 +302,10 @@ def delete_user_command(user_id, command_id):
             remaining = [cmd for cmd in user_cmds if cmd.get('id') != command_id]
             if len(remaining) == len(user_cmds):
                 return False, 'Command not found', []
-            if not save_user_commands(user_id, remaining):
+            if not save_user_commands(
+                user_id,
+                remaining,
+                previous_count=len(user_cmds),
+            ):
                 return False, 'Failed to delete command', []
     return True, None, []

@@ -357,6 +357,65 @@ MAX_EDITOR_FILE_SIZE = _positive_int_env(
 # 110 MiB socket-upload allowance.
 SOCKETIO_MAX_MESSAGE_SIZE = MAX_EDITOR_FILE_SIZE * 6 + 64 * 1024
 
+# Interactive terminal input has a substantially smaller resource budget than
+# the bulk editor envelope. The upper bounds prevent deployment overrides from
+# silently restoring editor-sized SSH input events.
+SSH_INPUT_MAX_BYTES = _bounded_int_env(
+    'SSH_INPUT_MAX_BYTES', 128 * 1024, 4 * 1024, 256 * 1024
+)
+SSH_INPUT_SESSION_BURST_BYTES = _bounded_int_env(
+    'SSH_INPUT_SESSION_BURST_BYTES',
+    256 * 1024,
+    SSH_INPUT_MAX_BYTES,
+    2 * 1024 * 1024,
+)
+SSH_INPUT_SESSION_BYTES_PER_SECOND = _bounded_int_env(
+    'SSH_INPUT_SESSION_BYTES_PER_SECOND',
+    256 * 1024,
+    4 * 1024,
+    2 * 1024 * 1024,
+)
+SSH_INPUT_USER_BURST_BYTES = _bounded_int_env(
+    'SSH_INPUT_USER_BURST_BYTES',
+    512 * 1024,
+    SSH_INPUT_SESSION_BURST_BYTES,
+    4 * 1024 * 1024,
+)
+SSH_INPUT_USER_BYTES_PER_SECOND = _bounded_int_env(
+    'SSH_INPUT_USER_BYTES_PER_SECOND',
+    512 * 1024,
+    4 * 1024,
+    4 * 1024 * 1024,
+)
+
+# Persistent command configuration shares DATA_DIR with the database, keys,
+# trust stores, and logs. These hard upper bounds keep operator overrides from
+# turning the command UI back into an unbounded shared-volume writer.
+COMMAND_MAX_RECORDS = _bounded_int_env(
+    'COMMAND_MAX_RECORDS', 500, 10, 2000
+)
+COMMAND_SET_MAX_RECORDS = _bounded_int_env(
+    'COMMAND_SET_MAX_RECORDS', 500, 10, 2000
+)
+COMMAND_SET_MAX_STEPS = _bounded_int_env(
+    'COMMAND_SET_MAX_STEPS', 64, 1, 256
+)
+COMMAND_OS_MAX_ENTRIES = _bounded_int_env(
+    'COMMAND_OS_MAX_ENTRIES', 16, 1, 64
+)
+COMMAND_STORE_MAX_BYTES = _bounded_int_env(
+    'COMMAND_STORE_MAX_BYTES',
+    2 * 1024 * 1024,
+    64 * 1024,
+    8 * 1024 * 1024,
+)
+COMMAND_CONFIG_MAX_BYTES = _bounded_int_env(
+    'COMMAND_CONFIG_MAX_BYTES',
+    4 * 1024 * 1024,
+    COMMAND_STORE_MAX_BYTES,
+    16 * 1024 * 1024,
+)
+
 # Admin panel: comma-separated usernames granted admin on startup.
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
 ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
@@ -489,6 +548,10 @@ RATELIMIT_BACKUP_RESTORE = os.environ.get(
 # unthrottled SSH brute-force / port-scan proxy against third-party hosts.
 # Generous default so normal use and reconnects never hit it.
 RATELIMIT_SSH_CONNECT = os.environ.get('SSH_CONNECT_RATELIMIT', '10 per minute')
+RATELIMIT_COMMAND_MUTATION = os.environ.get(
+    'COMMAND_MUTATION_RATELIMIT',
+    '60 per minute',
+)
 
 REGISTRATION_ENABLED = os.environ.get(
     'REGISTRATION_ENABLED',

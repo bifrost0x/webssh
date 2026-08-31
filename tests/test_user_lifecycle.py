@@ -210,6 +210,69 @@ class TestUserAccessRevocation:
         assert response.get_json()['user']['is_locked'] is True
         assert revoked == [target_id]
 
+    def test_admin_unlock_does_not_reactivate_pre_lock_browser_session(
+        self,
+        app,
+        client,
+        monkeypatch,
+    ):
+        from flask import g
+
+        with app.app_context():
+            from app.models import db
+
+            _create_user('lockadmin', is_admin=True)
+            target = _create_user('lockbrowser')
+            target_id = target.id
+            db.session.commit()
+
+        target_client = app.test_client()
+        assert target_client.post('/login', data={
+            'username': 'lockbrowser',
+            'password': 'password123',
+            'remember': 'on',
+        }).status_code == 302
+        g.pop('_login_user', None)
+        _login(client, 'lockadmin')
+        g.pop('_login_user', None)
+
+        import app.user_lifecycle as lifecycle
+        monkeypatch.setattr(
+            lifecycle,
+            'revoke_user_access',
+            lambda user_id, socketio_instance=None: {'user_id': user_id},
+        )
+
+        lock = client.post(
+            f'/admin/api/users/{target_id}/lock',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{target_id}:lock'
+            )[0],
+        )
+        assert lock.status_code == 200
+        g.pop('_login_user', None)
+        unlock = client.post(
+            f'/admin/api/users/{target_id}/unlock',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{target_id}:unlock'
+            )[0],
+        )
+        assert unlock.status_code == 200
+
+        g.pop('_login_user', None)
+        rejected = target_client.get('/')
+        assert rejected.status_code == 302
+        assert '/login?next=' in rejected.headers['Location']
+        with app.app_context():
+            from app.models import AuthenticationSession, User
+
+            target = db.session.get(User, target_id)
+            assert target.is_locked is False
+            assert target.auth_generation == 1
+            assert AuthenticationSession.query.filter_by(
+                user_id=target_id
+            ).count() == 0
+
     def test_logout_revokes_current_user_access(self, app, client, monkeypatch):
         with app.app_context():
             user = _create_user('logoutuser')
@@ -232,6 +295,71 @@ class TestUserAccessRevocation:
 
 
 class TestSafeUserDeletion:
+    def test_failed_admin_delete_cannot_reactivate_old_session_after_unlock(
+        self,
+        app,
+        client,
+        monkeypatch,
+    ):
+        from flask import g
+
+        with app.app_context():
+            from app.models import db
+
+            _create_user('delete_failure_admin', is_admin=True)
+            target = _create_user('delete_failure_target')
+            target_id = target.id
+            db.session.commit()
+
+        target_client = app.test_client()
+        assert target_client.post('/login', data={
+            'username': 'delete_failure_target',
+            'password': 'password123',
+            'remember': 'on',
+        }).status_code == 302
+        g.pop('_login_user', None)
+        _login(client, 'delete_failure_admin')
+        g.pop('_login_user', None)
+
+        import app.user_lifecycle as lifecycle
+        monkeypatch.setattr(
+            lifecycle,
+            'delete_user_account',
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError('forced delete failure')
+            ),
+        )
+
+        failed = client.post(
+            f'/admin/api/users/{target_id}/delete',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{target_id}:delete'
+            )[0],
+        )
+        assert failed.status_code == 500
+        g.pop('_login_user', None)
+        unlocked = client.post(
+            f'/admin/api/users/{target_id}/unlock',
+            headers=password_step_up_headers(
+                client, 'user.manage', f'{target_id}:unlock'
+            )[0],
+        )
+        assert unlocked.status_code == 200
+
+        g.pop('_login_user', None)
+        rejected = target_client.get('/')
+        assert rejected.status_code == 302
+        assert '/login?next=' in rejected.headers['Location']
+        with app.app_context():
+            from app.models import AuthenticationSession, User
+
+            target = db.session.get(User, target_id)
+            assert target.is_locked is False
+            assert target.auth_generation == 1
+            assert AuthenticationSession.query.filter_by(
+                user_id=target_id
+            ).count() == 0
+
     def test_deleted_user_data_is_quarantined_and_not_inherited(self, app, client):
         with app.app_context():
             from app.models import db

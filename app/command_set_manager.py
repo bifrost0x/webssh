@@ -3,7 +3,14 @@ import copy
 import uuid
 from datetime import datetime, timezone
 
+import config
+
 from .audit_logger import log_error
+from .command_storage_policy import (
+    CommandStorageLimitError,
+    enforce_store_transition,
+    validate_command_set,
+)
 from .startup_commands import normalize_startup_commands
 from .storage_utils import (
     atomic_write_json,
@@ -249,7 +256,13 @@ def load_command_sets(user_id):
         return _load_command_sets_with_lock_held(user_id)
 
 
-def _save_command_sets(user_id, command_sets):
+def _save_command_sets(
+    user_id,
+    command_sets,
+    *,
+    previous_size=None,
+    previous_count=None,
+):
     path = _command_sets_file(user_id)
     if path is None:
         return False, 'User not found'
@@ -260,9 +273,20 @@ def _save_command_sets(user_id, command_sets):
     if not _valid_command_set_document(document):
         return False, 'Invalid command set data'
     try:
+        enforce_store_transition(
+            path=path,
+            prospective_document=document,
+            prospective_count=len(command_sets),
+            maximum_count=config.COMMAND_SET_MAX_RECORDS,
+            other_path=path.parent / 'commands.json',
+            previous_size=previous_size,
+            previous_count=previous_count,
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(path, document)
         return True, None
+    except CommandStorageLimitError as exc:
+        return False, str(exc)
     except OSError as exc:
         log_error('Error saving command sets', user_id=user_id, error=str(exc))
         return False, 'Failed to save command sets'
@@ -364,7 +388,29 @@ def _validate_payload(payload, existing_sets, commands):
         if existing.get('id') != command_set_id and str(existing.get('name', '')).casefold() == name.casefold():
             return None, 'A command set with this name already exists'
 
-    steps, _resolved_parts, error = _normalize_steps(payload.get('steps'), commands)
+    legacy = next(
+        (
+            item for item in existing_sets
+            if item.get('id') == command_set_id
+        ),
+        None,
+    )
+    try:
+        validate_command_set(
+            {
+                'id': command_set_id or '',
+                'name': name,
+                'description': description.strip(),
+                'steps': payload.get('steps'),
+            },
+            legacy=legacy,
+        )
+    except CommandStorageLimitError as exc:
+        return None, str(exc)
+
+    steps, _resolved_parts, error = _normalize_steps(
+        payload.get('steps'), commands
+    )
     if error:
         return None, error
     return {
@@ -417,6 +463,7 @@ def upsert_command_set(user_id, payload):
             )
             if error:
                 return None, error
+            previous_count = len(command_sets)
 
             now = datetime.now(timezone.utc).isoformat()
             command_set_id = validated.get('id')
@@ -448,7 +495,11 @@ def upsert_command_set(user_id, payload):
                 }
                 command_sets.append(result)
 
-            saved, error = _save_command_sets(user_id, command_sets)
+            saved, error = _save_command_sets(
+                user_id,
+                command_sets,
+                previous_count=previous_count,
+            )
             return (copy.deepcopy(result), None) if saved else (None, error)
 
 
@@ -480,8 +531,17 @@ def duplicate_command_set(user_id, command_set_id):
                 'created_at': now,
                 'updated_at': now,
             }
+            try:
+                validate_command_set(duplicate)
+            except CommandStorageLimitError as exc:
+                return None, str(exc)
+            previous_count = len(command_sets)
             command_sets.append(duplicate)
-            saved, error = _save_command_sets(user_id, command_sets)
+            saved, error = _save_command_sets(
+                user_id,
+                command_sets,
+                previous_count=previous_count,
+            )
             return (copy.deepcopy(duplicate), None) if saved else (None, error)
 
 
@@ -643,5 +703,9 @@ def delete_command_set(user_id, command_set_id):
             remaining = [item for item in command_sets if item.get('id') != command_set_id]
             if len(remaining) == len(command_sets):
                 return False, 'Command set not found', []
-            saved, error = _save_command_sets(user_id, remaining)
+            saved, error = _save_command_sets(
+                user_id,
+                remaining,
+                previous_count=len(command_sets),
+            )
             return saved, error, []

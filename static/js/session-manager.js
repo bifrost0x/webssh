@@ -141,10 +141,14 @@ const SessionManager = {
                 // Bare-pattern regexes were removed because they corrupt legitimate input.
                 data = data.replace(/\x1b\[[?>]?[0-9;]*c/g, '');
                 if (data) {
-                    window.socket.emit('ssh_input', {
-                        session_id: session_id,
-                        data: data
-                    });
+                    if (window.SSHInput) {
+                        window.SSHInput.send(session_id, data);
+                    } else {
+                        window.socket.emit('ssh_input', {
+                            session_id: session_id,
+                            data: data
+                        });
+                    }
                 }
             }
         });

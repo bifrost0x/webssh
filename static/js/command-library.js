@@ -292,10 +292,14 @@ const CommandLibrary = {
         }
 
         if (window.socket) {
-            window.socket.emit('ssh_input', {
-                session_id: activeSessionId,
-                data: fullCommand
-            });
+            if (window.SSHInput) {
+                window.SSHInput.send(activeSessionId, fullCommand);
+            } else {
+                window.socket.emit('ssh_input', {
+                    session_id: activeSessionId,
+                    data: fullCommand
+                });
+            }
         }
 
         this.closeLibrary();

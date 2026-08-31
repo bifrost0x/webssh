@@ -177,10 +177,12 @@
                 getSession: sessionId => getSessionManager()?.getSession(sessionId),
                 getCommands: () => getCommandLibrary()?.commands || [],
                 getCommandSets: () => root.CommandSetManager?.commandSets || [],
-                emitInput: (sessionId, data) => root.socket?.emit('ssh_input', {
-                    session_id: sessionId,
-                    data,
-                }),
+                emitInput: (sessionId, data) => root.SSHInput
+                    ? root.SSHInput.send(sessionId, data)
+                    : root.socket?.emit('ssh_input', {
+                        session_id: sessionId,
+                        data,
+                    }),
                 focusSession: sessionId => getTerminalManager()?.terminals?.[sessionId]?.focus(),
                 notify: (message, type) => root.showNotification?.(message, type),
                 insertedMessage: label => this.t(

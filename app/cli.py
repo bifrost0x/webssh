@@ -277,6 +277,8 @@ def backup_restore(archive, confirm_offline):
     """Restore a verified backup while WebSSH is stopped."""
     from .backup_coordination import operation_lock
     from .backup_manager import restore_backup
+    from .restore_sanitizer import sanitize_restored_authentication_state
+    from .session_epoch import reset_cache, rotate_epoch
 
     _require_offline_confirmation(confirm_offline)
     try:
@@ -284,6 +286,11 @@ def backup_restore(archive, confirm_offline):
             db.session.remove()
             db.engine.dispose()
             restore_backup(archive, config.DATA_DIR)
+            sanitize_restored_authentication_state(
+                Path(config.DATA_DIR) / 'app.db'
+            )
+            reset_cache()
+            rotate_epoch()
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
     from .maintenance_mode import clear_failed_status_after_cli_restore

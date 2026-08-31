@@ -85,6 +85,60 @@ def test_rollback_failure_archive_survives_orphan_cleanup(
     assert maintenance.public_status()['state'] == 'idle'
 
 
+def test_interrupted_restore_sanitizes_rollback_before_epoch_rotation(
+    monkeypatch, tmp_path
+):
+    import app.backup_manager as backup_manager
+    import app.restore_sanitizer as restore_sanitizer
+    import app.session_epoch as session_epoch
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    root = maintenance._status_path().parent
+    operation = root / 'operation-interrupted'
+    operation.mkdir()
+    rollback = operation / 'rollback.zip'
+    rollback.write_bytes(b'rollback')
+    maintenance.begin_preparing('interrupted')
+    maintenance.mark_in_progress(
+        'interrupted', 'operation-interrupted/rollback.zip'
+    )
+    events = []
+
+    @contextmanager
+    def fake_operation_lock():
+        yield object()
+
+    monkeypatch.setattr(maintenance, 'operation_lock', fake_operation_lock)
+    monkeypatch.setattr(
+        backup_manager,
+        'restore_backup',
+        lambda source, destination: events.append(
+            ('restore', Path(source), Path(destination))
+        ),
+    )
+    monkeypatch.setattr(
+        restore_sanitizer,
+        'sanitize_restored_authentication_state',
+        lambda database: events.append(('sanitize', Path(database))),
+    )
+    monkeypatch.setattr(
+        session_epoch, 'reset_cache', lambda: events.append(('reset',))
+    )
+    monkeypatch.setattr(
+        session_epoch, 'rotate_epoch', lambda: events.append(('rotate',))
+    )
+
+    maintenance.recover_interrupted_restore()
+
+    assert events == [
+        ('restore', rollback, Path(config.DATA_DIR)),
+        ('sanitize', Path(config.DATA_DIR) / 'app.db'),
+        ('reset',),
+        ('rotate',),
+    ]
+    assert maintenance.public_status()['state'] == 'failed'
+
+
 def test_failed_restore_runs_emergency_rollback_and_restarts(
     app, monkeypatch, tmp_path
 ):
