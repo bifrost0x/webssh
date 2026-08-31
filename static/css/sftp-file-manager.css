@@ -393,6 +393,9 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 8px;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
 }
 
 .fm-file-item {
@@ -406,6 +409,8 @@
     transition: all 0.15s ease;
     user-select: none;
     border: 1px solid transparent;
+    touch-action: pan-y;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .fm-file-item:hover {
@@ -1260,8 +1265,13 @@
         transform: translateY(0);
     }
 
+    .fm-action-sheet.gesture-active {
+        pointer-events: none;
+    }
+
     .fm-action-sheet-item {
         display: flex;
+        width: 100%;
         align-items: center;
         gap: 12px;
         padding: 14px 16px;
@@ -1272,6 +1282,8 @@
         cursor: pointer;
         border-radius: 8px;
         min-height: 48px;
+        font-family: inherit;
+        text-align: left;
     }
 
     .fm-action-sheet-item:active {
@@ -1280,6 +1292,11 @@
 
     .fm-action-sheet-item.danger {
         color: var(--error-color);
+    }
+
+    .fm-action-sheet-item:disabled {
+        cursor: not-allowed;
+        opacity: 0.42;
     }
 
     .fm-action-sheet-cancel {
@@ -2691,13 +2708,33 @@
 
     .fm-file-list-header,
     #sftpFileManager.fm-workspace-mode .fm-file-item {
-        grid-template-columns: 24px 22px minmax(120px, 1fr) 74px;
+        grid-template-columns: 40px 22px minmax(120px, 1fr) 74px;
     }
 
     .fm-file-list-header span:nth-last-child(-n+2),
     .fm-file-modified,
     .fm-file-permissions {
         display: none;
+    }
+}
+
+@media (pointer: coarse) {
+    .fm-file-item[draggable="false"] {
+        -webkit-user-drag: none;
+    }
+
+    .fm-file-checkbox {
+        width: 40px;
+        height: 40px;
+        font-size: 20px !important;
+    }
+
+    .fm-pane-toolbar button,
+    .fm-nav-btn,
+    .fm-source-tab-add,
+    .fm-pane-tab {
+        min-width: 44px;
+        min-height: 44px;
     }
 }
 /* SMB quick connection mirrors the compact SFTP connection dialog. */
