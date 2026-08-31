@@ -478,6 +478,7 @@ test.describe('mobile touch File Manager', () => {
 
         const longPressFile = page.locator('#fmLeftList .fm-file-item[data-index="15"]');
         await longPressFile.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
         const longPressFileBox = await longPressFile.boundingBox();
         const fileX = longPressFileBox.x + (longPressFileBox.width / 2);
         const fileY = longPressFileBox.y + (longPressFileBox.height / 2);
@@ -498,6 +499,7 @@ test.describe('mobile touch File Manager', () => {
         await page.locator('#fmActionSheet [data-action="cancel"]').tap();
         await expect(page.locator('#fmActionSheet')).not.toHaveClass(/visible/);
         await expect(page.locator('#fmActionSheet')).toHaveAttribute('aria-hidden', 'true');
+        await expect(longPressFile.locator('.fm-file-checkbox')).toBeFocused();
         await assertNoExternalRequests(page);
     });
 });

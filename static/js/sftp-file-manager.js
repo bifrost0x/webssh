@@ -36,6 +36,7 @@ class SFTPFileManager {
         this.contextMenu = null;
         this.suppressedItemClick = null;
         this.actionSheetIndex = null;
+        this.actionSheetTrigger = null;
 
         this.draggedItems = [];
         this.dragSource = null;
@@ -2978,7 +2979,10 @@ class SFTPFileManager {
                     }
                     this.updateSelectionVisual(pane);
                     this.suppressItemClick(pane, index);
-                    this.showActionSheet(pane, index, { gestureActive: true });
+                    this.showActionSheet(pane, index, {
+                        gestureActive: true,
+                        trigger: item.querySelector('.fm-file-checkbox'),
+                    });
                 }, longPressDuration);
             });
 
@@ -3014,7 +3018,11 @@ class SFTPFileManager {
         });
     }
 
-    showActionSheet(pane = this.activePane, index = null, { gestureActive = false } = {}) {
+    showActionSheet(
+        pane = this.activePane,
+        index = null,
+        { gestureActive = false, trigger = null } = {},
+    ) {
         const sheet = document.getElementById('fmActionSheet');
         if (sheet) {
             const state = this.panes[pane];
@@ -3025,6 +3033,7 @@ class SFTPFileManager {
                 if (button) button.disabled = Boolean(disabled);
             };
             this.actionSheetIndex = index;
+            this.actionSheetTrigger = trigger || document.activeElement;
             setDisabled('open', index === null || (index >= 0 && selectedCount !== 1));
             setDisabled('download', selectedCount === 0 || !this.sourceCan(state, 'read'));
             setDisabled('transfer', selectedCount === 0 || !this.canTransferBetweenPanes(pane, targetPane));
@@ -3053,6 +3062,7 @@ class SFTPFileManager {
 
     hideActionSheet() {
         const sheet = document.getElementById('fmActionSheet');
+        const trigger = this.actionSheetTrigger;
         if (sheet) {
             sheet.classList.remove('visible');
             sheet.classList.remove('gesture-active');
@@ -3060,6 +3070,8 @@ class SFTPFileManager {
             sheet.setAttribute('aria-hidden', 'true');
         }
         this.actionSheetIndex = null;
+        this.actionSheetTrigger = null;
+        if (trigger?.isConnected !== false) trigger?.focus?.();
     }
 
     handleActionSheetAction(action) {
