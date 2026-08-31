@@ -19,6 +19,7 @@ jobs:
 
   build-and-push:
     needs: security-scan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -37,7 +38,6 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -68,11 +68,13 @@ jobs:
             VCS_REF=${{ github.sha }}
           sbom: true
           provenance: mode=max
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=security-amd64
+            type=gha,scope=security-arm64
+            type=gha,scope=publish
+          cache-to: type=gha,mode=max,scope=publish
 
       - name: Verify published image and record immutable identity
-        if: github.event_name != 'pull_request'
         shell: bash
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
@@ -89,7 +91,6 @@ jobs:
             > image-release.json
 
       - name: Upload immutable image identity
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: image-release-${{ github.sha }}

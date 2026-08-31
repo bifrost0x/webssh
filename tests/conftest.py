@@ -3,9 +3,25 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import bcrypt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, rsa
+
+_PRODUCTION_BCRYPT_GENSALT = bcrypt.gensalt
+_TEST_BCRYPT_ROUNDS = 4
+
+
+def _fast_test_gensalt(rounds=12, prefix=b'2b'):
+    """Keep password behavior realistic without paying production cost per test."""
+    del rounds
+    return _PRODUCTION_BCRYPT_GENSALT(
+        rounds=_TEST_BCRYPT_ROUNDS,
+        prefix=prefix,
+    )
+
+
+bcrypt.gensalt = _fast_test_gensalt
 
 _SESSION_DATA_DIRECTORY = tempfile.TemporaryDirectory(
     prefix='webssh-pytest-session-',
@@ -64,6 +80,7 @@ for _name, _value in _TEST_ENVIRONMENT.items():
 
 def pytest_unconfigure(config):
     del config
+    bcrypt.gensalt = _PRODUCTION_BCRYPT_GENSALT
     for name, original in _ORIGINAL_TEST_ENVIRONMENT.items():
         if original is None:
             os.environ.pop(name, None)
