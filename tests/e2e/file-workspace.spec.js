@@ -498,7 +498,7 @@ test.describe('mobile touch File Manager', () => {
             touchPoints: [],
         });
         await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
-        expect(scrollLayout.listTouchAction).toBe('auto');
+        expect(scrollLayout.listTouchAction).toBe('manipulation');
 
         const longPressFile = page.locator('#fmLeftList .fm-file-item[data-index="15"]');
         await longPressFile.scrollIntoViewIfNeeded();
