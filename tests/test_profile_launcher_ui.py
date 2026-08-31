@@ -33,8 +33,8 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=24',
-        "filename='css/sftp-file-manager.css'": '?v=18',
-        "filename='js/i18n.js'": '?v=41',
+        "filename='css/sftp-file-manager.css'": '?v=19',
+        "filename='js/i18n.js'": '?v=42',
         "filename='js/command-workspace.js'": '?v=3',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
@@ -45,7 +45,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/terminal-manager.js'": '?v=12',
         "filename='js/mobile-app-shell.js'": '?v=7',
         "filename='js/smb-source-dialog.js'": '?v=5',
-        "filename='js/sftp-file-manager.js'": '?v=33',
+        "filename='js/sftp-file-manager.js'": '?v=34',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=5',
         "filename='js/command-set-manager.js'": '?v=6',

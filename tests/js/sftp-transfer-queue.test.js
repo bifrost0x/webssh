@@ -1845,6 +1845,68 @@ test('file checkbox markup is keyboard accessible and double click never opens t
     assert.equal(opened, false);
 });
 
+test('coarse pointers use touch activation instead of native file dragging', () => {
+    const previousMatchMedia = global.window.matchMedia;
+    const manager = Object.create(SFTPFileManager.prototype);
+
+    try {
+        global.window.matchMedia = query => ({
+            matches: query === '(pointer: coarse)',
+        });
+        assert.equal(manager.supportsNativeFileDrag(), false);
+
+        global.window.matchMedia = () => ({ matches: false });
+        assert.equal(manager.supportsNativeFileDrag(), true);
+    } finally {
+        if (previousMatchMedia === undefined) delete global.window.matchMedia;
+        else global.window.matchMedia = previousMatchMedia;
+    }
+});
+
+test('touch taps open folders while files and checkboxes remain selectable', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const opened = [];
+    const state = {
+        selected: new Set(),
+        lastSelected: -1,
+        files: [
+            { name: 'archive', is_dir: true },
+            { name: 'report.txt', is_dir: false },
+        ],
+    };
+    Object.assign(manager, {
+        activePane: 'left',
+        displayMode: 'embedded',
+        panes: { left: state },
+        setActivePane() {},
+        updateSelectionVisual() {},
+        handleItemDblClick(pane, index) { opened.push([pane, index]); },
+    });
+    const rowEvent = {
+        target: { closest() { return null; } },
+        preventDefault() {},
+        stopPropagation() {},
+    };
+
+    manager.handleTouchItemTap(rowEvent, 'left', 0);
+    assert.deepEqual(opened, [['left', 0]]);
+    assert.deepEqual([...state.selected], []);
+
+    manager.handleTouchItemTap(rowEvent, 'left', 1);
+    assert.deepEqual([...state.selected], [1]);
+
+    const checkboxEvent = {
+        target: {
+            closest(selector) {
+                return selector === '.fm-file-checkbox' ? this : null;
+            },
+        },
+        stopPropagation() {},
+    };
+    manager.handleTouchItemTap(checkboxEvent, 'left', 0);
+    assert.deepEqual([...state.selected].sort(), [0, 1]);
+});
+
 test('an empty non-root folder still renders the parent directory action', () => {
     const previousDocument = global.document;
     let rendered = '';

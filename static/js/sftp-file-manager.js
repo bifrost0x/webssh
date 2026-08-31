@@ -34,6 +34,9 @@ class SFTPFileManager {
         this.applyToAll = false;
 
         this.contextMenu = null;
+        this.suppressedItemClick = null;
+        this.actionSheetIndex = null;
+        this.actionSheetTrigger = null;
 
         this.draggedItems = [];
         this.dragSource = null;
@@ -1117,17 +1120,17 @@ class SFTPFileManager {
                             </div>
                             <div class="fm-source-identity" id="fmLeftIdentity"></div>
                             <div class="fm-pane-nav">
-                                <button class="fm-nav-btn" id="fmLeftUp" data-i18n-title="fm.goUp">
-                                    <span class="material-icons">arrow_upward</span>
+                                <button type="button" class="fm-nav-btn" id="fmLeftUp" aria-label="Go up" title="Go up" data-i18n-aria-label="fm.goUp" data-i18n-title="fm.goUp">
+                                    <span class="material-icons" aria-hidden="true">arrow_upward</span>
                                 </button>
-                                <button class="fm-nav-btn" id="fmLeftHome" data-i18n-title="fm.goHome">
-                                    <span class="material-icons">home</span>
+                                <button type="button" class="fm-nav-btn" id="fmLeftHome" aria-label="Go home" title="Go home" data-i18n-aria-label="fm.goHome" data-i18n-title="fm.goHome">
+                                    <span class="material-icons" aria-hidden="true">home</span>
                                 </button>
                                 <div class="fm-breadcrumb" id="fmLeftBreadcrumb">
                                     <input type="text" class="fm-path-input" id="fmLeftPath" value="/" placeholder="/path">
                                 </div>
-                                <button class="fm-nav-btn" id="fmLeftRefresh" data-i18n-title="fm.refresh">
-                                    <span class="material-icons">refresh</span>
+                                <button type="button" class="fm-nav-btn" id="fmLeftRefresh" aria-label="Refresh" title="Refresh" data-i18n-aria-label="fm.refresh" data-i18n-title="fm.refresh">
+                                    <span class="material-icons" aria-hidden="true">refresh</span>
                                 </button>
                             </div>
                             <div class="fm-pane-toolbar" data-pane-toolbar="left">
@@ -1183,17 +1186,17 @@ class SFTPFileManager {
                             </div>
                             <div class="fm-source-identity" id="fmRightIdentity"></div>
                             <div class="fm-pane-nav">
-                                <button class="fm-nav-btn" id="fmRightUp" data-i18n-title="fm.goUp">
-                                    <span class="material-icons">arrow_upward</span>
+                                <button type="button" class="fm-nav-btn" id="fmRightUp" aria-label="Go up" title="Go up" data-i18n-aria-label="fm.goUp" data-i18n-title="fm.goUp">
+                                    <span class="material-icons" aria-hidden="true">arrow_upward</span>
                                 </button>
-                                <button class="fm-nav-btn" id="fmRightHome" data-i18n-title="fm.goHome">
-                                    <span class="material-icons">home</span>
+                                <button type="button" class="fm-nav-btn" id="fmRightHome" aria-label="Go home" title="Go home" data-i18n-aria-label="fm.goHome" data-i18n-title="fm.goHome">
+                                    <span class="material-icons" aria-hidden="true">home</span>
                                 </button>
                                 <div class="fm-breadcrumb" id="fmRightBreadcrumb">
                                     <input type="text" class="fm-path-input" id="fmRightPath" value="/" placeholder="/path">
                                 </div>
-                                <button class="fm-nav-btn" id="fmRightRefresh" data-i18n-title="fm.refresh">
-                                    <span class="material-icons">refresh</span>
+                                <button type="button" class="fm-nav-btn" id="fmRightRefresh" aria-label="Refresh" title="Refresh" data-i18n-aria-label="fm.refresh" data-i18n-title="fm.refresh">
+                                    <span class="material-icons" aria-hidden="true">refresh</span>
                                 </button>
                             </div>
                             <div class="fm-pane-toolbar" data-pane-toolbar="right">
@@ -1277,35 +1280,35 @@ class SFTPFileManager {
                 </div>
 
                 <!-- Mobile Action Sheet -->
-                <div class="fm-action-sheet" id="fmActionSheet">
-                    <div class="fm-action-sheet-item" data-action="open">
-                        <span class="material-icons">folder_open</span>
-                        <span>Open</span>
-                    </div>
-                    <div class="fm-action-sheet-item" data-action="download">
-                        <span class="material-icons">download</span>
-                        <span>Download</span>
-                    </div>
-                    <div class="fm-action-sheet-item" data-action="transfer">
-                        <span class="material-icons">swap_horiz</span>
-                        <span>Transfer</span>
-                    </div>
-                    <div class="fm-action-sheet-item" data-action="rename">
-                        <span class="material-icons">edit</span>
-                        <span>Rename</span>
-                    </div>
-                    <div class="fm-action-sheet-item" data-action="newfolder">
-                        <span class="material-icons">create_new_folder</span>
-                        <span>New Folder</span>
-                    </div>
-                    <div class="fm-action-sheet-item danger" data-action="delete">
-                        <span class="material-icons">delete</span>
-                        <span>Delete</span>
-                    </div>
-                    <div class="fm-action-sheet-cancel fm-action-sheet-item" data-action="cancel">
-                        <span class="material-icons">close</span>
-                        <span>Cancel</span>
-                    </div>
+                <div class="fm-action-sheet" id="fmActionSheet" role="dialog" aria-label="File actions" aria-hidden="true" data-i18n-aria-label="fm.workspace.fileActions" inert>
+                    <button type="button" class="fm-action-sheet-item" data-action="open">
+                        <span class="material-icons" aria-hidden="true">folder_open</span>
+                        <span data-i18n="fm.ctx.open">Open</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-item" data-action="download">
+                        <span class="material-icons" aria-hidden="true">download</span>
+                        <span data-i18n="fm.download">Download</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-item" data-action="transfer">
+                        <span class="material-icons" aria-hidden="true">swap_horiz</span>
+                        <span data-i18n="fm.transfer">Transfer</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-item" data-action="rename">
+                        <span class="material-icons" aria-hidden="true">edit</span>
+                        <span data-i18n="fm.rename">Rename</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-item" data-action="newfolder">
+                        <span class="material-icons" aria-hidden="true">create_new_folder</span>
+                        <span data-i18n="fm.newFolder">New Folder</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-item danger" data-action="delete">
+                        <span class="material-icons" aria-hidden="true">delete</span>
+                        <span data-i18n="fm.delete">Delete</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-cancel fm-action-sheet-item" data-action="cancel">
+                        <span class="material-icons" aria-hidden="true">close</span>
+                        <span data-i18n="common.cancel">Cancel</span>
+                    </button>
                 </div>
             </div>
         `;
@@ -2746,7 +2749,7 @@ class SFTPFileManager {
                 <div class="fm-file-item ${file.is_dir ? 'directory' : ''} ${state.selected.has(originalIndex) ? 'selected' : ''}"
                      data-index="${originalIndex}"
                      data-type="${file.is_dir ? 'directory' : 'file'}"
-                     draggable="true">
+                     draggable="${this.supportsNativeFileDrag()}">
                     <button type="button" class="fm-file-checkbox material-icons" role="checkbox"
                             aria-checked="${state.selected.has(originalIndex)}"
                             aria-label="${this.escapeHtml(this.t('fm.workspace.selectItem', 'Select'))}: ${this.escapeHtml(file.name)}">${state.selected.has(originalIndex) ? 'check_box' : 'check_box_outline_blank'}</button>
@@ -2778,7 +2781,12 @@ class SFTPFileManager {
         this.updatePaneStatus(pane);
     }
 
-    handleItemClick(e, pane, index) {
+    handleItemClick(e, pane, index, { ignoreSuppression = false } = {}) {
+        if (!ignoreSuppression && this.shouldSuppressItemClick(pane, index)) {
+            e.preventDefault?.();
+            e.stopPropagation?.();
+            return;
+        }
         e.stopPropagation();
         this.setActivePane(pane);
 
@@ -2809,6 +2817,11 @@ class SFTPFileManager {
     }
 
     handleItemDoubleClickEvent(e, pane, index) {
+        if (this.shouldSuppressItemClick(pane, index)) {
+            e.preventDefault?.();
+            e.stopPropagation?.();
+            return;
+        }
         if (e.target?.closest?.('.fm-file-checkbox')) return;
         e.preventDefault();
         e.stopPropagation();
@@ -2877,6 +2890,43 @@ class SFTPFileManager {
         return window.innerWidth < 768;
     }
 
+    supportsNativeFileDrag() {
+        return typeof window.matchMedia !== 'function'
+            || !window.matchMedia('(pointer: coarse)').matches;
+    }
+
+    suppressItemClick(pane, index, duration = 800) {
+        this.suppressedItemClick = {
+            pane,
+            index,
+            until: Date.now() + duration,
+        };
+    }
+
+    shouldSuppressItemClick(pane, index) {
+        const suppressed = this.suppressedItemClick;
+        if (!suppressed) return false;
+        if (suppressed.until <= Date.now()) {
+            this.suppressedItemClick = null;
+            return false;
+        }
+        return suppressed.pane === pane && suppressed.index === index;
+    }
+
+    handleTouchItemTap(event, pane, index) {
+        const state = this.panes[pane];
+        const checkboxTapped = Boolean(event.target?.closest?.('.fm-file-checkbox'));
+        const file = index >= 0 ? state.files[index] : null;
+        if (!checkboxTapped && (index === -1 || file?.is_dir)) {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+            this.setActivePane(pane);
+            this.handleItemDblClick(pane, index);
+            return;
+        }
+        this.handleItemClick(event, pane, index, { ignoreSuppression: true });
+    }
+
     updateMobilePaneTabs(pane) {
         document.querySelectorAll('.fm-pane-tab').forEach(tab => {
             const active = tab.dataset.pane === pane;
@@ -2886,64 +2936,154 @@ class SFTPFileManager {
     }
 
     setupLongPress() {
+        let gesture = null;
         let longPressTimer = null;
         const longPressDuration = 500;
+        const movementTolerance = 10;
+
+        const clearLongPressTimer = () => {
+            if (longPressTimer) clearTimeout(longPressTimer);
+            longPressTimer = null;
+        };
+
+        const resetGesture = () => {
+            clearLongPressTimer();
+            gesture = null;
+        };
 
         ['left', 'right'].forEach(pane => {
             const listEl = document.getElementById(`fm${this.capitalize(pane)}List`);
 
-            listEl.addEventListener('touchstart', (e) => {
-                const item = e.target.closest('.fm-file-item');
+            listEl.addEventListener('pointerdown', event => {
+                if (event.pointerType !== 'touch' || gesture) return;
+                const item = event.target.closest('.fm-file-item');
                 if (!item) return;
-
+                const index = parseInt(item.dataset.index);
+                gesture = {
+                    pane,
+                    index,
+                    item,
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    moved: false,
+                    longPressed: false,
+                };
                 longPressTimer = setTimeout(() => {
-                    e.preventDefault();
-                    const index = parseInt(item.dataset.index);
+                    if (!gesture || gesture.moved) return;
+                    gesture.longPressed = true;
                     this.setActivePane(pane);
                     this.panes[pane].selected.clear();
-                    this.panes[pane].selected.add(index);
+                    if (index >= 0) {
+                        this.panes[pane].selected.add(index);
+                    }
                     this.updateSelectionVisual(pane);
-                    this.showActionSheet();
+                    this.suppressItemClick(pane, index);
+                    this.showActionSheet(pane, index, {
+                        gestureActive: true,
+                        trigger: item.querySelector('.fm-file-checkbox'),
+                    });
                 }, longPressDuration);
-            }, { passive: false });
-
-            listEl.addEventListener('touchend', () => {
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    longPressTimer = null;
-                }
             });
 
-            listEl.addEventListener('touchmove', () => {
-                if (longPressTimer) {
-                    clearTimeout(longPressTimer);
-                    longPressTimer = null;
+            listEl.addEventListener('pointermove', event => {
+                if (!gesture || gesture.pointerId !== event.pointerId) return;
+                const deltaX = Math.abs(event.clientX - gesture.startX);
+                const deltaY = Math.abs(event.clientY - gesture.startY);
+                if (Math.max(deltaX, deltaY) <= movementTolerance) return;
+                gesture.moved = true;
+                clearLongPressTimer();
+            });
+
+            listEl.addEventListener('pointerup', event => {
+                if (!gesture || gesture.pointerId !== event.pointerId) return;
+                const completedGesture = gesture;
+                resetGesture();
+                if (completedGesture.moved) return;
+                if (completedGesture.longPressed) {
+                    this.releaseActionSheetGesture();
+                    return;
                 }
+                const releasedItem = event.target.closest('.fm-file-item');
+                if (releasedItem !== completedGesture.item) return;
+                this.handleTouchItemTap(event, pane, completedGesture.index);
+                this.suppressItemClick(pane, completedGesture.index);
+            });
+
+            listEl.addEventListener('pointercancel', () => {
+                const completedGesture = gesture;
+                resetGesture();
+                if (completedGesture?.longPressed) this.releaseActionSheetGesture();
             });
         });
     }
 
-    showActionSheet() {
+    showActionSheet(
+        pane = this.activePane,
+        index = null,
+        { gestureActive = false, trigger = null } = {},
+    ) {
         const sheet = document.getElementById('fmActionSheet');
         if (sheet) {
+            const state = this.panes[pane];
+            const selectedCount = state?.selected?.size || 0;
+            const targetPane = pane === 'left' ? 'right' : 'left';
+            const setDisabled = (action, disabled) => {
+                const button = sheet.querySelector(`[data-action="${action}"]`);
+                if (button) button.disabled = Boolean(disabled);
+            };
+            this.actionSheetIndex = index;
+            this.actionSheetTrigger = trigger || document.activeElement;
+            setDisabled('open', index === null || (index >= 0 && selectedCount !== 1));
+            setDisabled('download', selectedCount === 0 || !this.sourceCan(state, 'read'));
+            setDisabled('transfer', selectedCount === 0 || !this.canTransferBetweenPanes(pane, targetPane));
+            setDisabled('rename', selectedCount !== 1 || !this.sourceCan(state, 'rename'));
+            setDisabled('newfolder', !this.sourceCan(state, 'mkdir'));
+            setDisabled('delete', selectedCount === 0 || !this.sourceCan(state, 'delete'));
+            sheet.classList.toggle('gesture-active', gestureActive);
             sheet.classList.add('visible');
+            sheet.removeAttribute('inert');
+            sheet.setAttribute('aria-hidden', 'false');
+            if (!gestureActive) {
+                sheet.querySelector('.fm-action-sheet-item:not(:disabled)')?.focus();
+            }
         }
+    }
+
+    releaseActionSheetGesture() {
+        const sheet = document.getElementById('fmActionSheet');
+        if (!sheet?.classList.contains('visible')) return;
+        setTimeout(() => {
+            if (!sheet.classList.contains('visible')) return;
+            sheet.classList.remove('gesture-active');
+            sheet.querySelector('.fm-action-sheet-item:not(:disabled)')?.focus();
+        }, 150);
     }
 
     hideActionSheet() {
         const sheet = document.getElementById('fmActionSheet');
+        const trigger = this.actionSheetTrigger;
         if (sheet) {
             sheet.classList.remove('visible');
+            sheet.classList.remove('gesture-active');
+            sheet.setAttribute('inert', '');
+            sheet.setAttribute('aria-hidden', 'true');
         }
+        this.actionSheetIndex = null;
+        this.actionSheetTrigger = null;
+        if (trigger?.isConnected !== false) trigger?.focus?.();
     }
 
     handleActionSheetAction(action) {
+        const actionSheetIndex = this.actionSheetIndex;
         this.hideActionSheet();
 
         switch (action) {
             case 'open':
                 const state = this.panes[this.activePane];
-                if (state.selected.size === 1) {
+                if (Number.isInteger(actionSheetIndex)) {
+                    this.handleItemDblClick(this.activePane, actionSheetIndex);
+                } else if (state.selected.size === 1) {
                     const index = Array.from(state.selected)[0];
                     this.handleItemDblClick(this.activePane, index);
                 }

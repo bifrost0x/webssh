@@ -195,6 +195,13 @@
     white-space: nowrap;
 }
 
+@media (pointer: coarse) {
+    .fm-embedded-mode .fm-file-item {
+        grid-template-columns: 40px 22px minmax(0, 1fr) auto;
+        min-height: 52px;
+    }
+}
+
 .notepad-panel {
     min-height: 0;
 }

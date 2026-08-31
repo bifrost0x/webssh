@@ -376,3 +376,130 @@ test('splitting two single-view tabs distributes them across both file areas', a
     await expect(page.locator('#fmRightIdentity .fm-pane-label')).toHaveText('Right side');
     await assertNoExternalRequests(page);
 });
+
+test.describe('mobile touch File Manager', () => {
+    test.use({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+    });
+
+    test('opens folders, selects files, scrolls, and exposes long-press actions', async ({ page }) => {
+        await openWorkspaceWithSources(page);
+        await page.locator('[data-source-key="sftp-session:workspace-source"]').tap();
+        await page.evaluate(() => {
+            const manager = window.sftpFileManager;
+            Object.assign(manager.panes.left, {
+                loading: false,
+                error: null,
+                autoHomeEligible: false,
+                pendingHomeRequestId: null,
+                path: '/srv/source',
+                files: [
+                    { name: 'archive', is_dir: true, size: 0 },
+                    ...Array.from({ length: 30 }, (_, index) => ({
+                        name: `report-${String(index).padStart(2, '0')}.txt`,
+                        is_dir: false,
+                        size: 12 + index,
+                    })),
+                ],
+                selected: new Set(),
+                lastSelected: -1,
+            });
+            manager.renderPane('left');
+        });
+
+        const folder = page.locator('#fmLeftList .fm-file-item[data-index="0"]');
+        await expect(folder).toHaveAttribute('draggable', 'false');
+        await folder.tap();
+        await expect.poll(() => page.evaluate(
+            () => window.sftpFileManager.panes.left.path,
+        )).toBe('/srv/source/archive');
+        await page.evaluate(() => {
+            const manager = window.sftpFileManager;
+            Object.assign(manager.panes.left, {
+                loading: false,
+                pendingDirectoryRequestId: null,
+                pendingDirectoryPath: null,
+                files: [],
+            });
+            manager.updatePathInput('left', manager.panes.left.path);
+            manager.renderPane('left');
+        });
+
+        const parent = page.locator('#fmLeftList .fm-file-item[data-type="parent"]');
+        await parent.tap();
+        await expect.poll(() => page.evaluate(
+            () => window.sftpFileManager.panes.left.path,
+        )).toBe('/srv/source');
+
+        await page.evaluate(() => {
+            const manager = window.sftpFileManager;
+            Object.assign(manager.panes.left, {
+                loading: false,
+                pendingDirectoryRequestId: null,
+                pendingDirectoryPath: null,
+                files: [
+                    { name: 'archive', is_dir: true, size: 0 },
+                    ...Array.from({ length: 30 }, (_, index) => ({
+                        name: `report-${String(index).padStart(2, '0')}.txt`,
+                        is_dir: false,
+                        size: 12 + index,
+                    })),
+                ],
+            });
+            manager.updatePathInput('left', manager.panes.left.path);
+            manager.renderPane('left');
+        });
+        const file = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
+        await file.tap();
+        await expect(file).toHaveClass(/selected/);
+        await file.locator('.fm-file-checkbox').tap();
+        await expect(file).not.toHaveClass(/selected/);
+
+        const list = page.locator('#fmLeftList');
+        const listBox = await list.boundingBox();
+        const client = await page.context().newCDPSession(page);
+        const x = listBox.x + (listBox.width / 2);
+        const startY = listBox.y + Math.min(listBox.height - 24, 300);
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [{ x, y: startY }],
+        });
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x, y: startY - 180 }],
+        });
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchEnd',
+            touchPoints: [],
+        });
+        await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+
+        const longPressFile = page.locator('#fmLeftList .fm-file-item[data-index="15"]');
+        await longPressFile.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        const longPressFileBox = await longPressFile.boundingBox();
+        const fileX = longPressFileBox.x + (longPressFileBox.width / 2);
+        const fileY = longPressFileBox.y + (longPressFileBox.height / 2);
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [{ x: fileX, y: fileY }],
+        });
+        await page.waitForTimeout(550);
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchEnd',
+            touchPoints: [],
+        });
+        await expect(page.locator('#fmActionSheet')).toHaveClass(/visible/);
+        await expect(page.locator('#fmActionSheet')).toHaveAttribute('aria-hidden', 'false');
+        await expect(page.locator('#fmActionSheet [data-action="open"]')).toBeEnabled();
+        await expect(page.locator('#fmActionSheet [data-action="download"]')).toBeEnabled();
+        await expect(page.locator('#fmActionSheet [data-action="transfer"]')).toBeDisabled();
+        await page.locator('#fmActionSheet [data-action="cancel"]').tap();
+        await expect(page.locator('#fmActionSheet')).not.toHaveClass(/visible/);
+        await expect(page.locator('#fmActionSheet')).toHaveAttribute('aria-hidden', 'true');
+        await expect(longPressFile.locator('.fm-file-checkbox')).toBeFocused();
+        await assertNoExternalRequests(page);
+    });
+});
