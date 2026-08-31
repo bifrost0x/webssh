@@ -531,6 +531,68 @@ class TestPasswordChange:
             user = User.query.filter_by(username='changeuser').one()
             assert user.check_password('current-password')
 
+    def test_change_password_rotates_all_sessions_and_keeps_current_browser(
+        self,
+        app,
+        client,
+    ):
+        from flask import g
+        from flask_login.utils import decode_cookie
+
+        with app.app_context():
+            from app.auth import register_user
+            from app.models import db
+
+            user, error = register_user('rotateduser', 'current-password')
+            assert error is None
+            db.session.commit()
+            user_id = user.id
+
+        other_client = app.test_client()
+        assert client.post('/login', data={
+            'username': 'rotateduser',
+            'password': 'current-password',
+            'remember': 'on',
+        }).status_code == 302
+        g.pop('_login_user', None)
+        assert other_client.post('/login', data={
+            'username': 'rotateduser',
+            'password': 'current-password',
+            'remember': 'on',
+        }).status_code == 302
+        g.pop('_login_user', None)
+
+        old_current_cookie = client.get_cookie('remember_token').value
+        old_other_cookie = other_client.get_cookie('remember_token').value
+
+        response = client.post('/change-password', data={
+            'current_password': 'current-password',
+            'new_password': 'changed-password',
+            'confirm_password': 'changed-password',
+        })
+
+        assert response.status_code == 302
+        g.pop('_login_user', None)
+        assert client.get('/').status_code == 200
+        assert client.get_cookie('remember_token').value != old_current_cookie
+        g.pop('_login_user', None)
+        rejected = other_client.get('/')
+        assert rejected.status_code == 302
+        assert '/login?next=' in rejected.headers['Location']
+
+        with app.app_context():
+            from app.models import AuthenticationSession, User
+
+            rotated = db.session.get(User, user_id)
+            rows = AuthenticationSession.query.filter_by(
+                user_id=user_id
+            ).all()
+            assert rotated.auth_generation == 1
+            assert rotated.check_password('changed-password')
+            assert len(rows) == 1
+            assert rows[0].auth_generation == rotated.auth_generation
+            assert decode_cookie(old_other_cookie).split(':', 2)[2]
+
 
 class TestSSHParameterValidation:
     """Socket input validation is syntactic; network policy owns DNS."""

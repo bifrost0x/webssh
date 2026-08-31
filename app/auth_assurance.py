@@ -17,10 +17,16 @@ import config
 from .audit_logger import log_security_event
 from .models import (
     AuthenticationSession,
+    GitHubOAuthState,
+    OIDCLoginState,
     PendingAuthentication,
     RecoveryCode,
+    StepUpGrant,
+    StepUpIntent,
     TOTPAuthenticator,
+    TOTPEnrollment,
     User,
+    WebAuthnChallenge,
     as_naive_utc,
     db,
 )
@@ -266,6 +272,108 @@ def clear_browser_authentication():
     session.clear()
     if clear_remember_cookie:
         session['_remember'] = 'clear'
+
+
+def invalidate_user_authentication(
+    user,
+    *,
+    preserve_current_browser=False,
+    remember=False,
+):
+    """Invalidate every browser credential derived from a user's old state.
+
+    When ``preserve_current_browser`` is true, the caller's current valid
+    assurance is moved to one new opaque session under the incremented
+    generation. The caller must commit the surrounding security-state change.
+    """
+    if not isinstance(user, User) or user.id is None:
+        raise TypeError('user must be persistent')
+
+    replacement = None
+    if preserve_current_browser:
+        current = current_authentication_session()
+        if current is None or current.user_id != user.id:
+            raise AuthenticationFinalizationError(
+                'current authentication session is unavailable'
+            )
+        replacement = {
+            'assurance': current.assurance,
+            'methods_json': current.methods_json,
+            'authenticated_at': current.authenticated_at,
+            'strong_authenticated_at': current.strong_authenticated_at,
+            'expires_at': current.expires_at,
+        }
+
+    authentication_session_ids = [
+        row.id
+        for row in AuthenticationSession.query.with_entities(
+            AuthenticationSession.id
+        ).filter_by(user_id=user.id)
+    ]
+    step_up_intent_ids = [
+        row.id
+        for row in StepUpIntent.query.with_entities(
+            StepUpIntent.id
+        ).filter_by(user_id=user.id)
+    ]
+
+    GitHubOAuthState.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
+    if step_up_intent_ids:
+        GitHubOAuthState.query.filter(
+            GitHubOAuthState.step_up_intent_id.in_(step_up_intent_ids)
+        ).delete(synchronize_session=False)
+        OIDCLoginState.query.filter(
+            OIDCLoginState.step_up_intent_id.in_(step_up_intent_ids)
+        ).delete(synchronize_session=False)
+    if authentication_session_ids:
+        StepUpGrant.query.filter(
+            StepUpGrant.authentication_session_id.in_(
+                authentication_session_ids
+            )
+        ).delete(synchronize_session=False)
+    StepUpIntent.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
+    AuthenticationSession.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
+    PendingAuthentication.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
+    WebAuthnChallenge.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
+    TOTPEnrollment.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
+
+    user.auth_generation = int(user.auth_generation or 0) + 1
+    if replacement is None:
+        return None
+
+    opaque_session_id = secrets.token_urlsafe(32)
+    row = AuthenticationSession(
+        session_hash=_digest(opaque_session_id),
+        user_id=user.id,
+        assurance=replacement['assurance'],
+        methods_json=replacement['methods_json'],
+        authenticated_at=replacement['authenticated_at'],
+        strong_authenticated_at=replacement['strong_authenticated_at'],
+        auth_generation=int(user.auth_generation or 0),
+        expires_at=replacement['expires_at'],
+    )
+
+    session.clear()
+    login_user(user, remember=bool(remember))
+    session['_user_id'] = (
+        f'{user.id}:{int(user.auth_generation or 0)}:{opaque_session_id}'
+    )
+    session['_auth_session'] = opaque_session_id
+    session['_auth_epoch'] = current_epoch()
+    db.session.add(row)
+    return row
 
 
 def finalize_login(pending, *, methods, strong_authenticated_at=None):

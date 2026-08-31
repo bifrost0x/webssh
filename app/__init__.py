@@ -488,6 +488,9 @@ def create_app(
                 'archiveBytes': config.MAX_ZIP_DOWNLOAD_SIZE,
                 'remoteTransferBytes': config.MAX_ZIP_DOWNLOAD_SIZE,
             },
+            ssh_input_limits={
+                'maxEventBytes': config.SSH_INPUT_MAX_BYTES,
+            },
         )
 
     @app.route('/login', methods=['GET', 'POST'])
@@ -659,6 +662,12 @@ def create_app(
     @app.route('/change-password', methods=['GET', 'POST'])
     @login_required
     def change_password():
+        from . import user_lifecycle
+        from .auth_assurance import (
+            AuthenticationFinalizationError,
+            invalidate_user_authentication,
+        )
+
         if current_user.is_ldap_managed or current_user.is_github_managed:
             abort(403)
         if request.method == 'POST':
@@ -696,9 +705,34 @@ def create_app(
             elif current_user.check_password(new_password):
                 flash('New password must be different from current password', 'error')
             else:
-                current_user.set_password(new_password)
-                db.session.commit()
-                log_password_change(current_user.username, True, get_client_ip())
+                password_owner = current_user._get_current_object()
+                password_owner.set_password(new_password)
+                remember_cookie_name = app.config.get(
+                    'REMEMBER_COOKIE_NAME',
+                    'remember_token',
+                )
+                try:
+                    invalidate_user_authentication(
+                        password_owner,
+                        preserve_current_browser=True,
+                        remember=bool(request.cookies.get(remember_cookie_name)),
+                    )
+                    db.session.commit()
+                except AuthenticationFinalizationError as exc:
+                    db.session.rollback()
+                    clear_browser_authentication()
+                    log_warning(
+                        'Password change session rotation failed',
+                        user=password_owner.username,
+                        error=type(exc).__name__,
+                    )
+                    abort(500)
+                user_lifecycle.revoke_user_access(password_owner.id, socketio)
+                log_password_change(
+                    password_owner.username,
+                    True,
+                    get_client_ip(),
+                )
                 flash('Password updated successfully', 'success')
                 return redirect(url_for('index'))
         settings = get_user_settings(current_user.id)
@@ -879,6 +913,7 @@ def create_app(
     )
     def admin_user_action(user_id, action):
         from . import user_lifecycle
+        from .auth_assurance import invalidate_user_authentication
 
         target = db.session.get(User, user_id)
         if not target:
@@ -893,6 +928,7 @@ def create_app(
             if is_self:
                 return jsonify({'error': 'You cannot lock your own account'}), 400
             target.is_locked = True
+            invalidate_user_authentication(target)
             revoke_after_commit = True
         elif action == 'unlock':
             target.is_locked = False
@@ -925,6 +961,7 @@ def create_app(
                 return jsonify({'error': 'Cannot delete the last administrator'}), 400
             username = target.username
             target.is_locked = True
+            invalidate_user_authentication(target)
             db.session.commit()
             try:
                 user_lifecycle.delete_user_account(target, socketio)

@@ -72,6 +72,38 @@ def test_tailscale_ssh_enforces_target_and_remote_user_allowlists(monkeypatch):
     )
 
 
+def test_tailscale_ssh_fails_closed_for_invalid_configured_target(monkeypatch):
+    from app.tailscale_ssh import validate_tailscale_ssh_access
+
+    _set_policy(monkeypatch, targets={'bad target'})
+    user = SimpleNamespace(id=7, username='admin', is_admin=True)
+
+    assert validate_tailscale_ssh_access(user, 'tiny-server', 'root') == (
+        'Tailscale SSH target is not allowed'
+    )
+
+
+def test_tailscale_authorization_is_bound_to_exact_user_target_and_remote_user(
+    monkeypatch,
+):
+    from app.tailscale_ssh import authorize_tailscale_ssh_access
+
+    _set_policy(monkeypatch, targets={'tiny-server'}, remote_users={'root'})
+    user = SimpleNamespace(id=7, username='admin', is_admin=True)
+
+    authorization, error = authorize_tailscale_ssh_access(
+        user,
+        'TINY-SERVER.',
+        'root',
+    )
+
+    assert error is None
+    assert authorization.matches(7, 'tiny-server', 'root')
+    assert not authorization.matches(8, 'tiny-server', 'root')
+    assert not authorization.matches(7, 'other-server', 'root')
+    assert not authorization.matches(7, 'tiny-server', 'ubuntu')
+
+
 def test_profile_launch_authorization_tracks_target_policy(monkeypatch):
     from app.tailscale_ssh import profile_is_authorized_for_launch
 

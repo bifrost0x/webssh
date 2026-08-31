@@ -3,7 +3,6 @@
 import os
 from pathlib import Path
 import signal
-import sqlite3
 import threading
 import time
 
@@ -22,6 +21,7 @@ from .maintenance_mode import (
     mark_succeeded,
 )
 from .session_epoch import reset_cache, rotate_epoch
+from .restore_sanitizer import sanitize_restored_authentication_state
 
 
 def _close_active_ssh_sessions():
@@ -49,13 +49,8 @@ def _disconnect_sockets(socketio):
 
 
 def _clear_restored_runtime_sessions(database_path: Path):
-    connection = sqlite3.connect(str(database_path), timeout=30)
-    try:
-        connection.execute('DELETE FROM socket_sessions')
-        connection.execute('DELETE FROM ssh_sessions')
-        connection.commit()
-    finally:
-        connection.close()
+    """Compatibility wrapper for the complete post-restore sanitizer."""
+    return sanitize_restored_authentication_state(database_path)
 
 
 def request_process_restart(delay=1.0):
@@ -106,9 +101,9 @@ def _perform_restore(app, socketio, record, username, source_ip,
             mark_in_progress(operation_id, relative)
 
             restore_backup(record.archive_path, config.DATA_DIR)
+            _clear_restored_runtime_sessions(Path(config.DATA_DIR) / 'app.db')
             reset_cache()
             rotate_epoch()
-            _clear_restored_runtime_sessions(Path(config.DATA_DIR) / 'app.db')
             mark_succeeded(operation_id)
             log_security_event(
                 'RESTORE_SUCCEEDED', user=username, ip=source_ip
@@ -118,9 +113,11 @@ def _perform_restore(app, socketio, record, username, source_ip,
         if rollback_available:
             try:
                 restore_backup(rollback_archive, config.DATA_DIR)
+                _clear_restored_runtime_sessions(
+                    Path(config.DATA_DIR) / 'app.db'
+                )
                 reset_cache()
                 rotate_epoch()
-                _clear_restored_runtime_sessions(Path(config.DATA_DIR) / 'app.db')
                 restart_required = True
             except Exception:
                 rollback_failed = True

@@ -20,16 +20,19 @@ from .audit_logger import (log_info, log_warning, log_error, log_debug,
                               log_key_delete,
                               log_tailscale_ssh_usage)
 from .tailscale_ssh import (
+    authorize_tailscale_ssh_access,
     profile_is_authorized_for_launch,
     validate_tailscale_ssh_access,
 )
 from .storage_errors import StorageCorruptionError
+from .command_storage_policy import CommandStorageLimitError
 from .network_policy import canonicalize_hostname
 from .ssh_errors import connection_error_payload
 from . import binary_transfer, connection_pool
 from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
+from .ssh_input_budget import budget_from_config
 from .remote_transfer import (
     RemoteTransferCancelled,
     RemoteTransferError,
@@ -82,6 +85,7 @@ _smb_attempts = {}
 _ssh_banner_prompts_lock = threading.RLock()
 _ssh_banner_prompts = {}
 SSH_AUTH_BANNER_DECISION_TIMEOUT = 60
+_ssh_input_budget = budget_from_config(config)
 
 
 def _new_smb_diagnostic_id():
@@ -678,8 +682,15 @@ def handle_ssh_connect(data, current_user=None):
             emit_error('Invalid authentication method')
             return
 
+        tailscale_authorization = None
         if auth_type == 'tailscale':
-            access_error = validate_tailscale_ssh_access(current_user, host, username)
+            tailscale_authorization, access_error = (
+                authorize_tailscale_ssh_access(
+                    current_user,
+                    host,
+                    username,
+                )
+            )
             log_tailscale_ssh_usage(
                 current_user.username, host, port, username, request.remote_addr,
                 allowed=access_error is None, error=access_error
@@ -778,6 +789,7 @@ def handle_ssh_connect(data, current_user=None):
                         '' if reconnect_tmux_name else startup_commands
                     ),
                     auth_banner_decision=request_auth_banner_decision,
+                    tailscale_authorization=tailscale_authorization,
                 )
 
                 if error:
@@ -938,26 +950,93 @@ def handle_ssh_connect(data, current_user=None):
 def handle_ssh_input(data, current_user=None):
     """Handle user input to SSH session."""
     try:
+        data = data if isinstance(data, dict) else {}
+        allowed_fields = {
+            'session_id',
+            'data',
+            'acknowledge_backpressure',
+        }
+        if any(field not in allowed_fields for field in data):
+            return {'success': False, 'error': 'Invalid SSH input'}
         session_id = data.get('session_id')
         input_data = data.get('data')
+        acknowledge_backpressure = data.get(
+            'acknowledge_backpressure', False
+        )
 
-        if not session_id or input_data is None:
-            return
-
-        if not verify_session_ownership(session_id, current_user.id):
-            emit('ssh_error', {'error': 'Unauthorized access to session', 'session_id': session_id})
-            return
+        if (
+            not isinstance(session_id, str)
+            or not 0 < len(session_id) <= 128
+            or input_data is None
+            or type(acknowledge_backpressure) is not bool
+        ):
+            return {'success': False, 'error': 'Invalid SSH input'}
 
         if not isinstance(input_data, str):
-            return
+            return {'success': False, 'error': 'Invalid SSH input'}
 
-        success, error = ssh_manager.send_ssh_input(session_id, input_data)
+        if len(input_data) > config.SSH_INPUT_MAX_BYTES:
+            input_bytes = config.SSH_INPUT_MAX_BYTES + 1
+        else:
+            try:
+                input_bytes = len(input_data.encode('utf-8'))
+            except UnicodeEncodeError:
+                input_bytes = config.SSH_INPUT_MAX_BYTES + 1
+        if input_bytes > config.SSH_INPUT_MAX_BYTES:
+            payload = {
+                'success': False,
+                'error': 'SSH input is too large',
+                'code': 'ssh_input_too_large',
+                'session_id': session_id,
+            }
+            emit('ssh_error', payload)
+            return payload
+
+        if not verify_session_ownership(session_id, current_user.id):
+            payload = {
+                'success': False,
+                'error': 'Unauthorized access to session',
+                'session_id': session_id,
+            }
+            emit('ssh_error', payload)
+            return payload
+
+        allowed, retry_after_ms = _ssh_input_budget.allow(
+            current_user.id,
+            session_id,
+            input_bytes,
+        )
+        if not allowed:
+            payload = {
+                'success': False,
+                'error': 'SSH input is temporarily rate limited',
+                'code': 'ssh_input_backpressure',
+                'retry_after_ms': retry_after_ms,
+                'session_id': session_id,
+            }
+            if not acknowledge_backpressure:
+                emit('ssh_error', payload)
+            return payload
+
+        success, error = ssh_manager.send_ssh_input(
+            session_id,
+            input_data,
+            require_complete=True,
+        )
         if error:
-            emit('ssh_error', {'error': error, 'session_id': session_id})
+            payload = {
+                'success': False,
+                'error': error,
+                'session_id': session_id,
+            }
+            emit('ssh_error', payload)
+            return payload
+        return {'success': bool(success)}
 
     except Exception as e:
         log_error("SSH input error", error=str(e))
         emit('ssh_error', {'error': 'Input error'})
+        return {'success': False, 'error': 'Input error'}
 
 @socketio.on('keep_alive')
 @socket_login_required
@@ -1715,6 +1794,9 @@ def handle_list_commands(data, current_user=None):
 @socket_login_required
 def handle_add_command(data, current_user=None):
     """Add a new user command."""
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     try:
         from . import command_manager
 
@@ -1745,6 +1827,8 @@ def handle_add_command(data, current_user=None):
         handle_list_commands({}, current_user=current_user)
         return {'success': True, 'command': new_cmd}
 
+    except CommandStorageLimitError as error:
+        return _command_set_error(str(error))
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1756,6 +1840,9 @@ def handle_add_command(data, current_user=None):
 @socket_login_required
 def handle_update_command(data, current_user=None):
     """Update an existing user command."""
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     try:
         from . import command_manager
 
@@ -1787,6 +1874,8 @@ def handle_update_command(data, current_user=None):
         handle_list_commands({}, current_user=current_user)
         return payload
 
+    except CommandStorageLimitError as error:
+        return _command_set_error(str(error))
     except StorageCorruptionError as storage_error:
         return _emit_storage_error(storage_error, current_user)
     except Exception as e:
@@ -1797,6 +1886,9 @@ def handle_update_command(data, current_user=None):
 @socket_login_required
 def handle_delete_command(data, current_user=None):
     """Delete a user command."""
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     try:
         from . import command_manager
 
@@ -1833,6 +1925,21 @@ def handle_delete_command(data, current_user=None):
         emit('error', {'error': 'Failed to delete command'})
 
 
+_COMMAND_MUTATION_RATE_ERROR = (
+    'Too many command changes. Please wait before trying again.'
+)
+
+
+def _command_mutation_rate_limit(current_user):
+    if config.RATELIMIT_ENABLED and check_socket_rate_limit(
+        current_user.id,
+        'command_mutation',
+        config.RATELIMIT_COMMAND_MUTATION,
+    ):
+        return _command_set_error(_COMMAND_MUTATION_RATE_ERROR)
+    return None
+
+
 def _command_set_error(error, usages=None):
     if usages:
         code = 'in_use'
@@ -1843,6 +1950,10 @@ def _command_set_error(error, usages=None):
         'Jump host not found',
     ):
         code = 'not_found'
+    elif error == _COMMAND_MUTATION_RATE_ERROR:
+        code = 'rate_limited'
+    elif error and error.startswith('Command storage quota exceeded:'):
+        code = 'quota_exceeded'
     elif error and 'unreadable' in error:
         code = 'storage_error'
     else:
@@ -1879,6 +1990,9 @@ def handle_save_command_set(data, current_user=None):
     """Create or update a named command set."""
     from . import command_set_manager
 
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     try:
         command_set, error = command_set_manager.upsert_command_set(
             current_user.id, data
@@ -1899,6 +2013,9 @@ def handle_duplicate_command_set(data, current_user=None):
     """Duplicate one of the current user's command sets."""
     from . import command_set_manager
 
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     data = data if isinstance(data, dict) else {}
     try:
         command_set, error = command_set_manager.duplicate_command_set(
@@ -1920,6 +2037,9 @@ def handle_delete_command_set(data, current_user=None):
     """Delete an unused command set."""
     from . import command_set_manager
 
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     data = data if isinstance(data, dict) else {}
     command_set_id = data.get('command_set_id')
     try:
@@ -1942,6 +2062,9 @@ def handle_convert_legacy_command_set(data, current_user=None):
     """Convert one profile's legacy startup text into a named command set."""
     from . import command_set_manager
 
+    limited = _command_mutation_rate_limit(current_user)
+    if limited:
+        return limited
     data = data if isinstance(data, dict) else {}
     try:
         profile = profile_manager.get_profile(

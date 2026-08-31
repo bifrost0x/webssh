@@ -195,6 +195,23 @@ def connect_target(**overrides):
     return ssh_manager.create_ssh_connection(**kwargs)
 
 
+def test_tailscale_backend_requires_exact_authorization_before_resolving(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        ssh_manager,
+        'resolve_allowed_target',
+        lambda *args, **kwargs: pytest.fail(
+            'unauthorized Tailscale target was resolved'
+        ),
+    )
+
+    session_id, error = connect_target(auth_type='tailscale')
+
+    assert session_id is None
+    assert error == 'Tailscale SSH authorization is invalid'
+
+
 def test_ssh_manager_exposes_the_shared_loader():
     from app.ssh_key_loader import load_private_key
 
@@ -469,10 +486,17 @@ def test_direct_supported_key_passes_pkey_not_password(
 
 
 def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
+    from app.tailscale_ssh import TailscaleSSHAuthorization
+
     clients = install_ssh_clients(monkeypatch)
 
     session_id, error = connect_target(
         auth_type='tailscale',
+        tailscale_authorization=TailscaleSSHAuthorization(
+            user_id=7,
+            host='target.example',
+            remote_username='alice',
+        ),
         use_tmux=True,
         reconnect_tmux_name='existing_session',
     )

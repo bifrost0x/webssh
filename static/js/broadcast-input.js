@@ -58,7 +58,12 @@
             if (!window.socket) return 0;
             const sessions = connectedSessions();
             sessions.forEach(s => {
-                window.socket.emit('ssh_input', { session_id: s.id, data: text + '\r' });
+                const data = text + '\r';
+                if (window.SSHInput) {
+                    window.SSHInput.send(s.id, data);
+                } else {
+                    window.socket.emit('ssh_input', { session_id: s.id, data });
+                }
             });
             return sessions.length;
         }

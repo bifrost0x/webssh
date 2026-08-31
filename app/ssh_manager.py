@@ -17,6 +17,7 @@ from .network_policy import (
 from .ssh_key_loader import load_private_key as _load_private_key
 from .ssh_errors import SSHConnectionError
 from .startup_commands import to_terminal_input
+from .tailscale_ssh import TailscaleSSHAuthorization
 from . import paramiko_channels
 from .quota_manager import (
     QuotaExceeded,
@@ -144,7 +145,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           proxy_jump_password=None, proxy_jump_key_content=None,
                           use_tmux=False, reconnect_tmux_name=None,
                           auth_type='password', startup_commands='',
-                          auth_banner_decision=None):
+                          auth_banner_decision=None,
+                          tailscale_authorization=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -171,6 +173,22 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         return None, "User identity is required"
     user_id = host_key_store.user_id
 
+    tailscale_target_authorized = False
+    if auth_type == 'tailscale':
+        if (
+            not isinstance(
+                tailscale_authorization,
+                TailscaleSSHAuthorization,
+            )
+            or not tailscale_authorization.matches(
+                user_id,
+                host,
+                username,
+            )
+        ):
+            return None, 'Tailscale SSH authorization is invalid'
+        tailscale_target_authorized = True
+
     try:
         reservation = quota_manager.reserve(
             QuotaKind.SSH_SESSION, user_id
@@ -193,7 +211,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     target = resolve_allowed_target(
                         host,
                         port,
-                        allow_internal=not config.BLOCK_INTERNAL_SSH,
+                        allow_internal=(
+                            not config.BLOCK_INTERNAL_SSH
+                            or tailscale_target_authorized
+                        ),
                     )
                     channel_destination = (target.ip, target.port)
                     host = target.hostname
@@ -287,7 +308,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             target = resolve_allowed_target(
                 host,
                 port,
-                allow_internal=not config.BLOCK_INTERNAL_SSH,
+                allow_internal=(
+                    not config.BLOCK_INTERNAL_SSH
+                    or tailscale_target_authorized
+                ),
             )
             host = target.hostname
             port = target.port

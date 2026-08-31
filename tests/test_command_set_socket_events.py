@@ -1331,6 +1331,61 @@ def test_socket_command_set_errors_are_structured(app, monkeypatch):
     }
 
 
+def test_command_storage_quota_error_is_structured(app, monkeypatch):
+    import config
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'command_storage_quota')
+    monkeypatch.setattr(config, 'COMMAND_SET_MAX_STEPS', 1)
+    result, events = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_command_set,
+        sid,
+        {
+            'name': 'Too many steps',
+            'steps': [
+                {'type': 'inline', 'command': 'echo one'},
+                {'type': 'inline', 'command': 'echo two'},
+            ],
+        },
+    )
+
+    assert result['success'] is False
+    assert result['code'] == 'quota_exceeded'
+    assert result['error'].startswith('Command storage quota exceeded:')
+    assert events == [('error', result)]
+
+
+def test_command_mutation_rate_limit_is_structured(app, monkeypatch):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'command_mutation_rate')
+    monkeypatch.setattr(
+        socket_events,
+        'check_socket_rate_limit',
+        lambda *_args, **_kwargs: True,
+    )
+    result, events = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_add_command,
+        sid,
+        {
+            'name': 'Blocked',
+            'command': 'uptime',
+            'description': 'Must be rate limited',
+        },
+    )
+
+    assert result == {
+        'success': False,
+        'error': 'Too many command changes. Please wait before trying again.',
+        'code': 'rate_limited',
+    }
+    assert events == [('error', result)]
+
+
 def test_referenced_command_set_and_library_command_cannot_be_deleted(app, monkeypatch):
     from app import command_manager, command_set_manager, profile_manager
     import app.socket_events as socket_events

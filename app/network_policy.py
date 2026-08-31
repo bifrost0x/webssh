@@ -62,10 +62,12 @@ def canonicalize_hostname(hostname):
 
 def _ip_is_internal(address):
     return (
-        address.is_loopback
+        not address.is_global
+        or address.is_loopback
         or address.is_link_local
         or address.is_private
         or address.is_reserved
+        or getattr(address, 'is_site_local', False)
         or address.is_multicast
         or address.is_unspecified
     )

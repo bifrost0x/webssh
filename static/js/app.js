@@ -1595,7 +1595,11 @@
                 navigator.clipboard.readText()
                     .then(text => {
                         if (window.socket && text) {
-                            window.socket.emit('ssh_input', { session_id: active, data: text });
+                            if (window.SSHInput) {
+                                window.SSHInput.send(active, text);
+                            } else {
+                                window.socket.emit('ssh_input', { session_id: active, data: text });
+                            }
                         }
                     })
                     .catch(() => showNotification('Clipboard access denied', 'error'));
@@ -1634,7 +1638,12 @@
             const active = SessionManager.getActiveSession();
             if (!active || !mobileInput.value) return;
             if (window.socket) {
-                window.socket.emit('ssh_input', { session_id: active, data: mobileInput.value + '\r' });
+                const data = mobileInput.value + '\r';
+                if (window.SSHInput) {
+                    window.SSHInput.send(active, data);
+                } else {
+                    window.socket.emit('ssh_input', { session_id: active, data });
+                }
             }
             mobileInput.value = '';
         };
