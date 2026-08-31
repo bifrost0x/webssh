@@ -647,10 +647,36 @@ test('captures the seeded key management surface at Full HD scale', async ({ pag
 
     expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
 
+    await page.evaluate(() => {
+        window.__captureKeyListRequests = 0;
+        window.__captureKeyListResponses = 0;
+        window.__captureKeyListOriginalEmit = window.socket.emit.bind(window.socket);
+        window.socket.emit = function captureKeyListRequests(event, ...args) {
+            if (event === 'list_keys') window.__captureKeyListRequests += 1;
+            return window.__captureKeyListOriginalEmit(event, ...args);
+        };
+        window.__captureKeyListResponseHandler = () => {
+            window.__captureKeyListResponses += 1;
+        };
+        window.socket.on('keys_list', window.__captureKeyListResponseHandler);
+    });
     await openKeyManagement(page);
-    await expect.poll(() => page.evaluate(() => (
-        window.ProfileManager.keys[0]?.name || ''
-    ))).toBe('E2E usable key');
+    await expect.poll(() => page.evaluate(() => ({
+        loaded: window.__captureKeyListRequests > 0
+            && window.__captureKeyListResponses === window.__captureKeyListRequests,
+        name: window.ProfileManager.keys[0]?.name || '',
+    }))).toEqual({
+        loaded: true,
+        name: 'E2E usable key',
+    });
+    await page.evaluate(() => {
+        window.socket.off('keys_list', window.__captureKeyListResponseHandler);
+        window.socket.emit = window.__captureKeyListOriginalEmit;
+        delete window.__captureKeyListOriginalEmit;
+        delete window.__captureKeyListResponseHandler;
+        delete window.__captureKeyListRequests;
+        delete window.__captureKeyListResponses;
+    });
     await sanitizeSeededCatalog(page);
     await expect(page.locator('#keyManagementTitle')).toHaveText('Manage SSH Keys');
     await expect(page.locator('#keysList')).toContainText('Operations Ed25519');

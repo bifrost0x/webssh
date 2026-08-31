@@ -245,7 +245,7 @@ def test_python_runtime_contract_stays_synchronized():
     ]
     assert "python-version: ${{ matrix.python_version }}" in pytest_job
 
-    for job_name in ("ssh-integration", "browser-e2e"):
+    for job_name in ("ssh-integration", "browser-e2e-shards"):
         assert (
             f"python-version: '{PRODUCTION_PYTHON}'"
             in workflow_job(workflow, job_name)

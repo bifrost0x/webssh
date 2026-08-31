@@ -10,15 +10,13 @@ permissions:
   contents: read
 
 jobs:
-  image-security:
+  image-security-amd64:
+    name: Image security (AMD64)
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
@@ -31,18 +29,8 @@ jobs:
           load: true
           pull: true
           tags: webssh-security:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build ARM64 scan candidate
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          platforms: linux/arm64
-          pull: true
-          outputs: type=docker,dest=/tmp/webssh-arm64.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=security-amd64
+          cache-to: type=gha,mode=max,scope=security-amd64
 
       - name: Generate SPDX JSON SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
@@ -68,6 +56,39 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore.yaml
 
+      - name: Upload AMD64 Trivy result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-amd64-${{ github.sha }}
+          path: trivy-results-amd64.json
+          if-no-files-found: error
+          retention-days: 14
+
+  image-security-arm64:
+    name: Image security (ARM64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Build ARM64 scan candidate
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          platforms: linux/arm64
+          pull: true
+          outputs: type=docker,dest=/tmp/webssh-arm64.tar
+          cache-from: type=gha,scope=security-arm64
+          cache-to: type=gha,mode=max,scope=security-arm64
+
       - name: Scan ARM64 fixable high and critical vulnerabilities
         if: ${{ always() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -82,11 +103,25 @@ jobs:
           scanners: vuln
           trivyignores: .trivyignore.yaml
 
-      - name: Upload Trivy result
+      - name: Upload ARM64 Trivy result
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: trivy-${{ github.sha }}
-          path: trivy-results-*.json
+          name: trivy-arm64-${{ github.sha }}
+          path: trivy-results-arm64.json
           if-no-files-found: error
           retention-days: 14
+
+  image-security:
+    needs: [image-security-amd64, image-security-arm64]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Require all architecture scans
+        env:
+          AMD64_RESULT: ${{ needs.image-security-amd64.result }}
+          ARM64_RESULT: ${{ needs.image-security-arm64.result }}
+        run: |
+          test "$AMD64_RESULT" = success
+          test "$ARM64_RESULT" = success

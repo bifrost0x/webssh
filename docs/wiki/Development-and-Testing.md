@@ -38,10 +38,15 @@ Do not hand-edit generated lock files. A dependency change must update the input
 Run the suite with:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest tests -q
+.\.venv\Scripts\python.exe -m pytest tests --ignore=tests/integration -q -n 2 --dist=loadscope
 ```
 
-The maintained gates execute tests on Python 3.11 and 3.14, exercise Redis 7/8 rate limiting, and include disposable OpenSSH integration. Targeted tests are useful while developing, but they do not replace the relevant full gate before release.
+The pytest harness uses a reduced bcrypt work factor to keep authentication-heavy
+tests fast. An isolated subprocess contract verifies that normal application
+processes retain bcrypt's production work factor. The maintained gates execute
+tests on Python 3.11 and 3.14, exercise Redis 7/8 rate limiting, and include
+disposable OpenSSH integration. Targeted tests are useful while developing, but
+they do not replace the relevant full gate before release.
 
 ## Frontend dependencies
 
