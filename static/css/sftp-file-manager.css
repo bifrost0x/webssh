@@ -394,7 +394,7 @@
     overflow-x: hidden;
     padding: 8px;
     overscroll-behavior: contain;
-    touch-action: pan-y;
+    touch-action: manipulation;
     -webkit-overflow-scrolling: touch;
 }
 
@@ -409,7 +409,7 @@
     transition: all 0.15s ease;
     user-select: none;
     border: 1px solid transparent;
-    touch-action: pan-y;
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
 

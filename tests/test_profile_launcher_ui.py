@@ -33,7 +33,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=24',
-        "filename='css/sftp-file-manager.css'": '?v=19',
+        "filename='css/sftp-file-manager.css'": '?v=20',
         "filename='js/i18n.js'": '?v=42',
         "filename='js/command-workspace.js'": '?v=3',
         "filename='js/command-palette-utils.js'": '?v=1',
