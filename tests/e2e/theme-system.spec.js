@@ -38,6 +38,15 @@ async function openThemeSettings(page) {
     await page.evaluate(() => document.fonts.ready);
 }
 
+async function selectTheme(page, selector, themeId) {
+    await selector.selectOption(themeId);
+    await expect(page.locator('#settingsPreferenceStatus')).toHaveText('Theme saved.');
+    await expect(selector).toBeEnabled();
+    await expect(page.locator('body')).toHaveAttribute('data-theme', themeId);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('websshTheme')))
+        .toBe(themeId);
+}
+
 async function readThemeState(page) {
     return page.evaluate(() => {
         const bodyStyle = getComputedStyle(document.body);
@@ -192,8 +201,7 @@ test('all themes share one typography system without moving the Settings Center'
     ]);
 
     for (const themeId of THEME_IDS) {
-        await selector.selectOption(themeId);
-        await expect(page.locator('body')).toHaveAttribute('data-theme', themeId);
+        await selectTheme(page, selector, themeId);
         const state = await readThemeState(page);
         expect(state.fontFamily).toBe(baseline.fontFamily);
         expectStableGeometry(state.geometry, baseline.geometry);
@@ -203,7 +211,11 @@ test('all themes share one typography system without moving the Settings Center'
 test('Paper Ops uses a tinted Blueprint Steel canvas instead of white surfaces', async ({ page }) => {
     await login(page);
     await openThemeSettings(page);
-    await page.getByRole('combobox', { name: 'Theme' }).selectOption('paper');
+    await selectTheme(
+        page,
+        page.getByRole('combobox', { name: 'Theme' }),
+        'paper',
+    );
 
     const state = await readThemeState(page);
     expect(state.colors.secondaryLuminance).toBeLessThan(0.9);
@@ -221,7 +233,7 @@ test('professional themes use restrained local backgrounds', async ({ page }) =>
     const selector = page.getByRole('combobox', { name: 'Theme' });
 
     for (const [themeId, assetName] of Object.entries(PROFESSIONAL_THEME_BACKGROUNDS)) {
-        await selector.selectOption(themeId);
+        await selectTheme(page, selector, themeId);
         const state = await readThemeState(page);
         expect(state.background.image).toContain(assetName);
         expect(state.background.opacity).toBeGreaterThanOrEqual(0.04);
@@ -236,9 +248,11 @@ test('professional themes use restrained local backgrounds', async ({ page }) =>
 test('the last selected theme styles the next login screen', async ({ page }) => {
     await login(page);
     await openThemeSettings(page);
-    await page.getByRole('combobox', { name: 'Theme' }).selectOption('paper');
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('websshTheme')))
-        .toBe('paper');
+    await selectTheme(
+        page,
+        page.getByRole('combobox', { name: 'Theme' }),
+        'paper',
+    );
     await page.getByRole('link', { name: 'Back to Terminal' }).click();
     const logoutStatus = await page.evaluate(async () => {
         const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -288,7 +302,7 @@ test('fun themes use local decorative backgrounds that cannot intercept input', 
     const selector = page.getByRole('combobox', { name: 'Theme' });
 
     for (const [themeId, assetName] of Object.entries(FUN_THEME_BACKGROUNDS)) {
-        await selector.selectOption(themeId);
+        await selectTheme(page, selector, themeId);
         const state = await readThemeState(page);
         expect(state.background.image).toContain(assetName);
         expect(state.background.opacity).toBeGreaterThanOrEqual(0.08);
@@ -306,7 +320,7 @@ test('muted copy stays readable and Matrix keeps success distinct from its ident
     const selector = page.getByRole('combobox', { name: 'Theme' });
 
     for (const themeId of THEME_IDS) {
-        await selector.selectOption(themeId);
+        await selectTheme(page, selector, themeId);
         const state = await readThemeState(page);
         expect(state.colors.mutedContrast).toBeGreaterThanOrEqual(4.5);
         if (themeId === 'emerald-matrix') {
