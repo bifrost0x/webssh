@@ -48,8 +48,8 @@
         root.showNotification?.(message || 'SSH input could not be sent', 'error');
     }
 
-    async function transmit(sessionId, chunks) {
-        if (chunks.length === 1) {
+    async function transmit(sessionId, chunks, acknowledgeSingle = false) {
+        if (chunks.length === 1 && !acknowledgeSingle) {
             root.socket.emit('ssh_input', {session_id: sessionId, data: chunks[0]});
             return true;
         }
@@ -100,7 +100,9 @@
         }
 
         const queued = pending
-            ? pending.catch(() => false).then(() => transmit(sessionId, chunks))
+            ? pending.catch(() => false).then(
+                () => transmit(sessionId, chunks, true),
+            )
             : transmit(sessionId, chunks);
         sessionQueues.set(sessionId, queued);
         queued.finally(() => {

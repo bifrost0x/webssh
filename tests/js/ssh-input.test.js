@@ -104,6 +104,37 @@ test('concurrent typing waits behind a backpressured paste for one session', asy
     assert.equal(delivered.join(''), `${paste}k`);
 });
 
+test('queued single-chunk input retries backpressure after a paste', async () => {
+    const delivered = [];
+    let queuedAttempts = 0;
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            if (payload.data === 'k') {
+                queuedAttempts += 1;
+                if (queuedAttempts === 1) {
+                    acknowledgement?.({
+                        success: false,
+                        code: 'ssh_input_backpressure',
+                        retry_after_ms: 1,
+                    });
+                    return;
+                }
+            }
+            delivered.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+    const paste = 'x'.repeat(70 * 1024);
+
+    const pasteResult = transport.send('session-1', paste);
+    const typingResult = transport.send('session-1', 'k');
+
+    assert.equal(await pasteResult, true);
+    assert.equal(await typingResult, true);
+    assert.equal(queuedAttempts, 2);
+    assert.equal(delivered.join(''), `${paste}k`);
+});
+
 test('client chunks at the effective server limit below 64 KiB', () => {
     const transport = loadSSHInput({emit() {}}, 4 * 1024);
     const chunks = transport.byteChunks('x'.repeat(10 * 1024));
