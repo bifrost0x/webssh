@@ -547,6 +547,73 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await sftpDock.click();
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();
     await expect(sftpDock).toHaveClass(/active/);
+
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        Object.assign(manager.panes.left, {
+            loading: false,
+            pendingDirectoryRequestId: null,
+            pendingDirectoryPath: null,
+            files: [
+                { name: 'releases', is_dir: true, size: 0 },
+                ...Array.from({ length: 30 }, (_, index) => ({
+                    name: `mobile-report-${String(index).padStart(2, '0')}.txt`,
+                    is_dir: false,
+                    size: 12 + index,
+                })),
+            ],
+        });
+        manager.updatePathInput('left', manager.panes.left.path);
+        manager.renderPane('left');
+    });
+
+    const embeddedList = page.locator('#sessionFilesPanel #fmLeftList');
+    const embeddedFile = embeddedList.locator('.fm-file-item[data-index="1"]');
+    await embeddedFile.click();
+    await expect(embeddedFile).toHaveClass(/selected/);
+
+    const embeddedScrollLayout = await page.evaluate(() => {
+        const panel = document.getElementById('sessionFilesPanel');
+        const mount = document.getElementById('sessionFilesMount');
+        const list = document.getElementById('fmLeftList');
+        return {
+            panelDisplay: getComputedStyle(panel).display,
+            panelHeight: panel.clientHeight,
+            mountHeight: mount.clientHeight,
+            listClientHeight: list.clientHeight,
+            listScrollHeight: list.scrollHeight,
+        };
+    });
+    expect(embeddedScrollLayout.listScrollHeight).toBeGreaterThan(
+        embeddedScrollLayout.listClientHeight,
+    );
+
+    const embeddedListBox = await embeddedList.boundingBox();
+    const touchClient = await page.context().newCDPSession(page);
+    const touchX = embeddedListBox.x + (embeddedListBox.width / 2);
+    const touchStartY = embeddedListBox.y + Math.min(embeddedListBox.height - 24, 300);
+    await touchClient.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: touchX, y: touchStartY }],
+    });
+    await touchClient.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: touchX + 20, y: touchStartY - 2 }],
+    });
+    await touchClient.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x: touchX + 18, y: touchStartY - 160 }],
+    });
+    await touchClient.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+    });
+    await expect.poll(() => embeddedList.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    expect(embeddedScrollLayout.panelDisplay).toBe('flex');
+    expect(embeddedScrollLayout.mountHeight).toBeLessThanOrEqual(
+        embeddedScrollLayout.panelHeight,
+    );
+
     await metricsDock.click();
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
     await expect(metricsDock).toHaveClass(/active/);

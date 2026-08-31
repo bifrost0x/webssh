@@ -118,7 +118,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=29' in response.data
+        assert b'css/webssh-2.css?v=30' in response.data
         assert b'js/i18n.js?v=42' in response.data
 
     client.post("/logout")
@@ -126,7 +126,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         response = client.get(path)
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
-        assert b'css/webssh-2.css?v=29' in response.data
+        assert b'css/webssh-2.css?v=30' in response.data
         assert b'js/i18n.js?v=42' in response.data
 
 

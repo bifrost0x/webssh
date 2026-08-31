@@ -1496,7 +1496,7 @@ body:has(.auth-container) {
 
     .workspace.layout-tablet .session-files-panel,
     .workspace.layout-mobile .session-files-panel {
-        display: block !important;
+        display: flex !important;
         position: absolute;
         top: 0;
         right: 0;
@@ -1504,6 +1504,7 @@ body:has(.auth-container) {
         z-index: 35;
         width: min(480px, 100%);
         max-width: 100%;
+        flex-direction: column;
         border-left: 1px solid var(--ws2-border);
         background: var(--ws2-surface);
         box-shadow: -18px 0 42px rgb(0 0 0 / 34%);
