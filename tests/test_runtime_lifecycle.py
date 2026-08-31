@@ -731,9 +731,9 @@ def test_shutdown_is_idempotent_and_its_report_is_immutable():
         report.remaining = ()
 
 
-def test_app_owns_and_stops_all_permanent_cleanup_jobs(app):
+def test_app_owns_and_stops_all_permanent_cleanup_jobs(runtime_app):
     """Unowned cleanup loops survive a Flask app factory and leak into later apps."""
-    lifecycle = app.extensions['runtime_lifecycle']
+    lifecycle = runtime_app.extensions['runtime_lifecycle']
 
     report = lifecycle.begin_shutdown(1)
 
@@ -760,11 +760,12 @@ def test_background_worker_default_reserves_cleanup_reader_and_transfer_slots():
     assert config.BACKGROUND_WORKERS <= config.BACKGROUND_WORKERS_MAX
 
 
-def test_sequential_app_factories_rebind_the_global_connection_pool(app):
+def test_sequential_app_factories_rebind_the_global_connection_pool(
+        runtime_app):
     """A second test app must not keep its pool cleanup job on the first app."""
     from app import create_app, connection_pool
 
-    first_lifecycle = app.extensions['runtime_lifecycle']
+    first_lifecycle = runtime_app.extensions['runtime_lifecycle']
     first_pool = connection_pool.temp_connection_pool
     second_app = create_app()
     second_lifecycle = second_app.extensions['runtime_lifecycle']
