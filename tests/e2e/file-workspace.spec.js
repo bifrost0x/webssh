@@ -452,6 +452,21 @@ test.describe('mobile touch File Manager', () => {
             manager.renderPane('left');
         });
         const file = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
+        const scrollLayout = await page.evaluate(() => {
+            const modalBody = document.querySelector('#sftpFileManager .modal-body');
+            const listElement = document.getElementById('fmLeftList');
+            return {
+                modalBodyOverflowY: getComputedStyle(modalBody).overflowY,
+                listOverflowY: getComputedStyle(listElement).overflowY,
+                listTouchAction: getComputedStyle(listElement).touchAction,
+                listClientHeight: listElement.clientHeight,
+                listScrollHeight: listElement.scrollHeight,
+            };
+        });
+        expect(scrollLayout.modalBodyOverflowY).toBe('hidden');
+        expect(scrollLayout.listOverflowY).toBe('auto');
+        expect(scrollLayout.listScrollHeight).toBeGreaterThan(scrollLayout.listClientHeight);
+
         await file.tap();
         await expect(file).toHaveClass(/selected/);
         await file.locator('.fm-file-checkbox').tap();
@@ -468,13 +483,22 @@ test.describe('mobile touch File Manager', () => {
         });
         await client.send('Input.dispatchTouchEvent', {
             type: 'touchMove',
-            touchPoints: [{ x, y: startY - 180 }],
+            touchPoints: [{ x: x + 24, y: startY - 2 }],
+        });
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: x + 22, y: startY - 90 }],
+        });
+        await client.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: x + 18, y: startY - 180 }],
         });
         await client.send('Input.dispatchTouchEvent', {
             type: 'touchEnd',
             touchPoints: [],
         });
         await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+        expect(scrollLayout.listTouchAction).toBe('auto');
 
         const longPressFile = page.locator('#fmLeftList .fm-file-item[data-index="15"]');
         await longPressFile.scrollIntoViewIfNeeded();
