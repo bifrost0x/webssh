@@ -209,7 +209,7 @@ jobs:
       - name: Run disposable encrypted SMB integration tests
         run: python scripts/run_smb_integration_tests.py
 
-  browser-e2e:
+  browser-e2e-shards:
     needs: dispatch-integrity
     name: browser-e2e (${{ matrix.shard }}/2)
     runs-on: ubuntu-24.04
@@ -282,6 +282,19 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  browser-e2e:
+    needs: browser-e2e-shards
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Require all browser shards
+        env:
+          SHARD_RESULT: ${{ needs.browser-e2e-shards.result }}
+        run: test "$SHARD_RESULT" = success
 
   container-threading-smoke:
     needs: dispatch-integrity

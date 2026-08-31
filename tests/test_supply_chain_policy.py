@@ -186,6 +186,13 @@ def test_security_workflow_gates_publish_and_preserves_scan_evidence():
     assert 'docker/setup-qemu-action@' in security
     assert 'image-security-amd64:' in security
     assert 'image-security-arm64:' in security
+    assert re.search(
+        r'image-security:\s*\n\s+needs:\s*'
+        r'\[image-security-amd64, image-security-arm64\]',
+        security,
+    )
+    assert 'test "$AMD64_RESULT" = success' in security
+    assert 'test "$ARM64_RESULT" = success' in security
     assert re.search(r'platforms:\s*linux/amd64\b', security)
     assert re.search(r'platforms:\s*linux/arm64\b', security)
     assert (
@@ -471,8 +478,8 @@ def test_workflows_use_an_explicit_runner_release():
 
 def test_browser_ci_runs_javascript_units_before_playwright():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
-    browser_job = workflow.split('  browser-e2e:', 1)[1].split(
-        '\n  container-threading-smoke:',
+    browser_job = workflow.split('  browser-e2e-shards:', 1)[1].split(
+        '\n  browser-e2e:',
         1,
     )[0]
 
@@ -496,4 +503,9 @@ def test_slow_test_gates_are_sharded_without_duplicate_redis_unit_runs():
     ) == 1
     assert 'name: browser-e2e (${{ matrix.shard }}/2)' in workflow
     assert 'npm run test:e2e -- --shard=${{ matrix.shard }}/2' in workflow
+    assert re.search(
+        r'\n  browser-e2e:\s*\n\s+needs:\s+browser-e2e-shards\b',
+        workflow,
+    )
+    assert 'test "$SHARD_RESULT" = success' in workflow
     assert 'fullyParallel: true' in playwright

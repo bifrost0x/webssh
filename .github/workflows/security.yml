@@ -111,3 +111,17 @@ jobs:
           path: trivy-results-arm64.json
           if-no-files-found: error
           retention-days: 14
+
+  image-security:
+    needs: [image-security-amd64, image-security-arm64]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Require all architecture scans
+        env:
+          AMD64_RESULT: ${{ needs.image-security-amd64.result }}
+          ARM64_RESULT: ${{ needs.image-security-arm64.result }}
+        run: |
+          test "$AMD64_RESULT" = success
+          test "$ARM64_RESULT" = success
