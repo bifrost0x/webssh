@@ -1515,6 +1515,65 @@ test('one contextual inter-pane action follows the active selection', () => {
     }
 });
 
+test('cross-source transfer actions remain available while another copy is active', () => {
+    const previousDocument = global.document;
+    const elements = new Map();
+    const makeButton = () => ({
+        dataset: {},
+        title: '',
+        disabled: false,
+        hidden: false,
+        classList: classList(),
+        querySelector() { return null; },
+        setAttribute() {},
+    });
+    const transfer = makeButton();
+    const between = makeButton();
+    const newFolder = makeButton();
+    elements.set('fmTransfer', transfer);
+    elements.set('fmTransferBetween', between);
+    elements.set('fmNewFolder', newFolder);
+    global.document = {
+        getElementById(id) { return elements.get(id) || null; },
+        querySelectorAll() { return []; },
+        querySelector() { return null; },
+    };
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    manager.workspace.setLayout('split');
+    manager.panes.left = filePane(manager, 'sftp-session:source', {
+        path: '/source',
+        files: [{ name: 'queued.txt', is_dir: false }],
+        selected: new Set([0]),
+    });
+    manager.panes.right = filePane(manager, 'smb-quick:target', {
+        path: '/target',
+    });
+    manager.workspace.openTab(
+        'left', manager.panes.left.source, manager.panes.left,
+    );
+    manager.workspace.openTab(
+        'right', manager.panes.right.source, manager.panes.right,
+    );
+    Object.assign(manager, {
+        displayMode: 'modal',
+        activePane: 'left',
+        transferExecutionInProgress: true,
+        t(_key, fallback) { return fallback; },
+    });
+
+    try {
+        manager.updateWorkspaceActions();
+
+        assert.equal(transfer.disabled, false);
+        assert.equal(between.hidden, false);
+        assert.equal(between.disabled, false);
+        assert.equal(newFolder.disabled, true);
+    } finally {
+        global.document = previousDocument;
+    }
+});
+
 test('source launcher identifies the existing connection that enables Move', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
@@ -3114,7 +3173,7 @@ test('server copies queue the server-owned cancellable transfer id', async () =>
     await terminal;
 });
 
-test('three selected server copies start only after the previous transfer is terminal', async () => {
+test('new server copies join the visible queue and start after earlier work is terminal', async () => {
     const requests = [];
     const flushAsync = () => new Promise(resolve => setImmediate(resolve));
     const manager = Object.create(SFTPFileManager.prototype);
@@ -3128,6 +3187,7 @@ test('three selected server copies start only after the previous transfer is ter
                     { name: 'first.bin', is_dir: false, size: 1 },
                     { name: 'second.bin', is_dir: false, size: 2 },
                     { name: 'third.bin', is_dir: false, size: 3 },
+                    { name: 'fourth.bin', is_dir: false, size: 4 },
                 ],
                 selected: new Set([0, 1, 2]),
             },
@@ -3169,11 +3229,13 @@ test('three selected server copies start only after the previous transfer is ter
     const execution = manager.executeTransfer();
     await flushAsync();
     assert.deepEqual(requests.map(request => request.sourcePath), ['/source/first.bin']);
-    let duplicateSettled = false;
-    manager.executeTransfer().then(() => { duplicateSettled = true; });
-    await flushAsync();
-    assert.equal(duplicateSettled, true);
+    manager.panes.left.selected = new Set([3]);
+    const queued = await manager.executeTransfer();
+    assert.equal(queued, 'queued');
     assert.deepEqual(requests.map(request => request.sourcePath), ['/source/first.bin']);
+    assert.deepEqual(manager.transferQueue.map(transfer => transfer.status), [
+        'active', 'pending', 'pending', 'pending',
+    ]);
 
     manager.completeS2STransfer({ transfer_id: 'server-1' });
     await flushAsync();
@@ -3193,15 +3255,50 @@ test('three selected server copies start only after the previous transfer is ter
     ]);
 
     manager.cancelTransferById('server-3');
+    await flushAsync();
+    assert.deepEqual(requests.map(request => request.sourcePath), [
+        '/source/first.bin', '/source/second.bin', '/source/third.bin',
+        '/source/fourth.bin',
+    ]);
+
+    manager.completeS2STransfer({ transfer_id: 'server-4' });
     await execution;
     assert.deepEqual(manager.transferQueue.map(transfer => transfer.status), [
-        'complete', 'error', 'cancelled',
+        'complete', 'error', 'cancelled', 'complete',
     ]);
     assert.equal(manager.transferQueue[1].errorCode, 'PERMISSION_DENIED');
     assert.equal(
         manager.transferQueue[1].error,
         'Permission denied for this file operation.',
     );
+});
+
+test('cancelling a pending server copy never emits a server cancellation', () => {
+    const emitted = [];
+    const released = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [{
+            id: 'queued-copy-1',
+            type: 's2s-queued',
+            status: 'pending',
+            sourceIds: ['sftp-session:source', 'smb-quick:target'],
+        }],
+        activeTransfers: new Map(),
+        socket: { emit(...args) { emitted.push(args); } },
+        releaseTransferSources(sourceIds) { released.push(sourceIds); },
+        recordUploadTerminal() {},
+        renderTransferQueue() {},
+        flushPendingQuickDisconnects() {},
+    });
+
+    manager.cancelQueuedTransfer('queued-copy-1');
+
+    assert.equal(manager.transferQueue[0].status, 'cancelled');
+    assert.deepEqual(released, [[
+        'sftp-session:source', 'smb-quick:target',
+    ]]);
+    assert.deepEqual(emitted, []);
 });
 
 test('server copy retries a conflict only after explicit replace consent', async () => {

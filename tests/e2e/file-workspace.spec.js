@@ -187,6 +187,16 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect.poll(() => page.evaluate(() => (
         window.__fileWorkspaceEvents.some(item => item.event === 'transfer_server_to_server')
     ))).toBe(true);
+    await expect.poll(() => page.evaluate(() => (
+        window.sftpFileManager.transferExecutionInProgress
+    ))).toBe(true);
+    await expect(page.locator('#fmTransferBetween')).toBeVisible();
+    await expect(page.locator('#fmTransferBetween')).toBeEnabled();
+
+    await page.locator('#fmTransferBetween').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.sftpFileManager.transferQueue.map(transfer => transfer.status)
+    ))).toEqual(['active', 'pending']);
 
     await page.locator('#fmLayoutSingle').click();
     await expect(page.locator('#sftpFileManager')).toHaveClass(/fm-workspace-single/);

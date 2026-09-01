@@ -912,9 +912,9 @@ class SFTPFileManager {
         const activeOperation = this.workspaceOperationBetweenPanes(
             this.activePane, targetPane,
         );
-        const activeTransferAvailable = !operationLocked
-            && activeOperation !== 'unavailable'
+        const activeTransferAvailable = activeOperation !== 'unavailable'
             && selectedCount > 0;
+        const activeTransferBlocked = operationLocked && activeOperation !== 'copy';
         const transferSourcePane = selectedCount > 0
             ? this.activePane
             : (this.panes[targetPane]?.selected?.size || 0) > 0
@@ -924,9 +924,9 @@ class SFTPFileManager {
         const transferOperation = this.workspaceOperationBetweenPanes(
             transferSourcePane, transferTargetPane,
         );
-        const transferAvailable = !operationLocked
-            && transferOperation !== 'unavailable'
+        const transferAvailable = transferOperation !== 'unavailable'
             && transferSelectedCount > 0;
+        const transferBlocked = operationLocked && transferOperation !== 'copy';
         const setDisabled = (id, disabled) => {
             const element = document.getElementById(id);
             if (element) element.disabled = disabled;
@@ -938,14 +938,14 @@ class SFTPFileManager {
         setDisabled('fmRename', operationLocked || !this.sourceCan(state, 'rename') || selectedCount !== 1);
         setDisabled('fmMove', !this.canOpenMovePickerForState(state));
         setDisabled('fmDelete', operationLocked || !this.sourceCan(state, 'delete') || selectedCount === 0);
-        setDisabled('fmTransfer', !activeTransferAvailable);
+        setDisabled('fmTransfer', activeTransferBlocked || !activeTransferAvailable);
         this.updateWorkspaceOperationButton(
             document.getElementById('fmTransfer'), activeOperation,
         );
         const betweenButton = document.getElementById('fmTransferBetween');
         if (betweenButton) {
-            betweenButton.disabled = !transferAvailable;
-            betweenButton.hidden = !transferAvailable;
+            betweenButton.disabled = transferBlocked || !transferAvailable;
+            betweenButton.hidden = transferBlocked || !transferAvailable;
             betweenButton.dataset.sourcePane = transferSourcePane;
         }
         this.updateWorkspaceOperationButton(
@@ -3819,7 +3819,6 @@ class SFTPFileManager {
     }
 
     async executeTransfer() {
-        if (this.transferExecutionInProgress) return;
         const sourcePane = this.activePane;
         const targetPane = sourcePane === 'left' ? 'right' : 'left';
 
@@ -3866,26 +3865,56 @@ class SFTPFileManager {
         }
 
         this.showNotification(`${this.t('fm.startingTransfer', 'Starting transfer of')} ${selectedItems.length} ${this.t('fm.items', 'item(s)')}...`, 'info');
+        const sourceId = this.getPaneSourceId(source);
+        const targetSourceId = this.getPaneSourceId(target);
+        const sourceSnapshot = { source: { ...source.source } };
+        const targetSnapshot = { source: { ...target.source } };
+        for (const item of selectedItems) {
+            this.queueTransfer({
+                id: this.nextRequestId('queue', 'remote-transfer'),
+                type: 's2s-queued',
+                filename: item.name,
+                sourcePath: this.joinPath(source.path, item.name),
+                targetPath: this.joinPath(target.path, item.name),
+                size: item.size || 0,
+                sourceIds: [sourceId, targetSourceId],
+                sourcePane: sourceSnapshot,
+                targetPane: targetSnapshot,
+                item: { ...item },
+            });
+        }
+        return this.drainQueuedServerTransfers();
+    }
+
+    async drainQueuedServerTransfers() {
+        if (this.transferExecutionInProgress) return 'queued';
         this.transferExecutionInProgress = true;
         this.conflictAction = null;
         this.applyToAll = false;
-
+        this.updateWorkspaceActions();
         try {
-            for (const item of selectedItems) {
-                const sourcePath = source.path === '/' ? '/' + item.name : source.path + '/' + item.name;
-                const targetPath = target.path === '/' ? '/' + item.name : target.path + '/' + item.name;
-
-                const outcome = await this.transferSSHtoSSH(
-                    sourcePath,
-                    source,
-                    targetPath,
-                    target,
-                    item,
+            while (true) {
+                const pending = this.transferQueue.find(transfer => (
+                    transfer.type === 's2s-queued'
+                    && transfer.status === 'pending'
+                ));
+                if (!pending) return 'complete';
+                pending.starting = true;
+                this.renderTransferQueue();
+                await this.transferSSHtoSSH(
+                    pending.sourcePath,
+                    pending.sourcePane,
+                    pending.targetPath,
+                    pending.targetPane,
+                    pending.item,
+                    'error',
+                    pending,
                 );
-                if (outcome === 'cancelled') break;
+                delete pending.starting;
             }
         } finally {
             this.transferExecutionInProgress = false;
+            this.updateWorkspaceActions();
         }
     }
 
@@ -4090,6 +4119,7 @@ class SFTPFileManager {
         targetPane,
         item,
         conflictPolicy = 'error',
+        queuedTransfer = null,
     ) {
         const sourceId = this.getPaneSourceId(sourcePane);
         const targetSourceId = this.getPaneSourceId(targetPane);
@@ -4105,21 +4135,28 @@ class SFTPFileManager {
                 'remote_transfer', item.size,
             );
             if (preflight) {
+                const message = this.transferFailureMessage(
+                    'LIMIT_EXCEEDED',
+                    'The transfer exceeds the configured limit.',
+                    preflight,
+                );
                 this.showNotification(
-                    `${this.t('fm.transferFailed', 'Transfer failed')}: ${
-                        this.transferFailureMessage(
-                            'LIMIT_EXCEEDED',
-                            'The transfer exceeds the configured limit.',
-                            preflight,
-                        )
-                    }`,
+                    `${this.t('fm.transferFailed', 'Transfer failed')}: ${message}`,
                     'error',
                 );
+                if (queuedTransfer) {
+                    this.finalizeTransferById(
+                        queuedTransfer.id,
+                        'error',
+                        message,
+                        'LIMIT_EXCEEDED',
+                    );
+                }
                 return 'error';
             }
         }
 
-        this.retainTransferSources(sourceIds);
+        if (!queuedTransfer) this.retainTransferSources(sourceIds);
         const requestId = this.nextRequestId('workspace', 'remote-transfer');
         this.pendingS2SRequests ||= new Map();
         this.pendingS2SRequests.set(requestId, {
@@ -4141,13 +4178,23 @@ class SFTPFileManager {
         if (!acknowledgement || !acknowledgement.success
                 || !this.matchesS2SResponse(acknowledgement)) {
             this.pendingS2SRequests.delete(requestId);
-            this.releaseTransferSources(sourceIds);
-            this.flushPendingQuickDisconnects();
             const message = this.transferFailureMessage(
                 acknowledgement?.error_code,
                 acknowledgement?.error,
                 acknowledgement,
             );
+            if (queuedTransfer) {
+                this.finalizeTransferById(
+                    queuedTransfer.id,
+                    'error',
+                    message,
+                    acknowledgement?.error_code,
+                    acknowledgement?.retryable,
+                );
+            } else {
+                this.releaseTransferSources(sourceIds);
+                this.flushPendingQuickDisconnects();
+            }
             this.showNotification(
                 `${this.t('fm.transferFailed', 'Transfer failed')}: ${message}`,
                 'error',
@@ -4158,17 +4205,29 @@ class SFTPFileManager {
         const terminal = this.waitForS2STerminal(transferId);
         this.pendingS2SRequests.delete(requestId);
 
-        this.queueTransfer({
-            id: transferId,
-            type: 's2s',
-            filename: item.name,
-            sourcePath: sourcePath,
-            targetPath: targetPath,
-            size: item.size || 0,
-            sourceIds,
-            requestId,
-            sourcesRetained: true,
-        });
+        if (queuedTransfer) {
+            this.activeTransfers.delete(queuedTransfer.id);
+            queuedTransfer.id = transferId;
+            queuedTransfer.type = 's2s';
+            queuedTransfer.requestId = requestId;
+            queuedTransfer.status = 'active';
+            delete queuedTransfer.starting;
+            this.activeTransfers.set(transferId, queuedTransfer);
+            this.isTransferring = true;
+            this.renderTransferQueue();
+        } else {
+            this.queueTransfer({
+                id: transferId,
+                type: 's2s',
+                filename: item.name,
+                sourcePath: sourcePath,
+                targetPath: targetPath,
+                size: item.size || 0,
+                sourceIds,
+                requestId,
+                sourcesRetained: true,
+            });
+        }
         const earlyTerminal = this.s2sEarlyTerminals?.get(transferId);
         if (earlyTerminal) {
             this.s2sEarlyTerminals.delete(transferId);
@@ -4179,6 +4238,10 @@ class SFTPFileManager {
                 earlyTerminal.errorCode,
                 earlyTerminal.retryable,
             );
+        }
+        if (queuedTransfer?.cancelRequested
+                && queuedTransfer.status === 'active') {
+            this.requestS2SCancellation(queuedTransfer);
         }
         const status = await terminal;
         const completedTransfer = this.transferQueue?.find(
@@ -4567,7 +4630,9 @@ class SFTPFileManager {
     async processTransferQueue() {
         if (this.isTransferring) return;
 
-        const pending = this.transferQueue.find(t => t.status === 'pending');
+        const pending = this.transferQueue.find(t => (
+            t.status === 'pending' && t.type !== 's2s-queued'
+        ));
         if (!pending) return;
 
         this.isTransferring = true;
@@ -4788,32 +4853,46 @@ class SFTPFileManager {
     cancelQueuedTransfer(transferId) {
         const transfer = this.transferQueue.find(t => String(t.id) === transferId);
         if (!transfer || !['pending', 'active'].includes(transfer.status)) return;
+        if (transfer.type === 's2s-queued') {
+            if (transfer.starting) {
+                transfer.cancelRequested = true;
+                transfer.status = 'cancelling';
+                this.renderTransferQueue();
+            } else {
+                this.finalizeTransferById(transfer.id, 'cancelled');
+            }
+            return;
+        }
         if (transfer.type === 's2s') {
-            transfer.cancelWasActive = transfer.status === 'active';
-            transfer.status = 'cancelling';
-            this.renderTransferQueue();
-            this.socket.emit('cancel_transfer', {
-                transfer_id: transfer.id
-            }, acknowledgement => {
-                if (
-                    acknowledgement?.success === true
-                    && acknowledgement.state === 'cancelled'
-                ) {
-                    this.cancelTransferById(transfer.id);
-                } else if (acknowledgement?.state === 'unavailable') {
-                    this.failTransferById(
-                        transfer.id,
-                        this.t(
-                            'fm.cancelUnavailable',
-                            'Cancellation could not be confirmed. Refresh the destination before retrying.',
-                        ),
-                        'TRANSFER_UNAVAILABLE',
-                    );
-                }
-            });
+            this.requestS2SCancellation(transfer);
             return;
         }
         this.getTransferClient().cancelTransfer(transfer.id);
+    }
+
+    requestS2SCancellation(transfer) {
+        transfer.cancelWasActive = transfer.status === 'active';
+        transfer.status = 'cancelling';
+        this.renderTransferQueue();
+        this.socket.emit('cancel_transfer', {
+            transfer_id: transfer.id
+        }, acknowledgement => {
+            if (
+                acknowledgement?.success === true
+                && acknowledgement.state === 'cancelled'
+            ) {
+                this.cancelTransferById(transfer.id);
+            } else if (acknowledgement?.state === 'unavailable') {
+                this.failTransferById(
+                    transfer.id,
+                    this.t(
+                        'fm.cancelUnavailable',
+                        'Cancellation could not be confirmed. Refresh the destination before retrying.',
+                    ),
+                    'TRANSFER_UNAVAILABLE',
+                );
+            }
+        });
     }
 
     finalizeTransferById(
