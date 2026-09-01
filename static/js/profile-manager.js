@@ -1162,6 +1162,12 @@ const ProfileManager = {
         document.getElementById('profileEditorCommandSelect').value = profile?.command_id || '';
         document.getElementById('profileEditorCommandSetSelect').value = profile?.command_set_id || '';
         document.getElementById('profileEditorStartupCommands').value = profile?.startup_commands || '';
+        const useTmux = document.getElementById('profileEditorUseTmux');
+        if (useTmux) {
+            useTmux.checked = profile
+                ? profile.use_tmux === true
+                : useTmux.dataset.default === 'true';
+        }
 
         const hasOverride = Object.prototype.hasOwnProperty.call(
             profile || {}, 'parameters_override'
@@ -1266,6 +1272,8 @@ const ProfileManager = {
             jump_host_id: document.getElementById('profileEditorJumpHostSelect').value || null,
             startup_mode: mode,
         };
+        const useTmux = document.getElementById('profileEditorUseTmux');
+        if (useTmux) payload.use_tmux = useTmux.checked;
         if (this.editingProfileId) payload.id = this.editingProfileId;
         if (mode === 'command_set') {
             payload.command_set_id = document.getElementById(

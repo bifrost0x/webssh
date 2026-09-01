@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=20">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=21">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=9">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=30">
 </head>
@@ -829,6 +829,15 @@
                             <label for="profileEditorCommandPreview" data-i18n="commandModes.exactPreview">Exact command preview</label>
                             <pre id="profileEditorCommandPreview" class="command-set-preview empty" aria-live="polite"></pre>
                         </div>
+                        {% if tmux_enabled %}
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="profileEditorUseTmux" data-default="{{ 'true' if tmux_default else 'false' }}" {% if tmux_default %}checked{% endif %}>
+                                <span data-i18n="session.persistentTmux">Persistent session (tmux)</span>
+                            </label>
+                            <div class="field-hint" data-i18n="session.persistentTmuxHint">Keeps terminal alive on the remote host even when you close the browser or server restarts. Reattaches to existing tmux session automatically.</div>
+                        </div>
+                        {% endif %}
                                 </section>
                             </div>
                         </div>
@@ -1388,7 +1397,7 @@
         window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
         window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze({{ ssh_input_limits | tojson }});
     </script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=42"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=43"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=6"></script>
@@ -1414,7 +1423,7 @@
     <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=17"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=18"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=6"></script>
@@ -1423,7 +1432,7 @@
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/file-workspace-state.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/smb-source-dialog.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=34"></script>
+    <script src="{{ url_for('static', filename='js/sftp-file-manager.js') }}?v=35"></script>
     <script src="{{ url_for('static', filename='js/connection-history.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/primary-workspace-controller.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=28"></script>

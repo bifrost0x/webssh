@@ -14,6 +14,24 @@ async function openWorkspaceWithSources(page) {
             const sourceIds = [payload?.source_id, payload?.destination_source_id];
             if (sourceIds.some(value => String(value || '').includes(':workspace-'))) {
                 window.__fileWorkspaceEvents.push({ event, payload });
+                if (event === 'list_directory') {
+                    const listings = {
+                        '/srv/source': [
+                            { name: 'archive', is_dir: true, size: 0 },
+                            { name: 'notes.txt', is_dir: false, size: 12 },
+                        ],
+                        '/srv/source/archive': [],
+                    };
+                    queueMicrotask(() => window.socket.listeners('directory_listing').forEach(
+                        listener => listener({
+                            source_id: payload.source_id,
+                            path: payload.remote_path,
+                            files: listings[payload.remote_path] || [],
+                            request_id: payload.request_id,
+                        }),
+                    ));
+                    return window.socket;
+                }
                 if (typeof acknowledgement === 'function') {
                     acknowledgement({
                         success: true,
@@ -318,7 +336,7 @@ test('file checkboxes support additive selection and select all', async ({ page 
     await assertNoExternalRequests(page);
 });
 
-test('same-pane drag moves the selection into a folder without a Move toolbar action', async ({ page }) => {
+test('same-pane drag remains available beside the Move picker action', async ({ page }) => {
     await openWorkspaceWithSources(page);
     await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
     await page.evaluate(() => {
@@ -343,9 +361,13 @@ test('same-pane drag moves the selection into a folder without a Move toolbar ac
         manager.renderPane('left');
     });
 
-    await expect(page.locator('[data-pane-action="move"]')).toHaveCount(0);
+    const move = page.locator('[data-pane-toolbar="left"] [data-pane-action="move"]');
+    await expect(move).toBeVisible();
+    await expect(move).toBeDisabled();
     const source = page.locator('#fmLeftList .fm-file-item[data-index="0"]');
     const target = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
+    await source.click();
+    await expect(move).toBeEnabled();
     await source.dragTo(target);
     await expect.poll(() => page.evaluate(() => (
         window.__fileWorkspaceEvents.find(item => item.event === 'rename_file')?.payload
@@ -354,6 +376,62 @@ test('same-pane drag moves the selection into a folder without a Move toolbar ac
         new_path: '/srv/source/archive/report.txt',
     });
     await expect(page.locator('.fm-directory-drop-target')).toHaveCount(0);
+    await assertNoExternalRequests(page);
+});
+
+test('Move picker browses folders on the same source and uses correlated rename', async ({ page }) => {
+    await openWorkspaceWithSources(page);
+    await page.locator('[data-source-key="sftp-session:workspace-source"]').click();
+    await page.evaluate(() => {
+        const manager = window.sftpFileManager;
+        Object.assign(manager.panes.left, {
+            loading: false,
+            error: null,
+            autoHomeEligible: false,
+            pendingHomeRequestId: null,
+            homePath: '/srv',
+            path: '/srv/source',
+            files: [
+                { name: 'report.txt', is_dir: false, size: 12 },
+                { name: 'archive', is_dir: true, size: 0 },
+            ],
+            selected: new Set([0]),
+        });
+        manager.renderPane('left');
+    });
+
+    const move = page.locator('[data-pane-toolbar="left"] [data-pane-action="move"]');
+    await expect(move).toBeEnabled();
+    await move.click();
+
+    const picker = page.locator('.fm-move-picker');
+    await expect(picker).toBeVisible();
+    await expect(picker).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('[data-move-picker-path]')).toHaveText('/srv/source');
+    await expect(page.locator('[data-move-picker-confirm]')).toBeDisabled();
+    await expect(page.locator('[data-move-picker-list]')).toContainText('archive');
+    await expect(page.locator('[data-move-picker-list]')).not.toContainText('notes.txt');
+
+    await page.locator('.fm-move-picker-directory', { hasText: 'archive' }).click();
+    await expect(page.locator('[data-move-picker-path]')).toHaveText('/srv/source/archive');
+    await expect(page.locator('[data-move-picker-confirm]')).toBeEnabled();
+    await expect(page.locator('[data-move-picker-confirm]')).toBeFocused();
+    await page.locator('[data-move-picker-confirm]').click();
+
+    await expect(picker).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => (
+        window.__fileWorkspaceEvents.find(item => (
+            item.event === 'rename_file'
+            && item.payload.old_path === '/srv/source/report.txt'
+        ))?.payload
+    ))).toMatchObject({
+        source_id: 'sftp-session:workspace-source',
+        old_path: '/srv/source/report.txt',
+        new_path: '/srv/source/archive/report.txt',
+    });
+    await expect.poll(() => page.evaluate(() => (
+        window.sftpFileManager.transferExecutionInProgress
+    ))).toBe(false);
     await assertNoExternalRequests(page);
 });
 

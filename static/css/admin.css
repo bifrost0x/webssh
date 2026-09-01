@@ -419,6 +419,11 @@
     min-width: 0;
 }
 
+.settings-account-panel[data-account-panel="factors"] > .admin-setting-row + .admin-setting-row,
+.admin-settings-subpanel[data-settings-panel="authentication"] > .admin-settings-surface + .admin-settings-surface {
+    margin-top: 18px;
+}
+
 .settings-preferences-surface + .settings-preferences-surface {
     margin-top: 14px;
 }

@@ -79,9 +79,10 @@ Supported operations include:
 - directory listing and navigation;
 - create directory;
 - rename;
-- move files or folders on the same source by dragging them onto a destination
-  folder in the current File Workspace pane, the embedded active-session SFTP
-  browser, or the other pane;
+- move files or folders on the same source with the pane's **Move…** action and
+  folder picker, or by dragging them onto a destination folder in the current
+  File Workspace pane, the embedded active-session SFTP browser, or the other
+  pane;
 - delete;
 - drag-and-drop file and folder upload;
 - single and batch download;
@@ -225,6 +226,11 @@ For two folders on the same source, the workspace offers **Move** instead of a
 copy. It uses the source's rename operation, refuses root, self, descendant,
 and existing-destination moves, and never replaces an existing item. SMB path
 relationship checks are case-insensitive.
+
+The **Move…** action is available in both the standalone File Workspace and the
+embedded active-session SFTP browser. Its picker shows folders from the same
+authorized source only and revalidates the original selection before sending
+the correlated rename requests.
 
 ## Connection lifecycle
 

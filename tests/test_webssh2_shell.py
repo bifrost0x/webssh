@@ -93,6 +93,25 @@ def test_workspace_renders_the_disconnect_behavior_preference(app, client):
     assert b'id="disconnectSessionActionSelect"' in settings.data
 
 
+def test_saved_connection_editor_renders_tmux_preference_when_enabled(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+
+    monkeypatch.setattr(config, 'TMUX_ENABLED', True)
+    monkeypatch.setattr(config, 'TMUX_DEFAULT', False)
+    _create_login(app, client)
+
+    response = client.get('/')
+
+    assert response.status_code == 200
+    assert response.data.count(b'id="useTmuxCheck"') == 1
+    assert response.data.count(b'id="profileEditorUseTmux"') == 1
+    assert b'id="profileEditorUseTmux" checked' not in response.data
+
+
 def test_every_user_facing_page_loads_the_shared_webssh2_design_layer(
     app,
     client,
@@ -119,7 +138,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
         assert b'css/webssh-2.css?v=30' in response.data
-        assert b'js/i18n.js?v=42' in response.data
+        assert b'js/i18n.js?v=43' in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
@@ -127,7 +146,7 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
         assert response.status_code == 200
         assert b'css/style.css?v=24' in response.data
         assert b'css/webssh-2.css?v=30' in response.data
-        assert b'js/i18n.js?v=42' in response.data
+        assert b'js/i18n.js?v=43' in response.data
 
 
 def test_compact_workspace_controls_keep_accessible_names_and_close_command_input(

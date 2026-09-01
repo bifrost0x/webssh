@@ -1,8 +1,12 @@
 """Visibility and authentication boundaries for security management UI."""
 
 import time
+from pathlib import Path
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _create_user(app, username, *, is_admin=False):
@@ -86,6 +90,25 @@ def test_settings_center_combines_preferences_security_and_admin_navigation(
     assert b'<details class="github-auth-setup-guide" open' not in response.data
     assert b'href="/admin#' not in response.data
     assert b'id="settingsModal"' not in response.data
+
+
+def test_settings_cards_keep_consistent_vertical_spacing():
+    styles = (ROOT / "static/css/admin.css").read_text(encoding="utf-8")
+    security_template = (ROOT / "templates/security.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '.settings-account-panel[data-account-panel="factors"] '
+        '> .admin-setting-row + .admin-setting-row'
+    ) in styles
+    assert (
+        '.admin-settings-subpanel[data-settings-panel="authentication"] '
+        '> .admin-settings-surface + .admin-settings-surface'
+    ) in styles
+    assert 'id="totpSettings" style="max-width:none;margin-top:18px;"' not in (
+        security_template
+    )
 
 
 def test_linked_github_identity_is_presented_as_a_security_method(app, client):

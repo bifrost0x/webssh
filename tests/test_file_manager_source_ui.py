@@ -64,11 +64,17 @@ def test_file_manager_does_not_open_source_launcher_implicitly():
     assert 'openSourceLauncher' not in layout_block
 
 
-def test_file_manager_exposes_folder_drop_move_and_concise_smb_help():
+def test_file_manager_exposes_move_picker_folder_drop_and_concise_smb_help():
     source = FILE_MANAGER_JS.read_text(encoding='utf-8')
     template = INDEX_TEMPLATE.read_text(encoding='utf-8')
 
-    assert 'data-pane-action="move"' not in source
+    assert source.count('data-pane-action="move"') == 2
+    assert 'id="fmMove"' in source
+    assert 'openMovePicker(pane)' in source
+    assert 'consumeMovePickerListing(data)' in source
+    assert 'movePickerTargetReason(picker)' in source
+    assert "dialog.setAttribute('role', 'dialog')" in source
+    assert "dialog.setAttribute('aria-modal', 'true')" in source
     assert 'setupDirectoryDropTarget(item, pane, index)' in source
     assert 'moveSelectedToDirectory(pane, targetIndex, selectedItems)' in source
     assert source.count('id="fmTransferBetween"') == 1
