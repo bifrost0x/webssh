@@ -36,8 +36,8 @@ PINNED_ACTIONS = {
         'v5',
     ),
     'anchore/sbom-action': (
-        'e22c389904149dbc22b58101806040fa8d37a610',
-        'v0.24.0',
+        '3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+        'v0.24.2',
     ),
     'aquasecurity/trivy-action': (
         'ed142fd0673e97e23eac54620cfb913e5ce36c25',
