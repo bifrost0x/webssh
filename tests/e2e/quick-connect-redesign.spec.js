@@ -22,6 +22,17 @@ test('keeps Quick Connect in the workspace without a duplicate header action', a
     const centralLauncher = page.locator('.profile-launcher-new');
     await expect(newTab).toBeVisible();
     await expect(centralLauncher).toBeVisible();
+    await expect(centralLauncher).toHaveClass(/btn-secondary/);
+    await expect(centralLauncher).not.toHaveClass(/btn-primary/);
+
+    const savedProfiles = await page.evaluate(() =>
+        window.ProfileManager.profiles.map(profile => ({...profile}))
+    );
+    await page.evaluate(() => window.ProfileManager.setProfiles([]));
+    await expect(centralLauncher).toBeVisible();
+    await expect(centralLauncher).toHaveClass(/btn-secondary/);
+    await expect(centralLauncher).not.toHaveClass(/btn-primary/);
+    await page.evaluate(profiles => window.ProfileManager.setProfiles(profiles), savedProfiles);
 
     await newTab.click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);

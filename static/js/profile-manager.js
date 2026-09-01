@@ -417,9 +417,7 @@ const ProfileManager = {
 
         const newConnection = document.createElement('button');
         newConnection.type = 'button';
-        newConnection.className = profiles.length
-            ? 'btn btn-secondary profile-launcher-new'
-            : 'btn btn-primary profile-launcher-new';
+        newConnection.className = 'btn btn-secondary profile-launcher-new';
         newConnection.textContent = window.i18n
             ? i18n.t('connection.newConnection')
             : 'Quick Connect';

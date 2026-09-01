@@ -81,6 +81,32 @@ def test_commands_workspace_unifies_library_and_command_sets():
     assert 'grid-template-columns: 228px minmax(0, 1fr);' in styles
 
 
+def test_command_surfaces_use_the_shared_management_panel_hierarchy():
+    template = read('templates/index.html')
+
+    library_start = template.index('id="commandLibraryPanel"')
+    library_end = template.index('id="commandSetsPanel"', library_start)
+    library = template[library_start:library_end]
+    assert library.index('class="management-panel-heading"') < library.index(
+        'class="command-toolbar management-panel-toolbar"'
+    ) < library.index('class="os-filter-toolbar"')
+    assert 'data-i18n="commands.libraryHint"' in library
+    assert 'class="management-search-control"' in library
+    assert 'class="management-panel-actions"' in library
+
+    sets_start = template.index('id="commandSetManagementView"')
+    sets_end = template.index('id="commandSetEditorView"', sets_start)
+    sets = template[sets_start:sets_end]
+    assert sets.index(
+        'class="command-set-management-toolbar management-panel-heading"'
+    ) < sets.index(
+        'class="command-set-search-toolbar management-panel-toolbar"'
+    ) < sets.index('id="commandSetManagementList"')
+    assert 'data-i18n="commandSets.manageHint"' in sets
+    assert 'data-i18n="commandSets.search"' in sets
+    assert 'class="management-panel-actions"' in sets
+
+
 def test_commands_workspace_controller_owns_all_entry_points():
     workspace = read('static/js/command-workspace.js')
     library = read('static/js/command-library.js')

@@ -34,12 +34,12 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     expected_versions = {
         "filename='css/style.css'": '?v=24',
         "filename='css/sftp-file-manager.css'": '?v=21',
-        "filename='js/i18n.js'": '?v=43',
+        "filename='js/i18n.js'": '?v=44',
         "filename='js/command-workspace.js'": '?v=3',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=18',
+        "filename='js/profile-manager.js'": '?v=19',
         "filename='js/session-workspace.js'": '?v=9',
         "filename='js/session-manager.js'": '?v=12',
         "filename='js/terminal-manager.js'": '?v=12',
@@ -79,6 +79,30 @@ def test_profile_manager_builds_safe_contextual_launcher_buttons():
     assert 'profile-launcher-section-title' in source
     assert 'ProfileLauncherUtils.buildProfileSections' in source
     assert 'innerHTML = profile' not in source
+
+
+def test_quick_connect_keeps_one_visual_treatment_for_every_profile_state():
+    source = read('static/js/profile-manager.js')
+
+    assert "newConnection.className = 'btn btn-secondary profile-launcher-new';" in source
+    assert 'newConnection.className = profiles.length' not in source
+
+
+def test_saved_connections_uses_the_shared_management_panel_hierarchy():
+    template = read('templates/index.html')
+    start = template.index('id="profileManagementView"')
+    end = template.index('id="profileEditorView"', start)
+    panel = template[start:end]
+
+    heading = panel.index('class="management-panel-heading"')
+    toolbar = panel.index('class="profile-management-toolbar management-panel-toolbar"')
+    results = panel.index('id="profileManagementList"')
+
+    assert heading < toolbar < results
+    assert 'data-i18n="profiles.savedConnections"' in panel
+    assert 'data-i18n="profiles.manageHint"' in panel
+    assert 'class="management-search-control"' in panel
+    assert 'class="management-panel-actions"' in panel
 
 
 def test_profile_dependencies_refresh_only_empty_panes():
@@ -365,7 +389,9 @@ def test_profile_management_keeps_toolbar_controls_outside_the_scroll_region():
     template = read('templates/index.html')
     source = read('static/css/style.css')
 
-    toolbar_start = template.index('class="profile-management-toolbar"')
+    toolbar_start = template.index(
+        'class="profile-management-toolbar management-panel-toolbar"'
+    )
     list_start = template.index('id="profileManagementList"')
     assert toolbar_start < template.index('id="profileSearchInput"') < list_start
     assert toolbar_start < template.index('id="collapseAllProfilesBtn"') < list_start

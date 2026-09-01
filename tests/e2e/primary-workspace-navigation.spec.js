@@ -11,6 +11,46 @@ test.afterEach(async ({ page }) => {
     await assertNoExternalRequests(page);
 });
 
+async function resourceNavigationGeometry(page, modalId) {
+    return page.locator(`${modalId} .connection-asset-nav`).evaluate(nav => {
+        const navRect = nav.getBoundingClientRect();
+        const titleRect = nav.querySelector('.management-resource-title').getBoundingClientRect();
+        const itemRect = nav.querySelector('.connection-asset-nav-item').getBoundingClientRect();
+        return {
+            bodyPaddingLeft: getComputedStyle(nav.parentElement).paddingLeft,
+            navLeft: Math.round(navRect.left),
+            navTop: Math.round(navRect.top),
+            titleLeft: Math.round(titleRect.left),
+            titleTop: Math.round(titleRect.top),
+            itemLeft: Math.round(itemRect.left),
+        };
+    });
+}
+
+async function managementPanelGeometry(page, panelId, contentSelector) {
+    return page.locator(panelId).evaluate((panel, contentSelector) => {
+        const heading = panel.querySelector('.management-panel-heading').getBoundingClientRect();
+        const toolbar = panel.querySelector('.management-panel-toolbar').getBoundingClientRect();
+        const search = panel.querySelector('.management-search-control').getBoundingClientRect();
+        const actions = panel.querySelector('.management-panel-actions').getBoundingClientRect();
+        const content = panel.querySelector(contentSelector).getBoundingClientRect();
+        return {
+            headingBottom: Math.round(heading.bottom),
+            toolbarTop: Math.round(toolbar.top),
+            toolbarBottom: Math.round(toolbar.bottom),
+            searchCenter: Math.round((search.top + search.bottom) / 2),
+            actionsCenter: Math.round((actions.top + actions.bottom) / 2),
+            contentTop: Math.round(content.top),
+        };
+    }, contentSelector);
+}
+
+function expectManagementPanelHierarchy(geometry) {
+    expect(geometry.headingBottom).toBeLessThanOrEqual(geometry.toolbarTop);
+    expect(Math.abs(geometry.searchCenter - geometry.actionsCenter)).toBeLessThanOrEqual(1);
+    expect(geometry.toolbarBottom).toBeLessThanOrEqual(geometry.contentTop);
+}
+
 test('Hosts, File Manager, and Commands share the main surface while Workspaces stays intact', async ({ page }) => {
     const baseline = await page.evaluate(() => {
         window.__primaryWorkspaceOriginal = document.getElementById('workspace');
@@ -32,14 +72,28 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await expect(page.locator('#closeProfileManagementModal')).toBeHidden();
     await expect(page.locator('#profileManagementModal .management-resource-title')).toContainText('Hosts');
     await expect(page.locator('#profileManagementModal .connection-asset-nav-label')).toHaveText('Connection resources');
+    await expect(page.locator('#profileManagementView .management-panel-heading h3')).toHaveText('Saved Connections');
+    await expect(page.locator('#profileManagementView .management-panel-heading p')).toHaveText(
+        'Create, review, update, and launch saved connections.',
+    );
     expect(await page.locator('#profileManagementModal').evaluate(
         element => element.parentElement?.id,
     )).toBe('primaryWorkspaceSurface');
+    const hostsNavigation = await resourceNavigationGeometry(page, '#profileManagementModal');
+    expect(hostsNavigation.bodyPaddingLeft).toBe('0px');
+    expectManagementPanelHierarchy(await managementPanelGeometry(
+        page,
+        '#profileManagementView',
+        '#profileManagementList',
+    ));
 
     await page.locator('#profileManagementModal [data-connection-asset="jump-hosts"]').click();
     await expect(page.locator('#jumpHostManagementModal')).toBeVisible();
     await expect(page.locator('#manageProfilesBtn')).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('.main-content')).toBeHidden();
+    expect(await resourceNavigationGeometry(page, '#jumpHostManagementModal')).toEqual(
+        hostsNavigation,
+    );
 
     await page.locator('#jumpHostManagementModal [data-connection-asset="keys"]').click();
     await expect(page.locator('#keyManagementModal')).toBeVisible();
@@ -52,9 +106,27 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await expect(page.locator('#commandWorkspaceModal')).toBeVisible();
     await expect(page.locator('#commandWorkspaceModal')).toHaveAttribute('role', 'region');
     await expect(page.locator('#closeCommandWorkspaceModal')).toBeHidden();
+    await expect(page.locator('#commandSetsPanel .management-panel-heading h3')).toHaveText('Command Sets');
+    await expect(page.locator('#commandSetsPanel .management-panel-heading p')).toHaveText(
+        'Build reusable command sequences and assign one to any saved connection.',
+    );
+    expectManagementPanelHierarchy(await managementPanelGeometry(
+        page,
+        '#commandSetsPanel',
+        '#commandSetManagementList',
+    ));
     await page.locator('#commandLibraryTab').click();
     await expect(page.locator('#commandLibraryPanel')).toBeVisible();
     await expect(page.locator('#commandSearchInput')).toBeFocused();
+    await expect(page.locator('#commandLibraryPanel .management-panel-heading h3')).toHaveText('Command Library');
+    await expect(page.locator('#commandLibraryPanel .management-panel-heading p')).toHaveText(
+        'Browse, search, and manage commands available to your sessions.',
+    );
+    expectManagementPanelHierarchy(await managementPanelGeometry(
+        page,
+        '#commandLibraryPanel',
+        '.os-filter-toolbar',
+    ));
 
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#fileTransferBtn')).toHaveAttribute('aria-current', 'page');
