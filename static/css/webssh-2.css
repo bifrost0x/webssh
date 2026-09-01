@@ -1573,7 +1573,7 @@ body:has(.auth-container) {
 }
 
 /* Professional resource workspaces for Hosts and Commands. */
-.primary-workspace-surface .primary-workspace-view-hosts > .modal-content > .modal-body,
+.primary-workspace-surface #profileManagementModal > .modal-content > .modal-body,
 .primary-workspace-surface #keyManagementModal > .modal-content > .modal-body,
 .primary-workspace-surface #jumpHostManagementModal > .modal-content > .modal-body {
     padding: 0;
@@ -1638,19 +1638,60 @@ body:has(.auth-container) {
     padding: 20px;
 }
 
-.primary-workspace-surface .profile-management-toolbar {
+.primary-workspace-surface .management-panel-heading {
+    display: block;
+    flex: 0 0 auto;
+}
+
+.primary-workspace-surface .management-panel-heading h3 {
+    margin: 0 0 4px;
+    font-size: 18px;
+}
+
+.primary-workspace-surface .management-panel-heading p {
+    margin: 0;
+    color: var(--ws2-text-muted);
+    font-size: 13px;
+}
+
+.primary-workspace-surface .management-panel-toolbar {
+    display: flex;
+    align-items: center;
     gap: 10px;
+    margin-top: 14px;
     padding-bottom: 14px;
     border-bottom: 1px solid var(--ws2-border);
 }
 
-.primary-workspace-surface .profile-management-toolbar p {
-    flex-basis: 100%;
-    font-size: 13px;
+.primary-workspace-surface .management-search-control {
+    position: relative;
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
 }
 
-.primary-workspace-surface .profile-management-search {
+.primary-workspace-surface .management-search-control > .material-icons {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: 11px;
+    color: var(--ws2-text-muted);
+    font-size: 18px;
+    transform: translateY(-50%);
+}
+
+.primary-workspace-surface .management-search-control > .form-control {
+    width: 100%;
     max-width: none;
+    padding-left: 38px;
+}
+
+.primary-workspace-surface .management-panel-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
 }
 
 .primary-workspace-surface .profile-management-list {
@@ -1887,44 +1928,8 @@ body:has(.auth-container) {
     padding: 20px;
 }
 
-.primary-workspace-surface .command-set-management-toolbar {
-    align-items: flex-start;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--ws2-border);
-}
-
-.primary-workspace-surface .command-set-management-toolbar h3 {
-    margin: 0 0 4px;
-    font-size: 18px;
-}
-
-.primary-workspace-surface .command-set-management-toolbar p {
-    margin: 0;
-}
-
 .primary-workspace-surface .command-set-search-toolbar {
     display: flex;
-    margin-top: 14px;
-}
-
-.primary-workspace-surface .command-workspace-search {
-    position: relative;
-    flex: 1 1 auto;
-    max-width: 520px;
-}
-
-.primary-workspace-surface .command-workspace-search .material-icons {
-    position: absolute;
-    top: 50%;
-    left: 11px;
-    color: var(--ws2-text-muted);
-    font-size: 18px;
-    transform: translateY(-50%);
-}
-
-.primary-workspace-surface .command-workspace-search .form-control {
-    width: 100%;
-    padding-left: 38px;
 }
 
 .primary-workspace-surface .command-set-management-list {
@@ -1975,8 +1980,7 @@ body:has(.auth-container) {
 }
 
 .primary-workspace-surface .command-toolbar {
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--ws2-border);
+    flex: 0 0 auto;
 }
 
 @media (max-width: 900px) {
@@ -5001,23 +5005,27 @@ body[data-theme="paper"]:has(.auth-access-dock) {
         grid-template-rows: minmax(0, 1fr);
     }
 
-    .primary-workspace-surface .profile-management-toolbar {
+    .primary-workspace-surface .management-panel-toolbar {
         width: 100%;
         min-width: 0;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         align-items: stretch;
     }
 
-    .primary-workspace-surface .profile-management-toolbar p,
-    .primary-workspace-surface .profile-management-search {
+    .primary-workspace-surface .management-search-control {
         width: 100%;
         min-width: 0;
-        flex: 0 0 auto;
+        flex: 1 1 100%;
     }
 
-    .primary-workspace-surface .profile-management-search {
+    .primary-workspace-surface .management-search-control > .form-control {
         height: 46px;
         min-height: 46px;
+    }
+
+    .primary-workspace-surface .management-panel-actions {
+        width: 100%;
+        flex-wrap: wrap;
     }
 
     .primary-workspace-surface .profile-management-list {

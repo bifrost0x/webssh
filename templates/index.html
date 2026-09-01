@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=21">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=9">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=30">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=31">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -705,12 +705,20 @@
                     <button type="button" class="connection-asset-nav-item" data-connection-asset="keys"><span class="material-icons" aria-hidden="true">key</span><span data-i18n="connectionAssets.keys">SSH Keys</span></button>
                 </nav>
                 <section id="profileManagementView">
-                    <div class="profile-management-toolbar">
-                        <p data-i18n="profiles.manageHint">Save and update connection settings without connecting.</p>
-                        <label class="sr-only" for="profileSearchInput" data-i18n="profiles.search">Search saved connections</label>
-                        <input type="search" id="profileSearchInput" class="form-control profile-management-search" data-i18n-placeholder="profiles.searchPlaceholder" placeholder="Search by name, host, user, or group">
-                        <button type="button" id="collapseAllProfilesBtn" class="btn btn-secondary" data-i18n="profiles.collapseAll">Collapse all</button>
-                        <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create saved connection</button>
+                    <div class="management-panel-heading">
+                        <h3 data-i18n="profiles.savedConnections">Saved Connections</h3>
+                        <p data-i18n="profiles.manageHint">Create, review, update, and launch saved connections.</p>
+                    </div>
+                    <div class="profile-management-toolbar management-panel-toolbar">
+                        <label class="management-search-control" for="profileSearchInput">
+                            <span class="material-icons" aria-hidden="true">search</span>
+                            <span class="sr-only" data-i18n="profiles.search">Search saved connections</span>
+                            <input type="search" id="profileSearchInput" class="form-control profile-management-search" data-i18n-placeholder="profiles.searchPlaceholder" placeholder="Search by name, host, user, or group">
+                        </label>
+                        <div class="management-panel-actions">
+                            <button type="button" id="collapseAllProfilesBtn" class="btn btn-secondary" data-i18n="profiles.collapseAll">Collapse all</button>
+                            <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create saved connection</button>
+                        </div>
                     </div>
                     <div id="profileManagementList" class="profile-management-list"></div>
                 </section>
@@ -943,9 +951,19 @@
             </aside>
             <div class="modal-body command-workspace-body">
                 <section id="commandLibraryPanel" class="command-workspace-panel hidden" role="tabpanel" aria-labelledby="commandLibraryTab">
-                    <div class="command-toolbar">
-                        <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
-                        <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
+                    <div class="management-panel-heading">
+                        <h3 data-i18n="commands.library">Command Library</h3>
+                        <p data-i18n="commands.libraryHint">Browse, search, and manage commands available to your sessions.</p>
+                    </div>
+                    <div class="command-toolbar management-panel-toolbar">
+                        <label class="management-search-control" for="commandSearchInput">
+                            <span class="material-icons" aria-hidden="true">search</span>
+                            <span class="sr-only" data-i18n="commands.searchPlaceholder">Search commands, parameters, or descriptions...</span>
+                            <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
+                        </label>
+                        <div class="management-panel-actions">
+                            <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
+                        </div>
                     </div>
                     <div class="os-filter-toolbar">
                         <span data-i18n="commands.filterByOs">Filter by OS:</span>
@@ -976,12 +994,15 @@
 
                 <section id="commandSetsPanel" class="command-workspace-panel command-set-modal-body" role="tabpanel" aria-labelledby="commandSetsTab">
                 <section id="commandSetManagementView">
-                    <div class="command-set-management-toolbar">
-                        <div><h3 data-i18n="commandSets.manage">Command Sets</h3><p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p></div>
-                        <button type="button" id="newCommandSetBtn" class="btn btn-primary" data-i18n="commandSets.create">Create command set</button>
+                    <div class="command-set-management-toolbar management-panel-heading">
+                        <h3 data-i18n="commandSets.manage">Command Sets</h3>
+                        <p data-i18n="commandSets.manageHint">Build reusable command sequences and assign one to any saved connection.</p>
                     </div>
-                    <div class="command-set-search-toolbar">
-                        <label class="command-workspace-search"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only">Search command sets</span><input id="commandSetManagementSearch" class="form-control" type="search" placeholder="Search command sets"></label>
+                    <div class="command-set-search-toolbar management-panel-toolbar">
+                        <label class="management-search-control" for="commandSetManagementSearch"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="commandSets.search">Search command sets</span><input id="commandSetManagementSearch" class="form-control" type="search" data-i18n-placeholder="commandSets.search" placeholder="Search command sets"></label>
+                        <div class="management-panel-actions">
+                            <button type="button" id="newCommandSetBtn" class="btn btn-primary" data-i18n="commandSets.create">Create command set</button>
+                        </div>
                     </div>
                     <div id="commandSetManagementList" class="command-set-management-list"></div>
                 </section>
@@ -1397,7 +1418,7 @@
         window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
         window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze({{ ssh_input_limits | tojson }});
     </script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=43"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=44"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=6"></script>
@@ -1423,7 +1444,7 @@
     <script src="{{ url_for('static', filename='js/webssh2-shell.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/account-workspace-pulse.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/broadcast-input.js') }}?v=2"></script>
-    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=18"></script>
+    <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=19"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=6"></script>
