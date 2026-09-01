@@ -491,16 +491,30 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     await assertNoExternalRequests(page);
 });
 
-test('embedded Workspace SFTP moves a file by dropping it onto a sibling folder', async ({ page }) => {
+test('embedded Workspace SFTP keeps folder drag beside the Move picker', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
 
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();
-    await expect(page.locator('[data-pane-action="move"]')).toHaveCount(0);
     await expect(page.locator('#fmTransferBetween')).toBeHidden();
 
     const source = page.locator('#fmLeftList .fm-file-item[data-index="1"]');
     const target = page.locator('#fmLeftList .fm-file-item[data-index="0"]');
+    const move = page.locator('#fmMove');
+    await expect(move).toBeVisible();
+    await expect(move).toBeDisabled();
+    await source.click();
+    await expect(move).toBeEnabled();
+
+    await move.click();
+    await expect(page.locator('.fm-move-picker')).toBeVisible();
+    await expect(page.locator('[data-move-picker-path]')).toHaveText(
+        '/srv/webssh/current',
+    );
+    await expect(page.locator('[data-move-picker-confirm]')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.fm-move-picker')).toHaveCount(0);
+
     await source.dragTo(target);
 
     await expect.poll(() => page.evaluate(() => (
