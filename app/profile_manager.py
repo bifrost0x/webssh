@@ -230,6 +230,9 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     favorite = payload.get('favorite', _UNSET)
     if favorite is not _UNSET and type(favorite) is not bool:
         return None, 'favorite must be a boolean'
+    use_tmux = payload.get('use_tmux', _UNSET)
+    if use_tmux is not _UNSET and type(use_tmux) is not bool:
+        return None, 'use_tmux must be a boolean'
 
     key_id = payload.get('key_id')
     if auth_type == 'key' and not key_id:
@@ -256,6 +259,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         result['group'] = group
     if favorite is True:
         result['favorite'] = True
+    if use_tmux is not _UNSET:
+        result['use_tmux'] = use_tmux
     jump_host_id = payload.get('jump_host_id')
     if jump_host_id:
         result['jump_host_id'] = str(jump_host_id)[:64]
@@ -339,6 +344,11 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                                 and existing.get('favorite') is True
                             ):
                                 result['favorite'] = True
+                            if (
+                                'use_tmux' not in payload
+                                and 'use_tmux' in existing
+                            ):
+                                result['use_tmux'] = existing['use_tmux']
                             if _group_key(existing_group) == _group_key(target_group):
                                 result['sort_order'] = (
                                     existing['sort_order']

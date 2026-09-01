@@ -1530,6 +1530,234 @@ test('source launcher identifies the existing connection that enables Move', () 
     }), 'Connected');
 });
 
+test('Move picker requires an available writable source and selected items', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'sftp-session:shared', {
+        path: '/source',
+        files: [{ name: 'report.txt', is_dir: false }],
+        selected: new Set([0]),
+    });
+
+    assert.equal(manager.canOpenMovePickerForState(state), true);
+    state.selected.clear();
+    assert.equal(manager.canOpenMovePickerForState(state), false);
+    state.selected.add(0);
+    state.source.capabilities = ['list', 'read', 'rename'];
+    assert.equal(manager.canOpenMovePickerForState(state), false);
+    state.source.capabilities.push('write');
+    state.loading = true;
+    assert.equal(manager.canOpenMovePickerForState(state), false);
+});
+
+test('Move picker rejects the source folder and selected directory descendants', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    const picker = {
+        validTarget: true,
+        sourceKind: 'sftp',
+        sourcePath: '/source',
+        targetPath: '/source',
+        selectedItems: [{ name: 'archive', is_dir: true }],
+    };
+
+    assert.equal(manager.movePickerTargetReason(picker), 'same-folder');
+    picker.targetPath = '/source/archive';
+    assert.equal(manager.movePickerTargetReason(picker), 'inside-selection');
+    picker.targetPath = '/source/archive/older';
+    assert.equal(manager.movePickerTargetReason(picker), 'inside-selection');
+    picker.targetPath = '/target';
+    assert.equal(manager.movePickerTargetReason(picker), null);
+
+    picker.sourceKind = 'smb';
+    picker.sourcePath = '/Source';
+    picker.targetPath = '/source/ARCHIVE/Older';
+    assert.equal(manager.movePickerTargetReason(picker), 'inside-selection');
+    assert.equal(manager.canonicalMovePath('/safe/../target'), null);
+});
+
+test('Move picker accepts only its correlated directory listing and shows folders', () => {
+    const requests = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        movePickerListingTimeoutMs: 1000,
+        socket: { emit(event, payload) { requests.push({ event, payload }); } },
+        renderMovePicker() {},
+        movePicker: {
+            sourceId: 'sftp-session:shared',
+            sourceKind: 'sftp',
+            sourcePath: '/source',
+            targetPath: '/source',
+            selectedItems: [{ name: 'report.txt', is_dir: false }],
+            directories: [],
+            loading: false,
+            validTarget: false,
+            listingTimeout: null,
+        },
+    });
+
+    assert.equal(manager.requestMovePickerDirectory('/source'), true);
+    assert.equal(requests[0].event, 'list_directory');
+    assert.equal(manager.consumeMovePickerListing({
+        source_id: 'sftp-session:other',
+        path: '/source',
+        request_id: requests[0].payload.request_id,
+        files: [],
+    }), false);
+    assert.equal(manager.consumeMovePickerListing({
+        source_id: 'sftp-session:shared',
+        path: '/source',
+        request_id: requests[0].payload.request_id,
+        files: [
+            { name: 'notes.txt', is_dir: false },
+            { name: 'z-last', is_dir: true },
+            { name: '..', is_dir: true },
+            { name: 'nested/name', is_dir: true },
+            { name: 'a-first', is_dir: true },
+        ],
+    }), true);
+    assert.equal(manager.movePicker.loading, false);
+    assert.equal(manager.movePicker.validTarget, true);
+    assert.deepEqual(manager.movePicker.directories, [
+        { name: 'a-first', path: '/source/a-first' },
+        { name: 'z-last', path: '/source/z-last' },
+    ]);
+});
+
+test('Move picker correlates SMB listing paths case-insensitively', () => {
+    const requests = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        movePickerListingTimeoutMs: 1000,
+        socket: { emit(event, payload) { requests.push({ event, payload }); } },
+        renderMovePicker() {},
+        movePicker: {
+            sourceId: 'smb-quick:shared',
+            sourceKind: 'smb',
+            sourcePath: '/Source',
+            targetPath: '/Source',
+            selectedItems: [{ name: 'report.txt', is_dir: false }],
+            directories: [],
+            loading: false,
+            validTarget: false,
+            listingTimeout: null,
+        },
+    });
+
+    assert.equal(manager.requestMovePickerDirectory('/Source/Archive'), true);
+    assert.equal(manager.consumeMovePickerListing({
+        source_id: 'smb-quick:shared',
+        path: '/source/archive',
+        request_id: requests[0].payload.request_id,
+        files: [],
+    }), true);
+    assert.equal(manager.movePicker.targetPath, '/source/archive');
+    assert.equal(manager.movePicker.validTarget, true);
+});
+
+test('Move picker confirms through the existing same-source move path', async () => {
+    let moved;
+    let removed = false;
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'smb-quick:shared', {
+        path: '/source',
+        files: [{ name: 'report.txt', is_dir: false }],
+        selected: new Set([0]),
+    });
+    Object.assign(manager, {
+        panes: { left: state },
+        displayMode: 'embedded',
+        isOpen: true,
+        movePicker: {
+            pane: 'left',
+            sourceId: 'smb-quick:shared',
+            sourceKind: 'smb',
+            sourcePath: '/source',
+            targetPath: '/archive',
+            selectedItems: [{ name: 'report.txt', is_dir: false }],
+            validTarget: true,
+            loading: false,
+            element: { remove() { removed = true; } },
+            previousFocus: null,
+        },
+        moveItemsWithinSource(...args) {
+            moved = args;
+            return Promise.resolve('complete');
+        },
+    });
+
+    const result = await manager.confirmMovePicker();
+
+    assert.equal(result, 'complete');
+    assert.equal(removed, true);
+    assert.equal(manager.movePicker, null);
+    assert.deepEqual(moved, [
+        'smb-quick:shared',
+        '/source',
+        '/archive',
+        [{ name: 'report.txt', is_dir: false }],
+        ['left'],
+    ]);
+});
+
+test('Move picker refuses confirmation after the source state becomes stale', async () => {
+    const staleCases = [
+        ['loading', state => { state.loading = true; }],
+        ['error', state => { state.error = 'Connection lost'; }],
+        ['path', state => { state.path = '/other'; }],
+        ['selection', state => { state.selected.clear(); }],
+    ];
+
+    for (const [name, makeStale] of staleCases) {
+        let moved = false;
+        let removed = false;
+        const notifications = [];
+        const manager = Object.create(SFTPFileManager.prototype);
+        const state = filePane(manager, 'smb-quick:shared', {
+            path: '/source',
+            files: [{ name: 'report.txt', is_dir: false }],
+            selected: new Set([0]),
+        });
+        Object.assign(manager, {
+            panes: { left: state },
+            displayMode: 'embedded',
+            isOpen: true,
+            movePicker: {
+                pane: 'left',
+                sourceId: 'smb-quick:shared',
+                sourceKind: 'smb',
+                sourcePath: '/source',
+                targetPath: '/archive',
+                selectedItems: [{ name: 'report.txt', is_dir: false }],
+                validTarget: true,
+                loading: false,
+                element: { remove() { removed = true; } },
+                previousFocus: null,
+            },
+            moveItemsWithinSource() {
+                moved = true;
+                return Promise.resolve('complete');
+            },
+            showNotification(message, level) {
+                notifications.push({ message, level });
+            },
+            t(_key, fallback) { return fallback; },
+        });
+        makeStale(state);
+
+        const result = await manager.confirmMovePicker();
+
+        assert.equal(result, 'unavailable', name);
+        assert.equal(moved, false, name);
+        assert.equal(removed, true, name);
+        assert.equal(manager.movePicker, null, name);
+        assert.deepEqual(notifications, [{
+            message: 'Select movable items on an available source.',
+            level: 'warning',
+        }], name);
+    }
+});
+
 test('same-pane folder drop moves the dragged selection and refreshes once', async () => {
     const requests = [];
     const refreshes = [];
@@ -1640,7 +1868,7 @@ test('same-source move is sequential, never replaces, and refreshes both panes o
         ],
     );
 
-    assert.equal(result, 'complete');
+    assert.equal(result, 'partial');
     assert.deepEqual(requests.map(request => request.event), [
         'rename_file', 'rename_file', 'rename_file',
     ]);
@@ -1649,6 +1877,94 @@ test('same-source move is sequential, never replaces, and refreshes both panes o
     )), true);
     assert.deepEqual(conflictOptions, [{ allowReplace: false }]);
     assert.deepEqual(refreshes, ['left', 'right']);
+});
+
+test('same-source move retains an ephemeral source until every rename finishes', async () => {
+    const scenarios = [
+        {
+            source: fileSource('sftp-quick:quick-a'),
+            disconnectEvent: 'quick_disconnect',
+            disconnectPayload: { connection_id: 'quick-a' },
+        },
+        {
+            source: fileSource('smb-quick:owned', {
+                kind: 'smb', ephemeral: true, protocol: 'SMB 3.1.1',
+            }),
+            disconnectEvent: 'file_source_disconnect',
+            disconnectPayload: { source_id: 'smb-quick:owned' },
+        },
+    ];
+
+    for (const scenario of scenarios) {
+        const manager = Object.create(SFTPFileManager.prototype);
+        manager.initializeWorkspaceState();
+        const state = filePane(manager, scenario.source.sourceId, {
+            source: scenario.source,
+            path: '/source',
+        });
+        const tab = manager.workspace.openTab('left', scenario.source, state);
+        manager.syncPaneFromWorkspace('left');
+        const renameRequests = [];
+        const disconnects = [];
+        Object.assign(manager, {
+            displayMode: 'modal',
+            isOpen: true,
+            quickConnections: scenario.source.kind === 'sftp'
+                ? [{ connectionId: 'quick-a' }]
+                : [],
+            smbSources: scenario.source.kind === 'smb' ? [scenario.source] : [],
+            socket: { emit(event, payload, acknowledgement) {
+                if (event === 'rename_file') {
+                    renameRequests.push({ payload, acknowledgement });
+                    return;
+                }
+                disconnects.push([event, payload]);
+            } },
+            updatePathInput() {}, updatePaneBadge() {}, renderPane() {},
+            renderWorkspaceChrome() {}, updateSessionLists() {},
+            updateWorkspaceActions() {}, refreshPane() {}, showNotification() {},
+            t(_key, fallback) { return fallback; },
+        });
+
+        const move = manager.moveItemsWithinSource(
+            scenario.source.sourceId,
+            '/source',
+            '/target',
+            [
+                { name: 'one.txt', is_dir: false },
+                { name: 'two.txt', is_dir: false },
+            ],
+            ['left'],
+        );
+        assert.equal(renameRequests.length, 1, scenario.source.sourceId);
+
+        manager.closeSourceTab('left', tab.id);
+        assert.deepEqual(disconnects, [], scenario.source.sourceId);
+
+        renameRequests[0].acknowledgement({
+            success: true,
+            source_id: renameRequests[0].payload.source_id,
+            old_path: renameRequests[0].payload.old_path,
+            new_path: renameRequests[0].payload.new_path,
+            request_id: renameRequests[0].payload.request_id,
+        });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(renameRequests.length, 2, scenario.source.sourceId);
+        assert.deepEqual(disconnects, [], scenario.source.sourceId);
+
+        renameRequests[1].acknowledgement({
+            success: true,
+            source_id: renameRequests[1].payload.source_id,
+            old_path: renameRequests[1].payload.old_path,
+            new_path: renameRequests[1].payload.new_path,
+            request_id: renameRequests[1].payload.request_id,
+        });
+        assert.equal(await move, 'complete', scenario.source.sourceId);
+        assert.deepEqual(disconnects, [[
+            scenario.disconnectEvent,
+            scenario.disconnectPayload,
+        ]], scenario.source.sourceId);
+    }
 });
 
 test('same-source move stops after a cancelled conflict and refreshes both panes', async () => {
@@ -1721,10 +2037,13 @@ test('same-source move reports an acknowledgement timeout instead of hanging', a
     );
 
     assert.equal(result, 'error');
-    assert.deepEqual(notifications, [{
-        message: 'The move timed out before the server confirmed it. Refresh both folders before retrying.',
-        level: 'error',
-    }]);
+    assert.deepEqual(notifications, [
+        { message: 'Moving 1 item(s)...', level: 'info' },
+        {
+            message: 'The move timed out before the server confirmed it. Refresh both folders before retrying. Moved: 0 · Skipped: 0 · Failed: 1 · Not processed: 0',
+            level: 'error',
+        },
+    ]);
 });
 
 test('same-source drag advertises a move instead of a copy', () => {

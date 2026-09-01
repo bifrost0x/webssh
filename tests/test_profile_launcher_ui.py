@@ -33,19 +33,19 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=24',
-        "filename='css/sftp-file-manager.css'": '?v=20',
-        "filename='js/i18n.js'": '?v=42',
+        "filename='css/sftp-file-manager.css'": '?v=21',
+        "filename='js/i18n.js'": '?v=43',
         "filename='js/command-workspace.js'": '?v=3',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=17',
+        "filename='js/profile-manager.js'": '?v=18',
         "filename='js/session-workspace.js'": '?v=9',
         "filename='js/session-manager.js'": '?v=12',
         "filename='js/terminal-manager.js'": '?v=12',
         "filename='js/mobile-app-shell.js'": '?v=7',
         "filename='js/smb-source-dialog.js'": '?v=5',
-        "filename='js/sftp-file-manager.js'": '?v=34',
+        "filename='js/sftp-file-manager.js'": '?v=35',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=5',
         "filename='js/command-set-manager.js'": '?v=6',
@@ -335,6 +335,19 @@ def test_quick_connect_resets_advanced_state_and_expands_saved_advanced_profiles
     assert 'ProfileLauncherUtils.usesAdvancedConnectionSettings(profile)' in profiles
     assert 'window.setConnectionAdvancedExpanded?.(' in profiles
     assert 'useTmuxCheck.checked = profile.use_tmux === true' in profiles
+
+
+def test_saved_connection_editor_exposes_and_persists_tmux_preference():
+    template = read('templates/index.html')
+    profiles = read('static/js/profile-manager.js')
+
+    assert 'id="profileEditorUseTmux"' in template
+    assert '{% if tmux_enabled %}' in template
+    assert 'data-i18n="session.persistentTmux"' in template
+    assert 'data-default="{{ \'true\' if tmux_default else \'false\' }}"' in template
+    assert 'profile.use_tmux === true' in profiles
+    assert "useTmux.dataset.default === 'true'" in profiles
+    assert 'payload.use_tmux = useTmux.checked' in profiles
 
 
 def test_profile_groups_render_as_accessible_session_collapsibles():

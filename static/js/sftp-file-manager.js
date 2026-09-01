@@ -34,6 +34,7 @@ class SFTPFileManager {
         this.applyToAll = false;
 
         this.contextMenu = null;
+        this.movePicker = null;
         this.suppressedItemClick = null;
         this.actionSheetIndex = null;
         this.actionSheetTrigger = null;
@@ -811,6 +812,7 @@ class SFTPFileManager {
     }
 
     previewSelected() {
+        if (this.fileOperationBlocked()) return false;
         const state = this.panes[this.activePane];
         if (!state || state.selected.size !== 1) return false;
         const index = Array.from(state.selected)[0];
@@ -903,13 +905,15 @@ class SFTPFileManager {
     updateWorkspaceActions() {
         if (!['modal', 'embedded'].includes(this.displayMode) || !this.workspace) return;
         const state = this.panes[this.activePane];
+        const operationLocked = Boolean(this.transferExecutionInProgress);
         const selectedCount = state?.selected?.size || 0;
         const selectedFile = selectedCount === 1 ? state.files[Array.from(state.selected)[0]] : null;
         const targetPane = this.activePane === 'left' ? 'right' : 'left';
         const activeOperation = this.workspaceOperationBetweenPanes(
             this.activePane, targetPane,
         );
-        const activeTransferAvailable = activeOperation !== 'unavailable'
+        const activeTransferAvailable = !operationLocked
+            && activeOperation !== 'unavailable'
             && selectedCount > 0;
         const transferSourcePane = selectedCount > 0
             ? this.activePane
@@ -920,18 +924,20 @@ class SFTPFileManager {
         const transferOperation = this.workspaceOperationBetweenPanes(
             transferSourcePane, transferTargetPane,
         );
-        const transferAvailable = transferOperation !== 'unavailable'
+        const transferAvailable = !operationLocked
+            && transferOperation !== 'unavailable'
             && transferSelectedCount > 0;
         const setDisabled = (id, disabled) => {
             const element = document.getElementById(id);
             if (element) element.disabled = disabled;
         };
-        setDisabled('fmNewFolder', !this.sourceCan(state, 'mkdir'));
-        setDisabled('fmEmbeddedUpload', !this.sourceCan(state, 'write'));
-        setDisabled('fmDownload', !this.sourceCan(state, 'read') || selectedCount === 0);
-        setDisabled('fmPreview', !this.sourceCan(state, 'preview') || !selectedFile || selectedFile.is_dir);
-        setDisabled('fmRename', !this.sourceCan(state, 'rename') || selectedCount !== 1);
-        setDisabled('fmDelete', !this.sourceCan(state, 'delete') || selectedCount === 0);
+        setDisabled('fmNewFolder', operationLocked || !this.sourceCan(state, 'mkdir'));
+        setDisabled('fmEmbeddedUpload', operationLocked || !this.sourceCan(state, 'write'));
+        setDisabled('fmDownload', operationLocked || !this.sourceCan(state, 'read') || selectedCount === 0);
+        setDisabled('fmPreview', operationLocked || !this.sourceCan(state, 'preview') || !selectedFile || selectedFile.is_dir);
+        setDisabled('fmRename', operationLocked || !this.sourceCan(state, 'rename') || selectedCount !== 1);
+        setDisabled('fmMove', !this.canOpenMovePickerForState(state));
+        setDisabled('fmDelete', operationLocked || !this.sourceCan(state, 'delete') || selectedCount === 0);
         setDisabled('fmTransfer', !activeTransferAvailable);
         this.updateWorkspaceOperationButton(
             document.getElementById('fmTransfer'), activeOperation,
@@ -956,18 +962,21 @@ class SFTPFileManager {
             document.querySelectorAll(`[data-pane-toolbar="${pane}"] [data-pane-action]`).forEach(button => {
                 const action = button.dataset.paneAction;
                 const disabled = {
-                    newfolder: !this.sourceCan(paneState, 'mkdir'),
-                    upload: !this.sourceCan(paneState, 'write'),
-                    download: !this.sourceCan(paneState, 'read') || paneSelection === 0,
-                    preview: !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
-                    rename: !this.sourceCan(paneState, 'rename') || paneSelection !== 1,
-                    delete: !this.sourceCan(paneState, 'delete') || paneSelection === 0,
+                    newfolder: operationLocked || !this.sourceCan(paneState, 'mkdir'),
+                    upload: operationLocked || !this.sourceCan(paneState, 'write'),
+                    download: operationLocked || !this.sourceCan(paneState, 'read') || paneSelection === 0,
+                    preview: operationLocked || !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
+                    rename: operationLocked || !this.sourceCan(paneState, 'rename') || paneSelection !== 1,
+                    move: !this.canOpenMovePickerForState(paneState),
+                    delete: operationLocked || !this.sourceCan(paneState, 'delete') || paneSelection === 0,
                 }[action];
                 button.disabled = Boolean(disabled);
             });
             const selectAll = document.querySelector(`[data-pane-select-all="${pane}"]`);
             if (selectAll) {
-                selectAll.disabled = !this.sourceCan(paneState, 'list') || paneState.files.length === 0;
+                selectAll.disabled = operationLocked
+                    || !this.sourceCan(paneState, 'list')
+                    || paneState.files.length === 0;
                 selectAll.checked = paneState.files.length > 0 && paneSelection === paneState.files.length;
                 selectAll.indeterminate = paneSelection > 0 && paneSelection < paneState.files.length;
             }
@@ -1084,6 +1093,10 @@ class SFTPFileManager {
                                 <span class="material-icons">drive_file_rename_outline</span>
                                 <span class="btn-text" data-i18n="fm.rename">Rename</span>
                             </button>
+                            <button class="btn btn-secondary btn-sm" id="fmMove" data-i18n-title="fm.moveAction" aria-label="Move selected items" data-i18n-aria-label="fm.movePickerTitle">
+                                <span class="material-icons" aria-hidden="true">drive_file_move</span>
+                                <span class="btn-text" data-i18n="fm.moveAction">Move…</span>
+                            </button>
                             <button class="btn btn-danger btn-sm" id="fmDelete" data-i18n-title="fm.delete">
                                 <span class="material-icons">delete</span>
                                 <span class="btn-text" data-i18n="fm.delete">Delete</span>
@@ -1139,6 +1152,7 @@ class SFTPFileManager {
                                 <button type="button" data-pane-action="download"><span class="material-icons">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview"><span class="material-icons">preview</span><span data-i18n="fm.preview">Preview</span></button>
                                 <button type="button" data-pane-action="rename"><span class="material-icons">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
+                                <button type="button" data-pane-action="move" aria-label="Move…" title="Move…" data-i18n-aria-label="fm.moveAction" data-i18n-title="fm.moveAction"><span class="material-icons" aria-hidden="true">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
                                 <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
@@ -1205,6 +1219,7 @@ class SFTPFileManager {
                                 <button type="button" data-pane-action="download"><span class="material-icons">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview"><span class="material-icons">preview</span><span data-i18n="fm.preview">Preview</span></button>
                                 <button type="button" data-pane-action="rename"><span class="material-icons">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
+                                <button type="button" data-pane-action="move" aria-label="Move…" title="Move…" data-i18n-aria-label="fm.moveAction" data-i18n-title="fm.moveAction"><span class="material-icons" aria-hidden="true">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
                                 <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
@@ -1292,6 +1307,10 @@ class SFTPFileManager {
                     <button type="button" class="fm-action-sheet-item" data-action="transfer">
                         <span class="material-icons" aria-hidden="true">swap_horiz</span>
                         <span data-i18n="fm.transfer">Transfer</span>
+                    </button>
+                    <button type="button" class="fm-action-sheet-item" data-action="move">
+                        <span class="material-icons" aria-hidden="true">drive_file_move</span>
+                        <span data-i18n="fm.moveAction">Move…</span>
                     </button>
                     <button type="button" class="fm-action-sheet-item" data-action="rename">
                         <span class="material-icons" aria-hidden="true">edit</span>
@@ -1464,6 +1483,7 @@ class SFTPFileManager {
         document.getElementById('fmDownload').addEventListener('click', () => this.downloadSelected());
         document.getElementById('fmPreview').addEventListener('click', () => this.previewSelected());
         document.getElementById('fmRename').addEventListener('click', () => this.renameSelected());
+        document.getElementById('fmMove').addEventListener('click', () => this.openMovePicker());
         document.getElementById('fmDelete').addEventListener('click', () => this.deleteSelected());
         document.getElementById('fmLayoutSingle').addEventListener('click', () => this.setWorkspaceLayout('single'));
         document.getElementById('fmLayoutSplit').addEventListener('click', () => this.setWorkspaceLayout('split'));
@@ -1488,6 +1508,7 @@ class SFTPFileManager {
                 download: () => this.downloadSelected(),
                 preview: () => this.previewSelected(),
                 rename: () => this.renameSelected(),
+                move: () => this.openMovePicker(pane),
                 delete: () => this.deleteSelected(),
             };
             actions[actionButton.dataset.paneAction]?.();
@@ -1655,6 +1676,7 @@ class SFTPFileManager {
         if (!this.socket) return;
 
         this.socket.on('directory_listing', (data) => {
+            if (this.consumeMovePickerListing(data)) return;
             this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
                 if (this.getPaneSourceId(state) === data.source_id &&
                     state.pendingDirectoryRequestId === data.request_id &&
@@ -1772,6 +1794,13 @@ class SFTPFileManager {
                 if (this.isOpen !== false) this.showNotification(errorMsg, 'error');
                 return;
             }
+            if (this.consumeMovePickerError(
+                data,
+                this.t(
+                    'fm.movePickerListFailed',
+                    'The destination folder could not be opened.',
+                ),
+            )) return;
             this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
                 if (state.loading && this.getPaneSourceId(state) === data.source_id &&
                     state.pendingDirectoryRequestId === data.request_id &&
@@ -1804,6 +1833,7 @@ class SFTPFileManager {
 
     handlesSocketError(data) {
         if (data?.operation === 'list_directory') {
+            if (this.matchesMovePickerRequest(data)) return true;
             return this.getPaneStateEntries().some(({ state }) => {
                 return this.getPaneSourceId(state) === data.source_id
                     && state.pendingDirectoryRequestId === data.request_id
@@ -1961,6 +1991,7 @@ class SFTPFileManager {
         this.suspendedEmbeddedTarget = null;
         this.isOpen = false;
         this.displayMode = 'closed';
+        this.closeMovePicker({ restoreFocus: false });
         this.closeSourceLauncher();
         if (!wasPrimaryWorkspace && window.ModalManager) {
             window.ModalManager.close(this.modal);
@@ -2090,6 +2121,7 @@ class SFTPFileManager {
 
     detachEmbedded() {
         if (this.displayMode !== 'embedded') return;
+        this.closeMovePicker({ restoreFocus: false });
         this.closeContextMenu();
         this.resetPane('left');
         this.modalBody.classList.remove('fm-embedded-mode');
@@ -2125,6 +2157,13 @@ class SFTPFileManager {
     }
 
     handleSessionDisconnected(sessionId) {
+        const disconnectedSourceIds = new Set([
+            `sftp-session:${sessionId}`,
+            `sftp-quick:${sessionId}`,
+        ]);
+        if (disconnectedSourceIds.has(this.movePicker?.sourceId)) {
+            this.closeMovePicker({ restoreFocus: false });
+        }
         if (this.displayMode !== 'embedded' && this.workspace) {
             ['left', 'right'].forEach(pane => {
                 const matchingTabs = this.workspace.getTabs(pane).filter(tab => {
@@ -2160,6 +2199,7 @@ class SFTPFileManager {
 
     hasOpenDialogs() {
         return document.querySelector('.fm-conflict-dialog') !== null ||
+               document.querySelector('.fm-move-picker') !== null ||
                this.qcModal.classList.contains('show') ||
                document.getElementById('smbSourceModal')?.classList.contains('show') ||
                document.getElementById('fmSourceLauncher')?.classList.contains('show');
@@ -3037,6 +3077,7 @@ class SFTPFileManager {
             setDisabled('open', index === null || (index >= 0 && selectedCount !== 1));
             setDisabled('download', selectedCount === 0 || !this.sourceCan(state, 'read'));
             setDisabled('transfer', selectedCount === 0 || !this.canTransferBetweenPanes(pane, targetPane));
+            setDisabled('move', !this.canOpenMovePickerForState(state));
             setDisabled('rename', selectedCount !== 1 || !this.sourceCan(state, 'rename'));
             setDisabled('newfolder', !this.sourceCan(state, 'mkdir'));
             setDisabled('delete', selectedCount === 0 || !this.sourceCan(state, 'delete'));
@@ -3094,6 +3135,9 @@ class SFTPFileManager {
             case 'transfer':
                 this.executeTransfer();
                 break;
+            case 'move':
+                this.openMovePicker(this.activePane);
+                break;
             case 'rename':
                 this.renameSelected();
                 break;
@@ -3109,6 +3153,10 @@ class SFTPFileManager {
     }
 
     handleMobileUpload(e) {
+        if (this.fileOperationBlocked()) {
+            e.target.value = '';
+            return;
+        }
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
@@ -3166,6 +3214,7 @@ class SFTPFileManager {
     }
 
     createNewFolder() {
+        if (this.fileOperationBlocked()) return;
         const state = this.panes[this.activePane];
 
         if (!this.sourceCan(state, 'mkdir')) {
@@ -3191,6 +3240,7 @@ class SFTPFileManager {
     }
 
     deleteSelected() {
+        if (this.fileOperationBlocked()) return;
         const state = this.panes[this.activePane];
 
         if (state.selected.size === 0) {
@@ -3220,6 +3270,7 @@ class SFTPFileManager {
     }
 
     renameSelected() {
+        if (this.fileOperationBlocked()) return;
         const state = this.panes[this.activePane];
 
         if (state.selected.size !== 1) {
@@ -3250,6 +3301,521 @@ class SFTPFileManager {
                 request_id: this.registerOperationRequest(sourceId, 'rename_file'),
             });
         }
+    }
+
+    canOpenMovePickerForState(state) {
+        return Boolean(
+            !this.transferExecutionInProgress
+            && this.getPaneSourceId(state)
+            && state?.selected?.size > 0
+            && !state.loading
+            && !state.error
+            && this.sourceCan(state, 'list')
+            && this.sourceCan(state, 'rename')
+            && this.sourceCan(state, 'write'),
+        );
+    }
+
+    fileOperationBlocked() {
+        if (!this.transferExecutionInProgress) return false;
+        this.showNotification(
+            this.t(
+                'fm.fileOperationInProgress',
+                'Wait for the current file operation to finish.',
+            ),
+            'info',
+        );
+        return true;
+    }
+
+    canonicalMovePath(path) {
+        if (
+            typeof path !== 'string'
+            || !path.startsWith('/')
+            || path.includes('\0')
+        ) return null;
+        const segments = [];
+        for (const segment of path.split('/')) {
+            if (!segment || segment === '.') continue;
+            if (segment === '..') return null;
+            segments.push(segment);
+        }
+        return `/${segments.join('/')}`;
+    }
+
+    movePickerTargetReason(picker = this.movePicker) {
+        if (!picker?.validTarget) return 'unavailable';
+        const sourcePath = this.canonicalMovePath(picker.sourcePath);
+        const targetPath = this.canonicalMovePath(picker.targetPath);
+        if (!sourcePath || !targetPath) return 'unavailable';
+        const fold = value => picker.sourceKind === 'smb'
+            ? value.toLocaleLowerCase('en-US')
+            : value;
+        const comparableSource = fold(sourcePath);
+        const comparableTarget = fold(targetPath);
+        if (comparableSource === comparableTarget) return 'same-folder';
+        for (const item of picker.selectedItems || []) {
+            if (item?.is_dir !== true || typeof item.name !== 'string') continue;
+            const itemPath = this.canonicalMovePath(
+                this.joinPath(sourcePath, item.name),
+            );
+            if (!itemPath) return 'unavailable';
+            const comparableItem = fold(itemPath);
+            if (
+                comparableTarget === comparableItem
+                || comparableTarget.startsWith(`${comparableItem.replace(/\/$/, '')}/`)
+            ) return 'inside-selection';
+        }
+        return null;
+    }
+
+    createMovePickerDialog(picker) {
+        const dialog = document.createElement('div');
+        dialog.className = 'fm-move-picker';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'fmMovePickerTitle');
+        dialog.setAttribute('aria-describedby', 'fmMovePickerDescription');
+        const selectedNames = picker.selectedItems
+            .slice(0, 3)
+            .map(item => item.name)
+            .join(', ');
+        const additionalCount = Math.max(0, picker.selectedItems.length - 3);
+        const selectedSummary = additionalCount > 0
+            ? `${selectedNames} +${additionalCount}`
+            : selectedNames;
+        dialog.innerHTML = `
+            <div class="fm-move-picker-content">
+                <header class="fm-move-picker-header">
+                    <div>
+                        <h3 id="fmMovePickerTitle">${this.escapeHtml(this.t('fm.movePickerTitle', 'Move selected items'))}</h3>
+                        <p id="fmMovePickerDescription">${this.escapeHtml(this.t('fm.movePickerDescription', 'Choose a destination folder on this connection.'))}</p>
+                    </div>
+                    <button type="button" class="fm-move-picker-close material-icons" data-move-picker-close aria-label="${this.escapeHtml(this.t('common.close', 'Close'))}">close</button>
+                </header>
+                <div class="fm-move-picker-selection">
+                    <span class="material-icons" aria-hidden="true">drive_file_move</span>
+                    <span class="fm-move-picker-selection-copy">
+                        <strong>${this.escapeHtml(`${picker.selectedItems.length} ${this.t('fm.selected', 'selected')}`)}</strong>
+                        <small>${this.escapeHtml(selectedSummary)}</small>
+                    </span>
+                    <span class="fm-protocol-badge">${this.escapeHtml(picker.sourceLabel)}</span>
+                </div>
+                <div class="fm-move-picker-nav">
+                    <button type="button" data-move-picker-up aria-label="${this.escapeHtml(this.t('fm.goUp', 'Go up'))}" title="${this.escapeHtml(this.t('fm.goUp', 'Go up'))}"><span class="material-icons" aria-hidden="true">arrow_upward</span></button>
+                    <button type="button" data-move-picker-home aria-label="${this.escapeHtml(this.t('fm.goHome', 'Go home'))}" title="${this.escapeHtml(this.t('fm.goHome', 'Go home'))}"><span class="material-icons" aria-hidden="true">home</span></button>
+                    <code data-move-picker-path>/</code>
+                    <button type="button" data-move-picker-refresh aria-label="${this.escapeHtml(this.t('fm.refresh', 'Refresh'))}" title="${this.escapeHtml(this.t('fm.refresh', 'Refresh'))}"><span class="material-icons" aria-hidden="true">refresh</span></button>
+                </div>
+                <div class="fm-move-picker-status" data-move-picker-status aria-live="polite"></div>
+                <div class="fm-move-picker-list" data-move-picker-list aria-label="${this.escapeHtml(this.t('fm.movePickerDestination', 'Destination folder'))}"></div>
+                <footer class="fm-move-picker-actions">
+                    <button type="button" class="btn btn-secondary" data-move-picker-close>${this.escapeHtml(this.t('common.cancel', 'Cancel'))}</button>
+                    <button type="button" class="btn btn-primary" data-move-picker-confirm>
+                        <span class="material-icons" aria-hidden="true">drive_file_move</span>
+                        ${this.escapeHtml(this.t('fm.movePickerMoveHere', 'Move here'))}
+                    </button>
+                </footer>
+            </div>`;
+        dialog.querySelectorAll('[data-move-picker-close]').forEach(button => {
+            button.addEventListener('click', () => this.closeMovePicker());
+        });
+        dialog.querySelector('[data-move-picker-up]').addEventListener('click', () => {
+            const parentPath = this.parentRemotePath(this.movePicker?.targetPath);
+            if (parentPath) this.requestMovePickerDirectory(parentPath);
+        });
+        dialog.querySelector('[data-move-picker-home]').addEventListener('click', () => {
+            if (this.movePicker?.homePath) {
+                this.requestMovePickerDirectory(this.movePicker.homePath);
+            }
+        });
+        dialog.querySelector('[data-move-picker-refresh]').addEventListener('click', () => {
+            if (this.movePicker?.targetPath) {
+                this.requestMovePickerDirectory(this.movePicker.targetPath);
+            }
+        });
+        dialog.querySelector('[data-move-picker-confirm]').addEventListener(
+            'click', () => void this.confirmMovePicker(),
+        );
+        dialog.querySelector('[data-move-picker-list]').addEventListener('click', event => {
+            const button = event.target.closest('[data-move-picker-directory]');
+            if (!button || !this.movePicker) return;
+            const directory = this.movePicker.directories[
+                Number(button.dataset.movePickerDirectory)
+            ];
+            if (directory?.path) {
+                this.movePicker.focusListAfterRender = true;
+                this.requestMovePickerDirectory(directory.path);
+            }
+        });
+        dialog.addEventListener('click', event => {
+            if (event.target === dialog) this.closeMovePicker();
+        });
+        dialog.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeMovePicker();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = Array.from(dialog.querySelectorAll(
+                'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+            ));
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable.at(-1);
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+        return dialog;
+    }
+
+    openMovePicker(pane = this.activePane) {
+        const state = this.panes?.[pane];
+        if (!this.canOpenMovePickerForState(state)) {
+            this.showNotification(
+                this.t(
+                    'fm.movePickerUnavailable',
+                    'Select movable items on an available source.',
+                ),
+                'warning',
+            );
+            return false;
+        }
+        const sourcePath = this.canonicalMovePath(state.path);
+        const selectedItems = Array.from(state.selected)
+            .map(index => state.files[index])
+            .filter(item => (
+                item
+                && typeof item.name === 'string'
+                && item.name !== '.'
+                && item.name !== '..'
+                && !item.name.includes('/')
+                && !item.name.includes('\0')
+            ))
+            .map(item => ({ name: item.name, is_dir: item.is_dir === true }));
+        if (!sourcePath || selectedItems.length === 0) {
+            this.showNotification(
+                this.t(
+                    'fm.movePickerUnavailable',
+                    'Select movable items on an available source.',
+                ),
+                'warning',
+            );
+            return false;
+        }
+        this.closeMovePicker({ restoreFocus: false });
+        this.closeContextMenu();
+        const picker = {
+            pane,
+            sourceId: this.getPaneSourceId(state),
+            sourceKind: state.source.kind,
+            sourceLabel: state.source.label || state.source.protocol || '',
+            sourcePath,
+            homePath: this.canonicalMovePath(state.homePath) || '/',
+            targetPath: sourcePath,
+            pendingPath: null,
+            pendingRequestId: null,
+            listingTimeout: null,
+            loading: false,
+            error: null,
+            validTarget: false,
+            directories: [],
+            focusListAfterRender: false,
+            selectedItems,
+            previousFocus: document.activeElement,
+            element: null,
+        };
+        picker.element = this.createMovePickerDialog(picker);
+        this.movePicker = picker;
+        document.body.appendChild(picker.element);
+        picker.element.querySelector('[data-move-picker-close]')?.focus();
+        this.requestMovePickerDirectory(sourcePath);
+        return true;
+    }
+
+    closeMovePicker(options = {}) {
+        const picker = this.movePicker;
+        if (!picker) return false;
+        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        picker.element?.remove();
+        this.movePicker = null;
+        if (options.restoreFocus !== false) picker.previousFocus?.focus?.();
+        return true;
+    }
+
+    parentRemotePath(path) {
+        const normalized = this.canonicalMovePath(path);
+        if (!normalized || normalized === '/') return null;
+        return normalized.split('/').slice(0, -1).join('/') || '/';
+    }
+
+    requestMovePickerDirectory(path) {
+        const picker = this.movePicker;
+        const targetPath = this.canonicalMovePath(path);
+        if (!picker || !targetPath || !this.socket?.emit) return false;
+        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        picker.pendingPath = targetPath;
+        picker.pendingRequestId = this.nextRequestId('move-picker', 'directory');
+        picker.loading = true;
+        picker.error = null;
+        picker.validTarget = false;
+        picker.directories = [];
+        picker.listingTimeout = setTimeout(() => {
+            if (this.movePicker !== picker || !picker.loading) return;
+            picker.loading = false;
+            picker.error = this.t(
+                'fm.movePickerListFailed',
+                'The destination folder could not be opened.',
+            );
+            picker.pendingRequestId = null;
+            picker.pendingPath = null;
+            picker.listingTimeout = null;
+            this.renderMovePicker();
+        }, this.movePickerListingTimeoutMs || 10000);
+        this.renderMovePicker();
+        try {
+            this.socket.emit('list_directory', {
+                source_id: picker.sourceId,
+                remote_path: targetPath,
+                request_id: picker.pendingRequestId,
+            });
+        } catch {
+            this.consumeMovePickerError({
+                operation: 'list_directory',
+                source_id: picker.sourceId,
+                path: targetPath,
+                request_id: picker.pendingRequestId,
+            }, this.t(
+                'fm.movePickerListFailed',
+                'The destination folder could not be opened.',
+            ));
+        }
+        return true;
+    }
+
+    matchesMovePickerRequest(data) {
+        const picker = this.movePicker;
+        const responsePath = this.canonicalMovePath(data?.path);
+        const fold = value => picker?.sourceKind === 'smb' && value
+            ? value.toLocaleLowerCase('en-US')
+            : value;
+        return Boolean(
+            picker
+            && picker.loading
+            && data?.source_id === picker.sourceId
+            && data?.request_id === picker.pendingRequestId
+            && responsePath
+            && fold(responsePath) === fold(picker.pendingPath),
+        );
+    }
+
+    consumeMovePickerListing(data) {
+        if (!this.matchesMovePickerRequest(data)) return false;
+        const picker = this.movePicker;
+        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        const targetPath = this.canonicalMovePath(data.path);
+        picker.loading = false;
+        picker.error = null;
+        picker.validTarget = Boolean(targetPath);
+        picker.targetPath = targetPath || picker.targetPath;
+        picker.pendingPath = null;
+        picker.pendingRequestId = null;
+        picker.listingTimeout = null;
+        picker.directories = (Array.isArray(data.files) ? data.files : [])
+            .filter(item => (
+                item?.is_dir === true
+                && typeof item.name === 'string'
+                && item.name !== '.'
+                && item.name !== '..'
+                && !item.name.includes('/')
+                && !item.name.includes('\0')
+            ))
+            .map(item => ({
+                name: item.name,
+                path: this.canonicalMovePath(
+                    this.joinPath(picker.targetPath, item.name),
+                ),
+            }))
+            .filter(item => item.path)
+            .sort((left, right) => left.name.localeCompare(right.name));
+        this.renderMovePicker();
+        return true;
+    }
+
+    consumeMovePickerError(data, errorMessage) {
+        if (!this.matchesMovePickerRequest(data)) return false;
+        const picker = this.movePicker;
+        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        picker.loading = false;
+        picker.error = errorMessage || this.t(
+            'fm.movePickerListFailed',
+            'The destination folder could not be opened.',
+        );
+        picker.validTarget = false;
+        picker.pendingPath = null;
+        picker.pendingRequestId = null;
+        picker.listingTimeout = null;
+        picker.directories = [];
+        this.renderMovePicker();
+        return true;
+    }
+
+    renderMovePicker() {
+        const picker = this.movePicker;
+        if (!picker?.element) return;
+        const displayPath = picker.pendingPath || picker.targetPath || '/';
+        const path = picker.element.querySelector('[data-move-picker-path]');
+        if (path) path.textContent = displayPath;
+        const up = picker.element.querySelector('[data-move-picker-up]');
+        const home = picker.element.querySelector('[data-move-picker-home]');
+        const refresh = picker.element.querySelector('[data-move-picker-refresh]');
+        if (up) up.disabled = picker.loading || displayPath === '/';
+        if (home) home.disabled = picker.loading || displayPath === picker.homePath;
+        if (refresh) refresh.disabled = picker.loading;
+
+        const reason = this.movePickerTargetReason(picker);
+        const status = picker.element.querySelector('[data-move-picker-status]');
+        if (status) {
+            status.dataset.state = picker.error ? 'error' : reason || 'ready';
+            status.textContent = picker.loading
+                ? this.t('fm.loading', 'Loading...')
+                : picker.error
+                    ? picker.error
+                    : reason === 'same-folder'
+                        ? this.t(
+                            'fm.movePickerChooseDifferent',
+                            'Choose a different folder.',
+                        )
+                        : reason === 'inside-selection'
+                            ? this.t(
+                                'fm.movePickerInsideSelection',
+                                'A folder cannot be moved into itself or one of its subfolders.',
+                            )
+                            : reason === 'unavailable'
+                                ? this.t(
+                                    'fm.movePickerListFailed',
+                                    'The destination folder could not be opened.',
+                                )
+                                : this.t(
+                                    'fm.movePickerDestination',
+                                    'Destination folder',
+                                );
+        }
+        const list = picker.element.querySelector('[data-move-picker-list]');
+        if (list) {
+            list.setAttribute('aria-busy', String(picker.loading));
+            list.innerHTML = picker.loading
+                ? `<div class="fm-move-picker-empty"><span class="spinner" aria-hidden="true"></span>${this.escapeHtml(this.t('fm.loading', 'Loading...'))}</div>`
+                : picker.error
+                    ? `<div class="fm-move-picker-empty is-error"><span class="material-icons" aria-hidden="true">folder_off</span>${this.escapeHtml(this.t('fm.movePickerListFailed', 'The destination folder could not be opened.'))}</div>`
+                    : picker.directories.length === 0
+                        ? `<div class="fm-move-picker-empty"><span class="material-icons" aria-hidden="true">folder_open</span>${this.escapeHtml(this.t('fm.movePickerNoFolders', 'No subfolders'))}</div>`
+                        : picker.directories.map((directory, index) => `
+                            <button type="button" class="fm-move-picker-directory" data-move-picker-directory="${index}">
+                                <span class="material-icons" aria-hidden="true">folder</span>
+                                <span>${this.escapeHtml(directory.name)}</span>
+                                <span class="material-icons" aria-hidden="true">chevron_right</span>
+                            </button>`).join('');
+        }
+        const confirm = picker.element.querySelector('[data-move-picker-confirm]');
+        if (confirm) {
+            confirm.disabled = picker.loading
+                || Boolean(reason)
+                || this.transferExecutionInProgress;
+        }
+        if (picker.focusListAfterRender && !picker.loading) {
+            picker.focusListAfterRender = false;
+            const nextFocus = picker.element.querySelector('[data-move-picker-directory]')
+                || (confirm && !confirm.disabled ? confirm : null)
+                || picker.element.querySelector('[data-move-picker-up]:not(:disabled)')
+                || picker.element.querySelector('[data-move-picker-refresh]:not(:disabled)');
+            nextFocus?.focus?.();
+        }
+    }
+
+    async confirmMovePicker() {
+        const picker = this.movePicker;
+        if (
+            !picker
+            || picker.loading
+            || this.transferExecutionInProgress
+            || this.movePickerTargetReason(picker)
+        ) return 'unavailable';
+        const entries = this.getPaneStateEntries();
+        const fold = value => picker.sourceKind === 'smb'
+            ? value.toLocaleLowerCase('en-US')
+            : value;
+        const sourcePath = this.canonicalMovePath(picker.sourcePath);
+        const sourceEntry = entries.find(({ pane, state, visible }) => {
+            const currentPath = this.canonicalMovePath(state?.path);
+            return pane === picker.pane
+                && visible
+                && !state.loading
+                && !state.error
+                && this.getPaneSourceId(state) === picker.sourceId
+                && sourcePath
+                && currentPath
+                && fold(currentPath) === fold(sourcePath)
+                && this.sourceCan(state, 'list')
+                && this.sourceCan(state, 'rename')
+                && this.sourceCan(state, 'write');
+        });
+        const availableItems = new Map(
+            (sourceEntry?.state?.files || [])
+                .filter(item => item && typeof item.name === 'string')
+                .map(item => [fold(item.name), item.is_dir === true]),
+        );
+        const currentSelection = (sourceEntry
+            ? Array.from(sourceEntry.state.selected || [])
+                .map(index => sourceEntry.state.files[index])
+                .filter(item => item && typeof item.name === 'string')
+            : []);
+        const currentSelectionTypes = new Map(
+            currentSelection.map(item => [fold(item.name), item.is_dir === true]),
+        );
+        const selectionStillAvailable = (
+            currentSelection.length === picker.selectedItems.length
+            && picker.selectedItems.every(item => (
+                availableItems.get(fold(item.name)) === (item.is_dir === true)
+                && currentSelectionTypes.get(fold(item.name)) === (item.is_dir === true)
+            ))
+        );
+        const matchingPanes = entries.filter(({ state, visible }) => (
+            visible && this.getPaneSourceId(state) === picker.sourceId
+        ));
+        if (!sourceEntry || !selectionStillAvailable || matchingPanes.length === 0) {
+            this.closeMovePicker();
+            this.showNotification(
+                this.t(
+                    'fm.movePickerUnavailable',
+                    'Select movable items on an available source.',
+                ),
+                'warning',
+            );
+            return 'unavailable';
+        }
+        const move = {
+            sourceId: picker.sourceId,
+            sourcePath: picker.sourcePath,
+            targetPath: picker.targetPath,
+            selectedItems: picker.selectedItems,
+            panesToRefresh: matchingPanes.map(({ pane }) => pane),
+        };
+        this.closeMovePicker();
+        return this.moveItemsWithinSource(
+            move.sourceId,
+            move.sourcePath,
+            move.targetPath,
+            move.selectedItems,
+            move.panesToRefresh,
+        );
     }
 
     async executeTransfer() {
@@ -3391,11 +3957,23 @@ class SFTPFileManager {
             || selectedItems.length === 0
         ) return 'unavailable';
 
+        const retainedSourceIds = [sourceId];
+        this.retainTransferSources(retainedSourceIds);
         this.transferExecutionInProgress = true;
         this.conflictAction = null;
         this.applyToAll = false;
         let outcome = 'complete';
+        let movedCount = 0;
+        let skippedCount = 0;
+        let failedCount = 0;
+        let failureMessage = null;
         try {
+            this.updateWorkspaceActions();
+            this.showNotification(
+                this.t('fm.moveInProgress', 'Moving {count} item(s)...')
+                    .replace('{count}', String(selectedItems.length)),
+                'info',
+            );
             for (const item of selectedItems) {
                 const oldPath = this.joinPath(sourcePath, item.name);
                 const newPath = this.joinPath(targetPath, item.name);
@@ -3428,17 +4006,23 @@ class SFTPFileManager {
                     && response.request_id === requestId
                     && response.old_path === oldPath
                     && response.new_path === newPath;
-                if (correlated && response.success) continue;
+                if (correlated && response.success) {
+                    movedCount++;
+                    continue;
+                }
                 if (correlated && response.code === 'CONFLICT') {
                     const action = await this.resolveUploadConflict(
                         { filename: item.name },
                         { allowReplace: false },
                     );
-                    if (action === 'skip') continue;
+                    if (action === 'skip') {
+                        skippedCount++;
+                        continue;
+                    }
                     outcome = 'cancelled';
                     break;
                 }
-                const message = response?.client_error === 'timeout'
+                failureMessage = response?.client_error === 'timeout'
                     ? this.t(
                         'fm.moveTimeout',
                         'The move timed out before the server confirmed it. Refresh both folders before retrying.',
@@ -3451,19 +4035,50 @@ class SFTPFileManager {
                         : correlated && typeof response.error === 'string'
                             ? response.error
                             : this.t('fm.moveFailed', 'The item could not be moved.');
-                this.showNotification(message, 'error');
+                failedCount++;
                 outcome = 'error';
                 break;
             }
         } finally {
             this.transferExecutionInProgress = false;
-            [...new Set(panesToRefresh)].forEach(pane => this.refreshPane(pane));
+            try {
+                this.updateWorkspaceActions();
+                [...new Set(panesToRefresh)].forEach(pane => this.refreshPane(pane));
+            } finally {
+                this.releaseTransferSources(retainedSourceIds);
+                this.flushPendingQuickDisconnects();
+            }
         }
-        if (outcome === 'complete') {
+        const remainingCount = Math.max(
+            0,
+            selectedItems.length - movedCount - skippedCount - failedCount,
+        );
+        const summary = this.t(
+            'fm.moveResultSummary',
+            'Moved: {moved} · Skipped: {skipped} · Failed: {failed} · Not processed: {remaining}',
+        )
+            .replace('{moved}', String(movedCount))
+            .replace('{skipped}', String(skippedCount))
+            .replace('{failed}', String(failedCount))
+            .replace('{remaining}', String(remainingCount));
+        if (outcome === 'complete' && skippedCount === 0) {
             this.showNotification(
                 this.t('fm.moveComplete', 'Move complete'),
                 'success',
             );
+        } else if (outcome === 'complete') {
+            outcome = movedCount > 0 ? 'partial' : 'skipped';
+            this.showNotification(
+                `${this.t('fm.moveFinished', 'Move finished.')} ${summary}`,
+                'warning',
+            );
+        } else if (outcome === 'cancelled') {
+            this.showNotification(
+                `${this.t('fm.moveCancelledResult', 'Move cancelled.')} ${summary}`,
+                'warning',
+            );
+        } else if (outcome === 'error') {
+            this.showNotification(`${failureMessage} ${summary}`, 'error');
         }
         return outcome;
     }
@@ -3603,6 +4218,10 @@ class SFTPFileManager {
     }
 
     handleDrop(e, targetPane) {
+        if (this.fileOperationBlocked()) {
+            this.clearInternalDragState();
+            return;
+        }
         const files = e.dataTransfer.files;
         const items = e.dataTransfer.items;
         const target = this.panes[targetPane];
@@ -3842,7 +4461,8 @@ class SFTPFileManager {
         const state = this.panes?.[pane];
         const directory = state?.files?.[index];
         if (
-            this.dragSource !== pane
+            this.transferExecutionInProgress
+            || this.dragSource !== pane
             || !directory?.is_dir
             || this.draggedItems.length === 0
             || !this.sourceCan(state, 'rename')
@@ -3854,7 +4474,8 @@ class SFTPFileManager {
     canStartSamePaneMove(pane) {
         const state = this.panes?.[pane];
         return Boolean(
-            this.getPaneSourceId(state)
+            !this.transferExecutionInProgress
+            && this.getPaneSourceId(state)
             && !state.loading
             && !state.error
             && typeof state.path === 'string'
@@ -4231,6 +4852,7 @@ class SFTPFileManager {
     }
 
     downloadSelected() {
+        if (this.fileOperationBlocked()) return;
         const state = this.panes[this.activePane];
 
         if (state.selected.size === 0) {
