@@ -3957,8 +3957,9 @@ class SFTPFileManager {
             || selectedItems.length === 0
         ) return 'unavailable';
 
+        const retainedSourceIds = [sourceId];
+        this.retainTransferSources(retainedSourceIds);
         this.transferExecutionInProgress = true;
-        this.updateWorkspaceActions();
         this.conflictAction = null;
         this.applyToAll = false;
         let outcome = 'complete';
@@ -3966,12 +3967,13 @@ class SFTPFileManager {
         let skippedCount = 0;
         let failedCount = 0;
         let failureMessage = null;
-        this.showNotification(
-            this.t('fm.moveInProgress', 'Moving {count} item(s)...')
-                .replace('{count}', String(selectedItems.length)),
-            'info',
-        );
         try {
+            this.updateWorkspaceActions();
+            this.showNotification(
+                this.t('fm.moveInProgress', 'Moving {count} item(s)...')
+                    .replace('{count}', String(selectedItems.length)),
+                'info',
+            );
             for (const item of selectedItems) {
                 const oldPath = this.joinPath(sourcePath, item.name);
                 const newPath = this.joinPath(targetPath, item.name);
@@ -4039,8 +4041,13 @@ class SFTPFileManager {
             }
         } finally {
             this.transferExecutionInProgress = false;
-            this.updateWorkspaceActions();
-            [...new Set(panesToRefresh)].forEach(pane => this.refreshPane(pane));
+            try {
+                this.updateWorkspaceActions();
+                [...new Set(panesToRefresh)].forEach(pane => this.refreshPane(pane));
+            } finally {
+                this.releaseTransferSources(retainedSourceIds);
+                this.flushPendingQuickDisconnects();
+            }
         }
         const remainingCount = Math.max(
             0,

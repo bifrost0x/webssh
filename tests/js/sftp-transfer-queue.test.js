@@ -1879,6 +1879,94 @@ test('same-source move is sequential, never replaces, and refreshes both panes o
     assert.deepEqual(refreshes, ['left', 'right']);
 });
 
+test('same-source move retains an ephemeral source until every rename finishes', async () => {
+    const scenarios = [
+        {
+            source: fileSource('sftp-quick:quick-a'),
+            disconnectEvent: 'quick_disconnect',
+            disconnectPayload: { connection_id: 'quick-a' },
+        },
+        {
+            source: fileSource('smb-quick:owned', {
+                kind: 'smb', ephemeral: true, protocol: 'SMB 3.1.1',
+            }),
+            disconnectEvent: 'file_source_disconnect',
+            disconnectPayload: { source_id: 'smb-quick:owned' },
+        },
+    ];
+
+    for (const scenario of scenarios) {
+        const manager = Object.create(SFTPFileManager.prototype);
+        manager.initializeWorkspaceState();
+        const state = filePane(manager, scenario.source.sourceId, {
+            source: scenario.source,
+            path: '/source',
+        });
+        const tab = manager.workspace.openTab('left', scenario.source, state);
+        manager.syncPaneFromWorkspace('left');
+        const renameRequests = [];
+        const disconnects = [];
+        Object.assign(manager, {
+            displayMode: 'modal',
+            isOpen: true,
+            quickConnections: scenario.source.kind === 'sftp'
+                ? [{ connectionId: 'quick-a' }]
+                : [],
+            smbSources: scenario.source.kind === 'smb' ? [scenario.source] : [],
+            socket: { emit(event, payload, acknowledgement) {
+                if (event === 'rename_file') {
+                    renameRequests.push({ payload, acknowledgement });
+                    return;
+                }
+                disconnects.push([event, payload]);
+            } },
+            updatePathInput() {}, updatePaneBadge() {}, renderPane() {},
+            renderWorkspaceChrome() {}, updateSessionLists() {},
+            updateWorkspaceActions() {}, refreshPane() {}, showNotification() {},
+            t(_key, fallback) { return fallback; },
+        });
+
+        const move = manager.moveItemsWithinSource(
+            scenario.source.sourceId,
+            '/source',
+            '/target',
+            [
+                { name: 'one.txt', is_dir: false },
+                { name: 'two.txt', is_dir: false },
+            ],
+            ['left'],
+        );
+        assert.equal(renameRequests.length, 1, scenario.source.sourceId);
+
+        manager.closeSourceTab('left', tab.id);
+        assert.deepEqual(disconnects, [], scenario.source.sourceId);
+
+        renameRequests[0].acknowledgement({
+            success: true,
+            source_id: renameRequests[0].payload.source_id,
+            old_path: renameRequests[0].payload.old_path,
+            new_path: renameRequests[0].payload.new_path,
+            request_id: renameRequests[0].payload.request_id,
+        });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(renameRequests.length, 2, scenario.source.sourceId);
+        assert.deepEqual(disconnects, [], scenario.source.sourceId);
+
+        renameRequests[1].acknowledgement({
+            success: true,
+            source_id: renameRequests[1].payload.source_id,
+            old_path: renameRequests[1].payload.old_path,
+            new_path: renameRequests[1].payload.new_path,
+            request_id: renameRequests[1].payload.request_id,
+        });
+        assert.equal(await move, 'complete', scenario.source.sourceId);
+        assert.deepEqual(disconnects, [[
+            scenario.disconnectEvent,
+            scenario.disconnectPayload,
+        ]], scenario.source.sourceId);
+    }
+});
+
 test('same-source move stops after a cancelled conflict and refreshes both panes', async () => {
     const requests = [];
     const refreshes = [];
