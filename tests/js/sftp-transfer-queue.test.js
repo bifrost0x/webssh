@@ -3273,6 +3273,162 @@ test('new server copies join the visible queue and start after earlier work is t
     );
 });
 
+test('server copy conflict cancellation reports a batch cancellation', async () => {
+    const queuedTransfer = {
+        id: 'queued-copy',
+        type: 's2s-queued',
+        status: 'pending',
+        batchId: 'batch-a',
+        sourceIds: ['sftp-session:source', 'sftp-session:target'],
+    };
+    let manager;
+    manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [queuedTransfer],
+        activeTransfers: new Map(),
+        isTransferring: false,
+        pendingS2SRequests: new Map(),
+        s2sEarlyTerminals: new Map(),
+        s2sTerminalWaiters: new Map(),
+        requestSequence: 0,
+        socket: {
+            emit(event, payload, acknowledgement) {
+                assert.equal(event, 'transfer_server_to_server');
+                const context = {
+                    transfer_id: 'server-copy',
+                    source_id: payload.source_id,
+                    destination_source_id: payload.destination_source_id,
+                    request_id: payload.request_id,
+                };
+                manager.failS2STransfer({
+                    ...context,
+                    error: 'A file or folder already exists at the destination.',
+                    error_code: 'CONFLICT',
+                    retryable: false,
+                });
+                acknowledgement({ success: true, ...context });
+            },
+        },
+        recordUploadTerminal() {},
+        releaseTransferSources() {},
+        flushPendingQuickDisconnects() {},
+        renderTransferQueue() {},
+        processTransferQueue() {},
+        showNotification() {},
+        resolveUploadConflict() { return Promise.resolve('cancel'); },
+        t(_key, fallback) { return fallback; },
+    });
+
+    const result = await manager.transferSSHtoSSH(
+        '/source/report.txt',
+        filePane(manager, 'sftp-session:source'),
+        '/target/report.txt',
+        filePane(manager, 'sftp-session:target'),
+        { name: 'report.txt', is_dir: false, size: 10 },
+        'error',
+        queuedTransfer,
+    );
+
+    assert.equal(result, 'batch-cancelled');
+    assert.equal(queuedTransfer.status, 'cancelled');
+});
+
+test('batch cancellation skips its remaining server copies but preserves later batches', async () => {
+    const started = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [
+            {
+                id: 'batch-a-1', type: 's2s-queued', status: 'pending',
+                batchId: 'batch-a', sourceIds: [],
+            },
+            {
+                id: 'batch-a-2', type: 's2s-queued', status: 'pending',
+                batchId: 'batch-a', sourceIds: [],
+            },
+            {
+                id: 'batch-b-1', type: 's2s-queued', status: 'pending',
+                batchId: 'batch-b', sourceIds: [],
+            },
+        ],
+        activeTransfers: new Map(),
+        isTransferring: false,
+        transferExecutionInProgress: false,
+        async transferSSHtoSSH(_sourcePath, _sourcePane, _targetPath, _targetPane, _item, _policy, transfer) {
+            started.push(transfer.id);
+            transfer.status = transfer.id === 'batch-a-1' ? 'cancelled' : 'complete';
+            return transfer.id === 'batch-a-1' ? 'batch-cancelled' : 'complete';
+        },
+        recordUploadTerminal() {},
+        releaseTransferSources() {},
+        flushPendingQuickDisconnects() {},
+        renderTransferQueue() {},
+        updateWorkspaceActions() {},
+        processTransferQueue() {},
+    });
+
+    await manager.drainQueuedServerTransfers();
+
+    assert.deepEqual(started, ['batch-a-1', 'batch-b-1']);
+    assert.deepEqual(
+        manager.transferQueue.map(transfer => transfer.status),
+        ['cancelled', 'cancelled', 'complete'],
+    );
+});
+
+test('queued server copies wait for the current transfer queue owner', async () => {
+    let starts = 0;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [{
+            id: 'queued-copy', type: 's2s-queued', status: 'pending',
+            batchId: 'batch-a', sourceIds: [],
+        }],
+        activeTransfers: new Map([['upload-1', { id: 'upload-1' }]]),
+        isTransferring: true,
+        transferExecutionInProgress: false,
+        async transferSSHtoSSH() {
+            starts++;
+            this.transferQueue[0].status = 'complete';
+            return 'complete';
+        },
+        renderTransferQueue() {},
+        updateWorkspaceActions() {},
+    });
+
+    const result = await manager.drainQueuedServerTransfers();
+
+    assert.equal(result, 'queued');
+    assert.equal(starts, 0);
+    assert.equal(manager.transferQueue[0].status, 'pending');
+    assert.equal(manager.isTransferring, true);
+});
+
+test('finishing one active transfer keeps the queue owned by another active transfer', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        transferQueue: [
+            { id: 'upload-1', type: 'upload', status: 'active', sourceIds: [] },
+            { id: 'download-1', type: 'download', status: 'active', sourceIds: [] },
+        ],
+        activeTransfers: new Map([
+            ['upload-1', { id: 'upload-1' }],
+            ['download-1', { id: 'download-1' }],
+        ]),
+        isTransferring: true,
+        recordUploadTerminal() {},
+        releaseTransferSources() {},
+        flushPendingQuickDisconnects() {},
+        renderTransferQueue() {},
+        processTransferQueue() {},
+    });
+
+    manager.finalizeTransferById('upload-1', 'complete');
+
+    assert.equal(manager.isTransferring, true);
+    assert.equal(manager.activeTransfers.has('download-1'), true);
+});
+
 test('cancelling a pending server copy never emits a server cancellation', () => {
     const emitted = [];
     const released = [];

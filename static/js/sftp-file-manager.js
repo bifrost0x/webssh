@@ -3869,10 +3869,12 @@ class SFTPFileManager {
         const targetSourceId = this.getPaneSourceId(target);
         const sourceSnapshot = { source: { ...source.source } };
         const targetSnapshot = { source: { ...target.source } };
+        const batchId = this.nextRequestId('queue', 'remote-transfer-batch');
         for (const item of selectedItems) {
             this.queueTransfer({
                 id: this.nextRequestId('queue', 'remote-transfer'),
                 type: 's2s-queued',
+                batchId,
                 filename: item.name,
                 sourcePath: this.joinPath(source.path, item.name),
                 targetPath: this.joinPath(target.path, item.name),
@@ -3887,21 +3889,27 @@ class SFTPFileManager {
     }
 
     async drainQueuedServerTransfers() {
-        if (this.transferExecutionInProgress) return 'queued';
+        if (this.transferExecutionInProgress || this.isTransferring) return 'queued';
         this.transferExecutionInProgress = true;
         this.conflictAction = null;
         this.applyToAll = false;
+        let currentBatchId = null;
         this.updateWorkspaceActions();
         try {
             while (true) {
-                const pending = this.transferQueue.find(transfer => (
-                    transfer.type === 's2s-queued'
-                    && transfer.status === 'pending'
-                ));
+                const pending = this.transferQueue.find(
+                    transfer => transfer.status === 'pending'
+                );
                 if (!pending) return 'complete';
+                if (pending.type !== 's2s-queued') return 'queued';
+                if (pending.batchId !== currentBatchId) {
+                    currentBatchId = pending.batchId;
+                    this.conflictAction = null;
+                    this.applyToAll = false;
+                }
                 pending.starting = true;
                 this.renderTransferQueue();
-                await this.transferSSHtoSSH(
+                const outcome = await this.transferSSHtoSSH(
                     pending.sourcePath,
                     pending.sourcePane,
                     pending.targetPath,
@@ -3911,10 +3919,22 @@ class SFTPFileManager {
                     pending,
                 );
                 delete pending.starting;
+                if (outcome === 'batch-cancelled') {
+                    for (const transfer of this.transferQueue) {
+                        if (
+                            transfer.type === 's2s-queued'
+                            && transfer.status === 'pending'
+                            && transfer.batchId === pending.batchId
+                        ) {
+                            this.finalizeTransferById(transfer.id, 'cancelled');
+                        }
+                    }
+                }
             }
         } finally {
             this.transferExecutionInProgress = false;
             this.updateWorkspaceActions();
+            void this.processTransferQueue();
         }
     }
 
@@ -4257,6 +4277,29 @@ class SFTPFileManager {
             });
             if (action === 'replace') {
                 this.activeTransfers.delete(transferId);
+                if (queuedTransfer) {
+                    queuedTransfer.id = this.nextRequestId(
+                        'queue', 'remote-transfer'
+                    );
+                    queuedTransfer.type = 's2s-queued';
+                    queuedTransfer.status = 'pending';
+                    queuedTransfer.progress = 0;
+                    delete queuedTransfer.error;
+                    delete queuedTransfer.errorCode;
+                    delete queuedTransfer.retryable;
+                    this.retainTransferSources(sourceIds);
+                    queuedTransfer.starting = true;
+                    this.renderTransferQueue();
+                    return this.transferSSHtoSSH(
+                        sourcePath,
+                        sourcePane,
+                        targetPath,
+                        targetPane,
+                        item,
+                        'replace',
+                        queuedTransfer,
+                    );
+                }
                 this.transferQueue = this.transferQueue.filter(
                     transfer => transfer.id !== transferId
                 );
@@ -4275,7 +4318,9 @@ class SFTPFileManager {
             completedTransfer.errorCode = null;
             completedTransfer.retryable = false;
             this.renderTransferQueue();
-            return completedTransfer.status;
+            return action === 'cancel' && queuedTransfer?.batchId
+                ? 'batch-cancelled'
+                : completedTransfer.status;
         }
         return status;
     }
@@ -4624,16 +4669,17 @@ class SFTPFileManager {
         transfer.progress = 0;
         this.transferQueue.push(transfer);
         this.renderTransferQueue();
-        this.processTransferQueue();
+        if (transfer.type !== 's2s-queued') this.processTransferQueue();
     }
 
     async processTransferQueue() {
-        if (this.isTransferring) return;
+        if (this.isTransferring || this.transferExecutionInProgress) return;
 
-        const pending = this.transferQueue.find(t => (
-            t.status === 'pending' && t.type !== 's2s-queued'
-        ));
+        const pending = this.transferQueue.find(t => t.status === 'pending');
         if (!pending) return;
+        if (pending.type === 's2s-queued') {
+            return this.drainQueuedServerTransfers();
+        }
 
         this.isTransferring = true;
         pending.status = 'active';
@@ -4923,8 +4969,10 @@ class SFTPFileManager {
             this.resolveS2STerminal(transfer.id, status);
         }
         if (wasActive) {
-            this.isTransferring = false;
-            setTimeout(() => this.processTransferQueue(), 100);
+            this.isTransferring = this.activeTransfers.size > 0;
+            if (!this.isTransferring && !this.transferExecutionInProgress) {
+                setTimeout(() => this.processTransferQueue(), 100);
+            }
         }
         this.renderTransferQueue();
         this.flushPendingQuickDisconnects();
