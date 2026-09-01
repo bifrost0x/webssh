@@ -76,6 +76,87 @@ def test_profile_organization_fields_are_normalized_and_persisted(app):
         assert profile_manager.load_profiles(user_id) == [profile]
 
 
+def test_profile_tmux_preference_is_validated_and_persisted(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-tmux-preference')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Persistent shell',
+            'host': 'shell.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'use_tmux': True,
+        })
+
+        assert error is None
+        assert profile['use_tmux'] is True
+        assert profile_manager.load_profiles(user_id)[0]['use_tmux'] is True
+
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'id': profile['id'],
+            'name': 'Persistent shell',
+            'host': 'shell.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'use_tmux': False,
+        })
+
+        assert error is None
+        assert profile['use_tmux'] is False
+        assert profile_manager.load_profiles(user_id)[0]['use_tmux'] is False
+
+
+def test_profile_edit_without_tmux_field_preserves_existing_preference(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-tmux-preserve')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Persistent shell',
+            'host': 'shell.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'use_tmux': True,
+        })
+        assert error is None
+
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'id': profile['id'],
+            'name': 'Renamed persistent shell',
+            'host': 'shell.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        })
+
+        assert error is None
+        assert profile['use_tmux'] is True
+        assert profile_manager.load_profiles(user_id)[0]['use_tmux'] is True
+
+
+def test_profile_rejects_non_boolean_tmux_preference(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-tmux-invalid')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Invalid persistent shell',
+            'host': 'shell.example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'use_tmux': 'true',
+        })
+
+        assert profile is None
+        assert error == 'use_tmux must be a boolean'
+        assert profile_manager.load_profiles(user_id) == []
+
+
 @pytest.mark.parametrize('sort_order', [True, -1, '1', 1.5])
 def test_profile_document_rejects_invalid_sort_order(app, sort_order):
     from app import profile_manager
