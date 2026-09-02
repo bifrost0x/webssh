@@ -407,6 +407,69 @@ def test_last_socket_disconnect_cleans_pools_when_metadata_commit_fails(
     assert socket_capacity.count_for_user(user_id) == 0
 
 
+def test_metadata_failure_rechecks_replacement_socket_before_pool_cleanup(
+    app, monkeypatch
+):
+    from app import connection_pool, smb_pool, socket_events
+    from app.models import db
+    from app.socket_capacity import socket_capacity
+
+    socket_client, user_id = _authenticated_socket(
+        app, 'disconnect_reconnect_user'
+    )
+    replacement_sid = 'replacement-after-fallback-sample'
+    cleanup_calls = []
+    original_count_for_user = socket_capacity.count_for_user
+    count_calls = 0
+
+    def reconnect_after_first_count(owner_id):
+        nonlocal count_calls
+        count_calls += 1
+        current_count = original_count_for_user(owner_id)
+        if count_calls == 1:
+            assert socket_capacity.reserve(
+                owner_id,
+                replacement_sid,
+                max_total=100,
+                max_per_user=100,
+            )
+        return current_count
+
+    monkeypatch.setattr(
+        db.session,
+        'commit',
+        lambda: (_ for _ in ()).throw(RuntimeError('database unavailable')),
+    )
+    monkeypatch.setattr(
+        socket_capacity,
+        'count_for_user',
+        reconnect_after_first_count,
+    )
+    monkeypatch.setattr(
+        socket_events.transfer_manager,
+        'cancel_all_for_user',
+        lambda owner_id: cleanup_calls.append(('transfers', owner_id)),
+    )
+    monkeypatch.setattr(
+        connection_pool.temp_connection_pool,
+        'close_all_user_connections',
+        lambda owner_id: cleanup_calls.append(('ssh', owner_id)) or 0,
+    )
+    monkeypatch.setattr(
+        smb_pool.smb_connection_pool,
+        'close_all_user_sources',
+        lambda owner_id: cleanup_calls.append(('smb', owner_id)) or 0,
+    )
+
+    try:
+        socket_client.disconnect()
+    finally:
+        socket_capacity.release(replacement_sid)
+
+    assert count_calls == 2
+    assert cleanup_calls == []
+
+
 def test_disconnect_cancels_only_transfers_prepared_by_that_socket(app, monkeypatch):
     from app import socket_events, transfer_routes
     from app.transfer_manager import TransferManager

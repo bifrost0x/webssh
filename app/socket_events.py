@@ -456,6 +456,9 @@ def handle_disconnect():
                 sid=socket_sid,
                 exception_type=type(error).__name__,
             )
+            # A replacement socket may have connected after the fallback was
+            # sampled but before the metadata operation failed.
+            other_sessions = socket_capacity.count_for_user(user_id)
 
         if other_sessions == 0:
             try:

@@ -48,7 +48,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/sftp-file-manager.js'": '?v=35',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=5',
-        "filename='js/command-set-manager.js'": '?v=7',
+        "filename='js/command-set-manager.js'": '?v=8',
         "filename='js/session-command-launcher.js'": '?v=5',
         "filename='js/connection-history.js'": '?v=2',
         "filename='js/app.js'": '?v=29',
