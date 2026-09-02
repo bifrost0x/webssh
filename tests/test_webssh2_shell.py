@@ -2,6 +2,14 @@
 
 from pathlib import Path
 
+from app.static_delivery import static_asset_version
+
+
+def _versioned_asset_marker(app, filename):
+    version = static_asset_version(app, filename)
+    assert version is not None
+    return f'{filename}?v={version}'.encode()
+
 
 def _create_login(app, client):
     from app.auth import register_user
@@ -134,24 +142,24 @@ def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
     _create_login(app, client)
 
     for path, translation_bundle in (
-        ("/", b'js/i18n.js?v=46'),
-        ("/security", b'js/i18n.js?v=46'),
-        ("/settings", b'js/i18n.js?v=46'),
-        ("/change-password", b'js/i18n-auth.js?v=1'),
+        ("/", 'js/i18n.js'),
+        ("/security", 'js/i18n.js'),
+        ("/settings", 'js/i18n.js'),
+        ("/change-password", 'js/i18n-auth.js'),
     ):
         response = client.get(path)
         assert response.status_code == 200
-        assert b'css/style.css?v=25' in response.data
-        assert b'css/webssh-2.css?v=32' in response.data
-        assert translation_bundle in response.data
+        assert _versioned_asset_marker(app, 'css/style.css') in response.data
+        assert _versioned_asset_marker(app, 'css/webssh-2.css') in response.data
+        assert _versioned_asset_marker(app, translation_bundle) in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
         response = client.get(path)
         assert response.status_code == 200
-        assert b'css/style.css?v=25' in response.data
-        assert b'css/webssh-2.css?v=32' in response.data
-        assert b'js/i18n-auth.js?v=1' in response.data
+        assert _versioned_asset_marker(app, 'css/style.css') in response.data
+        assert _versioned_asset_marker(app, 'css/webssh-2.css') in response.data
+        assert _versioned_asset_marker(app, 'js/i18n-auth.js') in response.data
 
 
 def test_compact_workspace_controls_keep_accessible_names_and_close_command_input(
@@ -176,9 +184,9 @@ def test_compact_workspace_controls_keep_accessible_names_and_close_command_inpu
         b'data-i18n-aria-label="terminal.hideInput"',
         b'id="mobileSendBtn"',
         b'data-i18n-aria-label="terminal.sendInput"',
-        b'js/mobile-app-shell.js?v=7',
     ):
         assert marker in response.data
+    assert _versioned_asset_marker(app, 'js/mobile-app-shell.js') in response.data
 
 
 def test_global_management_navigation_uses_one_primary_workspace_surface(
@@ -191,7 +199,10 @@ def test_global_management_navigation_uses_one_primary_workspace_surface(
 
     assert response.status_code == 200
     assert b'id="primaryWorkspaceSurface"' in response.data
-    assert b'js/primary-workspace-controller.js?v=1' in response.data
+    assert (
+        _versioned_asset_marker(app, 'js/primary-workspace-controller.js')
+        in response.data
+    )
     assert b'id="profileManagementModal"' in response.data
     assert b'id="commandWorkspaceModal"' in response.data
     assert b'class="session-tabs-row"' in response.data

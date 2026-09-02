@@ -1,13 +1,16 @@
 """Safe delivery policy for public, application-owned static assets."""
 
 import gzip
+import hashlib
 import re
+from functools import lru_cache
+from pathlib import Path
 
-from flask import request
+from flask import request, url_for
 from flask.sessions import SecureCookieSessionInterface
 
 
-_VERSION_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
+_VERSION_PATTERN = re.compile(r"[0-9a-f]{16}")
 _COMPRESSIBLE_MIMETYPES = (
     "application/javascript",
     "application/x-javascript",
@@ -27,6 +30,48 @@ def _remove_cookie_variance(response) -> None:
 def _add_accept_encoding_variance(response) -> None:
     if all(value.casefold() != "accept-encoding" for value in response.vary):
         response.vary = [*response.vary, "Accept-Encoding"]
+
+
+def _resolve_static_asset(app, filename: str) -> Path | None:
+    try:
+        static_root = Path(app.static_folder).resolve(strict=True)
+        asset_path = (static_root / filename).resolve(strict=True)
+        asset_path.relative_to(static_root)
+    except (OSError, ValueError):
+        return None
+    return asset_path if asset_path.is_file() else None
+
+
+@lru_cache(maxsize=512)
+def _content_version(
+    path: str,
+    modified_ns: int,
+    changed_ns: int,
+    size: int,
+) -> str:
+    del modified_ns, changed_ns, size
+    digest = hashlib.sha256()
+    with open(path, "rb") as asset:
+        for chunk in iter(lambda: asset.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+def static_asset_version(app, filename: str) -> str | None:
+    """Return a content-derived cache key for one local static asset."""
+    asset_path = _resolve_static_asset(app, filename)
+    if asset_path is None:
+        return None
+    try:
+        stat = asset_path.stat()
+        return _content_version(
+            str(asset_path),
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+            stat.st_size,
+        )
+    except OSError:
+        return None
 
 
 def _compress_static_response(response):
@@ -73,14 +118,19 @@ class _StaticAwareSessionInterface(SecureCookieSessionInterface):
             _remove_cookie_variance(response)
 
 
-def _has_valid_asset_version() -> bool:
-    """Return whether the request has exactly one bounded cache-version key."""
+def _has_current_asset_version(app) -> bool:
+    """Return whether the only query key matches the current asset content."""
     versions = request.args.getlist("v")
-    return (
-        len(request.args) == 1
-        and len(versions) == 1
-        and _VERSION_PATTERN.fullmatch(versions[0]) is not None
-    )
+    if (
+        len(request.args) != 1
+        or len(versions) != 1
+        or _VERSION_PATTERN.fullmatch(versions[0]) is None
+    ):
+        return False
+    filename = (request.view_args or {}).get("filename")
+    if not isinstance(filename, str):
+        return False
+    return versions[0] == static_asset_version(app, filename)
 
 
 def init_static_delivery(app) -> None:
@@ -94,6 +144,14 @@ def init_static_delivery(app) -> None:
             "static delivery requires Flask's secure-cookie session interface"
         )
     app.session_interface = _StaticAwareSessionInterface()
+
+    def static_asset_url(filename: str) -> str:
+        version = static_asset_version(app, filename)
+        if version is None:
+            raise FileNotFoundError(f"static asset does not exist: {filename}")
+        return url_for("static", filename=filename, v=version)
+
+    app.jinja_env.globals["static_asset_url"] = static_asset_url
 
     @app.after_request
     def optimize_static_delivery(response):
@@ -110,11 +168,13 @@ def init_static_delivery(app) -> None:
         elif (
             request.method in {"GET", "HEAD"}
             and response.status_code in {200, 206, 304}
-            and _has_valid_asset_version()
+            and _has_current_asset_version(app)
         ):
             response.headers["Cache-Control"] = (
                 "public, max-age=31536000, immutable"
             )
+        elif request.method not in {"GET", "HEAD"} or request.args:
+            response.headers["Cache-Control"] = "no-store"
         else:
             response.headers["Cache-Control"] = (
                 "public, max-age=0, must-revalidate"

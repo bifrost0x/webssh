@@ -143,7 +143,7 @@ html {
 }
 
 body[data-theme="glass"] {
-    --theme-background-image-source: url("../images/theme-backgrounds/carbon-glass.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/carbon-glass.png?v=95ff9eb547df4609");
     --theme-background-opacity: 0.07;
 }
 
@@ -176,7 +176,7 @@ body[data-theme="retro"] {
     --term-foreground: #eee4d6;
     --term-yellow: #dca144;
     --term-bright-yellow: #efbd65;
-    --theme-background-image-source: url("../images/theme-backgrounds/retro-amber.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/retro-amber.png?v=6dfcfa4b2da2ed89");
     --theme-background-opacity: 0.16;
 }
 
@@ -207,7 +207,7 @@ body[data-theme="solar"] {
     --term-foreground: #e8f0f8;
     --term-blue: #65a0ed;
     --term-bright-blue: #8ab9f3;
-    --theme-background-image-source: url("../images/theme-backgrounds/navy-topography.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/navy-topography.png?v=2fc2ee91cd3a367a");
     --theme-background-opacity: 0.065;
 }
 
@@ -256,7 +256,7 @@ body[data-theme="paper"] {
     --term-bright-magenta: #9165ab;
     --term-bright-cyan: #328b94;
     --term-bright-white: #15283a;
-    --theme-background-image-source: url("../images/theme-backgrounds/paper-blueprint.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/paper-blueprint.png?v=6446debbede0159c");
     --theme-background-opacity: 0.18;
     --theme-surface-shell: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
     --theme-surface-modal: color-mix(in srgb, var(--bg-modal) 68%, transparent);
@@ -305,7 +305,7 @@ body[data-theme="noir"] {
     --term-bright-magenta: #deaeff;
     --term-bright-cyan: #a0f0ff;
     --term-bright-white: #ffffff;
-    --theme-background-image-source: url("../images/theme-backgrounds/noir-architecture.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/noir-architecture.png?v=19e5587f9a64e767");
     --theme-background-opacity: 0.06;
 }
 
@@ -352,7 +352,7 @@ body[data-theme="arctic-ice"] {
     --term-bright-magenta: #dac8ff;
     --term-bright-cyan: #56d8f0;
     --term-bright-white: #ffffff;
-    --theme-background-image-source: url("../images/theme-backgrounds/arctic-frost.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/arctic-frost.png?v=9ce8ec48bcfb1cec");
     --theme-background-opacity: 0.07;
 }
 
@@ -398,7 +398,7 @@ body[data-theme="rose-gold"] {
     --term-bright-magenta: #ffb8d4;
     --term-bright-cyan: #a0f0dc;
     --term-bright-white: #ffffff;
-    --theme-background-image-source: url("../images/theme-backgrounds/rose-brushed-metal.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/rose-brushed-metal.png?v=b52519a406770ed3");
     --theme-background-opacity: 0.06;
 }
 
@@ -444,7 +444,7 @@ body[data-theme="cyberpunk-neon"] {
     --term-bright-magenta: #f070ff;
     --term-bright-cyan: #33f5ff;
     --term-bright-white: #ffffff;
-    --theme-background-image-source: url("../images/theme-backgrounds/neon-circuit.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/neon-circuit.png?v=8b50e5a15d57eedb");
     --theme-background-opacity: 0.14;
 }
 
@@ -491,7 +491,7 @@ body[data-theme="emerald-matrix"] {
     --term-bright-magenta: #70f0d4;
     --term-bright-cyan: #6ee7b7;
     --term-bright-white: #ffffff;
-    --theme-background-image-source: url("../images/theme-backgrounds/matrix-signal.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/matrix-signal.png?v=6c7915bd78ae16d6");
     --theme-background-opacity: 0.18;
 }
 
@@ -538,7 +538,7 @@ body[data-theme="obsidian"] {
     --term-bright-magenta: #f070ff;
     --term-bright-cyan: #56d8f0;
     --term-bright-white: #ffffff;
-    --theme-background-image-source: url("../images/theme-backgrounds/obsidian-glass.png?v=1");
+    --theme-background-image-source: url("../images/theme-backgrounds/obsidian-glass.png?v=4a998eeddd245ec7");
     --theme-background-opacity: 0.055;
 }
 

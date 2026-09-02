@@ -8,13 +8,13 @@
     <meta name="webauthn-configured-origin" content="{{ webauthn_origin }}">
     <meta name="webauthn-rp-id" content="{{ webauthn_rp_id }}">
     <title data-i18n="auth.loginPageTitle">Sign in · WebSSH</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}?v=1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=25">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}?v=3">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=32">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/material-icons/material-icons.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/auth.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
 </head>
 <body data-theme="glass" data-use-theme-preference data-defer-theme-background>
-    <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=2"></script>
+    <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
 
     <div class="auth-shell">
         <header class="auth-utility-bar">
@@ -39,7 +39,7 @@
                 <div class="auth-context-panel">
                     <div class="auth-brand-lockup">
                         <div class="auth-product-brand">
-                            <img class="auth-product-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}?v=1" alt="WebSSH">
+                            <img class="auth-product-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH">
                         </div>
                         <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
                     </div>
@@ -320,9 +320,9 @@
         </main>
     </div>
 
-    <script src="{{ url_for('static', filename='js/i18n-auth.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/auth.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
-    <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=7"></script>
+    <script src="{{ static_asset_url(filename='js/i18n-auth.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/auth.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/security-ui.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/webauthn.js') }}"></script>
 </body>
 </html>
