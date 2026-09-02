@@ -18,9 +18,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=21">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=9">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=31">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/sftp-file-manager.css') }}?v=22">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/session-workspace.css') }}?v=10">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=32">
 </head>
 <body data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}">
     <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
@@ -959,7 +959,7 @@
                         <label class="management-search-control" for="commandSearchInput">
                             <span class="material-icons" aria-hidden="true">search</span>
                             <span class="sr-only" data-i18n="commands.searchPlaceholder">Search commands, parameters, or descriptions...</span>
-                            <input type="text" id="commandSearchInput" class="form-control search-input" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
+                            <input type="search" id="commandSearchInput" class="form-control" data-i18n-placeholder="commands.searchPlaceholder" placeholder="Search commands, parameters, or descriptions...">
                         </label>
                         <div class="management-panel-actions">
                             <button class="btn btn-primary" id="addCommandBtn"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="commands.addCommand">Add Command</span></button>
@@ -1418,7 +1418,7 @@
         window.WEBSSH_TRANSFER_LIMITS = Object.freeze({{ transfer_limits | tojson }});
         window.WEBSSH_SSH_INPUT_LIMITS = Object.freeze({{ ssh_input_limits | tojson }});
     </script>
-    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=44"></script>
+    <script src="{{ url_for('static', filename='js/i18n.js') }}?v=45"></script>
     <script src="{{ url_for('static', filename='js/ssh-error-ui.js') }}?v=1"></script>
 
     <script src="{{ url_for('static', filename='js/binary-transfer-client.js') }}?v=6"></script>
@@ -1434,7 +1434,7 @@
     <script src="{{ url_for('static', filename='js/command-palette-utils.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/profile-launcher-utils.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/connection-launcher.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/command-workspace.js') }}?v=4"></script>
 
     <script src="{{ url_for('static', filename='js/terminal-manager.js') }}?v=12"></script>
     <script src="{{ url_for('static', filename='js/ssh-input.js') }}?v=2"></script>
@@ -1447,7 +1447,7 @@
     <script src="{{ url_for('static', filename='js/profile-manager.js') }}?v=19"></script>
     <script src="{{ url_for('static', filename='js/jump-host-manager.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/command-library.js') }}?v=5"></script>
-    <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=6"></script>
+    <script src="{{ url_for('static', filename='js/command-set-manager.js') }}?v=7"></script>
     <script src="{{ url_for('static', filename='js/connection-command-manager.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/session-command-launcher.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/file-transfer.js') }}?v=3"></script>

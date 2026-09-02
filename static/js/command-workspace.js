@@ -60,7 +60,7 @@ window.CommandWorkspace = {
         if (focusContent) {
             const target = next === 'library'
                 ? document.getElementById('commandSearchInput')
-                : document.getElementById('newCommandSetBtn');
+                : document.getElementById('commandSetManagementSearch');
             setTimeout(() => target?.focus(), 0);
         }
     },

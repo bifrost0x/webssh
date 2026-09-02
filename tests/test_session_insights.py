@@ -1,5 +1,8 @@
-import pytest
+import shutil
+import subprocess
 from threading import Event, Lock, Thread
+
+import pytest
 
 
 from app import session_insights
@@ -240,6 +243,30 @@ def test_remote_diagnostics_use_a_fixed_safe_environment_without_elevation():
     assert 'if [ -r /proc/stat ]' in session_insights.LINUX_STATS_COMMAND
     assert 'command -v df' in session_insights.LINUX_STATS_COMMAND
     assert 'command -v uname' in session_insights.LINUX_STATS_COMMAND
+
+
+@pytest.mark.skipif(shutil.which('awk') is None, reason='awk is not installed')
+def test_network_collector_reads_bytes_for_short_and_long_interface_names():
+    proc_net_dev = """\
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 99999999 9999 0 0 0 0 0 0 88888888 8888 0 0 0 0 0 0
+  eth0: 10485760 1000 0 0 0 0 0 0 12345 100 0 0 0 0 0 0
+enp0s31f6: 20971520 2000 0 0 0 0 0 0 54321 200 0 0 0 0 0 0
+"""
+
+    result = subprocess.run(
+        ['awk', session_insights.LINUX_NETWORK_AWK_PROGRAM],
+        input=proc_net_dev,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout.splitlines() == [
+        'network_received_bytes=31457280',
+        'network_transmitted_bytes=66666',
+    ]
 
 
 class FakeChannel:

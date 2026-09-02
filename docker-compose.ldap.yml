@@ -7,6 +7,8 @@ services:
       LDAP_AUTO_PROVISION: "false"
       LDAP_PROVIDER_ID: default
       LDAP_URL: ""
+      # Optional failover endpoint for the same directory and CA trust.
+      LDAP_BACKUP_URL: ""
       LDAP_BASE_DN: ""
       LDAP_BIND_DN: ""
       LDAP_USER_FILTER: ""

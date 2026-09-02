@@ -211,6 +211,9 @@ window.CommandSetManager = {
         this.returnToConnection = false;
         this.showManagementList();
         this.openModal();
+        setTimeout(() => {
+            document.getElementById('commandSetManagementSearch')?.focus();
+        }, 0);
     },
 
     openBuilder(id = null, returnToConnection = false) {

@@ -18,6 +18,7 @@ SECURITY_ENV_NAMES = {
     'DEPLOYMENT_PROFILE',
     'LDAP_BASE_DN',
     'LDAP_AUTO_PROVISION',
+    'LDAP_BACKUP_URL',
     'LDAP_BIND_DN',
     'LDAP_BIND_PASSWORD_FILE',
     'LDAP_CA_FILE',
@@ -305,6 +306,69 @@ def test_enabled_ldap_accepts_starttls_with_bounded_timeouts():
     assert result.stdout.splitlines()[-1] == '4 6'
 
 
+def test_enabled_ldap_accepts_a_distinct_tls_verified_backup_endpoint():
+    result = _load_config(
+        _production_env(
+            LDAP_ENABLED='true',
+            LDAP_URL='ldaps://dc01.ad.example.com:636',
+            LDAP_BACKUP_URL='ldaps://dc02.ad.example.com:636',
+            LDAP_BASE_DN='ou=people,dc=ad,dc=example,dc=com',
+            LDAP_BIND_DN='cn=webssh,ou=services,dc=ad,dc=example,dc=com',
+            LDAP_BIND_PASSWORD_FILE='/run/webssh-auth/ldap_bind_password',
+            LDAP_CA_FILE='/run/webssh-auth/ldap_ca.pem',
+            LDAP_USER_FILTER='(&(objectClass=person)(uid={username}))',
+            LDAP_UNIQUE_ID_ATTRIBUTE='objectGUID',
+        ),
+        'import config; print(config.LDAP_BACKUP_URL)',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[-1] == 'ldaps://dc02.ad.example.com:636'
+
+
+@pytest.mark.parametrize(
+    'backup_url',
+    (
+        'http://dc02.ad.example.com',
+        'ldaps://user:secret@dc02.ad.example.com:636',
+        'ldap://dc02.ad.example.com:bad',
+    ),
+)
+def test_enabled_ldap_rejects_an_unsafe_backup_endpoint(backup_url):
+    result = _load_config(_production_env(
+        LDAP_ENABLED='true',
+        LDAP_URL='ldaps://dc01.ad.example.com:636',
+        LDAP_BACKUP_URL=backup_url,
+        LDAP_BASE_DN='ou=people,dc=ad,dc=example,dc=com',
+        LDAP_BIND_DN='cn=webssh,ou=services,dc=ad,dc=example,dc=com',
+        LDAP_BIND_PASSWORD_FILE='/run/webssh-auth/ldap_bind_password',
+        LDAP_CA_FILE='/run/webssh-auth/ldap_ca.pem',
+        LDAP_USER_FILTER='(&(objectClass=person)(uid={username}))',
+        LDAP_UNIQUE_ID_ATTRIBUTE='objectGUID',
+    ))
+
+    assert result.returncode != 0
+    assert 'LDAP_BACKUP_URL' in result.stdout + result.stderr
+
+
+def test_enabled_ldap_rejects_a_duplicate_backup_endpoint():
+    url = 'ldaps://dc01.ad.example.com:636'
+    result = _load_config(_production_env(
+        LDAP_ENABLED='true',
+        LDAP_URL=url,
+        LDAP_BACKUP_URL=url,
+        LDAP_BASE_DN='ou=people,dc=ad,dc=example,dc=com',
+        LDAP_BIND_DN='cn=webssh,ou=services,dc=ad,dc=example,dc=com',
+        LDAP_BIND_PASSWORD_FILE='/run/webssh-auth/ldap_bind_password',
+        LDAP_CA_FILE='/run/webssh-auth/ldap_ca.pem',
+        LDAP_USER_FILTER='(&(objectClass=person)(uid={username}))',
+        LDAP_UNIQUE_ID_ATTRIBUTE='objectGUID',
+    ))
+
+    assert result.returncode != 0
+    assert 'LDAP_BACKUP_URL' in result.stdout + result.stderr
+
+
 @pytest.mark.parametrize(
     ('setting_name', 'setting_value'),
     (
@@ -518,6 +582,7 @@ def test_ldap_compose_overlay_supplies_complete_secret_infrastructure():
         'LDAP_AUTO_PROVISION',
         'LDAP_PROVIDER_ID',
         'LDAP_URL',
+        'LDAP_BACKUP_URL',
         'LDAP_BASE_DN',
         'LDAP_BIND_DN',
         'LDAP_USER_FILTER',

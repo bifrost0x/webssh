@@ -61,6 +61,7 @@ services:
       LDAP_ENABLED: "true"
       LDAP_PROVIDER_ID: corp-ad
       LDAP_URL: ldaps://dc01.ad.example.com:636
+      LDAP_BACKUP_URL: ldaps://dc02.ad.example.com:636
       LDAP_BASE_DN: OU=People,DC=ad,DC=example,DC=com
       LDAP_BIND_DN: CN=svc-webssh,OU=Service Accounts,DC=ad,DC=example,DC=com
       LDAP_USER_FILTER: "(&(objectCategory=person)(objectClass=user)(sAMAccountName={username})(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
@@ -71,6 +72,12 @@ The final filter clause excludes disabled AD accounts. If access is restricted
 to a group, use a directory-approved `memberOf` rule. Nested group semantics
 vary and must be validated by the AD administrator.
 
+`LDAP_BACKUP_URL` is optional and must identify another server for the same
+logical directory. It is tried only after the primary endpoint is unavailable.
+WebSSH connects to each URL directly, so every endpoint DNS name must match its
+own TLS certificate and be trusted by `LDAP_CA_FILE`; a round-robin alias is not
+needed. Invalid user credentials are not retried against the backup endpoint.
+
 ### OpenLDAP example
 
 ```yaml
@@ -80,6 +87,7 @@ services:
       LDAP_ENABLED: "true"
       LDAP_PROVIDER_ID: primary-openldap
       LDAP_URL: ldap://ldap.example.com:389
+      # LDAP_BACKUP_URL: ldap://ldap-backup.example.com:389
       LDAP_BASE_DN: ou=people,dc=example,dc=com
       LDAP_BIND_DN: cn=svc-webssh,ou=services,dc=example,dc=com
       LDAP_USER_FILTER: "(&(objectClass=inetOrgPerson)(uid={username})(!(pwdAccountLockedTime=*)))"
@@ -96,6 +104,7 @@ attribute is not available.
 | `LDAP_ENABLED` | `false` | Enable the subsystem |
 | `LDAP_PROVIDER_ID` | `default` | Stable 1-64 character local provider identifier |
 | `LDAP_URL` | empty | Exact `ldap://` or `ldaps://` server URL |
+| `LDAP_BACKUP_URL` | empty | Optional second URL for the same directory, tried after transport failure |
 | `LDAP_BASE_DN` | empty | User subtree base |
 | `LDAP_BIND_DN` | empty | Least-privilege search account DN |
 | `LDAP_BIND_PASSWORD_FILE` | `/run/webssh-auth/ldap_bind_password` | Absolute private file path |

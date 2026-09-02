@@ -30,6 +30,37 @@ class _RecordingBackend:
         return not self.reject_password
 
 
+class _FailoverBackend:
+    def __init__(self, entries, *, unavailable=(), reject_password=False):
+        self.entries = list(entries)
+        self.unavailable = set(unavailable)
+        self.reject_password = reject_password
+        self.search_urls = []
+        self.bind_urls = []
+        self.probe_urls = []
+
+    def _check_available(self, settings):
+        from app.ldap_service import LDAPUnavailable
+
+        if settings.url in self.unavailable:
+            raise LDAPUnavailable('test endpoint unavailable')
+
+    def search_user(self, settings, _bind_password, _filter_expression):
+        self.search_urls.append(settings.url)
+        self._check_available(settings)
+        return self.entries
+
+    def verify_password(self, settings, _distinguished_name, _password):
+        self.bind_urls.append(settings.url)
+        self._check_available(settings)
+        return not self.reject_password
+
+    def probe(self, settings, _bind_password):
+        self.probe_urls.append(settings.url)
+        self._check_available(settings)
+        return True
+
+
 def _settings(tmp_path):
     from app.ldap_service import LDAPSettings
 
@@ -155,6 +186,64 @@ def test_directory_authentication_maps_bind_rejection_to_false(tmp_path):
         "user-secret",
     ) is False
     assert backend.bind_calls[0][2] == "user-secret"
+
+
+def test_directory_fails_over_and_keeps_the_working_endpoint_for_user_bind(
+    tmp_path,
+):
+    from dataclasses import replace
+
+    from app.ldap_service import LDAPDirectory, LDAPIdentity
+
+    primary = 'ldaps://dc01.ad.example.com:636'
+    backup = 'ldaps://dc02.ad.example.com:636'
+    settings = replace(_settings(tmp_path), url=primary, backup_url=backup)
+    identity = LDAPIdentity(
+        provider='primary',
+        subject='stable-id',
+        distinguished_name='uid=alice,dc=example,dc=com',
+    )
+    backend = _FailoverBackend([identity], unavailable={primary})
+    directory = LDAPDirectory(settings, backend=backend)
+
+    assert directory.lookup('alice') == identity
+    backend.unavailable.clear()
+    assert directory.verify_password(identity.distinguished_name, 'user-secret')
+
+    assert backend.search_urls == [primary, backup]
+    assert backend.bind_urls == [backup]
+    assert directory.active_url == backup
+
+
+def test_directory_does_not_retry_an_authoritative_password_rejection(tmp_path):
+    from dataclasses import replace
+
+    from app.ldap_service import LDAPDirectory
+
+    primary = 'ldaps://dc01.ad.example.com:636'
+    backup = 'ldaps://dc02.ad.example.com:636'
+    settings = replace(_settings(tmp_path), url=primary, backup_url=backup)
+    backend = _FailoverBackend([], reject_password=True)
+    directory = LDAPDirectory(settings, backend=backend)
+
+    assert directory.verify_password('uid=alice,dc=example,dc=com', 'wrong') is False
+    assert backend.bind_urls == [primary]
+
+
+def test_directory_readiness_uses_the_backup_after_transport_failure(tmp_path):
+    from dataclasses import replace
+
+    from app.ldap_service import LDAPDirectory
+
+    primary = 'ldap://dc01.ad.example.com:389'
+    backup = 'ldap://dc02.ad.example.com:389'
+    settings = replace(_settings(tmp_path), url=primary, backup_url=backup)
+    backend = _FailoverBackend([], unavailable={primary})
+    directory = LDAPDirectory(settings, backend=backend)
+
+    assert directory.probe() is True
+    assert backend.probe_urls == [primary, backup]
+    assert directory.active_url == backup
 
 
 def test_bind_secret_is_bounded_and_never_taken_from_environment(

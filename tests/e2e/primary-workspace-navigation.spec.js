@@ -35,10 +35,15 @@ async function managementPanelGeometry(page, panelId, contentSelector) {
         const actions = panel.querySelector('.management-panel-actions').getBoundingClientRect();
         const content = panel.querySelector(contentSelector).getBoundingClientRect();
         return {
+            headingTop: Math.round(heading.top),
             headingBottom: Math.round(heading.bottom),
             toolbarTop: Math.round(toolbar.top),
             toolbarBottom: Math.round(toolbar.bottom),
+            searchTop: Math.round(search.top),
+            searchHeight: Math.round(search.height),
             searchCenter: Math.round((search.top + search.bottom) / 2),
+            actionsTop: Math.round(actions.top),
+            actionsHeight: Math.round(actions.height),
             actionsCenter: Math.round((actions.top + actions.bottom) / 2),
             contentTop: Math.round(content.top),
         };
@@ -110,11 +115,13 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await expect(page.locator('#commandSetsPanel .management-panel-heading p')).toHaveText(
         'Build reusable command sequences and assign one to any saved connection.',
     );
-    expectManagementPanelHierarchy(await managementPanelGeometry(
+    await expect(page.locator('#commandSetManagementSearch')).toBeFocused();
+    const commandSetsGeometry = await managementPanelGeometry(
         page,
         '#commandSetsPanel',
         '#commandSetManagementList',
-    ));
+    );
+    expectManagementPanelHierarchy(commandSetsGeometry);
     await page.locator('#commandLibraryTab').click();
     await expect(page.locator('#commandLibraryPanel')).toBeVisible();
     await expect(page.locator('#commandSearchInput')).toBeFocused();
@@ -122,11 +129,29 @@ test('Hosts, File Manager, and Commands share the main surface while Workspaces 
     await expect(page.locator('#commandLibraryPanel .management-panel-heading p')).toHaveText(
         'Browse, search, and manage commands available to your sessions.',
     );
-    expectManagementPanelHierarchy(await managementPanelGeometry(
+    const commandLibraryGeometry = await managementPanelGeometry(
         page,
         '#commandLibraryPanel',
         '.os-filter-toolbar',
-    ));
+    );
+    expectManagementPanelHierarchy(commandLibraryGeometry);
+    expect({
+        headingTop: commandLibraryGeometry.headingTop,
+        toolbarTop: commandLibraryGeometry.toolbarTop,
+        searchTop: commandLibraryGeometry.searchTop,
+        searchHeight: commandLibraryGeometry.searchHeight,
+        actionsTop: commandLibraryGeometry.actionsTop,
+        actionsHeight: commandLibraryGeometry.actionsHeight,
+    }).toEqual({
+        headingTop: commandSetsGeometry.headingTop,
+        toolbarTop: commandSetsGeometry.toolbarTop,
+        searchTop: commandSetsGeometry.searchTop,
+        searchHeight: commandSetsGeometry.searchHeight,
+        actionsTop: commandSetsGeometry.actionsTop,
+        actionsHeight: commandSetsGeometry.actionsHeight,
+    });
+    await page.locator('#commandSetsTab').click();
+    await expect(page.locator('#commandSetManagementSearch')).toBeFocused();
 
     await page.locator('#fileTransferBtn').click();
     await expect(page.locator('#fileTransferBtn')).toHaveAttribute('aria-current', 'page');

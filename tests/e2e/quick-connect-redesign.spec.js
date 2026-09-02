@@ -73,6 +73,7 @@ test('presents a focused two-column quick connect without a saved-profile picker
     await expect(page.locator('#connectionProfileContext')).toHaveClass(/hidden/);
     await expect(page.locator('.recent-connection-item').first()).toHaveRole('button');
     await expect(page.locator('.recent-connection-item')).toHaveCount(7);
+    await expect(page.locator('.recent-conn-time').first()).toHaveText('Just now');
     await expect(page.locator('#recentConnectionsCard')).toHaveAttribute('open', '');
 
     const historyViewport = await page.locator('#recentConnectionsList').evaluate(list => {

@@ -355,6 +355,8 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
         return {
             maxRowHeight: Math.max(...fileRows.map(row => bounds(row).height)),
             toolbarOverflow: toolbar.scrollWidth - toolbar.clientWidth,
+            toolbarRows: new Set(Array.from(toolbar.querySelectorAll('button'))
+                .map(button => Math.round(bounds(button).top))).size,
             toolbarButtonsInside: Array.from(toolbar.querySelectorAll('button')).every(button => {
                 const buttonBounds = bounds(button);
                 return buttonBounds.left >= toolbarBounds.left
@@ -367,6 +369,7 @@ test('single-session workspace keeps terminal primary with on-demand Files, Diag
     });
     expect(embeddedFileLayout.maxRowHeight).toBeLessThanOrEqual(46);
     expect(embeddedFileLayout.toolbarOverflow).toBeLessThanOrEqual(1);
+    expect(embeddedFileLayout.toolbarRows).toBe(1);
     expect(embeddedFileLayout.toolbarButtonsInside).toBe(true);
     expect(embeddedFileLayout.xtermPadding).toBe('0px');
     expect(embeddedFileLayout.viewportBackground).toBe(embeddedFileLayout.terminalBackground);
