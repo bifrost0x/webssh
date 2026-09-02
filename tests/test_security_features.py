@@ -154,6 +154,7 @@ def test_provider_status_exposes_configuration_names_and_documentation_only(
     assert ldap['configuration_keys'] == (
         'LDAP_ENABLED',
         'LDAP_URL',
+        'LDAP_BACKUP_URL',
         'LDAP_BASE_DN',
         'LDAP_BIND_DN',
         'LDAP_BIND_PASSWORD_FILE',

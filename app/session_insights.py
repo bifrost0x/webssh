@@ -56,6 +56,25 @@ fi
 """
 
 
+LINUX_NETWORK_AWK_PROGRAM = r"""NR > 2 {
+    separator = index($0, ":")
+    if (separator == 0) next
+    interface = substr($0, 1, separator - 1)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", interface)
+    if (interface == "lo") next
+    counters = substr($0, separator + 1)
+    sub(/^[[:space:]]+/, "", counters)
+    count = split(counters, fields, /[[:space:]]+/)
+    if (count >= 16) {
+      received += fields[1]
+      transmitted += fields[9]
+    }
+  } END {
+    print "network_received_bytes=" received + 0
+    print "network_transmitted_bytes=" transmitted + 0
+  }"""
+
+
 LINUX_DIAGNOSTICS_COMMAND = LINUX_STATS_COMMAND + r"""
 if [ -r /proc/meminfo ] && command -v awk >/dev/null 2>&1; then
   awk '
@@ -76,15 +95,7 @@ if [ -r /proc/stat ] && command -v awk >/dev/null 2>&1; then
   }' /proc/stat 2>/dev/null
 fi
 if [ -r /proc/net/dev ] && command -v awk >/dev/null 2>&1; then
-  awk -F '[: ]+' 'NR > 2 {
-    if ($2 != "lo") {
-      received += $3
-      transmitted += $11
-    }
-  } END {
-    print "network_received_bytes=" received + 0
-    print "network_transmitted_bytes=" transmitted + 0
-  }' /proc/net/dev 2>/dev/null
+  awk '""" + LINUX_NETWORK_AWK_PROGRAM + r"""' /proc/net/dev 2>/dev/null
 fi
 
 process_probe=$(ps -p $$ -o pid= 2>&1)

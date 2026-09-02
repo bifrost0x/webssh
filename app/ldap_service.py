@@ -10,7 +10,7 @@ import base64
 import os
 import ssl
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -39,6 +39,7 @@ class LDAPSettings:
     unique_id_attribute: str
     connect_timeout: int
     operation_timeout: int
+    backup_url: str = ''
 
     @classmethod
     def from_config(cls):
@@ -55,7 +56,14 @@ class LDAPSettings:
             unique_id_attribute=config.LDAP_UNIQUE_ID_ATTRIBUTE,
             connect_timeout=config.LDAP_CONNECT_TIMEOUT,
             operation_timeout=config.LDAP_OPERATION_TIMEOUT,
+            backup_url=getattr(config, 'LDAP_BACKUP_URL', ''),
         )
+
+    def endpoints(self):
+        return tuple(filter(None, (self.url, self.backup_url)))
+
+    def for_url(self, url):
+        return replace(self, url=url, backup_url='')
 
 
 @dataclass(frozen=True)
@@ -239,6 +247,26 @@ class LDAPDirectory:
     def __init__(self, settings=None, *, backend=None):
         self.settings = settings or LDAPSettings.from_config()
         self.backend = backend or BonsaiBackend()
+        self.active_url = None
+
+    def _endpoint_settings(self):
+        urls = list(self.settings.endpoints())
+        if self.active_url in urls:
+            urls.remove(self.active_url)
+            urls.insert(0, self.active_url)
+        return tuple(self.settings.for_url(url) for url in urls)
+
+    def _with_failover(self, operation):
+        last_error = None
+        for endpoint_settings in self._endpoint_settings():
+            try:
+                result = operation(endpoint_settings)
+            except LDAPUnavailable as exc:
+                last_error = exc
+                continue
+            self.active_url = endpoint_settings.url
+            return result
+        raise LDAPUnavailable('LDAP servers are unavailable') from last_error
 
     def lookup(self, username):
         normalized_username = str(username or '').strip()
@@ -249,10 +277,12 @@ class LDAPDirectory:
         )
         bind_password = _read_secret(self.settings.bind_password_file)
         try:
-            entries = self.backend.search_user(
-                self.settings,
-                bind_password,
-                filter_expression,
+            entries = self._with_failover(
+                lambda endpoint_settings: self.backend.search_user(
+                    endpoint_settings,
+                    bind_password,
+                    filter_expression,
+                )
             )
         finally:
             bind_password = None
@@ -278,15 +308,22 @@ class LDAPDirectory:
     def verify_password(self, distinguished_name, password):
         if not password:
             return False
-        return bool(self.backend.verify_password(
-            self.settings,
-            distinguished_name,
-            password,
+        return bool(self._with_failover(
+            lambda endpoint_settings: self.backend.verify_password(
+                endpoint_settings,
+                distinguished_name,
+                password,
+            )
         ))
 
     def probe(self):
         bind_password = _read_secret(self.settings.bind_password_file)
         try:
-            return bool(self.backend.probe(self.settings, bind_password))
+            return bool(self._with_failover(
+                lambda endpoint_settings: self.backend.probe(
+                    endpoint_settings,
+                    bind_password,
+                )
+            ))
         finally:
             bind_password = None

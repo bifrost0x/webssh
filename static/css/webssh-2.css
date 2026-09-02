@@ -1694,6 +1694,14 @@ body:has(.auth-container) {
     gap: 10px;
 }
 
+.primary-workspace-surface .management-panel-actions > .btn {
+    display: inline-flex;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
 .primary-workspace-surface .profile-management-list {
     gap: 0;
     margin-top: 14px;
@@ -1976,7 +1984,15 @@ body:has(.auth-container) {
 }
 
 .primary-workspace-surface #commandLibraryPanel {
-    gap: 14px;
+    gap: 0;
+}
+
+.primary-workspace-surface #commandLibraryPanel > :is(
+    .os-filter-toolbar,
+    .commands-table-wrapper,
+    .command-help
+) {
+    margin-top: 14px;
 }
 
 .primary-workspace-surface .command-toolbar {

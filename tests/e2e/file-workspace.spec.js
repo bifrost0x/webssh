@@ -111,6 +111,25 @@ test('source-first workspace preserves panes and exposes only functional SFTP ac
     await expect(page.locator('#fmNewSmbSource')).toBeDisabled();
     await expect(page.locator('#fmNewSmbSource')).toContainText('Disabled by administrator');
     await expect(page.locator('#fmSourceSearch')).toBeFocused();
+    const sourceSearchFocus = await page.locator('.fm-source-search').evaluate(label => {
+        const input = label.querySelector('input');
+        const labelStyle = getComputedStyle(label);
+        const inputStyle = getComputedStyle(input);
+        const labelBounds = label.getBoundingClientRect();
+        const inputBounds = input.getBoundingClientRect();
+        return {
+            labelOutline: labelStyle.outlineStyle,
+            inputOutline: inputStyle.outlineStyle,
+            labelLeft: Math.round(labelBounds.left),
+            labelRight: Math.round(labelBounds.right),
+            inputLeft: Math.round(inputBounds.left),
+            inputRight: Math.round(inputBounds.right),
+        };
+    });
+    expect(sourceSearchFocus.labelOutline).toBe('solid');
+    expect(sourceSearchFocus.inputOutline).toBe('none');
+    expect(sourceSearchFocus.labelLeft).toBeLessThan(sourceSearchFocus.inputLeft);
+    expect(sourceSearchFocus.labelRight).toBeGreaterThanOrEqual(sourceSearchFocus.inputRight);
     await page.keyboard.press('Shift+Tab');
     await expect(page.locator('#fmSourceLauncherClose')).toBeFocused();
     await page.keyboard.press('Shift+Tab');

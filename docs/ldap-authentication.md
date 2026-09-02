@@ -41,7 +41,8 @@ the provided `docker-compose.ldap.yml` overlay with the same WebSSH image; no
 
 Collect these values before activation:
 
-1. An LDAP server DNS name whose TLS certificate matches that name.
+1. A primary LDAP server DNS name whose TLS certificate matches that name and,
+   optionally, a backup server with its own certificate-matching DNS name.
 2. Whether to use `ldap://host:389` with StartTLS or `ldaps://host:636`.
 3. The user search base DN.
 4. A read-only bind account DN and its password. It needs only enough access to
@@ -67,6 +68,7 @@ LDAP_ENABLED: "true"
 LDAP_AUTO_PROVISION: "false"
 LDAP_PROVIDER_ID: corp-ad
 LDAP_URL: ldaps://dc01.ad.example.com:636
+LDAP_BACKUP_URL: ldaps://dc02.ad.example.com:636
 LDAP_BASE_DN: OU=People,DC=ad,DC=example,DC=com
 LDAP_BIND_DN: CN=svc-webssh,OU=Service Accounts,DC=ad,DC=example,DC=com
 LDAP_USER_FILTER: "(&(objectCategory=person)(objectClass=user)(sAMAccountName={username})(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
@@ -77,6 +79,14 @@ The final filter clause excludes disabled AD accounts. If the organization has
 a dedicated WebSSH access group, add a directory-approved `memberOf` clause.
 Nested group semantics vary and must be validated by the AD administrator.
 
+`LDAP_BACKUP_URL` is optional and must point to the same logical directory as
+`LDAP_URL`. WebSSH tries it only when the primary endpoint is unavailable. Each
+URL is connected to directly, so the CA bundle must validate the DNS name in
+that endpoint's certificate; a round-robin alias is not required. A completed
+bind that rejects a user's password is authoritative and is not retried against
+the other endpoint. Keep the provider ID, base DN, bind account, filter, and
+stable-ID attribute identical across both endpoints.
+
 ### Generic OpenLDAP example
 
 ```yaml
@@ -84,6 +94,7 @@ LDAP_ENABLED: "true"
 LDAP_AUTO_PROVISION: "false"
 LDAP_PROVIDER_ID: primary-openldap
 LDAP_URL: ldap://ldap.example.com:389
+# LDAP_BACKUP_URL: ldap://ldap-backup.example.com:389
 LDAP_BASE_DN: ou=people,dc=example,dc=com
 LDAP_BIND_DN: cn=svc-webssh,ou=services,dc=example,dc=com
 LDAP_USER_FILTER: "(&(objectClass=inetOrgPerson)(uid={username})(!(pwdAccountLockedTime=*)))"
@@ -204,8 +215,10 @@ remain in the separate secret volume and are intentionally not included.
   administrator. WebSSH never chooses one result from an ambiguous search.
 - **AD user is found but cannot bind:** check disabled/locked/expired state,
   logon restrictions, and whether the DC accepts the supplied username flow.
-- **LDAP outage signs users out:** this is intentional fail-closed behavior.
-  Restore directory/TLS service; do not enable a password fallback.
+- **LDAP outage signs users out:** WebSSH tries the optional backup endpoint
+  after a transport failure. If neither endpoint is available, the intentional
+  fail-closed behavior applies. Restore directory/TLS service; do not enable a
+  password fallback.
 - **Provider ID changed:** restore the original `LDAP_PROVIDER_ID`. It is part
   of every stable mapping and should remain constant for that directory.
 

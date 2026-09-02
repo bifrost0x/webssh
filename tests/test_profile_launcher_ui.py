@@ -33,9 +33,9 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
         "filename='css/style.css'": '?v=24',
-        "filename='css/sftp-file-manager.css'": '?v=21',
-        "filename='js/i18n.js'": '?v=44',
-        "filename='js/command-workspace.js'": '?v=3',
+        "filename='css/sftp-file-manager.css'": '?v=22',
+        "filename='js/i18n.js'": '?v=45',
+        "filename='js/command-workspace.js'": '?v=4',
         "filename='js/command-palette-utils.js'": '?v=1',
         "filename='js/profile-launcher-utils.js'": '?v=5',
         "filename='js/connection-launcher.js'": '?v=1',
@@ -48,7 +48,7 @@ def test_merged_profile_frontend_assets_have_distinct_cache_versions():
         "filename='js/sftp-file-manager.js'": '?v=35',
         "filename='js/jump-host-manager.js'": '?v=4',
         "filename='js/command-library.js'": '?v=5',
-        "filename='js/command-set-manager.js'": '?v=6',
+        "filename='js/command-set-manager.js'": '?v=7',
         "filename='js/session-command-launcher.js'": '?v=5',
         "filename='js/connection-history.js'": '?v=2',
         "filename='js/app.js'": '?v=28',

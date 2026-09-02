@@ -91,6 +91,7 @@ LDAP_AUTO_PROVISION = (
 )
 LDAP_PROVIDER_ID = os.environ.get('LDAP_PROVIDER_ID', 'default').strip()
 LDAP_URL = os.environ.get('LDAP_URL', '').strip()
+LDAP_BACKUP_URL = os.environ.get('LDAP_BACKUP_URL', '').strip()
 LDAP_BASE_DN = os.environ.get('LDAP_BASE_DN', '').strip()
 LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', '').strip()
 LDAP_BIND_PASSWORD_FILE = os.environ.get(
@@ -707,28 +708,54 @@ def validate_security_config():
                     'LDAP_ENABLED is true'
                 )
 
-        ldap_url_error = (
-            'SECURITY ERROR: LDAP_URL must be an exact ldap:// or '
-            'ldaps:// server URL without credentials, path, query, or '
-            'fragment and with a valid port'
-        )
-        try:
-            parsed_ldap_url = urlsplit(LDAP_URL)
-            ldap_hostname = parsed_ldap_url.hostname
-            ldap_port = parsed_ldap_url.port
-        except ValueError as exc:
-            raise RuntimeError(ldap_url_error) from exc
-        if (
-            parsed_ldap_url.scheme not in {'ldap', 'ldaps'}
-            or not ldap_hostname
-            or (ldap_port is not None and ldap_port < 1)
-            or parsed_ldap_url.username is not None
-            or parsed_ldap_url.password is not None
-            or parsed_ldap_url.path
-            or parsed_ldap_url.query
-            or parsed_ldap_url.fragment
-        ):
-            raise RuntimeError(ldap_url_error)
+        def _validate_ldap_url(setting_name, value):
+            ldap_url_error = (
+                f'SECURITY ERROR: {setting_name} must be an exact ldap:// or '
+                'ldaps:// server URL without credentials, path, query, or '
+                'fragment and with a valid port'
+            )
+            try:
+                parsed_ldap_url = urlsplit(value)
+                ldap_hostname = parsed_ldap_url.hostname
+                ldap_port = parsed_ldap_url.port
+            except ValueError as exc:
+                raise RuntimeError(ldap_url_error) from exc
+            if (
+                parsed_ldap_url.scheme not in {'ldap', 'ldaps'}
+                or not ldap_hostname
+                or (ldap_port is not None and ldap_port < 1)
+                or parsed_ldap_url.username is not None
+                or parsed_ldap_url.password is not None
+                or parsed_ldap_url.path
+                or parsed_ldap_url.query
+                or parsed_ldap_url.fragment
+            ):
+                raise RuntimeError(ldap_url_error)
+            return parsed_ldap_url
+
+        primary_ldap_url = _validate_ldap_url('LDAP_URL', LDAP_URL)
+        if LDAP_BACKUP_URL:
+            backup_ldap_url = _validate_ldap_url(
+                'LDAP_BACKUP_URL',
+                LDAP_BACKUP_URL,
+            )
+
+            def _ldap_endpoint_identity(parsed_url):
+                default_port = 636 if parsed_url.scheme == 'ldaps' else 389
+                return (
+                    parsed_url.scheme,
+                    parsed_url.hostname.casefold().rstrip('.'),
+                    parsed_url.port or default_port,
+                )
+
+            if (
+                _ldap_endpoint_identity(backup_ldap_url)
+                == _ldap_endpoint_identity(primary_ldap_url)
+            ):
+                raise RuntimeError(
+                    'SECURITY ERROR: LDAP_BACKUP_URL must identify a '
+                    'different server than LDAP_URL'
+                )
         if LDAP_USER_FILTER.count('{username}') != 1:
             raise RuntimeError(
                 'SECURITY ERROR: LDAP_USER_FILTER must contain exactly one '
