@@ -73,6 +73,20 @@ def test_routes_are_hidden_until_admin_configuration_is_active(app, client):
     assert response.status_code == 404
 
 
+def test_github_step_up_start_rejects_non_object_json(app, client):
+    admin_id = _create_user(app, 'github_json_admin', is_admin=True)
+    _configure(app, admin_id)
+    _login(client, 'github_json_admin')
+
+    response = client.post(
+        '/api/account/step-up/github/start',
+        json=['unexpected'],
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'Invalid request'}
+
+
 def test_linked_identity_login_uses_numeric_id_and_callback_is_single_use(
     app, client, monkeypatch,
 ):

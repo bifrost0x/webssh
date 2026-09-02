@@ -202,8 +202,8 @@ window.CommandSetManager = {
         const detail = document.createElement('span');
         detail.textContent = this.t(
             'commandSets.stepCount',
-            `${commandSet.steps.length} command step${commandSet.steps.length === 1 ? '' : 's'}`,
-        );
+            'Command steps: {count}',
+        ).replace('{count}', String(commandSet.steps.length));
         preview.append(title, detail);
     },
 

@@ -457,7 +457,9 @@ def oidc_callback():
 @step_up_required('oidc.link', lambda user_id: user_id)
 def link_oidc_identity(user_id):
     _require_enabled()
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request"}), 400
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404
@@ -467,7 +469,10 @@ def link_oidc_identity(user_id):
         }), 400
     if data.get("confirm_username") != target.username:
         return jsonify({"error": "Target confirmation does not match"}), 400
-    subject = str(data.get("subject") or "").strip()
+    subject = data.get("subject")
+    if not isinstance(subject, str):
+        return jsonify({"error": "OIDC subject is required"}), 400
+    subject = subject.strip()
     if not subject or len(subject) > 512:
         return jsonify({"error": "OIDC subject is required"}), 400
     row = OIDCIdentity(
@@ -537,7 +542,9 @@ def list_oidc_identities(user_id):
 )
 def unlink_oidc_identity(user_id, identity_id):
     _require_enabled()
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request"}), 400
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({"error": "User not found"}), 404

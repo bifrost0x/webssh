@@ -13,16 +13,24 @@ global.navigator = {};
 require('../../static/js/terminal-manager.js');
 const TerminalManager = global.window.TerminalManager;
 
-test('new terminals use 500 scrollback lines when no preference is stored', () => {
+test('terminal scrollback preferences are bounded and malformed values fall back', () => {
     const source = fs.readFileSync(
         path.join(__dirname, '../../static/js/terminal-manager.js'),
         'utf8',
     );
 
-    assert.match(
-        source,
-        /localStorage\.getItem\('terminalScrollback'\) \|\| '500'/,
-    );
+    assert.equal(TerminalManager.getScrollbackLines(), 500);
+    for (const [stored, expected] of [
+        ['not-a-number', 500],
+        ['10', 50],
+        ['700', 700],
+        ['20000', 10000],
+    ]) {
+        global.window.BrowserPreferences = {get: () => stored};
+        assert.equal(TerminalManager.getScrollbackLines(), expected);
+    }
+    delete global.window.BrowserPreferences;
+    assert.match(source, /const scrollbackLines = this\.getScrollbackLines\(\)/);
 });
 
 test('virtual keyboard detection follows visual viewport occlusion, not browser resize history', () => {

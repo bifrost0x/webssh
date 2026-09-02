@@ -37,5 +37,11 @@ class SocketCapacityRegistry:
                     self._by_user.pop(user_id, None)
             return user_id
 
+    def count_for_user(self, user_id):
+        """Return the number of process-local sockets owned by one user."""
+        user_id = int(user_id)
+        with self._lock:
+            return len(self._by_user.get(user_id, ()))
+
 
 socket_capacity = SocketCapacityRegistry()

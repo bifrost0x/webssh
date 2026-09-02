@@ -2323,14 +2323,13 @@
         // Scrollback lines setting
         const scrollbackInput = document.getElementById('scrollbackInput');
         if (scrollbackInput) {
-            const savedScrollback = localStorage.getItem('terminalScrollback') || '500';
-            scrollbackInput.value = savedScrollback;
+            scrollbackInput.value = String(TerminalManager.getScrollbackLines());
             scrollbackInput.addEventListener('change', () => {
                 let val = parseInt(scrollbackInput.value, 10);
                 if (isNaN(val) || val < 50) val = 50;
                 if (val > 10000) val = 10000;
                 scrollbackInput.value = val;
-                localStorage.setItem('terminalScrollback', String(val));
+                window.BrowserPreferences?.set('terminalScrollback', val);
                 // Update all existing terminals
                 Object.keys(TerminalManager.terminals).forEach(key => {
                     TerminalManager.terminals[key].options.scrollback = val;

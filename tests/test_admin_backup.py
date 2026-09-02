@@ -127,6 +127,29 @@ def test_backup_endpoints_require_admin(app, client, isolated_operations):
     assert client.post('/admin/api/backups/upload', data=b'PK').status_code == 403
 
 
+def test_restore_mutations_reject_non_object_json(
+    app, client, isolated_operations
+):
+    del isolated_operations
+    _create_user(app, 'restore_json_admin', admin=True)
+    _login(client, 'restore_json_admin')
+    operation_id = 'missing-operation'
+
+    prepared = client.post(
+        f'/admin/api/backups/{operation_id}/restore/prepare',
+        json=['unexpected'],
+        headers=_step_up(client, 'backup.restore_prepare', operation_id),
+    )
+    restored = client.post(
+        f'/admin/api/backups/{operation_id}/restore',
+        json=['unexpected'],
+        headers=_step_up(client, 'backup.restore', operation_id),
+    )
+
+    assert prepared.status_code == 400
+    assert restored.status_code == 400
+
+
 @pytest.mark.parametrize(
     'endpoint',
     ('/admin/api/backups', '/admin/api/backups/upload'),

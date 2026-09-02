@@ -119,6 +119,32 @@ def test_admin_link_requires_password_confirmation_and_stable_subject(
         assert identity.subject == "stable-subject"
 
 
+def test_oidc_identity_mutations_reject_non_object_json(
+    app, client, monkeypatch
+):
+    import config
+
+    _create_user(app, "oidc_json_admin", is_admin=True)
+    target_id = _create_user(app, "oidc_json_target")
+    _login(client, "oidc_json_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+
+    linked = client.post(
+        f"/admin/api/users/{target_id}/oidc-link",
+        json=["unexpected"],
+        headers=_step_up(client, "oidc.link", target_id),
+    )
+    unlinked = client.delete(
+        f"/admin/api/users/{target_id}/oidc-identities/999",
+        json=["unexpected"],
+        headers=_step_up(client, "oidc.unlink", f"{target_id}:999"),
+    )
+
+    assert linked.status_code == 400
+    assert unlinked.status_code == 400
+
+
 def test_admin_can_list_and_unlink_the_exact_oidc_identity(
     app, client, monkeypatch
 ):

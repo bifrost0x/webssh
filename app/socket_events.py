@@ -398,7 +398,16 @@ def handle_disconnect():
     socket_sid = request.sid
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
     owner_id = socket_capacity.release(socket_sid)
-    user = get_user_from_socket(socket_sid)
+    try:
+        user = get_user_from_socket(socket_sid)
+    except Exception as error:
+        user = None
+        log_error(
+            'Socket owner lookup failed on disconnect',
+            user_id=owner_id,
+            sid=socket_sid,
+            exception_type=type(error).__name__,
+        )
     user_id = user.id if user else owner_id
 
     if user_id is not None:
@@ -421,10 +430,35 @@ def handle_disconnect():
                 exception_type=type(error).__name__,
             )
 
-        SocketSession.query.filter_by(socket_sid=socket_sid).delete()
-        db.session.commit()
-
-        other_sessions = SocketSession.query.filter_by(user_id=user_id).count()
+        # The process-local capacity registry is authoritative for this
+        # single-worker runtime and remains available if persistent socket
+        # metadata cannot be updated during a database outage.
+        other_sessions = socket_capacity.count_for_user(user_id)
+        try:
+            SocketSession.query.filter_by(socket_sid=socket_sid).delete()
+            db.session.commit()
+            other_sessions = SocketSession.query.filter_by(
+                user_id=user_id
+            ).count()
+        except Exception as error:
+            try:
+                db.session.rollback()
+            except Exception as rollback_error:
+                log_error(
+                    'Socket metadata rollback failed on disconnect',
+                    user_id=user_id,
+                    sid=socket_sid,
+                    exception_type=type(rollback_error).__name__,
+                )
+            log_error(
+                'Socket metadata cleanup failed on disconnect',
+                user_id=user_id,
+                sid=socket_sid,
+                exception_type=type(error).__name__,
+            )
+            # A replacement socket may have connected after the fallback was
+            # sampled but before the metadata operation failed.
+            other_sessions = socket_capacity.count_for_user(user_id)
 
         if other_sessions == 0:
             try:

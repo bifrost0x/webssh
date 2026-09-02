@@ -126,6 +126,69 @@ def _mutation_step_up(client, path, data, target_id):
     return None
 
 
+def test_admin_mutations_reject_non_object_json(app, client):
+    target_id = _prepare_role(app, client, 'admin')
+    requests = (
+        (
+            'post',
+            '/admin/api/users',
+            password_step_up_headers(
+                client, 'user.create', 'invalid-payload'
+            )[0],
+        ),
+        (
+            'post',
+            '/admin/api/settings',
+            password_step_up_headers(client, 'settings.update', 'global')[0],
+        ),
+        (
+            'delete',
+            f'/admin/api/users/{target_id}/mfa',
+            password_step_up_headers(
+                client, 'user.mfa_reset', target_id
+            )[0],
+        ),
+    )
+
+    responses = [
+        getattr(client, method)(path, json=['unexpected'], headers=headers)
+        for method, path, headers in requests
+    ]
+
+    assert [response.status_code for response in responses] == [400, 400, 400]
+
+
+@pytest.mark.parametrize(
+    'payload',
+    (
+        {'username': ['invalid'], 'password': 'password123'},
+        {'username': 'new-user', 'password': ['invalid']},
+        {
+            'username': 'new-user',
+            'password': 'password123',
+            'is_admin': 'false',
+        },
+    ),
+)
+def test_admin_create_user_rejects_malformed_fields(app, client, payload):
+    _prepare_role(app, client, 'admin')
+    username = payload.get('username')
+    target = (
+        username.strip()
+        if isinstance(username, str)
+        else 'invalid-payload'
+    )
+
+    response = client.post(
+        '/admin/api/users',
+        json=payload,
+        headers=password_step_up_headers(client, 'user.create', target)[0],
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'Invalid user payload'
+
+
 @pytest.mark.parametrize('role', ('anonymous', 'normal', 'locked', 'admin'))
 @pytest.mark.parametrize(('method', 'path', 'data'), ADMIN_REQUESTS)
 def test_every_admin_route_is_hidden_when_panel_is_disabled(

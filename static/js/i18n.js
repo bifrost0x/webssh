@@ -157,8 +157,11 @@ const translations = {
         'commandSets.edit': 'Edit command set',
         'commandSets.duplicate': 'Duplicate',
         'commandSets.steps': 'Steps',
+        'commandSets.step': 'step',
+        'commandSets.stepCount': 'Command steps: {count}',
         'commandSets.addFreeText': 'Add free text',
         'commandSets.freeText': 'Free text',
+        'commandSets.emptyInline': 'Empty free-text step',
         'commandSets.saveToLibrary': 'Save as library command',
         'commandSets.useDefaultParameters': 'Use library parameters',
         'commandSets.useSudo': 'Run commands with sudo',
@@ -169,6 +172,7 @@ const translations = {
         'commandSets.removeStep': 'Remove step',
         'commandSets.noSteps': 'Add a library command or free-text step.',
         'commandSets.empty': 'No command sets saved.',
+        'commandSets.emptySearch': 'No command sets match this search.',
         'commandSets.noSelectionHint': 'No commands will run after connecting.',
         'commandSets.missingCommand': 'Missing library command',
         'commandSets.missingSet': 'Missing command set',
@@ -1131,6 +1135,7 @@ const translations = {
 
         'common.delete': 'Delete',
         'common.edit': 'Edit',
+        'common.actions': 'Actions',
         'common.cancel': 'Cancel',
         'common.continue': 'Continue',
         'common.save': 'Save',
@@ -1185,6 +1190,7 @@ const translations = {
         'commands.delete': 'Delete',
         'commands.save': 'Save',
         'commands.cancel': 'Cancel',
+        'commands.noCommands': 'No commands found',
         'commands.searchPlaceholder': 'Search commands, parameters, or descriptions...',
         'commands.currentOs': 'Current OS',
         'commands.detecting': 'Detecting...',
@@ -1409,8 +1415,11 @@ const translations = {
         'commandSets.edit': 'Sửa bộ lệnh',
         'commandSets.duplicate': 'Nhân bản',
         'commandSets.steps': 'bước',
+        'commandSets.step': 'bước',
+        'commandSets.stepCount': 'Số bước lệnh: {count}',
         'commandSets.addFreeText': 'Thêm văn bản tự do',
         'commandSets.freeText': 'Văn bản tự do',
+        'commandSets.emptyInline': 'Bước văn bản tự do trống',
         'commandSets.saveToLibrary': 'Lưu vào thư viện lệnh',
         'commandSets.useDefaultParameters': 'Dùng tham số từ thư viện',
         'commandSets.useSudo': 'Chạy lệnh bằng sudo',
@@ -1421,6 +1430,7 @@ const translations = {
         'commandSets.removeStep': 'Xóa bước',
         'commandSets.noSteps': 'Thêm lệnh từ thư viện hoặc bước văn bản tự do.',
         'commandSets.empty': 'Chưa lưu bộ lệnh nào.',
+        'commandSets.emptySearch': 'Không có bộ lệnh nào khớp với tìm kiếm này.',
         'commandSets.noSelectionHint': 'Không có lệnh nào chạy sau khi kết nối.',
         'commandSets.missingCommand': 'Thiếu lệnh trong thư viện',
         'commandSets.missingSet': 'Thiếu bộ lệnh',
@@ -2383,6 +2393,7 @@ const translations = {
 
         'common.delete': 'Xóa',
         'common.edit': 'Chỉnh sửa',
+        'common.actions': 'Thao tác',
         'common.cancel': 'Hủy',
         'common.continue': 'Tiếp tục',
         'common.save': 'Lưu',
@@ -2437,6 +2448,7 @@ const translations = {
         'commands.delete': 'Xóa',
         'commands.save': 'Lưu',
         'commands.cancel': 'Hủy',
+        'commands.noCommands': 'Không tìm thấy lệnh',
         'commands.searchPlaceholder': 'Tìm kiếm lệnh, tham số hoặc mô tả...',
         'commands.currentOs': 'OS hiện tại',
         'commands.detecting': 'Đang phát hiện...',
@@ -2660,8 +2672,11 @@ const translations = {
         'commandSets.edit': 'Befehlssatz bearbeiten',
         'commandSets.duplicate': 'Duplizieren',
         'commandSets.steps': 'Schritte',
+        'commandSets.step': 'Schritt',
+        'commandSets.stepCount': 'Befehlsschritte: {count}',
         'commandSets.addFreeText': 'Freitext hinzufügen',
         'commandSets.freeText': 'Freitext',
+        'commandSets.emptyInline': 'Leerer Freitextschritt',
         'commandSets.saveToLibrary': 'Als Bibliotheksbefehl speichern',
         'commandSets.useDefaultParameters': 'Parameter aus der Bibliothek verwenden',
         'commandSets.useSudo': 'Befehle mit sudo ausführen',
@@ -2672,6 +2687,7 @@ const translations = {
         'commandSets.removeStep': 'Schritt entfernen',
         'commandSets.noSteps': 'Füge einen Bibliotheksbefehl oder einen Freitext-Schritt hinzu.',
         'commandSets.empty': 'Noch keine Befehlssätze gespeichert.',
+        'commandSets.emptySearch': 'Keine Befehlssätze entsprechen dieser Suche.',
         'commandSets.noSelectionHint': 'Nach dem Verbinden werden keine Befehle ausgeführt.',
         'commandSets.missingCommand': 'Bibliotheksbefehl fehlt',
         'commandSets.missingSet': 'Befehlssatz fehlt',
@@ -3647,6 +3663,7 @@ const translations = {
 
         'common.delete': 'Löschen',
         'common.edit': 'Bearbeiten',
+        'common.actions': 'Aktionen',
         'common.cancel': 'Abbrechen',
         'common.continue': 'Weiter',
         'common.save': 'Speichern',
@@ -3687,6 +3704,7 @@ const translations = {
         'commands.delete': 'Löschen',
         'commands.save': 'Speichern',
         'commands.cancel': 'Abbrechen',
+        'commands.noCommands': 'Keine Befehle gefunden',
         'commands.searchPlaceholder': 'Befehle, Parameter oder Beschreibungen durchsuchen...',
         'commands.currentOs': 'Aktuelles OS',
         'commands.detecting': 'Erkennung läuft...',
@@ -3910,8 +3928,11 @@ const translations = {
         'commandSets.edit': 'Modifier l’ensemble',
         'commandSets.duplicate': 'Dupliquer',
         'commandSets.steps': 'étapes',
+        'commandSets.step': 'étape',
+        'commandSets.stepCount': 'Étapes de commande : {count}',
         'commandSets.addFreeText': 'Ajouter du texte libre',
         'commandSets.freeText': 'Texte libre',
+        'commandSets.emptyInline': 'Étape de texte libre vide',
         'commandSets.saveToLibrary': 'Enregistrer dans la bibliothèque',
         'commandSets.useDefaultParameters': 'Utiliser les paramètres de la bibliothèque',
         'commandSets.useSudo': 'Exécuter les commandes avec sudo',
@@ -3922,6 +3943,7 @@ const translations = {
         'commandSets.removeStep': 'Supprimer l’étape',
         'commandSets.noSteps': 'Ajoutez une commande de la bibliothèque ou une étape en texte libre.',
         'commandSets.empty': 'Aucun ensemble de commandes enregistré.',
+        'commandSets.emptySearch': 'Aucun ensemble de commandes ne correspond à cette recherche.',
         'commandSets.noSelectionHint': 'Aucune commande ne sera exécutée après la connexion.',
         'commandSets.missingCommand': 'Commande de bibliothèque manquante',
         'commandSets.missingSet': 'Ensemble de commandes manquant',
@@ -4906,6 +4928,7 @@ const translations = {
 
         'common.delete': 'Supprimer',
         'common.edit': 'Modifier',
+        'common.actions': 'Actions',
         'common.cancel': 'Annuler',
         'common.continue': 'Continuer',
         'common.save': 'Enregistrer',
@@ -4937,6 +4960,7 @@ const translations = {
         'commands.delete': 'Supprimer',
         'commands.save': 'Enregistrer',
         'commands.cancel': 'Annuler',
+        'commands.noCommands': 'Aucune commande trouvée',
         'commands.searchPlaceholder': 'Rechercher des commandes, des paramètres ou des descriptions...',
         'commands.currentOs': 'OS actuel',
         'commands.detecting': 'Détection...',
@@ -5160,8 +5184,11 @@ const translations = {
         'commandSets.edit': 'Editar conjunto',
         'commandSets.duplicate': 'Duplicar',
         'commandSets.steps': 'pasos',
+        'commandSets.step': 'paso',
+        'commandSets.stepCount': 'Pasos de comando: {count}',
         'commandSets.addFreeText': 'Añadir texto libre',
         'commandSets.freeText': 'Texto libre',
+        'commandSets.emptyInline': 'Paso de texto libre vacío',
         'commandSets.saveToLibrary': 'Guardar en la biblioteca',
         'commandSets.useDefaultParameters': 'Usar parámetros de la biblioteca',
         'commandSets.useSudo': 'Ejecutar comandos con sudo',
@@ -5172,6 +5199,7 @@ const translations = {
         'commandSets.removeStep': 'Eliminar paso',
         'commandSets.noSteps': 'Añade un comando de la biblioteca o un paso de texto libre.',
         'commandSets.empty': 'No hay conjuntos de comandos guardados.',
+        'commandSets.emptySearch': 'Ningún conjunto de comandos coincide con esta búsqueda.',
         'commandSets.noSelectionHint': 'No se ejecutarán comandos después de conectar.',
         'commandSets.missingCommand': 'Falta el comando de la biblioteca',
         'commandSets.missingSet': 'Falta el conjunto de comandos',
@@ -6156,6 +6184,7 @@ const translations = {
 
         'common.delete': 'Eliminar',
         'common.edit': 'Editar',
+        'common.actions': 'Acciones',
         'common.cancel': 'Cancelar',
         'common.continue': 'Continuar',
         'common.save': 'Guardar',
@@ -6187,6 +6216,7 @@ const translations = {
         'commands.delete': 'Eliminar',
         'commands.save': 'Guardar',
         'commands.cancel': 'Cancelar',
+        'commands.noCommands': 'No se encontraron comandos',
         'commands.searchPlaceholder': 'Buscar comandos, parámetros o descripciones...',
         'commands.currentOs': 'OS actual',
         'commands.detecting': 'Detectando...',
@@ -6410,8 +6440,11 @@ const translations = {
         'commandSets.edit': '编辑命令集',
         'commandSets.duplicate': '复制',
         'commandSets.steps': '步骤',
+        'commandSets.step': '步骤',
+        'commandSets.stepCount': '命令步骤：{count}',
         'commandSets.addFreeText': '添加自由文本',
         'commandSets.freeText': '自由文本',
+        'commandSets.emptyInline': '空的自由文本步骤',
         'commandSets.saveToLibrary': '保存为库命令',
         'commandSets.useDefaultParameters': '使用命令库参数',
         'commandSets.useSudo': '使用 sudo 运行命令',
@@ -6422,6 +6455,7 @@ const translations = {
         'commandSets.removeStep': '删除步骤',
         'commandSets.noSteps': '添加库命令或自由文本步骤。',
         'commandSets.empty': '尚未保存命令集。',
+        'commandSets.emptySearch': '没有与此搜索匹配的命令集。',
         'commandSets.noSelectionHint': '连接后不会运行任何命令。',
         'commandSets.missingCommand': '缺少库命令',
         'commandSets.missingSet': '缺少命令集',
@@ -7397,6 +7431,7 @@ const translations = {
 
         'common.delete': '删除',
         'common.edit': '编辑',
+        'common.actions': '操作',
         'common.cancel': '取消',
         'common.continue': '继续',
         'common.save': '保存',
@@ -7437,6 +7472,7 @@ const translations = {
         'commands.delete': '删除',
         'commands.save': '保存',
         'commands.cancel': '取消',
+        'commands.noCommands': '未找到命令',
         'commands.searchPlaceholder': '搜索命令、参数或说明...',
         'commands.currentOs': '当前系统',
         'commands.detecting': '检测中...',
@@ -7504,17 +7540,40 @@ const translations = {
     }
 };
 
+const BrowserPreferences = {
+    get(key, fallback = null) {
+        try {
+            const value = window.localStorage?.getItem(key);
+            return typeof value === 'string' && value ? value : fallback;
+        } catch {
+            return fallback;
+        }
+    },
+
+    set(key, value) {
+        try {
+            window.localStorage?.setItem(key, String(value));
+            return true;
+        } catch {
+            return false;
+        }
+    }
+};
+
+const storedLanguage = BrowserPreferences.get('language', 'en');
+
 const i18n = {
-    currentLang: localStorage.getItem('language') || 'en',
+    currentLang: translations[storedLanguage] ? storedLanguage : 'en',
 
     t(key) {
-        return translations[this.currentLang][key] || translations['en'][key] || key;
+        const activeTranslations = translations[this.currentLang] || translations.en;
+        return activeTranslations[key] || translations.en[key] || key;
     },
 
     setLanguage(lang) {
         if (translations[lang]) {
             this.currentLang = lang;
-            localStorage.setItem('language', lang);
+            BrowserPreferences.set('language', lang);
             this.updatePageText();
 
             window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang } }));
@@ -7583,6 +7642,7 @@ const i18n = {
     }
 };
 
+window.BrowserPreferences = BrowserPreferences;
 window.i18n = i18n;
 
 document.addEventListener('DOMContentLoaded', () => {

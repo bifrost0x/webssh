@@ -143,6 +143,12 @@ def test_connection_command_manager_uses_current_cache_version():
     assert "filename='js/connection-command-manager.js') }}?v=2" in template
 
 
+def test_command_set_manager_uses_current_cache_version():
+    template = read('templates/index.html')
+
+    assert "filename='js/command-set-manager.js') }}?v=8" in template
+
+
 def test_connection_and_profile_payloads_send_only_selected_set_id():
     source = read('static/js/app.js')
 
