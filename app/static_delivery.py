@@ -18,6 +18,7 @@ _COMPRESSIBLE_MIMETYPES = (
     "text/css",
     "text/javascript",
 )
+_ASSET_INDEX_EXTENSION = "static_delivery_asset_paths"
 
 
 def _remove_cookie_variance(response) -> None:
@@ -32,14 +33,25 @@ def _add_accept_encoding_variance(response) -> None:
         response.vary = [*response.vary, "Accept-Encoding"]
 
 
-def _resolve_static_asset(app, filename: str) -> Path | None:
+def _build_static_asset_index(app) -> dict[str, Path]:
+    """Index trusted files without joining request-controlled path segments."""
+    if not app.static_folder:
+        raise RuntimeError("static delivery requires an application static folder")
     try:
         static_root = Path(app.static_folder).resolve(strict=True)
-        asset_path = (static_root / filename).resolve(strict=True)
-        asset_path.relative_to(static_root)
-    except (OSError, ValueError):
-        return None
-    return asset_path if asset_path.is_file() else None
+    except OSError as exc:
+        raise RuntimeError("application static folder does not exist") from exc
+
+    asset_paths = {}
+    for candidate in static_root.rglob("*"):
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(static_root)
+        except (OSError, ValueError):
+            continue
+        if resolved.is_file():
+            asset_paths[candidate.relative_to(static_root).as_posix()] = resolved
+    return asset_paths
 
 
 @lru_cache(maxsize=512)
@@ -59,7 +71,8 @@ def _content_version(
 
 def static_asset_version(app, filename: str) -> str | None:
     """Return a content-derived cache key for one local static asset."""
-    asset_path = _resolve_static_asset(app, filename)
+    asset_paths = app.extensions.get(_ASSET_INDEX_EXTENSION, {})
+    asset_path = asset_paths.get(filename)
     if asset_path is None:
         return None
     try:
@@ -144,6 +157,7 @@ def init_static_delivery(app) -> None:
             "static delivery requires Flask's secure-cookie session interface"
         )
     app.session_interface = _StaticAwareSessionInterface()
+    app.extensions[_ASSET_INDEX_EXTENSION] = _build_static_asset_index(app)
 
     def static_asset_url(filename: str) -> str:
         version = static_asset_version(app, filename)

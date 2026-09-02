@@ -83,6 +83,11 @@ def test_missing_versioned_asset_is_not_immutably_cached(client):
     assert response.headers['Cache-Control'] == 'no-store'
 
 
+def test_asset_versions_never_resolve_paths_outside_the_static_index(client):
+    assert static_asset_version(client.application, '../app/__init__.py') is None
+    assert static_asset_version(client.application, '/etc/passwd') is None
+
+
 def test_static_encoding_negotiation_respects_client_quality(client):
     target = _asset_url(client, 'js/i18n-auth.js')
     brotli_only = client.get(
