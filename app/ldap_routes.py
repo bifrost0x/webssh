@@ -43,6 +43,7 @@ ldap_blueprint = Blueprint('ldap', __name__)
 _MAX_LDAP_FORM_BYTES = 4096
 _MAX_LDAP_JSON_BYTES = 4096
 _MAX_AUTO_PROVISIONED_USERNAME_LENGTH = 80
+_JSON_BODY_TOO_LARGE = object()
 
 
 def _bounded_json():
@@ -51,14 +52,15 @@ def _bounded_json():
         request.content_length is not None
         and request.content_length > _MAX_LDAP_JSON_BYTES
     ):
-        return None
+        return _JSON_BODY_TOO_LARGE
     try:
         raw_data = request.get_data(cache=True)
     except RequestEntityTooLarge:
-        return None
+        return _JSON_BODY_TOO_LARGE
     if len(raw_data) > _MAX_LDAP_JSON_BYTES:
-        return None
-    return request.get_json(silent=True) or {}
+        return _JSON_BODY_TOO_LARGE
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else None
 
 
 def _request_body_too_large():
@@ -278,8 +280,10 @@ def ldap_login():
 @step_up_required('ldap.link', lambda user_id: user_id)
 def link_ldap_identity(user_id):
     data = _bounded_json()
-    if data is None:
+    if data is _JSON_BODY_TOO_LARGE:
         return _request_body_too_large()
+    if data is None:
+        return jsonify({'error': 'Invalid request'}), 400
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({'error': 'User not found'}), 404
@@ -289,7 +293,10 @@ def link_ldap_identity(user_id):
         }), 400
     if data.get('confirm_username') != target.username:
         return jsonify({'error': 'Target confirmation does not match'}), 400
-    directory_username = str(data.get('directory_username') or '').strip()
+    directory_username = data.get('directory_username')
+    if not isinstance(directory_username, str):
+        return jsonify({'error': 'Directory username is required'}), 400
+    directory_username = directory_username.strip()
     if not directory_username or len(directory_username) > 256:
         return jsonify({'error': 'Directory username is required'}), 400
     if target.ldap_identity is not None:
@@ -430,8 +437,10 @@ def ldap_status():
 )
 def unlink_ldap_identity(user_id, identity_id):
     data = _bounded_json()
-    if data is None:
+    if data is _JSON_BODY_TOO_LARGE:
         return _request_body_too_large()
+    if data is None:
+        return jsonify({'error': 'Invalid request'}), 400
     target = db.session.get(User, user_id)
     if target is None:
         return jsonify({'error': 'User not found'}), 404
@@ -440,7 +449,9 @@ def unlink_ldap_identity(user_id, identity_id):
     row = db.session.get(LDAPIdentity, identity_id)
     if row is None or row.user_id != target.id:
         return jsonify({'error': 'LDAP identity not found'}), 404
-    new_password = data.get('new_password') or ''
+    new_password = data.get('new_password')
+    if not isinstance(new_password, str):
+        return jsonify({'error': 'New password is required'}), 400
     if len(new_password) < config.MIN_PASSWORD_LENGTH:
         return jsonify({
             'error': (

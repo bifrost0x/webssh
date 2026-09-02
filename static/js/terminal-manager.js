@@ -92,11 +92,21 @@ const TerminalManager = {
         return window.innerWidth < 768 || 'ontouchstart' in window;
     },
 
+    getScrollbackLines() {
+        const rawValue = window.BrowserPreferences?.get(
+            'terminalScrollback',
+            '500',
+        ) ?? '500';
+        const parsed = Number.parseInt(rawValue, 10);
+        if (!Number.isFinite(parsed)) return 500;
+        return Math.min(10000, Math.max(50, parsed));
+    },
+
     createTerminal(sessionId, terminalKey = null) {
         const key = terminalKey || sessionId;
         const monoFont = this.getMonoFont();
         const theme = this.buildTheme();
-        const scrollbackLines = parseInt(localStorage.getItem('terminalScrollback') || '500', 10);
+        const scrollbackLines = this.getScrollbackLines();
         const terminal = new Terminal({
             cursorBlink: true,
             fontSize: this.getResponsiveFontSize(),

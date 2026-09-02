@@ -207,13 +207,20 @@
     function initScrollback() {
         const input = document.getElementById('scrollbackInput');
         if (!input) { return; }
-        input.value = localStorage.getItem('terminalScrollback') || '500';
+        const storedValue = window.BrowserPreferences?.get(
+            'terminalScrollback',
+            '500',
+        ) ?? '500';
+        let initialValue = Number.parseInt(storedValue, 10);
+        if (!Number.isFinite(initialValue)) { initialValue = 500; }
+        initialValue = Math.min(10000, Math.max(50, initialValue));
+        input.value = String(initialValue);
         input.addEventListener('change', () => {
             let value = Number.parseInt(input.value, 10);
             if (!Number.isFinite(value) || value < 50) { value = 50; }
             if (value > 10000) { value = 10000; }
             input.value = String(value);
-            localStorage.setItem('terminalScrollback', String(value));
+            window.BrowserPreferences?.set('terminalScrollback', value);
             setPreferenceStatus(t(
                 'settings.scrollbackSaved',
                 'Scrollback saved in this browser.'

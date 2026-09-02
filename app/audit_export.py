@@ -195,7 +195,9 @@ def export_audit_log():
 @step_up_required("audit.retention", "global")
 def update_audit_retention():
     _require_enabled()
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request"}), 400
     value = data.get("backup_count")
     if type(value) is not int or not 1 <= value <= 90:
         return jsonify({

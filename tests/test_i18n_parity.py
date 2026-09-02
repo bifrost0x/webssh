@@ -242,24 +242,10 @@ def test_english_command_set_copy_explains_execution_boundaries():
 
 def test_all_popup_translation_references_exist_in_every_locale():
     i18n_source = Path('static/js/i18n.js').read_text(encoding='utf-8')
-    source_paths = sorted(Path('templates').glob('*.html')) + [
-        Path('static/js/admin.js'),
-        Path('static/js/app.js'),
-        Path('static/js/auth.js'),
-        Path('static/js/binary-transfer-client.js'),
-        Path('static/js/command-library.js'),
-        Path('static/js/drag-drop-manager.js'),
-        Path('static/js/file-transfer.js'),
-        Path('static/js/security-ui.js'),
-        Path('static/js/session-diagnostics.js'),
-        Path('static/js/settings-center.js'),
-        Path('static/js/ssh-error-ui.js'),
-        Path('static/js/session-command-launcher.js'),
-        Path('static/js/smb-source-dialog.js'),
-        Path('static/js/sftp-file-manager.js'),
-        Path('static/js/webauthn.js'),
-        Path('static/js/webssh2-shell.js'),
-    ]
+    source_paths = (
+        sorted(Path('templates').glob('*.html'))
+        + sorted(Path('static/js').glob('*.js'))
+    )
     referenced_keys = set()
     for source_path in source_paths:
         source = source_path.read_text(encoding='utf-8')

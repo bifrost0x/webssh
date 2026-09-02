@@ -210,6 +210,31 @@ def test_retention_rejects_out_of_range_without_changing_handlers(
     assert calls == []
 
 
+def test_retention_rejects_non_object_json(app, client, monkeypatch):
+    from app import audit_export
+
+    _create_user(app, "malformed_retention_admin", is_admin=True)
+    _login(client, "malformed_retention_admin")
+    calls = []
+    monkeypatch.setattr(
+        audit_export,
+        "set_audit_backup_count",
+        lambda value: calls.append(value),
+    )
+
+    response = client.post(
+        "/admin/api/audit/retention",
+        json=[14],
+        headers=password_step_up_headers(
+            client, "audit.retention", "global"
+        )[0],
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid request"}
+    assert calls == []
+
+
 def test_retention_endpoint_applies_selected_backup_count(
     app, client, monkeypatch
 ):

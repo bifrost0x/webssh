@@ -119,7 +119,9 @@ def github_step_up_start():
     from .auth_assurance import current_authentication_session
     from .step_up import account_step_up_intent, StepUpError
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid request'}), 400
     token = data.get('intent')
     try:
         intent = account_step_up_intent(token, current_authentication_session())

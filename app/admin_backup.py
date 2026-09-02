@@ -403,7 +403,9 @@ def cancel_backup_operation(operation_id):
 @login_required
 @step_up_required('backup.restore_prepare', lambda operation_id: operation_id)
 def prepare_restore(operation_id):
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid request'}), 400
     if data.get('acknowledge_sensitive_restore') is not True:
         return jsonify({'error': 'Restore acknowledgement is required'}), 400
     try:
@@ -437,7 +439,9 @@ def prepare_restore(operation_id):
 def restore_uploaded_backup(operation_id):
     if _rate_limited('backup_restore', config.RATELIMIT_BACKUP_RESTORE):
         return jsonify({'error': 'Too many restore attempts'}), 429
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid request'}), 400
     if (
         data.get('confirm_destructive_restore') is not True
         or data.get('confirmation_phrase') != 'RESTORE'

@@ -869,6 +869,15 @@ def create_app(
             'last_login': u.last_login.isoformat() if u.last_login else None,
         }
 
+    def _admin_create_user_target():
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return 'invalid-payload'
+        username = data.get('username')
+        if not isinstance(username, str):
+            return 'invalid-payload'
+        return username.strip()
+
     @app.route('/admin')
     @admin_required
     @login_required
@@ -887,13 +896,22 @@ def create_app(
     @login_required
     @step_up_required(
         'user.create',
-        lambda: str((request.get_json(silent=True) or {}).get('username') or ''),
+        _admin_create_user_target,
     )
     def admin_create_user():
-        data = request.get_json(silent=True) or {}
-        username = (data.get('username') or '').strip()
-        password = data.get('password') or ''
-        make_admin = bool(data.get('is_admin'))
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid user payload'}), 400
+        username = data.get('username')
+        password = data.get('password')
+        make_admin = data.get('is_admin', False)
+        if (
+            not isinstance(username, str)
+            or not isinstance(password, str)
+            or type(make_admin) is not bool
+        ):
+            return jsonify({'error': 'Invalid user payload'}), 400
+        username = username.strip()
         user, error = register_user(username, password)
         if error:
             return jsonify({'error': error}), 400
@@ -1001,7 +1019,9 @@ def create_app(
             WebAuthnCredential,
         )
 
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid request'}), 400
         target = db.session.get(User, user_id)
         if target is None:
             return jsonify({'error': 'User not found'}), 404
@@ -1050,7 +1070,9 @@ def create_app(
     @login_required
     @step_up_required('settings.update', 'global')
     def admin_set_settings():
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid settings payload'}), 400
         if 'registration_enabled' in data:
             if type(data['registration_enabled']) is not bool:
                 return jsonify({

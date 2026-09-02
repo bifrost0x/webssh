@@ -135,6 +135,39 @@ def _enable_ldap_blueprint(app, monkeypatch, directory):
     app.register_blueprint(ldap_routes.ldap_blueprint)
 
 
+def test_ldap_identity_mutations_reject_non_object_json(
+    app, client, monkeypatch
+):
+    directory = _FakeDirectory(_DirectoryIdentity(
+        provider="default",
+        subject="unused-id",
+        distinguished_name="uid=unused,dc=example,dc=com",
+    ))
+    _enable_ldap_blueprint(app, monkeypatch, directory)
+    _create_user(app, "ldap_json_admin", is_admin=True)
+    target_id = _create_user(app, "ldap_json_target")
+    login = client.post(
+        "/login",
+        data={"username": "ldap_json_admin", "password": "password123"},
+    )
+    assert login.status_code == 302
+
+    linked = client.post(
+        f"/admin/api/users/{target_id}/ldap-link",
+        json=["unexpected"],
+        headers=_step_up(client, "ldap.link", target_id),
+    )
+    unlinked = client.delete(
+        f"/admin/api/users/{target_id}/ldap-identities/999",
+        json=["unexpected"],
+        headers=_step_up(client, "ldap.unlink", f"{target_id}:999"),
+    )
+
+    assert linked.status_code == 400
+    assert unlinked.status_code == 400
+    assert directory.lookups == []
+
+
 def test_enabled_ldap_login_defaults_to_named_directory_source(
     app,
     client,
