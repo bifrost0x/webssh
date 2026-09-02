@@ -91,7 +91,7 @@ def _compress_static_response(response):
     """Apply deterministic gzip with an encoding-specific validator."""
     _add_accept_encoding_variance(response)
     if (
-        request.method != "GET"
+        request.method not in {"GET", "HEAD"}
         or response.status_code != 200
         or "Content-Range" in response.headers
         or "Content-Encoding" in response.headers

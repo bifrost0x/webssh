@@ -124,19 +124,30 @@ def test_ranges_and_non_text_assets_are_not_compressed(client):
     assert 'Content-Encoding' not in image.headers
 
 
-def test_head_and_dynamic_html_are_not_compressed(client):
-    static_head = client.head(
-        _asset_url(client, 'js/i18n-auth.js'),
+def test_static_head_matches_the_selected_get_representation(client):
+    target = _asset_url(client, 'js/i18n-auth.js')
+    static_get = client.get(
+        target,
         headers={'Accept-Encoding': 'br, gzip'},
     )
+    static_head = client.head(
+        target,
+        headers={'Accept-Encoding': 'br, gzip'},
+    )
+
+    assert static_head.status_code == 200
+    assert static_head.data == b''
+    for header in ('Content-Encoding', 'Content-Length', 'ETag', 'Vary', 'Cache-Control'):
+        assert static_head.headers[header] == static_get.headers[header]
+
+
+def test_dynamic_html_is_not_compressed(client):
     login = client.get(
         '/login',
         headers={'Accept-Encoding': 'br, gzip'},
         follow_redirects=True,
     )
 
-    assert static_head.status_code == 200
-    assert 'Content-Encoding' not in static_head.headers
     assert login.status_code == 200
     assert login.mimetype == 'text/html'
     assert 'Content-Encoding' not in login.headers
