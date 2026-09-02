@@ -3,7 +3,7 @@
 import gzip
 import hashlib
 import re
-from functools import lru_cache
+from functools import lru_cache, wraps
 from pathlib import Path
 
 from flask import request, url_for
@@ -19,6 +19,13 @@ _COMPRESSIBLE_MIMETYPES = (
     "text/javascript",
 )
 _ASSET_INDEX_EXTENSION = "static_delivery_asset_paths"
+_DEFERRED_CONDITIONAL_ENV = "webssh.static_delivery.deferred_conditional"
+_CONDITIONAL_ENV_KEYS = (
+    "HTTP_IF_MATCH",
+    "HTTP_IF_NONE_MATCH",
+    "HTTP_IF_MODIFIED_SINCE",
+    "HTTP_IF_UNMODIFIED_SINCE",
+)
 
 
 def _remove_cookie_variance(response) -> None:
@@ -118,6 +125,13 @@ def _compress_static_response(response):
     return response.make_conditional(request)
 
 
+def _apply_deferred_static_condition(response):
+    deferred = request.environ.pop(_DEFERRED_CONDITIONAL_ENV, False)
+    if not deferred or response.status_code != 200:
+        return response
+    return response.make_conditional(request)
+
+
 class _StaticAwareSessionInterface(SecureCookieSessionInterface):
     """Remove artificial cookie variance after Flask saves the session."""
 
@@ -159,6 +173,31 @@ def init_static_delivery(app) -> None:
     app.session_interface = _StaticAwareSessionInterface()
     app.extensions[_ASSET_INDEX_EXTENSION] = _build_static_asset_index(app)
 
+    static_view = app.view_functions.get("static")
+    if static_view is None:
+        raise RuntimeError("static delivery requires Flask's static endpoint")
+
+    @wraps(static_view)
+    def serve_static_with_negotiated_conditionals(**values):
+        deferred_headers = {}
+        if (
+            request.method in {"GET", "HEAD"}
+            and "Range" not in request.headers
+            and request.accept_encodings.best_match(("gzip", "identity")) == "gzip"
+        ):
+            for key in _CONDITIONAL_ENV_KEYS:
+                value = request.environ.pop(key, None)
+                if value is not None:
+                    deferred_headers[key] = value
+            if deferred_headers:
+                request.environ[_DEFERRED_CONDITIONAL_ENV] = True
+        try:
+            return static_view(**values)
+        finally:
+            request.environ.update(deferred_headers)
+
+    app.view_functions["static"] = serve_static_with_negotiated_conditionals
+
     def static_asset_url(filename: str) -> str:
         version = static_asset_version(app, filename)
         if version is None:
@@ -197,6 +236,6 @@ def init_static_delivery(app) -> None:
         response.headers.pop("Expires", None)
 
         if response.mimetype not in _COMPRESSIBLE_MIMETYPES:
-            return response
+            return _apply_deferred_static_condition(response)
 
-        return _compress_static_response(response)
+        return _apply_deferred_static_condition(_compress_static_response(response))
