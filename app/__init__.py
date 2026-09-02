@@ -74,6 +74,8 @@ def create_app(
     static_dir = os.path.join(base_dir, 'static')
     app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     app.config.from_object(config)
+    from .static_delivery import init_static_delivery
+    init_static_delivery(app)
     app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
         max_workers=config.BACKGROUND_WORKERS
     )
@@ -167,6 +169,10 @@ def create_app(
                 'error': 'WebSSH is in restore maintenance mode',
                 'code': 'maintenance',
             }), 503
+        # Static files are public and user-independent. Avoid opening the
+        # session for them so shared caches do not receive ``Vary: Cookie``.
+        if request.endpoint == 'static':
+            return None
         if (
             current_user.is_authenticated
             and current_user.is_ldap_managed
@@ -387,7 +393,11 @@ def create_app(
         if not config.DEBUG:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
-        if initialize_storage and session.get('_user_id') is not None:
+        if (
+            request.endpoint != 'static'
+            and initialize_storage
+            and session.get('_user_id') is not None
+        ):
             from .session_epoch import current_epoch
             session['_auth_epoch'] = current_epoch()
         return response

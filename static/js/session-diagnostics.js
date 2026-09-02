@@ -871,6 +871,9 @@
             updateExpandButton();
             rerenderLocal();
         };
+        const handlePrimaryWorkspaceChange = event => {
+            if (event?.detail?.view === 'workspaces') scheduleRedraw();
+        };
         const handleSystemdSearch = event => { filters.systemdQuery = event.target.value; rerenderLocal(); };
         const handleDockerSearch = event => { filters.dockerQuery = event.target.value; rerenderLocal(); };
         const filterHandlers = new Map();
@@ -887,6 +890,7 @@
         elements.dockerSearch?.addEventListener('input', handleDockerSearch);
         windowRef?.addEventListener?.('themeChanged', scheduleRedraw);
         windowRef?.addEventListener?.('languageChanged', handleLanguageChanged);
+        windowRef?.addEventListener?.('primary-workspace-change', handlePrimaryWorkspaceChange);
         windowRef?.addEventListener?.('keydown', handleKeydown);
         const ResizeObserverCtor = options.ResizeObserver || windowRef?.ResizeObserver;
         const resizeObserver = ResizeObserverCtor ? new ResizeObserverCtor(scheduleRedraw) : null;
@@ -912,6 +916,7 @@
                 filterHandlers.forEach((handler, button) => button.removeEventListener('click', handler));
                 windowRef?.removeEventListener?.('themeChanged', scheduleRedraw);
                 windowRef?.removeEventListener?.('languageChanged', handleLanguageChanged);
+                windowRef?.removeEventListener?.('primary-workspace-change', handlePrimaryWorkspaceChange);
                 windowRef?.removeEventListener?.('keydown', handleKeydown);
                 resizeObserver?.disconnect?.();
                 if (redrawFrame !== null) {

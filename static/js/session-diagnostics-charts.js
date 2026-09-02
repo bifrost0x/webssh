@@ -71,15 +71,17 @@
     }
 
     function canvasMetrics(canvas, options) {
-        const ratio = Number(options?.devicePixelRatio ?? root.devicePixelRatio) || 1;
-        const width = Math.max(1, Number(canvas.clientWidth) || Number(canvas.width) || 1);
-        const height = Math.max(1, Number(canvas.clientHeight) || Number(canvas.height) || 1);
-        canvas.width = Math.round(width * ratio);
-        canvas.height = Math.round(height * ratio);
-        if (canvas.style) {
-            canvas.style.width = `${width}px`;
-            canvas.style.height = `${height}px`;
+        const width = Number(canvas.clientWidth);
+        const height = Number(canvas.clientHeight);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+            return null;
         }
+        const requestedRatio = Number(options?.devicePixelRatio ?? root.devicePixelRatio);
+        const ratio = Number.isFinite(requestedRatio) && requestedRatio > 0 ? requestedRatio : 1;
+        const backingWidth = Math.max(1, Math.round(width * ratio));
+        const backingHeight = Math.max(1, Math.round(height * ratio));
+        if (canvas.width !== backingWidth) canvas.width = backingWidth;
+        if (canvas.height !== backingHeight) canvas.height = backingHeight;
         return { width, height, ratio };
     }
 
@@ -147,9 +149,11 @@
 
     function drawLineChart(canvas, series, options = {}) {
         if (!canvas?.getContext) return;
+        const metrics = canvasMetrics(canvas, options);
+        if (!metrics) return;
         const context = canvas.getContext('2d');
         if (!context) return;
-        const { width, height, ratio } = canvasMetrics(canvas, options);
+        const { width, height, ratio } = metrics;
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
         context.clearRect(0, 0, width, height);
         if (options.grid !== false) {

@@ -6,8 +6,10 @@
   "scripts": {
     "vendor": "node scripts/vendor.js",
     "vendor:check": "node scripts/vendor.js --check",
+    "i18n:auth": "node scripts/build-auth-i18n.js",
+    "i18n:auth:check": "node scripts/build-auth-i18n.js --check",
     "lint:js": "eslint static/js",
-    "test:js": "node --test tests/js/*.test.js",
+    "test:js": "npm run i18n:auth:check && node --test tests/js/*.test.js",
     "test:e2e": "playwright test --forbid-only"
   },
   "dependencies": {

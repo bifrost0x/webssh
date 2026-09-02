@@ -29,34 +29,32 @@ def test_saved_connection_context_precedes_authentication_method():
     )
 
 
-def test_merged_profile_frontend_assets_have_distinct_cache_versions():
+def test_merged_profile_frontend_assets_use_content_addressed_urls():
     template = read('templates/index.html')
-    expected_versions = {
-        "filename='css/style.css'": '?v=24',
-        "filename='css/sftp-file-manager.css'": '?v=22',
-        "filename='js/i18n.js'": '?v=46',
-        "filename='js/command-workspace.js'": '?v=4',
-        "filename='js/command-palette-utils.js'": '?v=1',
-        "filename='js/profile-launcher-utils.js'": '?v=5',
-        "filename='js/connection-launcher.js'": '?v=1',
-        "filename='js/profile-manager.js'": '?v=19',
-        "filename='js/session-workspace.js'": '?v=9',
-        "filename='js/session-manager.js'": '?v=12',
-        "filename='js/terminal-manager.js'": '?v=13',
-        "filename='js/mobile-app-shell.js'": '?v=7',
-        "filename='js/smb-source-dialog.js'": '?v=5',
-        "filename='js/sftp-file-manager.js'": '?v=35',
-        "filename='js/jump-host-manager.js'": '?v=4',
-        "filename='js/command-library.js'": '?v=5',
-        "filename='js/command-set-manager.js'": '?v=8',
-        "filename='js/session-command-launcher.js'": '?v=5',
-        "filename='js/connection-history.js'": '?v=2',
-        "filename='js/app.js'": '?v=29',
-    }
-    for asset, version in expected_versions.items():
-        asset_start = template.index(asset)
-        asset_tag = template[asset_start:template.index('>', asset_start)]
-        assert version in asset_tag
+    expected_assets = (
+        'css/style.css',
+        'css/sftp-file-manager.css',
+        'js/i18n.js',
+        'js/command-workspace.js',
+        'js/command-palette-utils.js',
+        'js/profile-launcher-utils.js',
+        'js/connection-launcher.js',
+        'js/profile-manager.js',
+        'js/session-workspace.js',
+        'js/session-manager.js',
+        'js/terminal-manager.js',
+        'js/mobile-app-shell.js',
+        'js/smb-source-dialog.js',
+        'js/sftp-file-manager.js',
+        'js/jump-host-manager.js',
+        'js/command-library.js',
+        'js/command-set-manager.js',
+        'js/session-command-launcher.js',
+        'js/connection-history.js',
+        'js/app.js',
+    )
+    for asset in expected_assets:
+        assert f"static_asset_url(filename='{asset}')" in template
 
 
 def test_index_exposes_only_bounded_numeric_transfer_limits():
@@ -175,7 +173,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=24" in template
+    assert "static_asset_url(filename='css/style.css')" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():

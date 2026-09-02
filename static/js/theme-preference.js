@@ -49,6 +49,28 @@
         return themeId;
     }
 
+    function revealDeferredBackground(element) {
+        if (!element?.hasAttribute('data-defer-theme-background')) {
+            return false;
+        }
+        const reveal = () => {
+            element.setAttribute('data-theme-background-ready', '');
+        };
+        const schedule = () => {
+            if (typeof global.requestIdleCallback === 'function') {
+                global.requestIdleCallback(reveal, { timeout: 1000 });
+            } else {
+                global.setTimeout(reveal, 0);
+            }
+        };
+        if (document.readyState === 'complete') {
+            schedule();
+        } else {
+            global.addEventListener('load', schedule, { once: true });
+        }
+        return true;
+    }
+
     global.ThemePreference = Object.freeze({
         applyStored,
         isValid,
@@ -59,4 +81,5 @@
     if (document.body?.hasAttribute('data-use-theme-preference')) {
         applyStored(document.body);
     }
+    revealDeferredBackground(document.body);
 })(window);

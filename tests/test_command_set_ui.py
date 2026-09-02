@@ -137,16 +137,19 @@ def test_command_set_scripts_load_in_dependency_order_before_app():
     assert utils < workspace < library < manager < connection < app
 
 
-def test_connection_command_manager_uses_current_cache_version():
+def test_connection_command_manager_uses_content_addressed_url():
     template = read('templates/index.html')
 
-    assert "filename='js/connection-command-manager.js') }}?v=2" in template
+    assert (
+        "static_asset_url(filename='js/connection-command-manager.js')"
+        in template
+    )
 
 
-def test_command_set_manager_uses_current_cache_version():
+def test_command_set_manager_uses_content_addressed_url():
     template = read('templates/index.html')
 
-    assert "filename='js/command-set-manager.js') }}?v=8" in template
+    assert "static_asset_url(filename='js/command-set-manager.js')" in template
 
 
 def test_connection_and_profile_payloads_send_only_selected_set_id():

@@ -1227,6 +1227,50 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await assertNoExternalRequests(page);
 });
 
+test('diagnostics charts keep stable dimensions across primary workspace navigation', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await page.locator('#contextDiagnosticsTab').click();
+    await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+    await expect(page.locator('#sessionDiagnosticsNetworkChart')).toBeVisible({ timeout: 6000 });
+
+    const canvases = page.locator([
+        '#sessionDiagnosticsCpuSparkline',
+        '#sessionDiagnosticsMemorySparkline',
+        '#sessionDiagnosticsDiskSparkline',
+        '#sessionDiagnosticsLoadSparkline',
+        '#sessionDiagnosticsPressureChart',
+        '#sessionDiagnosticsNetworkChart',
+    ].join(', '));
+    const dimensions = () => canvases.evaluateAll(elements => elements.map(canvas => ({
+        clientWidth: canvas.clientWidth,
+        clientHeight: canvas.clientHeight,
+        width: canvas.width,
+        height: canvas.height,
+        styleWidth: canvas.style.width,
+        styleHeight: canvas.style.height,
+    })));
+    const initial = await dimensions();
+    expect(initial).toHaveLength(6);
+    expect(initial.every(({ clientWidth, clientHeight }) => clientWidth > 0 && clientHeight > 0)).toBe(true);
+    expect(initial.every(({ styleWidth, styleHeight }) => !styleWidth && !styleHeight)).toBe(true);
+
+    for (let iteration = 0; iteration < 4; iteration += 1) {
+        await page.locator('#fileTransferBtn').click();
+        await expect(page.locator('#sftpFileManager')).toBeVisible();
+        await page.evaluate(() => new Promise(resolve => {
+            window.dispatchEvent(new Event('themeChanged'));
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }));
+        await page.locator('#workspaceNavBtn').click();
+        await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+    }
+
+    expect(await dimensions()).toEqual(initial);
+    await assertNoExternalRequests(page);
+});
+
 test('compact breakpoints close diagnostics until the user reopens session tools', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);

@@ -58,12 +58,30 @@ test('draws canvas at device pixel ratio and splits paths at null values', () =>
     });
     assert.equal(canvas.width, 400);
     assert.equal(canvas.height, 160);
+    assert.deepEqual(canvas.style, {});
     assert.equal(canvas.calls.filter(call => call[0] === 'clearRect').length, 1);
     // Three grid moves plus two separate data-path starts prove the null gap did
     // not become a connecting data line.
     assert.equal(canvas.calls.filter(call => call[0] === 'moveTo').length, 5);
     assert.equal(canvas.calls.filter(call => call[0] === 'lineTo').length, 3);
     assert.equal(canvas.calls.filter(call => call[0] === 'stroke').length >= 2, true);
+});
+
+test('does not promote a hidden canvas backing size into its layout size', () => {
+    const canvas = fakeCanvas();
+    const series = [{ key: 'cpu', label: 'CPU', values: [20, 40], max: 100 }];
+    const options = { devicePixelRatio: 2 };
+    charts.drawLineChart(canvas, series, options);
+    const visibleCallCount = canvas.calls.length;
+
+    canvas.clientWidth = 0;
+    canvas.clientHeight = 0;
+    charts.drawLineChart(canvas, series, options);
+
+    assert.equal(canvas.width, 400);
+    assert.equal(canvas.height, 160);
+    assert.equal(canvas.calls.length, visibleCallCount);
+    assert.deepEqual(canvas.style, {});
 });
 
 test('does not draw data paths with fewer than two finite values and supports sparklines', () => {
