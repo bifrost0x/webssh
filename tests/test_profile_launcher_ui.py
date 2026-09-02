@@ -32,7 +32,7 @@ def test_saved_connection_context_precedes_authentication_method():
 def test_merged_profile_frontend_assets_have_distinct_cache_versions():
     template = read('templates/index.html')
     expected_versions = {
-        "filename='css/style.css'": '?v=24',
+        "filename='css/style.css'": '?v=25',
         "filename='css/sftp-file-manager.css'": '?v=22',
         "filename='js/i18n.js'": '?v=46',
         "filename='js/command-workspace.js'": '?v=4',
@@ -175,7 +175,7 @@ def test_mobile_launcher_stacks_status_below_profile_details():
 def test_profile_launcher_stylesheet_uses_current_cache_version():
     template = read('templates/index.html')
 
-    assert "filename='css/style.css') }}?v=24" in template
+    assert "filename='css/style.css') }}?v=25" in template
 
 
 def test_active_session_command_launcher_is_loaded_after_command_data_managers():

@@ -11,8 +11,8 @@
     <meta name="ldap-enabled" content="{{ 'true' if ldap_enabled else 'false' }}">
     <meta name="recovery-enabled" content="{{ 'true' if recovery_codes_enabled else 'false' }}">
     <title data-i18n="settings.pageTitle">Settings · Web SSH Terminal</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/material-icons/material-icons.css') }}?v=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=25">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=10">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/webssh-2.css') }}?v=32">
 </head>
@@ -20,7 +20,7 @@
     <header class="header">
         <div class="header-content">
             <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">
-                <img class="app-brand-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}" alt="WebSSH">
+                <img class="app-brand-logo" src="{{ url_for('static', filename='images/webssh-logo.svg') }}?v=1" alt="WebSSH">
             </a>
             {% if recovery_mode %}
             <form action="{{ url_for('logout') }}" method="post">
@@ -411,13 +411,13 @@
         </div>
     </div>
     <div id="notificationContainer" class="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
-    <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/theme-preference.js') }}?v=2"></script>
     <script src="{{ url_for('static', filename='js/i18n.js') }}?v=46"></script>
     <script src="{{ url_for('static', filename='js/settings-center.js') }}?v=5"></script>
     <script src="{{ url_for('static', filename='js/security-ui.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/webauthn.js') }}?v=7"></script>
     {% if admin_panel_enabled and is_admin and not recovery_mode %}
-    <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/restore-status-flow.js') }}?v=1"></script>
     <script src="{{ url_for('static', filename='js/admin.js') }}?v=9"></script>
     {% endif %}
 </body>

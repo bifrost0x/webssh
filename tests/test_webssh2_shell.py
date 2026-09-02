@@ -133,20 +133,25 @@ def test_every_user_facing_page_loads_the_shared_webssh2_design_layer(
 def test_every_user_facing_page_uses_current_shared_asset_versions(app, client):
     _create_login(app, client)
 
-    for path in ("/", "/security", "/settings", "/change-password"):
+    for path, translation_bundle in (
+        ("/", b'js/i18n.js?v=46'),
+        ("/security", b'js/i18n.js?v=46'),
+        ("/settings", b'js/i18n.js?v=46'),
+        ("/change-password", b'js/i18n-auth.js?v=1'),
+    ):
         response = client.get(path)
         assert response.status_code == 200
-        assert b'css/style.css?v=24' in response.data
+        assert b'css/style.css?v=25' in response.data
         assert b'css/webssh-2.css?v=32' in response.data
-        assert b'js/i18n.js?v=46' in response.data
+        assert translation_bundle in response.data
 
     client.post("/logout")
     for path in ("/login", "/register"):
         response = client.get(path)
         assert response.status_code == 200
-        assert b'css/style.css?v=24' in response.data
+        assert b'css/style.css?v=25' in response.data
         assert b'css/webssh-2.css?v=32' in response.data
-        assert b'js/i18n.js?v=46' in response.data
+        assert b'js/i18n-auth.js?v=1' in response.data
 
 
 def test_compact_workspace_controls_keep_accessible_names_and_close_command_input(
