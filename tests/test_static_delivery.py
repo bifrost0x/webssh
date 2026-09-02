@@ -61,6 +61,16 @@ def test_static_compression_has_encoding_specific_conditional_etags(client):
     assert identity_validator.headers['ETag'] == compressed.headers['ETag']
     assert gzip.decompress(identity_validator.data) == plain.data
 
+    failed_precondition = client.get(
+        target,
+        headers={
+            'Accept-Encoding': 'gzip',
+            'If-Match': '"not-the-current-representation"',
+        },
+    )
+    assert failed_precondition.status_code == 412
+    assert failed_precondition.headers['Cache-Control'] == 'no-store'
+
 
 def test_unversioned_static_urls_must_revalidate(client):
     response = client.get('/static/js/i18n-auth.js')

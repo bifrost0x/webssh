@@ -216,6 +216,10 @@ def init_static_delivery(app) -> None:
         # not depend on it. Remove that artificial variance for shared caches.
         _remove_cookie_variance(response)
 
+        if response.mimetype in _COMPRESSIBLE_MIMETYPES:
+            response = _compress_static_response(response)
+        response = _apply_deferred_static_condition(response)
+
         if response.headers.getlist("Set-Cookie"):
             response.headers["Cache-Control"] = "private, no-store"
         elif (
@@ -234,8 +238,4 @@ def init_static_delivery(app) -> None:
             )
         response.headers.pop("Pragma", None)
         response.headers.pop("Expires", None)
-
-        if response.mimetype not in _COMPRESSIBLE_MIMETYPES:
-            return _apply_deferred_static_condition(response)
-
-        return _apply_deferred_static_condition(_compress_static_response(response))
+        return response
