@@ -351,12 +351,20 @@ def test_enabled_ldap_rejects_an_unsafe_backup_endpoint(backup_url):
     assert 'LDAP_BACKUP_URL' in result.stdout + result.stderr
 
 
-def test_enabled_ldap_rejects_a_duplicate_backup_endpoint():
-    url = 'ldaps://dc01.ad.example.com:636'
+@pytest.mark.parametrize(
+    'backup_url',
+    (
+        'ldaps://dc01.ad.example.com:636',
+        'ldaps://DC01.AD.EXAMPLE.COM:636',
+        'ldaps://dc01.ad.example.com',
+        'ldaps://dc01.ad.example.com.:636',
+    ),
+)
+def test_enabled_ldap_rejects_a_duplicate_backup_endpoint(backup_url):
     result = _load_config(_production_env(
         LDAP_ENABLED='true',
-        LDAP_URL=url,
-        LDAP_BACKUP_URL=url,
+        LDAP_URL='ldaps://dc01.ad.example.com:636',
+        LDAP_BACKUP_URL=backup_url,
         LDAP_BASE_DN='ou=people,dc=ad,dc=example,dc=com',
         LDAP_BIND_DN='cn=webssh,ou=services,dc=ad,dc=example,dc=com',
         LDAP_BIND_PASSWORD_FILE='/run/webssh-auth/ldap_bind_password',

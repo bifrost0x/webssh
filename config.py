@@ -731,11 +731,27 @@ def validate_security_config():
                 or parsed_ldap_url.fragment
             ):
                 raise RuntimeError(ldap_url_error)
+            return parsed_ldap_url
 
-        _validate_ldap_url('LDAP_URL', LDAP_URL)
+        primary_ldap_url = _validate_ldap_url('LDAP_URL', LDAP_URL)
         if LDAP_BACKUP_URL:
-            _validate_ldap_url('LDAP_BACKUP_URL', LDAP_BACKUP_URL)
-            if LDAP_BACKUP_URL == LDAP_URL:
+            backup_ldap_url = _validate_ldap_url(
+                'LDAP_BACKUP_URL',
+                LDAP_BACKUP_URL,
+            )
+
+            def _ldap_endpoint_identity(parsed_url):
+                default_port = 636 if parsed_url.scheme == 'ldaps' else 389
+                return (
+                    parsed_url.scheme,
+                    parsed_url.hostname.casefold().rstrip('.'),
+                    parsed_url.port or default_port,
+                )
+
+            if (
+                _ldap_endpoint_identity(backup_ldap_url)
+                == _ldap_endpoint_identity(primary_ldap_url)
+            ):
                 raise RuntimeError(
                     'SECURITY ERROR: LDAP_BACKUP_URL must identify a '
                     'different server than LDAP_URL'
