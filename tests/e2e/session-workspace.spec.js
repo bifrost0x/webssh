@@ -313,6 +313,42 @@ async function seedLinuxSession(page, options = {}) {
     }, options);
 }
 
+test('terminal selections copy through keyboard and command palette actions', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await expect(page.locator('.terminal-pane.active .xterm-helper-textarea')).toBeAttached();
+
+    const selectTerminalOutput = () => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const terminal = TerminalManager.terminals[terminalKey];
+        terminal.selectAll();
+        return terminal.getSelection();
+    });
+    await expect.poll(selectTerminalOutput).toContain('Production Edge');
+    const keyboardSelection = await selectTerminalOutput();
+    await page.locator('.terminal-pane.active .xterm-helper-textarea').focus();
+    await page.keyboard.press('Control+c');
+    await expect.poll(() => page.evaluate(() => window.__workspaceClipboard))
+        .toBe(keyboardSelection);
+
+    const paletteSelection = await page.evaluate(() => {
+        window.__workspaceClipboard = null;
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const terminal = TerminalManager.terminals[terminalKey];
+        terminal.selectAll();
+        return terminal.getSelection();
+    });
+    expect(paletteSelection).not.toBe('');
+    await page.locator('#saveTranscriptBtn').focus();
+    await page.keyboard.press('Control+k');
+    await page.locator('#commandPaletteInput').fill('Copy Selection');
+    await page.locator('#commandPaletteInput').press('Enter');
+    await expect.poll(() => page.evaluate(() => window.__workspaceClipboard))
+        .toBe(paletteSelection);
+    await expect(page.locator('.notification-success')).toContainText('Selection copied');
+    await assertNoExternalRequests(page);
+});
+
 test('single-session workspace keeps terminal primary with on-demand Files, Diagnostics, and Notes', async ({ page }, testInfo) => {
     await login(page);
     await seedLinuxSession(page);

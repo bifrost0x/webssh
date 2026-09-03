@@ -39,6 +39,61 @@ test('virtual keyboard detection follows visual viewport occlusion, not browser 
     assert.equal(TerminalManager.isVirtualKeyboardVisible(0, 640), false);
 });
 
+test('copy shortcuts write xterm selection directly to the clipboard', async () => {
+    const writes = [];
+    global.navigator.clipboard = {
+        writeText(text) {
+            writes.push(text);
+            return Promise.resolve();
+        },
+    };
+    const terminal = {
+        hasSelection: () => true,
+        getSelection: () => 'selected terminal output',
+    };
+
+    const shouldProcess = TerminalManager.handleClipboardKeyEvent({
+        type: 'keydown',
+        key: 'c',
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+    }, terminal, false);
+
+    assert.equal(shouldProcess, false);
+    assert.equal(TerminalManager.handleClipboardKeyEvent({
+        type: 'keydown',
+        key: 'c',
+        ctrlKey: false,
+        metaKey: true,
+        altKey: false,
+        shiftKey: false,
+    }, terminal, true), false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(writes, [
+        'selected terminal output',
+        'selected terminal output',
+    ]);
+    delete global.navigator.clipboard;
+});
+
+test('Ctrl+C without a selection remains terminal interrupt input', () => {
+    const terminal = {
+        hasSelection: () => false,
+        getSelection: () => '',
+    };
+
+    assert.equal(TerminalManager.handleClipboardKeyEvent({
+        type: 'keydown',
+        key: 'c',
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+    }, terminal, false), true);
+});
+
 test('touch dragging normal terminal scrollback moves xterm lines directly', () => {
     const listeners = new Map();
     const dispatched = [];
