@@ -1561,50 +1561,59 @@
         });
     }
 
+    function copyActiveTerminalSelection() {
+        const active = SessionManager.getActiveSession();
+        const terminal = SessionManager.getActiveTerminal();
+        if (!active || !terminal) {
+            showNotification('No active session', 'warning');
+            return;
+        }
+        if (!terminal.hasSelection()) {
+            showNotification('Nothing selected to copy', 'info');
+            return;
+        }
+        TerminalManager.copySelectionToClipboard(terminal)
+            .then(copied => {
+                showNotification(
+                    copied ? 'Selection copied' : 'Nothing selected to copy',
+                    copied ? 'success' : 'info',
+                );
+            })
+            .catch(() => showNotification('Clipboard access denied', 'error'));
+    }
+
+    function pasteClipboardIntoActiveTerminal() {
+        const active = SessionManager.getActiveSession();
+        if (!active) {
+            showNotification('No active session', 'warning');
+            return;
+        }
+        if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+            showNotification('Clipboard access denied', 'error');
+            return;
+        }
+        let clipboardText;
+        try {
+            clipboardText = navigator.clipboard.readText();
+        } catch {
+            showNotification('Clipboard access denied', 'error');
+            return;
+        }
+        Promise.resolve(clipboardText)
+            .then(text => {
+                if (window.socket && text) {
+                    if (window.SSHInput) {
+                        window.SSHInput.send(active, text);
+                    } else {
+                        window.socket.emit('ssh_input', { session_id: active, data: text });
+                    }
+                }
+            })
+            .catch(() => showNotification('Clipboard access denied', 'error'));
+    }
+
     function setupClipboardActions() {
-        const copyBtn = document.getElementById('copySelectionBtn');
-        const pasteBtn = document.getElementById('pasteClipboardBtn');
         const saveBtn = document.getElementById('saveTranscriptBtn');
-
-        if (copyBtn) {
-            copyBtn.addEventListener('click', () => {
-                const active = SessionManager.getActiveSession();
-                const terminal = SessionManager.getActiveTerminal();
-                if (!active || !terminal) {
-                    showNotification('No active session', 'warning');
-                    return;
-                }
-                const selection = terminal ? terminal.getSelection() : '';
-                if (!selection) {
-                    showNotification('Nothing selected to copy', 'info');
-                    return;
-                }
-                navigator.clipboard.writeText(selection)
-                    .then(() => showNotification('Selection copied', 'success'))
-                    .catch(() => showNotification('Clipboard access denied', 'error'));
-            });
-        }
-
-        if (pasteBtn) {
-            pasteBtn.addEventListener('click', () => {
-                const active = SessionManager.getActiveSession();
-                if (!active) {
-                    showNotification('No active session', 'warning');
-                    return;
-                }
-                navigator.clipboard.readText()
-                    .then(text => {
-                        if (window.socket && text) {
-                            if (window.SSHInput) {
-                                window.SSHInput.send(active, text);
-                            } else {
-                                window.socket.emit('ssh_input', { session_id: active, data: text });
-                            }
-                        }
-                    })
-                    .catch(() => showNotification('Clipboard access denied', 'error'));
-            });
-        }
 
         if (saveBtn) {
             saveBtn.addEventListener('click', () => {
@@ -1884,8 +1893,8 @@
             { id: 'manage-keys', labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
             { id: 'change-password', labelKey: 'auth.changePassword', hint: '', action: () => { window.location.href = APP_ROOT + '/security#password'; } },
             { id: 'save-transcript', labelKey: 'terminal.saveTranscript', hint: '', action: () => document.getElementById('saveTranscriptBtn').click() },
-            { id: 'copy-selection', labelKey: 'terminal.copySelection', hint: '', action: () => document.getElementById('copySelectionBtn').click() },
-            { id: 'paste-clipboard', labelKey: 'terminal.pasteClipboard', hint: '', action: () => document.getElementById('pasteClipboardBtn').click() },
+            { id: 'copy-selection', labelKey: 'terminal.copySelection', hint: '', action: copyActiveTerminalSelection },
+            { id: 'paste-clipboard', labelKey: 'terminal.pasteClipboard', hint: '', action: pasteClipboardIntoActiveTerminal },
             { id: 'keyboard-shortcuts', labelKey: 'shortcuts.title', hint: 'Ctrl+?', action: () => openShortcuts() }
         ];
         const actionMap = new Map(actions.map(action => [action.id, action.action]));

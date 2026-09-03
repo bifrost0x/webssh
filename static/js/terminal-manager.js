@@ -51,6 +51,56 @@ const TerminalManager = {
         return key === 'c' ? !terminal.hasSelection() : false;
     },
 
+    isCopyShortcut(event, isMac) {
+        if (
+            event.type !== 'keydown'
+            || event.altKey
+            || event.shiftKey
+            || (event.key || '').toLowerCase() !== 'c'
+        ) {
+            return false;
+        }
+        return isMac
+            ? event.metaKey && !event.ctrlKey
+            : event.ctrlKey && !event.metaKey;
+    },
+
+    copySelectionToClipboard(terminal) {
+        const selection = terminal?.getSelection?.() || '';
+        if (!selection) {
+            return Promise.resolve(false);
+        }
+
+        const clipboard = navigator.clipboard;
+        if (!clipboard || typeof clipboard.writeText !== 'function') {
+            return Promise.reject(new Error('Clipboard API unavailable'));
+        }
+
+        try {
+            return Promise.resolve(clipboard.writeText(selection)).then(() => true);
+        } catch (error) {
+            return Promise.reject(error);
+        }
+    },
+
+    handleClipboardKeyEvent(event, terminal, isMac) {
+        const shouldProcess = this.shouldProcessClipboardKeyEvent(
+            event,
+            terminal,
+            isMac,
+        );
+        if (
+            !shouldProcess
+            && terminal.hasSelection()
+            && this.isCopyShortcut(event, isMac)
+        ) {
+            this.copySelectionToClipboard(terminal).catch(() => {
+                window.showNotification?.('Clipboard access denied', 'error');
+            });
+        }
+        return shouldProcess;
+    },
+
     buildTheme() {
         return {
             background: this.getCssVar('--term-background', '#1c2128'),
@@ -121,7 +171,7 @@ const TerminalManager = {
 
         const isMac = this.isMacPlatform();
         terminal.attachCustomKeyEventHandler(event => (
-            this.shouldProcessClipboardKeyEvent(event, terminal, isMac)
+            this.handleClipboardKeyEvent(event, terminal, isMac)
         ));
 
         const fitAddon = new FitAddon.FitAddon();
