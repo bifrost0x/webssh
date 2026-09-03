@@ -9,6 +9,7 @@ const THEME_IDS = [
     'arctic-ice',
     'rose-gold',
     'obsidian',
+    'rack-console',
     'retro',
     'cyberpunk-neon',
     'emerald-matrix',
@@ -22,6 +23,7 @@ const PROFESSIONAL_THEME_BACKGROUNDS = {
     'arctic-ice': 'arctic-frost.png',
     'rose-gold': 'rose-brushed-metal.png',
     obsidian: 'obsidian-glass.png',
+    'rack-console': 'rack-console-gunmetal.png',
 };
 
 const FUN_THEME_BACKGROUNDS = {
@@ -197,7 +199,7 @@ test('all themes share one typography system without moving the Settings Center'
     const baseline = await readThemeState(page);
 
     const selector = page.getByRole('combobox', { name: 'Theme' });
-    await expect(selector.locator('option')).toHaveCount(10);
+    await expect(selector.locator('option')).toHaveCount(11);
     expect(await selector.locator('option').evaluateAll(options => (
         options.map(option => option.value)
     ))).toEqual(THEME_IDS);
@@ -259,6 +261,76 @@ test('professional themes use restrained local backgrounds', async ({ page }) =>
         expect(state.background.size).toBe('cover');
     }
 
+    await assertNoExternalRequests(page);
+});
+
+test('Rack Console changes component materials without rearranging the workspace', async ({ page }) => {
+    await login(page);
+    await openThemeSettings(page);
+    const selector = page.getByRole('combobox', { name: 'Theme' });
+    await selectTheme(page, selector, 'glass');
+    await page.getByRole('link', { name: 'Back to Terminal' }).click();
+    await expect(page.locator('.profile-launcher-card').first()).toBeVisible();
+
+    const readWorkspace = () => page.evaluate(() => {
+        const rect = selectorValue => {
+            const bounds = document.querySelector(selectorValue).getBoundingClientRect();
+            return {
+                x: bounds.x,
+                y: bounds.y,
+                width: bounds.width,
+                height: bounds.height,
+            };
+        };
+        const style = selectorValue => getComputedStyle(document.querySelector(selectorValue));
+        const regionBackgrounds = [
+            '.header',
+            '.terminal-pane',
+            '.context-workspace',
+            '.workspace-status-bar',
+        ].map(selectorValue => style(selectorValue).backgroundColor);
+
+        return {
+            geometry: {
+                header: rect('.header'),
+                sessionToolbar: rect('.session-tabs-row'),
+                mainContent: rect('.main-content'),
+                terminalGrid: rect('.terminal-grid'),
+                contextWorkspace: rect('.context-workspace'),
+            },
+            launcherColumnCount: style('.profile-launcher-list')
+                .gridTemplateColumns.split(' ').length,
+            surfaces: {
+                headerImage: style('.header').backgroundImage,
+                terminalImage: style('.terminal-pane').backgroundImage,
+                notesImage: style('.notepad-panel').backgroundImage,
+                profileRadius: style('.profile-launcher-card').borderRadius,
+                profileRail: style('.profile-launcher-card').borderLeftWidth,
+                contextRadius: style('.context-workspace-tab').borderRadius,
+                statusFont: style('.workspace-status-bar').fontFamily,
+                distinctRegionBackgrounds: new Set(regionBackgrounds).size,
+            },
+        };
+    });
+
+    const baseline = await readWorkspace();
+    await openThemeSettings(page);
+    await selectTheme(page, selector, 'rack-console');
+    await page.getByRole('link', { name: 'Back to Terminal' }).click();
+    await expect(page.locator('.profile-launcher-card').first()).toBeVisible();
+    const rackConsole = await readWorkspace();
+
+    expectStableGeometry(rackConsole.geometry, baseline.geometry);
+    expect(rackConsole.launcherColumnCount).toBe(baseline.launcherColumnCount);
+    expect(rackConsole.surfaces.headerImage).toContain('linear-gradient');
+    expect(rackConsole.surfaces.headerImage).not.toContain('rack-console-gunmetal.png');
+    expect(rackConsole.surfaces.terminalImage).toContain('rack-console-gunmetal.png');
+    expect(rackConsole.surfaces.notesImage).toBe('none');
+    expect(rackConsole.surfaces.profileRadius).toBe('2px');
+    expect(rackConsole.surfaces.profileRail).toBe('4px');
+    expect(rackConsole.surfaces.contextRadius).toBe('2px');
+    expect(rackConsole.surfaces.statusFont).toContain('IBM Plex Mono');
+    expect(rackConsole.surfaces.distinctRegionBackgrounds).toBeGreaterThanOrEqual(3);
     await assertNoExternalRequests(page);
 });
 

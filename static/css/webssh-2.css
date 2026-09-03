@@ -5316,3 +5316,513 @@ body[data-theme="paper"]:has(.auth-access-dock) {
         max-height: calc(100dvh - 68px);
     }
 }
+
+/* Rack Console: a component-level industrial system, not a palette swap. */
+body[data-theme="rack-console"] {
+    --ws2-radius-sm: 2px;
+    --ws2-radius: 3px;
+    --ws2-radius-lg: 4px;
+    --ws2-focus: #efa85e;
+    --ws2-shadow: 0 14px 34px rgb(0 0 0 / 58%);
+    --rack-canvas: #08090a;
+    --rack-faceplate: #101214;
+    --rack-faceplate-raised: #171a1d;
+    --rack-recess: #060708;
+    --rack-rule: rgb(224 220 211 / 16%);
+    --rack-rule-strong: rgb(224 220 211 / 30%);
+    --rack-highlight: rgb(255 255 255 / 5%);
+    color-scheme: dark;
+}
+
+body[data-theme="rack-console"] :where(
+    .btn,
+    .form-control,
+    input[type="text"],
+    input[type="password"],
+    input[type="search"],
+    input[type="number"],
+    input[type="url"],
+    input[type="email"],
+    select,
+    textarea,
+    .modal-content,
+    .account-dropdown-header,
+    .admin-table-wrap,
+    .admin-settings-surface,
+    .admin-setting-row,
+    .manager-card
+) {
+    border-radius: var(--ws2-radius-sm);
+}
+
+body[data-theme="rack-console"] :where(
+    .btn,
+    .form-control,
+    input[type="text"],
+    input[type="password"],
+    input[type="search"],
+    input[type="number"],
+    input[type="url"],
+    input[type="email"],
+    select,
+    textarea
+) {
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        0 1px 0 rgb(0 0 0 / 72%);
+}
+
+body[data-theme="rack-console"] .btn-primary {
+    border-color: #ed9f50;
+    background: #d7842f;
+    color: #090a0b;
+    box-shadow:
+        inset 0 1px 0 rgb(255 232 201 / 28%),
+        inset 0 -2px 0 rgb(90 43 9 / 34%);
+}
+
+body[data-theme="rack-console"] .btn-primary:hover:not(:disabled) {
+    border-color: #f2b26f;
+    background: #e79543;
+}
+
+body[data-theme="rack-console"] .btn-secondary {
+    border-color: var(--rack-rule-strong);
+    background: var(--rack-faceplate-raised);
+    color: var(--text-secondary);
+}
+
+body[data-theme="rack-console"] .btn-secondary:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--accent-primary) 58%, var(--rack-rule-strong));
+    background: #202428;
+    color: var(--text-primary);
+}
+
+body[data-theme="rack-console"] .header {
+    border: 0;
+    border-bottom-color: var(--rack-rule-strong);
+    border-bottom-style: solid;
+    border-bottom-width: 1px;
+    background-color: #0c0e10;
+    background-image: linear-gradient(180deg, #171a1d 0%, #0f1113 46%, #090a0b 100%);
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        inset 0 -1px 0 rgb(0 0 0 / 82%),
+        0 3px 10px rgb(0 0 0 / 42%);
+}
+
+body[data-theme="rack-console"] .app-brand-logo {
+    border-color: var(--rack-rule-strong);
+    border-radius: 2px;
+    background: #08090a;
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        0 1px 0 #000;
+}
+
+body[data-theme="rack-console"] .header-divider,
+body[data-theme="rack-console"] .tab-row-divider {
+    background: var(--rack-rule-strong);
+}
+
+body[data-theme="rack-console"] .global-nav-item {
+    border-right: 1px solid var(--rack-rule);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+body[data-theme="rack-console"] .global-nav-item:first-child {
+    border-left: 1px solid var(--rack-rule);
+}
+
+body[data-theme="rack-console"] .global-nav-item:hover,
+body[data-theme="rack-console"] .global-nav-item.active {
+    background: #15181b;
+    color: var(--text-primary);
+}
+
+body[data-theme="rack-console"] .global-nav-item::after {
+    right: 14px;
+    bottom: 5px;
+    left: 14px;
+    height: 2px;
+}
+
+body[data-theme="rack-console"] .global-nav-item.active::after {
+    background: var(--accent-primary);
+    box-shadow: 0 1px 6px rgb(215 132 47 / 28%);
+}
+
+body[data-theme="rack-console"] .account-btn-header {
+    border: 1px solid transparent !important;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+}
+
+body[data-theme="rack-console"] .account-btn-header:hover,
+body[data-theme="rack-console"] .account-btn-header[aria-expanded="true"] {
+    border-color: var(--rack-rule-strong) !important;
+    background: var(--rack-faceplate-raised) !important;
+}
+
+body[data-theme="rack-console"] .session-tabs-row {
+    border-top-color: #000;
+    border-bottom: 0;
+    background: #090a0b;
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        inset 0 -1px 0 #000;
+}
+
+body[data-theme="rack-console"] :is(
+    .tab-row-actions .split-btn,
+    .tab-row-icon-btn,
+    .btn-new-tab,
+    .session-tab
+) {
+    border: 1px solid var(--rack-rule-strong);
+    border-radius: 2px;
+    background: #111315;
+    color: var(--text-secondary);
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        inset 0 -2px 0 #050607;
+}
+
+body[data-theme="rack-console"] :is(
+    .tab-row-actions .split-btn,
+    .tab-row-icon-btn,
+    .btn-new-tab,
+    .session-tab
+):hover {
+    border-color: color-mix(in srgb, var(--accent-primary) 52%, var(--rack-rule-strong));
+    background: #1b1e21;
+    color: var(--text-primary);
+}
+
+body[data-theme="rack-console"] .tab-row-actions .split-btn.active,
+body[data-theme="rack-console"] .session-tab.active {
+    border-color: var(--accent-primary);
+    background: #17191b;
+    color: var(--text-primary);
+    box-shadow:
+        inset 0 -2px 0 var(--accent-primary),
+        inset 0 1px 0 var(--rack-highlight);
+}
+
+body[data-theme="rack-console"] .main-content,
+body[data-theme="rack-console"] .workspace {
+    background: var(--rack-canvas);
+}
+
+body[data-theme="rack-console"] .terminal-area {
+    background: #070809;
+}
+
+body[data-theme="rack-console"] .terminal-grid {
+    border: 3px double var(--rack-rule-strong);
+    border-radius: 2px;
+    background: #060708;
+    box-shadow:
+        0 0 0 1px #000,
+        0 0 0 3px #15181a,
+        inset 0 0 0 1px var(--rack-highlight),
+        inset 0 0 26px rgb(0 0 0 / 62%);
+}
+
+body[data-theme="rack-console"] .terminal-pane {
+    border-radius: 1px;
+    background-color: var(--term-background);
+    background-image:
+        linear-gradient(rgb(5 6 7 / 78%), rgb(10 11 12 / 82%)),
+        var(--theme-background-image);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: auto, cover;
+}
+
+body[data-theme="rack-console"] .terminal-pane.active {
+    border-color: rgb(215 132 47 / 54%);
+    box-shadow:
+        inset 0 0 0 1px rgb(215 132 47 / 13%),
+        inset 0 0 22px rgb(0 0 0 / 48%);
+}
+
+body[data-theme="rack-console"] .pane-empty-icon {
+    color: var(--text-secondary);
+    opacity: 0.58;
+}
+
+body[data-theme="rack-console"] .profile-launcher-title,
+body[data-theme="rack-console"] .profile-launcher-section-title,
+body[data-theme="rack-console"] .profile-launcher-name,
+body[data-theme="rack-console"] .workspace-drawer-header h2,
+body[data-theme="rack-console"] .notepad-title {
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+body[data-theme="rack-console"] .profile-launcher-section-title {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body[data-theme="rack-console"] .profile-launcher-search {
+    border: 2px solid #030405;
+    border-radius: 2px;
+    background: #0d0f11;
+    box-shadow:
+        inset 0 1px 5px rgb(0 0 0 / 72%),
+        0 0 0 1px var(--rack-rule-strong);
+    font-family: var(--font-mono);
+}
+
+body[data-theme="rack-console"] .profile-launcher-card {
+    border: 1px solid var(--rack-rule-strong);
+    border-left: 4px solid #373b3f;
+    border-radius: 2px;
+    background: #141719;
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        inset 0 -1px 0 #050607,
+        0 2px 4px rgb(0 0 0 / 28%);
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+body[data-theme="rack-console"] .profile-launcher-card:hover {
+    border-color: var(--accent-primary);
+    border-left-color: var(--accent-primary);
+    background: #1a1d20;
+    transform: none;
+}
+
+body[data-theme="rack-console"] .profile-launcher-card:focus-visible {
+    outline-color: #efa85e;
+}
+
+body[data-theme="rack-console"] .profile-launcher-card.is-favorite {
+    border-left-color: color-mix(in srgb, var(--accent-primary) 72%, #373b3f);
+}
+
+body[data-theme="rack-console"] .profile-launcher-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+body[data-theme="rack-console"] .profile-launcher-action {
+    padding-left: 18px;
+    border-left: 1px solid var(--rack-rule);
+    font-family: var(--font-mono);
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+}
+
+body[data-theme="rack-console"] .profile-launcher-favorite {
+    color: var(--accent-primary);
+}
+
+body[data-theme="rack-console"] .context-workspace {
+    border-left: 3px double var(--rack-rule-strong);
+    background: #0d0f11;
+    box-shadow:
+        inset 1px 0 0 #000,
+        inset 0 0 0 1px var(--rack-highlight),
+        -8px 0 22px rgb(0 0 0 / 38%);
+}
+
+body[data-theme="rack-console"] .context-workspace-header {
+    gap: 0;
+    padding: 5px 6px;
+    border-bottom-color: var(--rack-rule-strong);
+    background: #090a0b;
+    box-shadow: inset 0 -1px 0 #000;
+}
+
+body[data-theme="rack-console"] .context-workspace-tabs {
+    gap: 3px;
+}
+
+body[data-theme="rack-console"] .context-workspace-tab,
+body[data-theme="rack-console"] .context-workspace-close {
+    border: 1px solid var(--rack-rule);
+    border-radius: 2px;
+    background: #131517;
+    color: var(--text-muted);
+    box-shadow: inset 0 1px 0 var(--rack-highlight);
+}
+
+body[data-theme="rack-console"] .context-workspace-tab {
+    font-family: var(--font-mono);
+    letter-spacing: 0.025em;
+}
+
+body[data-theme="rack-console"] .context-workspace-close {
+    font-family: "Material Icons";
+    letter-spacing: normal;
+}
+
+body[data-theme="rack-console"] .context-workspace-tab:hover:not(:disabled) {
+    border-color: var(--rack-rule-strong);
+    background: #1b1e21;
+    color: var(--text-primary);
+}
+
+body[data-theme="rack-console"] .context-workspace-tab[aria-selected="true"] {
+    border-color: color-mix(in srgb, var(--accent-primary) 52%, var(--rack-rule));
+    background: #1a1c1e;
+    color: var(--text-primary);
+}
+
+body[data-theme="rack-console"] .context-workspace-tab[aria-selected="true"]::after {
+    right: 5px;
+    bottom: -1px;
+    left: 5px;
+    height: 3px;
+    background: var(--accent-primary);
+}
+
+body[data-theme="rack-console"] .context-workspace .notepad-panel,
+body[data-theme="rack-console"] .notepad-section {
+    background-color: #0c0e10;
+    background-image: none;
+}
+
+body[data-theme="rack-console"] .workspace-drawer-header {
+    border-bottom-color: var(--rack-rule-strong);
+    background: #111315;
+    box-shadow: inset 0 1px 0 var(--rack-highlight);
+}
+
+body[data-theme="rack-console"] .workspace-drawer-header p,
+body[data-theme="rack-console"] .notepad-meta {
+    color: var(--text-muted);
+}
+
+body[data-theme="rack-console"] .notepad-section {
+    padding: 14px;
+}
+
+body[data-theme="rack-console"] .notepad-input {
+    border: 1px solid var(--rack-rule-strong);
+    border-radius: 2px;
+    background: #090a0b;
+    color: var(--text-secondary);
+    box-shadow:
+        inset 0 2px 8px rgb(0 0 0 / 74%),
+        0 0 0 1px #050607;
+}
+
+body[data-theme="rack-console"] .workspace-status-bar {
+    border: 1px solid #030405;
+    border-top-color: var(--rack-rule-strong);
+    background: #0c0e10;
+    color: var(--text-secondary);
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        inset 0 3px 8px rgb(0 0 0 / 48%);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+}
+
+body[data-theme="rack-console"] .workspace-status-bar > span {
+    min-height: 100%;
+    border-right-color: var(--rack-rule-strong);
+}
+
+body[data-theme="rack-console"] .workspace-status-bar > span:last-child {
+    border: 1px solid var(--rack-rule);
+    background: #141719;
+    color: var(--accent-primary);
+    box-shadow: inset 0 1px 0 var(--rack-highlight);
+}
+
+body[data-theme="rack-console"] :is(
+    .modal-content,
+    .account-dropdown-header,
+    .lang-dropdown-header,
+    .theme-dropdown-header,
+    .manager-card,
+    .admin-settings-surface,
+    .admin-table-wrap,
+    .admin-tabs
+) {
+    border-color: var(--rack-rule-strong);
+    background-color: var(--rack-faceplate);
+    background-image: none;
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        0 8px 26px rgb(0 0 0 / 42%);
+}
+
+body[data-theme="rack-console"] :is(.admin-tab, .connection-asset-nav-item, .command-workspace-tab) {
+    border-radius: 2px;
+}
+
+body[data-theme="rack-console"] :is(.admin-tab, .connection-asset-nav-item, .command-workspace-tab).active {
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+body[data-theme="rack-console"] :is(.auth-access-dock, .auth-card, .auth-form-panel) {
+    border-radius: 3px;
+}
+
+body[data-theme="rack-console"] .auth-access-dock {
+    border-color: var(--rack-rule-strong);
+    background-color: #0c0e10;
+    background-image:
+        linear-gradient(rgb(8 9 10 / 88%), rgb(12 14 16 / 92%)),
+        var(--theme-background-image);
+    background-size: auto, cover;
+    box-shadow:
+        inset 0 1px 0 var(--rack-highlight),
+        0 18px 46px rgb(0 0 0 / 52%);
+}
+
+@media (max-width: 767px) {
+    body[data-theme="rack-console"] .header-buttons,
+    body[data-theme="rack-console"] .header-buttons.is-open {
+        border-color: var(--rack-rule-strong);
+        border-radius: 3px;
+        background: #0c0e10;
+        box-shadow:
+            inset 0 1px 0 var(--rack-highlight),
+            0 -18px 44px rgb(0 0 0 / 62%);
+    }
+
+    body[data-theme="rack-console"] :is(
+        .mobile-session-summary,
+        .mobile-menu-btn,
+        .mobile-more-action,
+        .mobile-dock-item
+    ) {
+        border-radius: 2px;
+    }
+
+    body[data-theme="rack-console"] .global-nav-item {
+        border-right: 0;
+        border-left: 0;
+    }
+
+    body[data-theme="rack-console"] .profile-launcher-card {
+        min-height: 0;
+        padding: 12px;
+    }
+
+    body[data-theme="rack-console"] .profile-launcher-action {
+        padding-top: 7px;
+        padding-left: 0;
+        border-top: 1px solid var(--rack-rule);
+        border-left: 0;
+    }
+}

@@ -252,3 +252,56 @@ and context navigation no longer compete in one toolbar.
 - Remaining P0/P1/P2 findings: none.
 
 final result: passed
+
+## Rack Console theme QA (2026-09-03)
+
+### Reference and rendered evidence
+
+- Source visual truth: `/home/heimdall/.codex/generated_images/01a065f7-4668-7430-b372-d629f24bbab0/exec-964d13f7-b9c8-4d59-8050-762296fee235.png` (1672 x 941 px), the selected Rack Console concept.
+- Browser-rendered implementation: `/tmp/webssh-rack-console-design-qa/rack-console-implementation-final.png` (1280 x 720 px) at a 1280 x 720 CSS viewport.
+- Density normalization: the in-app browser reported `devicePixelRatio: 2` but returned a CSS-pixel screenshot. The source was proportionally normalized to 1280 x 720 for comparison; its aspect ratio differs only by source rounding.
+- State: authenticated seeded administrator, Rack Console selected through Settings, Workspaces active, saved hosts visible, Notes open, and no active SSH session.
+- Full-view comparison: `/tmp/webssh-rack-console-design-qa/rack-console-comparison-final.png` places the normalized source and final implementation side by side.
+- Focused top-rail comparison: `/tmp/webssh-rack-console-design-qa/rack-console-top-comparison-final.png` compares navigation, brand, session controls, borders, and active states at readable scale.
+- Focused workspace comparison: `/tmp/webssh-rack-console-design-qa/rack-console-workspace-comparison-final.png` compares the host surface, rack rows, right service module, and bottom telemetry rail.
+- Responsive supporting evidence: `/tmp/webssh-rack-console-design-qa/rack-console-mobile.png` and `/tmp/webssh-rack-console-design-qa/rack-console-mobile-menu-v2.png` at 390 x 844 CSS px.
+
+### Fidelity review
+
+- Fonts and typography: the implementation preserves WebSSH's shared Inter hierarchy for readable product copy and applies IBM Plex Mono selectively to rack labels, navigation, controls, endpoints, notes, and telemetry. Uppercase labels and restrained tracking reproduce the source's equipment-label character without changing content width or the global type system.
+- Spacing and layout rhythm: header, session rail, main content, terminal grid, context workspace, and status bar retain the existing application arrangement. The final comparison preserves the same 1280 x 720 document width with no horizontal overflow. Thicker inner bezels consume only their own box and do not move the major regions.
+- Colors and visual tokens: warm graphite surfaces (`#08090a` through `#22262a`), warm off-white text, and one restrained amber accent replace the previous blue-gray treatment. Header faceplate, session rail, recessed terminal, right service module, note well, and bottom telemetry rail have distinct surface treatments rather than sharing one repeated background.
+- Image quality and asset fidelity: the theme uses the generated 1586 x 992 gunmetal texture at low opacity inside the recessed terminal and on the authentication dock. It remains sharp at the tested viewport, has no transparency halo or stretched subject, and is not used as a substitute for icons or controls. Existing WebSSH and Material Icons assets remain intact.
+- Copy and content: existing product labels, host names, endpoint details, actions, Notes copy, and status text are unchanged. The implementation does not introduce the mockup's illustrative rack IDs because the selected concept was a visual direction and the user explicitly required the existing arrangement to remain intact.
+- Icons and controls: existing icon semantics are retained. Buttons, tabs, inputs, host rows, dialogs, and mobile actions share the 2-4 px rack geometry and inset tactile treatment, while active state, success, warning, and destructive colors remain distinguishable.
+- Accessibility and resilience: muted text remains covered by the existing 4.5:1 theme regression; keyboard focus uses the brighter amber focus token. Desktop and 390 x 844 mobile states have no horizontal overflow. The mobile action sheet, search, saved connection actions, Quick Connect dialog, and panel close action remain usable.
+
+### Primary interactions and runtime checks
+
+- Selected Rack Console through the authenticated Settings flow and verified persistence after returning to Workspaces.
+- Filtered saved connections through the host search and restored the full list.
+- Opened and closed Quick Connect, verified the dialog remained contained, and preserved existing form behavior.
+- Opened the mobile More sheet at 390 x 844 and verified every visible navigation and session action remained contained.
+- Compared Glass and Rack Console in the same authenticated state: header, session rail, main content, terminal grid, and right context workspace retain their major geometry and the host grid keeps the same track count.
+- Browser console warnings and errors after the final desktop path: none.
+
+### Comparison history
+
+#### Pass 1
+
+- P1: the right-panel close control inherited IBM Plex Mono and rendered the word `close` beyond its 34 px control instead of the Material Icons glyph. Fixed by restoring the Material Icons family and normal letter spacing specifically on `.context-workspace-close`.
+- P2: the mobile More sheet retained the generic 14 px rounded container and looked unrelated to the rack controls around it. Fixed with the Rack Console faceplate, 3 px shell radius, inset highlight, and 2 px mobile control radii.
+
+#### Pass 2
+
+- P2: the first rack header and session rail added outer borders that increased the combined header by 2 px and the session rail by 1 px. Fixed by retaining the existing single header divider and expressing the additional depth with inset shadows; the final header, toolbar, and main-content measurements match Glass exactly.
+- P2: the visual hierarchy was initially too flat compared with the selected faceplate direction. Fixed with a restrained graphite header gradient while keeping the terminal texture, right service surface, and status rail materially distinct.
+
+#### Final pass
+
+- The normalized full-view and focused comparisons show the selected industrial direction in the existing WebSSH structure: equipment-like rails, square tactile controls, recessed work area, rack-style host rows, a separately treated service module, and segmented telemetry status.
+- The source's illustrative corner screws, diagonal chassis cuts, and invented row-ID plates are intentionally not reproduced. They would add decorative assets or content that does not exist in the product and would conflict with the no-rearrangement constraint.
+- Remaining P0/P1/P2 findings: none.
+- Optional P3 polish: a future purpose-built nine-slice chassis asset could add subtle physical corner hardware if the product later adopts that ornament globally; it is not required for this theme to preserve cohesion or usability.
+
+final result: passed

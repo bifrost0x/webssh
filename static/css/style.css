@@ -542,6 +542,61 @@ body[data-theme="obsidian"] {
     --theme-background-opacity: 0.055;
 }
 
+body[data-theme="rack-console"] {
+    --bg-primary: #08090a;
+    --bg-secondary: #101214;
+    --bg-tertiary: #171a1d;
+    --bg-hover: #22262a;
+    --bg-modal: rgba(10, 11, 12, 0.985);
+    --bg-gradient: linear-gradient(145deg, #08090a 0%, #151719 100%);
+    --bg-active: rgba(215, 132, 47, 0.14);
+    --text-primary: #eeece7;
+    --text-secondary: #bbb8b1;
+    --text-muted: #8f8c85;
+    --border-color: rgba(224, 220, 211, 0.15);
+    --border-hover: rgba(224, 220, 211, 0.29);
+    --accent-primary: #d7842f;
+    --accent-primary-glow: rgba(215, 132, 47, 0.2);
+    --accent-secondary: #9b968c;
+    --accent-tertiary: #68a47c;
+    --success-color: #6db486;
+    --warning-color: #d99a48;
+    --error-color: #da6d66;
+    --info-color: #9ba7b3;
+    --btn-primary-gradient-end: #aa5f1c;
+    --btn-primary-text: #0a0b0c;
+    --btn-primary-shadow: rgba(215, 132, 47, 0.16);
+    --btn-primary-shadow-hover: rgba(215, 132, 47, 0.26);
+    --accent-on-text: #0a0b0c;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.54);
+    --shadow-md: 0 5px 14px rgba(0, 0, 0, 0.54);
+    --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.62);
+    --shadow-glow: 0 0 14px rgba(215, 132, 47, 0.12);
+    --term-background: #090a0b;
+    --term-foreground: #e7e4de;
+    --term-black: #202326;
+    --term-red: #d66f68;
+    --term-green: #70b58a;
+    --term-yellow: #d99a48;
+    --term-blue: #8ea4b8;
+    --term-magenta: #af8fa5;
+    --term-cyan: #81aaa6;
+    --term-white: #d5d2cb;
+    --term-bright-black: #55595d;
+    --term-bright-red: #e68a83;
+    --term-bright-green: #91caa5;
+    --term-bright-yellow: #e9b66d;
+    --term-bright-blue: #abc0d1;
+    --term-bright-magenta: #c8a9be;
+    --term-bright-cyan: #9dc3bf;
+    --term-bright-white: #ffffff;
+    --theme-background-image-source: url("../images/theme-backgrounds/rack-console-gunmetal.png?v=5373b8b77cc681b4");
+    --theme-background-opacity: 0.085;
+    --theme-surface-shell: rgba(13, 14, 15, 0.92);
+    --theme-surface-modal: rgba(10, 11, 12, 0.94);
+    --theme-surface-card: rgba(18, 20, 22, 0.9);
+}
+
 body:is([data-theme="glass"], [data-theme="solar"], [data-theme="paper"], [data-theme="noir"], [data-theme="arctic-ice"], [data-theme="rose-gold"], [data-theme="obsidian"]) .main-content,
 body:is([data-theme="glass"], [data-theme="solar"], [data-theme="paper"], [data-theme="noir"], [data-theme="arctic-ice"], [data-theme="rose-gold"], [data-theme="obsidian"]) .terminal-pane {
     background-image: var(--theme-background-image);

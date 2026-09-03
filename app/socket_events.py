@@ -1664,7 +1664,8 @@ def handle_set_theme(data, current_user=None):
         theme = data.get('theme')
         valid_themes = [
             'glass', 'retro', 'solar', 'paper', 'noir',
-            'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'
+            'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian',
+            'rack-console'
         ]
         if theme not in valid_themes:
             emit('error', {'error': 'Invalid theme'})

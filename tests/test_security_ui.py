@@ -156,7 +156,7 @@ def test_account_preferences_api_validates_and_persists_supported_values(
     _login(client, "preferences_user")
 
     updated = client.post("/api/account/preferences", json={
-        "theme": "obsidian",
+        "theme": "rack-console",
         "confirm_session_close": True,
         "disconnect_session_action": "close",
     })
@@ -168,13 +168,13 @@ def test_account_preferences_api_validates_and_persists_supported_values(
 
     assert updated.status_code == 200
     assert updated.get_json()["settings"] == {
-        "theme": "obsidian",
+        "theme": "rack-console",
         "notepad": "",
         "confirm_session_close": True,
         "disconnect_session_action": "close",
     }
     assert invalid.status_code == 400
-    assert b'data-theme="obsidian"' in rendered.data
+    assert b'data-theme="rack-console"' in rendered.data
     assert b'data-confirm-session-close="true"' in rendered.data
     assert b'data-disconnect-session-action="close"' in rendered.data
 

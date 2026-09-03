@@ -103,6 +103,32 @@ def test_close_confirmation_socket_event_returns_acknowledgement(monkeypatch):
     assert saved == [(17, {'confirm_session_close': False})]
 
 
+def test_theme_socket_event_accepts_rack_console(monkeypatch):
+    from types import SimpleNamespace
+    from app import socket_events
+
+    emitted = []
+    saved = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload: emitted.append((event, payload)),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'save_user_settings',
+        lambda user_id, update: saved.append((user_id, update)) or True,
+    )
+
+    socket_events.handle_set_theme.__wrapped__(
+        {'theme': 'rack-console'},
+        current_user=SimpleNamespace(id=17),
+    )
+
+    assert saved == [(17, {'theme': 'rack-console'})]
+    assert emitted == [('theme_updated', {'theme': 'rack-console'})]
+
+
 @pytest.mark.parametrize('payload', [None, {}, {'enabled': 'false'}, {'enabled': 0}])
 def test_close_confirmation_socket_event_rejects_malformed_values(
     payload,

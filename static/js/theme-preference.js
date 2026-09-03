@@ -12,7 +12,8 @@
         'rose-gold',
         'cyberpunk-neon',
         'emerald-matrix',
-        'obsidian'
+        'obsidian',
+        'rack-console'
     ]);
 
     function isValid(themeId) {

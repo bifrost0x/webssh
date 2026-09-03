@@ -831,7 +831,7 @@ def create_app(
             valid_themes = {
                 'glass', 'retro', 'solar', 'paper', 'noir',
                 'arctic-ice', 'rose-gold', 'cyberpunk-neon',
-                'emerald-matrix', 'obsidian',
+                'emerald-matrix', 'obsidian', 'rack-console',
             }
             if (
                 not isinstance(data['theme'], str)

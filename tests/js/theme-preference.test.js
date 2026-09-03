@@ -74,3 +74,24 @@ test('ordinary pages keep their theme background behavior unchanged', () => {
     assert.equal(loadListenerAdded, false);
     assert.equal(body.hasAttribute('data-theme-background-ready'), false);
 });
+
+test('Rack Console is accepted by the browser preference guard', () => {
+    const stored = [];
+    const body = createBody({});
+    const window = {
+        addEventListener() {},
+        localStorage: {
+            getItem() { return null; },
+            setItem(key, value) { stored.push([key, value]); },
+        },
+    };
+
+    vm.runInContext(
+        source,
+        vm.createContext({ document: { body, readyState: 'loading' }, window }),
+    );
+
+    assert.equal(window.ThemePreference.isValid('rack-console'), true);
+    assert.equal(window.ThemePreference.store('rack-console'), true);
+    assert.deepEqual(stored, [['websshTheme', 'rack-console']]);
+});
