@@ -976,9 +976,10 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
-    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
+    await expect(page.locator('#settingsThemeSelect option')).toHaveCount(11);
     await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
     await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
+    await expect(page.locator('#settingsThemeSelect')).toContainText('Rack Console');
     const themeBounds = await page.locator('.settings-center-content').boundingBox();
     expect(themeBounds).not.toBeNull();
     expect(themeBounds.x).toBeGreaterThanOrEqual(0);
