@@ -133,7 +133,11 @@ const SessionManager = {
         terminalContainer.className = 'terminal-wrapper unassigned';
         document.getElementById('terminalsContainer').appendChild(terminalContainer);
 
-        TerminalManager.createTerminal(session_id);
+        TerminalManager.createTerminal(session_id, null, {
+            allowOsc52Clipboard: Boolean(
+                sessionData.use_tmux && sessionData.tmux_session_name
+            ),
+        });
         TerminalManager.attachTerminal(session_id, terminalId);
         TerminalManager.setupInputHandler(session_id, (data) => {
             if (window.socket) {

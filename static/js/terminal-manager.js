@@ -12,6 +12,8 @@ const TerminalManager = {
     lastOutputSequences: {},
     syncedSizes: {},
     scrollbarDisposers: {},
+    compositionDisposers: {},
+    clipboardDisposers: {},
 
     isVirtualKeyboardVisible(visualViewportHeight, layoutViewportHeight) {
         if (visualViewportHeight <= 0 || layoutViewportHeight <= 0) {
@@ -28,6 +30,102 @@ const TerminalManager = {
     isMacPlatform() {
         const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
         return /mac|iphone|ipad|ipod/i.test(platform);
+    },
+
+    isAndroidPlatform() {
+        const platform = navigator.userAgentData?.platform || '';
+        return /android/i.test(`${platform} ${navigator.userAgent || ''}`);
+    },
+
+    setupAndroidCompositionGuard(terminal, isAndroid = this.isAndroidPlatform()) {
+        const textarea = terminal?.textarea;
+        if (!isAndroid || !textarea?.addEventListener || terminal.options?.screenReaderMode) {
+            return () => {};
+        }
+
+        const resetStaleInput = () => {
+            // Some Android IMEs replace xterm's accumulated helper value when a
+            // composition starts. Starting from that stale offset truncates the
+            // same number of characters from the committed terminal input.
+            textarea.value = '';
+            textarea.setSelectionRange?.(0, 0);
+        };
+
+        // Capture runs before xterm records the composition's start offset.
+        textarea.addEventListener('compositionstart', resetStaleInput, true);
+        return () => {
+            textarea.removeEventListener('compositionstart', resetStaleInput, true);
+        };
+    },
+
+    decodeOsc52Clipboard(data, maxBytes = 1024 * 1024) {
+        if (typeof data !== 'string') return null;
+        const separator = data.indexOf(';');
+        if (separator < 0) return null;
+
+        const selection = data.slice(0, separator);
+        if (selection && (!/^[cps0-7]+$/.test(selection) || !selection.includes('c'))) {
+            return null;
+        }
+
+        const encoded = data.slice(separator + 1);
+        if (
+            !encoded
+            || encoded === '?'
+            || encoded.length > Math.ceil(maxBytes / 3) * 4
+            || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
+        ) {
+            return null;
+        }
+
+        const remainder = encoded.length % 4;
+        if (remainder === 1) return null;
+
+        try {
+            const padded = encoded + '='.repeat((4 - remainder) % 4);
+            const binary = atob(padded);
+            if (binary.length > maxBytes) return null;
+            const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+            return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+        } catch {
+            return null;
+        }
+    },
+
+    registerOsc52ClipboardHandler(terminal) {
+        if (!terminal?.parser?.registerOscHandler) return null;
+        let failureReported = false;
+
+        return terminal.parser.registerOscHandler(52, data => {
+            const text = this.decodeOsc52Clipboard(data);
+            if (text === null) return true;
+
+            const clipboard = navigator.clipboard;
+            if (!clipboard || typeof clipboard.writeText !== 'function') {
+                if (!failureReported) {
+                    failureReported = true;
+                    window.showNotification?.('Clipboard access denied', 'error');
+                }
+                return true;
+            }
+
+            try {
+                Promise.resolve(clipboard.writeText(text)).then(() => {
+                    failureReported = false;
+                }).catch(() => {
+                    if (!failureReported) {
+                        failureReported = true;
+                        window.showNotification?.('Clipboard access denied', 'error');
+                    }
+                });
+            } catch {
+                if (!failureReported) {
+                    failureReported = true;
+                    window.showNotification?.('Clipboard access denied', 'error');
+                }
+            }
+            return true;
+        });
     },
 
     shouldProcessClipboardKeyEvent(event, terminal, isMac) {
@@ -152,7 +250,7 @@ const TerminalManager = {
         return Math.min(10000, Math.max(50, parsed));
     },
 
-    createTerminal(sessionId, terminalKey = null) {
+    createTerminal(sessionId, terminalKey = null, options = {}) {
         const key = terminalKey || sessionId;
         const monoFont = this.getMonoFont();
         const theme = this.buildTheme();
@@ -173,6 +271,10 @@ const TerminalManager = {
         terminal.attachCustomKeyEventHandler(event => (
             this.handleClipboardKeyEvent(event, terminal, isMac)
         ));
+
+        if (options.allowOsc52Clipboard === true) {
+            this.clipboardDisposers[key] = this.registerOsc52ClipboardHandler(terminal);
+        }
 
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
@@ -220,6 +322,9 @@ const TerminalManager = {
         }
 
         terminal.open(container);
+
+        this.compositionDisposers[key]?.();
+        this.compositionDisposers[key] = this.setupAndroidCompositionGuard(terminal);
 
         // Add custom scrollbar on the right side of the terminal
         this.setupScrollbar(container, terminal, key);
@@ -766,6 +871,8 @@ const TerminalManager = {
     destroyTerminalKey(terminalKey, sessionId) {
         const terminal = this.terminals[terminalKey];
         this.scrollbarDisposers[terminalKey]?.();
+        this.compositionDisposers[terminalKey]?.();
+        this.clipboardDisposers[terminalKey]?.dispose?.();
         if (terminal) {
             terminal.dispose();
         }
@@ -774,6 +881,8 @@ const TerminalManager = {
         delete this.searchAddons[terminalKey];
         delete this.terminalReady[terminalKey];
         delete this.pendingOutput[terminalKey];
+        delete this.compositionDisposers[terminalKey];
+        delete this.clipboardDisposers[terminalKey];
 
         if (sessionId && this.sessionTerminals[sessionId]) {
             this.sessionTerminals[sessionId] = this.sessionTerminals[sessionId].filter(key => key !== terminalKey);

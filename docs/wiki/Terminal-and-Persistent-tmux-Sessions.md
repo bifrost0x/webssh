@@ -25,6 +25,10 @@ On macOS, use the platform's Command equivalents for copy and paste.
 `Ctrl+C` copies selected text. With no selection, it sends the normal interrupt
 character to the remote process.
 
+When tmux mouse mode owns the selection, WebSSH accepts tmux's bounded OSC 52
+clipboard update for that persistent session. Browser clipboard permissions
+still apply.
+
 ## Broadcast input
 
 Broadcast mode sends the same input to every open SSH session. Treat it as a
