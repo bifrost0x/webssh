@@ -341,10 +341,12 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
     monkeypatch.setattr(ssh_manager, 'get_session', fake_get_session)
     monkeypatch.setattr(config, 'TMUX_ENABLED', True)
     emitted = []
+    emit_targets = []
     connected_event = threading.Event()
 
-    def record_emit(event, payload=None, **_kwargs):
+    def record_emit(event, payload=None, **kwargs):
         emitted.append((event, payload))
+        emit_targets.append((event, kwargs))
         if event == 'ssh_connected':
             connected_event.set()
 
@@ -356,14 +358,20 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
 
     with app.test_request_context('/socket.io', environ_base={'REMOTE_ADDR': '127.0.0.1'}):
         request.sid = 'restart-socket'
-        socket_events.restore_user_sessions(user_id)
+        socket_events.restore_user_sessions(user_id, request.sid)
         persistent = next(
             payload for event, payload in emitted
             if event == 'persistent_session_available'
         )
         assert persistent['auth_type'] == 'tailscale'
+        persistent_target = next(
+            kwargs for event, kwargs in emit_targets
+            if event == 'persistent_session_available'
+        )
+        assert persistent_target == {'to': 'restart-socket'}
 
         emitted.clear()
+        emit_targets.clear()
         socket_events.handle_ssh_connect({
             'host': persistent['host'],
             'port': persistent['port'],

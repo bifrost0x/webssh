@@ -399,12 +399,37 @@ test('Android IME composition sends the complete value without its stale prefix'
     await assertNoExternalRequests(page);
 });
 
-test('tmux ignores replayed OSC 52 and accepts a live clipboard selection', async ({ page }) => {
+test('tmux resync ignores replayed OSC 52 and accepts a live clipboard selection', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page, {
         useTmux: true,
-        bufferedOutput: '\u001b]52;;c3RhbGUgdG11eCBzZWxlY3Rpb24=\u0007',
     });
+    await expect.poll(() => page.evaluate(() => (
+        TerminalManager.getTranscript('workspace-linux')
+    ))).toContain('Production Edge');
+
+    const tabCount = await page.locator('.session-tab').count();
+    await page.evaluate(() => {
+        window.__workspaceClipboard = null;
+        SessionManager.restoreSession({
+            session_id: 'workspace-linux',
+            buffered_output: [
+                '\u001b]52;;c3RhbGUgdG11eCBzZWxlY3Rpb24=\u0007',
+                'resynced tmux session',
+                'ops@edge-01:~$ ',
+            ].join('\r\n'),
+            output_sequence: 2,
+        });
+    });
+
+    await expect.poll(() => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const buffer = TerminalManager.terminals[terminalKey].buffer.active;
+        return Array.from({length: buffer.length}, (_unused, index) => (
+            buffer.getLine(index)?.translateToString(true) || ''
+        )).join('\n');
+    })).toContain('resynced tmux session');
+    await expect(page.locator('.session-tab')).toHaveCount(tabCount);
 
     await page.waitForTimeout(100);
     expect(await page.evaluate(() => window.__workspaceClipboard)).toBeNull();

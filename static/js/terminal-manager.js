@@ -530,11 +530,11 @@ const TerminalManager = {
                 this.terminalWriteCallbacks[terminalKey] = new Set();
             }
             let completed = false;
-            const complete = () => {
+            const complete = (acceptOutput = true) => {
                 if (completed) return;
                 completed = true;
                 this.terminalWriteCallbacks[terminalKey]?.delete(complete);
-                onWritten?.();
+                if (acceptOutput) onWritten?.();
             };
             this.terminalWriteCallbacks[terminalKey].add(complete);
             try {
@@ -600,8 +600,8 @@ const TerminalManager = {
     },
 
     seedRestoredOutput(sessionId, bufferedOutput, outputSequence = null) {
-        const snapshot = typeof bufferedOutput === 'string' ? bufferedOutput : '';
-        if (!snapshot) return;
+        if (typeof bufferedOutput !== 'string') return;
+        const snapshot = bufferedOutput;
 
         const watermark = Number.isSafeInteger(outputSequence) && outputSequence >= 0
             ? outputSequence
@@ -623,6 +623,69 @@ const TerminalManager = {
         const bounded = merged.slice(-this.maxTranscriptSize);
         this.transcripts[sessionId] = bounded ? [bounded] : [];
         this.transcriptSizes[sessionId] = bounded.length;
+    },
+
+    resyncRestoredOutput(sessionId, bufferedOutput, outputSequence = null) {
+        this.seedRestoredOutput(sessionId, bufferedOutput, outputSequence);
+
+        (this.sessionTerminals[sessionId] || []).forEach(key => {
+            const terminal = this.terminals[key];
+            if (!terminal || !this.terminalReady[key]) return;
+
+            // Hold output that arrives during resync so the authoritative
+            // snapshot remains ordered before the new live stream.
+            this.terminalReady[key] = false;
+            this.pendingOutput[key] = [];
+            this.pendingOutputSizes[key] = 0;
+
+            // Socket.IO acknowledgements belong to the connection that
+            // delivered them. Retire callbacks from the disconnected socket
+            // without acknowledging them on the replacement connection.
+            (this.terminalWriteCallbacks[key] || new Set()).forEach(
+                callback => callback(false)
+            );
+
+            // Replayed terminal output is untrusted history, so keep OSC 52
+            // disabled until xterm has finished rebuilding the screen.
+            this.clipboardDisposers[key]?.dispose?.();
+            delete this.clipboardDisposers[key];
+
+            const rebuildTerminal = () => {
+                if (this.terminals[key] !== terminal) return;
+
+                const pendingOutput = this.pendingOutput[key] || [];
+                this.pendingOutput[key] = [];
+                this.pendingOutputSizes[key] = 0;
+                if (typeof terminal.reset === 'function') {
+                    terminal.reset();
+                } else {
+                    terminal.clear?.();
+                }
+                this.terminalReady[key] = true;
+
+                const acceptPendingOutput = () => {
+                    pendingOutput.forEach(entry => entry.onWritten?.());
+                };
+                const replayOutput = this.getTranscript(sessionId);
+                if (!replayOutput) {
+                    acceptPendingOutput();
+                    this.activateOsc52ClipboardHandler(key, terminal);
+                    return;
+                }
+                this.writeOutputToTerminal(key, replayOutput, () => {
+                    acceptPendingOutput();
+                    this.activateOsc52ClipboardHandler(key, terminal);
+                });
+            };
+
+            // Queue a zero-length write as a barrier behind xterm writes that
+            // were already in flight when the old Socket.IO transport ended.
+            try {
+                terminal.write('', rebuildTerminal);
+            } catch {
+                rebuildTerminal();
+            }
+        });
     },
 
     getTranscript(sessionId) {

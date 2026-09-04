@@ -36,6 +36,11 @@ const SessionManager = {
         const sessionId = data.session_id;
 
         if (this.sessions[sessionId]) {
+            TerminalManager.resyncRestoredOutput(
+                sessionId,
+                data.buffered_output,
+                data.output_sequence,
+            );
             return;
         }
 

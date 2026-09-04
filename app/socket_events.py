@@ -389,7 +389,7 @@ def handle_connect():
 
     log_info(f"Client connected: {user.username}", user=user.username, sid=socket_sid)
 
-    restore_user_sessions(user.id)
+    restore_user_sessions(user.id, socket_sid)
 
     emit('connected', {
         'status': 'success',
@@ -488,15 +488,13 @@ def handle_disconnect():
                 )
             log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
-def restore_user_sessions(user_id):
+def restore_user_sessions(user_id, socket_sid):
     """Restore active SSH sessions when user reconnects."""
     # Clean up old disconnected non-persistent sessions
     SSHSession.query.filter_by(user_id=user_id, connected=False, is_persistent=False).delete()
     db.session.commit()
 
     db_sessions = SSHSession.query.filter_by(user_id=user_id, connected=True).all()
-
-    room = f'user_{user_id}'
 
     for db_session in db_sessions:
         session_id = db_session.session_id
@@ -523,8 +521,12 @@ def restore_user_sessions(user_id):
                     make_source_id(FileSourceKind.SFTP_SESSION, session_id),
                     user_id,
                 ),
-            }, room=room)
-            log_info(f"Restored SSH session {session_id}", user_id=user_id, room=room)
+            }, to=socket_sid)
+            log_info(
+                f"Restored SSH session {session_id}",
+                user_id=user_id,
+                sid=socket_sid,
+            )
         else:
             db_session.connected = False
             db.session.commit()
@@ -545,7 +547,7 @@ def restore_user_sessions(user_id):
                 'auth_type': db_session.auth_type,
                 'tmux_session_name': db_session.tmux_session_name,
                 'display_name': db_session.display_name
-            }, room=room)
+            }, to=socket_sid)
             log_info("Persistent tmux session available for reconnect",
                      host=db_session.host, tmux_session=db_session.tmux_session_name)
 

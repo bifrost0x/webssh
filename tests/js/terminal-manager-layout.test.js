@@ -772,4 +772,102 @@ test('restored output is seeded before attach without duplicating overlapping li
 
     TerminalManager.writeOutput('restored', 'duplicate snapshot event', 7);
     assert.equal(TerminalManager.getTranscript('restored'), 'older snapshot\r\nswitch# switch# ');
+
+    TerminalManager.seedRestoredOutput('restored', '', 8);
+    assert.equal(TerminalManager.getTranscript('restored'), '');
+});
+
+test('resync rebuilds ready terminals without accepting stale socket output', () => {
+    const originalRegisterOsc52ClipboardHandler = (
+        TerminalManager.registerOsc52ClipboardHandler
+    );
+    const writes = [];
+    const writeCallbacks = [];
+    const events = [];
+    const terminal = {
+        buffer: {active: {viewportY: 0, baseY: 0}},
+        reset() { events.push('reset'); },
+        write(data, callback) {
+            writes.push(data);
+            writeCallbacks.push(callback);
+        },
+        scrollToBottom() {},
+    };
+
+    try {
+        TerminalManager.terminals = {resyncTerminal: terminal};
+        TerminalManager.terminalReady = {resyncTerminal: true};
+        TerminalManager.sessionTerminals = {
+            resync: ['resyncTerminal'],
+        };
+        TerminalManager.pendingOutput = {};
+        TerminalManager.pendingOutputSizes = {};
+        TerminalManager.terminalWriteCallbacks = {};
+        TerminalManager.clipboardDisposers = {
+            resyncTerminal: {
+                dispose() { events.push('clipboard-disposed'); },
+            },
+        };
+        TerminalManager.osc52ClipboardAllowed = {resyncTerminal: true};
+        TerminalManager.transcripts = {resync: ['stale']};
+        TerminalManager.transcriptSizes = {resync: 5};
+        TerminalManager.sequencedOutput = {
+            resync: [{sequence: 12, data: ' live'}],
+        };
+        TerminalManager.sequencedOutputSizes = {resync: 5};
+        TerminalManager.lastOutputSequences = {resync: 12};
+        TerminalManager.registerOsc52ClipboardHandler = target => {
+            events.push(target === terminal ? 'clipboard-active' : 'wrong-terminal');
+            return {dispose() {}};
+        };
+
+        let staleAccepted = 0;
+        TerminalManager.writeOutputToTerminal(
+            'resyncTerminal',
+            'old socket output',
+            () => { staleAccepted += 1; },
+        );
+        TerminalManager.resyncRestoredOutput('resync', 'snapshot', 11);
+        let newOutputAccepted = 0;
+        TerminalManager.writeOutput(
+            'resync',
+            ' after',
+            13,
+            () => { newOutputAccepted += 1; },
+        );
+
+        assert.deepEqual(writes, ['old socket output', '']);
+        assert.deepEqual(events, ['clipboard-disposed']);
+        assert.equal(staleAccepted, 0);
+        assert.equal(newOutputAccepted, 0);
+
+        writeCallbacks[0]();
+        assert.equal(staleAccepted, 0);
+        assert.deepEqual(events, ['clipboard-disposed']);
+
+        writeCallbacks[1]();
+        assert.deepEqual(writes, [
+            'old socket output',
+            '',
+            'snapshot live after',
+        ]);
+        assert.deepEqual(events, ['clipboard-disposed', 'reset']);
+        assert.equal(newOutputAccepted, 0);
+
+        writeCallbacks[2]();
+        assert.deepEqual(events, [
+            'clipboard-disposed',
+            'reset',
+            'clipboard-active',
+        ]);
+        assert.equal(newOutputAccepted, 1);
+        assert.equal(
+            TerminalManager.terminalWriteCallbacks.resyncTerminal.size,
+            0,
+        );
+    } finally {
+        TerminalManager.registerOsc52ClipboardHandler = (
+            originalRegisterOsc52ClipboardHandler
+        );
+    }
 });
