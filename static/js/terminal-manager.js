@@ -14,6 +14,7 @@ const TerminalManager = {
     scrollbarDisposers: {},
     compositionDisposers: {},
     clipboardDisposers: {},
+    osc52ClipboardAllowed: {},
 
     isVirtualKeyboardVisible(visualViewportHeight, layoutViewportHeight) {
         if (visualViewportHeight <= 0 || layoutViewportHeight <= 0) {
@@ -126,6 +127,21 @@ const TerminalManager = {
             }
             return true;
         });
+    },
+
+    activateOsc52ClipboardHandler(terminalKey, expectedTerminal) {
+        const terminal = this.terminals[terminalKey];
+        if (
+            terminal !== expectedTerminal
+            || !this.osc52ClipboardAllowed[terminalKey]
+            || this.clipboardDisposers[terminalKey]
+        ) {
+            return;
+        }
+        const disposable = this.registerOsc52ClipboardHandler(terminal);
+        if (disposable) {
+            this.clipboardDisposers[terminalKey] = disposable;
+        }
     },
 
     shouldProcessClipboardKeyEvent(event, terminal, isMac) {
@@ -272,9 +288,7 @@ const TerminalManager = {
             this.handleClipboardKeyEvent(event, terminal, isMac)
         ));
 
-        if (options.allowOsc52Clipboard === true) {
-            this.clipboardDisposers[key] = this.registerOsc52ClipboardHandler(terminal);
-        }
+        this.osc52ClipboardAllowed[key] = options.allowOsc52Clipboard === true;
 
         const fitAddon = new FitAddon.FitAddon();
         terminal.loadAddon(fitAddon);
@@ -339,8 +353,20 @@ const TerminalManager = {
                     this.pendingOutput[key] = [];
                     this.terminalReady[key] = true;
 
-                    existingOutput.concat(pendingOutput).forEach(data => {
-                        this.writeOutputToTerminal(key, data);
+                    const replayOutput = existingOutput.concat(pendingOutput);
+                    if (replayOutput.length === 0) {
+                        this.activateOsc52ClipboardHandler(key, terminal);
+                        return;
+                    }
+
+                    let remainingWrites = replayOutput.length;
+                    replayOutput.forEach(data => {
+                        this.writeOutputToTerminal(key, data, () => {
+                            remainingWrites -= 1;
+                            if (remainingWrites === 0) {
+                                this.activateOsc52ClipboardHandler(key, terminal);
+                            }
+                        });
                     });
                 }, 50);
             });
@@ -386,7 +412,7 @@ const TerminalManager = {
         });
     },
 
-    writeOutputToTerminal(terminalKey, data) {
+    writeOutputToTerminal(terminalKey, data, onWritten = null) {
         const terminal = this.terminals[terminalKey];
         if (!terminal) {
             return;
@@ -398,7 +424,7 @@ const TerminalManager = {
         data = data.replace(/\x1b\[[?>]?[0-9;]*c/g, '');
 
         if (this.terminalReady[terminalKey]) {
-            this.writeToTerminalWithScroll(terminal, data);
+            this.writeToTerminalWithScroll(terminal, data, onWritten);
         } else {
             if (!this.pendingOutput[terminalKey]) {
                 this.pendingOutput[terminalKey] = [];
@@ -415,12 +441,13 @@ const TerminalManager = {
         return buffer.viewportY >= buffer.baseY;
     },
 
-    writeToTerminalWithScroll(terminal, data) {
+    writeToTerminalWithScroll(terminal, data, onWritten = null) {
         const shouldScroll = this.isTerminalAtBottom(terminal);
         terminal.write(data, () => {
             if (shouldScroll) {
                 terminal.scrollToBottom();
             }
+            onWritten?.();
         });
     },
 
@@ -883,6 +910,7 @@ const TerminalManager = {
         delete this.pendingOutput[terminalKey];
         delete this.compositionDisposers[terminalKey];
         delete this.clipboardDisposers[terminalKey];
+        delete this.osc52ClipboardAllowed[terminalKey];
 
         if (sessionId && this.sessionTerminals[sessionId]) {
             this.sessionTerminals[sessionId] = this.sessionTerminals[sessionId].filter(key => key !== terminalKey);

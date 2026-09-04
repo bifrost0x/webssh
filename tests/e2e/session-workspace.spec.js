@@ -271,6 +271,13 @@ async function seedLinuxSession(page, options = {}) {
         };
 
         window.__createWorkspaceSession = function createWorkspaceSession() {
+            if (seedOptions.bufferedOutput) {
+                TerminalManager.seedRestoredOutput(
+                    'workspace-linux',
+                    seedOptions.bufferedOutput,
+                    1,
+                );
+            }
             SessionManager.createSession({
                 session_id: 'workspace-linux',
                 host: 'edge-01.example',
@@ -392,9 +399,15 @@ test('Android IME composition sends the complete value without its stale prefix'
     await assertNoExternalRequests(page);
 });
 
-test('tmux OSC 52 selection writes to the browser clipboard', async ({ page }) => {
+test('tmux ignores replayed OSC 52 and accepts a live clipboard selection', async ({ page }) => {
     await login(page);
-    await seedLinuxSession(page, {useTmux: true});
+    await seedLinuxSession(page, {
+        useTmux: true,
+        bufferedOutput: '\u001b]52;;c3RhbGUgdG11eCBzZWxlY3Rpb24=\u0007',
+    });
+
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__workspaceClipboard)).toBeNull();
 
     await page.evaluate(() => {
         const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];

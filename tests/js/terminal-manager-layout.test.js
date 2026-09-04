@@ -496,15 +496,18 @@ test('attachTerminal replays output received before and during terminal attachme
     const originalRequestAnimationFrame = global.requestAnimationFrame;
     const originalSetupScrollbar = TerminalManager.setupScrollbar;
     const originalFitTerminal = TerminalManager.fitTerminal;
+    const originalRegisterOsc52ClipboardHandler = TerminalManager.registerOsc52ClipboardHandler;
     const originalConsoleError = console.error;
     const writes = [];
+    const writeCallbacks = [];
+    const clipboardActivations = [];
     const terminal = {
         buffer: { active: { viewportY: 0, baseY: 0 } },
         open() {},
         clear() {},
         write(data, callback) {
             writes.push(data);
-            callback?.();
+            writeCallbacks.push(callback);
         },
         scrollToBottom() {},
     };
@@ -514,6 +517,8 @@ test('attachTerminal replays output received before and during terminal attachme
         TerminalManager.sessionTerminals = {};
         TerminalManager.pendingOutput = {};
         TerminalManager.terminalReady = {};
+        TerminalManager.osc52ClipboardAllowed = {switchTerminal: true};
+        TerminalManager.clipboardDisposers = {};
         TerminalManager.transcripts = {};
         TerminalManager.transcriptSizes = {};
         console.error = () => {};
@@ -526,6 +531,10 @@ test('attachTerminal replays output received before and during terminal attachme
         global.requestAnimationFrame = callback => callback();
         TerminalManager.setupScrollbar = () => {};
         TerminalManager.fitTerminal = () => {};
+        TerminalManager.registerOsc52ClipboardHandler = target => {
+            clipboardActivations.push(target);
+            return {dispose() {}};
+        };
 
         assert.equal(
             TerminalManager.attachTerminal('switch-session', 'terminal-container', 'switchTerminal'),
@@ -536,11 +545,17 @@ test('attachTerminal replays output received before and during terminal attachme
         await new Promise(resolve => setTimeout(resolve, 80));
 
         assert.deepEqual(writes, ['Switch#', ' ready']);
+        assert.deepEqual(clipboardActivations, []);
+        writeCallbacks[0]();
+        assert.deepEqual(clipboardActivations, []);
+        writeCallbacks[1]();
+        assert.deepEqual(clipboardActivations, [terminal]);
     } finally {
         global.document.getElementById = originalGetElementById;
         global.requestAnimationFrame = originalRequestAnimationFrame;
         TerminalManager.setupScrollbar = originalSetupScrollbar;
         TerminalManager.fitTerminal = originalFitTerminal;
+        TerminalManager.registerOsc52ClipboardHandler = originalRegisterOsc52ClipboardHandler;
         console.error = originalConsoleError;
     }
 });
