@@ -39,6 +39,92 @@ test('virtual keyboard detection follows visual viewport occlusion, not browser 
     assert.equal(TerminalManager.isVirtualKeyboardVisible(0, 640), false);
 });
 
+test('Android compositions discard stale helper input before xterm records the offset', () => {
+    const listeners = new Map();
+    const textarea = {
+        value: '1',
+        addEventListener(name, listener, capture) {
+            listeners.set(`${name}:${capture}`, listener);
+        },
+        removeEventListener(name, listener, capture) {
+            const key = `${name}:${capture}`;
+            if (listeners.get(key) === listener) listeners.delete(key);
+        },
+        setSelectionRange(start, end) {
+            this.selectionStart = start;
+            this.selectionEnd = end;
+        },
+    };
+
+    const dispose = TerminalManager.setupAndroidCompositionGuard({
+        textarea,
+        options: {screenReaderMode: false},
+    }, true);
+    listeners.get('compositionstart:true')();
+
+    assert.equal(textarea.value, '');
+    assert.equal(textarea.selectionStart, 0);
+    assert.equal(textarea.selectionEnd, 0);
+
+    dispose();
+    assert.equal(listeners.size, 0);
+});
+
+test('Android composition guard preserves screen-reader helper input', () => {
+    let listenerAdded = false;
+    const textarea = {
+        value: 'screen reader context',
+        addEventListener() { listenerAdded = true; },
+    };
+
+    TerminalManager.setupAndroidCompositionGuard({
+        textarea,
+        options: {screenReaderMode: true},
+    }, true);
+
+    assert.equal(listenerAdded, false);
+    assert.equal(textarea.value, 'screen reader context');
+});
+
+test('OSC 52 clipboard payloads are bounded, targeted, and decoded as UTF-8', () => {
+    assert.equal(
+        TerminalManager.decodeOsc52Clipboard('c;dG11eCDinJM='),
+        'tmux ✓',
+    );
+    assert.equal(TerminalManager.decodeOsc52Clipboard(';dGVybWluYWw='), 'terminal');
+    assert.equal(TerminalManager.decodeOsc52Clipboard('p;dGVybWluYWw='), null);
+    assert.equal(TerminalManager.decodeOsc52Clipboard('c;?'), null);
+    assert.equal(TerminalManager.decodeOsc52Clipboard('c;%%%'), null);
+    assert.equal(TerminalManager.decodeOsc52Clipboard('c;dG9vIGxhcmdl', 4), null);
+});
+
+test('OSC 52 handler writes valid tmux selections to the browser clipboard', async () => {
+    const writes = [];
+    let handler;
+    global.navigator.clipboard = {
+        writeText(text) {
+            writes.push(text);
+            return Promise.resolve();
+        },
+    };
+    const disposable = {dispose() {}};
+    const terminal = {
+        parser: {
+            registerOscHandler(identifier, callback) {
+                assert.equal(identifier, 52);
+                handler = callback;
+                return disposable;
+            },
+        },
+    };
+
+    assert.equal(TerminalManager.registerOsc52ClipboardHandler(terminal), disposable);
+    assert.equal(handler(';dG11eCBzZWxlY3Rpb24='), true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(writes, ['tmux selection']);
+    delete global.navigator.clipboard;
+});
+
 test('copy shortcuts write xterm selection directly to the clipboard', async () => {
     const writes = [];
     global.navigator.clipboard = {
@@ -410,15 +496,18 @@ test('attachTerminal replays output received before and during terminal attachme
     const originalRequestAnimationFrame = global.requestAnimationFrame;
     const originalSetupScrollbar = TerminalManager.setupScrollbar;
     const originalFitTerminal = TerminalManager.fitTerminal;
+    const originalRegisterOsc52ClipboardHandler = TerminalManager.registerOsc52ClipboardHandler;
     const originalConsoleError = console.error;
     const writes = [];
+    const writeCallbacks = [];
+    const clipboardActivations = [];
     const terminal = {
         buffer: { active: { viewportY: 0, baseY: 0 } },
         open() {},
         clear() {},
         write(data, callback) {
             writes.push(data);
-            callback?.();
+            writeCallbacks.push(callback);
         },
         scrollToBottom() {},
     };
@@ -428,6 +517,8 @@ test('attachTerminal replays output received before and during terminal attachme
         TerminalManager.sessionTerminals = {};
         TerminalManager.pendingOutput = {};
         TerminalManager.terminalReady = {};
+        TerminalManager.osc52ClipboardAllowed = {switchTerminal: true};
+        TerminalManager.clipboardDisposers = {};
         TerminalManager.transcripts = {};
         TerminalManager.transcriptSizes = {};
         console.error = () => {};
@@ -440,6 +531,10 @@ test('attachTerminal replays output received before and during terminal attachme
         global.requestAnimationFrame = callback => callback();
         TerminalManager.setupScrollbar = () => {};
         TerminalManager.fitTerminal = () => {};
+        TerminalManager.registerOsc52ClipboardHandler = target => {
+            clipboardActivations.push(target);
+            return {dispose() {}};
+        };
 
         assert.equal(
             TerminalManager.attachTerminal('switch-session', 'terminal-container', 'switchTerminal'),
@@ -450,11 +545,17 @@ test('attachTerminal replays output received before and during terminal attachme
         await new Promise(resolve => setTimeout(resolve, 80));
 
         assert.deepEqual(writes, ['Switch#', ' ready']);
+        assert.deepEqual(clipboardActivations, []);
+        writeCallbacks[0]();
+        assert.deepEqual(clipboardActivations, []);
+        writeCallbacks[1]();
+        assert.deepEqual(clipboardActivations, [terminal]);
     } finally {
         global.document.getElementById = originalGetElementById;
         global.requestAnimationFrame = originalRequestAnimationFrame;
         TerminalManager.setupScrollbar = originalSetupScrollbar;
         TerminalManager.fitTerminal = originalFitTerminal;
+        TerminalManager.registerOsc52ClipboardHandler = originalRegisterOsc52ClipboardHandler;
         console.error = originalConsoleError;
     }
 });

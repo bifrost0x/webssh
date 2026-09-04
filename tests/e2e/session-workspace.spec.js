@@ -271,6 +271,13 @@ async function seedLinuxSession(page, options = {}) {
         };
 
         window.__createWorkspaceSession = function createWorkspaceSession() {
+            if (seedOptions.bufferedOutput) {
+                TerminalManager.seedRestoredOutput(
+                    'workspace-linux',
+                    seedOptions.bufferedOutput,
+                    1,
+                );
+            }
             SessionManager.createSession({
                 session_id: 'workspace-linux',
                 host: 'edge-01.example',
@@ -278,6 +285,10 @@ async function seedLinuxSession(page, options = {}) {
                 username: 'ops',
                 display_name: 'Production Edge',
                 file_source: linuxFileSource,
+                use_tmux: seedOptions.useTmux === true,
+                tmux_session_name: seedOptions.useTmux
+                    ? 'webssh_ops_edge_01'
+                    : null,
             });
             SessionManager.assignSessionToPane('workspace-linux', 0);
         };
@@ -346,6 +357,83 @@ test('terminal selections copy through keyboard and command palette actions', as
     await expect.poll(() => page.evaluate(() => window.__workspaceClipboard))
         .toBe(paletteSelection);
     await expect(page.locator('.notification-success')).toContainText('Selection copied');
+    await assertNoExternalRequests(page);
+});
+
+test('Android IME composition sends the complete value without its stale prefix', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const terminal = TerminalManager.terminals[terminalKey];
+        const textarea = terminal.textarea;
+        window.__androidCompositionDispose = TerminalManager.setupAndroidCompositionGuard(
+            terminal,
+            true,
+        );
+
+        textarea.value = '1';
+        textarea.setSelectionRange(1, 1);
+        textarea.dispatchEvent(new CompositionEvent('compositionstart', {
+            bubbles: true,
+        }));
+        textarea.value = '12345';
+        textarea.setSelectionRange(5, 5);
+        textarea.dispatchEvent(new CompositionEvent('compositionupdate', {
+            bubbles: true,
+            data: '12345',
+        }));
+        textarea.dispatchEvent(new CompositionEvent('compositionend', {
+            bubbles: true,
+            data: '12345',
+        }));
+    });
+
+    await expect.poll(() => page.evaluate(() => window.__workspaceEvents
+        .filter(event => event.event === 'ssh_input')
+        .map(event => event.payload.data))).toContain('12345');
+    expect(await page.evaluate(() => window.__workspaceEvents
+        .filter(event => event.event === 'ssh_input')
+        .map(event => event.payload.data))).not.toContain('2345');
+    await page.evaluate(() => window.__androidCompositionDispose());
+    await assertNoExternalRequests(page);
+});
+
+test('tmux ignores replayed OSC 52 and accepts a live clipboard selection', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page, {
+        useTmux: true,
+        bufferedOutput: '\u001b]52;;c3RhbGUgdG11eCBzZWxlY3Rpb24=\u0007',
+    });
+
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.__workspaceClipboard)).toBeNull();
+
+    await page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        TerminalManager.terminals[terminalKey].write(
+            '\u001b]52;;dG11eCBzZWxlY3Rpb24=\u0007',
+        );
+    });
+
+    await expect.poll(() => page.evaluate(() => window.__workspaceClipboard))
+        .toBe('tmux selection');
+    await assertNoExternalRequests(page);
+});
+
+test('plain SSH sessions ignore remote OSC 52 clipboard writes', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        TerminalManager.terminals[terminalKey].write(
+            '\u001b]52;;dW50cnVzdGVkIHJlbW90ZSBvdXRwdXQ=\u0007',
+        );
+    });
+    await page.waitForTimeout(100);
+
+    expect(await page.evaluate(() => window.__workspaceClipboard)).toBeNull();
     await assertNoExternalRequests(page);
 });
 

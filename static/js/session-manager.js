@@ -48,6 +48,8 @@ const SessionManager = {
             via_jump: data.via_jump,
             display_name: data.display_name,
             file_source: data.file_source,
+            use_tmux: data.use_tmux,
+            tmux_session_name: data.tmux_session_name,
             restored: true,
         };
 
@@ -133,7 +135,11 @@ const SessionManager = {
         terminalContainer.className = 'terminal-wrapper unassigned';
         document.getElementById('terminalsContainer').appendChild(terminalContainer);
 
-        TerminalManager.createTerminal(session_id);
+        TerminalManager.createTerminal(session_id, null, {
+            allowOsc52Clipboard: Boolean(
+                sessionData.use_tmux && sessionData.tmux_session_name
+            ),
+        });
         TerminalManager.attachTerminal(session_id, terminalId);
         TerminalManager.setupInputHandler(session_id, (data) => {
             if (window.socket) {
