@@ -34,6 +34,10 @@ const translations = {
         'auth.togglePasswordVisibility': 'Toggle password visibility',
 
         'terminal.mobileInputPlaceholder': 'Type or paste here...',
+        'terminal.remoteClipboardPrompt': 'The remote tmux session wants to copy text to your clipboard.',
+        'terminal.remoteClipboardApprove': 'Copy',
+        'terminal.remoteClipboardCopied': 'Remote text copied to clipboard',
+        'terminal.remoteClipboardDenied': 'Clipboard access denied',
 
         'connection.recentConnections': 'Recent Connections',
         'connection.recentConnectionsHint': 'Stored only in this browser for your account.',
@@ -1292,6 +1296,10 @@ const translations = {
         'auth.togglePasswordVisibility': 'Ẩn hoặc hiện mật khẩu',
 
         'terminal.mobileInputPlaceholder': 'Nhập hoặc dán vào đây...',
+        'terminal.remoteClipboardPrompt': 'Phiên tmux từ xa muốn sao chép văn bản vào bảng nhớ tạm của bạn.',
+        'terminal.remoteClipboardApprove': 'Sao chép',
+        'terminal.remoteClipboardCopied': 'Đã sao chép văn bản từ xa vào bảng nhớ tạm',
+        'terminal.remoteClipboardDenied': 'Quyền truy cập bảng nhớ tạm bị từ chối',
 
         'connection.recentConnections': 'Kết nối gần đây',
         'connection.recentConnectionsHint': 'Chỉ được lưu trong trình duyệt này cho tài khoản của bạn.',
@@ -2549,6 +2557,10 @@ const translations = {
         'auth.togglePasswordVisibility': 'Passwortsichtbarkeit umschalten',
 
         'terminal.mobileInputPlaceholder': 'Hier tippen oder einfügen...',
+        'terminal.remoteClipboardPrompt': 'Die entfernte tmux-Sitzung möchte Text in Ihre Zwischenablage kopieren.',
+        'terminal.remoteClipboardApprove': 'Kopieren',
+        'terminal.remoteClipboardCopied': 'Entfernter Text wurde in die Zwischenablage kopiert',
+        'terminal.remoteClipboardDenied': 'Zugriff auf die Zwischenablage verweigert',
 
         'connection.recentConnections': 'Letzte Verbindungen',
         'connection.recentConnectionsHint': 'Wird nur in diesem Browser für deinen Account gespeichert.',
@@ -3805,6 +3817,10 @@ const translations = {
         'auth.togglePasswordVisibility': 'Afficher ou masquer le mot de passe',
 
         'terminal.mobileInputPlaceholder': 'Tapez ou collez ici...',
+        'terminal.remoteClipboardPrompt': 'La session tmux distante souhaite copier du texte dans votre presse-papiers.',
+        'terminal.remoteClipboardApprove': 'Copier',
+        'terminal.remoteClipboardCopied': 'Texte distant copié dans le presse-papiers',
+        'terminal.remoteClipboardDenied': 'Accès au presse-papiers refusé',
 
         'connection.recentConnections': 'Connexions récentes',
         'connection.recentConnectionsHint': 'Stockées uniquement dans ce navigateur pour votre compte.',
@@ -5061,6 +5077,10 @@ const translations = {
         'auth.togglePasswordVisibility': 'Mostrar u ocultar la contraseña',
 
         'terminal.mobileInputPlaceholder': 'Escribe o pega aquí...',
+        'terminal.remoteClipboardPrompt': 'La sesión tmux remota quiere copiar texto al portapapeles.',
+        'terminal.remoteClipboardApprove': 'Copiar',
+        'terminal.remoteClipboardCopied': 'Texto remoto copiado al portapapeles',
+        'terminal.remoteClipboardDenied': 'Acceso al portapapeles denegado',
 
         'connection.recentConnections': 'Conexiones recientes',
         'connection.recentConnectionsHint': 'Se guardan solo en este navegador para tu cuenta.',
@@ -6317,6 +6337,10 @@ const translations = {
         'auth.togglePasswordVisibility': '切换密码可见性',
 
         'terminal.mobileInputPlaceholder': '在这里输入或粘贴...',
+        'terminal.remoteClipboardPrompt': '远程 tmux 会话请求将文本复制到剪贴板。',
+        'terminal.remoteClipboardApprove': '复制',
+        'terminal.remoteClipboardCopied': '远程文本已复制到剪贴板',
+        'terminal.remoteClipboardDenied': '剪贴板访问被拒绝',
 
         'connection.recentConnections': '最近连接',
         'connection.recentConnectionsHint': '仅在此浏览器中为你的账户保存。',

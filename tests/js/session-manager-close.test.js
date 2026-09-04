@@ -79,6 +79,7 @@ function loadSessionManager(confirmSessionClose, disconnectSessionAction) {
         },
         TerminalManager: {
             destroyTerminal() {},
+            resyncRestoredOutput() {},
             seedRestoredOutput() {},
         },
         CustomEvent: class CustomEvent {
@@ -282,5 +283,25 @@ test('seeds restored output before creating and attaching the terminal', () => {
         ['seed', 'restored', 'switch# ', 14],
         ['create', 'restored', true, true, 'webssh_admin_switch'],
         ['assign', 'restored'],
+    ]);
+});
+
+test('resyncs an existing restored session without recreating its tab', () => {
+    const { manager, context } = loadSessionManager();
+    const calls = [];
+    manager.sessions.restored = {id: 'restored', connected: true};
+    context.TerminalManager.resyncRestoredOutput = (
+        sessionId, output, sequence
+    ) => calls.push(['resync', sessionId, output, sequence]);
+    manager.createSession = () => calls.push(['create']);
+
+    manager.restoreSession({
+        session_id: 'restored',
+        buffered_output: 'switch# ',
+        output_sequence: 14,
+    });
+
+    assert.deepEqual(calls, [
+        ['resync', 'restored', 'switch# ', 14],
     ]);
 });

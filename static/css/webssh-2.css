@@ -3057,10 +3057,16 @@ body[data-theme="paper"]:has(.auth-access-dock) {
 
 .notification-action {
     flex: 0 0 auto;
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: inherit;
+    font: inherit;
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 3px;
+    cursor: pointer;
 }
 
 .notification-copy {

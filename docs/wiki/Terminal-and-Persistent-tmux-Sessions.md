@@ -26,8 +26,10 @@ On macOS, use the platform's Command equivalents for copy and paste.
 character to the remote process.
 
 When tmux mouse mode owns the selection, WebSSH accepts tmux's bounded OSC 52
-clipboard update for that persistent session. Browser clipboard permissions
-still apply.
+clipboard request for that persistent session. A visible WebSSH notification
+requires a fresh **Copy** click before the remote text reaches the browser
+clipboard. Replayed output and ordinary non-tmux SSH sessions cannot request a
+clipboard write. Browser clipboard permissions still apply.
 
 ## Broadcast input
 
@@ -87,6 +89,13 @@ monitoring or privilege-escalation agent.
 Terminal control and output use authenticated Socket.IO events around an owned,
 process-local SSH session. Bulk transfer bodies take the separate bounded HTTP
 path shown below; they are not encoded into terminal events.
+
+Each live output event is charged to per-browser, per-user, and process-wide
+budgets until the browser acknowledges accepting it. At capacity, WebSSH stops
+reading the Paramiko channel so SSH/TCP backpressure applies. A browser that
+keeps an acknowledgement budget blocked for the configured timeout is
+disconnected, while its underlying SSH or persistent tmux session stays
+available for reconnect.
 
 The browser can restore UI state for live sessions after refresh without
 injecting terminal input. The underlying SSH transport remains process-local;

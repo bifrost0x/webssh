@@ -83,6 +83,9 @@ Instead, report vulnerabilities via:
 | Host Key Logging | New keys logged with fingerprint for audit |
 | Connection Isolation | Session ownership verified on every operation |
 | Credential Handling | Cleared from memory after use |
+| Stored-key work | Connection attempt rate limiting precedes stored-key PBKDF2/decryption; encrypted key stores have atomic count and byte growth limits |
+| Remote clipboard | Persistent-tmux OSC 52 requests require a fresh, visible browser action; replayed and plain-SSH output cannot write the clipboard |
+| Live output | Per-browser ACK accounting with per-socket, per-user, and global bounds applies SSH backpressure; a stalled browser is disconnected without closing its SSH/tmux session |
 
 ## Security Best Practices for Deployment
 

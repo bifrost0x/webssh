@@ -2,6 +2,7 @@ import uuid
 import os
 import paramiko
 import stat
+import config
 from datetime import datetime, timezone
 from pathlib import Path
 from cryptography.fernet import InvalidToken
@@ -106,6 +107,23 @@ def _valid_key_document(value):
 
 _DELETE_STAGING_PREFIX = '.delete-'
 _DELETE_TOKEN_LENGTH = 32
+SSH_KEY_CONTENT_MAX_BYTES = 64 * 1024
+SSH_KEY_STORAGE_LIMIT_ERROR = (
+    "SSH key storage limit reached; delete a key or replace one with a "
+    "smaller key"
+)
+
+
+def _stored_key_bytes(keys_dir, keys):
+    """Return exact encrypted bytes referenced by one locked key document."""
+    total = 0
+    for key in keys:
+        key_path = _safe_key_path(keys_dir, key['filename'])
+        try:
+            total += key_path.stat().st_size
+        except FileNotFoundError:
+            continue
+    return total
 
 
 def _pending_delete_filename(path):
@@ -322,22 +340,27 @@ def replace_key(user_id, key_id, key_content):
         return None, "Key not found"
     if not isinstance(key_content, str) or not key_content:
         return None, "Invalid key content"
+    if len(key_content.encode('utf-8')) > SSH_KEY_CONTENT_MAX_BYTES:
+        return None, "Key content too large (max 64KB)"
 
     try:
+        try:
+            replacement_type = identify_private_key(key_content)
+        except paramiko.PasswordRequiredException:
+            return None, "Passphrase-encrypted private keys are not supported"
+        except UnsupportedPrivateKeyError as exc:
+            return None, str(exc)
+        except paramiko.SSHException:
+            return None, "Invalid key format"
+        encrypted = key_encryption.encrypt_key_content(
+            str(user_id), key_content
+        )
+
         with storage_lock(f'keys:{user_id}'):
             keys = _load_keys_with_lock_held(user_id)
             key = next((item for item in keys if item['id'] == key_id), None)
             if key is None:
                 return None, "Key not found"
-
-            try:
-                replacement_type = identify_private_key(key_content)
-            except paramiko.PasswordRequiredException:
-                return None, "Passphrase-encrypted private keys are not supported"
-            except UnsupportedPrivateKeyError as exc:
-                return None, str(exc)
-            except paramiko.SSHException:
-                return None, "Invalid key format"
 
             keys_dir = get_user_keys_dir(user_id)
             if not keys_dir:
@@ -359,10 +382,19 @@ def replace_key(user_id, key_id, key_content):
                     "Replacement key must use the same key type "
                     f"({stored_type})"
                 )
-            if not key_encryption.replace_key_content(
+            current_bytes = _stored_key_bytes(keys_dir, keys)
+            stored_bytes = key_path.stat().st_size
+            prospective_bytes = current_bytes - stored_bytes + len(encrypted)
+            if (
+                prospective_bytes > config.SSH_KEY_STORE_MAX_BYTES
+                and prospective_bytes > current_bytes
+            ):
+                return None, SSH_KEY_STORAGE_LIMIT_ERROR
+            if not key_encryption.replace_prepared_key_content(
                 str(user_id),
                 str(key_path),
                 key_content,
+                encrypted,
                 allowed_root=keys_dir,
             ):
                 return None, "Failed to replace key"
@@ -397,6 +429,12 @@ def save_key(user_id, name, key_content):
     try:
         if not isinstance(name, str) or not name:
             return None, "Invalid key name"
+        if len(name) > 128:
+            return None, "Key name too long (max 128 characters)"
+        if not isinstance(key_content, str) or not key_content:
+            return None, "Invalid key content"
+        if len(key_content.encode('utf-8')) > SSH_KEY_CONTENT_MAX_BYTES:
+            return None, "Key content too large (max 64KB)"
         keys_dir = get_user_keys_dir(user_id)
         if not keys_dir:
             return None, "User not found"
@@ -411,6 +449,9 @@ def save_key(user_id, name, key_content):
             return None, str(exc)
         except paramiko.SSHException:
             return None, "Invalid key format"
+        encrypted = key_encryption.encrypt_key_content(
+            str(user_id), key_content
+        )
 
         key_meta = {
             'id': key_id,
@@ -424,10 +465,15 @@ def save_key(user_id, name, key_content):
         }
         with storage_lock(f'keys:{user_id}'):
             keys = _load_keys_with_lock_held(user_id)
-            if not key_encryption.write_key_content(
+            if len(keys) >= config.SSH_KEY_MAX_RECORDS:
+                return None, SSH_KEY_STORAGE_LIMIT_ERROR
+            current_bytes = _stored_key_bytes(keys_dir, keys)
+            if current_bytes + len(encrypted) > config.SSH_KEY_STORE_MAX_BYTES:
+                return None, SSH_KEY_STORAGE_LIMIT_ERROR
+            if not key_encryption.write_prepared_key_content(
                 str(user_id),
                 str(key_path),
-                key_content,
+                encrypted,
                 allowed_root=keys_dir,
             ):
                 return None, "Failed to encrypt and save key"

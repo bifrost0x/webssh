@@ -495,6 +495,36 @@ if GUNICORN_THREADS - MAX_SOCKET_CONNECTIONS < 4:
 SOCKETIO_PING_TIMEOUT = 60
 SOCKETIO_PING_INTERVAL = 25
 
+# Per-browser acknowledged SSH output budgets. Output readers stop consuming
+# Paramiko channels while a browser is at capacity, so TCP/SSH backpressure
+# applies instead of growing Socket.IO's in-process queues without bound.
+SSH_OUTPUT_MAX_UNACKED_BYTES_PER_SOCKET = _bounded_int_env(
+    'SSH_OUTPUT_MAX_UNACKED_BYTES_PER_SOCKET', 512 * 1024, 256 * 1024,
+    16 * 1024 * 1024,
+)
+SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_SOCKET = _bounded_int_env(
+    'SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_SOCKET', 128, 8, 4096,
+)
+SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_USER = _bounded_int_env(
+    'SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_USER', 1024,
+    SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_SOCKET, 32768,
+)
+SSH_OUTPUT_MAX_UNACKED_EVENTS_GLOBAL = _bounded_int_env(
+    'SSH_OUTPUT_MAX_UNACKED_EVENTS_GLOBAL', 8192,
+    SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_USER, 131072,
+)
+SSH_OUTPUT_MAX_UNACKED_BYTES_PER_USER = _bounded_int_env(
+    'SSH_OUTPUT_MAX_UNACKED_BYTES_PER_USER', 4 * 1024 * 1024,
+    SSH_OUTPUT_MAX_UNACKED_BYTES_PER_SOCKET, 64 * 1024 * 1024,
+)
+SSH_OUTPUT_MAX_UNACKED_BYTES_GLOBAL = _bounded_int_env(
+    'SSH_OUTPUT_MAX_UNACKED_BYTES_GLOBAL', 32 * 1024 * 1024,
+    SSH_OUTPUT_MAX_UNACKED_BYTES_PER_USER, 256 * 1024 * 1024,
+)
+SSH_OUTPUT_ACK_TIMEOUT_SECONDS = _bounded_int_env(
+    'SSH_OUTPUT_ACK_TIMEOUT_SECONDS', 10, 1, 120,
+)
+
 ALLOW_CORS_WILDCARD = (
     os.environ.get('ALLOW_CORS_WILDCARD', 'false').lower() == 'true'
 )
@@ -549,6 +579,9 @@ RATELIMIT_BACKUP_RESTORE = os.environ.get(
 # unthrottled SSH brute-force / port-scan proxy against third-party hosts.
 # Generous default so normal use and reconnects never hit it.
 RATELIMIT_SSH_CONNECT = os.environ.get('SSH_CONNECT_RATELIMIT', '10 per minute')
+RATELIMIT_SSH_KEY_WRITE = os.environ.get(
+    'SSH_KEY_WRITE_RATELIMIT', '30 per minute'
+)
 RATELIMIT_COMMAND_MUTATION = os.environ.get(
     'COMMAND_MUTATION_RATELIMIT',
     '60 per minute',
@@ -581,6 +614,17 @@ PROXY_JUMP_REMOTE_DNS_ALLOWLIST = tuple(
         'PROXY_JUMP_REMOTE_DNS_ALLOWLIST', ''
     ).split(',')
     if entry.strip()
+)
+
+# Encrypted SSH-key storage is bounded per account. Existing stores above the
+# byte limit remain readable and may be renamed, deleted, or replaced by
+# smaller keys; only further growth is rejected.
+SSH_KEY_MAX_RECORDS = _bounded_int_env(
+    'SSH_KEY_MAX_RECORDS', 100, 1, 1000
+)
+SSH_KEY_STORE_MAX_BYTES = _bounded_int_env(
+    'SSH_KEY_STORE_MAX_BYTES', 8 * 1024 * 1024, 64 * 1024,
+    64 * 1024 * 1024,
 )
 
 # Optional browser-to-SMB file sources.  Enabling the feature always requires

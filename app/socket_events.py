@@ -33,6 +33,7 @@ from .transfer_routes import prepare_transfer, transfer_manager, _terminalize
 from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
 from .ssh_input_budget import budget_from_config
+from .ssh_output_flow import ssh_output_flow
 from .remote_transfer import (
     RemoteTransferCancelled,
     RemoteTransferError,
@@ -373,10 +374,13 @@ def handle_connect():
         disconnect()
         return False
 
+    ssh_output_flow.register_socket(socket_sid)
+
     user_agent = request.headers.get('User-Agent', '')
     try:
         register_socket_session(user.id, socket_sid, user_agent)
     except Exception:
+        ssh_output_flow.release_socket(socket_sid)
         socket_capacity.release(socket_sid)
         raise
 
@@ -385,7 +389,7 @@ def handle_connect():
 
     log_info(f"Client connected: {user.username}", user=user.username, sid=socket_sid)
 
-    restore_user_sessions(user.id)
+    restore_user_sessions(user.id, socket_sid)
 
     emit('connected', {
         'status': 'success',
@@ -396,6 +400,7 @@ def handle_connect():
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
     socket_sid = request.sid
+    ssh_output_flow.release_socket(socket_sid)
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
     owner_id = socket_capacity.release(socket_sid)
     try:
@@ -483,15 +488,13 @@ def handle_disconnect():
                 )
             log_debug(f"Last socket for {username} disconnected, SSH sessions preserved")
 
-def restore_user_sessions(user_id):
+def restore_user_sessions(user_id, socket_sid):
     """Restore active SSH sessions when user reconnects."""
     # Clean up old disconnected non-persistent sessions
     SSHSession.query.filter_by(user_id=user_id, connected=False, is_persistent=False).delete()
     db.session.commit()
 
     db_sessions = SSHSession.query.filter_by(user_id=user_id, connected=True).all()
-
-    room = f'user_{user_id}'
 
     for db_session in db_sessions:
         session_id = db_session.session_id
@@ -518,8 +521,12 @@ def restore_user_sessions(user_id):
                     make_source_id(FileSourceKind.SFTP_SESSION, session_id),
                     user_id,
                 ),
-            }, room=room)
-            log_info(f"Restored SSH session {session_id}", user_id=user_id, room=room)
+            }, to=socket_sid)
+            log_info(
+                f"Restored SSH session {session_id}",
+                user_id=user_id,
+                sid=socket_sid,
+            )
         else:
             db_session.connected = False
             db.session.commit()
@@ -540,7 +547,7 @@ def restore_user_sessions(user_id):
                 'auth_type': db_session.auth_type,
                 'tmux_session_name': db_session.tmux_session_name,
                 'display_name': db_session.display_name
-            }, room=room)
+            }, to=socket_sid)
             log_info("Persistent tmux session available for reconnect",
                      host=db_session.host, tmux_session=db_session.tmux_session_name)
 
@@ -673,6 +680,36 @@ def handle_ssh_connect(data, current_user=None):
             if live_jump_host.get('auth_type') == 'password':
                 proxy_jump['password'] = runtime_password
 
+        # Preserve precise missing-reference errors without running PBKDF2 or
+        # decrypting attacker-selected stored keys before the attempt budget.
+        if (
+            auth_type == 'key'
+            and key_id
+            and key_manager.get_key(current_user.id, key_id) is None
+        ):
+            emit_error('SSH key error: Key not found')
+            return
+        bastion_key_id = None
+        if proxy_jump:
+            bastion_password = proxy_jump.get('password')
+            bastion_key_id = proxy_jump.get('key_id')
+            if not bastion_password and not bastion_key_id:
+                emit_error('Jump host password or SSH key required')
+                return
+            if (
+                bastion_key_id
+                and key_manager.get_key(
+                    current_user.id, bastion_key_id
+                ) is None
+            ):
+                emit_error('Jump host SSH key error: Key not found')
+                return
+
+        if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
+            log_warning("SSH connect rate limit hit", user=current_user.username)
+            emit_error('Too many connection attempts. Please wait a moment.')
+            return
+
         if auth_type == 'key' and key_id:
             key_content, key_error = key_manager.read_key_content(
                 current_user.id, key_id
@@ -680,28 +717,17 @@ def handle_ssh_connect(data, current_user=None):
             if key_error:
                 emit_error(f'SSH key error: {key_error}')
                 return
-        if proxy_jump:
-            bastion_password = proxy_jump.get('password')
-            bastion_key_id = proxy_jump.get('key_id')
-            if not bastion_password and not bastion_key_id:
-                emit_error('Jump host password or SSH key required')
-                return
-            if bastion_key_id:
-                bastion_key_content, bastion_key_error = (
-                    key_manager.read_key_content(
-                        current_user.id, bastion_key_id
-                    )
+        if bastion_key_id:
+            bastion_key_content, bastion_key_error = (
+                key_manager.read_key_content(
+                    current_user.id, bastion_key_id
                 )
-                if bastion_key_error:
-                    emit_error(
-                        f'Jump host SSH key error: {bastion_key_error}'
-                    )
-                    return
-
-        if check_socket_rate_limit(current_user.id, 'ssh_connect', config.RATELIMIT_SSH_CONNECT):
-            log_warning("SSH connect rate limit hit", user=current_user.username)
-            emit_error('Too many connection attempts. Please wait a moment.')
-            return
+            )
+            if bastion_key_error:
+                emit_error(
+                    f'Jump host SSH key error: {bastion_key_error}'
+                )
+                return
 
         # The target may be internal when reached via a bastion (legitimate).
         host, port, username, error = _validate_ssh_params(
@@ -1414,9 +1440,18 @@ def handle_upload_key(data, current_user=None):
             return _key_mutation_error(
                 'Key name too long (max 128 characters)'
             )
-        if len(key_content) > 64 * 1024:
+        if len(key_content.encode('utf-8')) > 64 * 1024:
             return _key_mutation_error(
                 'Key content too large (max 64KB)'
+            )
+
+        if check_socket_rate_limit(
+            current_user.id,
+            'ssh_key_write',
+            config.RATELIMIT_SSH_KEY_WRITE,
+        ):
+            return _key_mutation_error(
+                'Too many SSH key changes. Please wait a moment.'
             )
 
         key_meta, error = key_manager.save_key(current_user.id, name, key_content)
@@ -1424,9 +1459,9 @@ def handle_upload_key(data, current_user=None):
             log_key_upload(current_user.username, name, False, request.remote_addr)
             return _key_mutation_error(error)
         log_key_upload(current_user.username, name, True, request.remote_addr)
-        emit('key_uploaded', {'key': key_meta})
-        handle_list_keys(current_user=current_user)
-        return {'success': True, 'key': key_meta}
+        usable_key = {**key_meta, 'usable': True}
+        emit('key_uploaded', {'key': usable_key})
+        return {'success': True, 'key': usable_key}
 
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
@@ -1479,9 +1514,18 @@ def handle_replace_key(data, current_user=None):
             or not key_content
         ):
             return _key_mutation_error('Key ID and key content required')
-        if len(key_content) > 64 * 1024:
+        if len(key_content.encode('utf-8')) > 64 * 1024:
             return _key_mutation_error(
                 'Key content too large (max 64KB)'
+            )
+
+        if check_socket_rate_limit(
+            current_user.id,
+            'ssh_key_write',
+            config.RATELIMIT_SSH_KEY_WRITE,
+        ):
+            return _key_mutation_error(
+                'Too many SSH key changes. Please wait a moment.'
             )
 
         key, error = key_manager.replace_key(

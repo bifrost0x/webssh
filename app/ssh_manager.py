@@ -25,6 +25,7 @@ from .quota_manager import (
     quota_manager,
     release_reservation,
 )
+from .ssh_output_flow import emit_ssh_output
 
 sessions = {}
 sessions_lock = Lock()
@@ -599,6 +600,7 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
     from datetime import datetime, timezone
 
     cached_room = None
+    cached_user_id = None
     last_db_update = 0
     persistent_tmux_available = None
 
@@ -620,6 +622,7 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
                     time.sleep(0.1)
 
             if db_session:
+                cached_user_id = db_session.user_id
                 cached_room = f'user_{db_session.user_id}'
 
             if not cached_room:
@@ -653,11 +656,11 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
                         )
                         if sequence is None:
                             break
-                        socketio_instance.emit('ssh_output', {
+                        emit_ssh_output(socketio_instance, cached_room, cached_user_id, session_id, {
                             'session_id': session_id,
                             'data': decoded_data,
                             'sequence': sequence,
-                        }, room=cached_room)
+                        }, cancel_event=cancel_event)
 
                         if now - last_db_update >= 10.0:
                             last_db_update = now

@@ -98,16 +98,18 @@ test('OSC 52 clipboard payloads are bounded, targeted, and decoded as UTF-8', ()
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;dG9vIGxhcmdl', 4), null);
 });
 
-test('OSC 52 handler writes valid tmux selections to the browser clipboard', async () => {
+test('OSC 52 handler requires a user action before writing the clipboard', async () => {
     const writes = [];
     let handler;
+    let presentation;
     global.navigator.clipboard = {
         writeText(text) {
             writes.push(text);
             return Promise.resolve();
         },
     };
-    const disposable = {dispose() {}};
+    let disposed = false;
+    const disposable = {dispose() { disposed = true; }};
     const terminal = {
         parser: {
             registerOscHandler(identifier, callback) {
@@ -118,11 +120,107 @@ test('OSC 52 handler writes valid tmux selections to the browser clipboard', asy
         },
     };
 
-    assert.equal(TerminalManager.registerOsc52ClipboardHandler(terminal), disposable);
+    global.window.showNotification = value => {
+        presentation = value;
+    };
+    const registered = TerminalManager.registerOsc52ClipboardHandler(terminal);
     assert.equal(handler(';dG11eCBzZWxlY3Rpb24='), true);
+    assert.deepEqual(writes, []);
+    assert.equal(typeof presentation.action.onClick, 'function');
+    presentation.action.onClick();
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(writes, ['tmux selection']);
+    registered.dispose();
+    assert.equal(disposed, true);
+    delete global.window.showNotification;
     delete global.navigator.clipboard;
+});
+
+test('socket output is acknowledged after TerminalManager accepts it', () => {
+    const calls = [];
+    const originalWriteOutput = TerminalManager.writeOutput;
+    let acceptOutput;
+    TerminalManager.writeOutput = (...args) => {
+        calls.push(['write', ...args.slice(0, 3)]);
+        acceptOutput = args[3];
+    };
+
+    TerminalManager.handleSocketOutput(
+        {session_id: 'session-1', data: 'hello', sequence: 3},
+        () => calls.push(['ack']),
+    );
+
+    assert.deepEqual(calls, [
+        ['write', 'session-1', 'hello', 3],
+    ]);
+    acceptOutput();
+    assert.deepEqual(calls, [
+        ['write', 'session-1', 'hello', 3],
+        ['ack'],
+    ]);
+    TerminalManager.writeOutput = originalWriteOutput;
+});
+
+test('socket output waits for every visible xterm pane before ACK', () => {
+    const originalWriteOutputToTerminal = TerminalManager.writeOutputToTerminal;
+    const callbacks = [];
+    let acknowledgements = 0;
+    TerminalManager.sessionTerminals = {multi: ['pane-1', 'pane-2']};
+    TerminalManager.transcripts = {};
+    TerminalManager.transcriptSizes = {};
+    TerminalManager.writeOutputToTerminal = (_key, _data, callback) => {
+        callbacks.push(callback);
+    };
+
+    TerminalManager.writeOutput('multi', 'output', 1, () => {
+        acknowledgements += 1;
+    });
+
+    assert.equal(acknowledgements, 0);
+    callbacks[0]();
+    assert.equal(acknowledgements, 0);
+    callbacks[1]();
+    assert.equal(acknowledgements, 1);
+    TerminalManager.writeOutputToTerminal = originalWriteOutputToTerminal;
+});
+
+test('pre-attach output stays bounded and releases trimmed chunks', () => {
+    const originalLimit = TerminalManager.maxPendingOutputSize;
+    const accepted = [];
+    TerminalManager.maxPendingOutputSize = 5;
+    TerminalManager.terminals = {pending: {}};
+    TerminalManager.terminalReady = {pending: false};
+    TerminalManager.pendingOutput = {pending: []};
+    TerminalManager.pendingOutputSizes = {pending: 0};
+
+    TerminalManager.writeOutputToTerminal(
+        'pending', '1234', () => accepted.push('first')
+    );
+    TerminalManager.writeOutputToTerminal(
+        'pending', '5678', () => accepted.push('second')
+    );
+
+    assert.deepEqual(accepted, ['first']);
+    assert.equal(TerminalManager.pendingOutputSizes.pending, 4);
+    assert.deepEqual(
+        TerminalManager.pendingOutput.pending.map(entry => entry.data),
+        ['5678'],
+    );
+    TerminalManager.maxPendingOutputSize = originalLimit;
+});
+
+test('destroying a terminal releases in-flight xterm acceptance callbacks', () => {
+    const accepted = [];
+    TerminalManager.terminals = {closing: {dispose() {}}};
+    TerminalManager.pendingOutput = {closing: []};
+    TerminalManager.terminalWriteCallbacks = {
+        closing: new Set([() => accepted.push('accepted')]),
+    };
+
+    TerminalManager.destroyTerminalKey('closing', 'session-closing');
+
+    assert.deepEqual(accepted, ['accepted']);
+    assert.equal(TerminalManager.terminalWriteCallbacks.closing, undefined);
 });
 
 test('copy shortcuts write xterm selection directly to the clipboard', async () => {
@@ -540,7 +638,7 @@ test('attachTerminal replays output received before and during terminal attachme
             TerminalManager.attachTerminal('switch-session', 'terminal-container', 'switchTerminal'),
             true
         );
-        TerminalManager.writeOutputToTerminal('switchTerminal', ' ready');
+        TerminalManager.writeOutput('switch-session', ' ready');
 
         await new Promise(resolve => setTimeout(resolve, 80));
 
@@ -551,6 +649,92 @@ test('attachTerminal replays output received before and during terminal attachme
         writeCallbacks[1]();
         assert.deepEqual(clipboardActivations, [terminal]);
     } finally {
+        global.document.getElementById = originalGetElementById;
+        global.requestAnimationFrame = originalRequestAnimationFrame;
+        TerminalManager.setupScrollbar = originalSetupScrollbar;
+        TerminalManager.fitTerminal = originalFitTerminal;
+        TerminalManager.registerOsc52ClipboardHandler = originalRegisterOsc52ClipboardHandler;
+        console.error = originalConsoleError;
+    }
+});
+
+test('attachTerminal replays the current bounded transcript after pending trims', async () => {
+    const originalGetElementById = global.document.getElementById;
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    const originalSetupScrollbar = TerminalManager.setupScrollbar;
+    const originalFitTerminal = TerminalManager.fitTerminal;
+    const originalRegisterOsc52ClipboardHandler = TerminalManager.registerOsc52ClipboardHandler;
+    const originalConsoleError = console.error;
+    const originalTranscriptLimit = TerminalManager.maxTranscriptSize;
+    const originalPendingLimit = TerminalManager.maxPendingOutputSize;
+    const writes = [];
+    const writeCallbacks = [];
+    const accepted = [];
+    const terminal = {
+        buffer: { active: { viewportY: 0, baseY: 0 } },
+        open() {},
+        clear() {},
+        write(data, callback) {
+            writes.push(data);
+            writeCallbacks.push(callback);
+        },
+        scrollToBottom() {},
+    };
+
+    try {
+        TerminalManager.maxTranscriptSize = 5;
+        TerminalManager.maxPendingOutputSize = 5;
+        TerminalManager.terminals = {};
+        TerminalManager.sessionTerminals = {};
+        TerminalManager.pendingOutput = {};
+        TerminalManager.pendingOutputSizes = {};
+        TerminalManager.terminalReady = {};
+        TerminalManager.clipboardDisposers = {};
+        TerminalManager.transcripts = {};
+        TerminalManager.transcriptSizes = {};
+        console.error = () => {};
+
+        TerminalManager.writeOutput('bounded-session', 'old');
+        TerminalManager.terminals.boundedTerminal = terminal;
+        TerminalManager.sessionTerminals['bounded-session'] = [
+            'boundedTerminal'
+        ];
+        global.document.getElementById = () => ({ appendChild() {} });
+        global.requestAnimationFrame = callback => callback();
+        TerminalManager.setupScrollbar = () => {};
+        TerminalManager.fitTerminal = () => {};
+        TerminalManager.registerOsc52ClipboardHandler = () => ({
+            dispose() {}
+        });
+
+        TerminalManager.attachTerminal(
+            'bounded-session',
+            'terminal-container',
+            'boundedTerminal',
+        );
+        TerminalManager.writeOutput(
+            'bounded-session', '1234', null,
+            () => accepted.push('first'),
+        );
+        TerminalManager.writeOutput(
+            'bounded-session', '5678', null,
+            () => accepted.push('second'),
+        );
+
+        assert.deepEqual(accepted, ['first']);
+        await new Promise(resolve => setTimeout(resolve, 80));
+
+        assert.equal(
+            TerminalManager.transcripts['bounded-session'].join(''),
+            '5678',
+        );
+        assert.deepEqual(writes, ['5678']);
+        assert.deepEqual(accepted, ['first']);
+        writeCallbacks[0]();
+        assert.deepEqual(accepted, ['first', 'second']);
+    } finally {
+        TerminalManager.maxTranscriptSize = originalTranscriptLimit;
+        TerminalManager.maxPendingOutputSize = originalPendingLimit;
         global.document.getElementById = originalGetElementById;
         global.requestAnimationFrame = originalRequestAnimationFrame;
         TerminalManager.setupScrollbar = originalSetupScrollbar;
@@ -588,4 +772,102 @@ test('restored output is seeded before attach without duplicating overlapping li
 
     TerminalManager.writeOutput('restored', 'duplicate snapshot event', 7);
     assert.equal(TerminalManager.getTranscript('restored'), 'older snapshot\r\nswitch# switch# ');
+
+    TerminalManager.seedRestoredOutput('restored', '', 8);
+    assert.equal(TerminalManager.getTranscript('restored'), '');
+});
+
+test('resync rebuilds ready terminals without accepting stale socket output', () => {
+    const originalRegisterOsc52ClipboardHandler = (
+        TerminalManager.registerOsc52ClipboardHandler
+    );
+    const writes = [];
+    const writeCallbacks = [];
+    const events = [];
+    const terminal = {
+        buffer: {active: {viewportY: 0, baseY: 0}},
+        reset() { events.push('reset'); },
+        write(data, callback) {
+            writes.push(data);
+            writeCallbacks.push(callback);
+        },
+        scrollToBottom() {},
+    };
+
+    try {
+        TerminalManager.terminals = {resyncTerminal: terminal};
+        TerminalManager.terminalReady = {resyncTerminal: true};
+        TerminalManager.sessionTerminals = {
+            resync: ['resyncTerminal'],
+        };
+        TerminalManager.pendingOutput = {};
+        TerminalManager.pendingOutputSizes = {};
+        TerminalManager.terminalWriteCallbacks = {};
+        TerminalManager.clipboardDisposers = {
+            resyncTerminal: {
+                dispose() { events.push('clipboard-disposed'); },
+            },
+        };
+        TerminalManager.osc52ClipboardAllowed = {resyncTerminal: true};
+        TerminalManager.transcripts = {resync: ['stale']};
+        TerminalManager.transcriptSizes = {resync: 5};
+        TerminalManager.sequencedOutput = {
+            resync: [{sequence: 12, data: ' live'}],
+        };
+        TerminalManager.sequencedOutputSizes = {resync: 5};
+        TerminalManager.lastOutputSequences = {resync: 12};
+        TerminalManager.registerOsc52ClipboardHandler = target => {
+            events.push(target === terminal ? 'clipboard-active' : 'wrong-terminal');
+            return {dispose() {}};
+        };
+
+        let staleAccepted = 0;
+        TerminalManager.writeOutputToTerminal(
+            'resyncTerminal',
+            'old socket output',
+            () => { staleAccepted += 1; },
+        );
+        TerminalManager.resyncRestoredOutput('resync', 'snapshot', 11);
+        let newOutputAccepted = 0;
+        TerminalManager.writeOutput(
+            'resync',
+            ' after',
+            13,
+            () => { newOutputAccepted += 1; },
+        );
+
+        assert.deepEqual(writes, ['old socket output', '']);
+        assert.deepEqual(events, ['clipboard-disposed']);
+        assert.equal(staleAccepted, 0);
+        assert.equal(newOutputAccepted, 0);
+
+        writeCallbacks[0]();
+        assert.equal(staleAccepted, 0);
+        assert.deepEqual(events, ['clipboard-disposed']);
+
+        writeCallbacks[1]();
+        assert.deepEqual(writes, [
+            'old socket output',
+            '',
+            'snapshot live after',
+        ]);
+        assert.deepEqual(events, ['clipboard-disposed', 'reset']);
+        assert.equal(newOutputAccepted, 0);
+
+        writeCallbacks[2]();
+        assert.deepEqual(events, [
+            'clipboard-disposed',
+            'reset',
+            'clipboard-active',
+        ]);
+        assert.equal(newOutputAccepted, 1);
+        assert.equal(
+            TerminalManager.terminalWriteCallbacks.resyncTerminal.size,
+            0,
+        );
+    } finally {
+        TerminalManager.registerOsc52ClipboardHandler = (
+            originalRegisterOsc52ClipboardHandler
+        );
+    }
 });
