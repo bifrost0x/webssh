@@ -255,7 +255,13 @@ test('seeds restored output before creating and attaching the terminal', () => {
         calls.push(['seed', sessionId, output, sequence]);
     };
     manager.createSession = data => {
-        calls.push(['create', data.session_id, data.restored]);
+        calls.push([
+            'create',
+            data.session_id,
+            data.restored,
+            data.use_tmux,
+            data.tmux_session_name,
+        ]);
         return data.session_id;
     };
     manager.getFirstEmptyPaneIndex = () => 0;
@@ -268,11 +274,13 @@ test('seeds restored output before creating and attaching the terminal', () => {
         username: 'admin',
         buffered_output: 'switch# ',
         output_sequence: 14,
+        use_tmux: true,
+        tmux_session_name: 'webssh_admin_switch',
     });
 
     assert.deepEqual(calls, [
         ['seed', 'restored', 'switch# ', 14],
-        ['create', 'restored', true],
+        ['create', 'restored', true, true, 'webssh_admin_switch'],
         ['assign', 'restored'],
     ]);
 });

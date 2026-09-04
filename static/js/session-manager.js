@@ -48,6 +48,8 @@ const SessionManager = {
             via_jump: data.via_jump,
             display_name: data.display_name,
             file_source: data.file_source,
+            use_tmux: data.use_tmux,
+            tmux_session_name: data.tmux_session_name,
             restored: true,
         };
 
