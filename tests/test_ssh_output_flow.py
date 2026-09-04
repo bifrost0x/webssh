@@ -144,6 +144,40 @@ def test_quiet_browser_is_evicted_at_the_ack_deadline(monkeypatch):
     assert controller.usage()['reservations'] == 0
 
 
+def test_watchdog_retries_when_delivery_and_disconnect_both_fail(
+        monkeypatch):
+    import app.ssh_output_flow as output_flow
+
+    controller = output_flow.SSHOutputFlowController()
+    monkeypatch.setattr(output_flow, 'ssh_output_flow', controller)
+    payload = {'session_id': 's1', 'data': 'retry', 'sequence': 1}
+    size = controller.event_size(payload)
+    _configure_limits(monkeypatch, size * 4, timeout=0.02)
+    controller.register_socket('recovering-browser')
+    socketio = FakeSocketIO(['recovering-browser'])
+    successful_disconnect = socketio.server.disconnect
+
+    def fail_delivery(event, data, to=None, callback=None):
+        socketio.emitted.append((event, data, to, callback))
+        if event == 'ssh_output':
+            raise RuntimeError('shared manager unavailable')
+
+    def fail_disconnect(*_args, **_kwargs):
+        raise RuntimeError('shared manager unavailable')
+
+    socketio.emit = fail_delivery
+    socketio.server.disconnect = fail_disconnect
+    output_flow.emit_ssh_output(
+        socketio, 'user_7', 7, 's1', payload
+    )
+
+    assert controller.usage()['reservations'] == 1
+    socketio.server.disconnect = successful_disconnect
+    assert socketio.server.disconnect_event.wait(1)
+    assert socketio.server.disconnected == [('recovering-browser', '/')]
+    assert controller.usage()['reservations'] == 0
+
+
 def test_cancelled_reader_does_not_wait_for_ack_timeout(monkeypatch):
     import app.ssh_output_flow as output_flow
 

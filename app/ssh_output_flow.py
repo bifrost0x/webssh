@@ -425,36 +425,43 @@ def emit_ssh_output(
             _state['released'] = True
             flow_controller.release(_token)
 
+        def expire_ack(
+                _token=token,
+                _socket_sid=socket_sid,
+                _user_id=user_id,
+                _session_id=session_id,
+                _flow_controller=flow_controller):
+            if not _flow_controller.is_pending(_token):
+                return
+            log_warning(
+                'Disconnecting browser that stopped acknowledging SSH output',
+                user_id=_user_id,
+                session_id=_session_id,
+                sid=_socket_sid,
+            )
+            _disconnect_lagging_socket(
+                socketio_instance,
+                _socket_sid,
+                flow_controller=_flow_controller,
+            )
+
         try:
+            # Arm before delivery so a simultaneous emit and disconnect
+            # failure cannot strand this reservation without a retry path.
+            flow_controller.arm_deadline(token, expire_ack)
             socketio_instance.emit(
                 'ssh_output', payload, to=socket_sid, callback=acknowledge
             )
-            def expire_ack(
-                    _token=token,
-                    _socket_sid=socket_sid,
-                    _user_id=user_id,
-                    _session_id=session_id,
-                    _flow_controller=flow_controller):
-                if not _flow_controller.is_pending(_token):
-                    return
-                log_warning(
-                    'Disconnecting browser that stopped acknowledging SSH output',
-                    user_id=_user_id,
-                    session_id=_session_id,
-                    sid=_socket_sid,
-                )
-                _disconnect_lagging_socket(
-                    socketio_instance,
-                    _socket_sid,
-                    flow_controller=_flow_controller,
-                )
-
-            flow_controller.arm_deadline(token, expire_ack)
         except Exception as error:
-            try:
-                _disconnect_lagging_socket(socketio_instance, socket_sid)
-            except Exception:
-                pass
+            if flow_controller.is_pending(token):
+                try:
+                    _disconnect_lagging_socket(
+                        socketio_instance,
+                        socket_sid,
+                        flow_controller=flow_controller,
+                    )
+                except Exception:
+                    pass
             log_warning(
                 'Failed to deliver SSH output to browser',
                 user_id=user_id,
