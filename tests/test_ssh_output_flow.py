@@ -17,18 +17,23 @@ class FakeServer:
     def __init__(self, participants):
         self.manager = FakeManager(participants)
         self.disconnected = []
+        self.disconnect_event = threading.Event()
 
     def disconnect(self, sid, namespace='/'):
         self.disconnected.append((sid, namespace))
+        self.disconnect_event.set()
 
 
 class FakeSocketIO:
-    def __init__(self, participants):
+    def __init__(self, participants, *, auto_ack=()):
         self.server = FakeServer(participants)
         self.emitted = []
+        self.auto_ack = set(auto_ack)
 
     def emit(self, event, payload, to=None, callback=None):
         self.emitted.append((event, payload, to, callback))
+        if event == 'ssh_output' and to in self.auto_ack:
+            callback()
 
 
 def _configure_limits(monkeypatch, size, *, events=8, timeout=1):
@@ -92,7 +97,7 @@ def test_lagging_browser_is_bounded_without_closing_ssh_session(
     controller.register_socket('healthy')
     token, reason = controller.reserve('slow', 7, 's1', size)
     assert reason is None
-    socketio = FakeSocketIO(['slow', 'healthy'])
+    socketio = FakeSocketIO(['slow', 'healthy'], auto_ack=['healthy'])
 
     output_flow.emit_ssh_output(
         socketio, 'user_7', 7, 's1', payload
@@ -110,8 +115,32 @@ def test_lagging_browser_is_bounded_without_closing_ssh_session(
     assert socketio.server.disconnected == [('slow', '/')]
     assert controller.release(token) is False
     # Browser eviction never receives or closes the underlying SSH session.
-    assert controller.usage()['reservations'] == 1
-    socketio.emitted[0][3]()
+    assert controller.usage()['reservations'] == 0
+
+
+def test_quiet_browser_is_evicted_at_the_ack_deadline(monkeypatch):
+    import app.ssh_output_flow as output_flow
+
+    controller = output_flow.SSHOutputFlowController()
+    monkeypatch.setattr(output_flow, 'ssh_output_flow', controller)
+    payload = {'session_id': 's1', 'data': 'quiet', 'sequence': 1}
+    size = controller.event_size(payload)
+    _configure_limits(monkeypatch, size * 4, timeout=0.02)
+    controller.register_socket('quiet-browser')
+    socketio = FakeSocketIO(['quiet-browser'])
+
+    output_flow.emit_ssh_output(
+        socketio, 'user_7', 7, 's1', payload
+    )
+
+    assert socketio.server.disconnect_event.wait(1)
+    assert socketio.server.disconnected == [('quiet-browser', '/')]
+    assert (
+        'ssh_output_resync_required',
+        {'reason': 'backpressure'},
+        'quiet-browser',
+        None,
+    ) in socketio.emitted
     assert controller.usage()['reservations'] == 0
 
 

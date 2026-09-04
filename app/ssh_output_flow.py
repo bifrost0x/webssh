@@ -24,6 +24,8 @@ class SSHOutputFlowController:
         self._global_bytes = 0
         self._global_events = 0
         self._active_sockets = set()
+        self._deadline_callbacks = {}
+        self._deadline_thread = None
 
     @staticmethod
     def event_size(payload):
@@ -46,6 +48,10 @@ class SSHOutputFlowController:
     def has_pending(self, socket_sid):
         with self._condition:
             return self._socket_events.get(socket_sid, 0) > 0
+
+    def is_pending(self, token):
+        with self._condition:
+            return token in self._reservations
 
     def _fits(self, socket_sid, user_id, size):
         if socket_sid not in self._active_sockets:
@@ -93,8 +99,14 @@ class SSHOutputFlowController:
                 self._condition.wait(min(0.1, remaining))
 
             token = uuid.uuid4().hex
+            created_at = time.monotonic()
             self._reservations[token] = (
-                socket_sid, user_id, session_id, size, time.monotonic()
+                socket_sid,
+                user_id,
+                session_id,
+                size,
+                created_at,
+                created_at + timeout,
             )
             self._socket_bytes[socket_sid] += size
             self._socket_events[socket_sid] += 1
@@ -104,12 +116,98 @@ class SSHOutputFlowController:
             self._global_events += 1
             return token, None
 
+    def arm_deadline(self, token, callback):
+        """Schedule one bounded watchdog for an emitted reservation."""
+        with self._condition:
+            reservation = self._reservations.get(token)
+            if reservation is None:
+                return False
+            created_at = reservation[4]
+            expires_at = reservation[5]
+            retry_interval = max(
+                0.01,
+                min(expires_at - created_at, 1.0),
+            )
+            self._deadline_callbacks[token] = [
+                expires_at,
+                retry_interval,
+                callback,
+            ]
+            if self._deadline_thread is None:
+                self._deadline_thread = threading.Thread(
+                    target=self._watch_deadlines,
+                    name='ssh-output-ack-deadlines',
+                    daemon=True,
+                )
+                self._deadline_thread.start()
+            self._condition.notify_all()
+            return True
+
+    def _watch_deadlines(self):
+        while True:
+            callbacks = []
+            with self._condition:
+                armed = {
+                    token: deadline
+                    for token, deadline in self._deadline_callbacks.items()
+                    if token in self._reservations
+                }
+                for token in set(self._deadline_callbacks) - set(armed):
+                    self._deadline_callbacks.pop(token, None)
+                if not armed:
+                    self._deadline_thread = None
+                    return
+
+                now = time.monotonic()
+                next_deadline = min(entry[0] for entry in armed.values())
+                if next_deadline > now:
+                    self._condition.wait(next_deadline - now)
+                    continue
+
+                expired_sockets = set()
+                for token, deadline in armed.items():
+                    if deadline[0] > now:
+                        continue
+                    reservation = self._reservations.get(token)
+                    if reservation is None:
+                        continue
+                    socket_sid = reservation[0]
+                    if socket_sid not in expired_sockets:
+                        callbacks.append(deadline[2])
+                        expired_sockets.add(socket_sid)
+
+                # A failed transport disconnect remains bounded and is retried
+                # without spinning. A successful disconnect removes every
+                # reservation for the socket and therefore these entries.
+                for token, deadline in self._deadline_callbacks.items():
+                    reservation = self._reservations.get(token)
+                    if (
+                        reservation is not None
+                        and reservation[0] in expired_sockets
+                    ):
+                        deadline[0] = now + deadline[1]
+
+            for callback in callbacks:
+                try:
+                    callback()
+                except Exception:
+                    # Keep the reservation and retry its bounded disconnect.
+                    pass
+
     def release(self, token):
         with self._condition:
             reservation = self._reservations.pop(token, None)
             if reservation is None:
                 return False
-            socket_sid, user_id, _session_id, size, _created_at = reservation
+            self._deadline_callbacks.pop(token, None)
+            (
+                socket_sid,
+                user_id,
+                _session_id,
+                size,
+                _created_at,
+                _expires_at,
+            ) = reservation
             self._socket_bytes[socket_sid] -= size
             self._socket_events[socket_sid] -= 1
             self._user_bytes[user_id] -= size
@@ -140,7 +238,14 @@ class SSHOutputFlowController:
         with self._condition:
             oldest = {}
             for reservation in self._reservations.values():
-                socket_sid, _user_id, _session_id, _size, created_at = (
+                (
+                    socket_sid,
+                    _user_id,
+                    _session_id,
+                    _size,
+                    created_at,
+                    _expires_at,
+                ) = (
                     reservation
                 )
                 if socket_sid == exclude:
@@ -169,7 +274,9 @@ class SSHOutputFlowController:
                     _session_id,
                     size,
                     _created_at,
+                    _expires_at,
                 ) = self._reservations.pop(token)
+                self._deadline_callbacks.pop(token, None)
                 self._socket_bytes[socket] -= size
                 self._socket_events[socket] -= 1
                 self._user_bytes[user_id] -= size
@@ -210,7 +317,8 @@ def _room_participants(socketio_instance, room):
     ))
 
 
-def _disconnect_lagging_socket(socketio_instance, socket_sid):
+def _disconnect_lagging_socket(
+        socketio_instance, socket_sid, flow_controller=None):
     server = getattr(socketio_instance, 'server', None)
     if server is None:
         return False
@@ -227,7 +335,7 @@ def _disconnect_lagging_socket(socketio_instance, socket_sid):
     server.disconnect(socket_sid, namespace='/')
     # Production disconnect handlers release first; keep this idempotent
     # fallback for test servers and disconnects without an application event.
-    ssh_output_flow.release_socket(socket_sid)
+    (flow_controller or ssh_output_flow).release_socket(socket_sid)
     return True
 
 
@@ -308,18 +416,40 @@ def emit_ssh_output(
         if token is None:
             continue
 
+        flow_controller = ssh_output_flow
         release_state = {'released': False}
 
         def acknowledge(*_args, _token=token, _state=release_state):
             if _state['released']:
                 return
             _state['released'] = True
-            ssh_output_flow.release(_token)
+            flow_controller.release(_token)
 
         try:
             socketio_instance.emit(
                 'ssh_output', payload, to=socket_sid, callback=acknowledge
             )
+            def expire_ack(
+                    _token=token,
+                    _socket_sid=socket_sid,
+                    _user_id=user_id,
+                    _session_id=session_id,
+                    _flow_controller=flow_controller):
+                if not _flow_controller.is_pending(_token):
+                    return
+                log_warning(
+                    'Disconnecting browser that stopped acknowledging SSH output',
+                    user_id=_user_id,
+                    session_id=_session_id,
+                    sid=_socket_sid,
+                )
+                _disconnect_lagging_socket(
+                    socketio_instance,
+                    _socket_sid,
+                    flow_controller=_flow_controller,
+                )
+
+            flow_controller.arm_deadline(token, expire_ack)
         except Exception as error:
             try:
                 _disconnect_lagging_socket(socketio_instance, socket_sid)
