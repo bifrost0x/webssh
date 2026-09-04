@@ -382,7 +382,6 @@ const TerminalManager = {
             return false;
         }
 
-        const existingOutput = [...(this.transcripts[sessionId] || [])];
         this.pendingOutput[key] = [];
         this.pendingOutputSizes[key] = 0;
         this.terminalReady[key] = false;
@@ -410,21 +409,29 @@ const TerminalManager = {
                     this.pendingOutputSizes[key] = 0;
                     this.terminalReady[key] = true;
 
-                    const replayOutput = existingOutput.map(data => ({
-                        data,
-                        onWritten: null,
-                    })).concat(pendingOutput);
+                    // Rebuild the replay snapshot now, after all output that
+                    // arrived during attachment has passed through the bounded
+                    // transcript. Pending entries may have been released to
+                    // enforce their own limit, but data retained by the
+                    // bounded transcript is never omitted from xterm.
+                    const replayOutput = [
+                        ...(this.transcripts[sessionId] || [])
+                    ];
+                    const acceptPendingOutput = () => {
+                        pendingOutput.forEach(entry => entry.onWritten?.());
+                    };
                     if (replayOutput.length === 0) {
+                        acceptPendingOutput();
                         this.activateOsc52ClipboardHandler(key, terminal);
                         return;
                     }
 
                     let remainingWrites = replayOutput.length;
-                    replayOutput.forEach(entry => {
-                        this.writeOutputToTerminal(key, entry.data, () => {
-                            entry.onWritten?.();
+                    replayOutput.forEach(data => {
+                        this.writeOutputToTerminal(key, data, () => {
                             remainingWrites -= 1;
                             if (remainingWrites === 0) {
+                                acceptPendingOutput();
                                 this.activateOsc52ClipboardHandler(key, terminal);
                             }
                         });

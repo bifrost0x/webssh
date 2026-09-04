@@ -638,7 +638,7 @@ test('attachTerminal replays output received before and during terminal attachme
             TerminalManager.attachTerminal('switch-session', 'terminal-container', 'switchTerminal'),
             true
         );
-        TerminalManager.writeOutputToTerminal('switchTerminal', ' ready');
+        TerminalManager.writeOutput('switch-session', ' ready');
 
         await new Promise(resolve => setTimeout(resolve, 80));
 
@@ -649,6 +649,92 @@ test('attachTerminal replays output received before and during terminal attachme
         writeCallbacks[1]();
         assert.deepEqual(clipboardActivations, [terminal]);
     } finally {
+        global.document.getElementById = originalGetElementById;
+        global.requestAnimationFrame = originalRequestAnimationFrame;
+        TerminalManager.setupScrollbar = originalSetupScrollbar;
+        TerminalManager.fitTerminal = originalFitTerminal;
+        TerminalManager.registerOsc52ClipboardHandler = originalRegisterOsc52ClipboardHandler;
+        console.error = originalConsoleError;
+    }
+});
+
+test('attachTerminal replays the current bounded transcript after pending trims', async () => {
+    const originalGetElementById = global.document.getElementById;
+    const originalRequestAnimationFrame = global.requestAnimationFrame;
+    const originalSetupScrollbar = TerminalManager.setupScrollbar;
+    const originalFitTerminal = TerminalManager.fitTerminal;
+    const originalRegisterOsc52ClipboardHandler = TerminalManager.registerOsc52ClipboardHandler;
+    const originalConsoleError = console.error;
+    const originalTranscriptLimit = TerminalManager.maxTranscriptSize;
+    const originalPendingLimit = TerminalManager.maxPendingOutputSize;
+    const writes = [];
+    const writeCallbacks = [];
+    const accepted = [];
+    const terminal = {
+        buffer: { active: { viewportY: 0, baseY: 0 } },
+        open() {},
+        clear() {},
+        write(data, callback) {
+            writes.push(data);
+            writeCallbacks.push(callback);
+        },
+        scrollToBottom() {},
+    };
+
+    try {
+        TerminalManager.maxTranscriptSize = 5;
+        TerminalManager.maxPendingOutputSize = 5;
+        TerminalManager.terminals = {};
+        TerminalManager.sessionTerminals = {};
+        TerminalManager.pendingOutput = {};
+        TerminalManager.pendingOutputSizes = {};
+        TerminalManager.terminalReady = {};
+        TerminalManager.clipboardDisposers = {};
+        TerminalManager.transcripts = {};
+        TerminalManager.transcriptSizes = {};
+        console.error = () => {};
+
+        TerminalManager.writeOutput('bounded-session', 'old');
+        TerminalManager.terminals.boundedTerminal = terminal;
+        TerminalManager.sessionTerminals['bounded-session'] = [
+            'boundedTerminal'
+        ];
+        global.document.getElementById = () => ({ appendChild() {} });
+        global.requestAnimationFrame = callback => callback();
+        TerminalManager.setupScrollbar = () => {};
+        TerminalManager.fitTerminal = () => {};
+        TerminalManager.registerOsc52ClipboardHandler = () => ({
+            dispose() {}
+        });
+
+        TerminalManager.attachTerminal(
+            'bounded-session',
+            'terminal-container',
+            'boundedTerminal',
+        );
+        TerminalManager.writeOutput(
+            'bounded-session', '1234', null,
+            () => accepted.push('first'),
+        );
+        TerminalManager.writeOutput(
+            'bounded-session', '5678', null,
+            () => accepted.push('second'),
+        );
+
+        assert.deepEqual(accepted, ['first']);
+        await new Promise(resolve => setTimeout(resolve, 80));
+
+        assert.equal(
+            TerminalManager.transcripts['bounded-session'].join(''),
+            '5678',
+        );
+        assert.deepEqual(writes, ['5678']);
+        assert.deepEqual(accepted, ['first']);
+        writeCallbacks[0]();
+        assert.deepEqual(accepted, ['first', 'second']);
+    } finally {
+        TerminalManager.maxTranscriptSize = originalTranscriptLimit;
+        TerminalManager.maxPendingOutputSize = originalPendingLimit;
         global.document.getElementById = originalGetElementById;
         global.requestAnimationFrame = originalRequestAnimationFrame;
         TerminalManager.setupScrollbar = originalSetupScrollbar;
