@@ -282,6 +282,10 @@ so the security and runtime boundaries can be reviewed before implementation.
   [GitHub Security Advisories](https://github.com/bifrost0x/webssh/security/advisories/new).
 - Support ongoing work through [Buy Me a Coffee](https://buymeacoffee.com/bifrost0x).
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=bifrost0x/webssh&type=date&legend=top-left)](https://www.star-history.com/?repos=bifrost0x%2Fwebssh&type=date&legend=top-left)
+
 ## License
 
 WebSSH is available under the [MIT License](LICENSE).
