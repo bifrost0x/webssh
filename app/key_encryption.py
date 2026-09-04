@@ -354,24 +354,11 @@ def read_key_content(
             raise
         return plaintext
 
-@_serialized_key_operation
-def write_key_content(
-        user_id: str, key_path: str, key_content: str, *,
+def _write_prepared_key_content(
+        user_id: str, key_path: str, encrypted: bytes, *,
         allowed_root: Path = None) -> bool:
-    """
-    Encrypt and write SSH key content to file.
-
-    Args:
-        user_id: User identifier
-        key_path: Path to write the key
-        key_content: SSH private key content (PEM format)
-
-    Returns:
-        True if successful
-    """
+    """Write ciphertext prepared by ``encrypt_key_content``."""
     try:
-        encrypted = encrypt_key_content(user_id, key_content)
-
         path = Path(key_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with _key_file_lock(
@@ -391,13 +378,32 @@ def write_key_content(
 
 
 @_serialized_key_operation
-def replace_key_content(
+def write_prepared_key_content(
+        user_id: str, key_path: str, encrypted: bytes, *,
+        allowed_root: Path = None) -> bool:
+    """Write server-prepared ciphertext without deriving the key twice."""
+    return _write_prepared_key_content(
+        user_id, key_path, encrypted, allowed_root=allowed_root
+    )
+
+
+@_serialized_key_operation
+def write_key_content(
         user_id: str, key_path: str, key_content: str, *,
         allowed_root: Path = None) -> bool:
-    """Replace an existing encrypted key and restore its bytes on failure."""
+    """Encrypt and write SSH key content to file."""
+    encrypted = encrypt_key_content(user_id, key_content)
+    return _write_prepared_key_content(
+        user_id, key_path, encrypted, allowed_root=allowed_root
+    )
+
+
+def _replace_prepared_key_content(
+        user_id: str, key_path: str, key_content: str, encrypted: bytes, *,
+        allowed_root: Path = None) -> bool:
+    """Replace an encrypted key using already prepared ciphertext."""
     path = Path(key_path)
     try:
-        encrypted = encrypt_key_content(str(user_id), key_content)
         with _key_file_lock(
                 path, allowed_root=allowed_root) as operation_path:
             original = operation_path.read_bytes()
@@ -435,3 +441,26 @@ def replace_key_content(
             error_type=type(exc).__name__,
         )
         return False
+
+
+@_serialized_key_operation
+def replace_prepared_key_content(
+        user_id: str, key_path: str, key_content: str, encrypted: bytes, *,
+        allowed_root: Path = None) -> bool:
+    """Atomically replace a key with server-prepared ciphertext."""
+    return _replace_prepared_key_content(
+        user_id, key_path, key_content, encrypted,
+        allowed_root=allowed_root,
+    )
+
+
+@_serialized_key_operation
+def replace_key_content(
+        user_id: str, key_path: str, key_content: str, *,
+        allowed_root: Path = None) -> bool:
+    """Replace an existing encrypted key and restore its bytes on failure."""
+    encrypted = encrypt_key_content(str(user_id), key_content)
+    return _replace_prepared_key_content(
+        user_id, key_path, key_content, encrypted,
+        allowed_root=allowed_root,
+    )

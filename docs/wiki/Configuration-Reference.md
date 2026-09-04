@@ -97,6 +97,28 @@ Connection, transfer, background-work, and thread limits form one capacity model
 | `RATELIMIT_LOGIN_LIMIT` | `5 per minute` |
 | `RATELIMIT_REAUTH` | `5 per minute` |
 | `SSH_CONNECT_RATELIMIT` | `10 per minute` |
+| `SSH_KEY_WRITE_RATELIMIT` | `30 per minute` |
+
+## SSH key and live-output limits
+
+| Variable | Default |
+|---|---:|
+| `SSH_KEY_MAX_RECORDS` | `100` |
+| `SSH_KEY_STORE_MAX_BYTES` | `8388608` (8 MiB encrypted) |
+| `SSH_OUTPUT_MAX_UNACKED_BYTES_PER_SOCKET` | `524288` (512 KiB) |
+| `SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_SOCKET` | `128` |
+| `SSH_OUTPUT_MAX_UNACKED_EVENTS_PER_USER` | `1024` |
+| `SSH_OUTPUT_MAX_UNACKED_EVENTS_GLOBAL` | `8192` |
+| `SSH_OUTPUT_MAX_UNACKED_BYTES_PER_USER` | `4194304` (4 MiB) |
+| `SSH_OUTPUT_MAX_UNACKED_BYTES_GLOBAL` | `33554432` (32 MiB) |
+| `SSH_OUTPUT_ACK_TIMEOUT_SECONDS` | `10` seconds |
+
+The key limits reject only storage growth. A pre-existing store above the byte
+limit remains readable and can be renamed, deleted, or replaced with smaller
+keys. Live terminal output is acknowledged by each browser. If one browser
+keeps an acknowledgement budget blocked for the configured timeout, WebSSH
+applies SSH backpressure and then disconnects only that browser; the underlying
+SSH or persistent tmux session remains available for reconnect.
 
 `memory://` is process-local and counters reset when the process restarts. Use a `redis://` URL for durable, shared counters. Redis does not change the one-worker architecture.
 

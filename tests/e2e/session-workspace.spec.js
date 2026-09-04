@@ -416,6 +416,8 @@ test('tmux ignores replayed OSC 52 and accepts a live clipboard selection', asyn
         );
     });
 
+    expect(await page.evaluate(() => window.__workspaceClipboard)).toBeNull();
+    await page.locator('#notificationContainer .notification-action').click();
     await expect.poll(() => page.evaluate(() => window.__workspaceClipboard))
         .toBe('tmux selection');
     await assertNoExternalRequests(page);

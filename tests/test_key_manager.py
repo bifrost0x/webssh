@@ -18,6 +18,75 @@ def create_user(app, username='key-user'):
         return user.id
 
 
+def test_key_store_count_limit_is_atomic_and_delete_remains_available(
+        app, monkeypatch, rsa_private_key_pem):
+    import config
+    from app import key_manager
+
+    user_id = create_user(app, 'key-count-limit')
+    monkeypatch.setattr(config, 'SSH_KEY_MAX_RECORDS', 1)
+    with app.app_context():
+        first, error = key_manager.save_key(
+            user_id, 'First', rsa_private_key_pem
+        )
+        assert error is None
+
+        second, error = key_manager.save_key(
+            user_id, 'Second', rsa_private_key_pem
+        )
+
+        assert second is None
+        assert error == key_manager.SSH_KEY_STORAGE_LIMIT_ERROR
+        assert len(key_manager.load_keys(user_id)) == 1
+        assert key_manager.delete_key(user_id, first['id']) is True
+        assert key_manager.load_keys(user_id) == []
+
+
+def test_over_limit_key_store_allows_no_growth_but_rejects_growth(
+        app, monkeypatch, rsa_private_key_pem):
+    import config
+    from app import key_manager
+
+    user_id = create_user(app, 'key-byte-limit')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Existing', rsa_private_key_pem
+        )
+        assert error is None
+        key_path = Path(key_manager.get_key_path(user_id, key['id']))
+        existing_bytes = key_path.stat().st_size
+        monkeypatch.setattr(
+            config, 'SSH_KEY_STORE_MAX_BYTES', existing_bytes - 1
+        )
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], rsa_private_key_pem
+        )
+        assert error is None
+        assert replaced['id'] == key['id']
+
+        replaced, error = key_manager.replace_key(
+            user_id, key['id'], rsa_private_key_pem + ('\n' * 256)
+        )
+        assert replaced is None
+        assert error == key_manager.SSH_KEY_STORAGE_LIMIT_ERROR
+        assert key_manager.read_key_content(user_id, key['id']) == (
+            rsa_private_key_pem,
+            None,
+        )
+
+
+def test_key_size_limit_counts_utf8_bytes_before_key_parsing(app):
+    from app import key_manager
+
+    user_id = create_user(app, 'key-utf8-limit')
+    with app.app_context():
+        key, error = key_manager.save_key(user_id, 'Too large', 'é' * 40000)
+
+    assert key is None
+    assert error == 'Key content too large (max 64KB)'
+
+
 def test_rename_key_changes_only_owned_metadata_name(
         app, rsa_private_key_pem):
     from app import key_manager
@@ -338,7 +407,7 @@ def test_replace_key_write_failure_preserves_active_key(
         before = key_path.read_bytes()
         monkeypatch.setattr(
             key_manager.key_encryption,
-            'replace_key_content',
+            'replace_prepared_key_content',
             lambda *_args, **_kwargs: False,
         )
 

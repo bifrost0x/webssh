@@ -56,9 +56,11 @@ def test_key_upload_and_rename_return_safe_acknowledgements(
     assert rsa_private_key_pem not in repr(uploaded)
     assert rsa_private_key_pem not in repr(emitted)
     assert set(uploaded['key']) == {
-        'id', 'name', 'filename', 'key_type', 'encrypted', 'uploaded_at'
+        'id', 'name', 'filename', 'key_type', 'encrypted', 'uploaded_at',
+        'usable',
     }
-    assert any(event == 'keys_list' for event, _payload in emitted)
+    assert uploaded['key']['usable'] is True
+    assert not any(event == 'keys_list' for event, _payload in emitted)
 
     renamed, emitted = call_socket_handler(
         app,
@@ -70,13 +72,53 @@ def test_key_upload_and_rename_return_safe_acknowledgements(
 
     assert renamed == {
         'success': True,
-        'key': {**uploaded['key'], 'name': 'Renamed'},
+        'key': {
+            **{
+                field: value
+                for field, value in uploaded['key'].items()
+                if field != 'usable'
+            },
+            'name': 'Renamed',
+        },
     }
     assert any(event == 'key_renamed' for event, _payload in emitted)
     assert rsa_private_key_pem not in repr(renamed)
     assert rsa_private_key_pem not in repr(emitted)
     with app.app_context():
         assert key_manager.load_keys(user_id)[0]['name'] == 'Renamed'
+
+
+def test_key_upload_rate_limit_runs_before_parsing_or_encryption(
+        app, monkeypatch, rsa_private_key_pem):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'key_write_limited')
+    monkeypatch.setattr(
+        socket_events,
+        'check_socket_rate_limit',
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        socket_events.key_manager,
+        'save_key',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('key parsing/encryption must not run')
+        ),
+    )
+
+    acknowledgement, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_upload_key,
+        sid,
+        {'name': 'Limited', 'key_content': rsa_private_key_pem},
+    )
+
+    assert acknowledgement == {
+        'success': False,
+        'error': 'Too many SSH key changes. Please wait a moment.',
+    }
+    assert all(event != 'key_uploaded' for event, _payload in emitted)
 
 
 def test_key_upload_rejection_never_returns_private_input(

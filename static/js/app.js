@@ -33,10 +33,41 @@
         copy.className = 'notification-copy';
         copy.textContent = String(presentation.message || '');
         notification.appendChild(copy);
-        if (presentation.action?.label && presentation.action?.url) {
-            const action = document.createElement('a');
+        let dismissed = false;
+        let fadeTimer = null;
+        let removeTimer = null;
+        const dismiss = () => {
+            if (dismissed) return;
+            dismissed = true;
+            clearTimeout(fadeTimer);
+            clearTimeout(removeTimer);
+            notification.classList.add('fade-out');
+            try {
+                presentation.onDismiss?.();
+            } finally {
+                removeTimer = setTimeout(() => notification.remove(), 300);
+            }
+        };
+        if (
+            presentation.action?.label
+            && (presentation.action?.url || presentation.action?.onClick)
+        ) {
+            const action = document.createElement(
+                presentation.action.onClick ? 'button' : 'a'
+            );
             action.className = 'notification-action';
-            action.href = presentation.action.url;
+            if (presentation.action.onClick) {
+                action.type = 'button';
+                action.addEventListener('click', () => {
+                    try {
+                        presentation.action.onClick();
+                    } finally {
+                        dismiss();
+                    }
+                });
+            } else {
+                action.href = presentation.action.url;
+            }
             action.textContent = presentation.action.label;
             notification.appendChild(action);
         }
@@ -44,10 +75,8 @@
 
         const timeout = presentation.duration
             || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
-        setTimeout(() => {
-            notification.classList.add('fade-out');
-            setTimeout(() => notification.remove(), 300);
-        }, timeout);
+        fadeTimer = setTimeout(dismiss, timeout);
+        return dismiss;
     };
 
     window.ModalManager = {
@@ -1150,9 +1179,8 @@
 
     });
 
-    socket.on('ssh_output', (data) => {
-        TerminalManager.writeOutput(data.session_id, data.data, data.sequence);
-
+    socket.on('ssh_output', (data, acknowledge) => {
+        TerminalManager.handleSocketOutput(data, acknowledge);
     });
 
     socket.on('ssh_error', (data) => {

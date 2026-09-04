@@ -4,6 +4,7 @@ const TerminalManager = {
     searchAddons: {},
     terminalReady: {},
     pendingOutput: {},
+    pendingOutputSizes: {},
     sessionTerminals: {},
     transcripts: {},
     transcriptSizes: {},
@@ -14,6 +15,7 @@ const TerminalManager = {
     scrollbarDisposers: {},
     compositionDisposers: {},
     clipboardDisposers: {},
+    terminalWriteCallbacks: {},
     osc52ClipboardAllowed: {},
 
     isVirtualKeyboardVisible(visualViewportHeight, layoutViewportHeight) {
@@ -23,6 +25,7 @@ const TerminalManager = {
         return (visualViewportHeight / layoutViewportHeight) < 0.75;
     },
     maxTranscriptSize: 200000,
+    maxPendingOutputSize: 200000,
 
     getCssVar(name, fallback = '') {
         return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
@@ -96,37 +99,89 @@ const TerminalManager = {
     registerOsc52ClipboardHandler(terminal) {
         if (!terminal?.parser?.registerOscHandler) return null;
         let failureReported = false;
+        let pendingRequest = null;
 
-        return terminal.parser.registerOscHandler(52, data => {
+        const translation = (key, fallback) => {
+            const value = window.i18n?.t?.(key);
+            return value && value !== key ? value : fallback;
+        };
+
+        const reportFailure = () => {
+            if (failureReported) return;
+            failureReported = true;
+            window.showNotification?.(
+                translation(
+                    'terminal.remoteClipboardDenied',
+                    'Clipboard access denied',
+                ),
+                'error',
+            );
+        };
+
+        const oscDisposable = terminal.parser.registerOscHandler(52, data => {
             const text = this.decodeOsc52Clipboard(data);
             if (text === null) return true;
 
             const clipboard = navigator.clipboard;
             if (!clipboard || typeof clipboard.writeText !== 'function') {
-                if (!failureReported) {
-                    failureReported = true;
-                    window.showNotification?.('Clipboard access denied', 'error');
-                }
+                reportFailure();
                 return true;
             }
 
-            try {
-                Promise.resolve(clipboard.writeText(text)).then(() => {
-                    failureReported = false;
-                }).catch(() => {
-                    if (!failureReported) {
-                        failureReported = true;
-                        window.showNotification?.('Clipboard access denied', 'error');
-                    }
-                });
-            } catch {
-                if (!failureReported) {
-                    failureReported = true;
-                    window.showNotification?.('Clipboard access denied', 'error');
-                }
+            if (pendingRequest) {
+                pendingRequest.text = text;
+                return true;
             }
+
+            const request = {text};
+            pendingRequest = request;
+            window.showNotification?.({
+                message: translation(
+                    'terminal.remoteClipboardPrompt',
+                    'The remote tmux session wants to copy text to your clipboard.',
+                ),
+                type: 'info',
+                duration: 15000,
+                action: {
+                    label: translation(
+                        'terminal.remoteClipboardApprove',
+                        'Copy',
+                    ),
+                    onClick: () => {
+                        if (pendingRequest !== request) return;
+                        const requestedText = request.text;
+                        pendingRequest = null;
+                        try {
+                            Promise.resolve(
+                                clipboard.writeText(requestedText)
+                            ).then(() => {
+                                failureReported = false;
+                                window.showNotification?.(
+                                    translation(
+                                        'terminal.remoteClipboardCopied',
+                                        'Remote text copied to clipboard',
+                                    ),
+                                    'success',
+                                );
+                            }).catch(reportFailure);
+                        } catch {
+                            reportFailure();
+                        }
+                    },
+                },
+                onDismiss: () => {
+                    if (pendingRequest === request) pendingRequest = null;
+                },
+            });
             return true;
         });
+
+        return {
+            dispose() {
+                pendingRequest = null;
+                oscDisposable?.dispose?.();
+            },
+        };
     },
 
     activateOsc52ClipboardHandler(terminalKey, expectedTerminal) {
@@ -329,6 +384,7 @@ const TerminalManager = {
 
         const existingOutput = [...(this.transcripts[sessionId] || [])];
         this.pendingOutput[key] = [];
+        this.pendingOutputSizes[key] = 0;
         this.terminalReady[key] = false;
         if (!this.transcripts[sessionId]) {
             this.transcripts[sessionId] = [];
@@ -351,17 +407,22 @@ const TerminalManager = {
                     terminal.clear();
                     const pendingOutput = this.pendingOutput[key] || [];
                     this.pendingOutput[key] = [];
+                    this.pendingOutputSizes[key] = 0;
                     this.terminalReady[key] = true;
 
-                    const replayOutput = existingOutput.concat(pendingOutput);
+                    const replayOutput = existingOutput.map(data => ({
+                        data,
+                        onWritten: null,
+                    })).concat(pendingOutput);
                     if (replayOutput.length === 0) {
                         this.activateOsc52ClipboardHandler(key, terminal);
                         return;
                     }
 
                     let remainingWrites = replayOutput.length;
-                    replayOutput.forEach(data => {
-                        this.writeOutputToTerminal(key, data, () => {
+                    replayOutput.forEach(entry => {
+                        this.writeOutputToTerminal(key, entry.data, () => {
+                            entry.onWritten?.();
                             remainingWrites -= 1;
                             if (remainingWrites === 0) {
                                 this.activateOsc52ClipboardHandler(key, terminal);
@@ -375,13 +436,16 @@ const TerminalManager = {
         return true;
     },
 
-    writeOutput(sessionId, data, sequence = null) {
+    writeOutput(sessionId, data, sequence = null, onAccepted = null) {
         const normalizedSequence = Number.isSafeInteger(sequence) && sequence > 0
             ? sequence
             : null;
         if (normalizedSequence !== null) {
             const lastSequence = this.lastOutputSequences[sessionId] || 0;
-            if (normalizedSequence <= lastSequence) return;
+            if (normalizedSequence <= lastSequence) {
+                onAccepted?.();
+                return;
+            }
             this.lastOutputSequences[sessionId] = normalizedSequence;
             if (!this.sequencedOutput[sessionId]) {
                 this.sequencedOutput[sessionId] = [];
@@ -404,17 +468,44 @@ const TerminalManager = {
         this.appendTranscript(sessionId, data);
         if (terminalKeys.length === 0) {
             console.error('Terminal not found for output');
+            onAccepted?.();
             return;
         }
 
+        let remainingTerminals = terminalKeys.length;
+        const terminalAccepted = () => {
+            remainingTerminals -= 1;
+            if (remainingTerminals === 0) onAccepted?.();
+        };
         terminalKeys.forEach(key => {
-            this.writeOutputToTerminal(key, data);
+            this.writeOutputToTerminal(key, data, terminalAccepted);
         });
+    },
+
+    handleSocketOutput(data, acknowledge) {
+        let acknowledged = false;
+        const acknowledgeOnce = () => {
+            if (acknowledged) return;
+            acknowledged = true;
+            if (typeof acknowledge === 'function') acknowledge();
+        };
+        try {
+            this.writeOutput(
+                data.session_id,
+                data.data,
+                data.sequence,
+                acknowledgeOnce,
+            );
+        } catch (error) {
+            acknowledgeOnce();
+            throw error;
+        }
     },
 
     writeOutputToTerminal(terminalKey, data, onWritten = null) {
         const terminal = this.terminals[terminalKey];
         if (!terminal) {
+            onWritten?.();
             return;
         }
 
@@ -422,14 +513,49 @@ const TerminalManager = {
         // Bare-pattern regexes were removed because they corrupt legitimate
         // output like "padding:0;color:red" or "cat file".
         data = data.replace(/\x1b\[[?>]?[0-9;]*c/g, '');
+        if (!data) {
+            onWritten?.();
+            return;
+        }
 
         if (this.terminalReady[terminalKey]) {
-            this.writeToTerminalWithScroll(terminal, data, onWritten);
+            if (!this.terminalWriteCallbacks[terminalKey]) {
+                this.terminalWriteCallbacks[terminalKey] = new Set();
+            }
+            let completed = false;
+            const complete = () => {
+                if (completed) return;
+                completed = true;
+                this.terminalWriteCallbacks[terminalKey]?.delete(complete);
+                onWritten?.();
+            };
+            this.terminalWriteCallbacks[terminalKey].add(complete);
+            try {
+                this.writeToTerminalWithScroll(terminal, data, complete);
+            } catch (error) {
+                complete();
+                throw error;
+            }
         } else {
             if (!this.pendingOutput[terminalKey]) {
                 this.pendingOutput[terminalKey] = [];
+                this.pendingOutputSizes[terminalKey] = 0;
             }
-            this.pendingOutput[terminalKey].push(data);
+            this.pendingOutput[terminalKey].push({data, onWritten});
+            this.pendingOutputSizes[terminalKey] = (
+                this.pendingOutputSizes[terminalKey] || 0
+            ) + data.length;
+            while (
+                this.pendingOutputSizes[terminalKey] > this.maxPendingOutputSize
+                && this.pendingOutput[terminalKey].length > 1
+            ) {
+                const removed = this.pendingOutput[terminalKey].shift();
+                this.pendingOutputSizes[terminalKey] -= removed.data.length;
+                // The chunk remains in the separately bounded transcript; it
+                // is safe to release server capacity without feeding an
+                // unbounded pre-attach xterm queue.
+                removed.onWritten?.();
+            }
         }
     },
 
@@ -897,6 +1023,12 @@ const TerminalManager = {
 
     destroyTerminalKey(terminalKey, sessionId) {
         const terminal = this.terminals[terminalKey];
+        (this.pendingOutput[terminalKey] || []).forEach(entry => {
+            entry.onWritten?.();
+        });
+        (this.terminalWriteCallbacks[terminalKey] || new Set()).forEach(
+            callback => callback()
+        );
         this.scrollbarDisposers[terminalKey]?.();
         this.compositionDisposers[terminalKey]?.();
         this.clipboardDisposers[terminalKey]?.dispose?.();
@@ -908,8 +1040,10 @@ const TerminalManager = {
         delete this.searchAddons[terminalKey];
         delete this.terminalReady[terminalKey];
         delete this.pendingOutput[terminalKey];
+        delete this.pendingOutputSizes[terminalKey];
         delete this.compositionDisposers[terminalKey];
         delete this.clipboardDisposers[terminalKey];
+        delete this.terminalWriteCallbacks[terminalKey];
         delete this.osc52ClipboardAllowed[terminalKey];
 
         if (sessionId && this.sessionTerminals[sessionId]) {

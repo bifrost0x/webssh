@@ -769,9 +769,7 @@ def test_deleted_saved_jump_host_stops_before_rate_limit_dns_and_network(
     monkeypatch.setattr(
         socket_events,
         'check_socket_rate_limit',
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError('rate limit must not run')
-        ),
+        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         socket_events,
@@ -842,9 +840,7 @@ def test_revoked_target_key_stops_before_rate_limit_dns_and_network(
     monkeypatch.setattr(
         socket_events,
         'check_socket_rate_limit',
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError('rate limit must not run')
-        ),
+        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         socket_events,
@@ -995,9 +991,7 @@ def test_target_key_internal_error_never_reaches_socket_client(
     monkeypatch.setattr(
         socket_events,
         'check_socket_rate_limit',
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError('rate limit must not run')
-        ),
+        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         socket_events,
@@ -1032,6 +1026,64 @@ def test_target_key_internal_error_never_reaches_socket_client(
         },
     )]
     assert secret_error not in repr(emitted)
+
+
+def test_rate_limited_target_key_never_runs_decryption(
+        app, monkeypatch, rsa_private_key_pem):
+    from flask import request
+    from app import key_manager, ssh_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'rate_limited_target_key')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Target key', rsa_private_key_pem
+        )
+        assert error is None
+    monkeypatch.setattr(
+        key_manager,
+        'read_key_content',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('stored key decryption must not run')
+        ),
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append(
+            (event, payload)
+        ),
+    )
+    monkeypatch.setattr(
+        socket_events, 'check_socket_rate_limit', lambda *_args: True
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError('network must not run')
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'target.example',
+            'port': 22,
+            'username': 'target-user',
+            'auth_type': 'key',
+            'key_id': key['id'],
+            'client_request_id': 'limited-key-request',
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {
+            'error': 'Too many connection attempts. Please wait a moment.',
+            'client_request_id': 'limited-key-request',
+        },
+    )]
 
 
 def test_jump_key_internal_error_never_reaches_socket_client(
@@ -1080,9 +1132,7 @@ def test_jump_key_internal_error_never_reaches_socket_client(
     monkeypatch.setattr(
         socket_events,
         'check_socket_rate_limit',
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError('rate limit must not run')
-        ),
+        lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(
         socket_events,
@@ -1123,6 +1173,75 @@ def test_jump_key_internal_error_never_reaches_socket_client(
         },
     )]
     assert secret_error not in repr(emitted)
+
+
+def test_rate_limited_jump_key_never_runs_decryption(
+        app, monkeypatch, rsa_private_key_pem):
+    from flask import request
+    from app import jump_host_manager, key_manager, ssh_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'rate_limited_jump_key')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            user_id, 'Jump key', rsa_private_key_pem
+        )
+        assert error is None
+        jump_host, error = jump_host_manager.add_jump_host(
+            user_id,
+            'Key Bastion',
+            'bastion.example',
+            22,
+            'jump-user',
+            'key',
+            key_id=key['id'],
+        )
+        assert error is None
+    monkeypatch.setattr(
+        key_manager,
+        'read_key_content',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('stored jump-key decryption must not run')
+        ),
+    )
+    emitted = []
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append(
+            (event, payload)
+        ),
+    )
+    monkeypatch.setattr(
+        socket_events, 'check_socket_rate_limit', lambda *_args: True
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError('network must not run')
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'target.example',
+            'port': 22,
+            'username': 'target-user',
+            'auth_type': 'password',
+            'password': 'runtime-password',
+            'client_request_id': 'limited-jump-request',
+            'proxy_jump': {'jump_host_id': jump_host['id']},
+        })
+
+    assert emitted == [(
+        'ssh_error',
+        {
+            'error': 'Too many connection attempts. Please wait a moment.',
+            'client_request_id': 'limited-jump-request',
+        },
+    )]
 
 
 def test_quick_connect_key_internal_error_never_reaches_socket_client(

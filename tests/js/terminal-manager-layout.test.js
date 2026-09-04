@@ -98,16 +98,18 @@ test('OSC 52 clipboard payloads are bounded, targeted, and decoded as UTF-8', ()
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;dG9vIGxhcmdl', 4), null);
 });
 
-test('OSC 52 handler writes valid tmux selections to the browser clipboard', async () => {
+test('OSC 52 handler requires a user action before writing the clipboard', async () => {
     const writes = [];
     let handler;
+    let presentation;
     global.navigator.clipboard = {
         writeText(text) {
             writes.push(text);
             return Promise.resolve();
         },
     };
-    const disposable = {dispose() {}};
+    let disposed = false;
+    const disposable = {dispose() { disposed = true; }};
     const terminal = {
         parser: {
             registerOscHandler(identifier, callback) {
@@ -118,11 +120,107 @@ test('OSC 52 handler writes valid tmux selections to the browser clipboard', asy
         },
     };
 
-    assert.equal(TerminalManager.registerOsc52ClipboardHandler(terminal), disposable);
+    global.window.showNotification = value => {
+        presentation = value;
+    };
+    const registered = TerminalManager.registerOsc52ClipboardHandler(terminal);
     assert.equal(handler(';dG11eCBzZWxlY3Rpb24='), true);
+    assert.deepEqual(writes, []);
+    assert.equal(typeof presentation.action.onClick, 'function');
+    presentation.action.onClick();
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(writes, ['tmux selection']);
+    registered.dispose();
+    assert.equal(disposed, true);
+    delete global.window.showNotification;
     delete global.navigator.clipboard;
+});
+
+test('socket output is acknowledged after TerminalManager accepts it', () => {
+    const calls = [];
+    const originalWriteOutput = TerminalManager.writeOutput;
+    let acceptOutput;
+    TerminalManager.writeOutput = (...args) => {
+        calls.push(['write', ...args.slice(0, 3)]);
+        acceptOutput = args[3];
+    };
+
+    TerminalManager.handleSocketOutput(
+        {session_id: 'session-1', data: 'hello', sequence: 3},
+        () => calls.push(['ack']),
+    );
+
+    assert.deepEqual(calls, [
+        ['write', 'session-1', 'hello', 3],
+    ]);
+    acceptOutput();
+    assert.deepEqual(calls, [
+        ['write', 'session-1', 'hello', 3],
+        ['ack'],
+    ]);
+    TerminalManager.writeOutput = originalWriteOutput;
+});
+
+test('socket output waits for every visible xterm pane before ACK', () => {
+    const originalWriteOutputToTerminal = TerminalManager.writeOutputToTerminal;
+    const callbacks = [];
+    let acknowledgements = 0;
+    TerminalManager.sessionTerminals = {multi: ['pane-1', 'pane-2']};
+    TerminalManager.transcripts = {};
+    TerminalManager.transcriptSizes = {};
+    TerminalManager.writeOutputToTerminal = (_key, _data, callback) => {
+        callbacks.push(callback);
+    };
+
+    TerminalManager.writeOutput('multi', 'output', 1, () => {
+        acknowledgements += 1;
+    });
+
+    assert.equal(acknowledgements, 0);
+    callbacks[0]();
+    assert.equal(acknowledgements, 0);
+    callbacks[1]();
+    assert.equal(acknowledgements, 1);
+    TerminalManager.writeOutputToTerminal = originalWriteOutputToTerminal;
+});
+
+test('pre-attach output stays bounded and releases trimmed chunks', () => {
+    const originalLimit = TerminalManager.maxPendingOutputSize;
+    const accepted = [];
+    TerminalManager.maxPendingOutputSize = 5;
+    TerminalManager.terminals = {pending: {}};
+    TerminalManager.terminalReady = {pending: false};
+    TerminalManager.pendingOutput = {pending: []};
+    TerminalManager.pendingOutputSizes = {pending: 0};
+
+    TerminalManager.writeOutputToTerminal(
+        'pending', '1234', () => accepted.push('first')
+    );
+    TerminalManager.writeOutputToTerminal(
+        'pending', '5678', () => accepted.push('second')
+    );
+
+    assert.deepEqual(accepted, ['first']);
+    assert.equal(TerminalManager.pendingOutputSizes.pending, 4);
+    assert.deepEqual(
+        TerminalManager.pendingOutput.pending.map(entry => entry.data),
+        ['5678'],
+    );
+    TerminalManager.maxPendingOutputSize = originalLimit;
+});
+
+test('destroying a terminal releases in-flight xterm acceptance callbacks', () => {
+    const accepted = [];
+    TerminalManager.terminals = {closing: {dispose() {}}};
+    TerminalManager.pendingOutput = {closing: []};
+    TerminalManager.terminalWriteCallbacks = {
+        closing: new Set([() => accepted.push('accepted')]),
+    };
+
+    TerminalManager.destroyTerminalKey('closing', 'session-closing');
+
+    assert.deepEqual(accepted, ['accepted']);
+    assert.equal(TerminalManager.terminalWriteCallbacks.closing, undefined);
 });
 
 test('copy shortcuts write xterm selection directly to the clipboard', async () => {
