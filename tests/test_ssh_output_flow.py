@@ -98,7 +98,15 @@ def test_lagging_browser_is_bounded_without_closing_ssh_session(
         socketio, 'user_7', 7, 's1', payload
     )
 
-    assert [entry[2] for entry in socketio.emitted] == ['healthy']
+    assert [
+        entry[2] for entry in socketio.emitted if entry[0] == 'ssh_output'
+    ] == ['healthy']
+    assert (
+        'ssh_output_resync_required',
+        {'reason': 'backpressure'},
+        'slow',
+        None,
+    ) in socketio.emitted
     assert socketio.server.disconnected == [('slow', '/')]
     assert controller.release(token) is False
     # Browser eviction never receives or closes the underlying SSH session.
@@ -180,8 +188,13 @@ def test_expired_global_budget_holder_is_evicted_for_healthy_user(
     )
 
     assert socketio.server.disconnected == [('expired-holder', '/')]
-    assert [entry[2] for entry in socketio.emitted] == ['healthy']
-    socketio.emitted[0][3]()
+    assert [
+        entry[2] for entry in socketio.emitted if entry[0] == 'ssh_output'
+    ] == ['healthy']
+    next(
+        entry[3] for entry in socketio.emitted
+        if entry[0] == 'ssh_output'
+    )()
     assert controller.usage()['reservations'] == 0
 
 

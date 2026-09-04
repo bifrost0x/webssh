@@ -12,6 +12,9 @@
     const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || '';
     window.APP_ROOT = APP_ROOT;
     window.socket = io({ path: APP_ROOT + '/socket.io' });
+    const outputFlowReconnect = window.WebSSHSocketReconnect.create(
+        window.socket
+    );
 
     window.escapeHtml = function(text) {
         if (!text) return '';
@@ -1032,6 +1035,7 @@
     window.FilePreview = FilePreview;
 
     socket.on('connect', () => {
+        outputFlowReconnect.clear();
         const reconnectBar = document.getElementById('reconnectBar');
         if (reconnectBar && reconnectBar.style.display !== 'none') {
             reconnectBar.style.display = 'none';
@@ -1120,7 +1124,11 @@
         }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('ssh_output_resync_required', () => {
+        outputFlowReconnect.expectOutputResync();
+    });
+
+    socket.on('disconnect', (reason) => {
         closeAuthBannerPrompt();
         showNotification(
             window.i18n
@@ -1136,6 +1144,7 @@
             clearInterval(keepAliveInterval);
             keepAliveInterval = null;
         }
+        outputFlowReconnect.handleDisconnect(reason);
     });
 
     socket.on('ssh_connected', (data) => {

@@ -214,6 +214,16 @@ def _disconnect_lagging_socket(socketio_instance, socket_sid):
     server = getattr(socketio_instance, 'server', None)
     if server is None:
         return False
+    try:
+        socketio_instance.emit(
+            'ssh_output_resync_required',
+            {'reason': 'backpressure'},
+            to=socket_sid,
+        )
+    except Exception:
+        # The disconnect still releases server resources if the advisory
+        # marker cannot be delivered over an already-broken transport.
+        pass
     server.disconnect(socket_sid, namespace='/')
     # Production disconnect handlers release first; keep this idempotent
     # fallback for test servers and disconnects without an application event.
