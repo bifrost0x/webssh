@@ -1351,12 +1351,17 @@ const ProfileManager = {
                 return;
             }
             const transientAuthorization = profile.tailscale_authorized;
+            const acknowledgedAuthorization = (
+                typeof acknowledgement.profile.tailscale_authorized === 'boolean'
+                    ? acknowledgement.profile.tailscale_authorized
+                    : transientAuthorization
+            );
             this.profiles = this.profiles.map(item => item.id === profileId
                 ? {
                     ...acknowledgement.profile,
-                    ...(transientAuthorization === undefined
+                    ...(acknowledgedAuthorization === undefined
                         ? {}
-                        : {tailscale_authorized: transientAuthorization}),
+                        : {tailscale_authorized: acknowledgedAuthorization}),
                 }
                 : item);
             this.renderProfileSelect();

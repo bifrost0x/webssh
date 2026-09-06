@@ -363,6 +363,8 @@ def test_connection_state_messages_use_the_active_locale():
         'connection.lostReconnecting',
         'connection.lostReconnectingAttempt',
         'connection.disconnectedFromServer',
+        'connection.reloadRequired',
+        'connection.reloadPage',
     ):
         assert f"i18n.t('{key}')" in source
 

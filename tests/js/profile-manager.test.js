@@ -158,6 +158,35 @@ test('favorite acknowledgement replaces cleared organization fields', () => {
     assert.equal(manager.profiles[0].tailscale_authorized, true);
 });
 
+test('favorite acknowledgement adopts fresh tailscale authorization', () => {
+    const manager = loadProfileManager();
+    manager.profiles = [{
+        id: 'profile-1',
+        name: 'Tailnet API',
+        favorite: false,
+        tailscale_authorized: true,
+    }];
+    manager.renderManagementList = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.renderProfileSelect = () => {};
+    manager.organizationPending = new Set();
+    manager.t = (_key, fallback) => fallback;
+    manager.toggleFavorite('profile-1', acknowledgement => {
+        acknowledgement({
+            success: true,
+            profile: {
+                id: 'profile-1',
+                name: 'Tailnet API',
+                favorite: true,
+                tailscale_authorized: false,
+            },
+        });
+    });
+
+    assert.equal(manager.profiles[0].favorite, true);
+    assert.equal(manager.profiles[0].tailscale_authorized, false);
+});
+
 test('collapsed group state toggles for the session but search keeps matches visible', () => {
     const manager = loadProfileManager();
     manager.collapsedGroups = new Set();

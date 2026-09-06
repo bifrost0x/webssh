@@ -1,7 +1,10 @@
 """Prospective quotas for saved connection and jump-host metadata."""
 
+from hashlib import sha256
+import hmac
 import json
 from pathlib import Path
+import re
 
 import config
 
@@ -17,6 +20,10 @@ PROFILE_GROUP_MAX_BYTES = 256
 PROFILE_REFERENCE_MAX_BYTES = 128
 PROFILE_STARTUP_MAX_BYTES = 64 * 1024
 JUMP_HOST_NAME_MAX_BYTES = 512
+_RECOVERY_SELECTOR_PATTERN = re.compile(
+    r'r1:(0|[1-9][0-9]{0,9}):([0-9a-f]{64})'
+)
+_RECOVERY_SELECTOR_DOMAIN = b'webssh-connection-recovery-selector-v1\0'
 
 
 def _error(message):
@@ -92,9 +99,10 @@ def _file_size(path):
         return 0
 
 
-def _serialized_size(document):
+def _serialize_document(document, *, compact=False):
     try:
-        return len(json.dumps(document, indent=2).encode('utf-8'))
+        kwargs = {'separators': (',', ':')} if compact else {'indent': 2}
+        return json.dumps(document, **kwargs).encode('utf-8')
     except (TypeError, ValueError, UnicodeEncodeError) as exc:
         raise ConnectionStorageLimitError(
             'Connection storage quota exceeded: data is not serializable'
@@ -133,6 +141,43 @@ def enforce_store_recovery_limit(path, *, record_count=None):
         )
 
 
+def recovery_record_selector(scope, index, record):
+    """Return a stable, opaque selector for one record at one exact ordinal."""
+    if not isinstance(scope, str) or not scope:
+        raise ValueError('recovery selector scope is required')
+    if type(index) is not int or index < 0:
+        raise ValueError('recovery selector index is invalid')
+    canonical = json.dumps(
+        record,
+        ensure_ascii=True,
+        separators=(',', ':'),
+        sort_keys=True,
+    ).encode('utf-8')
+    digest = sha256(
+        _RECOVERY_SELECTOR_DOMAIN
+        + scope.encode('utf-8')
+        + b'\0'
+        + str(index).encode('ascii')
+        + b'\0'
+        + canonical
+    ).hexdigest()
+    return f'r1:{index}:{digest}'
+
+
+def resolve_recovery_record_selector(scope, records, selector):
+    """Resolve a selector only when its current ordinal and content still match."""
+    if not isinstance(selector, str):
+        return None
+    match = _RECOVERY_SELECTOR_PATTERN.fullmatch(selector)
+    if match is None:
+        return None
+    index = int(match.group(1))
+    if index >= len(records):
+        return None
+    expected = recovery_record_selector(scope, index, records[index])
+    return index if hmac.compare_digest(expected, selector) else None
+
+
 def enforce_store_transition(
     *,
     path,
@@ -142,20 +187,28 @@ def enforce_store_transition(
     previous_count,
     maximum_count,
     previous_document=None,
+    compact=False,
 ):
-    """Reject growth while allowing deletion from legacy oversized stores."""
+    """Return the exact approved payload for a prospective store transition."""
     path = Path(path)
     current_size = _file_size(path)
     other_size = _file_size(other_path)
-    prospective_size = _serialized_size(prospective_document)
+    prospective_payload = _serialize_document(
+        prospective_document,
+        compact=compact,
+    )
+    prospective_size = len(prospective_payload)
     previous_size = current_size
     if previous_document is not None:
-        previous_size = max(
-            previous_size,
-            _serialized_size(previous_document),
-        )
+        if not compact:
+            previous_size = max(
+                previous_size,
+                len(_serialize_document(previous_document, compact=False)),
+            )
         if prospective_size > config.CONNECTION_STORE_RECOVERY_MAX_BYTES:
             _error('one connection store would exceed its recovery byte limit')
+        if compact and prospective_size > current_size:
+            _error('recovery deletion would grow its connection store')
     if prospective_count > maximum_count and prospective_count > previous_count:
         _error(f'more than {maximum_count} records are not allowed')
     if (
@@ -168,4 +221,4 @@ def enforce_store_transition(
         and prospective_size + other_size > previous_size + other_size
     ):
         _error('combined connection data would exceed its byte limit')
-    return prospective_size
+    return prospective_payload

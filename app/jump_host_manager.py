@@ -17,11 +17,13 @@ from .connection_storage_policy import (
     enforce_store_read_limit,
     enforce_store_recovery_limit,
     enforce_store_transition,
+    recovery_record_selector,
+    resolve_recovery_record_selector,
     validate_jump_host,
 )
 from .storage_errors import StorageCorruptionError
 from .storage_utils import (
-    atomic_write_json,
+    atomic_write_bytes,
     load_json_migrated,
     safe_reference_name,
     storage_lock,
@@ -123,6 +125,7 @@ def save_jump_hosts(
     *,
     previous_count=None,
     previous_document=None,
+    compact=False,
 ):
     try:
         f = _get_file(user_id)
@@ -132,7 +135,7 @@ def save_jump_hosts(
         }
         if not f or not _valid_jump_host_document(document):
             return False
-        enforce_store_transition(
+        payload = enforce_store_transition(
             path=f,
             other_path=f.parent / 'profiles.json',
             prospective_document=document,
@@ -140,9 +143,10 @@ def save_jump_hosts(
             previous_count=previous_count,
             maximum_count=config.JUMP_HOST_MAX_RECORDS,
             previous_document=previous_document,
+            compact=compact,
         )
         f.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(f, document)
+        atomic_write_bytes(f, payload)
         return True
     except ConnectionStorageLimitError:
         raise
@@ -154,12 +158,7 @@ def save_jump_hosts(
 def _load_profile_references(user_id):
     from . import profile_manager
 
-    profiles, error = profile_manager._load_profiles_for_recovery_delete(
-        user_id
-    )
-    if error:
-        return []
-    return profiles
+    return profile_manager._load_profiles_for_read_with_lock_held(user_id)
 
 
 def _load_jump_hosts_for_recovery_delete(user_id):
@@ -190,6 +189,57 @@ def _load_jump_hosts_for_recovery_delete(user_id):
         record_count=len(jump_hosts),
     )
     return jump_hosts
+
+
+def load_jump_host_recovery_summaries(user_id):
+    """Return bounded, non-secret selectors for offline legacy recovery."""
+    with storage_lock(f'jump_hosts:{user_id}'):
+        jump_hosts = _load_jump_hosts_for_recovery_delete(user_id)
+        scope = f'jump-hosts:{user_id}'
+        return [
+            {
+                'selector': recovery_record_selector(
+                    scope,
+                    index,
+                    jump_host,
+                ),
+                'id': safe_reference_name(jump_host.get('id')),
+                'name': safe_reference_name(jump_host.get('name')),
+                'host': safe_reference_name(jump_host.get('host')),
+            }
+            for index, jump_host in enumerate(jump_hosts)
+            if isinstance(jump_host, dict)
+        ]
+
+
+def _profile_usage_summary(profiles, jump_host_id):
+    usage_count = 0
+    usages = []
+    for profile in profiles:
+        if (
+            not isinstance(profile, dict)
+            or profile.get('jump_host_id') != jump_host_id
+        ):
+            continue
+        usage_count += 1
+        if len(usages) < _JUMP_HOST_USAGE_DETAIL_LIMIT:
+            usages.append(safe_reference_name(profile.get('name')))
+    return usage_count, usages
+
+
+def _jump_host_in_use_result(profiles, jump_host_id):
+    usage_count, usages = _profile_usage_summary(profiles, jump_host_id)
+    if not usage_count:
+        return None
+    noun = 'profile' if usage_count == 1 else 'profiles'
+    details = ''
+    if usage_count > len(usages):
+        details = f' (showing first {len(usages)})'
+    return (
+        False,
+        f'Jump host is used by {usage_count} {noun}{details}',
+        usages,
+    )
 
 
 def _get_jump_host_with_coordinator_held(user_id, jump_host_id):
@@ -288,36 +338,24 @@ def delete_jump_host(user_id, jump_host_id):
         with storage_lock(f'command-config:{user_id}'):
             with storage_lock(f'profiles:{user_id}'):
                 profiles = _load_profile_references(user_id)
-            usage_count = 0
-            usages = []
-            for profile in profiles:
-                if (
-                    not isinstance(profile, dict)
-                    or profile.get('jump_host_id') != jump_host_id
-                ):
-                    continue
-                usage_count += 1
-                if len(usages) < _JUMP_HOST_USAGE_DETAIL_LIMIT:
-                    usages.append(safe_reference_name(profile.get('name')))
-            if usage_count:
-                noun = 'profile' if usage_count == 1 else 'profiles'
-                details = ''
-                if usage_count > len(usages):
-                    details = f' (showing first {len(usages)})'
-                return (
-                    False,
-                    f'Jump host is used by {usage_count} {noun}{details}',
-                    usages,
-                )
+            in_use = _jump_host_in_use_result(profiles, jump_host_id)
+            if in_use is not None:
+                return in_use
 
             with storage_lock(f'jump_hosts:{user_id}'):
-                jump_hosts = _load_jump_hosts_for_recovery_delete(user_id)
-                new_list = [
-                    jump_host for jump_host in jump_hosts
-                    if jump_host.get('id') != jump_host_id
-                ]
-                if len(new_list) == len(jump_hosts):
+                jump_hosts = _load_jump_hosts_for_read_with_lock_held(user_id)
+                index = next(
+                    (
+                        index
+                        for index, jump_host in enumerate(jump_hosts)
+                        if jump_host.get('id') == jump_host_id
+                    ),
+                    None,
+                )
+                if index is None:
                     return False, 'Jump host not found', []
+                new_list = list(jump_hosts)
+                new_list.pop(index)
                 previous_document = {
                     'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
                     'jump_hosts': jump_hosts,
@@ -336,4 +374,65 @@ def delete_jump_host(user_id, jump_host_id):
         return False, str(exc), []
     except Exception as e:
         log_error("Error deleting jump host", user_id=user_id, error=str(e))
+        return False, 'Failed to delete jump host', []
+
+
+def delete_jump_host_recovery_record(user_id, selector):
+    """Delete one selector-bound jump host from an offline recovery store."""
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            from . import profile_manager
+
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = (
+                    profile_manager._load_profiles_for_recovery_delete(user_id)
+                )
+                if error:
+                    return False, error, []
+                with storage_lock(f'jump_hosts:{user_id}'):
+                    jump_hosts = _load_jump_hosts_for_recovery_delete(user_id)
+                    index = resolve_recovery_record_selector(
+                        f'jump-hosts:{user_id}',
+                        jump_hosts,
+                        selector,
+                    )
+                    if index is None:
+                        return (
+                            False,
+                            'Recovery selector not found; list the store again.',
+                            [],
+                        )
+                    jump_host_id = jump_hosts[index].get('id')
+                    in_use = _jump_host_in_use_result(
+                        profiles,
+                        jump_host_id,
+                    )
+                    if in_use is not None:
+                        return in_use
+
+                    remaining = list(jump_hosts)
+                    remaining.pop(index)
+                    previous_document = {
+                        'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+                        'jump_hosts': jump_hosts,
+                    }
+                    if save_jump_hosts(
+                        user_id,
+                        remaining,
+                        previous_count=len(jump_hosts),
+                        previous_document=previous_document,
+                        compact=True,
+                    ):
+                        return True, None, []
+                    return False, 'Failed to delete jump host', []
+    except StorageCorruptionError:
+        raise
+    except ConnectionStorageLimitError as exc:
+        return False, str(exc), []
+    except Exception as exc:
+        log_error(
+            'Error deleting recovery jump host',
+            user_id=user_id,
+            error=str(exc),
+        )
         return False, 'Failed to delete jump host', []

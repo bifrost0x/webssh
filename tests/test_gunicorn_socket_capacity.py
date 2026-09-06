@@ -8,6 +8,8 @@ import time
 
 import pytest
 
+from app.socket_protocol import SOCKET_WIRE_REVISION
+
 
 pytestmark = pytest.mark.skipif(
     os.name == 'nt',
@@ -137,6 +139,7 @@ def test_socket_limit_keeps_ready_endpoint_responsive(tmp_path):
             )
             client.connect(
                 base_url,
+                auth={'wire_revision': SOCKET_WIRE_REVISION},
                 transports=['polling'],
                 wait_timeout=5,
             )
@@ -152,6 +155,7 @@ def test_socket_limit_keeps_ready_endpoint_responsive(tmp_path):
         with pytest.raises(socketio.exceptions.ConnectionError):
             rejected.connect(
                 base_url,
+                auth={'wire_revision': SOCKET_WIRE_REVISION},
                 transports=['polling'],
                 wait_timeout=5,
             )

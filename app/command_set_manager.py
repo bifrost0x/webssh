@@ -27,6 +27,7 @@ from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 COMMAND_SET_NAME_MAX = 128
 SUDO_TOKEN_BOUNDARIES = ' \t;&|()<>'
+_REFERENCE_USAGE_DETAIL_LIMIT = 20
 
 
 def _prefix_commands_with_sudo(value):
@@ -637,36 +638,52 @@ def load_command_sets_with_resolution(user_id):
         )
 
 
-def _get_command_usage_with_coordinator_held(user_id, command_id):
-    """Read references while the caller owns ``command-config``."""
+def _get_command_usage_summary_with_coordinator_held(user_id, command_id):
+    """Count all references and retain only bounded response-safe details."""
     with storage_lock(f'command-sets:{user_id}'):
         command_sets, error = _load_command_sets_with_lock_held(user_id)
     if error:
-        return None, error
+        return 0, set(), [], error
+    usage_count = 0
+    usage_types = set()
     usages = []
     for command_set in command_sets:
         steps = command_set.get('steps', []) if isinstance(command_set, dict) else []
         if any(step.get('type') == 'library' and step.get('command_id') == command_id
                for step in steps if isinstance(step, dict)):
-            usages.append({
-                'id': command_set.get('id'),
-                'name': safe_reference_name(command_set.get('name')),
-                'type': 'command_set',
-            })
+            usage_count += 1
+            usage_types.add('command_set')
+            if len(usages) < _REFERENCE_USAGE_DETAIL_LIMIT:
+                usages.append({
+                    'id': safe_reference_name(command_set.get('id')),
+                    'name': safe_reference_name(command_set.get('name')),
+                    'type': 'command_set',
+                })
 
     with storage_lock(f'profiles:{user_id}'):
         profiles, error = _load_profile_references(user_id)
     if error:
-        return None, error
+        return 0, set(), [], error
     for profile in profiles:
         if (isinstance(profile, dict)
                 and profile.get('command_id') == command_id):
-            usages.append({
-                'id': profile.get('id'),
-                'name': safe_reference_name(profile.get('name')),
-                'type': 'profile',
-            })
-    return usages, None
+            usage_count += 1
+            usage_types.add('profile')
+            if len(usages) < _REFERENCE_USAGE_DETAIL_LIMIT:
+                usages.append({
+                    'id': safe_reference_name(profile.get('id')),
+                    'name': safe_reference_name(profile.get('name')),
+                    'type': 'profile',
+                })
+    return usage_count, usage_types, usages, None
+
+
+def _get_command_usage_with_coordinator_held(user_id, command_id):
+    """Read bounded reference details while the coordinator is held."""
+    _count, _types, usages, error = (
+        _get_command_usage_summary_with_coordinator_held(user_id, command_id)
+    )
+    return (None, error) if error else (usages, None)
 
 
 def get_command_usage(user_id, command_id):
@@ -678,7 +695,10 @@ def _load_profile_references(user_id):
     from . import profile_manager
 
     try:
-        return profile_manager._load_profiles_for_recovery_delete(user_id)
+        return (
+            profile_manager._load_profiles_for_read_with_lock_held(user_id),
+            None,
+        )
     except ConnectionStorageLimitError as exc:
         return None, str(exc)
 
@@ -689,17 +709,27 @@ def delete_command_set(user_id, command_set_id):
             profiles, error = _load_profile_references(user_id)
         if error:
             return False, error, []
-        usages = [
-            safe_reference_name(profile.get('name'))
-            for profile in profiles
+        usage_count = 0
+        usages = []
+        for profile in profiles:
             if (
-                isinstance(profile, dict)
-                and profile.get('command_set_id') == command_set_id
+                not isinstance(profile, dict)
+                or profile.get('command_set_id') != command_set_id
+            ):
+                continue
+            usage_count += 1
+            if len(usages) < _REFERENCE_USAGE_DETAIL_LIMIT:
+                usages.append(safe_reference_name(profile.get('name')))
+        if usage_count:
+            noun = 'profile' if usage_count == 1 else 'profiles'
+            details = ''
+            if usage_count > len(usages):
+                details = f' (showing first {len(usages)})'
+            return (
+                False,
+                f'Command set is used by {usage_count} {noun}{details}',
+                usages,
             )
-        ]
-        if usages:
-            noun = 'profile' if len(usages) == 1 else 'profiles'
-            return False, f'Command set is used by {len(usages)} {noun}', usages
 
         with storage_lock(f'command-sets:{user_id}'):
             command_sets, error = _load_command_sets_with_lock_held(user_id)

@@ -169,6 +169,89 @@ def _csv_env(name):
     )
 
 
+def parse_tailscale_ssh_target(raw_value):
+    """Return one canonical ``(host, port)`` Tailscale SSH policy entry."""
+    if not isinstance(raw_value, str):
+        raise ValueError('Tailscale SSH target must be text')
+    value = raw_value.strip()
+    if not value or len(value) > 261 or '%' in value:
+        raise ValueError('Invalid Tailscale SSH target')
+
+    host = value
+    port = 22
+    if value.startswith('['):
+        closing = value.find(']')
+        if closing < 0:
+            raise ValueError('Invalid bracketed Tailscale SSH target')
+        host = value[1:closing]
+        suffix = value[closing + 1:]
+        if suffix:
+            port_text = suffix[1:] if suffix.startswith(':') else ''
+            if (
+                not port_text
+                or len(port_text) > 5
+                or not port_text.isascii()
+                or not port_text.isdigit()
+            ):
+                raise ValueError('Invalid Tailscale SSH target port')
+            port = int(port_text)
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError(
+                'Bracketed Tailscale SSH targets must be IPv6 addresses'
+            ) from exc
+        if address.version != 6:
+            raise ValueError(
+                'Bracketed Tailscale SSH targets must be IPv6 addresses'
+            )
+        canonical_host = address.compressed
+    else:
+        if '[' in value or ']' in value:
+            raise ValueError('Invalid bracketed Tailscale SSH target')
+        if value.count(':') == 1:
+            possible_host, possible_port = value.rsplit(':', 1)
+            if (
+                possible_port
+                and len(possible_port) <= 5
+                and possible_port.isascii()
+                and possible_port.isdigit()
+            ):
+                host = possible_host
+                port = int(possible_port)
+
+        host = host.rstrip('.')
+        try:
+            canonical_host = ipaddress.ip_address(host).compressed
+        except ValueError:
+            if ':' in host:
+                raise ValueError('Invalid Tailscale SSH target')
+            try:
+                canonical_host = host.encode('idna').decode('ascii').lower()
+            except UnicodeError as exc:
+                raise ValueError('Invalid Tailscale SSH target') from exc
+            if (
+                not canonical_host
+                or len(canonical_host) > 253
+                or any(
+                    not label
+                    or len(label) > 63
+                    or label.startswith('-')
+                    or label.endswith('-')
+                    or not all(
+                        character.isalnum() or character == '-'
+                        for character in label
+                    )
+                    for label in canonical_host.split('.')
+                )
+            ):
+                raise ValueError('Invalid Tailscale SSH target')
+
+    if not 1 <= port <= 65535:
+        raise ValueError('Invalid Tailscale SSH target port')
+    return canonical_host, port
+
+
 LDAP_CONNECT_TIMEOUT = _bounded_int_env(
     'LDAP_CONNECT_TIMEOUT', 5, 1, 15
 )
@@ -512,9 +595,7 @@ ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
 # unless the operator explicitly enables it and grants access to trusted users.
 TAILSCALE_SSH_ENABLED = os.environ.get('TAILSCALE_SSH_ENABLED', 'false').lower() == 'true'
 TAILSCALE_SSH_ALLOWED_WEBSSH_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_WEBSSH_USERS')
-TAILSCALE_SSH_ALLOWED_TARGETS = frozenset(
-    target.lower() for target in _csv_env('TAILSCALE_SSH_ALLOWED_TARGETS')
-)
+TAILSCALE_SSH_ALLOWED_TARGETS = _csv_env('TAILSCALE_SSH_ALLOWED_TARGETS')
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_REMOTE_USERS')
 TAILSCALE_SSH_INTERFACE = os.environ.get(
     'TAILSCALE_SSH_INTERFACE', 'tailscale0'
@@ -811,6 +892,17 @@ def validate_security_config():
             raise ValueError
         return canonical
 
+    tailscale_target_pairs = set()
+    malformed_tailscale_targets = False
+    if TAILSCALE_SSH_ENABLED:
+        for tailscale_target in TAILSCALE_SSH_ALLOWED_TARGETS:
+            try:
+                tailscale_target_pairs.add(
+                    parse_tailscale_ssh_target(tailscale_target)
+                )
+            except (TypeError, ValueError):
+                malformed_tailscale_targets = True
+
     if SMB_ENABLED and not SMB_ALLOWED_TARGETS:
         raise RuntimeError(
             'SECURITY ERROR: SMB_ALLOWED_TARGETS is required when '
@@ -1074,16 +1166,26 @@ def validate_security_config():
             )
         if not BLOCK_INTERNAL_SSH:
             violations.append('BLOCK_INTERNAL_SSH must be true')
-        if TAILSCALE_SSH_ENABLED and not TAILSCALE_SSH_ALLOWED_TARGETS:
-            violations.append(
-                'TAILSCALE_SSH_ALLOWED_TARGETS must contain exact host and '
-                'port entries when TAILSCALE_SSH_ENABLED is true'
-            )
-        if TAILSCALE_SSH_ENABLED and not TAILSCALE_SSH_INTERFACE:
-            violations.append(
-                'TAILSCALE_SSH_INTERFACE must name the trusted Tailscale '
-                'network interface'
-            )
+        if TAILSCALE_SSH_ENABLED:
+            if not TAILSCALE_SSH_ALLOWED_TARGETS:
+                violations.append(
+                    'TAILSCALE_SSH_ALLOWED_TARGETS must contain exact host and '
+                    'port entries when TAILSCALE_SSH_ENABLED is true'
+                )
+            elif malformed_tailscale_targets:
+                violations.append(
+                    'TAILSCALE_SSH_ALLOWED_TARGETS contains a malformed target'
+                )
+            elif not tailscale_target_pairs:
+                violations.append(
+                    'TAILSCALE_SSH_ALLOWED_TARGETS must contain at least one '
+                    'valid target'
+                )
+            if not TAILSCALE_SSH_INTERFACE:
+                violations.append(
+                    'TAILSCALE_SSH_INTERFACE must name the trusted Tailscale '
+                    'network interface'
+                )
         if not _trusted_proxies_explicit:
             violations.append(
                 'TRUSTED_PROXIES must be set explicitly, including 0 when '
@@ -1119,6 +1221,27 @@ def validate_security_config():
         warnings.append(
             'BLOCK_INTERNAL_SSH is disabled for the homelab profile'
         )
+    if TAILSCALE_SSH_ENABLED:
+        if not TAILSCALE_SSH_ALLOWED_TARGETS:
+            warnings.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS is empty; Tailscale SSH '
+                'connections fail closed in the homelab profile'
+            )
+        elif malformed_tailscale_targets:
+            warnings.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS contains malformed entries; '
+                'those entries are ignored in the homelab profile'
+            )
+        if TAILSCALE_SSH_ALLOWED_TARGETS and not tailscale_target_pairs:
+            warnings.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS contains no valid targets; '
+                'Tailscale SSH connections fail closed in the homelab profile'
+            )
+        if not TAILSCALE_SSH_INTERFACE:
+            warnings.append(
+                'TAILSCALE_SSH_INTERFACE is empty; Tailscale SSH connections '
+                'fail closed in the homelab profile'
+            )
     return warnings
 
 

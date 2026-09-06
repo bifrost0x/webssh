@@ -17,8 +17,8 @@ from .storage_utils import atomic_copy_file, fsync_parent_directory
 
 _FORMAT_VERSION = 2
 _LEGACY_FORMAT_VERSION = 1
-_CURRENT_DATA_SCHEMA_VERSION = 1
-_DATA_SCHEMA_MIGRATIONS = {0: 1}
+_CURRENT_DATA_SCHEMA_VERSION = 2
+_DATA_SCHEMA_MIGRATIONS = {0: 1, 1: 2}
 _PRODUCER = 'webssh'
 _MANIFEST_NAME = 'manifest.json'
 _DATA_PREFIX = 'data/'

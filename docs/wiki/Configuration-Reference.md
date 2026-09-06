@@ -166,8 +166,11 @@ reflected.
 | `CONNECTION_STORE_MAX_BYTES` | `2097152` (2 MiB per store) |
 | `CONNECTION_CONFIG_MAX_BYTES` | `4194304` (4 MiB combined) |
 
-Legacy stores above a limit remain readable and can shrink or be deleted, but
-growth is rejected. Profile and jump-host key references are ownership checked.
+Legacy stores above a normal limit are quarantined from the browser UI. After
+stopping every WebSSH process, `flask --app start connection-store list` and
+`connection-store delete` provide a non-secret, bounded recovery path up to
+the separate recovery ceilings shown above. Growth is rejected, and profile
+and jump-host key references remain ownership checked.
 
 ## Feature switches and tmux
 

@@ -53,12 +53,14 @@ RUN apt-get update \
 COPY . /app
 
 RUN chown -R appuser:appuser /app && \
-    mkdir -p /app/data/logs /app/data/keys /run/webssh-auth && \
+    mkdir -p /app/data/logs /app/data/keys /app/recovery /run/webssh-auth && \
     chown -R appuser:appuser /app/data && \
+    chown appuser:appuser /app/recovery && \
     chown appuser:appuser /run/webssh-auth && \
     chmod 700 /app/data && \
     chmod 700 /app/data/logs && \
     chmod 700 /app/data/keys && \
+    chmod 700 /app/recovery && \
     chmod 700 /run/webssh-auth
 
 COPY entrypoint.sh /app/entrypoint.sh

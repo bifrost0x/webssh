@@ -18,6 +18,7 @@ def _set_policy(
     users=(),
     targets=('tiny-server',),
     remote_users=(),
+    interface='tailscale0',
 ):
     import config
     from app import tailscale_ssh
@@ -27,7 +28,7 @@ def _set_policy(
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ALLOWED_WEBSSH_USERS', frozenset(users))
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ALLOWED_TARGETS', frozenset(targets))
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ALLOWED_REMOTE_USERS', frozenset(remote_users))
-    monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', 'tailscale0')
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', interface)
     monkeypatch.setattr(
         tailscale_ssh,
         'target_uses_tailscale_route',
@@ -52,6 +53,48 @@ def test_tailscale_ssh_disabled_by_default(monkeypatch):
     assert validate_tailscale_ssh_access(user, 'tiny-server', 'root') == (
         'Tailscale SSH is not enabled for this account'
     )
+
+
+@pytest.mark.parametrize(
+    ('raw_target', 'expected'),
+    (
+        ('Tiny-Server.', ('tiny-server', 22)),
+        ('tiny-server:2200', ('tiny-server', 2200)),
+        ('100.64.0.10', ('100.64.0.10', 22)),
+        ('100.64.0.10:2200', ('100.64.0.10', 2200)),
+        ('fd7a:115c:a1e0::10', ('fd7a:115c:a1e0::10', 22)),
+        ('[fd7a:115c:a1e0::10]:2200', ('fd7a:115c:a1e0::10', 2200)),
+    ),
+)
+def test_tailscale_target_parser_canonicalizes_supported_forms(
+    raw_target,
+    expected,
+):
+    import config
+
+    assert config.parse_tailscale_ssh_target(raw_target) == expected
+
+
+@pytest.mark.parametrize(
+    'raw_target',
+    (
+        '',
+        'bad target',
+        '*',
+        'tiny-server:0',
+        'tiny-server:65536',
+        'tiny-server:not-a-port',
+        '[fd7a:115c:a1e0::10',
+        '[fd7a:115c:a1e0::10]extra',
+        '[100.64.0.10]:22',
+        'fe80::1%tailscale0',
+    ),
+)
+def test_tailscale_target_parser_rejects_malformed_entries(raw_target):
+    import config
+
+    with pytest.raises(ValueError):
+        config.parse_tailscale_ssh_target(raw_target)
 
 
 def test_tailscale_ssh_allows_admin_when_enabled(monkeypatch):
@@ -179,6 +222,42 @@ def test_tailscale_ssh_fails_closed_for_invalid_configured_target(monkeypatch):
     )
 
 
+def test_tailscale_ssh_ignores_malformed_target_beside_valid_sibling(
+    monkeypatch,
+):
+    from app.tailscale_ssh import validate_tailscale_ssh_access
+
+    _set_policy(
+        monkeypatch,
+        targets={'bad target', 'tiny-server:2200'},
+    )
+    user = SimpleNamespace(id=7, username='admin', is_admin=True)
+
+    assert validate_tailscale_ssh_access(
+        user,
+        'tiny-server',
+        'root',
+        port=2200,
+    ) is None
+    assert validate_tailscale_ssh_access(
+        user,
+        'tiny-server',
+        'root',
+        port=22,
+    ) == 'Tailscale SSH target is not allowed'
+
+
+def test_tailscale_ssh_fails_closed_when_interface_is_empty(monkeypatch):
+    from app.tailscale_ssh import validate_tailscale_ssh_access
+
+    _set_policy(monkeypatch, interface='')
+    user = SimpleNamespace(id=7, username='admin', is_admin=True)
+
+    assert validate_tailscale_ssh_access(user, 'tiny-server', 'root') == (
+        'Tailscale SSH target is not allowed'
+    )
+
+
 def test_tailscale_authorization_is_bound_to_exact_user_target_and_remote_user(
     monkeypatch,
 ):
@@ -246,18 +325,21 @@ def test_profile_list_includes_transient_tailscale_authorization(
             'auth_type': 'tailscale',
             'host': 'tiny-server',
             'username': 'root',
+            'tailscale_authorized': False,
         },
         {
             'id': 'denied',
             'auth_type': 'tailscale',
             'host': 'other-server',
             'username': 'root',
+            'tailscale_authorized': True,
         },
         {
             'id': 'key',
             'auth_type': 'key',
             'host': 'server.example',
             'username': 'root',
+            'tailscale_authorized': True,
         },
     ]
     monkeypatch.setattr(
@@ -278,7 +360,9 @@ def test_profile_list_includes_transient_tailscale_authorization(
     assert profiles[0]['tailscale_authorized'] is True
     assert profiles[1]['tailscale_authorized'] is False
     assert 'tailscale_authorized' not in profiles[2]
-    assert all('tailscale_authorized' not in profile for profile in stored_profiles)
+    assert stored_profiles[0]['tailscale_authorized'] is False
+    assert stored_profiles[1]['tailscale_authorized'] is True
+    assert stored_profiles[2]['tailscale_authorized'] is True
 
 
 def test_backend_rejects_unauthorized_tailscale_connection(app, monkeypatch):

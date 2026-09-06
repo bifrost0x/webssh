@@ -299,12 +299,12 @@ def test_cli_verify_reports_legacy_restore_compatibility(tmp_path):
 
 
 def test_cli_verify_reports_future_schema_without_accepting_restore(tmp_path):
-    archive = tmp_path / 'future-v2.zip'
+    archive = tmp_path / 'future-v3.zip'
     _write_manifest_archive(
         archive,
         {'app.db': _webssh_database_bytes(tmp_path)},
         format_version=2,
-        data_schema_version=2,
+        data_schema_version=3,
     )
 
     result = _maintenance_cli(
@@ -313,7 +313,7 @@ def test_cli_verify_reports_future_schema_without_accepting_restore(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert 'format v2' in result.stdout
-    assert 'data schema 2' in result.stdout
+    assert 'data schema 3' in result.stdout
     assert 'restore incompatible' in result.stdout
 
 
@@ -326,9 +326,26 @@ def test_new_backup_records_v2_compatibility_metadata(tmp_path):
     manifest = create_backup(data_dir, archive)
 
     assert manifest.format_version == 2
-    assert manifest.data_schema_version == 1
+    assert manifest.data_schema_version == 2
     assert manifest.producer == 'webssh'
     assert manifest.created_at.endswith('Z')
+
+
+def test_previous_backup_data_schema_remains_restore_compatible():
+    manifest = backup_manager.BackupManifest(
+        format_version=2,
+        files=(),
+        data_schema_version=1,
+        created_at='2026-08-03T12:00:00Z',
+        producer='webssh',
+    )
+
+    compatibility = backup_manager.evaluate_backup_compatibility(manifest)
+
+    assert compatibility.compatible is True
+    assert compatibility.legacy is False
+    assert compatibility.current_data_schema_version == 2
+    assert compatibility.reason == 'backup data schema can be migrated'
 
 
 def test_v1_backup_is_legacy_and_migratable(tmp_path):
@@ -349,12 +366,12 @@ def test_v1_backup_is_legacy_and_migratable(tmp_path):
 
 
 def test_future_data_schema_verifies_but_is_not_restore_compatible(tmp_path):
-    archive = tmp_path / 'future-v2.zip'
+    archive = tmp_path / 'future-v3.zip'
     _write_manifest_archive(
         archive,
         {'app.db': _webssh_database_bytes(tmp_path)},
         format_version=2,
-        data_schema_version=2,
+        data_schema_version=3,
     )
 
     manifest = verify_backup(archive)
@@ -365,12 +382,12 @@ def test_future_data_schema_verifies_but_is_not_restore_compatible(tmp_path):
 
 
 def test_future_data_schema_is_rejected_before_restore_mutates_data(tmp_path):
-    archive = tmp_path / 'future-v2.zip'
+    archive = tmp_path / 'future-v3.zip'
     _write_manifest_archive(
         archive,
         {'app.db': _webssh_database_bytes(tmp_path)},
         format_version=2,
-        data_schema_version=2,
+        data_schema_version=3,
     )
     restore_dir = tmp_path / 'restore'
     restore_dir.mkdir()

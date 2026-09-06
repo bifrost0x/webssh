@@ -1,4 +1,9 @@
-from flask_socketio import emit, join_room, disconnect
+from flask_socketio import (
+    ConnectionRefusedError,
+    disconnect,
+    emit,
+    join_room,
+)
 from flask import copy_current_request_context, request, current_app, url_for
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
@@ -35,6 +40,10 @@ from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
 from .ssh_input_budget import budget_from_config
 from .ssh_output_flow import ssh_output_flow
+from .socket_protocol import (
+    SOCKET_PROTOCOL_MISMATCH_EVENT,
+    SOCKET_WIRE_REVISION,
+)
 from .remote_transfer import (
     RemoteTransferCancelled,
     RemoteTransferError,
@@ -602,8 +611,38 @@ def _validate_ssh_params(host, port, username, allow_internal=False):
 
     return canonicalize_hostname(host), port, username, None
 
+
+def _socket_wire_revision(auth):
+    if not isinstance(auth, dict):
+        return None
+    revision = auth.get('wire_revision')
+    return revision if type(revision) is int else None
+
+
+def _reject_socket_protocol_mismatch(auth, user):
+    received_revision = _socket_wire_revision(auth)
+    message = 'WebSSH was updated. Reload this page to continue.'
+    mismatch_payload = {
+        'status': 'reload_required',
+        'code': SOCKET_PROTOCOL_MISMATCH_EVENT,
+        'message': message,
+        'required_revision': SOCKET_WIRE_REVISION,
+    }
+    if received_revision is not None:
+        mismatch_payload['received_revision'] = received_revision
+    socket_sid = request.sid
+    log_warning(
+        'Socket wire revision mismatch',
+        user=user.username,
+        sid=socket_sid,
+        received_revision=received_revision,
+        required_revision=SOCKET_WIRE_REVISION,
+    )
+    raise ConnectionRefusedError(message, mismatch_payload)
+
+
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth=None):
     """Handle client connection - authenticate and restore sessions."""
     from .maintenance_mode import is_active
 
@@ -648,6 +687,9 @@ def handle_connect():
         disconnect()
         return False
 
+    if _socket_wire_revision(auth) != SOCKET_WIRE_REVISION:
+        return _reject_socket_protocol_mismatch(auth, user)
+
     socket_sid = request.sid
     if not socket_capacity.reserve(
         user.id,
@@ -683,7 +725,8 @@ def handle_connect():
 
     emit('connected', {
         'status': 'success',
-        'username': user.username
+        'username': user.username,
+        'wire_revision': SOCKET_WIRE_REVISION,
     })
 
 @socketio.on('disconnect')
@@ -1477,19 +1520,28 @@ def handle_ssh_disconnect(data, current_user=None):
     except Exception:
         emit('ssh_error', {'error': 'Disconnect failed'})
 
+
+def _public_profile(current_user, stored_profile):
+    """Return a response copy with authorization derived from live policy."""
+    profile = dict(stored_profile)
+    profile.pop('tailscale_authorized', None)
+    if profile.get('auth_type') == 'tailscale':
+        profile['tailscale_authorized'] = profile_is_authorized_for_launch(
+            current_user,
+            profile,
+        )
+    return profile
+
+
 @socketio.on('list_profiles')
 @socket_login_required
 def handle_list_profiles(current_user=None):
     """Return list of saved connection profiles for this user."""
     try:
-        profiles = []
-        for stored_profile in profile_manager.load_profiles(current_user.id):
-            profile = dict(stored_profile)
-            if profile.get('auth_type') == 'tailscale':
-                profile['tailscale_authorized'] = (
-                    profile_is_authorized_for_launch(current_user, profile)
-                )
-            profiles.append(profile)
+        profiles = [
+            _public_profile(current_user, stored_profile)
+            for stored_profile in profile_manager.load_profiles(current_user.id)
+        ]
         emit('profiles_list', {'profiles': profiles})
     except ConnectionStorageLimitError as error:
         return _command_set_error(str(error))
@@ -1507,7 +1559,8 @@ def handle_save_profile(data, current_user=None):
         limited = _connection_mutation_rate_limit(current_user)
         if limited:
             return limited
-        data = data if isinstance(data, dict) else {}
+        data = dict(data) if isinstance(data, dict) else {}
+        data.pop('tailscale_authorized', None)
         auth_type = data.get('auth_type')
         host = data.get('host')
         username = data.get('username')
@@ -1529,9 +1582,7 @@ def handle_save_profile(data, current_user=None):
             emit('error', {'error': error})
             return {'success': False, 'error': error}
         else:
-            response_profile = dict(profile)
-            if response_profile.get('auth_type') == 'tailscale':
-                response_profile['tailscale_authorized'] = True
+            response_profile = _public_profile(current_user, profile)
             payload = {'success': True, 'profile': response_profile}
             emit('profile_saved', payload)
             return payload
@@ -1595,7 +1646,10 @@ def handle_update_profile_organization(data, current_user=None):
         )
         if error:
             return {'success': False, 'error': error}
-        payload = {'success': True, 'profile': profile}
+        payload = {
+            'success': True,
+            'profile': _public_profile(current_user, profile),
+        }
         emit('profile_organization_updated', payload)
         return payload
     except StorageCorruptionError as error:
@@ -2587,7 +2641,7 @@ def handle_convert_legacy_command_set(data, current_user=None):
     payload = {
         'success': True,
         'command_set': command_set,
-        'profile': updated_profile,
+        'profile': _public_profile(current_user, updated_profile),
     }
     emit('command_set_converted', payload)
     handle_list_command_sets(current_user=current_user)

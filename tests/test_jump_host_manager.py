@@ -122,6 +122,34 @@ def test_missing_jump_host_delete_is_not_found(app):
         ) == (False, 'Jump host not found', [])
 
 
+def test_normal_jump_host_delete_removes_only_first_duplicate_id(app):
+    from app import jump_host_manager
+
+    user_id = _create_user(app)
+    jump_hosts = [
+        {
+            'id': 'duplicate-id',
+            'name': name,
+            'host': f'{name.casefold()}.example',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        }
+        for name in ('First', 'Second')
+    ]
+    with app.app_context():
+        assert jump_host_manager.save_jump_hosts(user_id, jump_hosts)
+
+        assert jump_host_manager.delete_jump_host(
+            user_id,
+            'duplicate-id',
+        ) == (True, None, [])
+
+        assert [
+            item['name'] for item in jump_host_manager.load_jump_hosts(user_id)
+        ] == ['Second']
+
+
 def test_jump_host_delete_and_stale_profile_edit_are_serialized(app, monkeypatch):
     from app import jump_host_manager, profile_manager
 
@@ -283,7 +311,7 @@ def test_jump_host_create_uses_cross_store_coordinator_before_store_lock(
     ]
 
 
-def test_legacy_oversized_jump_host_store_is_not_listed_but_can_be_deleted(
+def test_legacy_oversized_jump_host_store_has_bounded_offline_recovery(
     app,
     monkeypatch,
 ):
@@ -315,6 +343,13 @@ def test_legacy_oversized_jump_host_store_is_not_listed_but_can_be_deleted(
             jump_host_manager.load_jump_hosts(user_id)
         with pytest.raises(ConnectionStorageLimitError):
             jump_host_manager.get_jump_host(user_id, jump_host['id'])
+        summaries = jump_host_manager.load_jump_host_recovery_summaries(user_id)
+        assert summaries == [{
+            'id': 'legacy-large',
+            'name': 'Legacy',
+            'host': 'bastion.example',
+            'selector': summaries[0]['selector'],
+        }]
         added, error = jump_host_manager.add_jump_host(
             user_id, 'New', 'new.example', 22, 'deploy', 'password'
         )
@@ -324,11 +359,68 @@ def test_legacy_oversized_jump_host_store_is_not_listed_but_can_be_deleted(
         )
         assert jump_host_manager.delete_jump_host(
             user_id, jump_host['id']
+        ) == (
+            False,
+            'Connection storage quota exceeded: stored data exceeds its byte limit',
+            [],
+        )
+        assert jump_host_manager.delete_jump_host_recovery_record(
+            user_id, summaries[0]['selector']
         ) == (True, None, [])
         assert jump_host_manager.load_jump_hosts(user_id) == []
 
 
-def test_oversized_profile_store_allows_only_unreferenced_jump_host_delete(
+def test_jump_host_recovery_delete_writes_compact_shrink(app, monkeypatch):
+    import json
+    import config
+    from app import jump_host_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = _create_user(app)
+    jump_hosts = [
+        {
+            'id': str(index),
+            'name': 'x',
+            'host': 'b.example',
+            'port': 22,
+            'username': 'u',
+            'auth_type': 'password',
+        }
+        for index in range(50)
+    ]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+        'jump_hosts': jump_hosts,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+    with app.app_context():
+        path = jump_host_manager._get_file(user_id)
+        path.write_bytes(original)
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 64)
+        monkeypatch.setattr(config, 'CONNECTION_CONFIG_MAX_BYTES', 64)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            len(original),
+        )
+
+        summaries = jump_host_manager.load_jump_host_recovery_summaries(
+            user_id
+        )
+        assert jump_host_manager.delete_jump_host_recovery_record(
+            user_id,
+            summaries[-1]['selector'],
+        ) == (True, None, [])
+
+        expected = json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+            'jump_hosts': jump_hosts[:-1],
+        }, separators=(',', ':')).encode('utf-8')
+        assert path.read_bytes() == expected
+        assert len(expected) < len(original)
+
+
+def test_oversized_profile_store_requires_offline_jump_host_recovery(
     app,
     monkeypatch,
 ):
@@ -374,16 +466,45 @@ def test_oversized_profile_store_allows_only_unreferenced_jump_host_delete(
             4096,
         )
 
-        assert jump_host_manager.delete_jump_host(
-            user_id, unused['id']
+        normal_limit_error = (
+            'Connection storage quota exceeded: stored data exceeds its byte limit'
+        )
+        assert jump_host_manager.delete_jump_host(user_id, unused['id']) == (
+            False,
+            normal_limit_error,
+            [],
+        )
+        assert jump_host_manager.delete_jump_host(user_id, referenced['id']) == (
+            False,
+            normal_limit_error,
+            [],
+        )
+
+        summaries = jump_host_manager.load_jump_host_recovery_summaries(user_id)
+        unused_selector = next(
+            item['selector'] for item in summaries if item['id'] == unused['id']
+        )
+        referenced_selector = next(
+            item['selector']
+            for item in summaries
+            if item['id'] == referenced['id']
+        )
+        assert jump_host_manager.delete_jump_host_recovery_record(
+            user_id,
+            unused_selector,
         ) == (True, None, [])
-        assert jump_host_manager.delete_jump_host(
-            user_id, referenced['id']
+        assert jump_host_manager.delete_jump_host_recovery_record(
+            user_id,
+            unused_selector,
         ) == (
             False,
-            'Jump host is used by 1 profile',
-            ['Production'],
+            'Recovery selector not found; list the store again.',
+            [],
         )
+        assert jump_host_manager.delete_jump_host_recovery_record(
+            user_id,
+            referenced_selector,
+        ) == (False, 'Jump host is used by 1 profile', ['Production'])
 
 
 def test_jump_host_recovery_ceiling_rejects_before_json_load(
@@ -406,8 +527,11 @@ def test_jump_host_recovery_ceiling_rejects_before_json_load(
             ),
         )
 
-        success, error, usages = jump_host_manager.delete_jump_host(
-            user_id, 'target'
+        success, error, usages = (
+            jump_host_manager.delete_jump_host_recovery_record(
+                user_id,
+                'r1:0:' + ('0' * 64),
+            )
         )
 
     assert success is False
@@ -459,9 +583,11 @@ def test_jump_host_recovery_record_ceiling_rejects_after_bounded_load(
             reject_jump_host_migration,
         )
 
-        success, error, usages = jump_host_manager.delete_jump_host(
-            user_id,
-            target['id'],
+        success, error, usages = (
+            jump_host_manager.delete_jump_host_recovery_record(
+                user_id,
+                'r1:0:' + ('0' * 64),
+            )
         )
 
         assert path.read_bytes() == original
@@ -496,11 +622,50 @@ def test_jump_host_recovery_delete_persists_valid_legacy_shrink(app):
         document['schema_version'] = 1
         path.write_text(json.dumps(document), encoding='utf-8')
 
-        assert jump_host_manager.delete_jump_host(
+        summaries = jump_host_manager.load_jump_host_recovery_summaries(user_id)
+        selector = next(
+            item['selector'] for item in summaries if item['id'] == target['id']
+        )
+        assert jump_host_manager.delete_jump_host_recovery_record(
             user_id,
-            target['id'],
+            selector,
         ) == (True, None, [])
 
         persisted = json.loads(path.read_text(encoding='utf-8'))
         assert persisted['schema_version'] == CURRENT_STORAGE_VERSIONS['jump_hosts']
         assert [item['id'] for item in persisted['jump_hosts']] == [other['id']]
+
+
+def test_jump_host_recovery_selector_deletes_only_selected_duplicate(app):
+    import json
+    from app import jump_host_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = _create_user(app)
+    jump_hosts = [
+        {
+            'id': 'duplicate-id',
+            'name': name,
+            'host': f'{name.casefold()}.example',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        }
+        for name in ('First', 'Second')
+    ]
+    with app.app_context():
+        path = jump_host_manager._get_file(user_id)
+        path.write_text(json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+            'jump_hosts': jump_hosts,
+        }), encoding='utf-8')
+        summaries = jump_host_manager.load_jump_host_recovery_summaries(user_id)
+
+        assert summaries[0]['selector'] != summaries[1]['selector']
+        assert jump_host_manager.delete_jump_host_recovery_record(
+            user_id,
+            summaries[1]['selector'],
+        ) == (True, None, [])
+
+        persisted = json.loads(path.read_text(encoding='utf-8'))['jump_hosts']
+        assert [item['name'] for item in persisted] == ['First']

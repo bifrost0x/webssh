@@ -31,9 +31,14 @@ TAILSCALE_SSH_INTERFACE=tailscale0
 
 Administrators are authorized by role when the feature is enabled. The user
 allowlist adds specifically trusted non-admin WebSSH accounts. The target list
-is required when the feature is enabled. A bare host means port 22; use
-`host:port` or `[IPv6]:port` for another port. WebSSH resolves once, accepts
-only an address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
+is required when the feature is enabled. A bare hostname, IPv4 address, or IPv6
+address means port 22; use `hostname:port`, `IPv4:port`, or `[IPv6]:port` for
+another port. Production refuses to start with an empty or malformed enabled
+target list or an empty interface. Homelab emits security warnings, ignores
+individual malformed entries so valid siblings still work, and fails every
+connection closed if no valid target or interface remains. Dormant values are
+tolerated while the feature is disabled. WebSSH resolves once, accepts only an
+address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
 `tailscale0`), pins that address, and binds the connecting socket to the same
 interface. A route change cannot silently move the connection to another
 interface. An empty remote-user list still delegates that dimension to

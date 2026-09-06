@@ -41,37 +41,16 @@ class TailscaleSSHAuthorization:
         )
 
 
-def _target_policy_entry(value):
-    raw = str(value or '').strip()
-    if not raw:
-        raise ValueError('empty target')
-    host = raw
-    port = 22
-    if raw.startswith('['):
-        end = raw.find(']')
-        if end < 0:
-            raise ValueError('invalid bracketed target')
-        host = raw[1:end]
-        suffix = raw[end + 1:]
-        if suffix:
-            if not suffix.startswith(':') or not suffix[1:].isdigit():
-                raise ValueError('invalid target port')
-            port = int(suffix[1:])
-    elif raw.count(':') == 1:
-        possible_host, possible_port = raw.rsplit(':', 1)
-        if possible_port.isdigit():
-            host = possible_host
-            port = int(possible_port)
-    if not 1 <= port <= 65535:
-        raise ValueError('invalid target port')
-    return canonicalize_hostname(host), port
-
-
 def _allowed_target_pairs():
-    return {
-        _target_policy_entry(target)
-        for target in config.TAILSCALE_SSH_ALLOWED_TARGETS
-    }
+    allowed = set()
+    for target in config.TAILSCALE_SSH_ALLOWED_TARGETS:
+        try:
+            allowed.add(config.parse_tailscale_ssh_target(target))
+        except (TypeError, ValueError):
+            # Homelab keeps legacy startup compatibility, but an invalid entry
+            # never grants authority and cannot disable a valid sibling.
+            continue
+    return allowed
 
 
 _NLMSG_HEADER = struct.Struct('=IHHII')
@@ -205,6 +184,8 @@ def validate_tailscale_ssh_access(user, host, remote_username, port=22):
     """Return an error message when the shared Tailscale identity is denied."""
     if not user_can_use_tailscale_ssh(user):
         return 'Tailscale SSH is not enabled for this account'
+    if not str(config.TAILSCALE_SSH_INTERFACE or '').strip():
+        return 'Tailscale SSH target is not allowed'
 
     try:
         canonical_host = canonicalize_hostname(host)
@@ -214,10 +195,7 @@ def validate_tailscale_ssh_access(user, host, remote_username, port=22):
     except (TypeError, ValueError):
         return 'Tailscale SSH target is not allowed'
 
-    try:
-        allowed_targets = _allowed_target_pairs()
-    except (TypeError, ValueError):
-        return 'Tailscale SSH target is not allowed'
+    allowed_targets = _allowed_target_pairs()
     if not allowed_targets or (canonical_host, clean_port) not in allowed_targets:
         return 'Tailscale SSH target is not allowed'
 
@@ -240,7 +218,6 @@ def authorize_tailscale_ssh_access(user, host, remote_username, port=22):
         user_id = int(getattr(user, 'id'))
         canonical_host = canonicalize_hostname(host)
         clean_port = int(port)
-        allowed_targets = _allowed_target_pairs()
         resolved_target = resolve_allowed_target(
             canonical_host,
             clean_port,

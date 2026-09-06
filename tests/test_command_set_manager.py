@@ -1256,7 +1256,7 @@ def test_delete_unreferenced_command_set(app, monkeypatch):
     assert loaded == []
 
 
-def test_oversized_profiles_preserve_command_delete_guards_and_recovery(
+def test_oversized_profiles_quarantine_all_live_command_deletes(
     app,
     monkeypatch,
 ):
@@ -1317,45 +1317,143 @@ def test_oversized_profiles_preserve_command_delete_guards_and_recovery(
             4096,
         )
 
+        normal_error = (
+            'Connection storage quota exceeded: stored data exceeds its byte limit'
+        )
         assert command_manager.delete_user_command(
             user_id, unused_command['id']
-        ) == (True, None, [])
+        ) == (False, normal_error, [])
         assert command_set_manager.delete_command_set(
             user_id, unused_set['id']
-        ) == (True, None, [])
+        ) == (False, normal_error, [])
         assert command_manager.delete_user_command(
             user_id, referenced_command['id']
-        ) == (
-            False,
-            'Command is used by 1 profile',
-            [{
-                'id': 'legacy-large',
-                'name': 'Protected profile',
-                'type': 'profile',
-            }],
-        )
+        ) == (False, normal_error, [])
         assert command_set_manager.delete_command_set(
             user_id, referenced_set['id']
-        ) == (
-            False,
-            'Command set is used by 1 profile',
-            ['Protected profile'],
-        )
+        ) == (False, normal_error, [])
         assert path.read_bytes() == original_profiles
+        assert any(
+            item['id'] == unused_command['id']
+            for item in command_manager.load_user_commands(user_id)
+        )
+        loaded_sets, load_error = command_set_manager.load_command_sets(user_id)
+        assert load_error is None
+        assert {item['id'] for item in loaded_sets} == {
+            unused_set['id'],
+            referenced_set['id'],
+        }
 
-        monkeypatch.setattr(
-            config,
-            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
-            256,
+
+def test_command_reference_details_are_bounded_and_sanitized(
+    app,
+    monkeypatch,
+):
+    from app import command_manager, command_set_manager
+
+    user_id = create_user(app, 'bounded-command-reference-details')
+    detail_limit = command_set_manager._REFERENCE_USAGE_DETAIL_LIMIT
+    profiles = [
+        {
+            'id': f'profile-{index}\n' + ('\u00e9' * 256),
+            'name': f'Profile {index}\r' + ('\u754c' * 256),
+            'command_id': 'guarded-command',
+            'command_set_id': 'guarded-set',
+        }
+        for index in range(detail_limit + 7)
+    ]
+    monkeypatch.setattr(
+        command_set_manager,
+        '_load_profile_references',
+        lambda _user_id: (profiles, None),
+    )
+
+    with app.app_context():
+        command_result = command_manager.delete_user_command(
+            user_id,
+            'guarded-command',
         )
-        recovery_error = (
-            'Connection storage quota exceeded: stored data exceeds its '
-            'recovery byte limit'
+        set_result = command_set_manager.delete_command_set(
+            user_id,
+            'guarded-set',
         )
-        assert command_manager.delete_user_command(
-            user_id, referenced_command['id']
-        ) == (False, recovery_error, [])
-        assert command_set_manager.delete_command_set(
-            user_id, referenced_set['id']
-        ) == (False, recovery_error, [])
-        assert path.read_bytes() == original_profiles
+        public_usages, public_error = command_set_manager.get_command_usage(
+            user_id,
+            'guarded-command',
+        )
+
+    expected_count = len(profiles)
+    assert command_result[0] is False
+    assert command_result[1] == (
+        f'Command is used by {expected_count} profiles '
+        f'(showing first {detail_limit})'
+    )
+    assert len(command_result[2]) == detail_limit
+    assert command_result[2] == public_usages
+    assert public_error is None
+    assert all('\n' not in item['id'] for item in public_usages)
+    assert all('\r' not in item['name'] for item in public_usages)
+    assert all(
+        len(item['id'].encode('utf-8')) <= 128 for item in public_usages
+    )
+    assert all(
+        len(item['name'].encode('utf-8')) <= 128 for item in public_usages
+    )
+
+    assert set_result[0] is False
+    assert set_result[1] == (
+        f'Command set is used by {expected_count} profiles '
+        f'(showing first {detail_limit})'
+    )
+    assert len(set_result[2]) == detail_limit
+    assert all('\r' not in name for name in set_result[2])
+    assert all(len(name.encode('utf-8')) <= 128 for name in set_result[2])
+
+
+def test_command_reference_noun_uses_all_references_beyond_detail_cap(
+    app,
+    monkeypatch,
+):
+    from app import command_manager, command_set_manager
+
+    user_id = create_user(app, 'complete-command-reference-count')
+    detail_limit = command_set_manager._REFERENCE_USAGE_DETAIL_LIMIT
+    command_sets = [
+        {
+            'id': f'set-{index}',
+            'name': f'Set {index}',
+            'steps': [{
+                'type': 'library',
+                'command_id': 'guarded-command',
+            }],
+        }
+        for index in range(detail_limit + 1)
+    ]
+    monkeypatch.setattr(
+        command_set_manager,
+        '_load_command_sets_with_lock_held',
+        lambda _user_id: (command_sets, None),
+    )
+    monkeypatch.setattr(
+        command_set_manager,
+        '_load_profile_references',
+        lambda _user_id: ([{
+            'id': 'profile-reference',
+            'name': 'Profile reference',
+            'command_id': 'guarded-command',
+        }], None),
+    )
+
+    with app.app_context():
+        success, error, usages = command_manager.delete_user_command(
+            user_id,
+            'guarded-command',
+        )
+
+    assert success is False
+    assert error == (
+        f'Command is used by {detail_limit + 2} references '
+        f'(showing first {detail_limit})'
+    )
+    assert len(usages) == detail_limit
+    assert {usage['type'] for usage in usages} == {'command_set'}

@@ -11,6 +11,11 @@ import pytest
 from app import socketio, ssh_manager
 from app.auth import register_user
 from app.file_sources import SourceHoldSet
+from app.socket_protocol import SOCKET_WIRE_REVISION
+
+
+def _socket_auth():
+    return {'wire_revision': SOCKET_WIRE_REVISION}
 
 
 @pytest.fixture(scope='module')
@@ -57,7 +62,10 @@ def _authenticated_socket(app, username='session_race_user'):
     assert response.status_code == 302
 
     socket_client = socketio.test_client(
-        app, flask_test_client=http_client)
+        app,
+        flask_test_client=http_client,
+        auth=_socket_auth(),
+    )
     assert socket_client.is_connected()
     socket_client.get_received()
     return socket_client, user_id
@@ -84,6 +92,121 @@ def _collect_until(socket_client, event_name, timeout=5):
     return events
 
 
+@pytest.mark.parametrize(
+    ('auth_payload', 'received_revision'),
+    (
+        (None, None),
+        ({'wire_revision': SOCKET_WIRE_REVISION - 1}, SOCKET_WIRE_REVISION - 1),
+    ),
+)
+def test_socket_connect_rejects_incompatible_wire_revision_before_registration(
+    app,
+    monkeypatch,
+    auth_payload,
+    received_revision,
+):
+    from app import socket_events
+
+    username = f'wire_revision_{received_revision}'
+    with app.app_context():
+        user, error = register_user(username, 'socket-password-123')
+        assert error is None
+        user_id = user.id
+
+    http_client = _logged_in_http_client(app, username)
+    for owner, name in (
+        (socket_events.socket_capacity, 'reserve'),
+        (socket_events.ssh_output_flow, 'register_socket'),
+        (socket_events, 'register_socket_session'),
+        (socket_events, 'restore_user_sessions'),
+    ):
+        monkeypatch.setattr(
+            owner,
+            name,
+            lambda *_args, _name=name, **_kwargs: pytest.fail(
+                f'incompatible socket reached {_name}'
+            ),
+        )
+
+    kwargs = {'flask_test_client': http_client}
+    if auth_payload is not None:
+        kwargs['auth'] = auth_payload
+    socket_client = socketio.test_client(app, **kwargs)
+
+    assert not socket_client.is_connected()
+    assert socket_client.queue == []
+
+    from flask import request
+    from flask_socketio import ConnectionRefusedError
+
+    with app.test_request_context('/socket.io'):
+        request.sid = 'wire-payload-contract'
+        with pytest.raises(ConnectionRefusedError) as rejected:
+            socket_events._reject_socket_protocol_mismatch(
+                auth_payload,
+                SimpleNamespace(username=username),
+            )
+    assert rejected.value.error_args['message'] == (
+        'WebSSH was updated. Reload this page to continue.'
+    )
+    mismatch = rejected.value.error_args['data']
+    assert mismatch['status'] == 'reload_required'
+    assert mismatch['code'] == 'socket_protocol_mismatch'
+    assert mismatch['required_revision'] == SOCKET_WIRE_REVISION
+    assert 'Reload this page' in mismatch['message']
+    if received_revision is None:
+        assert 'received_revision' not in mismatch
+    else:
+        assert mismatch['received_revision'] == received_revision
+    with app.app_context():
+        from app.models import SocketSession
+        assert SocketSession.query.filter_by(user_id=user_id).count() == 0
+
+
+def test_socket_connect_accepts_current_wire_revision_and_restores_sessions(
+    app,
+    monkeypatch,
+):
+    from app import socket_events
+
+    username = 'wire_revision_current'
+    with app.app_context():
+        user, error = register_user(username, 'socket-password-123')
+        assert error is None
+        user_id = user.id
+
+    restored = []
+    monkeypatch.setattr(
+        socket_events,
+        'restore_user_sessions',
+        lambda owner_id, sid: restored.append((owner_id, sid)),
+    )
+    socket_client = socketio.test_client(
+        app,
+        flask_test_client=_logged_in_http_client(app, username),
+        auth=_socket_auth(),
+    )
+
+    try:
+        assert socket_client.is_connected()
+        received = socket_client.get_received()
+        connected = next(
+            event['args'][0]
+            for event in received
+            if event['name'] == 'connected'
+        )
+        assert connected == {
+            'status': 'success',
+            'username': username,
+            'wire_revision': SOCKET_WIRE_REVISION,
+        }
+        assert len(restored) == 1
+        assert restored[0][0] == user_id
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()
+
+
 def test_socket_capacity_preserves_per_user_and_global_reserve(app, monkeypatch):
     import config
 
@@ -98,6 +221,7 @@ def test_socket_capacity_preserves_per_user_and_global_reserve(app, monkeypatch)
     second_same_user = socketio.test_client(
         app,
         flask_test_client=_logged_in_http_client(app, 'capacity_first'),
+        auth=_socket_auth(),
     )
     other_socket, _other_id = _authenticated_socket(app, 'capacity_other')
 
@@ -108,6 +232,7 @@ def test_socket_capacity_preserves_per_user_and_global_reserve(app, monkeypatch)
     over_global_limit = socketio.test_client(
         app,
         flask_test_client=_logged_in_http_client(app, 'capacity_third'),
+        auth=_socket_auth(),
     )
 
     try:
@@ -150,6 +275,7 @@ def test_socket_connect_is_rejected_while_runtime_is_shutting_down(
     socket_client = socketio.test_client(
         app,
         flask_test_client=http_client,
+        auth=_socket_auth(),
     )
 
     assert not socket_client.is_connected()
@@ -188,6 +314,7 @@ def test_socket_connect_rejects_restore_maintenance_before_authentication(
     socket_client = socketio.test_client(
         app,
         flask_test_client=http_client,
+        auth=_socket_auth(),
     )
 
     assert not socket_client.is_connected()
@@ -372,7 +499,11 @@ def test_last_socket_disconnect_cancels_user_transfers(app, monkeypatch):
         'password': 'socket-password-123',
     })
     assert response.status_code == 302
-    second_socket = socketio.test_client(app, flask_test_client=second_http)
+    second_socket = socketio.test_client(
+        app,
+        flask_test_client=second_http,
+        auth=_socket_auth(),
+    )
     assert second_socket.is_connected()
     second_socket.get_received()
 
@@ -521,7 +652,11 @@ def test_disconnect_cancels_only_transfers_prepared_by_that_socket(app, monkeypa
         'password': 'socket-password-123',
     })
     assert response.status_code == 302
-    second_socket = socketio.test_client(app, flask_test_client=second_http)
+    second_socket = socketio.test_client(
+        app,
+        flask_test_client=second_http,
+        auth=_socket_auth(),
+    )
     assert second_socket.is_connected()
     second_socket.get_received()
 

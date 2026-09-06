@@ -204,6 +204,8 @@ const translations = {
         'connection.lostReconnecting': 'Connection lost. Reconnecting...',
         'connection.lostReconnectingAttempt': 'Connection lost. Reconnecting... (attempt {attempt})',
         'connection.disconnectedFromServer': 'Disconnected from server',
+        'connection.reloadRequired': 'WebSSH was updated. Reload this page to continue.',
+        'connection.reloadPage': 'Reload page',
 
         'keys.manageKeys': 'Manage Keys',
         'keys.manageSSHKeys': 'Manage SSH Keys',
@@ -1481,6 +1483,8 @@ const translations = {
         'connection.lostReconnecting': 'Mất kết nối. Đang kết nối lại...',
         'connection.lostReconnectingAttempt': 'Mất kết nối. Đang kết nối lại... (lần thử {attempt})',
         'connection.disconnectedFromServer': 'Đã ngắt kết nối với máy chủ',
+        'connection.reloadRequired': 'WebSSH đã được cập nhật. Hãy tải lại trang này để tiếp tục.',
+        'connection.reloadPage': 'Tải lại trang',
 
         'keys.manageKeys': 'Quản lý khóa',
         'keys.manageSSHKeys': 'Quản lý khóa SSH',
@@ -2757,6 +2761,8 @@ const translations = {
         'connection.lostReconnecting': 'Verbindung unterbrochen. Wiederverbindung läuft...',
         'connection.lostReconnectingAttempt': 'Verbindung unterbrochen. Wiederverbindung läuft... (Versuch {attempt})',
         'connection.disconnectedFromServer': 'Verbindung zum Server getrennt',
+        'connection.reloadRequired': 'WebSSH wurde aktualisiert. Laden Sie diese Seite neu, um fortzufahren.',
+        'connection.reloadPage': 'Seite neu laden',
 
         'keys.manageKeys': 'Schlüssel verwalten',
         'keys.manageSSHKeys': 'SSH-Schlüssel verwalten',
@@ -4032,6 +4038,8 @@ const translations = {
         'connection.lostReconnecting': 'Connexion perdue. Reconnexion en cours...',
         'connection.lostReconnectingAttempt': 'Connexion perdue. Reconnexion en cours... (tentative {attempt})',
         'connection.disconnectedFromServer': 'Déconnecté du serveur',
+        'connection.reloadRequired': 'WebSSH a été mis à jour. Rechargez cette page pour continuer.',
+        'connection.reloadPage': 'Recharger la page',
 
         'keys.manageKeys': 'Gérer les clés',
         'keys.manageSSHKeys': 'Gérer les clés SSH',
@@ -5307,6 +5315,8 @@ const translations = {
         'connection.lostReconnecting': 'Conexión perdida. Reconectando...',
         'connection.lostReconnectingAttempt': 'Conexión perdida. Reconectando... (intento {attempt})',
         'connection.disconnectedFromServer': 'Desconectado del servidor',
+        'connection.reloadRequired': 'WebSSH se ha actualizado. Recarga esta página para continuar.',
+        'connection.reloadPage': 'Recargar página',
 
         'keys.manageKeys': 'Administrar claves',
         'keys.manageSSHKeys': 'Administrar claves SSH',
@@ -6582,6 +6592,8 @@ const translations = {
         'connection.lostReconnecting': '连接已中断。正在重新连接...',
         'connection.lostReconnectingAttempt': '连接已中断。正在重新连接...（第 {attempt} 次尝试）',
         'connection.disconnectedFromServer': '已断开与服务器的连接',
+        'connection.reloadRequired': 'WebSSH 已更新。请重新加载此页面以继续。',
+        'connection.reloadPage': '重新加载页面',
 
         'keys.manageKeys': '管理密钥',
         'keys.manageSSHKeys': '管理 SSH 密钥',

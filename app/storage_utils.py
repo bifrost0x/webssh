@@ -20,6 +20,7 @@ from .backup_coordination import persistent_write
 
 
 T = TypeVar('T')
+SAFE_REFERENCE_MAX_BYTES = 128
 
 _locks = {}
 _locks_guard = threading.Lock()
@@ -64,12 +65,16 @@ class _CoordinatedStorageLock:
 
 
 def safe_reference_name(value):
-    """Return bounded printable display text for cross-store references."""
+    """Return printable display text within a fixed UTF-8 byte budget."""
     value = value if isinstance(value, str) else ''
-    return ''.join(
+    sanitized = ''.join(
         character if character.isprintable() else '\ufffd'
         for character in value
-    )[:128]
+    )
+    return sanitized.encode('utf-8')[:SAFE_REFERENCE_MAX_BYTES].decode(
+        'utf-8',
+        errors='ignore',
+    )
 
 
 def storage_lock(key):

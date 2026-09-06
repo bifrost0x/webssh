@@ -5,6 +5,7 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import os
+import sys
 import time
 from .models import db
 from .auth import (init_auth, authenticate_user, register_user,
@@ -30,6 +31,72 @@ socketio = SocketIO(
     async_handlers=config.SOCKETIO_ASYNC_HANDLERS,
 )
 csrf = CSRFProtect()
+
+_MAINTENANCE_COMMANDS = frozenset({
+    'backup',
+    'connection-store',
+    'create-admin',
+    'issue-factor-bootstrap',
+    'rotate-secret-key',
+})
+_FLASK_OPTIONS_WITH_VALUES = frozenset({
+    '--app',
+    '-A',
+    '--env-file',
+    '-e',
+})
+
+
+def _is_flask_cli_process(program_name=None, main_module_name=None):
+    if program_name is None:
+        program_name = sys.argv[0]
+    if main_module_name is None:
+        main_module = sys.modules.get('__main__')
+        main_module_spec = getattr(main_module, '__spec__', None)
+        main_module_name = getattr(main_module_spec, 'name', None)
+
+    executable_name = os.path.splitext(os.path.basename(program_name))[0].lower()
+    return executable_name == 'flask' or main_module_name in {
+        'flask.__main__',
+        'flask.cli',
+    }
+
+
+def _flask_top_level_command(arguments):
+    skip_next = False
+    for index, argument in enumerate(arguments):
+        if skip_next:
+            skip_next = False
+            continue
+        if argument == '--':
+            return arguments[index + 1] if index + 1 < len(arguments) else None
+        if argument in _FLASK_OPTIONS_WITH_VALUES:
+            skip_next = True
+            continue
+        if any(
+            argument.startswith(f'{option}=')
+            for option in _FLASK_OPTIONS_WITH_VALUES
+            if option.startswith('--')
+        ):
+            continue
+        if argument.startswith('-A') and argument != '-A':
+            continue
+        if argument.startswith('-'):
+            continue
+        return argument
+    return None
+
+
+def _is_maintenance_cli_invocation(
+    arguments=None,
+    program_name=None,
+    main_module_name=None,
+):
+    arguments = sys.argv[1:] if arguments is None else arguments
+    if not _is_flask_cli_process(program_name, main_module_name):
+        return False
+    return _flask_top_level_command(arguments) in _MAINTENANCE_COMMANDS
+
 
 def get_client_ip():
     """
@@ -74,6 +141,11 @@ def create_app(
     start_runtime=True,
     initialize_oidc=True,
 ):
+    maintenance_cli_invocation = _is_maintenance_cli_invocation()
+    if maintenance_cli_invocation:
+        initialize_storage = False
+        start_runtime = False
+        initialize_oidc = False
     base_dir = os.path.dirname(os.path.dirname(__file__))
     template_dir = os.path.join(base_dir, 'templates')
     static_dir = os.path.join(base_dir, 'static')
@@ -84,6 +156,7 @@ def create_app(
     app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
         max_workers=config.BACKGROUND_WORKERS
     )
+    app.extensions['maintenance_cli_invocation'] = maintenance_cli_invocation
 
     from .maintenance_mode import is_active, recover_interrupted_restore
     if initialize_storage:
@@ -324,10 +397,11 @@ def create_app(
     ldap_ready = not config.LDAP_ENABLED
     if config.LDAP_ENABLED:
         from .ldap_routes import ldap_blueprint
-        from .ldap_service import validate_runtime_files
-        validate_runtime_files()
+        if not maintenance_cli_invocation:
+            from .ldap_service import validate_runtime_files
+            validate_runtime_files()
+            ldap_ready = True
         app.register_blueprint(ldap_blueprint)
-        ldap_ready = True
     from .security_features import initialize_feature_readiness
     initialize_feature_readiness(
         app,

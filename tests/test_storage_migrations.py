@@ -89,6 +89,35 @@ def test_profiles_preserve_legacy_and_explicit_post_connect_semantics():
     assert by_id['absent-override']['startup_mode'] == 'command'
 
 
+@pytest.mark.parametrize('schema_version', [0, 1, 2])
+def test_profiles_migration_removes_response_only_tailscale_authorization(
+    schema_version,
+):
+    source = {
+        'schema_version': schema_version,
+        'profiles': [
+            {
+                'id': 'tailnet-server',
+                'name': 'Tailnet server',
+                'tailscale_authorized': True,
+            },
+            {
+                'id': 'ordinary-server',
+                'name': 'Ordinary server',
+            },
+        ],
+    }
+
+    migrated, changed = migrate_document('profiles', source)
+
+    assert changed is True
+    assert migrated['schema_version'] == CURRENT_STORAGE_VERSIONS['profiles']
+    assert 'tailscale_authorized' not in migrated['profiles'][0]
+    assert migrated['profiles'][1]['id'] == 'ordinary-server'
+    assert migrated['profiles'][1]['name'] == 'Ordinary server'
+    assert source['profiles'][0]['tailscale_authorized'] is True
+
+
 def test_future_versions_and_unknown_stores_are_rejected():
     with pytest.raises(ValueError, match='future storage version'):
         migrate_document(
@@ -352,6 +381,68 @@ def test_manager_rejects_future_version_without_backup_or_write(app):
         assert exc_info.value.reason == 'unsupported schema'
         assert path.read_bytes() == source
         assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+
+def test_profile_manager_rejects_response_only_field_in_current_document(app):
+    from app import profile_manager
+    from app.models import User, db
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-response-only-current')
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
+        source = json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': [
+                {
+                    'id': 'tailnet-server',
+                    'name': 'Tailnet server',
+                    'tailscale_authorized': True,
+                }
+            ],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(source)
+
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            profile_manager.load_profiles(user_id)
+
+        assert exc_info.value.reason == 'validation failed'
+        assert path.read_bytes() == source
+        assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+
+def test_profile_manager_persists_response_only_field_migration(app):
+    from app import profile_manager
+    from app.models import User, db
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-response-only-legacy')
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
+        source = json.dumps({
+            'schema_version': 2,
+            'profiles': [
+                {
+                    'id': 'tailnet-server',
+                    'name': 'Tailnet server',
+                    'tailscale_authorized': True,
+                }
+            ],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(source)
+
+        loaded = profile_manager.load_profiles(user_id)
+
+        assert loaded == [{
+            'id': 'tailnet-server',
+            'name': 'Tailnet server',
+        }]
+        stored = json.loads(path.read_text(encoding='utf-8'))
+        assert stored == {
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': loaded,
+        }
+        backups = list(path.parent.glob('profiles.json.*.bak'))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == source
 
 
 @pytest.mark.parametrize(

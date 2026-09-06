@@ -11,11 +11,18 @@ from .connection_storage_policy import (
     enforce_store_read_limit,
     enforce_store_recovery_limit,
     enforce_store_transition,
+    recovery_record_selector,
+    resolve_recovery_record_selector,
     validate_profile,
 )
 from .post_connect_manager import infer_mode, validate_configuration
 from .storage_errors import StorageCorruptionError
-from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
+from .storage_utils import (
+    atomic_write_bytes,
+    load_json_migrated,
+    safe_reference_name,
+    storage_lock,
+)
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .startup_commands import normalize_startup_commands
 
@@ -108,6 +115,8 @@ def _optional_string(item, field, allow_none=False):
 def _valid_profile(item):
     if not isinstance(item, dict):
         return False
+    if 'tailscale_authorized' in item:
+        return False
     if not isinstance(item.get('id'), str) or not isinstance(item.get('name'), str):
         return False
     for field in (
@@ -130,7 +139,7 @@ def _valid_profile(item):
         'none', 'free_text', 'command', 'command_set',
     }:
         return False
-    for field in ('use_tmux', 'tailscale_authorized', 'favorite'):
+    for field in ('use_tmux', 'favorite'):
         if field in item and type(item[field]) is not bool:
             return False
     if 'sort_order' in item and not _valid_sort_order(item['sort_order']):
@@ -151,7 +160,7 @@ _PROFILE_FIELDS = {
     'id', 'name', 'host', 'port', 'username', 'auth_type', 'key_id',
     'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
-    'tailscale_authorized', 'group', 'favorite', 'created_at', 'updated_at',
+    'group', 'favorite', 'created_at', 'updated_at',
     'sort_order',
 }
 
@@ -199,7 +208,7 @@ def _load_profiles_for_write(user_id):
 
 
 def _load_profiles_for_recovery_delete(user_id):
-    """Load an oversized legacy store only so an exact delete can shrink it."""
+    """Load an oversized legacy store within the hard recovery ceilings."""
     profiles_file = get_user_profiles_file(user_id)
     if not profiles_file:
         return None, 'User not found'
@@ -227,36 +236,68 @@ def _load_profiles_for_recovery_delete(user_id):
     )
     return profiles, None
 
+
+def load_profile_recovery_summaries(user_id):
+    """Return bounded, non-secret selectors for offline legacy recovery."""
+    with storage_lock(f'profiles:{user_id}'):
+        profiles, error = _load_profiles_for_recovery_delete(user_id)
+        if error:
+            return None, error
+        scope = f'profiles:{user_id}'
+        return [
+            {
+                'selector': recovery_record_selector(
+                    scope,
+                    index,
+                    profile,
+                ),
+                'id': safe_reference_name(profile.get('id')),
+                'name': safe_reference_name(profile.get('name')),
+                'host': safe_reference_name(profile.get('host')),
+            }
+            for index, profile in enumerate(profiles)
+            if isinstance(profile, dict)
+        ], None
+
 def save_profiles(
     user_id,
     profiles,
     *,
     previous_count=None,
     previous_document=None,
+    compact=False,
 ):
-    """Save profiles list to JSON file for a specific user."""
+    """Save profiles, compacting only explicitly requested recovery writes."""
     try:
         profiles_file = get_user_profiles_file(user_id)
+        stored_profiles = []
+        for profile in profiles:
+            stored_profile = dict(profile) if isinstance(profile, dict) else profile
+            if isinstance(stored_profile, dict):
+                # This is derived from live launch policy for responses only.
+                stored_profile.pop('tailscale_authorized', None)
+            stored_profiles.append(stored_profile)
         document = {
             'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
-            'profiles': profiles,
+            'profiles': stored_profiles,
         }
         if not profiles_file or not _valid_profile_document(document):
             return False
 
-        enforce_store_transition(
+        payload = enforce_store_transition(
             path=profiles_file,
             other_path=profiles_file.parent / 'jump_hosts.json',
             prospective_document=document,
-            prospective_count=len(profiles),
+            prospective_count=len(stored_profiles),
             previous_count=previous_count,
             maximum_count=config.PROFILE_MAX_RECORDS,
             previous_document=previous_document,
+            compact=compact,
         )
 
         profiles_file.parent.mkdir(parents=True, exist_ok=True)
 
-        atomic_write_json(profiles_file, document)
+        atomic_write_bytes(profiles_file, payload)
         return True
     except ConnectionStorageLimitError:
         raise
@@ -676,17 +717,25 @@ def delete_profile(user_id, profile_id):
     try:
         with storage_lock(f'command-config:{user_id}'):
             with storage_lock(f'profiles:{user_id}'):
-                profiles, error = _load_profiles_for_recovery_delete(user_id)
+                profiles, error = _load_profiles_for_write(user_id)
                 if error:
                     return False, error
-                found = any(profile.get('id') == profile_id for profile in profiles)
-                if not found:
+                index = next(
+                    (
+                        index
+                        for index, profile in enumerate(profiles)
+                        if profile.get('id') == profile_id
+                    ),
+                    None,
+                )
+                if index is None:
                     return False, 'Profile not found'
                 previous_document = {
                     'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
                     'profiles': profiles,
                 }
-                remaining = [profile for profile in profiles if profile.get('id') != profile_id]
+                remaining = list(profiles)
+                remaining.pop(index)
                 if save_profiles(
                     user_id,
                     remaining,
@@ -701,6 +750,52 @@ def delete_profile(user_id, profile_id):
         return False, str(exc)
     except Exception as e:
         log_error("Error deleting profile", user_id=user_id, error=str(e))
+        return False, 'Failed to delete profile'
+
+
+def delete_profile_recovery_record(user_id, selector):
+    """Delete one selector-bound profile from an offline recovery store."""
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profiles_for_recovery_delete(user_id)
+                if error:
+                    return False, error
+                index = resolve_recovery_record_selector(
+                    f'profiles:{user_id}',
+                    profiles,
+                    selector,
+                )
+                if index is None:
+                    return (
+                        False,
+                        'Recovery selector not found; list the store again.',
+                    )
+                previous_document = {
+                    'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+                    'profiles': profiles,
+                }
+                remaining = list(profiles)
+                remaining.pop(index)
+                if save_profiles(
+                    user_id,
+                    remaining,
+                    previous_count=len(profiles),
+                    previous_document=previous_document,
+                    compact=True,
+                ):
+                    return True, None
+                return False, 'Failed to delete profile'
+    except StorageCorruptionError:
+        raise
+    except ConnectionStorageLimitError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        log_error(
+            'Error deleting recovery profile',
+            user_id=user_id,
+            error=str(exc),
+        )
         return False, 'Failed to delete profile'
 
 

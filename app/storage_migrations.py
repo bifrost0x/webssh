@@ -13,7 +13,7 @@ from .storage_utils import atomic_write_json, fsync_parent_directory
 
 
 CURRENT_STORAGE_VERSIONS = {
-    'profiles': 2,
+    'profiles': 3,
     'command_sets': 2,
     'jump_hosts': 2,
     'keys': 2,
@@ -51,6 +51,18 @@ def migrate_profiles_v1_to_v2(document):
             else:
                 profile['startup_mode'] = 'none'
     result['schema_version'] = 2
+    return result
+
+
+def migrate_profiles_v2_to_v3(document):
+    """Remove response-only authorization state from persisted profiles."""
+    result = deepcopy(document)
+    profiles = result.get('profiles')
+    if isinstance(profiles, list):
+        for profile in profiles:
+            if isinstance(profile, dict):
+                profile.pop('tailscale_authorized', None)
+    result['schema_version'] = 3
     return result
 
 
@@ -109,6 +121,7 @@ _MIGRATIONS = {
     }
     for store_name in CURRENT_STORAGE_VERSIONS
 }
+_MIGRATIONS['profiles'][2] = migrate_profiles_v2_to_v3
 
 
 def migrate_document(store_name: str, document: object) -> tuple[object, bool]:

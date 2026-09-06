@@ -337,7 +337,7 @@ def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
 ):
     user_id = _create_user(app, 'future_restore_admin', admin=True)
     current = _valid_archive(tmp_path)
-    future = _archive_with_data_schema(current, tmp_path / 'future.zip', 2)
+    future = _archive_with_data_schema(current, tmp_path / 'future.zip', 3)
     _login(client, 'future_restore_admin')
 
     uploaded = client.post(
@@ -351,8 +351,8 @@ def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
 
     assert verified.json['status'] == 'verified'
     assert verified.json['summary']['compatible'] is False
-    assert verified.json['summary']['data_schema_version'] == 2
-    assert verified.json['summary']['current_data_schema_version'] == 1
+    assert verified.json['summary']['data_schema_version'] == 3
+    assert verified.json['summary']['current_data_schema_version'] == 2
     assert verified.json['summary']['compatibility_reason'] == (
         'backup data schema is newer than this WebSSH version'
     )

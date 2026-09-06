@@ -43,6 +43,10 @@ function loadBrowserErrorHandler(errors) {
         fs.readFileSync('static/js/socket-reconnect-policy.js', 'utf8'),
         context
     );
+    vm.runInContext(
+        fs.readFileSync('static/js/socket-protocol.js', 'utf8'),
+        context
+    );
     vm.runInContext(fs.readFileSync('static/js/app.js', 'utf8'), context);
     return handlers.get('error');
 }

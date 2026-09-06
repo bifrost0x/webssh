@@ -39,9 +39,15 @@ TAILSCALE_SSH_INTERFACE=tailscale0
 Administrators are allowed when the feature is enabled. The
 `TAILSCALE_SSH_ALLOWED_WEBSSH_USERS` list grants access to additional WebSSH
 usernames. The target allowlist is mandatory whenever the feature is enabled.
-A bare hostname/IP means port 22; use `host:port` or `[IPv6]:port` for another
-port. Target matching is exact and case-insensitive, while remote OS usernames
-are exact and case-sensitive. After DNS resolution, WebSSH accepts only an
+A bare hostname, IPv4 address, or IPv6 address means port 22. Use
+`hostname:port`, `IPv4:port`, or `[IPv6]:port` for another port. Target matching
+is exact and case-insensitive, while remote OS usernames are exact and
+case-sensitive. A production deployment refuses to start when the enabled
+feature has an empty or malformed target list or an empty interface. The
+homelab profile emits security warnings, ignores individual malformed entries
+so valid siblings still work, and fails every connection closed if no valid
+target or interface remains. Values stay dormant while the feature is disabled.
+After DNS resolution, WebSSH accepts only an
 address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
 `tailscale0`), pins that address, and binds the connecting socket to the same
 interface. A route change cannot silently move the connection to another

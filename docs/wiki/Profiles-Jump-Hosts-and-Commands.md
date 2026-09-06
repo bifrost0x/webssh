@@ -56,9 +56,26 @@ not bypass target network policy, session ownership, or host-key verification.
 
 Saved profiles and jump hosts have per-field, record-count, and serialized-byte
 budgets. The defaults permit 500 profiles, 100 jump hosts, 2 MiB per store, and
-4 MiB combined. Mutations share a per-user rate limit. Oversized legacy stores
-remain readable and can be deleted or reduced, but no mutation may grow them.
-Stored key references must belong to the same WebSSH account.
+4 MiB combined. Mutations share a per-user rate limit. The normal UI
+quarantines a legacy store above those limits so a large payload cannot be
+expanded through Socket.IO. Stop every WebSSH process, then use the bounded
+recovery CLI to discover non-secret record summaries and opaque selectors, then
+delete exact records:
+
+```bash
+python -m flask --app start connection-store list \
+  --username USER --kind profiles --confirm-offline
+python -m flask --app start connection-store delete \
+  --username USER --kind profiles --selector SELECTOR --confirm-offline
+```
+
+Use `--kind jump-hosts` for the jump-host store. Recovery enforces the separate
+byte and record ceilings before and after parsing, never prints startup
+commands or unknown fields, and retains jump-host reference protection. The
+opaque selector binds one record's current ordinal and content, so repeated or
+truncated display IDs cannot delete the wrong record; list again after every
+successful deletion. No mutation may grow an oversized store. Stored key
+references must belong to the same WebSSH account.
 
 For bastion-only DNS names that cannot resolve locally, configure an exact
 `PROXY_JUMP_REMOTE_DNS_ALLOWLIST`. Do not use wildcards.

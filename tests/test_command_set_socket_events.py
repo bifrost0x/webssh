@@ -135,6 +135,52 @@ def test_profile_save_and_update_return_ack_without_connecting(app, monkeypatch)
     assert updated['profile']['host'] == 'new.example.com'
 
 
+def test_tailscale_profile_save_derives_authorization_without_persisting_it(
+    app,
+    monkeypatch,
+):
+    from app import profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'tailscale_profile_save')
+    monkeypatch.setattr(
+        socket_events,
+        'validate_tailscale_ssh_access',
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'profile_is_authorized_for_launch',
+        lambda _user, _profile: False,
+    )
+    client_payload = {
+        'name': 'Tailnet server',
+        'host': 'tiny-server',
+        'port': 22,
+        'username': 'root',
+        'auth_type': 'tailscale',
+        'tailscale_authorized': True,
+    }
+
+    created, _emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_profile,
+        sid,
+        client_payload,
+    )
+
+    assert created['success'] is True
+    assert created['profile']['tailscale_authorized'] is False
+    assert client_payload['tailscale_authorized'] is True
+    with app.app_context():
+        stored = profile_manager.get_profile(
+            user_id,
+            created['profile']['id'],
+        )
+    assert 'tailscale_authorized' not in stored
+
+
 def test_profile_update_rejects_foreign_or_missing_id(app, monkeypatch):
     import app.socket_events as socket_events
 
@@ -188,6 +234,46 @@ def test_profile_organization_socket_updates_current_users_profile(
     assert result['profile']['favorite'] is True
     assert ('profile_organization_updated', result) in emitted
     assert all(event != 'profiles_list' for event, _payload in emitted)
+
+
+def test_tailscale_profile_organization_refreshes_transient_authorization(
+    app,
+    monkeypatch,
+):
+    from app import profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'tailscale_profile_organization')
+    with app.app_context():
+        profile, error = profile_manager.add_profile(
+            user_id,
+            'Tailnet server',
+            'tiny-server',
+            22,
+            'root',
+            'tailscale',
+        )
+        assert error is None
+    monkeypatch.setattr(
+        socket_events,
+        'profile_is_authorized_for_launch',
+        lambda _user, _profile: False,
+    )
+
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_update_profile_organization,
+        sid,
+        {'profile_id': profile['id'], 'favorite': True},
+    )
+
+    assert result['success'] is True
+    assert result['profile']['tailscale_authorized'] is False
+    assert ('profile_organization_updated', result) in emitted
+    with app.app_context():
+        stored = profile_manager.get_profile(user_id, profile['id'])
+    assert 'tailscale_authorized' not in stored
 
 
 def test_profile_organization_socket_rejects_missing_profile_id(
@@ -1477,6 +1563,88 @@ def test_jump_host_delete_socket_payload_caps_reference_details(
     assert emitted == [('error', result)]
 
 
+def test_command_delete_socket_payloads_cap_and_sanitize_reference_details(
+    app,
+    monkeypatch,
+):
+    from app import command_manager, command_set_manager, profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'command_delete_detail_cap')
+    detail_limit = command_set_manager._REFERENCE_USAGE_DETAIL_LIMIT
+    with app.app_context():
+        command = command_manager.add_user_command(
+            user_id,
+            'Guarded command',
+            'true',
+            '',
+            'Guarded command',
+            ['all'],
+            'custom',
+        )
+        command_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Guarded set',
+                'steps': [{'type': 'inline', 'command': 'true'}],
+            },
+        )
+        assert error is None
+        profiles = [
+            {
+                'id': f'profile-{index}\n' + ('\u00e9' * 256),
+                'name': f'Profile {index}\r' + ('\u754c' * 256),
+                'command_id': command['id'],
+                'command_set_id': command_set['id'],
+            }
+            for index in range(detail_limit + 7)
+        ]
+        assert profile_manager.save_profiles(user_id, profiles)
+
+    command_result, command_events = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_delete_command,
+        sid,
+        {'command_id': command['id']},
+    )
+    set_result, set_events = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_delete_command_set,
+        sid,
+        {'command_set_id': command_set['id']},
+    )
+
+    expected_count = len(profiles)
+    assert command_result['error'] == (
+        f'Command is used by {expected_count} profiles '
+        f'(showing first {detail_limit})'
+    )
+    assert command_result['code'] == 'in_use'
+    assert len(command_result['usages']) == detail_limit
+    assert all(
+        len(usage['id'].encode('utf-8')) <= 128
+        and len(usage['name'].encode('utf-8')) <= 128
+        and '\n' not in usage['id']
+        and '\r' not in usage['name']
+        for usage in command_result['usages']
+    )
+    assert command_events == [('error', command_result)]
+
+    assert set_result['error'] == (
+        f'Command set is used by {expected_count} profiles '
+        f'(showing first {detail_limit})'
+    )
+    assert set_result['code'] == 'in_use'
+    assert len(set_result['usages']) == detail_limit
+    assert all(
+        len(name.encode('utf-8')) <= 128 and '\r' not in name
+        for name in set_result['usages']
+    )
+    assert set_events == [('error', set_result)]
+
+
 def test_missing_command_update_and_profile_delete_emit_structured_errors(
     app, monkeypatch
 ):
@@ -1515,6 +1683,73 @@ def test_missing_command_update_and_profile_delete_emit_structured_errors(
         'code': 'not_found',
     }
     assert profile_events == [('error', profile_result)]
+
+
+def test_live_socket_deletes_cannot_mutate_quarantined_connection_store(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import jump_host_manager, profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'quarantined_socket_delete')
+    with app.app_context():
+        jump_host, error = jump_host_manager.add_jump_host(
+            user_id,
+            'Bastion',
+            'bastion.example',
+            22,
+            'deploy',
+            'password',
+        )
+        assert error is None
+        profile_path = profile_manager.get_user_profiles_file(user_id)
+        profile_path.write_text(json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': [{
+                'id': 'legacy-profile',
+                'name': 'Legacy profile',
+                'jump_host_id': jump_host['id'],
+                'future': 'x' * 2048,
+            }],
+        }), encoding='utf-8')
+        original_profiles = profile_path.read_bytes()
+        jump_path = jump_host_manager._get_file(user_id)
+        original_jump_hosts = jump_path.read_bytes()
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 256)
+
+    expected_error = (
+        'Connection storage quota exceeded: stored data exceeds its byte limit'
+    )
+    profile_result, profile_events = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_delete_profile,
+        sid,
+        {'profile_id': 'legacy-profile'},
+    )
+    jump_result, jump_events = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_delete_jump_host,
+        sid,
+        {'jump_host_id': jump_host['id']},
+    )
+
+    expected_result = {
+        'success': False,
+        'error': expected_error,
+        'code': 'quota_exceeded',
+    }
+    assert profile_result == expected_result
+    assert profile_events == [('error', expected_result)]
+    assert jump_result == expected_result
+    assert jump_events == [('error', expected_result)]
+    with app.app_context():
+        assert profile_path.read_bytes() == original_profiles
+        assert jump_path.read_bytes() == original_jump_hosts
 
 
 def test_socket_command_set_errors_are_structured(app, monkeypatch):
@@ -1695,6 +1930,55 @@ def test_convert_legacy_profile_creates_set_then_assigns_it(app, monkeypatch):
     with app.app_context():
         stored = profile_manager.get_profile(user_id, profile['id'])
         assert stored == converted['profile']
+
+
+@pytest.mark.parametrize('authorized', (True, False))
+def test_convert_tailscale_legacy_profile_refreshes_transient_authorization(
+    app,
+    monkeypatch,
+    authorized,
+):
+    from app import profile_manager
+    import app.socket_events as socket_events
+
+    suffix = 'allowed' if authorized else 'denied'
+    user_id, sid = create_socket_user(app, f'tailscale_convert_{suffix}')
+    with app.app_context():
+        profile, error = profile_manager.add_profile(
+            user_id,
+            'Legacy tailnet',
+            'tiny-server',
+            22,
+            'root',
+            'tailscale',
+            startup_commands='echo legacy',
+        )
+        assert error is None
+    monkeypatch.setattr(
+        socket_events,
+        'profile_is_authorized_for_launch',
+        lambda _user, _profile: authorized,
+    )
+
+    converted, _emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_convert_legacy_command_set,
+        sid,
+        {
+            'profile_id': profile['id'],
+            'name': f'Tailnet bootstrap {suffix}',
+        },
+    )
+
+    assert converted['success'] is True
+    assert converted['profile']['tailscale_authorized'] is authorized
+    with app.app_context():
+        stored = profile_manager.get_profile(user_id, profile['id'])
+    assert 'tailscale_authorized' not in stored
+    response_without_authorization = dict(converted['profile'])
+    response_without_authorization.pop('tailscale_authorized')
+    assert response_without_authorization == stored
 
 
 def test_convert_rejects_profile_without_legacy_commands(app, monkeypatch):

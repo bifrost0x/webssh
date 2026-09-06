@@ -10,6 +10,299 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _maintenance_cli(
+    data_dir,
+    *arguments,
+    environment_overrides=None,
+    app_target='start',
+    flask_module='flask',
+):
+    environment = os.environ.copy()
+    environment.update({
+        'DATA_DIR': str(data_dir),
+        'DEBUG': 'True',
+        'SECRET_KEY': 'maintenance-cli-test-secret',
+    })
+    if environment_overrides:
+        environment.update(environment_overrides)
+    return subprocess.run(
+        [
+            sys.executable,
+            '-m',
+            flask_module,
+            '--app',
+            app_target,
+            *arguments,
+        ],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+
+def _missing_ldap_runtime_environment(tmp_path):
+    return {
+        'LDAP_ENABLED': 'true',
+        'LDAP_URL': 'ldaps://directory.example.com:636',
+        'LDAP_BASE_DN': 'dc=example,dc=com',
+        'LDAP_BIND_DN': 'cn=service,dc=example,dc=com',
+        'LDAP_BIND_PASSWORD_FILE': str(tmp_path / 'missing-ldap-password'),
+        'LDAP_CA_FILE': str(tmp_path / 'missing-ldap-ca.pem'),
+        'LDAP_USER_FILTER': '(&(objectClass=person)(uid={username}))',
+        'LDAP_UNIQUE_ID_ATTRIBUTE': 'entryUUID',
+    }
+
+
+@pytest.mark.parametrize(
+    'command',
+    ('issue-factor-bootstrap', 'connection-store'),
+)
+def test_security_maintenance_help_exits_without_runtime_or_storage(
+    tmp_path,
+    command,
+):
+    data_dir = tmp_path / command
+
+    result = _maintenance_cli(data_dir, command, '--help')
+
+    assert result.returncode == 0, result.stderr
+    assert 'Usage:' in result.stdout
+    assert not data_dir.exists()
+
+
+@pytest.mark.parametrize(
+    'command',
+    ('issue-factor-bootstrap', 'connection-store'),
+)
+def test_security_maintenance_help_skips_missing_ldap_runtime_files(
+    tmp_path,
+    command,
+):
+    data_dir = tmp_path / command
+
+    result = _maintenance_cli(
+        data_dir,
+        command,
+        '--help',
+        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Usage:' in result.stdout
+    assert not data_dir.exists()
+
+
+@pytest.mark.parametrize(
+    'command',
+    ('issue-factor-bootstrap', 'connection-store'),
+)
+def test_factory_target_maintenance_help_uses_safe_app_construction(
+    tmp_path,
+    command,
+):
+    data_dir = tmp_path / command
+
+    result = _maintenance_cli(
+        data_dir,
+        command,
+        '--help',
+        app_target='app:create_app',
+        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Usage:' in result.stdout
+    assert not data_dir.exists()
+
+
+@pytest.mark.parametrize(
+    'command',
+    ('issue-factor-bootstrap', 'connection-store'),
+)
+def test_flask_cli_module_maintenance_help_uses_safe_app_construction(
+    tmp_path,
+    command,
+):
+    data_dir = tmp_path / command
+
+    result = _maintenance_cli(
+        data_dir,
+        command,
+        '--help',
+        app_target='app:create_app',
+        flask_module='flask.cli',
+        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert 'Usage:' in result.stdout
+    assert not data_dir.exists()
+
+
+def test_factory_target_connection_store_initializes_inside_command(tmp_path):
+    data_dir = tmp_path / 'connection-store-operation'
+
+    result = _maintenance_cli(
+        data_dir,
+        'connection-store',
+        'list',
+        '--username',
+        'missing-user',
+        '--kind',
+        'profiles',
+        '--confirm-offline',
+        app_target='app:create_app',
+        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    )
+
+    assert result.returncode != 0
+    assert 'Account not found' in result.stderr
+    assert 'LDAP secret file is unavailable' not in result.stderr
+    assert (data_dir / 'app.db').is_file()
+
+
+def test_factory_target_connection_store_locks_before_initialization(
+    tmp_path,
+    monkeypatch,
+):
+    import config
+    from app.backup_coordination import operation_lock
+
+    data_dir = tmp_path / 'locked-connection-store-operation'
+    operation_dir = tmp_path / 'operations'
+    monkeypatch.setattr(config, 'DATA_DIR', data_dir)
+    monkeypatch.setattr(config, 'BACKUP_TEMP_DIR', operation_dir)
+    monkeypatch.setattr(config, 'BACKUP_OPERATION_TIMEOUT', 1)
+
+    with operation_lock():
+        result = _maintenance_cli(
+            data_dir,
+            'connection-store',
+            'list',
+            '--username',
+            'missing-user',
+            '--kind',
+            'profiles',
+            '--confirm-offline',
+            app_target='app:create_app',
+            environment_overrides={
+                **_missing_ldap_runtime_environment(tmp_path),
+                'BACKUP_TEMP_DIR': str(operation_dir),
+                'BACKUP_OPERATION_TIMEOUT': '1',
+            },
+        )
+
+    assert result.returncode != 0
+    assert 'another backup or restore operation is active' in result.stderr
+    assert not data_dir.exists()
+
+
+def test_factor_bootstrap_missing_user_exits_instead_of_starting_runtime(
+    tmp_path,
+):
+    result = _maintenance_cli(
+        tmp_path / 'factor-bootstrap-data',
+        'issue-factor-bootstrap',
+        '--username',
+        'missing-user',
+        '--action',
+        'passkey.enroll',
+    )
+
+    assert result.returncode != 0
+    assert 'Eligible account not found' in result.stderr
+
+
+def test_factor_bootstrap_operation_skips_missing_ldap_runtime_files(tmp_path):
+    result = _maintenance_cli(
+        tmp_path / 'factor-bootstrap-ldap-data',
+        'issue-factor-bootstrap',
+        '--username',
+        'missing-user',
+        '--action',
+        'passkey.enroll',
+        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    )
+
+    assert result.returncode != 0
+    assert 'Eligible account not found' in result.stderr
+    assert 'LDAP secret file is unavailable' not in result.stderr
+
+
+def test_normal_app_factory_still_requires_ldap_runtime_files(tmp_path):
+    environment = os.environ.copy()
+    environment.update({
+        'DATA_DIR': str(tmp_path / 'normal-start-data'),
+        'DEBUG': 'True',
+        'SECRET_KEY': 'normal-start-test-secret',
+        **_missing_ldap_runtime_environment(tmp_path),
+    })
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            '-c',
+            (
+                'from app import create_app; '
+                'create_app(initialize_storage=False, start_runtime=False, '
+                'initialize_oidc=False)'
+            ),
+        ],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode != 0
+    assert 'LDAP secret file is unavailable' in result.stderr
+
+
+@pytest.mark.parametrize('flask_module', ('flask', 'flask.cli'))
+def test_factory_target_nonmaintenance_command_keeps_ldap_fail_fast(
+    tmp_path,
+    flask_module,
+):
+    data_dir = tmp_path / 'nonmaintenance-data'
+
+    result = _maintenance_cli(
+        data_dir,
+        'routes',
+        app_target='app:create_app',
+        flask_module=flask_module,
+        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    )
+
+    assert result.returncode != 0
+    assert 'LDAP secret file is unavailable' in result.stderr
+    assert not data_dir.exists()
+
+
+def test_skipped_ldap_runtime_validation_is_not_marked_ready(monkeypatch):
+    import app as app_module
+    import config
+
+    monkeypatch.setattr(config, 'LDAP_ENABLED', True)
+    monkeypatch.setattr(
+        app_module,
+        '_is_maintenance_cli_invocation',
+        lambda: True,
+    )
+
+    maintenance_app = app_module.create_app()
+
+    assert maintenance_app.extensions['maintenance_cli_invocation'] is True
+    assert maintenance_app.extensions['security_feature_readiness']['ldap'] == (
+        False,
+        'LDAP runtime validation did not complete.',
+    )
+
+
 def _admin(app, username):
     from app.models import User
 

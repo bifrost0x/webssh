@@ -99,6 +99,13 @@ docker compose ps
 curl -fsS http://localhost:5000/ready
 ```
 
+If an earlier image already created the `webssh_recovery` volume with a
+root-owned `/app/recovery` and startup now reports `Permission denied`, stop the
+service before repairing it. An empty recovery volume may be removed and
+recreated by Compose. Never remove a non-empty recovery volume during or after
+an interrupted restore; preserve its contents and have an administrator change
+the volume root to the image's `appuser` UID/GID with mode `0700` instead.
+
 Record the currently deployed immutable image digest before replacing it:
 
 ```bash

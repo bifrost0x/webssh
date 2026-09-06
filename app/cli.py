@@ -1,3 +1,4 @@
+import json
 import os
 import secrets
 import stat
@@ -238,6 +239,119 @@ def issue_factor_bootstrap(username, action):
     )
 
 
+@click.group('connection-store')
+def connection_store_cli():
+    """Inspect or reduce quarantined legacy connection stores offline."""
+
+
+def _connection_store_user(username):
+    from . import _initialize_persistent_storage
+
+    _initialize_persistent_storage(current_app._get_current_object())
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        raise click.ClickException('Account not found.')
+    return user
+
+
+@connection_store_cli.command('list')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--kind',
+    required=True,
+    type=click.Choice(('profiles', 'jump-hosts'), case_sensitive=True),
+)
+@click.option('--confirm-offline', is_flag=True)
+def connection_store_list(username, kind, confirm_offline):
+    """List bounded, non-secret record summaries for offline recovery."""
+    from . import jump_host_manager, profile_manager
+    from .backup_coordination import OperationBusyError, operation_lock
+    from .connection_storage_policy import ConnectionStorageLimitError
+    from .storage_errors import StorageCorruptionError
+
+    _require_offline_confirmation(confirm_offline)
+    try:
+        with operation_lock():
+            user = _connection_store_user(username)
+            if kind == 'profiles':
+                records, error = (
+                    profile_manager.load_profile_recovery_summaries(user.id)
+                )
+                if error:
+                    raise click.ClickException(error)
+            else:
+                records = (
+                    jump_host_manager.load_jump_host_recovery_summaries(
+                        user.id
+                    )
+                )
+            click.echo(json.dumps({
+                'count': len(records),
+                'kind': kind,
+                'records': records,
+            }, ensure_ascii=True, sort_keys=True))
+    except (
+        ConnectionStorageLimitError,
+        OperationBusyError,
+        StorageCorruptionError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@connection_store_cli.command('delete')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--kind',
+    required=True,
+    type=click.Choice(('profiles', 'jump-hosts'), case_sensitive=True),
+)
+@click.option('--selector', required=True, metavar='SELECTOR')
+@click.option('--confirm-offline', is_flag=True)
+def connection_store_delete(
+    username,
+    kind,
+    selector,
+    confirm_offline,
+):
+    """Delete one exact legacy record while WebSSH is stopped."""
+    from . import jump_host_manager, profile_manager
+    from .backup_coordination import OperationBusyError, operation_lock
+    from .storage_errors import StorageCorruptionError
+
+    _require_offline_confirmation(confirm_offline)
+    try:
+        with operation_lock():
+            user = _connection_store_user(username)
+            if kind == 'profiles':
+                deleted, error = (
+                    profile_manager.delete_profile_recovery_record(
+                        user.id,
+                        selector,
+                    )
+                )
+            else:
+                deleted, error, _usages = (
+                    jump_host_manager.delete_jump_host_recovery_record(
+                        user.id,
+                        selector,
+                    )
+                )
+            if not deleted:
+                raise click.ClickException(
+                    error or 'Record could not be deleted.'
+                )
+            _audit_operation(
+                'CONNECTION_STORE_RECOVERY_DELETE',
+                user=user.username,
+                kind=kind,
+                selector=selector,
+            )
+            label = 'profile' if kind == 'profiles' else 'jump-host'
+            click.echo(f'Deleted one {label} recovery record.')
+    except (OperationBusyError, StorageCorruptionError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 @click.group('backup')
 def backup_cli():
     """Create, verify, or restore WebSSH data backups."""
@@ -377,5 +491,6 @@ def rotate_secret_key(confirm_offline):
 def register_cli(app):
     app.cli.add_command(create_admin)
     app.cli.add_command(issue_factor_bootstrap)
+    app.cli.add_command(connection_store_cli)
     app.cli.add_command(backup_cli)
     app.cli.add_command(rotate_secret_key)
