@@ -14,6 +14,7 @@ from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_e
                               log_login_attempt, log_logout, log_registration, log_password_change)
 from .user_settings import (
     AUTHENTICATION_SESSION_DURATION_MINUTES,
+    DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
     get_user_settings,
     save_user_settings,
 )
@@ -815,7 +816,7 @@ def create_app(
             ),
             authentication_session_duration_minutes=settings.get(
                 'authentication_session_duration_minutes',
-                30,
+                DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
             ),
             is_admin=bool(current_user.is_admin),
         )

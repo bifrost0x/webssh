@@ -259,13 +259,14 @@ def _session_lifetime(remember, user_id=None):
     if remember:
         key = 'REMEMBER_COOKIE_DURATION'
     else:
-        key = 'PERMANENT_SESSION_LIFETIME'
+        from .user_settings import (
+            AUTHENTICATION_SESSION_DURATION_MINUTES,
+            DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+            get_user_settings,
+        )
+
         if user_id is not None:
             from .storage_errors import StorageCorruptionError
-            from .user_settings import (
-                AUTHENTICATION_SESSION_DURATION_MINUTES,
-                get_user_settings,
-            )
 
             try:
                 minutes = get_user_settings(user_id).get(
@@ -282,6 +283,9 @@ def _session_lifetime(remember, user_id=None):
                     and minutes in AUTHENTICATION_SESSION_DURATION_MINUTES
                 ):
                     return timedelta(minutes=minutes)
+        return timedelta(
+            minutes=DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES
+        )
     value = current_app.config.get(key, timedelta(minutes=30))
     if isinstance(value, timedelta):
         return value

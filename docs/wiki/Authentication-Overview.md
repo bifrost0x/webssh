@@ -49,6 +49,11 @@ hours under **Settings → Preferences → Sign-in session**. The selected durat
 applies to the next sign-in and remains an absolute limit from that successful
 authentication.
 
+Flask's signed session-cookie validation window covers the longest selectable
+duration, while the server-side authentication-session record remains the
+authoritative per-user expiry. A shorter selection therefore cannot be extended
+by retaining or replaying the signed browser cookie.
+
 Selecting **Remember me** at sign-in continues to use the separate seven-day
 remember duration. It is not changed by the personal normal-session setting.
 Longer normal sessions still retain server-side authentication records,

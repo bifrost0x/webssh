@@ -3,13 +3,16 @@ from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
 AUTHENTICATION_SESSION_DURATION_MINUTES = frozenset({30, 60, 120, 240, 480})
+DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
 
 DEFAULT_SETTINGS = {
     'theme': 'glass',
     'notepad': '',
     'confirm_session_close': False,
     'disconnect_session_action': 'retry',
-    'authentication_session_duration_minutes': 30,
+    'authentication_session_duration_minutes': (
+        DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES
+    ),
 }
 
 
