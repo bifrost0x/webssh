@@ -160,6 +160,9 @@ services:
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
       - SESSION_COOKIE_SECURE=false
+      # Keep online-restore rollback state durable and separate from DATA_DIR.
+      - BACKUP_TEMP_DIR=/app/recovery
+      - BACKUP_RECOVERY_DURABLE=true
       # Keep disabled until an administrator has been created with the CLI.
       - TAILSCALE_SSH_ENABLED=false
       # Leave empty to allow only existing WebSSH administrators.
@@ -169,10 +172,13 @@ services:
       - TAILSCALE_SSH_INTERFACE=tailscale0
     volumes:
       - webssh_data:/app/data
+      - webssh_recovery:/app/recovery
 
 volumes:
   tailscale_state:
   webssh_data:
+  webssh_recovery:
+    driver: local
 ```
 
 After the administrator bootstrap and allowlist configuration, enable the

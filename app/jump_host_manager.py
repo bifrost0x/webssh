@@ -85,6 +85,22 @@ def _valid_jump_host_document(value):
     )
 
 
+def _jump_host_migration_payload(path, document):
+    """Return a quota-safe exact migration payload, or keep it in memory."""
+    jump_hosts = document['jump_hosts']
+    try:
+        return enforce_store_transition(
+            path=path,
+            other_path=path.parent / 'profiles.json',
+            prospective_document=document,
+            prospective_count=len(jump_hosts),
+            previous_count=None,
+            maximum_count=config.JUMP_HOST_MAX_RECORDS,
+        )
+    except ConnectionStorageLimitError:
+        return None
+
+
 def _load_jump_hosts_with_lock_held(user_id):
     path = _get_file(user_id)
     if path is None:
@@ -94,6 +110,9 @@ def _load_jump_hosts_with_lock_held(user_id):
         'jump_hosts',
         lambda: {'jump_hosts': []},
         _valid_jump_host_document,
+        migration_payload_factory=lambda document: (
+            _jump_host_migration_payload(path, document)
+        ),
     )
     return data['jump_hosts']
 
@@ -115,8 +134,12 @@ def _load_jump_hosts_for_read_with_lock_held(user_id):
 
 def load_jump_hosts(user_id):
     """Load all jump hosts for a user."""
-    with storage_lock(f'jump_hosts:{user_id}'):
-        return _load_jump_hosts_for_read_with_lock_held(user_id)
+    # A read can persist a schema migration.  Coordinate it with profile and
+    # jump-host mutations so combined byte accounting cannot observe a stale
+    # sibling store before the migration replaces this file.
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'jump_hosts:{user_id}'):
+            return _load_jump_hosts_for_read_with_lock_held(user_id)
 
 
 def save_jump_hosts(

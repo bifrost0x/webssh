@@ -189,36 +189,56 @@ def enforce_store_transition(
     previous_document=None,
     compact=False,
 ):
-    """Return the exact approved payload for a prospective store transition."""
+    """Return the exact approved payload for a prospective store transition.
+
+    Ordinary writes retain the human-readable representation when it satisfies
+    every limit.  A compact representation is an exact fallback for stores
+    produced by recovery or another valid JSON writer; formatting alone must
+    not turn a safe shrink into a rejected or self-quarantining mutation.
+    """
     path = Path(path)
     current_size = _file_size(path)
     other_size = _file_size(other_path)
-    prospective_payload = _serialize_document(
-        prospective_document,
-        compact=compact,
-    )
-    prospective_size = len(prospective_payload)
-    previous_size = current_size
-    if previous_document is not None:
-        if not compact:
-            previous_size = max(
-                previous_size,
-                len(_serialize_document(previous_document, compact=False)),
-            )
-        if prospective_size > config.CONNECTION_STORE_RECOVERY_MAX_BYTES:
-            _error('one connection store would exceed its recovery byte limit')
-        if compact and prospective_size > current_size:
-            _error('recovery deletion would grow its connection store')
-    if prospective_count > maximum_count and prospective_count > previous_count:
+    if prospective_count > maximum_count and (
+        previous_count is None or prospective_count > previous_count
+    ):
         _error(f'more than {maximum_count} records are not allowed')
-    if (
-        prospective_size > config.CONNECTION_STORE_MAX_BYTES
-        and prospective_size > previous_size
-    ):
-        _error('one connection store would exceed its byte limit')
-    if (
-        prospective_size + other_size > config.CONNECTION_CONFIG_MAX_BYTES
-        and prospective_size + other_size > previous_size + other_size
-    ):
-        _error('combined connection data would exceed its byte limit')
-    return prospective_payload
+
+    require_no_growth = previous_document is not None
+    candidates = (True,) if compact else (False, True)
+    last_error = None
+    for compact_candidate in candidates:
+        prospective_payload = _serialize_document(
+            prospective_document,
+            compact=compact_candidate,
+        )
+        prospective_size = len(prospective_payload)
+        try:
+            if (
+                previous_document is not None
+                and prospective_size > config.CONNECTION_STORE_RECOVERY_MAX_BYTES
+            ):
+                _error(
+                    'one connection store would exceed its recovery byte limit'
+                )
+            if require_no_growth and prospective_size > current_size:
+                _error('recovery deletion would grow its connection store')
+            if (
+                prospective_size > config.CONNECTION_STORE_MAX_BYTES
+                and prospective_size > current_size
+            ):
+                _error('one connection store would exceed its byte limit')
+            if (
+                prospective_size + other_size
+                > config.CONNECTION_CONFIG_MAX_BYTES
+                and prospective_size > current_size
+            ):
+                _error('combined connection data would exceed its byte limit')
+        except ConnectionStorageLimitError as exc:
+            last_error = exc
+            continue
+        return prospective_payload
+
+    if last_error is not None:
+        raise last_error
+    _error('data is not serializable')

@@ -150,6 +150,62 @@ def test_normal_jump_host_delete_removes_only_first_duplicate_id(app):
         ] == ['Second']
 
 
+def test_normal_jump_host_delete_from_compact_limit_store_stays_readable(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import jump_host_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = _create_user(app)
+    jump_hosts = [
+        {
+            'id': str(index),
+            'name': 'x',
+            'host': 'b.example',
+            'port': 22,
+            'username': 'u',
+            'auth_type': 'password',
+        }
+        for index in range(30)
+    ]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+        'jump_hosts': jump_hosts,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+    assert len(original) == 2725
+
+    with app.app_context():
+        path = jump_host_manager._get_file(user_id)
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(original),
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original),
+        )
+
+        assert jump_host_manager.delete_jump_host(
+            user_id,
+            jump_hosts[-1]['id'],
+        ) == (True, None, [])
+
+        expected = json.dumps({
+            **document,
+            'jump_hosts': jump_hosts[:-1],
+        }, separators=(',', ':')).encode('utf-8')
+        assert path.read_bytes() == expected
+        assert len(expected) < len(original)
+        assert jump_host_manager.load_jump_hosts(user_id) == jump_hosts[:-1]
+
+
 def test_jump_host_delete_and_stale_profile_edit_are_serialized(app, monkeypatch):
     from app import jump_host_manager, profile_manager
 

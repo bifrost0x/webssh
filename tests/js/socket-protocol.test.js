@@ -22,10 +22,51 @@ function createStorage() {
     };
 }
 
+function createElement(tagName = 'div') {
+    const listeners = new Map();
+    const classes = new Set();
+    const element = {
+        tagName: tagName.toUpperCase(),
+        children: [],
+        className: '',
+        textContent: '',
+        classList: {
+            add(...names) {
+                names.forEach(name => classes.add(name));
+            },
+            contains(name) {
+                return classes.has(name);
+            },
+        },
+        addEventListener(event, handler) {
+            listeners.set(event, handler);
+        },
+        appendChild(child) {
+            child.parentNode = element;
+            element.children.push(child);
+            return child;
+        },
+        click() {
+            listeners.get('click')?.();
+        },
+        remove() {
+            if (!element.parentNode) return;
+            const siblings = element.parentNode.children;
+            const index = siblings.indexOf(element);
+            if (index !== -1) siblings.splice(index, 1);
+            element.parentNode = null;
+        },
+        setAttribute() {},
+    };
+    return element;
+}
+
 function loadAppSocketHarness() {
     const handlers = new Map();
+    const windowHandlers = new Map();
     const emitted = [];
-    const state = { disconnects: 0, reloads: 0 };
+    const notificationContainer = createElement('div');
+    const state = { disconnects: 0, reloads: 0, unloads: [] };
     const socket = {
         connected: true,
         disconnect() {
@@ -40,7 +81,12 @@ function loadAppSocketHarness() {
         },
     };
     const browserGlobal = {
-        addEventListener() {},
+        addEventListener(event, handler) {
+            windowHandlers.set(event, [
+                ...(windowHandlers.get(event) || []),
+                handler,
+            ]);
+        },
         clearInterval() {},
         clearTimeout() {},
         console: { error() {}, log() {} },
@@ -49,6 +95,12 @@ function loadAppSocketHarness() {
         },
         document: {
             addEventListener() {},
+            createElement,
+            getElementById(id) {
+                return id === 'notificationContainer'
+                    ? notificationContainer
+                    : null;
+            },
             querySelector(selector) {
                 return selector === 'meta[name="app-root"]'
                     ? { content: '' }
@@ -59,8 +111,22 @@ function loadAppSocketHarness() {
         location: {
             reload() {
                 state.reloads += 1;
+                const event = {
+                    defaultPrevented: false,
+                    preventDefault() {
+                        event.defaultPrevented = true;
+                    },
+                };
+                for (const handler of windowHandlers.get('beforeunload') || []) {
+                    handler(event);
+                }
+                state.unloads.push({
+                    prevented: event.defaultPrevented,
+                    returnValue: event.returnValue,
+                });
             },
         },
+        SessionManager: { sessions: {} },
         sessionStorage: createStorage(),
         setInterval: () => 1,
         setTimeout: () => 1,
@@ -78,7 +144,14 @@ function loadAppSocketHarness() {
             context,
         );
     }
-    return { emitted, handlers, state };
+    return {
+        browserGlobal,
+        emitted,
+        handlers,
+        notificationContainer,
+        state,
+        windowHandlers,
+    };
 }
 
 test('browser and server use the same hardcoded socket wire revision', () => {
@@ -134,6 +207,77 @@ test('app requests notepad only from a server with the exact revision', () => {
     assert.equal(current.state.disconnects, 0);
     assert.equal(current.state.reloads, 0);
     assert.equal(current.emitted.filter(event => event === 'get_notepad').length, 1);
+});
+
+test('protocol reload bypasses the active-session unload warning exactly once', () => {
+    const harness = loadAppSocketHarness();
+    harness.browserGlobal.SessionManager.sessions = {
+        active: { connected: true },
+    };
+
+    harness.handlers.get('connected')({
+        status: 'success',
+        username: 'old',
+        wire_revision: SocketProtocol.WIRE_REVISION - 1,
+    });
+
+    assert.equal(harness.state.disconnects, 1);
+    assert.equal(harness.state.reloads, 1);
+    assert.equal(harness.state.unloads[0].prevented, false);
+    assert.equal(harness.state.unloads[0].returnValue, undefined);
+    const beforeUnload = harness.windowHandlers.get('beforeunload')?.at(-1);
+    assert.equal(typeof beforeUnload, 'function');
+
+    let normalPrevented = 0;
+    const normalEvent = {
+        preventDefault() { normalPrevented += 1; },
+    };
+    const warning = beforeUnload(normalEvent);
+    assert.equal(normalPrevented, 1);
+    assert.equal(normalEvent.returnValue, warning);
+    assert.match(warning, /active SSH sessions/);
+
+    const appSource = fs.readFileSync(
+        path.join(ROOT, 'static', 'js', 'app.js'),
+        'utf8',
+    );
+    assert.match(appSource, /reload: reloadForSocketProtocolMismatch/);
+    assert.match(appSource, /onClick: reloadForSocketProtocolMismatch/);
+});
+
+test('cancelled dirty-editor reload keeps the protocol recovery action', () => {
+    const harness = loadAppSocketHarness();
+    harness.browserGlobal.SessionManager.sessions = {
+        active: { connected: true },
+    };
+    harness.browserGlobal.addEventListener('beforeunload', (event) => {
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
+    harness.handlers.get('connected')({
+        status: 'success',
+        username: 'old',
+        wire_revision: SocketProtocol.WIRE_REVISION - 1,
+    });
+
+    assert.equal(harness.state.disconnects, 1);
+    assert.equal(harness.state.reloads, 1);
+    assert.equal(harness.state.unloads[0].prevented, true);
+    assert.equal(harness.notificationContainer.children.length, 1);
+
+    const notification = harness.notificationContainer.children[0];
+    const action = notification.children.find(
+        child => child.tagName === 'BUTTON',
+    );
+    assert.ok(action);
+
+    action.click();
+
+    assert.equal(harness.state.reloads, 2);
+    assert.equal(harness.state.unloads[1].prevented, true);
+    assert.equal(harness.notificationContainer.children.length, 1);
+    assert.equal(notification.classList.contains('fade-out'), false);
 });
 
 test('unrelated connection errors do not trigger a protocol reload', () => {
@@ -207,7 +351,11 @@ test('mismatch reloads once then requires a persistent manual reload', () => {
     );
     assert.match(
         appSource,
-        /showManualReload:[\s\S]+persistent: true,[\s\S]+connection\.reloadPage/,
+        /function showSocketProtocolReloadNotice\(\)[\s\S]+persistent: true,[\s\S]+connection\.reloadPage/,
+    );
+    assert.match(
+        appSource,
+        /showManualReload: showSocketProtocolReloadNotice/,
     );
 });
 

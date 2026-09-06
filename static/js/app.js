@@ -23,6 +23,35 @@
         window.socket
     );
 
+    let socketProtocolReloadPending = false;
+
+    function reloadForSocketProtocolMismatch() {
+        socketProtocolReloadPending = true;
+        showSocketProtocolReloadNotice();
+        window.location.reload();
+    }
+
+    window.addEventListener('beforeunload', (event) => {
+        if (socketProtocolReloadPending) {
+            socketProtocolReloadPending = false;
+            return;
+        }
+        const activeSessions = Object.values(SessionManager.sessions).filter(
+            session => session.connected
+        );
+        if (activeSessions.length > 0) {
+            const message = window.i18n
+                ? window.i18n.t(
+                    'session.closeWarning',
+                    'You have active SSH sessions. They will be closed.',
+                )
+                : 'You have active SSH sessions. They will be closed.';
+            event.preventDefault();
+            event.returnValue = message;
+            return message;
+        }
+    });
+
     window.escapeHtml = function(text) {
         if (!text) return '';
         const div = document.createElement('div');
@@ -72,7 +101,9 @@
                     try {
                         presentation.action.onClick();
                     } finally {
-                        dismiss();
+                        if (presentation.action.dismissOnClick !== false) {
+                            dismiss();
+                        }
                     }
                 });
             } else {
@@ -91,6 +122,30 @@
         return dismiss;
     };
 
+    let socketProtocolReloadNoticeVisible = false;
+
+    function showSocketProtocolReloadNotice() {
+        if (socketProtocolReloadNoticeVisible) return;
+        socketProtocolReloadNoticeVisible = true;
+        showNotification({
+            message: window.i18n
+                ? i18n.t('connection.reloadRequired')
+                : 'WebSSH was updated. Reload this page to continue.',
+            type: 'error',
+            persistent: true,
+            onDismiss: () => {
+                socketProtocolReloadNoticeVisible = false;
+            },
+            action: {
+                label: window.i18n
+                    ? i18n.t('connection.reloadPage')
+                    : 'Reload page',
+                onClick: reloadForSocketProtocolMismatch,
+                dismissOnClick: false,
+            },
+        });
+    }
+
     let socketProtocolStorage = null;
     try {
         socketProtocolStorage = window.sessionStorage;
@@ -100,20 +155,8 @@
     const socketProtocolMismatch = socketProtocol.createMismatchController({
         storage: socketProtocolStorage,
         disconnect: () => window.socket?.disconnect(),
-        reload: () => window.location.reload(),
-        showManualReload: () => showNotification({
-            message: window.i18n
-                ? i18n.t('connection.reloadRequired')
-                : 'WebSSH was updated. Reload this page to continue.',
-            type: 'error',
-            persistent: true,
-            action: {
-                label: window.i18n
-                    ? i18n.t('connection.reloadPage')
-                    : 'Reload page',
-                onClick: () => window.location.reload(),
-            },
-        }),
+        reload: reloadForSocketProtocolMismatch,
+        showManualReload: showSocketProtocolReloadNotice,
     });
     socket.on(socketProtocol.MISMATCH_EVENT, data => {
         socketProtocolMismatch.handleMismatch(data);
@@ -2690,18 +2733,6 @@
 
         document.getElementById('closeCommandPaletteModal')?.addEventListener('click', () => {
             window.ModalManager.close(document.getElementById('commandPaletteModal'));
-        });
-
-        window.addEventListener('beforeunload', (e) => {
-            const activeSessions = Object.values(SessionManager.sessions).filter(s => s.connected);
-            if (activeSessions.length > 0) {
-                const message = window.i18n
-                    ? window.i18n.t('session.closeWarning', 'You have active SSH sessions. They will be closed.')
-                    : 'You have active SSH sessions. They will be closed.';
-                e.preventDefault();
-                e.returnValue = message;
-                return message;
-            }
         });
 
     });

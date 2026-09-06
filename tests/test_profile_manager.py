@@ -1164,6 +1164,134 @@ def test_normal_profile_delete_removes_only_first_duplicate_id(app):
         ]
 
 
+def test_normal_profile_delete_from_compact_limit_store_stays_readable(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'compact-profile-delete')
+    profiles = [
+        {'id': str(index), 'name': 'x'}
+        for index in range(50)
+    ]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+        'profiles': profiles,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(original),
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original),
+        )
+
+        assert profile_manager.delete_profile(
+            user_id,
+            profiles[-1]['id'],
+        ) == (True, None)
+
+        expected = json.dumps({
+            **document,
+            'profiles': profiles[:-1],
+        }, separators=(',', ':')).encode('utf-8')
+        assert path.read_bytes() == expected
+        assert len(expected) < len(original)
+        assert profile_manager.load_profiles(user_id) == profiles[:-1]
+
+
+def test_profile_shrink_uses_compact_fallback_at_combined_cap(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'compact-profile-update')
+    profiles = [
+        {
+            'id': f'profile-{index}',
+            'name': 'x' * 128,
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'key_id': None,
+            'startup_mode': 'none',
+            'created_at': '2026-01-01T00:00:00.000000+00:00',
+            'updated_at': '2026-01-01T00:00:00.000000+00:00',
+            'sort_order': index,
+        }
+        for index in range(20)
+    ]
+    profile = profiles[0]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+        'profiles': profiles,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+    jump_document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+        'jump_hosts': [],
+    }
+    jump_bytes = json.dumps(
+        jump_document,
+        separators=(',', ':'),
+    ).encode('utf-8')
+
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(original)
+        (path.parent / 'jump_hosts.json').write_bytes(jump_bytes)
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 100_000)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original) + len(jump_bytes),
+        )
+
+        updated, error = profile_manager.upsert_profile(user_id, {
+            'id': profile['id'],
+            'name': 'Short',
+            'host': profile['host'],
+            'port': profile['port'],
+            'username': profile['username'],
+            'auth_type': profile['auth_type'],
+        })
+
+        assert error is None
+        assert updated['name'] == 'Short'
+        persisted = path.read_bytes()
+        persisted_document = json.loads(persisted.decode('utf-8'))
+        assert persisted == json.dumps(
+            persisted_document,
+            separators=(',', ':'),
+        ).encode('utf-8')
+        assert len(persisted) < len(original)
+        assert len(persisted) + len(jump_bytes) <= (
+            config.CONNECTION_CONFIG_MAX_BYTES
+        )
+        reloaded = profile_manager.load_profiles(user_id)
+        assert reloaded[0] == updated
+        assert [item['id'] for item in reloaded[1:]] == [
+            item['id'] for item in profiles[1:]
+        ]
+
+
 def test_profile_recovery_ceiling_rejects_before_json_load(app, monkeypatch):
     import config
     from app import profile_manager

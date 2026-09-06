@@ -165,6 +165,22 @@ _PROFILE_FIELDS = {
 }
 
 
+def _profile_migration_payload(profiles_file, document):
+    """Return a quota-safe exact migration payload, or keep it in memory."""
+    profiles = document['profiles']
+    try:
+        return enforce_store_transition(
+            path=profiles_file,
+            other_path=profiles_file.parent / 'jump_hosts.json',
+            prospective_document=document,
+            prospective_count=len(profiles),
+            previous_count=None,
+            maximum_count=config.PROFILE_MAX_RECORDS,
+        )
+    except ConnectionStorageLimitError:
+        return None
+
+
 def _load_profiles_with_lock_held(user_id):
     profiles_file = get_user_profiles_file(user_id)
     if profiles_file is None:
@@ -174,6 +190,9 @@ def _load_profiles_with_lock_held(user_id):
         'profiles',
         lambda: {'profiles': []},
         _valid_profile_document,
+        migration_payload_factory=lambda document: (
+            _profile_migration_payload(profiles_file, document)
+        ),
     )
     return data['profiles']
 
@@ -195,8 +214,12 @@ def _load_profiles_for_read_with_lock_held(user_id):
 
 def load_profiles(user_id):
     """Load all connection profiles for a specific user."""
-    with storage_lock(f'profiles:{user_id}'):
-        return _load_profiles_for_read_with_lock_held(user_id)
+    # A read can persist a schema migration.  Hold the same coordinator used
+    # by normal profile and jump-host mutations so the sibling-store size check
+    # and the eventual migration write are one cross-store quota transaction.
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            return _load_profiles_for_read_with_lock_held(user_id)
 
 
 def _load_profiles_for_write(user_id):

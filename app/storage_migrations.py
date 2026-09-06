@@ -9,7 +9,11 @@ from typing import Callable
 import uuid
 
 from .storage_errors import StorageCorruptionError
-from .storage_utils import atomic_write_json, fsync_parent_directory
+from .storage_utils import (
+    atomic_write_bytes,
+    atomic_write_json,
+    fsync_parent_directory,
+)
 
 
 CURRENT_STORAGE_VERSIONS = {
@@ -195,13 +199,16 @@ def migrate_file(
     *,
     persist_migration: bool = True,
     pre_migration_check: Callable[[object], None] | None = None,
+    migration_payload_factory: Callable[[object], bytes | None] | None = None,
 ) -> object:
     """Load and validate one file, optionally persisting its migration.
 
     A default is used only when the initial file open raises
     ``FileNotFoundError``. Any later disappearance or other filesystem error
     fails closed. ``pre_migration_check`` runs after decoding but before the
-    migration copies or transforms the document.
+    migration copies or transforms the document.  A payload factory may return
+    exact approved bytes or ``None`` to keep a safe migration in memory when no
+    persisted representation satisfies the caller's storage policy.
     """
     path = Path(path)
     source_missing = False
@@ -244,6 +251,17 @@ def migrate_file(
     if source_missing or not changed or not persist_migration:
         return migrated
 
+    migration_payload = None
+    if migration_payload_factory is not None:
+        migration_payload = migration_payload_factory(migrated)
+        if migration_payload is None:
+            return migrated
+        if not isinstance(migration_payload, bytes):
+            raise TypeError('migration payload factory must return bytes or None')
+
     backup_before_migration(path)
-    atomic_write_json(path, migrated)
+    if migration_payload_factory is None:
+        atomic_write_json(path, migrated)
+    else:
+        atomic_write_bytes(path, migration_payload)
     return migrated

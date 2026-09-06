@@ -120,6 +120,8 @@ services:
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
       - SESSION_COOKIE_SECURE=false
+      - BACKUP_TEMP_DIR=/app/recovery
+      - BACKUP_RECOVERY_DURABLE=true
       - TAILSCALE_SSH_ENABLED=false
       - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=
       - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server
@@ -127,10 +129,13 @@ services:
       - TAILSCALE_SSH_INTERFACE=tailscale0
     volumes:
       - webssh_data:/app/data
+      - webssh_recovery:/app/recovery
 
 volumes:
   tailscale_state:
   webssh_data:
+  webssh_recovery:
+    driver: local
 ```
 
 The example starts with Tailscale SSH disabled.

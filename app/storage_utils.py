@@ -133,6 +133,7 @@ def load_json_migrated(
     *,
     persist_migration: bool = True,
     pre_migration_check: Callable[[object], None] | None = None,
+    migration_payload_factory: Callable[[object], bytes | None] | None = None,
 ) -> T:
     """Load a current document, optionally migrating a legacy file in place.
 
@@ -149,6 +150,7 @@ def load_json_migrated(
         default_factory=default_factory,
         persist_migration=persist_migration,
         pre_migration_check=pre_migration_check,
+        migration_payload_factory=migration_payload_factory,
     )
 
 
