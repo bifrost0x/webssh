@@ -1,5 +1,8 @@
 """GitHub login, linking, provisioning, and admin API tests."""
 
+import base64
+import re
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 from tests.step_up_helpers import (
@@ -274,7 +277,7 @@ def test_org_rejection_fails_closed(app, client, monkeypatch):
     assert response.get_json()['error'] == 'GitHub organization membership is required'
 
 
-def test_github_step_up_start_is_rate_limited_per_user_and_ip(
+def test_github_step_up_start_rejects_ambient_provider_session(
     app, client, monkeypatch,
 ):
     from app.models import GitHubIdentity, GitHubOAuthState, db
@@ -295,16 +298,19 @@ def test_github_step_up_start_is_rate_limited_per_user_and_ip(
     intent_response = client.post('/api/account/step-up/intents', json={
         'action': 'github.unlink', 'target': user_id,
     })
-    intent = intent_response.get_json()['intent']
+    assert intent_response.status_code == 403
+    assert intent_response.get_json()['code'] == 'step_up_failed'
 
-    responses = [client.post('/api/account/step-up/github/start', json={
-        'intent': intent, 'continuation': '/security',
-    }) for _ in range(6)]
+    response = client.post('/api/account/step-up/github/start', json={
+        'intent': 'untrusted', 'continuation': '/security',
+    })
 
-    assert [response.status_code for response in responses] == [200] * 5 + [429]
-    assert responses[-1].headers['Retry-After'] == '60'
+    assert response.status_code == 403
+    assert response.get_json() == {
+        'error': 'Step-up authentication failed'
+    }
     with app.app_context():
-        assert GitHubOAuthState.query.count() == 5
+        assert GitHubOAuthState.query.count() == 0
 
 
 def test_github_provisioned_account_cannot_fall_back_to_local_password(app):
@@ -356,3 +362,135 @@ def test_unlink_refuses_to_remove_managed_accounts_only_primary(
 
     assert response.status_code == 409
     assert 'passkey' in response.get_json()['error'].lower()
+
+
+def test_operator_code_bootstraps_first_passkey_then_allows_github_unlink(
+    app,
+    client,
+    monkeypatch,
+):
+    import config
+    import app.account_step_up_routes as account_routes
+    import app.webauthn_routes as webauthn_routes
+    from app.models import (
+        FactorBootstrapToken,
+        GitHubIdentity,
+        WebAuthnCredential,
+        db,
+    )
+
+    admin_id = _create_user(app, 'bootstrap_break_glass', is_admin=True)
+    _configure(app, admin_id, auto_provision=True)
+    monkeypatch.setattr(config, 'WEBAUTHN_ENABLED', True)
+    monkeypatch.setattr(config, 'WEBAUTHN_RP_ID', 'localhost')
+    monkeypatch.setattr(config, 'WEBAUTHN_RP_NAME', 'WebSSH Test')
+    monkeypatch.setattr(config, 'WEBAUTHN_ORIGIN', 'https://localhost')
+    app.extensions['security_feature_readiness']['passkey'] = (True, None)
+    state = _begin_login(client)
+    _provider(monkeypatch, user_id='9292', login='bootstrap-managed')
+    assert client.get(
+        f'/auth/github/callback?code=code&state={state}'
+    ).status_code == 302
+    with app.app_context():
+        identity = GitHubIdentity.query.filter_by(
+            github_user_id='9292'
+        ).one()
+        user_id = identity.user_id
+        username = identity.user.username
+
+    issued = app.test_cli_runner().invoke(args=[
+        'issue-factor-bootstrap',
+        '--username', username,
+        '--action', 'passkey.enroll',
+    ])
+    assert issued.exit_code == 0, issued.output
+    match = re.search(r'^Enrollment code: (\S+)$', issued.output, re.MULTILINE)
+    assert match is not None
+    enrollment_code = match.group(1)
+    with app.app_context():
+        row = FactorBootstrapToken.query.one()
+        assert enrollment_code not in row.token_hash
+        assert row.action == 'passkey.enroll'
+
+    started = client.post('/api/account/step-up/intents', json={
+        'action': 'passkey.enroll',
+        'target': user_id,
+    })
+    assert started.status_code == 200
+    intent = started.get_json()['intent']
+    assert started.get_json()['methods'] == ['bootstrap']
+    rejected = client.post('/api/account/step-up/bootstrap', json={
+        'intent': intent,
+        'code': 'x' * 43,
+    })
+    assert rejected.status_code == 403
+    redeemed = client.post('/api/account/step-up/bootstrap', json={
+        'intent': intent,
+        'code': enrollment_code,
+    })
+    assert redeemed.status_code == 200
+    assert redeemed.get_json()['method'] == 'bootstrap'
+    repeated = client.post('/api/account/step-up/bootstrap', json={
+        'intent': intent,
+        'code': enrollment_code,
+    })
+    assert repeated.status_code == 403
+
+    options = client.post(
+        '/api/webauthn/register/options',
+        json={},
+        headers={
+            'X-WebSSH-Step-Up': redeemed.get_json()['grant'],
+        },
+    )
+    assert options.status_code == 200
+    monkeypatch.setattr(
+        webauthn_routes,
+        'verify_registration_response',
+        lambda **_kwargs: SimpleNamespace(
+            credential_id=b'bootstrap-passkey',
+            credential_public_key=b'public-key',
+            sign_count=0,
+        ),
+    )
+    registered = client.post('/api/webauthn/register/verify', json={
+        'ceremony': options.get_json()['ceremony'],
+        'credential': {'id': 'browser-credential', 'response': {}},
+        'name': 'Bootstrap passkey',
+    })
+    assert registered.status_code == 201
+
+    unlink_intent = client.post('/api/account/step-up/intents', json={
+        'action': 'github.unlink',
+        'target': user_id,
+    })
+    assert unlink_intent.status_code == 200
+    assert unlink_intent.get_json()['methods'] == ['passkey']
+    unlink_token = unlink_intent.get_json()['intent']
+    passkey_options = client.post(
+        '/api/account/step-up/passkey/options',
+        json={'intent': unlink_token},
+    )
+    assert passkey_options.status_code == 200
+    monkeypatch.setattr(
+        account_routes,
+        'verify_authentication_response',
+        lambda **kwargs: SimpleNamespace(
+            new_sign_count=kwargs['credential_current_sign_count'] + 1
+        ),
+    )
+    encoded_id = base64.urlsafe_b64encode(
+        b'bootstrap-passkey'
+    ).decode().rstrip('=')
+    confirmed = client.post('/api/account/step-up/passkey/verify', json={
+        'intent': unlink_token,
+        'credential': {'id': encoded_id},
+    })
+    assert confirmed.status_code == 200
+    unlinked = client.delete('/api/account/github', headers={
+        'X-WebSSH-Step-Up': confirmed.get_json()['grant'],
+    })
+    assert unlinked.status_code == 200
+    with app.app_context():
+        assert GitHubIdentity.query.filter_by(user_id=user_id).first() is None
+        assert WebAuthnCredential.query.filter_by(user_id=user_id).count() == 1

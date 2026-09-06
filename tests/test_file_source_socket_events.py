@@ -13,6 +13,13 @@ from app.file_sources import (
 )
 
 
+@pytest.fixture(autouse=True)
+def reset_file_control_budget_state():
+    socket_events._file_control_budgets.clear()
+    yield
+    socket_events._file_control_budgets.clear()
+
+
 class ListingBackend:
     def __init__(self):
         self.calls = []
@@ -52,6 +59,234 @@ def capture(monkeypatch):
     return emitted, SimpleNamespace(id=7, username='operator')
 
 
+def test_file_control_fields_are_bounded_before_resolution_or_reflection(
+    monkeypatch,
+):
+    import config
+
+    monkeypatch.setattr(config, 'FILE_CONTROL_MAX_PATH_BYTES', 8)
+    payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'left:directory:4',
+        'remote_path': '/too-long',
+    }
+
+    identity = socket_events._file_request_identity(payload, user_id=7)
+
+    assert identity == {
+        'source_id': None,
+        'request_id': 'left:directory:4',
+    }
+    assert payload['remote_path'] is None
+
+
+def test_file_control_metadata_has_a_token_bucket_per_user(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10)
+    socket_events._file_control_budgets.clear()
+
+    assert socket_events._consume_file_control_budget(7, 6, now=10) is True
+    assert socket_events._consume_file_control_budget(7, 5, now=11) is False
+    assert socket_events._consume_file_control_budget(8, 5, now=11) is True
+    assert socket_events._consume_file_control_budget(7, 5, now=71) is True
+
+
+def test_file_control_budget_state_is_constant_size_under_event_spam(
+    monkeypatch,
+):
+    import config
+
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10_000)
+    socket_events._file_control_budgets.clear()
+
+    for index in range(1000):
+        assert socket_events._consume_file_control_budget(
+            7, 1, now=index / 1000
+        ) is True
+
+    assert list(socket_events._file_control_budgets) == [7]
+    state = socket_events._file_control_budgets[7]
+    assert isinstance(state, tuple)
+    assert len(state) == 2
+
+
+def test_empty_file_control_budget_rejects_before_payload_walk(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 256)
+    monkeypatch.setattr(socket_events.time, 'monotonic', lambda: 10.0)
+    assert socket_events._consume_file_control_budget(
+        7, 256, now=10.0
+    ) is True
+    monkeypatch.setattr(
+        socket_events,
+        '_file_control_payload_cost',
+        lambda *_args, **_kwargs: pytest.fail(
+            'empty budget still walked attacker payload'
+        ),
+    )
+    payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'list:drained',
+        'unknown': 'A' * 10_000,
+    }
+
+    identity = socket_events._file_request_identity(payload, user_id=7)
+
+    assert identity == {'source_id': None, 'request_id': 'list:drained'}
+
+
+def test_insufficient_file_control_budget_is_exhausted(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 1000)
+    assert socket_events._consume_file_control_budget(
+        7, 900, now=10.0
+    ) is True
+    assert socket_events._consume_file_control_budget(
+        7, 200, now=10.0
+    ) is False
+    assert socket_events._file_control_budgets[7] == (0.0, 10.0)
+
+
+def test_oversized_file_control_key_is_rejected_without_utf8_copy(
+    monkeypatch,
+):
+    import config
+
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 100)
+
+    assert socket_events._file_control_payload_cost({
+        'k' * 10_000: 'value',
+    }) == 101
+
+
+def test_cancel_transfer_rejects_oversized_identifier_before_lookup(
+    monkeypatch,
+):
+    calls = []
+    monkeypatch.setattr(
+        socket_events.transfer_manager,
+        'cancel_with_result',
+        lambda transfer_id, user_id: calls.append((transfer_id, user_id)),
+    )
+
+    user = SimpleNamespace(id=17)
+    result = socket_events.handle_cancel_transfer.__wrapped__(
+        {'transfer_id': 'x' * 129},
+        current_user=user,
+    )
+
+    assert result == {'success': False, 'state': 'unavailable'}
+    assert calls == []
+
+
+def test_file_source_disconnect_does_not_reflect_oversized_identifier(
+    monkeypatch,
+):
+    emitted, user = capture(monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        socket_events.connection_pool.temp_connection_pool,
+        'request_close',
+        lambda *args: calls.append(args),
+    )
+
+    socket_events.handle_file_source_disconnect.__wrapped__(
+        {'source_id': 'sftp-session:' + ('x' * 200)},
+        current_user=user,
+    )
+
+    assert calls == []
+    assert emitted == [('error', {
+        'error': 'File source unavailable',
+        'code': 'SOURCE_UNAVAILABLE',
+        'source_id': None,
+    })]
+
+
+def test_unknown_file_control_metadata_is_charged_and_not_reflected(
+    monkeypatch,
+):
+    import config
+
+    emitted, user = capture(monkeypatch)
+    socket_events._file_control_budgets.clear()
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 100)
+
+    class RejectBackendCall:
+        def list_directory_page(self, *_args, **_kwargs):
+            raise AssertionError('oversized metadata reached the backend')
+
+    monkeypatch.setattr(socket_events, 'file_service', RejectBackendCall())
+    socket_events.handle_list_directory.__wrapped__({
+        'source_id': 'sftp-session:owned',
+        'request_id': 'list:1',
+        'remote_path': '/',
+        'content': 'A' * 101,
+    }, current_user=user)
+
+    assert emitted == [('error', {
+        'error': 'Source ID and request ID required',
+        'operation': 'list_directory',
+        'source_id': None,
+        'request_id': 'list:1',
+        'path': '/',
+    })]
+    assert 'content' not in repr(emitted)
+
+
+@pytest.mark.parametrize(
+    'content',
+    (
+        pytest.param('A' * 17, id='ascii-character-overflow'),
+        pytest.param('\U0001f600' * 5, id='multibyte-byte-overflow'),
+    ),
+)
+def test_editor_content_byte_overflow_is_rejected_before_full_encode_or_backend(
+    app,
+    monkeypatch,
+    content,
+):
+    import config
+
+    class NoFullEncode(str):
+        def encode(self, *_args, **_kwargs):
+            raise AssertionError('oversized editor body reached full encode')
+
+    emitted, user = capture(monkeypatch)
+    socket_events._file_control_budgets.clear()
+    monkeypatch.setattr(config, 'MAX_EDITOR_FILE_SIZE', 16)
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 1024)
+    monkeypatch.setattr(
+        socket_events,
+        'file_service',
+        SimpleNamespace(
+            resolve=lambda *_args, **_kwargs: pytest.fail(
+                'oversized editor body reached backend resolution'
+            )
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        socket_events.handle_save_file.__wrapped__({
+            'source_id': 'sftp-session:owned',
+            'request_id': 'save:oversized',
+            'path': '/note.txt',
+            'content': NoFullEncode(content),
+        }, current_user=user)
+
+    assert emitted == [('error', {
+        'error': 'Missing required fields for save',
+        'operation': 'save_file',
+        'source_id': None,
+        'request_id': 'save:oversized',
+        'path': '/note.txt',
+    })]
+    assert socket_events._file_control_budgets[user.id][0] == 0.0
+
+
 def test_list_directory_accepts_source_id_and_uses_file_service(monkeypatch):
     emitted, user = capture(monkeypatch)
     backend = ListingBackend()
@@ -77,6 +312,8 @@ def test_list_directory_accepts_source_id_and_uses_file_service(monkeypatch):
         'path': '/srv/current',
         'files': [{'name': 'config.yml'}],
         'request_id': 'left:directory:4',
+        'cursor': 0,
+        'next_cursor': None,
     })]
 
 

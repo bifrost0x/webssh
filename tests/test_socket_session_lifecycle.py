@@ -157,6 +157,45 @@ def test_socket_connect_is_rejected_while_runtime_is_shutting_down(
         assert SocketSession.query.filter_by(user_id=user_id).count() == 0
 
 
+def test_socket_connect_rejects_restore_maintenance_before_authentication(
+        app, monkeypatch):
+    from app import maintenance_mode, socket_events
+
+    username = 'maintenance_connect_user'
+    with app.app_context():
+        user, error = register_user(username, 'socket-password-123')
+        assert error is None
+        user_id = user.id
+
+    http_client = _logged_in_http_client(app, username)
+    monkeypatch.setattr(maintenance_mode, 'is_active', lambda: True)
+    for name in ('load_user', 'register_socket_session'):
+        monkeypatch.setattr(
+            socket_events,
+            name,
+            lambda *_args, _name=name, **_kwargs: pytest.fail(
+                f'maintenance socket reached {_name}'
+            ),
+        )
+    monkeypatch.setattr(
+        socket_events,
+        'restore_user_sessions',
+        lambda *_args, **_kwargs: pytest.fail(
+            'maintenance socket restored persisted sessions'
+        ),
+    )
+
+    socket_client = socketio.test_client(
+        app,
+        flask_test_client=http_client,
+    )
+
+    assert not socket_client.is_connected()
+    with app.app_context():
+        from app.models import SocketSession
+        assert SocketSession.query.filter_by(user_id=user_id).count() == 0
+
+
 def test_locked_user_disconnect_still_cancels_owned_transfers(app, monkeypatch):
     from app import socket_events
     from app.models import User, db

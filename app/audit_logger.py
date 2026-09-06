@@ -2,6 +2,7 @@ import logging
 import json
 import sys
 from collections.abc import Mapping
+from itertools import islice
 from threading import RLock
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -203,7 +204,7 @@ def log_info(message, **kwargs):
         record = logging.LogRecord(
             'webssh', logging.INFO, '', 0, safe_message, (), None
         )
-        record.extra_data = kwargs
+        record.extra_data = _sanitize_structured_log_data(kwargs)
         app_logger.handle(record)
     else:
         app_logger.info(safe_message)
@@ -215,7 +216,7 @@ def log_warning(message, **kwargs):
         record = logging.LogRecord(
             'webssh', logging.WARNING, '', 0, safe_message, (), None
         )
-        record.extra_data = kwargs
+        record.extra_data = _sanitize_structured_log_data(kwargs)
         app_logger.handle(record)
     else:
         app_logger.warning(safe_message)
@@ -227,7 +228,7 @@ def log_error(message, exc_info=False, **kwargs):
         record = logging.LogRecord(
             'webssh', logging.ERROR, '', 0, safe_message, (), None
         )
-        record.extra_data = kwargs
+        record.extra_data = _sanitize_structured_log_data(kwargs)
         if exc_info:
             import sys
             record.exc_info = sys.exc_info()
@@ -242,7 +243,7 @@ def log_debug(message, **kwargs):
         record = logging.LogRecord(
             'webssh', logging.DEBUG, '', 0, safe_message, (), None
         )
-        record.extra_data = kwargs
+        record.extra_data = _sanitize_structured_log_data(kwargs)
         app_logger.handle(record)
     else:
         app_logger.debug(safe_message)
@@ -258,6 +259,33 @@ def _sanitize_log_value(value):
     s = str(value)
     s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\x00', '\\x00')
     return s[:512]
+
+
+def _bounded_structured_log_value(value, depth=0):
+    if depth >= 4:
+        return '[TRUNCATED]'
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return _sanitize_log_value(value)
+    if isinstance(value, Mapping):
+        return {
+            _sanitize_log_value(key): _bounded_structured_log_value(item, depth + 1)
+            for key, item in islice(value.items(), 64)
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [
+            _bounded_structured_log_value(item, depth + 1)
+            for item in islice(iter(value), 64)
+        ]
+    return _sanitize_log_value(value)
+
+
+def _sanitize_structured_log_data(values):
+    return {
+        _sanitize_log_value(key): _bounded_structured_log_value(value)
+        for key, value in islice(values.items(), 64)
+    }
 
 
 _SENSITIVE_AUDIT_DETAIL_KEYS = frozenset({
@@ -302,23 +330,33 @@ def _audit_detail_key_is_sensitive(key):
     )
 
 
-def _redact_audit_detail(key, value):
+def _redact_audit_detail(key, value, depth=0):
     if _audit_detail_key_is_sensitive(key):
         return '[REDACTED]'
+    if depth >= 4:
+        return '[TRUNCATED]'
     if isinstance(value, Mapping):
-        return sanitize_audit_details(value)
-    if isinstance(value, list):
-        return [_redact_audit_detail('', item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_redact_audit_detail('', item) for item in value)
-    return value
+        return {
+            _sanitize_log_value(nested_key): _redact_audit_detail(
+                nested_key, item, depth + 1
+            )
+            for nested_key, item in islice(value.items(), 64)
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [
+            _redact_audit_detail('', item, depth + 1)
+            for item in islice(iter(value), 64)
+        ]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return _sanitize_log_value(value)
 
 
 def sanitize_audit_details(details):
     """Return structured audit details with secret-bearing fields redacted."""
     return {
-        str(key): _redact_audit_detail(key, value)
-        for key, value in details.items()
+        _sanitize_log_value(key): _redact_audit_detail(key, value)
+        for key, value in islice(details.items(), 64)
     }
 
 def log_login_attempt(username, success, ip_address, user_agent=None):

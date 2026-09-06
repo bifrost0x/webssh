@@ -254,6 +254,20 @@ const ProfileManager = {
         }
     },
 
+    upsertProfile(profile) {
+        if (!profile || !profile.id) return;
+        this.setProfiles(this.profiles.some(item => item.id === profile.id)
+            ? this.profiles.map(item => item.id === profile.id
+                ? profile
+                : item)
+            : [...this.profiles, profile]);
+    },
+
+    removeProfile(profileId) {
+        if (!profileId) return;
+        this.setProfiles(this.profiles.filter(item => item.id !== profileId));
+    },
+
     setKeys(keys) {
         this.keys = Array.isArray(keys) ? keys : [];
         this.renderKeySelect();
@@ -1368,6 +1382,31 @@ const ProfileManager = {
         return true;
     },
 
+    applyOrganizationPatch(organization) {
+        if (!Array.isArray(organization)) return false;
+        const changes = new Map(organization
+            .filter(item => item && typeof item.id === 'string')
+            .map(item => [item.id, item]));
+        this.profiles = this.profiles.map(profile => {
+            const patch = changes.get(profile.id);
+            if (!patch) return profile;
+            const updated = {...profile};
+            if (typeof patch.group === 'string' && patch.group) {
+                updated.group = patch.group;
+            } else {
+                delete updated.group;
+            }
+            if (Number.isInteger(patch.sort_order) && patch.sort_order >= 0) {
+                updated.sort_order = patch.sort_order;
+            }
+            if (typeof patch.updated_at === 'string') {
+                updated.updated_at = patch.updated_at;
+            }
+            return updated;
+        });
+        return true;
+    },
+
     requestProfileMove(move, emit = null, confirmed = false) {
         const profile = this.profiles.find(item => item.id === move?.profileId);
         if (!profile || this.organizationPending.has(profile.id)) return false;
@@ -1391,8 +1430,8 @@ const ProfileManager = {
         this.renderManagementList();
         send(payload, acknowledgement => {
             this.organizationPending.delete(profile.id);
-            if (Array.isArray(acknowledgement?.profiles)) {
-                this.adoptAuthoritativeProfiles(acknowledgement.profiles);
+            if (Array.isArray(acknowledgement?.organization)) {
+                this.applyOrganizationPatch(acknowledgement.organization);
             }
             if (acknowledgement?.requires_confirmation === true) {
                 this.pendingProfileMove = {
@@ -1406,7 +1445,8 @@ const ProfileManager = {
                 this.openProfileMoveConfirmation();
                 return;
             }
-            if (!acknowledgement?.success || !Array.isArray(acknowledgement.profiles)) {
+            if (!acknowledgement?.success
+                    || !Array.isArray(acknowledgement.organization)) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t(
                         'profiles.saveFailed', 'Failed to save connection'

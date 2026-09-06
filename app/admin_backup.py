@@ -447,6 +447,14 @@ def restore_uploaded_backup(operation_id):
         or data.get('confirmation_phrase') != 'RESTORE'
     ):
         return jsonify({'error': 'Explicit restore confirmation is required'}), 400
+    from .backup_coordination import require_durable_recovery_storage
+    try:
+        require_durable_recovery_storage()
+    except RuntimeError:
+        return jsonify({
+            'error': 'Web restore requires durable recovery storage',
+            'code': 'RECOVERY_STORAGE_REQUIRED',
+        }), 503
     try:
         record = backup_operations.get(
             operation_id, current_user.id, _admin_session_id()

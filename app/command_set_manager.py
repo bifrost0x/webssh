@@ -11,7 +11,10 @@ from .command_storage_policy import (
     enforce_store_transition,
     validate_command_set,
 )
-from .startup_commands import normalize_startup_commands
+from .startup_commands import (
+    normalize_startup_commands,
+    validate_command_parameters,
+)
 from .storage_utils import (
     atomic_write_json,
     load_json_migrated,
@@ -342,16 +345,17 @@ def _normalize_steps(steps, commands):
             normalized_step = {'type': 'library', 'command_id': command_id}
             if 'parameters_override' in raw_step:
                 override = raw_step['parameters_override']
-                if override is not None and not isinstance(override, str):
-                    return None, None, f'Command set step {position} has invalid parameters'
-                if isinstance(override, str) and '\x00' in override:
-                    return None, None, 'Commands cannot contain NUL bytes'
+                if override is not None:
+                    parameter_error = validate_command_parameters(override)
+                    if parameter_error:
+                        return None, None, parameter_error
                 normalized_step['parameters_override'] = override
             parameters = normalized_step.get('parameters_override')
             if parameters is None:
                 parameters = command.get('parameters', '')
-            if not isinstance(parameters, str):
-                return None, None, f'Command set step {position} has invalid parameters'
+            parameter_error = validate_command_parameters(parameters)
+            if parameter_error:
+                return None, None, parameter_error
             text = command['command'] + (f' {parameters}' if parameters else '')
             normalized_steps.append(normalized_step)
             resolved_parts.append(text)
@@ -675,7 +679,7 @@ def _load_profile_references(user_id):
     path = profile_manager.get_user_profiles_file(user_id)
     if path is None:
         return [], None
-    return profile_manager._load_profiles_with_lock_held(user_id), None
+    return profile_manager._load_profiles_for_read_with_lock_held(user_id), None
 
 
 def delete_command_set(user_id, command_set_id):

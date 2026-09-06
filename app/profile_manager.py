@@ -3,7 +3,15 @@ import ipaddress
 import uuid
 from datetime import datetime, timezone
 
+import config
+
 from .audit_logger import log_error
+from .connection_storage_policy import (
+    ConnectionStorageLimitError,
+    enforce_store_read_limit,
+    enforce_store_transition,
+    validate_profile,
+)
 from .post_connect_manager import infer_mode, validate_configuration
 from .storage_errors import StorageCorruptionError
 from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
@@ -160,20 +168,43 @@ def _load_profiles_with_lock_held(user_id):
     return data['profiles']
 
 
+def _load_profiles_for_read_with_lock_held(user_id):
+    """Load only a response-safe profile store while its lock is held."""
+    profiles_file = get_user_profiles_file(user_id)
+    if profiles_file is None:
+        return []
+    enforce_store_read_limit(profiles_file)
+    profiles = _load_profiles_with_lock_held(user_id)
+    enforce_store_read_limit(
+        profiles_file,
+        record_count=len(profiles),
+        maximum_count=config.PROFILE_MAX_RECORDS,
+    )
+    return profiles
+
+
 def load_profiles(user_id):
     """Load all connection profiles for a specific user."""
     with storage_lock(f'profiles:{user_id}'):
-        return _load_profiles_with_lock_held(user_id)
+        return _load_profiles_for_read_with_lock_held(user_id)
 
 
 def _load_profiles_for_write(user_id):
-    """Load profiles without masking corruption before a mutation."""
+    """Load only a response-safe profile store before normal mutation."""
+    profiles_file = get_user_profiles_file(user_id)
+    if not profiles_file:
+        return None, 'User not found'
+    return _load_profiles_for_read_with_lock_held(user_id), None
+
+
+def _load_profiles_for_recovery_delete(user_id):
+    """Load an oversized legacy store only so an exact delete can shrink it."""
     profiles_file = get_user_profiles_file(user_id)
     if not profiles_file:
         return None, 'User not found'
     return _load_profiles_with_lock_held(user_id), None
 
-def save_profiles(user_id, profiles):
+def save_profiles(user_id, profiles, *, previous_count=None):
     """Save profiles list to JSON file for a specific user."""
     try:
         profiles_file = get_user_profiles_file(user_id)
@@ -184,10 +215,21 @@ def save_profiles(user_id, profiles):
         if not profiles_file or not _valid_profile_document(document):
             return False
 
+        enforce_store_transition(
+            path=profiles_file,
+            other_path=profiles_file.parent / 'jump_hosts.json',
+            prospective_document=document,
+            prospective_count=len(profiles),
+            previous_count=previous_count,
+            maximum_count=config.PROFILE_MAX_RECORDS,
+        )
+
         profiles_file.parent.mkdir(parents=True, exist_ok=True)
 
         atomic_write_json(profiles_file, document)
         return True
+    except ConnectionStorageLimitError:
+        raise
     except Exception as e:
         log_error("Error saving profiles", user_id=user_id, error=str(e))
         return False
@@ -223,6 +265,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         return None, 'Invalid username format'
     if auth_type not in {'password', 'key', 'tailscale'}:
         return None, 'Invalid auth_type'
+    if auth_type == 'tailscale' and payload.get('jump_host_id'):
+        return None, 'Tailscale SSH cannot be used with a jump host'
 
     group, error = _normalize_group(payload.get('group', _UNSET))
     if error:
@@ -237,6 +281,13 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     key_id = payload.get('key_id')
     if auth_type == 'key' and not key_id:
         return None, 'key_id required for key authentication'
+    if key_id is not None and not isinstance(key_id, str):
+        return None, 'Invalid key reference'
+    if auth_type == 'key':
+        from .key_manager import get_key
+
+        if get_key(user_id, key_id) is None:
+            return None, 'SSH key not found'
 
     post_connect, error = validate_configuration(
         user_id,
@@ -315,6 +366,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                     return None, error
 
                 profile_id = payload.get('id')
+                previous_count = len(profiles)
                 now = datetime.now(timezone.utc).isoformat()
                 if profile_id:
                     for index, existing in enumerate(profiles):
@@ -361,6 +413,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                                     profiles, target_group, exclude_id=profile_id
                                 )
                             profiles[index] = result
+                            validate_profile(result, existing)
                             break
                     else:
                         return None, 'Profile not found'
@@ -375,12 +428,19 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                         'updated_at': now,
                     }
                     profiles.append(result)
+                    validate_profile(result)
 
-                if save_profiles(user_id, profiles):
+                if save_profiles(
+                    user_id,
+                    profiles,
+                    previous_count=previous_count,
+                ):
                     return result, None
                 return None, 'Failed to save profile'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as exc:
         log_error('Error saving profile', user_id=user_id, error=str(exc))
         return None, 'Failed to save profile'
@@ -441,6 +501,7 @@ def update_profile_organization(user_id, profile_id, patch):
                 for profile in profiles:
                     if profile.get('id') != profile_id:
                         continue
+                    previous = dict(profile)
                     if group is not _UNSET:
                         if group:
                             profile['group'] = group
@@ -452,12 +513,19 @@ def update_profile_organization(user_id, profile_id, patch):
                         else:
                             profile.pop('favorite', None)
                     profile['updated_at'] = datetime.now(timezone.utc).isoformat()
-                    if not save_profiles(user_id, profiles):
+                    validate_profile(profile, previous)
+                    if not save_profiles(
+                        user_id,
+                        profiles,
+                        previous_count=len(profiles),
+                    ):
                         return None, 'Failed to save profile'
                     return dict(profile), None
                 return None, 'Profile not found'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as exc:
         log_error(
             'Error updating profile organization',
@@ -501,6 +569,7 @@ def move_profile(
                 )
                 if profile is None:
                     return None, 'Profile not found'
+                previous = dict(profile)
 
                 source_group = profile.get('group')
                 if _group_key(source_group) != _group_key(expected_source_group):
@@ -549,7 +618,12 @@ def move_profile(
                     if member.get('id') == profile_id:
                         member['updated_at'] = now
 
-                if not save_profiles(user_id, profiles):
+                validate_profile(profile, previous)
+                if not save_profiles(
+                    user_id,
+                    profiles,
+                    previous_count=len(profiles),
+                ):
                     return None, 'Failed to save profile'
                 return {
                     'profiles': profiles,
@@ -557,6 +631,8 @@ def move_profile(
                 }, None
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as exc:
         log_error(
             'Error moving profile',
@@ -570,18 +646,24 @@ def delete_profile(user_id, profile_id):
     try:
         with storage_lock(f'command-config:{user_id}'):
             with storage_lock(f'profiles:{user_id}'):
-                profiles, error = _load_profiles_for_write(user_id)
+                profiles, error = _load_profiles_for_recovery_delete(user_id)
                 if error:
                     return False, error
                 found = any(profile.get('id') == profile_id for profile in profiles)
                 if not found:
                     return False, 'Profile not found'
                 remaining = [profile for profile in profiles if profile.get('id') != profile_id]
-                if save_profiles(user_id, remaining):
+                if save_profiles(
+                    user_id,
+                    remaining,
+                    previous_count=len(profiles),
+                ):
                     return True, None
                 return False, 'Failed to delete profile'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return False, str(exc)
     except Exception as e:
         log_error("Error deleting profile", user_id=user_id, error=str(e))
         return False, 'Failed to delete profile'
@@ -608,12 +690,19 @@ def assign_command_set(user_id, profile_id, command_set_id):
                     if profile.get('id') == profile_id:
                         profile['startup_mode'] = 'command_set'
                         profile['command_set_id'] = command_set['id']
-                        if not save_profiles(user_id, profiles):
+                        validate_profile(profile)
+                        if not save_profiles(
+                            user_id,
+                            profiles,
+                            previous_count=len(profiles),
+                        ):
                             return None, 'Failed to save profile'
                         return profile, None
                 return None, 'Profile not found'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as e:
         log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
         return None, str(e)

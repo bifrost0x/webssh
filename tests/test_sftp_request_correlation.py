@@ -24,8 +24,10 @@ def test_list_directory_mirrors_request_identity(monkeypatch):
     emitted, user = _capture(monkeypatch)
     monkeypatch.setattr(
         socket_events.file_service,
-        'list_directory',
-        lambda source_id, *, user_id, path: ([{'name': 'config.yml'}], None),
+        'list_directory_page',
+        lambda source_id, *, user_id, path, cursor: (
+            [{'name': 'config.yml'}], None, None
+        ),
     )
 
     socket_events.handle_list_directory.__wrapped__({
@@ -38,6 +40,8 @@ def test_list_directory_mirrors_request_identity(monkeypatch):
         'source_id': 'sftp-session:session-a',
         'path': '/srv/current',
         'files': [{'name': 'config.yml'}],
+        'cursor': 0,
+        'next_cursor': None,
         'request_id': 'left:directory:4',
     })]
 
@@ -46,8 +50,10 @@ def test_list_directory_error_is_correlated(monkeypatch):
     emitted, user = _capture(monkeypatch)
     monkeypatch.setattr(
         socket_events.file_service,
-        'list_directory',
-        lambda _source_id, *, user_id, path: (None, 'permission denied'),
+        'list_directory_page',
+        lambda _source_id, *, user_id, path, cursor: (
+            None, 'permission denied', None
+        ),
     )
 
     socket_events.handle_list_directory.__wrapped__({

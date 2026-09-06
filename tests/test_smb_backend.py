@@ -116,6 +116,11 @@ class _Session:
             raise response
         return response
 
+    @contextmanager
+    def pin_mutation_ancestors(self, paths):
+        self.calls.append(('pin_mutation_ancestors', (tuple(paths),), {}))
+        yield
+
 
 def _fixture():
     session = _Session()

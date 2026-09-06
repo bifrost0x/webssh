@@ -54,6 +54,12 @@ bastion. Select the jump host while editing a profile.
 Use least privilege on the bastion and target. The presence of a jump host does
 not bypass target network policy, session ownership, or host-key verification.
 
+Saved profiles and jump hosts have per-field, record-count, and serialized-byte
+budgets. The defaults permit 500 profiles, 100 jump hosts, 2 MiB per store, and
+4 MiB combined. Mutations share a per-user rate limit. Oversized legacy stores
+remain readable and can be deleted or reduced, but no mutation may grow them.
+Stored key references must belong to the same WebSSH account.
+
 For bastion-only DNS names that cannot resolve locally, configure an exact
 `PROXY_JUMP_REMOTE_DNS_ALLOWLIST`. Do not use wildcards.
 

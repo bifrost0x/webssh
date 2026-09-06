@@ -2,6 +2,11 @@
 
 All durable WebSSH state belongs under `DATA_DIR`. Mount that directory on persistent storage and back it up as one coordinated unit.
 
+Container deployments require an absolute `DATA_DIR`. The entrypoint derives
+the logs, SSH-key storage, and generated `secret_key` from this single
+canonical root and refuses ambiguous legacy/new secret files. External secret
+manager values remain outside this filesystem contract.
+
 ## Directory layout
 
 Typical content includes:
@@ -74,3 +79,8 @@ Run the container or process under a dedicated identity and restrict `DATA_DIR` 
 ## Backup rule
 
 Use WebSSH's native backup workflow for a live instance. For an offline filesystem backup, stop every WebSSH process first and capture the complete directory consistently. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).
+
+Online restore has a second persistence boundary: its private rollback journal
+and emergency archive must use a durable absolute `BACKUP_TEMP_DIR` outside
+`DATA_DIR`, with `BACKUP_RECOVERY_DURABLE=true`. Do not place that directory on
+ephemeral container storage.

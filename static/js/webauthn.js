@@ -131,7 +131,7 @@
             labelDefault: '',
             hint: 'Confirm this account security change.'
         }, options || {});
-        const passwordAuthentication = ['password', 'ldap'].includes(
+        const passwordAuthentication = ['password', 'ldap', 'bootstrap'].includes(
             settings.authentication
         );
         document.getElementById('securityConfirmationHint').textContent = settings.hint;
@@ -151,7 +151,8 @@
             passkey: t('security.methodPasskey', 'Passkey'),
             totp: t('security.methodTotp', 'Authenticator app'),
             ldap: t('security.methodLdap', 'Directory password'),
-            password: t('security.methodPassword', 'WebSSH password')
+            password: t('security.methodPassword', 'WebSSH password'),
+            bootstrap: t('security.methodBootstrap', 'Enrollment code')
         };
         for (const method of methodChoices) {
             const option = document.createElement('option');
@@ -162,7 +163,9 @@
         }
         document.getElementById('securityConfirmationPasswordText').textContent = settings.authentication === 'ldap'
             ? t('security.directoryPassword', 'Directory password')
-            : t('auth.currentPassword', 'Current password');
+            : settings.authentication === 'bootstrap'
+                ? t('security.bootstrapCode', 'Enrollment code')
+                : t('auth.currentPassword', 'Current password');
         document.getElementById('securityConfirmationLabelGroup').classList.toggle('hidden', !settings.label);
         document.getElementById('securityConfirmationAccountGroup').classList.toggle('hidden', !settings.account);
         document.getElementById('securityConfirmationLabel').value = settings.labelDefault;
@@ -191,11 +194,13 @@
         if (Array.isArray(settings.methodChoices) && settings.methodChoices.length) {
             result.method = document.getElementById('securityConfirmationMethod').value;
         }
-        if (['password', 'ldap'].includes(settings.authentication)) {
+        if (['password', 'ldap', 'bootstrap'].includes(settings.authentication)) {
             result.secret = document.getElementById('securityConfirmationPassword').value;
             if (!result.secret) {
                 const error = document.getElementById('securityConfirmationError');
-                error.textContent = t('auth.currentPasswordRequired', 'Current password is required.');
+                error.textContent = settings.authentication === 'bootstrap'
+                    ? t('security.bootstrapCodeRequired', 'Enrollment code is required.')
+                    : t('auth.currentPasswordRequired', 'Current password is required.');
                 error.classList.remove('hidden');
                 return;
             }
@@ -238,7 +243,9 @@
                 ? t('security.confirmWithDirectory', 'Confirm with the password you use for directory sign-in.')
                 : method === 'totp'
                     ? t('security.confirmWithTotp', 'Enter a current code from your authenticator app.')
-                    : t('security.confirmFactorChange', 'Confirm this account security change.')
+                    : method === 'bootstrap'
+                        ? t('security.confirmWithBootstrap', 'Enter the one-time enrollment code issued by the WebSSH operator.')
+                        : t('security.confirmFactorChange', 'Confirm this account security change.')
         });
         return result === null ? null : result.secret;
     }

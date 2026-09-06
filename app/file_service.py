@@ -1,5 +1,7 @@
 """Authorization and capability boundary for all file source operations."""
 
+import config
+
 from .file_backend import FileWriteOutcome
 from .file_sources import (
     FileCapability,
@@ -37,6 +39,23 @@ class FileService:
     def list_directory(self, source_id, *, user_id, path):
         source = self.resolve(source_id, user_id, FileCapability.LIST)
         return source.backend.list_directory(source, path)
+
+    def list_directory_page(self, source_id, *, user_id, path, cursor=0):
+        source = self.resolve(source_id, user_id, FileCapability.LIST)
+        paged = getattr(source.backend, 'list_directory_page', None)
+        if callable(paged):
+            return paged(source, path, cursor=cursor)
+        files, error = source.backend.list_directory(source, path)
+        if error:
+            return None, error, None
+        page_size = config.REMOTE_LISTING_PAGE_SIZE
+        page = files[cursor:cursor + page_size]
+        next_cursor = (
+            cursor + len(page)
+            if cursor + len(page) < len(files)
+            else None
+        )
+        return page, None, next_cursor
 
     def get_home_directory(self, source_id, *, user_id):
         source = self.resolve(source_id, user_id, FileCapability.LIST)

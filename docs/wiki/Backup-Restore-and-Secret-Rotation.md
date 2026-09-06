@@ -29,6 +29,14 @@ Do not rely on the short-lived browser download as retention. Move the archive i
 
 Restore is deliberately disruptive and strongly confirmed:
 
+Online restore is enabled only when `BACKUP_TEMP_DIR` is an absolute, private,
+durable directory outside `DATA_DIR` and `BACKUP_RECOVERY_DURABLE=true` records
+the operator's explicit acknowledgement. The rollback journal and emergency
+archive live there, so the storage must survive both process termination and
+container recreation. The repository Compose file provides the separate
+`webssh_recovery` volume. A default system `/tmp` directory is suitable for
+backup construction, but intentionally does not enable online restore.
+
 1. Upload the archive.
 2. Let WebSSH validate format and safety limits.
 3. Review the restore target and warnings.
@@ -40,7 +48,7 @@ Restore is deliberately disruptive and strongly confirmed:
 9. Persistent state is replaced and sessions are invalidated.
 10. The process terminates intentionally so the service manager can start a clean runtime.
 
-If an interruption occurs during replacement, the restore workflow attempts rollback from the emergency archive. Still take an independent backup before every restore and keep it outside the instance.
+If an interruption occurs during replacement, the restore workflow attempts rollback from the emergency archive. On restart, the durable recovery directory remains available for diagnosis or recovery. Still take an independent backup before every restore and keep it outside the instance.
 
 ## CLI backup and restore
 

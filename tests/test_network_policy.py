@@ -134,6 +134,34 @@ def test_allow_internal_selects_private_candidate(monkeypatch):
     ).ip == '10.0.0.8'
 
 
+def test_resolution_validator_selects_only_the_pinned_network_route(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *args, **kwargs: [
+            addr(socket.AF_INET, '10.0.0.8'),
+            addr(socket.AF_INET, '100.64.0.9'),
+        ],
+    )
+    checked = []
+
+    def tailnet_only(target):
+        checked.append(target.ip)
+        return target.ip.startswith('100.64.')
+
+    target = resolve_allowed_target(
+        'node.example',
+        22,
+        allow_internal=True,
+        target_validator=tailnet_only,
+    )
+
+    assert target.ip == '100.64.0.9'
+    assert checked == ['10.0.0.8', '100.64.0.9']
+
+
 @pytest.mark.parametrize(
     ('raw', 'canonical', 'ip', 'family'),
     [

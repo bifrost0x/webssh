@@ -10,7 +10,7 @@ import config
 
 from . import connection_pool, ssh_manager
 from .audit_logger import log_security_event
-from .backup_coordination import operation_lock
+from .backup_coordination import operation_lock, require_durable_recovery_storage
 from .backup_manager import restore_backup
 from .backup_operations import backup_operations
 from .online_backup import create_online_backup
@@ -149,6 +149,7 @@ def _perform_restore(app, socketio, record, username, source_ip,
 
 def start_restore(app, socketio, record, username, source_ip,
                   restart_callback=request_process_restart):
+    require_durable_recovery_storage()
     thread = threading.Thread(
         target=_perform_restore,
         args=(app, socketio, record, username, source_ip, restart_callback),

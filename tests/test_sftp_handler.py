@@ -3,6 +3,371 @@
 import pytest
 
 
+def test_remote_metadata_budget_counts_utf8_bytes_and_aggregate_overhead(
+    monkeypatch,
+):
+    import config
+    import app.sftp_handler as sftp_handler
+
+    monkeypatch.setattr(config, 'REMOTE_FILENAME_MAX_BYTES', 4)
+    with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
+        sftp_handler._TransferMemberBudget(10, metadata_limit=100).consume(
+            'ééé'
+        )
+
+    budget = sftp_handler._TransferMemberBudget(10, metadata_limit=258)
+    budget.consume('a')
+    budget.consume('b')
+    with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
+        budget.consume('c')
+
+
+def test_remote_exception_text_is_not_reflected_to_file_control_clients(
+    monkeypatch,
+):
+    from contextlib import contextmanager
+
+    import app.sftp_handler as sftp_handler
+
+    class HostileSFTP:
+        def mkdir(self, _path):
+            raise OSError('remote-controlled-' + ('x' * 1024 * 1024))
+
+    @contextmanager
+    def fake_session(_identifier):
+        yield HostileSFTP(), 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+
+    success, error = sftp_handler.create_directory('session', '/safe')
+
+    assert success is False
+    assert error == 'Remote file operation failed'
+    assert len(error.encode('utf-8')) <= 512
+    assert sftp_handler.public_sftp_error(
+        sftp_handler.SFTPOperationError('application-authored error')
+    ) == 'application-authored error'
+
+
+def test_paramiko_directory_parser_rejects_huge_extended_attribute_count():
+    import paramiko
+    from paramiko.message import Message
+    from paramiko.sftp import (
+        CMD_CLOSE,
+        CMD_HANDLE,
+        CMD_NAME,
+        CMD_OPENDIR,
+        CMD_READDIR,
+    )
+    from paramiko.sftp_attr import SFTPAttributes
+    import app.sftp_handler as sftp_handler
+
+    class ProtocolSFTP(paramiko.SFTPClient):
+        def __init__(self):
+            self.requests = []
+
+        def _adjust_cwd(self, path):
+            return path
+
+        def _log(self, *_args):
+            pass
+
+        def _request(self, command, *args):
+            self.requests.append(command)
+            message = Message()
+            if command == CMD_OPENDIR:
+                message.add_string(b'directory-handle')
+                message.rewind()
+                return CMD_HANDLE, message
+            if command == CMD_READDIR:
+                message.add_int(1)
+                message.add_string('safe.txt')
+                message.add_string('safe.txt')
+                message.add_int(SFTPAttributes.FLAG_EXTENDED)
+                message.add_int(0xffffffff)
+                message.rewind()
+                return CMD_NAME, message
+            if command == CMD_CLOSE:
+                return 0, message
+            raise AssertionError(f'unexpected SFTP command {command}')
+
+    sftp = ProtocolSFTP()
+
+    with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
+        list(sftp_handler._iter_paramiko_directory_entries(sftp, '/'))
+
+    assert sftp.requests == [CMD_OPENDIR, CMD_READDIR, CMD_CLOSE]
+
+
+def test_paramiko_directory_parser_closes_on_oversized_handle(monkeypatch):
+    import config
+    import paramiko
+    from paramiko.message import Message
+    from paramiko.sftp import CMD_HANDLE, CMD_OPENDIR, CMD_READDIR
+    import app.sftp_handler as sftp_handler
+
+    monkeypatch.setattr(config, 'SFTP_MAX_HANDLE_BYTES', 256)
+
+    class ProtocolSFTP(paramiko.SFTPClient):
+        def __init__(self):
+            self.requests = []
+            self.channel_closed = False
+
+        def _adjust_cwd(self, path):
+            return path
+
+        def _log(self, *_args):
+            pass
+
+        def _request(self, command, *_args):
+            self.requests.append(command)
+            if command == CMD_READDIR:
+                raise AssertionError('oversized handle must not be reflected')
+            if command != CMD_OPENDIR:
+                raise AssertionError(f'unexpected SFTP command {command}')
+            message = Message()
+            message.add_string(b'x' * 257)
+            message.rewind()
+            return CMD_HANDLE, message
+
+        def close(self):
+            self.channel_closed = True
+
+    sftp = ProtocolSFTP()
+
+    with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
+        list(sftp_handler._iter_paramiko_directory_entries(sftp, '/'))
+
+    assert sftp.requests == [CMD_OPENDIR]
+    assert sftp.channel_closed is True
+
+
+@pytest.mark.parametrize(('responses', 'expected_error'), [
+    pytest.param(
+        ((),),
+        'metadata',
+        id='empty-name-response',
+    ),
+    pytest.param(
+        (('.', '..'), ('.', '..')),
+        'members',
+        id='repeated-dot-entries',
+    ),
+])
+def test_paramiko_directory_parser_bounds_non_yielding_responses(
+    monkeypatch,
+    responses,
+    expected_error,
+):
+    import paramiko
+    import config
+    from paramiko.message import Message
+    from paramiko.sftp import (
+        CMD_CLOSE,
+        CMD_HANDLE,
+        CMD_NAME,
+        CMD_OPENDIR,
+        CMD_READDIR,
+    )
+    import app.sftp_handler as sftp_handler
+
+    monkeypatch.setattr(config, 'MAX_TRANSFER_MEMBERS', 3)
+
+    class ProtocolSFTP(paramiko.SFTPClient):
+        def __init__(self):
+            self.requests = []
+            self.responses = iter(responses)
+
+        def _adjust_cwd(self, path):
+            return path
+
+        def _log(self, *_args):
+            pass
+
+        def _request(self, command, *args):
+            self.requests.append(command)
+            message = Message()
+            if command == CMD_OPENDIR:
+                message.add_string(b'directory-handle')
+                message.rewind()
+                return CMD_HANDLE, message
+            if command == CMD_READDIR:
+                names = next(self.responses)
+                message.add_int(len(names))
+                for name in names:
+                    message.add_string(name)
+                    message.add_string(name)
+                    message.add_int(0)
+                message.rewind()
+                return CMD_NAME, message
+            if command == CMD_CLOSE:
+                return 0, message
+            raise AssertionError(f'unexpected SFTP command {command}')
+
+    sftp = ProtocolSFTP()
+
+    error_type = (
+        sftp_handler.RemoteMetadataLimitExceeded
+        if expected_error == 'metadata'
+        else sftp_handler.TransferMemberLimitExceeded
+    )
+    with pytest.raises(error_type):
+        list(sftp_handler._iter_paramiko_directory_entries(sftp, '/'))
+
+    assert sftp.requests[-1] == CMD_CLOSE
+    assert sftp.requests.count(CMD_READDIR) == len(responses)
+
+
+def test_recursive_paramiko_listing_shares_raw_dot_metadata_budget(
+    monkeypatch,
+):
+    import stat
+    from types import SimpleNamespace
+
+    import config
+    import paramiko
+    from paramiko.message import Message
+    from paramiko.sftp import (
+        CMD_CLOSE,
+        CMD_HANDLE,
+        CMD_NAME,
+        CMD_OPENDIR,
+        CMD_READDIR,
+    )
+    from paramiko.sftp_attr import SFTPAttributes
+    import app.sftp_handler as sftp_handler
+
+    # Each directory fits this limit independently, but their combined raw
+    # dot-entry metadata does not. Recursive traversal must use one budget.
+    monkeypatch.setattr(config, 'REMOTE_LISTING_MAX_METADATA_BYTES', 550)
+
+    class ProtocolSFTP(paramiko.SFTPClient):
+        def __init__(self):
+            self.requests = []
+            self.served_handles = set()
+
+        def _adjust_cwd(self, path):
+            return path
+
+        def _log(self, *_args):
+            pass
+
+        def _request(self, command, *args):
+            self.requests.append(command)
+            message = Message()
+            if command == CMD_OPENDIR:
+                message.add_string(args[0].encode('utf-8'))
+                message.rewind()
+                return CMD_HANDLE, message
+            if command == CMD_READDIR:
+                handle = bytes(args[0])
+                if handle in self.served_handles:
+                    raise EOFError()
+                self.served_handles.add(handle)
+                names = (
+                    ('.', '..', 'child')
+                    if handle == b'/' else ('.', '..', 'leaf')
+                )
+                message.add_int(len(names))
+                for name in names:
+                    message.add_string(name)
+                    message.add_string(name)
+                    message.add_int(SFTPAttributes.FLAG_PERMISSIONS)
+                    mode = (
+                        stat.S_IFDIR | 0o700
+                        if name == 'child' else stat.S_IFREG | 0o600
+                    )
+                    message.add_int(mode)
+                message.rewind()
+                return CMD_NAME, message
+            if command == CMD_CLOSE:
+                return 0, message
+            raise AssertionError(f'unexpected SFTP command {command}')
+
+        def lstat(self, path):
+            is_directory = path == '/child'
+            return SimpleNamespace(
+                st_mode=(
+                    stat.S_IFDIR | 0o700
+                    if is_directory else stat.S_IFREG | 0o600
+                ),
+                st_size=0,
+            )
+
+    sftp = ProtocolSFTP()
+
+    with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
+        sftp_handler.inspect_remote_tree(
+            sftp,
+            '/',
+            cancel_event=None,
+            max_bytes=1024,
+            max_members=20,
+        )
+
+    assert sftp.requests.count(CMD_OPENDIR) == 2
+    assert sftp.requests.count(CMD_CLOSE) == 2
+
+
+def test_remote_attribute_extensions_count_toward_aggregate_budget():
+    from types import SimpleNamespace
+    import app.sftp_handler as sftp_handler
+
+    budget = sftp_handler._TransferMemberBudget(10, metadata_limit=140)
+    entry = SimpleNamespace(
+        filename='a',
+        _webssh_extra_metadata_bytes=12,
+    )
+
+    with pytest.raises(sftp_handler.RemoteMetadataLimitExceeded):
+        budget.consume_entry(entry)
+
+
+def test_directory_listing_is_returned_in_bounded_pages(monkeypatch):
+    import stat
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import config
+    import app.sftp_handler as sftp_handler
+
+    entries = [
+        SimpleNamespace(
+            filename=name,
+            st_size=index,
+            st_mode=stat.S_IFREG | 0o600,
+            st_mtime=index,
+        )
+        for index, name in enumerate(('one', 'two', 'three'))
+    ]
+
+    class FakeSFTP:
+        def listdir_iter(self, _path):
+            return iter(entries)
+
+    @contextmanager
+    def fake_session(_identifier):
+        yield FakeSFTP(), 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    monkeypatch.setattr(config, 'REMOTE_FILENAME_MAX_BYTES', 64)
+    monkeypatch.setattr(config, 'REMOTE_LISTING_MAX_METADATA_BYTES', 4096)
+
+    first, error, next_cursor = sftp_handler._list_directory_window(
+        'session', '/', cursor=0, page_size=2
+    )
+    assert error is None
+    assert [item['name'] for item in first] == ['one', 'two']
+    assert next_cursor == 2
+
+    second, error, next_cursor = sftp_handler._list_directory_window(
+        'session', '/', cursor=2, page_size=2
+    )
+    assert error is None
+    assert [item['name'] for item in second] == ['three']
+    assert next_cursor is None
+
+
 def test_transfer_lane_owns_and_closes_a_fresh_sftp_channel(monkeypatch):
     import app.sftp_handler as sftp_handler
 

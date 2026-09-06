@@ -21,6 +21,13 @@ class SFTPBackend:
     def list_directory(self, source, path):
         return sftp_handler.list_directory(source.handle_id, path)
 
+    def list_directory_page(self, source, path, *, cursor=0):
+        return sftp_handler.list_directory_page(
+            source.handle_id,
+            path,
+            cursor=cursor,
+        )
+
     def stat_or_raise(self, source, path, *, follow_links=False):
         if follow_links:
             result, error = sftp_handler.get_file_stat(source.handle_id, path)
@@ -50,11 +57,11 @@ class SFTPBackend:
                 source, path, follow_links=follow_links
             ), None
         except sftp_handler.SFTPOperationError as exc:
-            return None, str(exc)
+            return None, sftp_handler.public_sftp_error(exc)
         except FileNotFoundError:
             return None, 'File not found'
         except Exception as exc:
-            return None, str(exc)
+            return None, sftp_handler.public_sftp_error(exc)
 
     def mkdir_or_raise(self, source, path):
         safe_path = self.normalize_path(path)
@@ -102,7 +109,7 @@ class SFTPBackend:
                     sftp.remove(safe_path)
             return True, None
         except Exception as exc:
-            return False, str(exc)
+            return False, sftp_handler.public_sftp_error(exc)
 
     @contextmanager
     def open_reader(self, source, path, *, io_lane='control'):
@@ -175,7 +182,8 @@ class SFTPBackend:
         safe_path = self.normalize_path(path)
         if safe_path is None:
             raise sftp_handler.SFTPOperationError('invalid remote path')
-        member_budget = budget or sftp_handler._TransferMemberBudget(
+        count_budget = budget
+        metadata_budget = sftp_handler._TransferMemberBudget(
             config.MAX_TRANSFER_MEMBERS
         )
 
@@ -190,12 +198,17 @@ class SFTPBackend:
                         )
                     if sftp_handler._is_cancelled(cancel_event):
                         raise sftp_handler.TransferCancelled()
-                    with sftp_handler._directory_entries(sftp, directory) as entries:
+                    with sftp_handler._directory_entries(
+                        sftp,
+                        directory,
+                        member_budget=metadata_budget,
+                    ) as entries:
                         for entry in entries:
-                            member_budget.consume()
                             if sftp_handler._is_cancelled(cancel_event):
                                 raise sftp_handler.TransferCancelled()
                             name = entry.filename
+                            if count_budget is not None:
+                                count_budget.consume()
                             if not sftp_handler._is_safe_transfer_entry_name(name):
                                 raise sftp_handler.SFTPOperationError(
                                     'unsafe transfer entry name'
@@ -226,7 +239,7 @@ class SFTPBackend:
         try:
             return self.check_exists_or_raise(source, path), None
         except Exception as exc:
-            return None, str(exc)
+            return None, sftp_handler.public_sftp_error(exc)
 
     def check_exists_or_raise(self, source, path):
         safe_path = self.normalize_path(path)

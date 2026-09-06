@@ -11,7 +11,7 @@ Use Tailscale SSH only when you have:
 - a dedicated Tailscale tag for the WebSSH node;
 - narrow tailnet ACL and SSH rules;
 - trusted WebSSH administrators or an explicit non-admin allowlist;
-- exact target allowlists where practical;
+- a mandatory exact target-and-port allowlist;
 - exact remote operating-system username allowlists;
 - a tested local WebSSH administrator and recovery path;
 - persistent Tailscale node state.
@@ -24,14 +24,21 @@ remote-user, and tailnet policy.
 ```bash
 TAILSCALE_SSH_ENABLED=true
 TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
-TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
+TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
+TAILSCALE_SSH_INTERFACE=tailscale0
 ```
 
 Administrators are authorized by role when the feature is enabled. The user
-allowlist adds specifically trusted non-admin WebSSH accounts. Empty target or
-remote-user lists remove that extra application-level restriction, so define
-them for a shared multi-user deployment.
+allowlist adds specifically trusted non-admin WebSSH accounts. The target list
+is required when the feature is enabled. A bare host means port 22; use
+`host:port` or `[IPv6]:port` for another port. WebSSH resolves once, accepts
+only an address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
+`tailscale0`), and pins that address for the SSH connection. An empty
+remote-user list still delegates that dimension to tailnet SSH policy.
+
+Tailscale authentication cannot be combined with ProxyJump. The route and
+interface proof applies only to a direct connection from the WebSSH host.
 
 ## Tailnet policy concept
 
@@ -110,6 +117,7 @@ services:
       - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=
       - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server
       - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root
+      - TAILSCALE_SSH_INTERFACE=tailscale0
     volumes:
       - webssh_data:/app/data
 

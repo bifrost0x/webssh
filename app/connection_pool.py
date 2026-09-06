@@ -264,8 +264,8 @@ class TemporaryConnectionPool:
                 operation_timeout=config.SFTP_OPERATION_TIMEOUT,
             )
             return sftp, None
-        except Exception as e:
-            return None, f"Failed to open SFTP channel: {str(e)}"
+        except Exception:
+            return None, "Failed to open SFTP channel"
 
     def close_connection(self, connection_id):
         """

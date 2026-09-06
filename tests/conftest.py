@@ -38,6 +38,7 @@ _TEST_ENVIRONMENT = {
     'DATA_DIR': str(_SESSION_TEST_ROOT / 'data'),
     'TRANSFER_TEMP_DIR': str(_SESSION_TEST_ROOT / 'transfers'),
     'BACKUP_TEMP_DIR': str(_SESSION_TEST_ROOT / 'backups'),
+    'BACKUP_RECOVERY_DURABLE': 'true',
     'RATELIMIT_STORAGE_URL': 'memory://',
     'LDAP_ENABLED': 'false',
     'LDAP_AUTO_PROVISION': 'false',

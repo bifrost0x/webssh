@@ -73,7 +73,13 @@ def _ip_is_internal(address):
     )
 
 
-def resolve_allowed_target(hostname, port, allow_internal=False):
+def resolve_allowed_target(
+    hostname,
+    port,
+    allow_internal=False,
+    *,
+    target_validator=None,
+):
     """Resolve once and select the first policy-allowed TCP address."""
     canonical = canonicalize_hostname(hostname)
     try:
@@ -91,12 +97,15 @@ def resolve_allowed_target(hostname, port, allow_internal=False):
     if literal is not None:
         if not allow_internal and _ip_is_internal(literal):
             raise ValueError('Connections to this address are not allowed')
-        return ResolvedTarget(
+        target = ResolvedTarget(
             canonical,
             clean_port,
             literal.compressed,
             socket.AF_INET6 if literal.version == 6 else socket.AF_INET,
         )
+        if target_validator is not None and not target_validator(target):
+            raise ValueError('Connections to this address are not allowed')
+        return target
 
     try:
         candidates = socket.getaddrinfo(
@@ -128,13 +137,15 @@ def resolve_allowed_target(hostname, port, allow_internal=False):
         if address.version == 6 and family != socket.AF_INET6:
             continue
         if allow_internal or not _ip_is_internal(address):
-            return ResolvedTarget(
+            target = ResolvedTarget(
                 canonical,
                 clean_port,
                 address.compressed,
                 family,
                 sockaddr,
             )
+            if target_validator is None or target_validator(target):
+                return target
 
     raise ValueError('Connections to this address are not allowed')
 

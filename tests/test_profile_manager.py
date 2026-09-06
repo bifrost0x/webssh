@@ -157,6 +157,25 @@ def test_profile_rejects_non_boolean_tmux_preference(app):
         assert profile_manager.load_profiles(user_id) == []
 
 
+def test_profile_rejects_tailscale_with_jump_host(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'tailscale-jump-profile')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Invalid routed target',
+            'host': 'server.tailnet.ts.net',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'tailscale',
+            'jump_host_id': 'jump-host-1',
+        })
+
+        assert profile is None
+        assert error == 'Tailscale SSH cannot be used with a jump host'
+        assert profile_manager.load_profiles(user_id) == []
+
+
 @pytest.mark.parametrize('sort_order', [True, -1, '1', 1.5])
 def test_profile_document_rejects_invalid_sort_order(app, sort_order):
     from app import profile_manager
@@ -970,3 +989,118 @@ def test_profile_update_preserves_unknown_stored_fields(app):
 
     assert error is None
     assert updated['future'] == {'version': 2}
+
+
+def test_profile_count_quota_is_atomic_and_delete_remains_available(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-count-quota')
+    monkeypatch.setattr(config, 'PROFILE_MAX_RECORDS', 1)
+    payload = {
+        'name': 'First',
+        'host': 'example.com',
+        'port': 22,
+        'username': 'deploy',
+        'auth_type': 'password',
+    }
+    with app.app_context():
+        first, error = profile_manager.upsert_profile(user_id, payload)
+        assert error is None
+
+        second, error = profile_manager.upsert_profile(
+            user_id, {**payload, 'name': 'Second'}
+        )
+
+        assert second is None
+        assert error.startswith('Connection storage quota exceeded:')
+        assert profile_manager.load_profiles(user_id) == [first]
+        assert profile_manager.delete_profile(user_id, first['id']) == (
+            True, None
+        )
+
+
+def test_profile_cannot_reference_another_users_ssh_key(
+    app,
+    rsa_private_key_pem,
+):
+    from app import key_manager, profile_manager
+
+    owner_id = create_user(app, 'profile-key-owner')
+    attacker_id = create_user(app, 'profile-key-attacker')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            owner_id, 'Owner key', rsa_private_key_pem
+        )
+        assert error is None
+
+        profile, error = profile_manager.upsert_profile(attacker_id, {
+            'name': 'Foreign key',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'key',
+            'key_id': key['id'],
+        })
+
+    assert profile is None
+    assert error == 'SSH key not found'
+
+
+def test_legacy_oversized_profile_store_is_not_listed_but_can_be_deleted(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import command_set_manager, profile_manager
+    from app.connection_storage_policy import ConnectionStorageLimitError
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'oversized-profile-recovery')
+    profile = {
+        'id': 'legacy-large',
+        'name': 'Legacy',
+        'future': 'x' * 1024,
+    }
+    with app.app_context():
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Recovery guard',
+            'steps': [{'type': 'inline', 'command': 'true'}],
+        })
+        assert error is None
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_text(json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': [profile],
+        }), encoding='utf-8')
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 256)
+
+        with pytest.raises(ConnectionStorageLimitError):
+            profile_manager.load_profiles(user_id)
+        expected = (
+            'Connection storage quota exceeded: stored data exceeds its byte limit'
+        )
+        assert profile_manager.upsert_profile(user_id, {
+            'name': 'New',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        }) == (None, expected)
+        assert profile_manager.update_profile_organization(
+            user_id, profile['id'], {'favorite': True}
+        ) == (None, expected)
+        assert profile_manager.move_profile(
+            user_id, profile['id'], '', 'Production', 0
+        ) == (None, expected)
+        assert profile_manager.assign_command_set(
+            user_id, profile['id'], command_set['id']
+        ) == (None, expected)
+        assert profile_manager.delete_profile(
+            user_id, profile['id']
+        ) == (True, None)
+        assert profile_manager.load_profiles(user_id) == []

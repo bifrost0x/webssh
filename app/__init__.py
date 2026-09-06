@@ -83,6 +83,7 @@ def create_app(
     from .maintenance_mode import is_active, recover_interrupted_restore
     if initialize_storage:
         recover_interrupted_restore()
+    maintenance_active = is_active()
 
     for warning in config.SECURITY_CONFIG_WARNINGS:
         log_warning('Deployment security warning', warning=warning)
@@ -328,9 +329,9 @@ def create_app(
         oidc_ready=oidc_ready,
         ldap_ready=ldap_ready,
     )
-    if initialize_storage:
+    if initialize_storage and not maintenance_active:
         _initialize_persistent_storage(app)
-    if start_runtime:
+    if start_runtime and not maintenance_active:
         from .backup_operations import backup_operations
         backup_operations.cleanup_orphans()
         app.extensions['runtime_lifecycle'].start_job(
@@ -469,7 +470,7 @@ def create_app(
             raise
         log_info("Background session cleanup tasks started")
 
-    if start_runtime:
+    if start_runtime and not maintenance_active:
         setup_background_tasks()
 
     @app.route('/')

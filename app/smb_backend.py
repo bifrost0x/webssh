@@ -118,6 +118,24 @@ class SMBBackend:
             if self._is_reparse(file_stat):
                 raise SMBBackendError('Reparse points are not supported')
 
+    @contextmanager
+    def _mutation_guard(self, actual, *paths, session=None):
+        """Pin every existing ancestor until a path mutation completes."""
+        session = session or actual.session
+        ancestors = []
+        seen = set()
+        for path in paths:
+            for index in range(1, len(path.segments)):
+                ancestor = SMBPath(path.segments[:index]).to_unc(
+                    actual.target_ip,
+                    actual.share,
+                )
+                if ancestor not in seen:
+                    seen.add(ancestor)
+                    ancestors.append(ancestor)
+        with session.pin_mutation_ancestors(ancestors):
+            yield
+
     @staticmethod
     def _is_reparse(file_stat):
         return bool(getattr(file_stat, 'st_file_attributes', 0) & _REPARSE_POINT)
@@ -217,6 +235,8 @@ class SMBBackend:
                 'SHARE_UNAVAILABLE': 'Share unavailable',
                 'CONFLICT': 'File conflict',
                 'TIMEOUT': 'SMB operation timed out',
+                'REPARSE_POINT_REJECTED': 'Reparse points are not supported',
+                'MUTATION_GUARD_REQUIRED': 'SMB mutation safety check failed',
             }
             if exc.public_code in protocol_errors:
                 return protocol_errors[exc.public_code]
@@ -318,13 +338,14 @@ class SMBBackend:
         actual = self._owned_source(source)
         smb_path = self._mutable_path(self._path(path))
         with actual.lock:
-            self._validate_path_components(
-                actual, smb_path, include_leaf=False
-            )
-            actual.session.invoke(
-                'mkdir_no_follow',
-                smb_path.to_unc(actual.target_ip, actual.share),
-            )
+            with self._mutation_guard(actual, smb_path):
+                self._validate_path_components(
+                    actual, smb_path, include_leaf=False
+                )
+                actual.session.invoke(
+                    'mkdir_no_follow',
+                    smb_path.to_unc(actual.target_ip, actual.share),
+                )
 
     def mkdir(self, source, path):
         try:
@@ -341,17 +362,20 @@ class SMBBackend:
             old_unc = old_smb_path.to_unc(actual.target_ip, actual.share)
             new_unc = new_smb_path.to_unc(actual.target_ip, actual.share)
             with actual.lock:
-                self._validate_path_components(actual, old_smb_path)
-                self._validate_path_components(
-                    actual,
-                    new_smb_path,
-                    allow_missing_leaf=True,
-                )
-                actual.session.invoke(
-                    'replace' if replace else 'rename',
-                    old_unc,
-                    new_unc,
-                )
+                with self._mutation_guard(
+                    actual, old_smb_path, new_smb_path
+                ):
+                    self._validate_path_components(actual, old_smb_path)
+                    self._validate_path_components(
+                        actual,
+                        new_smb_path,
+                        allow_missing_leaf=True,
+                    )
+                    actual.session.invoke(
+                        'replace' if replace else 'rename',
+                        old_unc,
+                        new_unc,
+                    )
             return True, None
         except Exception as exc:
             return False, self._public_error(exc)
@@ -372,18 +396,19 @@ class SMBBackend:
             smb_path = self._mutable_path(self._path(path))
             unc = smb_path.to_unc(actual.target_ip, actual.share)
             with actual.lock:
-                self._validate_path_components(actual, smb_path)
-                file_stat = actual.session.invoke(
-                    'stat', unc, follow_symlinks=False
-                )
-                if self._is_reparse(file_stat):
-                    raise SMBBackendError('Reparse points are not supported')
-                if self._is_directory(file_stat):
-                    if not recursive:
-                        actual.session.invoke('rmdir', unc)
-                else:
-                    actual.session.invoke('remove', unc)
-                    return True, None
+                with self._mutation_guard(actual, smb_path):
+                    self._validate_path_components(actual, smb_path)
+                    file_stat = actual.session.invoke(
+                        'stat', unc, follow_symlinks=False
+                    )
+                    if self._is_reparse(file_stat):
+                        raise SMBBackendError('Reparse points are not supported')
+                    if self._is_directory(file_stat):
+                        if not recursive:
+                            actual.session.invoke('rmdir', unc)
+                    else:
+                        actual.session.invoke('remove', unc)
+                        return True, None
 
             if recursive:
                 entries = list(self.iter_tree(
@@ -406,15 +431,16 @@ class SMBBackend:
                         if cancel_event is not None and cancel_event.is_set():
                             raise SMBBackendError('Operation cancelled')
                         entry_unc = self._unc(actual, entry['path'])
-                        self._validate_path_components(
-                            actual, self._path(entry['path'])
-                        )
-                        actual.session.invoke(
-                            'rmdir' if entry['is_dir'] else 'remove',
-                            entry_unc,
-                        )
-                    self._validate_path_components(actual, smb_path)
-                    actual.session.invoke('rmdir', unc)
+                        entry_path = self._path(entry['path'])
+                        with self._mutation_guard(actual, entry_path):
+                            self._validate_path_components(actual, entry_path)
+                            actual.session.invoke(
+                                'rmdir' if entry['is_dir'] else 'remove',
+                                entry_unc,
+                            )
+                    with self._mutation_guard(actual, smb_path):
+                        self._validate_path_components(actual, smb_path)
+                        actual.session.invoke('rmdir', unc)
             return True, None
         except Exception as exc:
             return False, self._public_error(exc)
@@ -451,55 +477,61 @@ class SMBBackend:
         with lane_lock:
             remote_file = None
             try:
-                self._validate_path_components(
-                    actual,
-                    destination,
-                    allow_missing_leaf=True,
-                    session=session,
-                )
-                remote_file = session.invoke(
-                    'open_file_no_follow',
-                    temporary_unc,
-                    mode='xb',
-                    buffering=0,
-                )
-                with remote_file:
-                    yield remote_file
-                if cancel_event is not None and cancel_event.is_set():
-                    raise SMBBackendError('Operation cancelled')
-                try:
+                with self._mutation_guard(
+                    actual, destination, temporary, session=session
+                ):
                     self._validate_path_components(
                         actual,
                         destination,
                         allow_missing_leaf=True,
                         session=session,
                     )
-                    session.invoke(
-                        'replace' if replace else 'rename',
+                    remote_file = session.invoke(
+                        'open_file_no_follow',
                         temporary_unc,
-                        destination_unc,
+                        mode='xb',
+                        buffering=0,
                     )
-                except Exception as exc:
-                    if replace:
-                        if isinstance(exc, SMBProtocolError):
-                            if exc.public_code == 'PERMISSION_DENIED':
-                                raise NonAtomicOverwriteRequired(
-                                    'Atomic replacement requires delete permission'
-                                ) from exc
-                            if exc.public_code != 'CONFLICT':
+                    with remote_file:
+                        yield remote_file
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise SMBBackendError('Operation cancelled')
+                    try:
+                        self._validate_path_components(
+                            actual,
+                            destination,
+                            allow_missing_leaf=True,
+                            session=session,
+                        )
+                        session.invoke(
+                            'replace' if replace else 'rename',
+                            temporary_unc,
+                            destination_unc,
+                        )
+                    except Exception as exc:
+                        if replace:
+                            if isinstance(exc, SMBProtocolError):
+                                if exc.public_code == 'PERMISSION_DENIED':
+                                    raise NonAtomicOverwriteRequired(
+                                        'Atomic replacement requires delete permission'
+                                    ) from exc
+                                if exc.public_code != 'CONFLICT':
+                                    raise
+                            elif not (
+                                isinstance(exc, OSError)
+                                and exc.errno in {errno.EEXIST, errno.ENOTEMPTY}
+                            ):
                                 raise
-                        elif not (
-                            isinstance(exc, OSError)
-                            and exc.errno in {errno.EEXIST, errno.ENOTEMPTY}
-                        ):
-                            raise
-                        raise FileConflict(
-                            'Atomic replacement is unavailable'
-                        ) from exc
-                    raise
+                            raise FileConflict(
+                                'Atomic replacement is unavailable'
+                            ) from exc
+                        raise
             except Exception:
                 try:
-                    session.invoke('remove', temporary_unc)
+                    with self._mutation_guard(
+                        actual, temporary, session=session
+                    ):
+                        session.invoke('remove', temporary_unc)
                 except Exception:
                     pass
                 raise
@@ -665,6 +697,23 @@ class SMBBackend:
             return False
 
     def _recoverable_replace(
+        self,
+        actual,
+        destination,
+        data,
+        *,
+        expected_revision,
+    ):
+        with actual.lock:
+            with self._mutation_guard(actual, destination):
+                return self._recoverable_replace_guarded(
+                    actual,
+                    destination,
+                    data,
+                    expected_revision=expected_revision,
+                )
+
+    def _recoverable_replace_guarded(
         self,
         actual,
         destination,

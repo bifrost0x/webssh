@@ -2775,6 +2775,7 @@ test('upload completion refreshes its original tab after another tab becomes act
             source_id: 'sftp-session:upload-session',
             remote_path: '/srv/upload',
             request_id: 'left:directory:1',
+            cursor: 0,
         },
     }]);
     assert.equal(destinationState.loading, true);
@@ -2827,6 +2828,7 @@ test('upload completion refreshes and caches its original tab while the workspac
             source_id: 'sftp-session:upload-session',
             remote_path: '/srv/upload',
             request_id: 'left:directory:1',
+            cursor: 0,
         },
     }]);
 

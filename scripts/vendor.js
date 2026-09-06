@@ -34,6 +34,18 @@ const files = [
 
 function expectedContents(srcPath, dest) {
   const source = fs.readFileSync(srcPath);
+  if (dest === 'xterm/xterm.js') {
+    const parserLimit = 't.PAYLOAD_LIMIT=1e7';
+    const boundedParserLimit = 't.PAYLOAD_LIMIT=2e5';
+    const bundle = source.toString('utf8');
+    const matches = bundle.split(parserLimit).length - 1;
+    if (matches !== 1) {
+      throw new Error(
+        'xterm parser limit changed; review the OSC/DCS memory-bound patch.'
+      );
+    }
+    return Buffer.from(bundle.replace(parserLimit, boundedParserLimit), 'utf8');
+  }
   if (dest !== 'socketio/socket.io.min.js') return source;
 
   const vulnerableDecoder = 'if(o!=Number(o)||"-"!==t.charAt(i))throw new Error("Illegal attachments");r.attachments=Number(o)';

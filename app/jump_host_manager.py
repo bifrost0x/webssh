@@ -8,7 +8,16 @@ import re
 import uuid
 import ipaddress
 from datetime import datetime, timezone
+
+import config
+
 from .audit_logger import log_error, log_info
+from .connection_storage_policy import (
+    ConnectionStorageLimitError,
+    enforce_store_read_limit,
+    enforce_store_transition,
+    validate_jump_host,
+)
 from .storage_errors import StorageCorruptionError
 from .storage_utils import (
     atomic_write_json,
@@ -83,13 +92,28 @@ def _load_jump_hosts_with_lock_held(user_id):
     return data['jump_hosts']
 
 
+def _load_jump_hosts_for_read_with_lock_held(user_id):
+    """Load only a response-safe jump-host store while its lock is held."""
+    path = _get_file(user_id)
+    if path is None:
+        return []
+    enforce_store_read_limit(path)
+    jump_hosts = _load_jump_hosts_with_lock_held(user_id)
+    enforce_store_read_limit(
+        path,
+        record_count=len(jump_hosts),
+        maximum_count=config.JUMP_HOST_MAX_RECORDS,
+    )
+    return jump_hosts
+
+
 def load_jump_hosts(user_id):
     """Load all jump hosts for a user."""
     with storage_lock(f'jump_hosts:{user_id}'):
-        return _load_jump_hosts_with_lock_held(user_id)
+        return _load_jump_hosts_for_read_with_lock_held(user_id)
 
 
-def save_jump_hosts(user_id, jump_hosts):
+def save_jump_hosts(user_id, jump_hosts, *, previous_count=None):
     try:
         f = _get_file(user_id)
         document = {
@@ -98,9 +122,19 @@ def save_jump_hosts(user_id, jump_hosts):
         }
         if not f or not _valid_jump_host_document(document):
             return False
+        enforce_store_transition(
+            path=f,
+            other_path=f.parent / 'profiles.json',
+            prospective_document=document,
+            prospective_count=len(jump_hosts),
+            previous_count=previous_count,
+            maximum_count=config.JUMP_HOST_MAX_RECORDS,
+        )
         f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(f, document)
         return True
+    except ConnectionStorageLimitError:
+        raise
     except OSError as e:
         log_error("Error saving jump hosts", user_id=user_id, error=str(e))
         return False
@@ -112,7 +146,7 @@ def _load_profile_references(user_id):
     path = profile_manager.get_user_profiles_file(user_id)
     if path is None:
         return []
-    return profile_manager._load_profiles_with_lock_held(user_id)
+    return profile_manager._load_profiles_for_read_with_lock_held(user_id)
 
 
 def _get_jump_host_with_coordinator_held(user_id, jump_host_id):
@@ -120,7 +154,7 @@ def _get_jump_host_with_coordinator_held(user_id, jump_host_id):
     if not isinstance(jump_host_id, str) or not jump_host_id:
         return None
     with storage_lock(f'jump_hosts:{user_id}'):
-        jump_hosts = _load_jump_hosts_with_lock_held(user_id)
+        jump_hosts = _load_jump_hosts_for_read_with_lock_held(user_id)
     for jump_host in jump_hosts:
         if jump_host.get('id') == jump_host_id:
             return dict(jump_host)
@@ -140,6 +174,8 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
     try:
         if not all([name, host, username, auth_type]):
             return None, "Missing required fields"
+        if not isinstance(name, str) or not name.strip():
+            return None, "Invalid jump host name"
 
         host = str(host).strip()
         if not _is_valid_host(host):
@@ -160,28 +196,46 @@ def add_jump_host(user_id, name, host, port, username, auth_type, key_id=None):
             return None, "Invalid auth_type"
         if auth_type == 'key' and not key_id:
             return None, "key_id required for key authentication"
+        if key_id is not None and not isinstance(key_id, str):
+            return None, "Invalid key reference"
+        # One coordinator protects cross-store byte accounting and keeps key
+        # deletion from racing between reference validation and persistence.
+        with storage_lock(f'command-config:{user_id}'):
+            if auth_type == 'key':
+                from .key_manager import get_key
 
-        jump_host = {
-            'id': str(uuid.uuid4()),
-            'name': str(name)[:128],
-            'host': host,
-            'port': port,
-            'username': username,
-            'auth_type': auth_type,
-            'key_id': key_id if auth_type == 'key' else None,
-            'created_at': datetime.now(timezone.utc).replace(
-                tzinfo=None
-            ).isoformat()
-        }
-        with storage_lock(f'jump_hosts:{user_id}'):
-            jump_hosts = _load_jump_hosts_with_lock_held(user_id)
-            jump_hosts.append(jump_host)
-            if save_jump_hosts(user_id, jump_hosts):
-                log_info("Jump host saved", user_id=user_id, name=name)
-                return jump_host, None
-            return None, "Failed to save jump host"
+                if get_key(user_id, key_id) is None:
+                    return None, "SSH key not found"
+
+            jump_host = {
+                'id': str(uuid.uuid4()),
+                'name': name.strip()[:128],
+                'host': host,
+                'port': port,
+                'username': username,
+                'auth_type': auth_type,
+                'key_id': key_id if auth_type == 'key' else None,
+                'created_at': datetime.now(timezone.utc).replace(
+                    tzinfo=None
+                ).isoformat()
+            }
+            validate_jump_host(jump_host)
+            with storage_lock(f'jump_hosts:{user_id}'):
+                jump_hosts = _load_jump_hosts_for_read_with_lock_held(user_id)
+                previous_count = len(jump_hosts)
+                jump_hosts.append(jump_host)
+                if save_jump_hosts(
+                    user_id,
+                    jump_hosts,
+                    previous_count=previous_count,
+                ):
+                    log_info("Jump host saved", user_id=user_id, name=name)
+                    return jump_host, None
+                return None, "Failed to save jump host"
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as e:
         return None, str(e)
 
@@ -215,11 +269,17 @@ def delete_jump_host(user_id, jump_host_id):
                 ]
                 if len(new_list) == len(jump_hosts):
                     return False, 'Jump host not found', []
-                if save_jump_hosts(user_id, new_list):
+                if save_jump_hosts(
+                    user_id,
+                    new_list,
+                    previous_count=len(jump_hosts),
+                ):
                     return True, None, []
                 return False, 'Failed to delete jump host', []
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return False, str(exc), []
     except Exception as e:
         log_error("Error deleting jump host", user_id=user_id, error=str(e))
         return False, 'Failed to delete jump host', []

@@ -223,6 +223,9 @@ BACKUP_TEMP_DIR = Path(os.environ.get(
     'BACKUP_TEMP_DIR',
     Path(tempfile.gettempdir()) / 'webssh-backup-operations',
 ))
+BACKUP_RECOVERY_DURABLE = (
+    os.environ.get('BACKUP_RECOVERY_DURABLE', 'false').lower() == 'true'
+)
 
 
 # Atomic, in-process resource quotas. Per-user defaults remain below their
@@ -417,6 +420,59 @@ COMMAND_CONFIG_MAX_BYTES = _bounded_int_env(
     16 * 1024 * 1024,
 )
 
+# Browser file-control messages share a transport with bounded editor content.
+# Keep their identifiers and paths small enough that one authenticated account
+# cannot turn the editor envelope into repeated response and log amplification.
+FILE_CONTROL_MAX_PATH_BYTES = _bounded_int_env(
+    'FILE_CONTROL_MAX_PATH_BYTES', 4096, 512, 16 * 1024
+)
+REMOTE_FILENAME_MAX_BYTES = _bounded_int_env(
+    'REMOTE_FILENAME_MAX_BYTES', 4096, 255, 16 * 1024
+)
+REMOTE_LISTING_MAX_METADATA_BYTES = _bounded_int_env(
+    'REMOTE_LISTING_MAX_METADATA_BYTES',
+    4 * 1024 * 1024,
+    64 * 1024,
+    16 * 1024 * 1024,
+)
+REMOTE_LISTING_PAGE_SIZE = _bounded_int_env(
+    'REMOTE_LISTING_PAGE_SIZE', 500, 50, 1000
+)
+SFTP_MAX_PACKET_BYTES = _bounded_int_env(
+    'SFTP_MAX_PACKET_BYTES', 1024 * 1024, 64 * 1024, 4 * 1024 * 1024
+)
+SFTP_MAX_HANDLE_BYTES = _bounded_int_env(
+    'SFTP_MAX_HANDLE_BYTES', 16 * 1024, 256, 64 * 1024
+)
+FILE_CONTROL_BYTES_PER_MINUTE = _bounded_int_env(
+    'FILE_CONTROL_BYTES_PER_MINUTE',
+    2 * 1024 * 1024,
+    64 * 1024,
+    16 * 1024 * 1024,
+)
+
+# Saved connection metadata lives beside the database and encrypted keys.
+# Prospective limits still allow deletion and shrinking of legacy oversized
+# stores so administrators can recover without hand-editing JSON files.
+PROFILE_MAX_RECORDS = _bounded_int_env(
+    'PROFILE_MAX_RECORDS', 500, 10, 2000
+)
+JUMP_HOST_MAX_RECORDS = _bounded_int_env(
+    'JUMP_HOST_MAX_RECORDS', 100, 10, 1000
+)
+CONNECTION_STORE_MAX_BYTES = _bounded_int_env(
+    'CONNECTION_STORE_MAX_BYTES',
+    2 * 1024 * 1024,
+    64 * 1024,
+    8 * 1024 * 1024,
+)
+CONNECTION_CONFIG_MAX_BYTES = _bounded_int_env(
+    'CONNECTION_CONFIG_MAX_BYTES',
+    4 * 1024 * 1024,
+    CONNECTION_STORE_MAX_BYTES,
+    16 * 1024 * 1024,
+)
+
 # Admin panel: comma-separated usernames granted admin on startup.
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
 ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
@@ -430,6 +486,9 @@ TAILSCALE_SSH_ALLOWED_TARGETS = frozenset(
     target.lower() for target in _csv_env('TAILSCALE_SSH_ALLOWED_TARGETS')
 )
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_REMOTE_USERS')
+TAILSCALE_SSH_INTERFACE = os.environ.get(
+    'TAILSCALE_SSH_INTERFACE', 'tailscale0'
+).strip()
 
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
@@ -584,6 +643,10 @@ RATELIMIT_SSH_KEY_WRITE = os.environ.get(
 )
 RATELIMIT_COMMAND_MUTATION = os.environ.get(
     'COMMAND_MUTATION_RATELIMIT',
+    '60 per minute',
+)
+RATELIMIT_CONNECTION_MUTATION = os.environ.get(
+    'CONNECTION_MUTATION_RATELIMIT',
     '60 per minute',
 )
 
@@ -979,6 +1042,16 @@ def validate_security_config():
             )
         if not BLOCK_INTERNAL_SSH:
             violations.append('BLOCK_INTERNAL_SSH must be true')
+        if TAILSCALE_SSH_ENABLED and not TAILSCALE_SSH_ALLOWED_TARGETS:
+            violations.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS must contain exact host and '
+                'port entries when TAILSCALE_SSH_ENABLED is true'
+            )
+        if TAILSCALE_SSH_ENABLED and not TAILSCALE_SSH_INTERFACE:
+            violations.append(
+                'TAILSCALE_SSH_INTERFACE must name the trusted Tailscale '
+                'network interface'
+            )
         if not _trusted_proxies_explicit:
             violations.append(
                 'TRUSTED_PROXIES must be set explicitly, including 0 when '

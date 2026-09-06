@@ -468,3 +468,104 @@ def test_public_session_type_is_explicit():
     _protocol, session = _connect()
 
     assert isinstance(session, SMBProtocolSession)
+
+
+@pytest.mark.parametrize(
+    ('operation', 'args', 'kwargs'),
+    [
+        ('remove', (r'\\10.0.0.8\Docs\file.txt',), {}),
+        (
+            'rename',
+            (
+                r'\\10.0.0.8\Docs\old.txt',
+                r'\\10.0.0.8\Docs\new.txt',
+            ),
+            {},
+        ),
+        (
+            'open_file_no_follow',
+            (r'\\10.0.0.8\Docs\new.txt',),
+            {'mode': 'xb'},
+        ),
+    ],
+)
+def test_protocol_rejects_mutations_without_pinned_ancestor_handles(
+    operation,
+    args,
+    kwargs,
+):
+    protocol, session = _connect()
+
+    with pytest.raises(SMBProtocolError) as error:
+        session.invoke(operation, *args, **kwargs)
+
+    assert error.value.public_code == 'MUTATION_GUARD_REQUIRED'
+    assert protocol.events[-1][0] == 'session-connect'
+
+
+def test_pinned_ancestor_handle_stays_open_through_mutation():
+    protocol, session = _connect()
+    calls = []
+
+    class DirectoryHandle:
+        def __init__(self):
+            self.fd = type('FD', (), {'file_attributes': 0x10})()
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    handle = DirectoryHandle()
+
+    def invoke(name, *args, **kwargs):
+        calls.append((name, args, kwargs, handle.closed))
+        if name == 'open_file_no_follow':
+            return handle
+        return 'mutated'
+
+    protocol.invoke = invoke
+    parent = r'\\10.0.0.8\Docs\safe'
+    leaf = parent + r'\file.txt'
+
+    with session.pin_mutation_ancestors([parent]):
+        assert session.invoke('remove', leaf) == 'mutated'
+        assert handle.closed is False
+
+    assert handle.closed is True
+    assert calls[0][0] == 'open_file_no_follow'
+    assert calls[0][2]['desired_access'] != 0
+    assert calls[0][2]['share_access'] == 'r'
+    assert calls[1][:2] == ('remove', (leaf,))
+
+
+def test_reparse_ancestor_is_rejected_before_mutation():
+    protocol, session = _connect()
+    calls = []
+
+    class ReparseHandle:
+        def __init__(self):
+            self.fd = type('FD', (), {'file_attributes': 0x410})()
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    handle = ReparseHandle()
+
+    def invoke(name, *args, **kwargs):
+        calls.append(name)
+        if name == 'open_file_no_follow':
+            return handle
+        raise AssertionError('mutation reached the protocol')
+
+    protocol.invoke = invoke
+
+    with pytest.raises(SMBProtocolError) as error:
+        with session.pin_mutation_ancestors([
+            r'\\10.0.0.8\Docs\unsafe'
+        ]):
+            session.invoke('remove', r'\\10.0.0.8\Docs\unsafe\file.txt')
+
+    assert error.value.public_code == 'REPARSE_POINT_REJECTED'
+    assert calls == ['open_file_no_follow']
+    assert handle.closed is True

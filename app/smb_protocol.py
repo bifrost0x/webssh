@@ -7,6 +7,7 @@ source and exposes stable public error codes to the rest of the application.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from threading import RLock
 import uuid
 
@@ -268,6 +269,7 @@ class SMBProtocolSession:
         self.secure_negotiate = True
         self._lock = RLock()
         self._closed = False
+        self._mutation_guard_depth = 0
         self.connection_cache = _SealedConnectionCache(
             f'{target_ip.lower()}:445',
             raw_connection,
@@ -283,6 +285,21 @@ class SMBProtocolSession:
 
         with self._lock:
             self._ensure_alive()
+            mutating_open = (
+                name == 'open_file_no_follow'
+                and str(kwargs.get('mode', 'rb'))[:1] in {'a', 'w', 'x'}
+            )
+            if (
+                name in {
+                    'mkdir_no_follow',
+                    'remove',
+                    'rename',
+                    'replace',
+                    'rmdir',
+                }
+                or mutating_open
+            ) and self._mutation_guard_depth < 1:
+                raise SMBProtocolError('MUTATION_GUARD_REQUIRED')
             call_kwargs = {
                 'username': self.raw_session.username,
                 'password': None,
@@ -300,6 +317,47 @@ class SMBProtocolSession:
                 raise
             except Exception as exc:
                 raise SMBProtocolError('OPERATION_FAILED') from exc
+
+    @contextmanager
+    def pin_mutation_ancestors(self, paths):
+        """Hold verified directory identities against write/delete swaps."""
+        handles = []
+        entered = False
+        with self._lock:
+            self._ensure_alive()
+            try:
+                for path in dict.fromkeys(paths):
+                    handle = self.invoke(
+                        'open_file_no_follow',
+                        path,
+                        mode='rb',
+                        buffering=0,
+                        file_type='dir',
+                        desired_access=int(
+                            DirectoryAccessMask.FILE_READ_ATTRIBUTES
+                        ),
+                        # Denying write/delete sharing prevents another SMB
+                        # client from replacing an already verified ancestor.
+                        share_access='r',
+                    )
+                    attributes = int(
+                        getattr(getattr(handle, 'fd', None), 'file_attributes', 0)
+                    )
+                    if attributes & 0x00000400 or not attributes & 0x10:
+                        handle.close()
+                        raise SMBProtocolError('REPARSE_POINT_REJECTED')
+                    handles.append(handle)
+                self._mutation_guard_depth += 1
+                entered = True
+                yield
+            finally:
+                if entered:
+                    self._mutation_guard_depth -= 1
+                for handle in reversed(handles):
+                    try:
+                        handle.close()
+                    except Exception:
+                        pass
 
     def inspect_directory_access(self, path):
         """Validate listing and query root directory rights without mutation."""

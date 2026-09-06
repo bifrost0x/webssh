@@ -26,6 +26,7 @@ from .tailscale_ssh import (
 )
 from .storage_errors import StorageCorruptionError
 from .command_storage_policy import CommandStorageLimitError
+from .connection_storage_policy import ConnectionStorageLimitError
 from .network_policy import canonicalize_hostname
 from .ssh_errors import connection_error_payload
 from . import binary_transfer, connection_pool
@@ -66,6 +67,33 @@ STORAGE_ERROR_MESSAGE = (
 
 
 _SMB_REQUEST_ID = re.compile(r'[A-Za-z0-9:._-]{1,128}')
+_FILE_SOURCE_ID_MAX_BYTES = 160
+_FILE_CONTROL_SMALL_TEXT_MAX_BYTES = 128
+_FILE_CONTROL_PATH_FIELDS = frozenset({
+    'remote_path',
+    'path',
+    'old_path',
+    'new_path',
+    'source_path',
+    'dest_path',
+})
+_FILE_CONTROL_SOURCE_FIELDS = frozenset({
+    'source_id',
+    'destination_source_id',
+})
+_FILE_CONTROL_SMALL_FIELDS = frozenset({
+    'request_id',
+    'transfer_id',
+    'expected_revision',
+    'direction',
+    'encoding',
+    'newline',
+    'replace_strategy',
+    'conflict_policy',
+})
+_FILE_CONTROL_CHECKED = object()
+_file_control_budgets = {}
+_file_control_budget_lock = threading.Lock()
 _SMB_CONNECT_CODES = frozenset({
     'AUTHENTICATION_REQUIRED',
     'CONNECTION_FAILED',
@@ -137,10 +165,51 @@ def _cancel_smb_attempts_for_socket(user_id, socket_sid):
         handle.cancel()
 
 
-def _file_request_identity(payload):
+def _file_request_identity(
+    payload,
+    user_id=None,
+    *,
+    allow_editor_content=False,
+):
+    if isinstance(payload, dict) and payload.get(
+        '_file_control_checked'
+    ) is not _FILE_CONTROL_CHECKED:
+        if user_id is None:
+            try:
+                socket_user = get_user_from_socket(request.sid)
+                user_id = socket_user.id if socket_user is not None else None
+            except Exception:
+                user_id = None
+        budget_now = time.monotonic()
+        reserved = user_id is not None and _consume_file_control_budget(
+            user_id, 256, now=budget_now
+        )
+        if not reserved:
+            _sanitize_file_control_payload(payload)
+            valid = False
+        else:
+            byte_count = _file_control_payload_cost(
+                payload,
+                allow_editor_content=allow_editor_content,
+            )
+            valid = _sanitize_file_control_payload(payload)
+            remainder = max(0, byte_count - 256)
+            if remainder and not _consume_file_control_budget(
+                user_id,
+                remainder,
+                now=budget_now,
+            ):
+                valid = False
+        payload['_file_control_valid'] = valid
+        payload['_file_control_checked'] = _FILE_CONTROL_CHECKED
+    if isinstance(payload, dict) and not payload.get(
+        '_file_control_valid', False
+    ):
+        payload['source_id'] = None
     request_id = payload.get('request_id')
     if (
         not isinstance(request_id, str)
+        or len(request_id) > 128
         or not re.fullmatch(r'[A-Za-z0-9:._-]{1,128}', request_id)
     ):
         request_id = None
@@ -148,6 +217,146 @@ def _file_request_identity(payload):
         'source_id': payload.get('source_id'),
         'request_id': request_id,
     }
+
+
+def _utf8_text_within(value, maximum):
+    if not isinstance(value, str) or len(value) > maximum:
+        return False
+    try:
+        return len(value.encode('utf-8')) <= maximum
+    except UnicodeEncodeError:
+        return False
+
+
+def _bounded_utf8_size(value, maximum):
+    """Measure UTF-8 incrementally and stop before an oversized full copy."""
+    if not isinstance(value, str) or len(value) > maximum:
+        return None
+    size = 0
+    for offset in range(0, len(value), 4096):
+        try:
+            size += len(str(value[offset:offset + 4096]).encode('utf-8'))
+        except UnicodeEncodeError:
+            return None
+        if size > maximum:
+            return None
+    return size
+
+
+def _file_control_payload_cost(payload, *, allow_editor_content=False):
+    """Bound all control metadata without reserializing the attacker payload.
+
+    The inline editor body has its own strict size validation. Every other
+    value, including unknown or nested fields, is charged here so a caller
+    cannot hide an editor-envelope-sized allocation behind a harmless request.
+    """
+    maximum_charge = config.FILE_CONTROL_BYTES_PER_MINUTE + 1
+    cost = 0
+    stack = [(payload, 0, False)]
+    visited = 0
+    while stack:
+        value, depth, editor_content = stack.pop()
+        visited += 1
+        if visited > 1024 or depth > 8:
+            return maximum_charge
+        if editor_content:
+            if _bounded_utf8_size(
+                value,
+                config.MAX_EDITOR_FILE_SIZE,
+            ) is None:
+                return maximum_charge
+            continue
+        if isinstance(value, dict):
+            if len(value) > 1024:
+                return maximum_charge
+            for key, item in value.items():
+                if not isinstance(key, str) or len(key) > 256:
+                    return maximum_charge
+                try:
+                    cost += len(key.encode('utf-8'))
+                except UnicodeEncodeError:
+                    return maximum_charge
+                stack.append((
+                    item,
+                    depth + 1,
+                    allow_editor_content
+                    and depth == 0
+                    and key == 'content'
+                    and isinstance(item, str),
+                ))
+        elif isinstance(value, (list, tuple)):
+            if len(value) > 1024:
+                return maximum_charge
+            for item in value:
+                stack.append((item, depth + 1, False))
+        elif isinstance(value, str):
+            size = _bounded_utf8_size(
+                value,
+                max(0, config.FILE_CONTROL_BYTES_PER_MINUTE - cost),
+            )
+            if size is None:
+                return maximum_charge
+            cost += size
+        elif isinstance(value, (bytes, bytearray, memoryview)):
+            cost += len(value)
+        else:
+            # JSON scalars and unexpected objects still consume parser and
+            # object memory; use a small conservative accounting charge.
+            cost += 16
+        if cost > config.FILE_CONTROL_BYTES_PER_MINUTE:
+            return maximum_charge
+    # A conservative floor also bounds CPU/event amplification independently
+    # of how little metadata a syntactically empty request carries.
+    return max(256, cost)
+
+
+def _consume_file_control_budget(user_id, byte_count, now=None):
+    """Apply a constant-memory per-user token bucket to control metadata."""
+    current = time.monotonic() if now is None else float(now)
+    key = int(user_id)
+    capacity = config.FILE_CONTROL_BYTES_PER_MINUTE
+    with _file_control_budget_lock:
+        available, updated_at = _file_control_budgets.get(
+            key,
+            (float(capacity), current),
+        )
+        elapsed = max(0.0, current - updated_at)
+        available = min(
+            float(capacity),
+            available + (elapsed * capacity / 60.0),
+        )
+        if byte_count > capacity or byte_count > available:
+            # Oversized attempts exhaust the bucket too; otherwise an attacker
+            # could repeat rejected editor-envelope allocations for free.
+            _file_control_budgets[key] = (0.0, current)
+            return False
+        _file_control_budgets[key] = (available - byte_count, current)
+        return True
+
+
+def _sanitize_file_control_payload(payload):
+    """Bound file-control metadata before it is copied, logged, or emitted."""
+    if not isinstance(payload, dict):
+        return False
+    invalid = False
+    limits = (
+        (_FILE_CONTROL_PATH_FIELDS, config.FILE_CONTROL_MAX_PATH_BYTES),
+        (_FILE_CONTROL_SOURCE_FIELDS, _FILE_SOURCE_ID_MAX_BYTES),
+        (_FILE_CONTROL_SMALL_FIELDS, _FILE_CONTROL_SMALL_TEXT_MAX_BYTES),
+    )
+    for fields, maximum in limits:
+        for field in fields:
+            if field not in payload or payload[field] is None:
+                continue
+            if not _utf8_text_within(payload[field], maximum):
+                payload[field] = None
+                invalid = True
+    if invalid:
+        # Every file handler already rejects a missing source ID before backend
+        # resolution. Clearing it also prevents exception paths from reflecting
+        # any other invalid control field.
+        payload['source_id'] = None
+    return not invalid
 
 
 def _file_request_source_id(payload, user_id):
@@ -321,6 +530,12 @@ def _validate_ssh_params(host, port, username, allow_internal=False):
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection - authenticate and restore sessions."""
+    from .maintenance_mode import is_active
+
+    if is_active():
+        emit('connected', {'status': 'unavailable'})
+        return False
+
     from flask import session as flask_session
 
     user_id = flask_session.get('_user_id')
@@ -680,6 +895,10 @@ def handle_ssh_connect(data, current_user=None):
             if live_jump_host.get('auth_type') == 'password':
                 proxy_jump['password'] = runtime_password
 
+        if auth_type == 'tailscale' and proxy_jump:
+            emit_error('Tailscale SSH cannot be used with a jump host')
+            return
+
         # Preserve precise missing-reference errors without running PBKDF2 or
         # decrypting attacker-selected stored keys before the attempt budget.
         if (
@@ -749,6 +968,7 @@ def handle_ssh_connect(data, current_user=None):
                     current_user,
                     host,
                     username,
+                    port=port,
                 )
             )
             log_tailscale_ssh_usage(
@@ -1191,6 +1411,8 @@ def handle_list_profiles(current_user=None):
                 )
             profiles.append(profile)
         emit('profiles_list', {'profiles': profiles})
+    except ConnectionStorageLimitError as error:
+        return _command_set_error(str(error))
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1202,13 +1424,21 @@ def handle_list_profiles(current_user=None):
 def handle_save_profile(data, current_user=None):
     """Create or update a connection profile without starting SSH."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
         data = data if isinstance(data, dict) else {}
         auth_type = data.get('auth_type')
         host = data.get('host')
         username = data.get('username')
 
         if auth_type == 'tailscale':
-            access_error = validate_tailscale_ssh_access(current_user, host, username)
+            access_error = validate_tailscale_ssh_access(
+                current_user,
+                host,
+                username,
+                port=data.get('port', 22),
+            )
             if access_error:
                 emit('error', {'error': access_error})
                 return {'success': False, 'error': access_error}
@@ -1219,9 +1449,11 @@ def handle_save_profile(data, current_user=None):
             emit('error', {'error': error})
             return {'success': False, 'error': error}
         else:
-            payload = {'success': True, 'profile': profile}
+            response_profile = dict(profile)
+            if response_profile.get('auth_type') == 'tailscale':
+                response_profile['tailscale_authorized'] = True
+            payload = {'success': True, 'profile': response_profile}
             emit('profile_saved', payload)
-            handle_list_profiles(current_user=current_user)
             return payload
 
     except StorageCorruptionError as error:
@@ -1236,6 +1468,10 @@ def handle_save_profile(data, current_user=None):
 def handle_delete_profile(data, current_user=None):
     """Delete a connection profile for this user."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
         profile_id = data.get('profile_id')
         if not profile_id:
             emit('error', {'error': 'Profile ID required'})
@@ -1246,7 +1482,6 @@ def handle_delete_profile(data, current_user=None):
             return _command_set_error(error)
         payload = {'success': True, 'profile_id': profile_id}
         emit('profile_deleted', payload)
-        handle_list_profiles(current_user=current_user)
         return payload
 
     except StorageCorruptionError as storage_error:
@@ -1261,6 +1496,9 @@ def handle_delete_profile(data, current_user=None):
 def handle_update_profile_organization(data, current_user=None):
     """Update grouping metadata without resubmitting connection secrets."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
         data = data if isinstance(data, dict) else {}
         profile_id = data.get('profile_id')
         if not isinstance(profile_id, str) or not profile_id:
@@ -1279,7 +1517,6 @@ def handle_update_profile_organization(data, current_user=None):
             return {'success': False, 'error': error}
         payload = {'success': True, 'profile': profile}
         emit('profile_organization_updated', payload)
-        handle_list_profiles(current_user=current_user)
         return payload
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
@@ -1296,6 +1533,9 @@ def handle_update_profile_organization(data, current_user=None):
 def handle_move_profile(data, current_user=None):
     """Move one profile atomically within the user's flat group structure."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
         data = data if isinstance(data, dict) else {}
         profile_id = data.get('profile_id')
         if not isinstance(profile_id, str) or not profile_id:
@@ -1329,17 +1569,51 @@ def handle_move_profile(data, current_user=None):
             confirm_source_group_removal=confirmed,
         )
         if error:
+            organization = [
+                {
+                    'id': profile.get('id'),
+                    'group': profile.get('group', ''),
+                    'sort_order': profile.get('sort_order', 0),
+                }
+                for profile in (result or {}).get('profiles', ())
+                if isinstance(profile.get('id'), str)
+            ]
             return {
                 'success': False,
                 'error': error,
-                **(result or {}),
+                'requires_confirmation': bool(
+                    (result or {}).get('requires_confirmation')
+                ),
+                'organization': organization,
             }
         if result.get('requires_confirmation'):
-            return {'success': False, **result}
+            return {
+                'success': False,
+                'requires_confirmation': True,
+                'profile_id': result.get('profile_id'),
+                'profile_name': result.get('profile_name', ''),
+                'source_group': result.get('source_group', ''),
+            }
 
-        payload = {'success': True, **result}
+        organization = [
+            {
+                'id': profile.get('id'),
+                'group': profile.get('group', ''),
+                'sort_order': profile.get('sort_order', 0),
+                **(
+                    {'updated_at': profile['updated_at']}
+                    if 'updated_at' in profile else {}
+                ),
+            }
+            for profile in result.get('profiles', ())
+            if isinstance(profile.get('id'), str)
+        ]
+        payload = {
+            'success': True,
+            'requires_confirmation': False,
+            'organization': organization,
+        }
         emit('profile_organization_updated', payload)
-        handle_list_profiles(current_user=current_user)
         return payload
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
@@ -1353,6 +1627,8 @@ def handle_list_jump_hosts(current_user=None):
     """Return list of saved jump hosts for this user."""
     try:
         emit('jump_hosts_list', {'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id)})
+    except ConnectionStorageLimitError as error:
+        return _command_set_error(str(error))
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1364,6 +1640,10 @@ def handle_list_jump_hosts(current_user=None):
 def handle_save_jump_host(data, current_user=None):
     """Save a new jump host (bastion) for this user. Never stores a password."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
         jump_host, error = jump_host_manager.add_jump_host(
             user_id=current_user.id,
             name=data.get('name'),
@@ -1374,10 +1654,11 @@ def handle_save_jump_host(data, current_user=None):
             key_id=data.get('key_id')
         )
         if error:
-            emit('error', {'error': error})
+            return _command_set_error(error)
         else:
-            emit('jump_host_saved', {'jump_host': jump_host})
-            handle_list_jump_hosts(current_user=current_user)
+            payload = {'success': True, 'jump_host': jump_host}
+            emit('jump_host_saved', payload)
+            return payload
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1389,6 +1670,10 @@ def handle_save_jump_host(data, current_user=None):
 def handle_delete_jump_host(data, current_user=None):
     """Delete a jump host for this user."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
         jump_host_id = data.get('jump_host_id')
         if not jump_host_id:
             emit('error', {'error': 'Jump host ID required'})
@@ -1397,9 +1682,9 @@ def handle_delete_jump_host(data, current_user=None):
             current_user.id, jump_host_id
         )
         if success:
-            emit('jump_host_deleted', {'jump_host_id': jump_host_id})
-            handle_list_jump_hosts(current_user=current_user)
-            return {'success': True, 'jump_host_id': jump_host_id}
+            payload = {'success': True, 'jump_host_id': jump_host_id}
+            emit('jump_host_deleted', payload)
+            return payload
         else:
             return _command_set_error(error, usages)
     except StorageCorruptionError as error:
@@ -1646,16 +1931,22 @@ def handle_list_directory(data, current_user=None):
     _t0 = _time.time()
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         source_id = identity.get('source_id')
         remote_path = payload.get('remote_path', '.')
+        cursor = payload.get('cursor', 0)
         request_context = {
             'operation': 'list_directory',
             **identity,
             'path': remote_path,
         }
 
-        if not _valid_file_request(identity):
+        if (
+            not _valid_file_request(identity)
+            or type(cursor) is not int
+            or cursor < 0
+            or cursor > config.MAX_TRANSFER_MEMBERS
+        ):
             emit('error', {
                 'error': 'Source ID and request ID required',
                 **request_context,
@@ -1664,10 +1955,11 @@ def handle_list_directory(data, current_user=None):
 
         try:
             _t1 = _time.time()
-            files, error = file_service.list_directory(
+            files, error, next_cursor = file_service.list_directory_page(
                 source_id,
                 user_id=current_user.id,
                 path=remote_path,
+                cursor=cursor,
             )
         except FileSourceUnavailable:
             log_warning(
@@ -1689,6 +1981,8 @@ def handle_list_directory(data, current_user=None):
                 **identity,
                 'path': remote_path,
                 'files': files,
+                'cursor': cursor,
+                'next_cursor': next_cursor,
             })
 
     except Exception as e:
@@ -2006,6 +2300,19 @@ def handle_delete_command(data, current_user=None):
 _COMMAND_MUTATION_RATE_ERROR = (
     'Too many command changes. Please wait before trying again.'
 )
+_CONNECTION_MUTATION_RATE_ERROR = (
+    'Too many saved-connection changes. Please wait before trying again.'
+)
+
+
+def _connection_mutation_rate_limit(current_user):
+    if config.RATELIMIT_ENABLED and check_socket_rate_limit(
+        current_user.id,
+        'connection_mutation',
+        config.RATELIMIT_CONNECTION_MUTATION,
+    ):
+        return _command_set_error(_CONNECTION_MUTATION_RATE_ERROR)
+    return None
 
 
 def _command_mutation_rate_limit(current_user):
@@ -2030,7 +2337,11 @@ def _command_set_error(error, usages=None):
         code = 'not_found'
     elif error == _COMMAND_MUTATION_RATE_ERROR:
         code = 'rate_limited'
+    elif error == _CONNECTION_MUTATION_RATE_ERROR:
+        code = 'rate_limited'
     elif error and error.startswith('Command storage quota exceeded:'):
+        code = 'quota_exceeded'
+    elif error and error.startswith('Connection storage quota exceeded:'):
         code = 'quota_exceeded'
     elif error and 'unreadable' in error:
         code = 'storage_error'
@@ -2188,7 +2499,6 @@ def handle_convert_legacy_command_set(data, current_user=None):
     }
     emit('command_set_converted', payload)
     handle_list_command_sets(current_user=current_user)
-    handle_list_profiles(current_user=current_user)
     return payload
 
 @socketio.on('save_session_name')
@@ -2367,7 +2677,7 @@ def handle_request_session_runtime_inventory(data, current_user=None):
 def handle_prepare_transfer(data, current_user=None):
     """Issue only metadata for a later bounded HTTP transfer."""
     payload = data if isinstance(data, dict) else {}
-    identity = _file_request_identity(payload)
+    identity = _file_request_identity(payload, current_user.id)
     try:
         if not _valid_file_request(identity):
             return {
@@ -2424,7 +2734,13 @@ def handle_prepare_transfer(data, current_user=None):
 @socket_login_required
 def handle_cancel_transfer(data, current_user=None):
     """Cancel a prepared or streaming transfer owned by this user only."""
-    transfer_id = data.get('transfer_id') if isinstance(data, dict) else None
+    payload = data if isinstance(data, dict) else {}
+    # Cancellation is a file-control event too: apply the same small-field and
+    # rolling-byte policy before using attacker-controlled identifiers.
+    _file_request_identity(payload, current_user.id)
+    transfer_id = payload.get('transfer_id')
+    if not payload.get('_file_control_valid') or not transfer_id:
+        return {'success': False, 'state': 'unavailable'}
     try:
         result = transfer_manager.cancel_with_result(
             transfer_id, current_user.id
@@ -2449,7 +2765,7 @@ def handle_download_file_binary(data, current_user=None):
     """Handle binary file download (no base64 encoding)."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         remote_path = payload.get('remote_path')
         for_preview = payload.get('for_preview', False)
         context = {
@@ -3036,7 +3352,8 @@ def handle_quick_disconnect(data, current_user=None):
 def handle_file_source_disconnect(data, current_user=None):
     """Close an owned ephemeral source without revealing foreign sources."""
     payload = data if isinstance(data, dict) else {}
-    source_id = payload.get('source_id')
+    identity = _file_request_identity(payload, current_user.id)
+    source_id = identity.get('source_id')
     try:
         kind, handle_id = parse_source_id(source_id)
     except Exception:
@@ -3067,7 +3384,7 @@ def handle_create_directory(data, current_user=None):
     """Create a directory on remote server."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         remote_path = payload.get('remote_path')
         context = {
             'operation': 'create_directory',
@@ -3129,7 +3446,7 @@ def handle_create_directory(data, current_user=None):
 def handle_rename_file(data, current_user=None):
     """Rename a file or directory on remote server."""
     payload = data if isinstance(data, dict) else {}
-    identity = _file_request_identity(payload)
+    identity = _file_request_identity(payload, current_user.id)
     old_path = payload.get('old_path')
     new_path = payload.get('new_path')
     response_context = {
@@ -3238,7 +3555,7 @@ def handle_delete_item(data, current_user=None):
     """Delete a file or directory (recursive) on remote server."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'delete_item',
@@ -3301,7 +3618,7 @@ def handle_get_home_directory(data, current_user=None):
     _t0 = _time.time()
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         request_context = {
             'operation': 'get_home_directory',
             **identity,
@@ -3353,7 +3670,7 @@ def handle_check_exists(data, current_user=None):
     """Check if a file or directory exists on remote server."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'check_exists',
@@ -3396,7 +3713,7 @@ def handle_get_file_stat(data, current_user=None):
     """Get detailed file statistics."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'get_file_stat',
@@ -3445,7 +3762,7 @@ def handle_preview_file(data, current_user=None):
     """
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         max_bytes = payload.get('max_bytes', 512000)
         offset = payload.get('offset', 0)
@@ -3521,7 +3838,7 @@ def handle_open_file_for_edit(data, current_user=None):
     """Load a full text file for inline editing (no truncation, text only)."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'open_file_for_edit',
@@ -3576,7 +3893,11 @@ def handle_save_file(data, current_user=None):
     """Save revision-bound editor content through its file source backend."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(
+            payload,
+            current_user.id,
+            allow_editor_content=True,
+        )
         path = payload.get('path')
         content = payload.get('content')
         encoding = payload.get('encoding', 'utf-8')
@@ -3706,7 +4027,7 @@ def handle_transfer_server_to_server(data, current_user=None):
     """
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         source_id = identity.get('source_id')
         requested_source_path = payload.get('source_path')
         destination_source_id = payload.get('destination_source_id')

@@ -59,7 +59,11 @@ function createElement(tagName = 'div') {
     return element;
 }
 
-function loadSessionManager(confirmSessionClose, disconnectSessionAction) {
+function loadSessionManager(
+    confirmSessionClose,
+    disconnectSessionAction,
+    connectionHistoryScope = '',
+) {
     const source = fs.readFileSync(
         path.join(__dirname, '..', '..', 'static', 'js', 'session-manager.js'),
         'utf8',
@@ -69,9 +73,19 @@ function loadSessionManager(confirmSessionClose, disconnectSessionAction) {
     body.dataset = {
         confirmSessionClose: String(confirmSessionClose),
         disconnectSessionAction: disconnectSessionAction || '',
+        connectionHistoryScope,
+    };
+    const stored = new Map();
+    const localStorage = {
+        get length() { return stored.size; },
+        key(index) { return Array.from(stored.keys())[index] ?? null; },
+        getItem(key) { return stored.has(key) ? stored.get(key) : null; },
+        setItem(key, value) { stored.set(String(key), String(value)); },
+        removeItem(key) { stored.delete(String(key)); },
     };
     const context = {
         console,
+        localStorage,
         document: {
             body,
             createElement,
@@ -106,6 +120,7 @@ function loadSessionManager(confirmSessionClose, disconnectSessionAction) {
     return {
         manager: context.__SessionManager,
         context,
+        localStorage,
         createElement,
         registerElement(id, element) {
             element.id = id;
@@ -114,6 +129,71 @@ function loadSessionManager(confirmSessionClose, disconnectSessionAction) {
         },
     };
 }
+
+test('account-scoped aliases stay isolated and survive account switching', () => {
+    const {
+        manager, context, localStorage,
+    } = loadSessionManager(false, 'retry', 'account-b-scope');
+    localStorage.setItem('sessionDisplayNames', JSON.stringify({leak: 'legacy'}));
+    localStorage.setItem(
+        'sessionDisplayNames:account-a-scope',
+        JSON.stringify({target: 'Customer A production'}),
+    );
+    localStorage.setItem('sessionDisplayNames:activeScope', 'account-a-scope');
+
+    manager.initializeDisplayNameStorage();
+
+    assert.equal(localStorage.getItem('sessionDisplayNames'), null);
+    assert.equal(
+        localStorage.getItem('sessionDisplayNames:account-a-scope'),
+        JSON.stringify({target: 'Customer A production'}),
+    );
+
+    manager.writeDisplayNames({target: 'Customer B production'});
+    assert.deepEqual(JSON.parse(JSON.stringify(manager.readDisplayNames())), {
+        target: 'Customer B production',
+    });
+
+    context.document.body.dataset.connectionHistoryScope = 'account-a-scope';
+    manager.initializeDisplayNameStorage();
+    assert.equal(
+        localStorage.getItem('sessionDisplayNames:account-b-scope'),
+        JSON.stringify({target: 'Customer B production'}),
+    );
+    assert.deepEqual(JSON.parse(JSON.stringify(manager.readDisplayNames())), {
+        target: 'Customer A production',
+    });
+});
+
+test('explicit logout retains namespaced convenience data', () => {
+    const {manager, localStorage} = loadSessionManager(
+        false, 'retry', 'account-a-scope'
+    );
+    localStorage.setItem(
+        'sessionDisplayNames:account-a-scope',
+        JSON.stringify({target: 'Sensitive alias'}),
+    );
+    localStorage.setItem(
+        'recentConnections:account-a-scope',
+        JSON.stringify([{host: 'target'}]),
+    );
+    localStorage.setItem('sessionDisplayNames:activeScope', 'account-a-scope');
+
+    manager.clearScopedBrowserStorage();
+
+    assert.equal(
+        localStorage.getItem('sessionDisplayNames:account-a-scope'),
+        JSON.stringify({target: 'Sensitive alias'}),
+    );
+    assert.equal(
+        localStorage.getItem('recentConnections:account-a-scope'),
+        JSON.stringify([{host: 'target'}]),
+    );
+    assert.equal(
+        localStorage.getItem('sessionDisplayNames:activeScope'),
+        null,
+    );
+});
 
 function prepareSession(manager) {
     manager.sessions = {

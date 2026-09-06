@@ -2,7 +2,10 @@
 
 from . import command_manager, command_set_manager
 from .storage_utils import storage_lock
-from .startup_commands import normalize_startup_commands
+from .startup_commands import (
+    normalize_startup_commands,
+    validate_command_parameters,
+)
 
 
 VALID_MODES = {'none', 'free_text', 'command', 'command_set'}
@@ -59,10 +62,9 @@ def _resolve_command(command, parameters_override=None, override_present=False):
     parameters = parameters_override if override_present else command.get('parameters', '')
     if parameters is None:
         parameters = command.get('parameters', '')
-    if not isinstance(parameters, str):
-        return None, 'Command parameters must be a string'
-    if '\x00' in parameters:
-        return None, 'Commands cannot contain NUL bytes'
+    error = validate_command_parameters(parameters)
+    if error:
+        return None, error
 
     command_text = command['command']
     resolved = command_text + (f' {parameters}' if parameters else '')
@@ -116,8 +118,10 @@ def validate_configuration(user_id, payload, dependent_lock_held=False):
             return None, error
         override_present = 'parameters_override' in payload
         override = payload.get('parameters_override')
-        if override is not None and not isinstance(override, str):
-            return None, 'Command parameters must be a string'
+        if override_present and override is not None:
+            error = validate_command_parameters(override)
+            if error:
+                return None, error
         _resolved, error = _resolve_command(
             command, override, override_present=override_present
         )
@@ -176,8 +180,10 @@ def _resolve_configuration_with_coordinator_held(user_id, payload):
         return None, error
     override_present = 'parameters_override' in payload
     override = payload.get('parameters_override')
-    if override is not None and not isinstance(override, str):
-        return None, 'Command parameters must be a string'
+    if override_present and override is not None:
+        error = validate_command_parameters(override)
+        if error:
+            return None, error
     return _resolve_command(
         command,
         override,

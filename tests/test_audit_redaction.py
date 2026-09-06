@@ -94,3 +94,29 @@ def test_file_source_audit_uses_structured_smb_target_without_credentials(
     assert 'password' not in inspect.signature(
         log_file_source_operation
     ).parameters
+
+
+def test_audit_sanitization_bounds_nested_attacker_controlled_values():
+    from app.audit_logger import sanitize_audit_details
+
+    sanitized = sanitize_audit_details({
+        f'field-{index}': 'x' * 1000
+        for index in range(100)
+    } | {
+        'nested': {'one': {'two': {'three': {'four': 'unreachable'}}}},
+        'provider': {'access_token': 'must-not-survive'},
+    })
+
+    assert len(sanitized) == 64
+    assert all(
+        len(value) <= 512
+        for value in sanitized.values()
+        if isinstance(value, str)
+    )
+
+    nested = sanitize_audit_details({
+        'nested': {'one': {'two': {'three': {'four': 'unreachable'}}}},
+        'provider': {'access_token': 'must-not-survive'},
+    })
+    assert nested['nested']['one']['two']['three']['four'] == '[TRUNCATED]'
+    assert nested['provider']['access_token'] == '[REDACTED]'

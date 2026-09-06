@@ -187,7 +187,7 @@ def test_profile_organization_socket_updates_current_users_profile(
     assert result['success'] is True
     assert result['profile']['favorite'] is True
     assert ('profile_organization_updated', result) in emitted
-    assert any(event == 'profiles_list' for event, _payload in emitted)
+    assert all(event != 'profiles_list' for event, _payload in emitted)
 
 
 def test_profile_organization_socket_rejects_missing_profile_id(
@@ -271,7 +271,6 @@ def test_move_profile_socket_requests_confirmation_without_writing_or_broadcast(
 
     assert result == {
         'success': False,
-        'profiles': profiles,
         'requires_confirmation': True,
         'profile_id': 'critical',
         'profile_name': 'Critical DB',
@@ -282,7 +281,7 @@ def test_move_profile_socket_requests_confirmation_without_writing_or_broadcast(
         assert profile_manager.load_profiles(user_id) == profiles
 
 
-def test_move_profile_socket_returns_authoritative_profiles_after_confirmed_write(
+def test_move_profile_socket_returns_bounded_organization_after_confirmed_write(
     app, monkeypatch,
 ):
     from app import profile_manager
@@ -312,10 +311,11 @@ def test_move_profile_socket_returns_authoritative_profiles_after_confirmed_writ
 
     assert result['success'] is True
     assert result['requires_confirmation'] is False
-    ordered = sorted(result['profiles'], key=lambda item: item['sort_order'])
+    assert 'profiles' not in result
+    ordered = sorted(result['organization'], key=lambda item: item['sort_order'])
     assert [item['id'] for item in ordered] == ['worker', 'critical']
     assert ('profile_organization_updated', result) in emitted
-    assert any(event == 'profiles_list' for event, _payload in emitted)
+    assert all(event != 'profiles_list' for event, _payload in emitted)
 
 
 def test_move_profile_socket_returns_authoritative_state_when_source_is_stale(
@@ -347,10 +347,57 @@ def test_move_profile_socket_returns_authoritative_state_when_source_is_stale(
     assert result == {
         'success': False,
         'error': 'Profile group changed; retry move',
-        'profiles': profiles,
         'requires_confirmation': False,
+        'organization': [{
+            'id': 'api',
+            'group': 'Production',
+            'sort_order': 0,
+        }],
     }
     assert emitted == []
+
+
+def test_saved_connection_mutations_have_a_shared_per_user_rate_limit(
+    app,
+    monkeypatch,
+):
+    import config
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'profile_mutation_limit')
+    calls = []
+    monkeypatch.setattr(config, 'RATELIMIT_ENABLED', True)
+
+    def limited(candidate_user_id, operation, rate):
+        calls.append((candidate_user_id, operation, rate))
+        return True
+
+    monkeypatch.setattr(socket_events, 'check_socket_rate_limit', limited)
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_save_profile,
+        sid,
+        {
+            'name': 'Production',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        },
+    )
+
+    assert result == {
+        'success': False,
+        'error': 'Too many saved-connection changes. Please wait before trying again.',
+        'code': 'rate_limited',
+    }
+    assert calls == [(
+        user_id,
+        'connection_mutation',
+        config.RATELIMIT_CONNECTION_MUTATION,
+    )]
+    assert emitted == [('error', result)]
 
 
 def test_update_user_command_rejects_unknown_id_without_writing(app, monkeypatch):
@@ -877,7 +924,7 @@ def test_revoked_target_key_stops_before_rate_limit_dns_and_network(
 
 
 def test_revoked_live_jump_key_stops_before_rate_limit_dns_and_network(
-    app, monkeypatch
+    app, monkeypatch, rsa_private_key_pem
 ):
     from flask import request
     from app import jump_host_manager, key_manager, ssh_manager
@@ -885,6 +932,10 @@ def test_revoked_live_jump_key_stops_before_rate_limit_dns_and_network(
 
     user_id, sid = create_socket_user(app, 'revoked_live_jump_key')
     with app.app_context():
+        key, key_error = key_manager.save_key(
+            user_id, 'Revoked jump key', rsa_private_key_pem
+        )
+        assert key_error is None
         jump_host, error = jump_host_manager.add_jump_host(
             user_id,
             'Key Bastion',
@@ -892,15 +943,16 @@ def test_revoked_live_jump_key_stops_before_rate_limit_dns_and_network(
             22,
             'jump-user',
             'key',
-            key_id='revoked-jump-key',
+            key_id=key['id'],
         )
         assert error is None
+        assert key_manager.delete_key(user_id, key['id']) is True
     monkeypatch.setattr(
         key_manager,
         'read_key_content',
         lambda value, key_id: (
             (None, 'Key not found')
-            if (value, key_id) == (user_id, 'revoked-jump-key')
+            if (value, key_id) == (user_id, key['id'])
             else (_ for _ in ()).throw(AssertionError('unexpected key'))
         ),
     )

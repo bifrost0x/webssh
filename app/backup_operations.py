@@ -212,8 +212,16 @@ class BackupOperationRegistry:
 
     def cleanup_orphans(self):
         root = self._operation_root()
-        from .maintenance_mode import protected_operation_directory_name
+        from .maintenance_mode import (
+            is_active,
+            protected_operation_directory_name,
+        )
         protected_name = protected_operation_directory_name()
+        # An unreadable status file intentionally enters fail-closed
+        # maintenance without a trustworthy operation ID. Preserve every
+        # possible recovery directory until an operator repairs the status.
+        if is_active() and protected_name is None:
+            return
         try:
             lock_context = operation_lock(timeout=0)
             lock_context.__enter__()

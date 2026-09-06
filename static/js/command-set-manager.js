@@ -541,6 +541,7 @@ window.CommandSetManager = {
                 if (this.returnToConnection) this.selectForConnection(saved.id);
             }
             if (isLegacyConversion && typeof ProfileManager !== 'undefined') {
+                ProfileManager.upsertProfile(acknowledgement.profile);
                 ProfileManager.clearLegacyCommands();
             }
             this.load();

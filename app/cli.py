@@ -194,6 +194,50 @@ def warn_if_no_admin():
         )
 
 
+@click.command('issue-factor-bootstrap')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--action',
+    required=True,
+    type=click.Choice(('passkey.enroll', 'totp.enroll'), case_sensitive=True),
+)
+def issue_factor_bootstrap(username, action):
+    """Issue a one-use code for a GitHub-only user's first durable factor."""
+    from . import _initialize_persistent_storage
+    from .factor_bootstrap import (
+        FactorBootstrapError,
+        issue_factor_bootstrap as issue_code,
+    )
+    from .maintenance_mode import is_active
+
+    if is_active():
+        raise click.ClickException(
+            'Factor bootstrap is unavailable during restore maintenance.'
+        )
+    _initialize_persistent_storage(current_app._get_current_object())
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        raise click.ClickException('Eligible account not found.')
+    try:
+        token, expires_at = issue_code(user, action)
+    except FactorBootstrapError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _audit_operation(
+        'FACTOR_BOOTSTRAP_ISSUED',
+        user=user.username,
+        action=action,
+        expires_at=expires_at.replace(tzinfo=timezone.utc).isoformat(),
+    )
+    expiry = expires_at.replace(tzinfo=timezone.utc).isoformat().replace(
+        '+00:00', 'Z'
+    )
+    click.echo(f'Enrollment code: {token}')
+    click.echo(
+        f'Expires at: {expiry}. This code is single-use and bound to '
+        f'{user.username} and {action}.'
+    )
+
+
 @click.group('backup')
 def backup_cli():
     """Create, verify, or restore WebSSH data backups."""
@@ -332,5 +376,6 @@ def rotate_secret_key(confirm_offline):
 
 def register_cli(app):
     app.cli.add_command(create_admin)
+    app.cli.add_command(issue_factor_bootstrap)
     app.cli.add_command(backup_cli)
     app.cli.add_command(rotate_secret_key)

@@ -1240,11 +1240,13 @@
         ProfileManager.setProfiles(data.profiles);
     });
 
-    socket.on('profile_saved', () => {
+    socket.on('profile_saved', (data) => {
+        ProfileManager.upsertProfile(data?.profile);
         showNotification('Saved connection updated successfully', 'success');
     });
 
-    socket.on('profile_deleted', () => {
+    socket.on('profile_deleted', (data) => {
+        ProfileManager.removeProfile(data?.profile_id);
         showNotification('Saved connection deleted successfully', 'success');
     });
 
@@ -1286,13 +1288,15 @@
         if (window.JumpHostManager) window.JumpHostManager.setJumpHosts(data.jump_hosts);
     });
 
-    socket.on('jump_host_saved', () => {
+    socket.on('jump_host_saved', (data) => {
+        window.JumpHostManager?.upsertJumpHost(data?.jump_host);
         showNotification(window.i18n ? i18n.t('jumphosts.savedOk') : 'Jump host saved', 'success');
         document.getElementById('jumpHostForm')?.reset();
         document.getElementById('jhKeyGroup')?.classList.add('hidden');
     });
 
-    socket.on('jump_host_deleted', () => {
+    socket.on('jump_host_deleted', (data) => {
+        window.JumpHostManager?.removeJumpHost(data?.jump_host_id);
         showNotification(window.i18n ? i18n.t('jumphosts.deleted') : 'Jump host deleted', 'success');
     });
 
@@ -2466,6 +2470,7 @@
         document.getElementById('logoutBtn').addEventListener('click', () => {
             const message = window.i18n ? i18n.t('auth.logoutConfirm') : 'Are you sure you want to logout? Active SSH sessions will be preserved.';
             if (confirm(message)) {
+                SessionManager.clearScopedBrowserStorage();
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.action = APP_ROOT + '/logout';

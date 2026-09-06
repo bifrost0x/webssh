@@ -1,4 +1,7 @@
 from types import SimpleNamespace
+import ipaddress
+import socket
+import struct
 import threading
 
 import pytest
@@ -8,13 +11,36 @@ from sqlalchemy import inspect, text
 pytestmark = pytest.mark.usefixtures('direct_socket_authentication')
 
 
-def _set_policy(monkeypatch, *, enabled=True, users=(), targets=(), remote_users=()):
+def _set_policy(
+    monkeypatch,
+    *,
+    enabled=True,
+    users=(),
+    targets=('tiny-server',),
+    remote_users=(),
+):
     import config
+    from app import tailscale_ssh
+    from app.network_policy import ResolvedTarget
 
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ENABLED', enabled)
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ALLOWED_WEBSSH_USERS', frozenset(users))
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ALLOWED_TARGETS', frozenset(targets))
     monkeypatch.setattr(config, 'TAILSCALE_SSH_ALLOWED_REMOTE_USERS', frozenset(remote_users))
+    monkeypatch.setattr(config, 'TAILSCALE_SSH_INTERFACE', 'tailscale0')
+    monkeypatch.setattr(
+        tailscale_ssh,
+        'target_uses_tailscale_route',
+        lambda _address: True,
+    )
+
+    def resolve(host, port, allow_internal=False, *, target_validator=None):
+        target = ResolvedTarget(host, port, '100.64.0.10', 2)
+        if target_validator is not None and not target_validator(target):
+            raise ValueError('target rejected')
+        return target
+
+    monkeypatch.setattr(tailscale_ssh, 'resolve_allowed_target', resolve)
 
 
 def test_tailscale_ssh_disabled_by_default(monkeypatch):
@@ -72,6 +98,76 @@ def test_tailscale_ssh_enforces_target_and_remote_user_allowlists(monkeypatch):
     )
 
 
+def test_tailscale_ssh_requires_an_explicit_exact_host_and_port(monkeypatch):
+    from app.tailscale_ssh import validate_tailscale_ssh_access
+
+    user = SimpleNamespace(username='admin', is_admin=True)
+    _set_policy(monkeypatch, targets=())
+    assert validate_tailscale_ssh_access(user, 'tiny-server', 'root') == (
+        'Tailscale SSH target is not allowed'
+    )
+
+    _set_policy(monkeypatch, targets={'tiny-server:2200'})
+    assert validate_tailscale_ssh_access(
+        user, 'tiny-server', 'root', port=2200
+    ) is None
+    assert validate_tailscale_ssh_access(
+        user, 'tiny-server', 'root', port=22
+    ) == 'Tailscale SSH target is not allowed'
+
+
+def test_linux_route_lookup_uses_policy_routing_result(monkeypatch):
+    from app import tailscale_ssh
+
+    destination = ipaddress.ip_address('100.64.1.2')
+    sent = []
+    route_attributes = tailscale_ssh._netlink_attribute(
+        tailscale_ssh._RTA_OIF,
+        struct.pack('=I', 52),
+    )
+    # A table-52 result models standard Tailscale policy routing; the output
+    # interface, not the main routing table, is the authorization boundary.
+    route_payload = tailscale_ssh._RTMSG.pack(
+        socket.AF_INET, 32, 0, 0, 52, 0, 0, 0, 0
+    ) + route_attributes
+    response = tailscale_ssh._NLMSG_HEADER.pack(
+        tailscale_ssh._NLMSG_HEADER.size + len(route_payload),
+        tailscale_ssh._RTM_NEWROUTE,
+        0,
+        1,
+        0,
+    ) + route_payload
+
+    class FakeRouteSocket:
+        def settimeout(self, value):
+            assert value == 1.0
+
+        def bind(self, address):
+            assert address == (0, 0)
+
+        def sendto(self, message, address):
+            sent.append(message)
+            assert address == (0, 0)
+
+        def recv(self, _size):
+            return response
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        tailscale_ssh.socket,
+        'if_indextoname',
+        lambda index: 'tailscale0' if index == 52 else 'eth0',
+    )
+
+    assert tailscale_ssh._route_interface_for_ip(
+        destination.compressed,
+        socket_factory=lambda *_args: FakeRouteSocket(),
+    ) == 'tailscale0'
+    assert destination.packed in sent[0]
+
+
 def test_tailscale_ssh_fails_closed_for_invalid_configured_target(monkeypatch):
     from app.tailscale_ssh import validate_tailscale_ssh_access
 
@@ -98,10 +194,11 @@ def test_tailscale_authorization_is_bound_to_exact_user_target_and_remote_user(
     )
 
     assert error is None
-    assert authorization.matches(7, 'tiny-server', 'root')
-    assert not authorization.matches(8, 'tiny-server', 'root')
-    assert not authorization.matches(7, 'other-server', 'root')
-    assert not authorization.matches(7, 'tiny-server', 'ubuntu')
+    assert authorization.matches(7, 'tiny-server', 22, 'root')
+    assert not authorization.matches(8, 'tiny-server', 22, 'root')
+    assert not authorization.matches(7, 'other-server', 22, 'root')
+    assert not authorization.matches(7, 'tiny-server', 2200, 'root')
+    assert not authorization.matches(7, 'tiny-server', 22, 'ubuntu')
 
 
 def test_profile_launch_authorization_tracks_target_policy(monkeypatch):
