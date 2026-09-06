@@ -14,7 +14,7 @@ from sqlalchemy import delete
 
 import config
 
-from .audit_logger import log_security_event
+from .audit_logger import log_security_event, log_warning
 from .models import (
     AuthenticationSession,
     GitHubOAuthState,
@@ -255,10 +255,33 @@ def _normalize_methods(methods, primary_method):
     return normalized
 
 
-def _session_lifetime(remember):
-    key = 'REMEMBER_COOKIE_DURATION' if remember else (
-        'PERMANENT_SESSION_LIFETIME'
-    )
+def _session_lifetime(remember, user_id=None):
+    if remember:
+        key = 'REMEMBER_COOKIE_DURATION'
+    else:
+        key = 'PERMANENT_SESSION_LIFETIME'
+        if user_id is not None:
+            from .storage_errors import StorageCorruptionError
+            from .user_settings import (
+                AUTHENTICATION_SESSION_DURATION_MINUTES,
+                get_user_settings,
+            )
+
+            try:
+                minutes = get_user_settings(user_id).get(
+                    'authentication_session_duration_minutes',
+                )
+            except StorageCorruptionError:
+                log_warning(
+                    'User settings unavailable for authentication lifetime',
+                    user_id=user_id,
+                )
+            else:
+                if (
+                    type(minutes) is int
+                    and minutes in AUTHENTICATION_SESSION_DURATION_MINUTES
+                ):
+                    return timedelta(minutes=minutes)
     value = current_app.config.get(key, timedelta(minutes=30))
     if isinstance(value, timedelta):
         return value
@@ -427,7 +450,10 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
         authenticated_at=now,
         strong_authenticated_at=strong_authenticated_at,
         auth_generation=int(user.auth_generation or 0),
-        expires_at=now + _session_lifetime(bool(pending.remember)),
+        expires_at=now + _session_lifetime(
+            bool(pending.remember),
+            user.id,
+        ),
     )
 
     session.clear()

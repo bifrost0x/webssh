@@ -40,6 +40,12 @@ def test_missing_user_settings_store_keeps_defaults(app):
         assert user_settings.get_user_settings(user_id) == user_settings.DEFAULT_SETTINGS
         assert user_settings.get_user_settings(user_id)['confirm_session_close'] is False
         assert user_settings.get_user_settings(user_id)['disconnect_session_action'] == 'retry'
+        assert (
+            user_settings.get_user_settings(user_id)[
+                'authentication_session_duration_minutes'
+            ]
+            == 30
+        )
 
 
 def test_legacy_user_without_close_preference_keeps_confirmation_enabled(app):
@@ -144,6 +150,27 @@ def test_disconnect_session_action_rejects_unsupported_values(value):
 
     assert user_settings._valid_settings_update({
         'disconnect_session_action': value,
+    }) is False
+
+
+@pytest.mark.parametrize('value', [30, 60, 120, 240, 480])
+def test_authentication_session_duration_accepts_supported_values(value):
+    from app import user_settings
+
+    assert user_settings._valid_settings_update({
+        'authentication_session_duration_minutes': value,
+    }) is True
+
+
+@pytest.mark.parametrize(
+    'value',
+    [None, False, True, 0, 29, 481, '60', [], {}],
+)
+def test_authentication_session_duration_rejects_unsupported_values(value):
+    from app import user_settings
+
+    assert user_settings._valid_settings_update({
+        'authentication_session_duration_minutes': value,
     }) is False
 
 
