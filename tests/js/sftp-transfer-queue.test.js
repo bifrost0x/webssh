@@ -890,6 +890,132 @@ test('opaque directory cursors append pages and are echoed unchanged', () => {
     assert.equal(state.loadingMore, false);
 });
 
+test('a failed continuation restarts once from page zero', () => {
+    const listeners = {};
+    const emitted = [];
+    const notifications = [];
+    const token = `v1.abcdefghijklmnop.1.${'a'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/srv',
+        files: [{ name: 'stale-page' }],
+        loadingMore: true,
+        nextDirectoryCursor: token,
+        pendingDirectoryRequestId: 'left:directory-page:2',
+        pendingDirectoryPath: '/srv',
+        pendingDirectoryCursor: token,
+    });
+    let renders = 0;
+    let timeouts = 0;
+    Object.assign(manager, {
+        requestSequence: 2,
+        socket: {
+            on(event, callback) { listeners[event] = callback; },
+            emit(event, payload) { emitted.push({ event, payload }); },
+        },
+        isOpen: true,
+        panes: { left: state, right: manager.createEmptyPaneState() },
+        updatePathInput() {},
+        renderPane() { renders += 1; },
+        setLoadingTimeout() { timeouts += 1; },
+        showNotification(message, level) { notifications.push([message, level]); },
+    });
+    manager.setupSocketListeners();
+
+    listeners.error({
+        operation: 'list_directory',
+        source_id: 'sftp-session:session-a',
+        request_id: 'left:directory-page:2',
+        path: '/srv',
+        cursor: token,
+        error: 'Failed to list directory: listing expired',
+    });
+
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'list_directory');
+    assert.equal(emitted[0].payload.source_id, 'sftp-session:session-a');
+    assert.equal(emitted[0].payload.remote_path, '/srv');
+    assert.equal(emitted[0].payload.cursor, 0);
+    assert.notEqual(emitted[0].payload.request_id, 'left:directory-page:2');
+    assert.equal(state.loading, true);
+    assert.equal(state.loadingMore, false);
+    assert.equal(state.nextDirectoryCursor, null);
+    assert.equal(state.pendingDirectoryRequestId, emitted[0].payload.request_id);
+    assert.equal(state.pendingDirectoryCursor, 0);
+    assert.deepEqual(state.files, [{ name: 'stale-page' }]);
+    assert.equal(renders, 1);
+    assert.equal(timeouts, 1);
+    assert.deepEqual(notifications, [[
+        'Failed to list directory: listing expired', 'error',
+    ]]);
+
+    listeners.directory_listing({
+        source_id: 'sftp-session:session-a',
+        request_id: emitted[0].payload.request_id,
+        path: '/srv',
+        cursor: 0,
+        files: [{ name: 'fresh-page' }],
+        next_cursor: null,
+    });
+
+    assert.deepEqual(state.files, [{ name: 'fresh-page' }]);
+    assert.equal(state.loading, false);
+    assert.equal(state.nextDirectoryCursor, null);
+});
+
+test('a failed page-zero recovery is not retried again', () => {
+    const listeners = {};
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.1.${'a'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/srv',
+        loadingMore: true,
+        nextDirectoryCursor: token,
+        pendingDirectoryRequestId: 'left:directory-page:2',
+        pendingDirectoryPath: '/srv',
+        pendingDirectoryCursor: token,
+    });
+    Object.assign(manager, {
+        requestSequence: 2,
+        socket: {
+            on(event, callback) { listeners[event] = callback; },
+            emit(event, payload) { emitted.push({ event, payload }); },
+        },
+        isOpen: true,
+        panes: { left: state, right: manager.createEmptyPaneState() },
+        renderPane() {},
+        setLoadingTimeout() {},
+        showNotification() {},
+    });
+    manager.setupSocketListeners();
+
+    listeners.error({
+        operation: 'list_directory',
+        source_id: 'sftp-session:session-a',
+        request_id: 'left:directory-page:2',
+        path: '/srv',
+        cursor: token,
+        error: 'Failed to list directory: listing expired',
+    });
+    const recoveryRequest = emitted[0].payload;
+
+    listeners.error({
+        operation: 'list_directory',
+        source_id: 'sftp-session:session-a',
+        request_id: recoveryRequest.request_id,
+        path: '/srv',
+        error: 'Failed to list directory: backend unavailable',
+    });
+
+    assert.equal(emitted.length, 1);
+    assert.equal(state.loading, false);
+    assert.equal(state.loadingMore, false);
+    assert.equal(state.nextDirectoryCursor, null);
+    assert.equal(state.pendingDirectoryRequestId, null);
+    assert.equal(state.error, 'Failed to list directory: backend unavailable');
+});
+
 test('single-pane workspace can activate either side even on a narrow viewport', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();

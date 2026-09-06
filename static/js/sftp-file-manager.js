@@ -1830,6 +1830,19 @@ class SFTPFileManager {
                     state.error = wasLoadingMore ? null : errorMsg;
                     state.pendingDirectoryRequestId = null;
                     state.pendingDirectoryPath = null;
+                    if (wasLoadingMore) {
+                        // Continuation handles are intentionally short-lived.
+                        // Restart once from page zero so an expired or retired
+                        // snapshot cannot strand the pane on a dead cursor. A
+                        // failure of this fresh request follows the normal
+                        // initial-listing error path and is not retried again.
+                        this.requestDirectoryForState(
+                            pane,
+                            state,
+                            state.path,
+                        );
+                        if (visible) this.setLoadingTimeout(pane);
+                    }
                     if (visible) this.renderPane(pane);
                     if (this.isOpen !== false) this.showNotification(errorMsg, 'error');
                 }
