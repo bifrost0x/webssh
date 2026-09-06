@@ -1254,3 +1254,108 @@ def test_delete_unreferenced_command_set(app, monkeypatch):
     assert (success, error, profiles) == (True, None, [])
     assert load_error is None
     assert loaded == []
+
+
+def test_oversized_profiles_preserve_command_delete_guards_and_recovery(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import command_manager, command_set_manager, profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'oversized-profile-command-recovery')
+    with app.app_context():
+        unused_command = command_manager.add_user_command(
+            user_id,
+            'Disposable command',
+            'true',
+            '',
+            'Safe to delete',
+            ['all'],
+            'custom',
+        )
+        referenced_command = command_manager.add_user_command(
+            user_id,
+            'Referenced command',
+            'true',
+            '',
+            'Must remain',
+            ['all'],
+            'custom',
+        )
+        unused_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Disposable set',
+            'steps': [{'type': 'inline', 'command': 'true'}],
+        })
+        assert error is None
+        referenced_set, error = command_set_manager.upsert_command_set(
+            user_id,
+            {
+                'name': 'Referenced set',
+                'steps': [{'type': 'inline', 'command': 'true'}],
+            },
+        )
+        assert error is None
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_text(json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': [{
+                'id': 'legacy-large',
+                'name': 'Protected profile',
+                'command_id': referenced_command['id'],
+                'command_set_id': referenced_set['id'],
+                'future': 'x' * 1024,
+            }],
+        }), encoding='utf-8')
+        original_profiles = path.read_bytes()
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 256)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            4096,
+        )
+
+        assert command_manager.delete_user_command(
+            user_id, unused_command['id']
+        ) == (True, None, [])
+        assert command_set_manager.delete_command_set(
+            user_id, unused_set['id']
+        ) == (True, None, [])
+        assert command_manager.delete_user_command(
+            user_id, referenced_command['id']
+        ) == (
+            False,
+            'Command is used by 1 profile',
+            [{
+                'id': 'legacy-large',
+                'name': 'Protected profile',
+                'type': 'profile',
+            }],
+        )
+        assert command_set_manager.delete_command_set(
+            user_id, referenced_set['id']
+        ) == (
+            False,
+            'Command set is used by 1 profile',
+            ['Protected profile'],
+        )
+        assert path.read_bytes() == original_profiles
+
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            256,
+        )
+        recovery_error = (
+            'Connection storage quota exceeded: stored data exceeds its '
+            'recovery byte limit'
+        )
+        assert command_manager.delete_user_command(
+            user_id, referenced_command['id']
+        ) == (False, recovery_error, [])
+        assert command_set_manager.delete_command_set(
+            user_id, referenced_set['id']
+        ) == (False, recovery_error, [])
+        assert path.read_bytes() == original_profiles

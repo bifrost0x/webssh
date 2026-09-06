@@ -325,9 +325,16 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             )
             host = target.hostname
             port = target.port
-            validated_socket = open_validated_socket(
-                target, config.SSH_CONNECT_TIMEOUT
-            )
+            if tailscale_target_authorized:
+                validated_socket = open_validated_socket(
+                    target,
+                    config.SSH_CONNECT_TIMEOUT,
+                    required_interface=config.TAILSCALE_SSH_INTERFACE,
+                )
+            else:
+                validated_socket = open_validated_socket(
+                    target, config.SSH_CONNECT_TIMEOUT
+                )
             sock = validated_socket
 
         client = paramiko.SSHClient()

@@ -34,8 +34,10 @@ allowlist adds specifically trusted non-admin WebSSH accounts. The target list
 is required when the feature is enabled. A bare host means port 22; use
 `host:port` or `[IPv6]:port` for another port. WebSSH resolves once, accepts
 only an address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
-`tailscale0`), and pins that address for the SSH connection. An empty
-remote-user list still delegates that dimension to tailnet SSH policy.
+`tailscale0`), pins that address, and binds the connecting socket to the same
+interface. A route change cannot silently move the connection to another
+interface. An empty remote-user list still delegates that dimension to
+tailnet SSH policy.
 
 Tailscale authentication cannot be combined with ProxyJump. The route and
 interface proof applies only to a direct connection from the WebSSH host.

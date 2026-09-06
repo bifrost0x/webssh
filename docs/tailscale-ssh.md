@@ -43,7 +43,9 @@ A bare hostname/IP means port 22; use `host:port` or `[IPv6]:port` for another
 port. Target matching is exact and case-insensitive, while remote OS usernames
 are exact and case-sensitive. After DNS resolution, WebSSH accepts only an
 address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
-`tailscale0`) and pins that address for the SSH connection.
+`tailscale0`), pins that address, and binds the connecting socket to the same
+interface. A route change cannot silently move the connection to another
+interface.
 
 Tailscale authentication cannot be combined with ProxyJump. The route and
 interface proof applies only to a direct connection from the WebSSH host.

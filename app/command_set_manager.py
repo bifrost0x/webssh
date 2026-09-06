@@ -11,6 +11,7 @@ from .command_storage_policy import (
     enforce_store_transition,
     validate_command_set,
 )
+from .connection_storage_policy import ConnectionStorageLimitError
 from .startup_commands import (
     normalize_startup_commands,
     validate_command_parameters,
@@ -676,10 +677,10 @@ def get_command_usage(user_id, command_id):
 def _load_profile_references(user_id):
     from . import profile_manager
 
-    path = profile_manager.get_user_profiles_file(user_id)
-    if path is None:
-        return [], None
-    return profile_manager._load_profiles_for_read_with_lock_held(user_id), None
+    try:
+        return profile_manager._load_profiles_for_recovery_delete(user_id)
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
 
 
 def delete_command_set(user_id, command_set_id):

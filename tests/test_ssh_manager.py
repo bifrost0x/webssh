@@ -154,6 +154,7 @@ def test_output_snapshot_carries_a_monotone_sequence_watermark():
 def install_ssh_clients(monkeypatch, *connect_errors):
     clients = ClientList()
     opened_sockets = []
+    required_interfaces = []
 
     def client_factory():
         index = len(clients)
@@ -175,13 +176,15 @@ def install_ssh_clients(monkeypatch, *connect_errors):
         ),
     )
 
-    def open_socket(target, timeout):
+    def open_socket(target, timeout, *, required_interface=None):
         result = FakeValidatedSocket(target.hostname)
         opened_sockets.append(result)
+        required_interfaces.append(required_interface)
         return result
 
     monkeypatch.setattr(ssh_manager, 'open_validated_socket', open_socket)
     clients.opened_sockets = opened_sockets
+    clients.required_interfaces = required_interfaces
     return clients
 
 
@@ -554,6 +557,7 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
         'auth_strategy': strategy,
     }
     assert ssh_manager.sessions[session_id]['auth_type'] == 'tailscale'
+    assert clients.required_interfaces == ['tailscale0']
     probe_channel, tmux_channel = clients[0].transport.session_channels
     assert probe_channel.command == 'command -v tmux'
     assert tmux_channel.pty == ('xterm-256color', 80, 24)
@@ -561,6 +565,16 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
         'env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u '
         'new-session -A -s existing_session'
     )
+
+
+def test_password_connection_does_not_bind_a_network_interface(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(password='secret')
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    assert clients.required_interfaces == [None]
 
 
 def test_password_tmux_preserves_remote_locale(monkeypatch):

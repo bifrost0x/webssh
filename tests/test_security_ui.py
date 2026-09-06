@@ -111,6 +111,23 @@ def test_settings_cards_keep_consistent_vertical_spacing():
     )
 
 
+def test_factor_confirmation_uses_secret_specific_autocomplete_metadata():
+    security_template = (ROOT / "templates/security.html").read_text(
+        encoding="utf-8"
+    )
+    webauthn_script = (ROOT / "static/js/webauthn.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'id="securityConfirmationPassword" class="form-control" '
+        'autocomplete="current-password"'
+    ) in security_template
+    assert "settings.authentication === 'bootstrap'" in webauthn_script
+    assert "? 'one-time-code'" in webauthn_script
+    assert ": 'current-password';" in webauthn_script
+
+
 def test_linked_github_identity_is_presented_as_a_security_method(app, client):
     from app.models import GitHubIdentity, db
 

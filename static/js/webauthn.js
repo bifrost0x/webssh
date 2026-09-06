@@ -161,6 +161,10 @@
             option.selected = method === settings.preferredMethod;
             methodSelect.appendChild(option);
         }
+        const passwordInput = document.getElementById('securityConfirmationPassword');
+        passwordInput.autocomplete = settings.authentication === 'bootstrap'
+            ? 'one-time-code'
+            : 'current-password';
         document.getElementById('securityConfirmationPasswordText').textContent = settings.authentication === 'ldap'
             ? t('security.directoryPassword', 'Directory password')
             : settings.authentication === 'bootstrap'
@@ -175,7 +179,7 @@
         const firstField = methodChoices.length
             ? methodSelect
             : passwordAuthentication
-            ? document.getElementById('securityConfirmationPassword')
+            ? passwordInput
             : settings.authentication === 'totp'
                 ? document.getElementById('securityConfirmationTotp')
             : settings.label

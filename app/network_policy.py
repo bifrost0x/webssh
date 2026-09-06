@@ -150,11 +150,41 @@ def resolve_allowed_target(
     raise ValueError('Connections to this address are not allowed')
 
 
-def open_validated_socket(target, timeout):
-    """Connect a TCP socket to the already resolved address without DNS."""
+_LINUX_IP_UNICAST_IF = 50
+_LINUX_IPV6_UNICAST_IF = 76
+
+
+def _bind_unicast_interface(connected, family, interface):
+    """Bind one Linux unicast socket to an interface by index."""
+    interface_index = socket.htonl(socket.if_nametoindex(interface))
+    if family == socket.AF_INET:
+        connected.setsockopt(
+            socket.IPPROTO_IP,
+            _LINUX_IP_UNICAST_IF,
+            interface_index,
+        )
+        return
+    if family == socket.AF_INET6:
+        connected.setsockopt(
+            socket.IPPROTO_IPV6,
+            _LINUX_IPV6_UNICAST_IF,
+            interface_index,
+        )
+        return
+    raise ValueError('Connections through this interface are not supported')
+
+
+def open_validated_socket(target, timeout, *, required_interface=None):
+    """Connect the pinned address, optionally through one exact interface."""
     connected = socket.socket(target.family, socket.SOCK_STREAM)
     try:
         connected.settimeout(timeout)
+        if required_interface is not None:
+            _bind_unicast_interface(
+                connected,
+                target.family,
+                required_interface,
+            )
         connected.connect(target.sockaddr)
         return connected
     except Exception:

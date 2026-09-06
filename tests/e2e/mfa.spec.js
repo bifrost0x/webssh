@@ -56,6 +56,10 @@ test('enrolls optional TOTP and completes password plus MFA login', async ({
         'type',
         'password',
     );
+    await expect(page.locator('#securityConfirmationPassword')).toHaveAttribute(
+        'autocomplete',
+        'current-password',
+    );
     await page.locator('#securityConfirmationPassword').fill('browser-password');
     await page.locator('#securityConfirmationSubmit').click();
 
