@@ -354,6 +354,15 @@ MAX_UPLOAD_SIZE = 1024 * 1024 * 100
 MAX_EDITOR_FILE_SIZE = _positive_int_env(
     'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024
 )
+# Inline editor saves retain the per-file ceiling above and additionally share
+# a rolling per-user byte budget.  Four maximum-size saves per minute preserve
+# ordinary edit/save workflows while bounding aggregate encode and backend I/O.
+EDITOR_SAVE_BYTES_PER_MINUTE = _bounded_int_env(
+    'EDITOR_SAVE_BYTES_PER_MINUTE',
+    4 * MAX_EDITOR_FILE_SIZE,
+    MAX_EDITOR_FILE_SIZE,
+    64 * MAX_EDITOR_FILE_SIZE,
+)
 # Socket.IO now carries control events and bounded editor text only; bulk file
 # transfers use streaming HTTP routes. JSON can expand control characters to a
 # six-byte ``\uXXXX`` escape, so retain that worst-case expansion plus a small
@@ -438,6 +447,15 @@ REMOTE_LISTING_MAX_METADATA_BYTES = _bounded_int_env(
 REMOTE_LISTING_PAGE_SIZE = _bounded_int_env(
     'REMOTE_LISTING_PAGE_SIZE', 500, 50, 1000
 )
+REMOTE_LISTING_SNAPSHOT_TTL_SECONDS = _bounded_int_env(
+    'REMOTE_LISTING_SNAPSHOT_TTL_SECONDS', 60, 10, 300
+)
+REMOTE_LISTING_SNAPSHOT_MAX_STATES = _bounded_int_env(
+    'REMOTE_LISTING_SNAPSHOT_MAX_STATES', 8, 1, 64
+)
+REMOTE_LISTING_SNAPSHOT_MAX_PER_USER = _bounded_int_env(
+    'REMOTE_LISTING_SNAPSHOT_MAX_PER_USER', 4, 1, 8
+)
 SFTP_MAX_PACKET_BYTES = _bounded_int_env(
     'SFTP_MAX_PACKET_BYTES', 1024 * 1024, 64 * 1024, 4 * 1024 * 1024
 )
@@ -471,6 +489,18 @@ CONNECTION_CONFIG_MAX_BYTES = _bounded_int_env(
     4 * 1024 * 1024,
     CONNECTION_STORE_MAX_BYTES,
     16 * 1024 * 1024,
+)
+CONNECTION_STORE_RECOVERY_MAX_BYTES = _bounded_int_env(
+    'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+    max(16 * 1024 * 1024, CONNECTION_STORE_MAX_BYTES),
+    CONNECTION_STORE_MAX_BYTES,
+    64 * 1024 * 1024,
+)
+CONNECTION_STORE_RECOVERY_MAX_RECORDS = _bounded_int_env(
+    'CONNECTION_STORE_RECOVERY_MAX_RECORDS',
+    max(10_000, PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS),
+    max(PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS),
+    100_000,
 )
 
 # Admin panel: comma-separated usernames granted admin on startup.

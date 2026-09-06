@@ -16,8 +16,10 @@ from app.file_sources import (
 @pytest.fixture(autouse=True)
 def reset_file_control_budget_state():
     socket_events._file_control_budgets.clear()
+    socket_events._editor_save_budgets.clear()
     yield
     socket_events._file_control_budgets.clear()
+    socket_events._editor_save_budgets.clear()
 
 
 class ListingBackend:
@@ -27,6 +29,20 @@ class ListingBackend:
     def list_directory(self, source, path):
         self.calls.append((source.source_id, path))
         return [{'name': 'config.yml'}], None
+
+    def open_directory_listing(self, source, path):
+        self.calls.append((source.source_id, path))
+
+        class Listing:
+            @staticmethod
+            def read_page(_page_size):
+                return [{'name': 'config.yml'}], None, False
+
+            @staticmethod
+            def close():
+                return None
+
+        return Listing(), None
 
 
 def make_source(source_id, capabilities, backend, *, kind='sftp'):
@@ -148,6 +164,111 @@ def test_insufficient_file_control_budget_is_exhausted(monkeypatch):
         7, 200, now=10.0
     ) is False
     assert socket_events._file_control_budgets[7] == (0.0, 10.0)
+
+
+def test_editor_save_budget_charges_exact_utf8_bytes_and_preserves_one_save(
+    monkeypatch,
+):
+    import config
+
+    monkeypatch.setattr(config, 'MAX_EDITOR_FILE_SIZE', 8)
+    monkeypatch.setattr(config, 'EDITOR_SAVE_BYTES_PER_MINUTE', 16)
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10_000)
+    monkeypatch.setattr(socket_events.time, 'monotonic', lambda: 10.0)
+
+    ascii_payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'save:ascii',
+        'path': '/note.txt',
+        'content': 'A' * 8,
+    }
+    multibyte_payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'save:utf8',
+        'path': '/note.txt',
+        'content': '\u00e9' * 4,
+    }
+
+    assert socket_events._file_request_identity(
+        ascii_payload,
+        user_id=7,
+        allow_editor_content=True,
+    )['source_id'] == 'sftp-session:owned'
+    assert socket_events._file_request_identity(
+        multibyte_payload,
+        user_id=7,
+        allow_editor_content=True,
+    )['source_id'] == 'sftp-session:owned'
+    assert socket_events._editor_save_budgets[7] == (0.0, 10.0)
+
+    rejected = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'save:third',
+        'path': '/note.txt',
+        'content': 'A',
+    }
+    assert socket_events._file_request_identity(
+        rejected,
+        user_id=7,
+        allow_editor_content=True,
+    )['source_id'] is None
+
+
+def test_empty_editor_budget_rejects_before_walking_editor_body(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'EDITOR_SAVE_BYTES_PER_MINUTE', 8)
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10_000)
+    monkeypatch.setattr(socket_events.time, 'monotonic', lambda: 10.0)
+    assert socket_events._consume_editor_save_budget(
+        7, 8, now=10.0
+    ) is True
+    monkeypatch.setattr(
+        socket_events,
+        '_file_control_payload_metrics',
+        lambda *_args, **_kwargs: pytest.fail(
+            'empty editor budget still walked the editor body'
+        ),
+    )
+    payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'save:drained',
+        'path': '/note.txt',
+        'content': 'A' * 8,
+    }
+
+    identity = socket_events._file_request_identity(
+        payload,
+        user_id=7,
+        allow_editor_content=True,
+    )
+
+    assert identity == {'source_id': None, 'request_id': 'save:drained'}
+
+
+def test_invalid_editor_metadata_still_charges_the_bounded_body(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'MAX_EDITOR_FILE_SIZE', 16)
+    monkeypatch.setattr(config, 'EDITOR_SAVE_BYTES_PER_MINUTE', 16)
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10_000)
+    monkeypatch.setattr(config, 'FILE_CONTROL_MAX_PATH_BYTES', 8)
+    monkeypatch.setattr(socket_events.time, 'monotonic', lambda: 10.0)
+    payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'save:invalid-path',
+        'path': '/path-is-too-long',
+        'content': 'A' * 16,
+    }
+
+    identity = socket_events._file_request_identity(
+        payload,
+        user_id=7,
+        allow_editor_content=True,
+    )
+
+    assert identity['source_id'] is None
+    assert socket_events._editor_save_budgets[7] == (0.0, 10.0)
 
 
 def test_oversized_file_control_key_is_rejected_without_utf8_copy(

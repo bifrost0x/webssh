@@ -125,8 +125,11 @@ def load_json_migrated(
     store_name: str,
     default_factory: Callable[[], T],
     validator: Callable[[object], bool],
+    *,
+    persist_migration: bool = True,
+    pre_migration_check: Callable[[object], None] | None = None,
 ) -> T:
-    """Load a current document, migrating an existing legacy file in place.
+    """Load a current document, optionally migrating a legacy file in place.
 
     The caller must hold the store's ``storage_lock`` so backup, migration, and
     the active-file replace are part of the same serialized operation.
@@ -139,6 +142,8 @@ def load_json_migrated(
         store_name,
         validator,
         default_factory=default_factory,
+        persist_migration=persist_migration,
+        pre_migration_check=pre_migration_check,
     )
 
 

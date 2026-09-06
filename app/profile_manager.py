@@ -9,6 +9,7 @@ from .audit_logger import log_error
 from .connection_storage_policy import (
     ConnectionStorageLimitError,
     enforce_store_read_limit,
+    enforce_store_recovery_limit,
     enforce_store_transition,
     validate_profile,
 )
@@ -202,9 +203,37 @@ def _load_profiles_for_recovery_delete(user_id):
     profiles_file = get_user_profiles_file(user_id)
     if not profiles_file:
         return None, 'User not found'
-    return _load_profiles_with_lock_held(user_id), None
+    enforce_store_recovery_limit(profiles_file)
+    data = load_json_migrated(
+        profiles_file,
+        'profiles',
+        lambda: {'profiles': []},
+        _valid_profile_document,
+        persist_migration=False,
+        pre_migration_check=lambda document: enforce_store_recovery_limit(
+            profiles_file,
+            record_count=(
+                len(document['profiles'])
+                if isinstance(document, dict)
+                and isinstance(document.get('profiles'), list)
+                else None
+            ),
+        ),
+    )
+    profiles = data['profiles']
+    enforce_store_recovery_limit(
+        profiles_file,
+        record_count=len(profiles),
+    )
+    return profiles, None
 
-def save_profiles(user_id, profiles, *, previous_count=None):
+def save_profiles(
+    user_id,
+    profiles,
+    *,
+    previous_count=None,
+    previous_document=None,
+):
     """Save profiles list to JSON file for a specific user."""
     try:
         profiles_file = get_user_profiles_file(user_id)
@@ -222,6 +251,7 @@ def save_profiles(user_id, profiles, *, previous_count=None):
             prospective_count=len(profiles),
             previous_count=previous_count,
             maximum_count=config.PROFILE_MAX_RECORDS,
+            previous_document=previous_document,
         )
 
         profiles_file.parent.mkdir(parents=True, exist_ok=True)
@@ -652,11 +682,16 @@ def delete_profile(user_id, profile_id):
                 found = any(profile.get('id') == profile_id for profile in profiles)
                 if not found:
                     return False, 'Profile not found'
+                previous_document = {
+                    'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+                    'profiles': profiles,
+                }
                 remaining = [profile for profile in profiles if profile.get('id') != profile_id]
                 if save_profiles(
                     user_id,
                     remaining,
                     previous_count=len(profiles),
+                    previous_document=previous_document,
                 ):
                     return True, None
                 return False, 'Failed to delete profile'

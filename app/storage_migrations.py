@@ -179,12 +179,16 @@ def migrate_file(
     store_name: str,
     validator: Callable[[object], bool] | None = None,
     default_factory: Callable[[], object] | None = None,
+    *,
+    persist_migration: bool = True,
+    pre_migration_check: Callable[[object], None] | None = None,
 ) -> object:
-    """Load and migrate one file, backing it up before the first write.
+    """Load and validate one file, optionally persisting its migration.
 
     A default is used only when the initial file open raises
     ``FileNotFoundError``. Any later disappearance or other filesystem error
-    fails closed.
+    fails closed. ``pre_migration_check`` runs after decoding but before the
+    migration copies or transforms the document.
     """
     path = Path(path)
     source_missing = False
@@ -210,6 +214,9 @@ def migrate_file(
         except json.JSONDecodeError as exc:
             raise StorageCorruptionError(path, 'invalid JSON') from exc
 
+    if pre_migration_check is not None:
+        pre_migration_check(document)
+
     try:
         migrated, changed = migrate_document(store_name, document)
     except ValueError as exc:
@@ -221,7 +228,7 @@ def migrate_file(
             raise StorageCorruptionError(path, 'validation failed') from exc
         if not valid:
             raise StorageCorruptionError(path, 'validation failed')
-    if source_missing or not changed:
+    if source_missing or not changed or not persist_migration:
         return migrated
 
     backup_before_migration(path)

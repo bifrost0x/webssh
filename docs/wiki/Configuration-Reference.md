@@ -137,12 +137,18 @@ SSH or persistent tmux session remains available for reconnect.
 | `SFTP_MAX_PACKET_BYTES` | `1048576` (1 MiB) |
 | `SFTP_MAX_HANDLE_BYTES` | `16384` (16 KiB) |
 | `MAX_EDITOR_FILE_SIZE` | `5242880` (5 MiB) |
+| `EDITOR_SAVE_BYTES_PER_MINUTE` | `20971520` (20 MiB per user) |
 | `TRANSFER_TEMP_DIR` | `DATA_DIR/tmp` |
 | `FILE_CONTROL_MAX_PATH_BYTES` | `4096` bytes |
 | `FILE_CONTROL_BYTES_PER_MINUTE` | `2097152` (2 MiB per user) |
 | `REMOTE_FILENAME_MAX_BYTES` | `4096` bytes |
 | `REMOTE_LISTING_MAX_METADATA_BYTES` | `4194304` (4 MiB) |
 | `REMOTE_LISTING_PAGE_SIZE` | `500` entries |
+| `REMOTE_LISTING_SNAPSHOT_TTL_SECONDS` | `60` seconds |
+| `REMOTE_LISTING_SNAPSHOT_MAX_STATES` | `8` snapshots per process |
+| `REMOTE_LISTING_SNAPSHOT_MAX_PER_USER` | `4` snapshots per user |
+| `CONNECTION_STORE_RECOVERY_MAX_BYTES` | `16777216` (16 MiB) |
+| `CONNECTION_STORE_RECOVERY_MAX_RECORDS` | `10000` |
 
 Bulk uploads and downloads are streamed over HTTP; Socket.IO carries control events and bounded editor content rather than entire files. Align proxy request-body and timeout limits with WebSSH when increasing an application limit.
 

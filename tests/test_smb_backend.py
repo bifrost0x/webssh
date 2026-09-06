@@ -235,6 +235,53 @@ def test_listing_closes_iterator_and_marks_reparse_entries_unfollowable():
     assert listing[1]['is_symlink'] is True
 
 
+def test_paged_listing_reuses_one_bounded_scandir_iterator():
+    backend, source, session = _fixture()
+    iterator = _Iterator([
+        _Entry('one'),
+        _Entry('two'),
+        _Entry('three'),
+    ])
+    session.responses['scandir'] = iterator
+
+    listing, error = backend.open_directory_listing(source, '/')
+    assert error is None
+    first, error, has_more = listing.read_page(2)
+    assert error is None
+    assert [item['name'] for item in first] == ['one', 'two']
+    assert has_more is True
+    second, error, has_more = listing.read_page(2)
+
+    assert error is None
+    assert [item['name'] for item in second] == ['three']
+    assert has_more is False
+    assert iterator.closed is True
+    assert [call[0] for call in session.calls].count('scandir_no_follow') == 1
+
+
+def test_paged_listing_member_budget_is_cumulative(monkeypatch):
+    import config
+
+    backend, source, session = _fixture()
+    iterator = _Iterator([_Entry(str(index)) for index in range(4)])
+    session.responses['scandir'] = iterator
+    monkeypatch.setattr(config, 'MAX_TRANSFER_MEMBERS', 3)
+
+    listing, error = backend.open_directory_listing(source, '/')
+    assert error is None
+    first, error, has_more = listing.read_page(2)
+    assert error is None
+    assert len(first) == 2
+    assert has_more is True
+
+    second, error, has_more = listing.read_page(2)
+
+    assert second is None
+    assert error == 'Directory exceeds configured member limit'
+    assert has_more is False
+    assert iterator.closed is True
+
+
 def test_directory_access_inspection_uses_the_owned_share_confined_source():
     backend, source, session = _fixture()
     session.responses['inspect_directory_access'] = {

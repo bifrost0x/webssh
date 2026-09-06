@@ -93,6 +93,7 @@ _FILE_CONTROL_SMALL_FIELDS = frozenset({
 })
 _FILE_CONTROL_CHECKED = object()
 _file_control_budgets = {}
+_editor_save_budgets = {}
 _file_control_budget_lock = threading.Lock()
 _SMB_CONNECT_CODES = frozenset({
     'AUTHENTICATION_REQUIRED',
@@ -188,18 +189,45 @@ def _file_request_identity(
             _sanitize_file_control_payload(payload)
             valid = False
         else:
-            byte_count = _file_control_payload_cost(
-                payload,
-                allow_editor_content=allow_editor_content,
+            editor_body = (
+                allow_editor_content
+                and isinstance(payload.get('content'), str)
             )
-            valid = _sanitize_file_control_payload(payload)
-            remainder = max(0, byte_count - 256)
-            if remainder and not _consume_file_control_budget(
-                user_id,
-                remainder,
-                now=budget_now,
-            ):
+            editor_reserved = (
+                not editor_body
+                or _consume_editor_save_budget(
+                    user_id,
+                    1,
+                    now=budget_now,
+                )
+            )
+            if not editor_reserved:
+                _sanitize_file_control_payload(payload)
                 valid = False
+            else:
+                byte_count, editor_bytes = _file_control_payload_metrics(
+                    payload,
+                    allow_editor_content=allow_editor_content,
+                )
+                valid = _sanitize_file_control_payload(payload)
+                remainder = max(0, byte_count - 256)
+                if remainder and not _consume_file_control_budget(
+                    user_id,
+                    remainder,
+                    now=budget_now,
+                ):
+                    valid = False
+                if (
+                    editor_body
+                    and editor_bytes is not None
+                    and editor_bytes > 1
+                    and not _consume_editor_save_budget(
+                        user_id,
+                        editor_bytes - 1,
+                        now=budget_now,
+                    )
+                ):
+                    valid = False
         payload['_file_control_valid'] = valid
         payload['_file_control_checked'] = _FILE_CONTROL_CHECKED
     if isinstance(payload, dict) and not payload.get(
@@ -243,39 +271,44 @@ def _bounded_utf8_size(value, maximum):
     return size
 
 
-def _file_control_payload_cost(payload, *, allow_editor_content=False):
+def _file_control_payload_metrics(payload, *, allow_editor_content=False):
     """Bound all control metadata without reserializing the attacker payload.
 
-    The inline editor body has its own strict size validation. Every other
-    value, including unknown or nested fields, is charged here so a caller
-    cannot hide an editor-envelope-sized allocation behind a harmless request.
+    Editor content is measured separately so it can retain its larger
+    legitimate per-file allowance without weakening the tighter metadata
+    bucket. Every other value, including unknown or nested fields, is charged
+    here so a caller cannot hide an editor-envelope-sized allocation behind a
+    harmless request.
     """
     maximum_charge = config.FILE_CONTROL_BYTES_PER_MINUTE + 1
     cost = 0
+    editor_bytes = 0
     stack = [(payload, 0, False)]
     visited = 0
     while stack:
         value, depth, editor_content = stack.pop()
         visited += 1
         if visited > 1024 or depth > 8:
-            return maximum_charge
+            return maximum_charge, None
         if editor_content:
-            if _bounded_utf8_size(
+            size = _bounded_utf8_size(
                 value,
                 config.MAX_EDITOR_FILE_SIZE,
-            ) is None:
-                return maximum_charge
+            )
+            if size is None:
+                return maximum_charge, None
+            editor_bytes += size
             continue
         if isinstance(value, dict):
             if len(value) > 1024:
-                return maximum_charge
+                return maximum_charge, None
             for key, item in value.items():
                 if not isinstance(key, str) or len(key) > 256:
-                    return maximum_charge
+                    return maximum_charge, None
                 try:
                     cost += len(key.encode('utf-8'))
                 except UnicodeEncodeError:
-                    return maximum_charge
+                    return maximum_charge, None
                 stack.append((
                     item,
                     depth + 1,
@@ -286,7 +319,7 @@ def _file_control_payload_cost(payload, *, allow_editor_content=False):
                 ))
         elif isinstance(value, (list, tuple)):
             if len(value) > 1024:
-                return maximum_charge
+                return maximum_charge, None
             for item in value:
                 stack.append((item, depth + 1, False))
         elif isinstance(value, str):
@@ -295,7 +328,7 @@ def _file_control_payload_cost(payload, *, allow_editor_content=False):
                 max(0, config.FILE_CONTROL_BYTES_PER_MINUTE - cost),
             )
             if size is None:
-                return maximum_charge
+                return maximum_charge, None
             cost += size
         elif isinstance(value, (bytes, bytearray, memoryview)):
             cost += len(value)
@@ -304,10 +337,19 @@ def _file_control_payload_cost(payload, *, allow_editor_content=False):
             # object memory; use a small conservative accounting charge.
             cost += 16
         if cost > config.FILE_CONTROL_BYTES_PER_MINUTE:
-            return maximum_charge
+            return maximum_charge, None
     # A conservative floor also bounds CPU/event amplification independently
     # of how little metadata a syntactically empty request carries.
-    return max(256, cost)
+    return max(256, cost), editor_bytes
+
+
+def _file_control_payload_cost(payload, *, allow_editor_content=False):
+    """Compatibility wrapper returning the metadata charge only."""
+    cost, _editor_bytes = _file_control_payload_metrics(
+        payload,
+        allow_editor_content=allow_editor_content,
+    )
+    return cost
 
 
 def _consume_file_control_budget(user_id, byte_count, now=None):
@@ -331,6 +373,28 @@ def _consume_file_control_budget(user_id, byte_count, now=None):
             _file_control_budgets[key] = (0.0, current)
             return False
         _file_control_budgets[key] = (available - byte_count, current)
+        return True
+
+
+def _consume_editor_save_budget(user_id, byte_count, now=None):
+    """Charge accepted editor bodies against an exact per-user byte bucket."""
+    current = time.monotonic() if now is None else float(now)
+    key = int(user_id)
+    capacity = config.EDITOR_SAVE_BYTES_PER_MINUTE
+    with _file_control_budget_lock:
+        available, updated_at = _editor_save_budgets.get(
+            key,
+            (float(capacity), current),
+        )
+        elapsed = max(0.0, current - updated_at)
+        available = min(
+            float(capacity),
+            available + (elapsed * capacity / 60.0),
+        )
+        if byte_count > capacity or byte_count > available:
+            _editor_save_budgets[key] = (0.0, current)
+            return False
+        _editor_save_budgets[key] = (available - byte_count, current)
         return True
 
 
@@ -368,6 +432,17 @@ def _file_request_source_id(payload, user_id):
 
 def _valid_file_request(identity):
     return bool(identity.get('source_id') and identity.get('request_id'))
+
+
+def _valid_directory_cursor(cursor):
+    return (
+        cursor == 0
+        or (
+            isinstance(cursor, str)
+            and 1 <= len(cursor) <= 160
+            and re.fullmatch(r'[A-Za-z0-9._-]+', cursor) is not None
+        )
+    )
 
 
 def _public_file_source(source_id, user_id):
@@ -649,6 +724,11 @@ def handle_disconnect():
                 user_id=user_id,
                 exception_type=type(error).__name__,
             )
+
+        file_service.discard_directory_snapshots(
+            user_id=user_id,
+            client_id=socket_sid,
+        )
 
         # The process-local capacity registry is authoritative for this
         # single-worker runtime and remains available if persistent socket
@@ -1943,9 +2023,7 @@ def handle_list_directory(data, current_user=None):
 
         if (
             not _valid_file_request(identity)
-            or type(cursor) is not int
-            or cursor < 0
-            or cursor > config.MAX_TRANSFER_MEMBERS
+            or not _valid_directory_cursor(cursor)
         ):
             emit('error', {
                 'error': 'Source ID and request ID required',
@@ -1953,13 +2031,22 @@ def handle_list_directory(data, current_user=None):
             })
             return
 
+        if cursor != 0:
+            request_context['cursor'] = cursor
+
         try:
             _t1 = _time.time()
+            try:
+                client_id = request.sid
+            except (AttributeError, RuntimeError):
+                # Direct unit invocation has no active Socket.IO request.
+                client_id = None
             files, error, next_cursor = file_service.list_directory_page(
                 source_id,
                 user_id=current_user.id,
                 path=remote_path,
                 cursor=cursor,
+                client_id=client_id,
             )
         except FileSourceUnavailable:
             log_warning(
@@ -1987,12 +2074,17 @@ def handle_list_directory(data, current_user=None):
 
     except Exception as e:
         log_error("list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
-        emit('error', {
+        error_payload = {
             'error': 'Failed to list directory',
             'operation': 'list_directory',
             **_file_request_identity(payload),
             'path': payload.get('remote_path', '.'),
-        })
+        }
+        if _valid_directory_cursor(payload.get('cursor', 0)):
+            cursor = payload.get('cursor', 0)
+            if cursor != 0:
+                error_payload['cursor'] = cursor
+        emit('error', error_payload)
 
 @socketio.on('set_theme')
 @socket_login_required
@@ -3338,6 +3430,10 @@ def handle_quick_disconnect(data, current_user=None):
             return
 
         if result in {'closed', 'deferred'}:
+            file_service.discard_directory_snapshots(
+                user_id=current_user.id,
+                source_id=f'sftp-quick:{connection_id}',
+            )
             emit('quick_disconnect_success', {'connection_id': connection_id})
         else:
             emit('error', {'error': 'Connection not found'})
@@ -3371,6 +3467,10 @@ def handle_file_source_disconnect(data, current_user=None):
         result = 'unavailable'
 
     if result in {'closed', 'deferred'}:
+        file_service.discard_directory_snapshots(
+            user_id=current_user.id,
+            source_id=source_id,
+        )
         emit(
             'file_source_disconnect_success',
             {'source_id': source_id},

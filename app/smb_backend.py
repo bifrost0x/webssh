@@ -41,6 +41,78 @@ class _MemberBudget:
             raise SMBBackendError('Directory exceeds configured member limit')
 
 
+class _SMBDirectoryListing:
+    """One SMB scandir iterator resumed under the owned source lock."""
+
+    def __init__(self, backend, source, path):
+        self._backend = backend
+        self._actual = backend._owned_source(source)
+        self._directory = backend._path(path)
+        self._iterator = None
+        self._lookahead = None
+        self._budget = _MemberBudget(config.MAX_TRANSFER_MEMBERS)
+        self._closed = False
+        unc = self._directory.to_unc(
+            self._actual.target_ip,
+            self._actual.share,
+        )
+        with self._actual.lock:
+            backend._validate_path_components(
+                self._actual,
+                self._directory,
+            )
+            self._iterator = self._actual.session.invoke(
+                'scandir_no_follow',
+                unc,
+            )
+
+    def _next_payload(self):
+        entry = next(self._iterator)
+        self._budget.consume()
+        return self._backend._directory_payload(self._directory, entry)
+
+    def read_page(self, page_size):
+        if self._closed:
+            return None, 'Directory listing expired', False
+        try:
+            with self._actual.lock:
+                page = []
+                if self._lookahead is not None:
+                    page.append(self._lookahead)
+                    self._lookahead = None
+                while len(page) < page_size:
+                    page.append(self._next_payload())
+                try:
+                    self._lookahead = self._next_payload()
+                except StopIteration:
+                    self._close_locked()
+                    return page, None, False
+                return page, None, True
+        except StopIteration:
+            with self._actual.lock:
+                self._close_locked()
+            return page, None, False
+        except Exception as error:
+            with self._actual.lock:
+                self._close_locked()
+            return None, self._backend._public_error(error), False
+
+    def _close_locked(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._iterator is not None:
+            try:
+                self._iterator.close()
+            except Exception:
+                pass
+            self._iterator = None
+
+    def close(self):
+        with self._actual.lock:
+            self._close_locked()
+
+
 class SMBBackend:
     def __init__(self, pool=None):
         self._bound_pool = pool
@@ -146,6 +218,26 @@ class SMBBackend:
         return bool(attributes & 0x10) or stat_module.S_ISDIR(
             getattr(file_stat, 'st_mode', 0)
         )
+
+    def _directory_payload(self, directory, entry):
+        try:
+            child = directory.child(entry.name)
+        except SMBPathRejected as exc:
+            raise SMBBackendError('Unsafe directory response') from exc
+        file_stat = entry.stat(follow_symlinks=False)
+        is_reparse = self._is_reparse(file_stat) or entry.is_symlink()
+        return {
+            'name': entry.name,
+            'path': str(child),
+            'size': getattr(file_stat, 'st_size', 0) or 0,
+            'mode': getattr(file_stat, 'st_mode', 0),
+            'is_dir': bool(
+                entry.is_dir(follow_symlinks=False)
+                and not is_reparse
+            ),
+            'is_symlink': is_reparse,
+            'modified': getattr(file_stat, 'st_mtime', 0),
+        }
 
     @staticmethod
     def _reader_lease(remote_file):
@@ -271,26 +363,9 @@ class SMBBackend:
                 self._validate_path_components(actual, directory)
                 iterator = actual.session.invoke('scandir_no_follow', unc)
                 for entry in iterator:
-                    try:
-                        child = directory.child(entry.name)
-                    except SMBPathRejected as exc:
-                        raise SMBBackendError('Unsafe directory response') from exc
                     if len(items) >= config.MAX_TRANSFER_MEMBERS:
                         raise SMBBackendError('Directory exceeds configured member limit')
-                    file_stat = entry.stat(follow_symlinks=False)
-                    is_reparse = self._is_reparse(file_stat) or entry.is_symlink()
-                    items.append({
-                        'name': entry.name,
-                        'path': str(child),
-                        'size': getattr(file_stat, 'st_size', 0) or 0,
-                        'mode': getattr(file_stat, 'st_mode', 0),
-                        'is_dir': bool(
-                            entry.is_dir(follow_symlinks=False)
-                            and not is_reparse
-                        ),
-                        'is_symlink': is_reparse,
-                        'modified': getattr(file_stat, 'st_mtime', 0),
-                    })
+                    items.append(self._directory_payload(directory, entry))
             return items, None
         except Exception as exc:
             return None, self._public_error(exc)
@@ -300,6 +375,12 @@ class SMBBackend:
                     iterator.close()
                 except Exception:
                     pass
+
+    def open_directory_listing(self, source, path):
+        try:
+            return _SMBDirectoryListing(self, source, path), None
+        except Exception as error:
+            return None, self._public_error(error)
 
     def stat_or_raise(self, source, path, *, follow_links=False):
         if follow_links:

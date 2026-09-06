@@ -543,6 +543,108 @@ def _directory_entries(sftp, remote_path, *, member_budget=None):
                 close()
 
 
+class _SFTPDirectoryListing:
+    """One bounded directory enumeration continued across UI pages."""
+
+    def __init__(self, session_id, remote_path):
+        self._session_context = None
+        self._entries_context = None
+        self._entries = None
+        self._lookahead = None
+        self._closed = False
+        safe_path = sanitize_path(remote_path)
+        if safe_path is None:
+            raise SFTPOperationError('Invalid path: path traversal detected')
+        try:
+            self._session_context = sftp_session(
+                session_id,
+                io_lane='transfer',
+            )
+            sftp, _source_type = self._session_context.__enter__()
+            self._entries_context = _directory_entries(
+                sftp,
+                safe_path,
+                member_budget=_TransferMemberBudget(
+                    config.MAX_TRANSFER_MEMBERS
+                ),
+            )
+            self._entries = self._entries_context.__enter__()
+        except Exception:
+            self.close()
+            raise
+
+    @staticmethod
+    def _payload(entry):
+        return {
+            'name': entry.filename,
+            'size': entry.st_size,
+            'mode': entry.st_mode,
+            'is_dir': stat.S_ISDIR(entry.st_mode),
+            'is_symlink': stat.S_ISLNK(entry.st_mode),
+            'modified': entry.st_mtime,
+        }
+
+    def read_page(self, page_size):
+        if self._closed:
+            return None, 'Directory listing expired', False
+        try:
+            page = []
+            if self._lookahead is not None:
+                page.append(self._lookahead)
+                self._lookahead = None
+            while len(page) < page_size:
+                page.append(self._payload(next(self._entries)))
+            try:
+                self._lookahead = self._payload(next(self._entries))
+            except StopIteration:
+                self.close()
+                return page, None, False
+            return page, None, True
+        except StopIteration:
+            self.close()
+            return page, None, False
+        except TransferMemberLimitExceeded:
+            self.close()
+            return None, 'Directory exceeds configured member limit', False
+        except RemoteMetadataLimitExceeded as error:
+            self.close()
+            return None, public_sftp_error(error), False
+        except SFTPOperationError as error:
+            self.close()
+            return None, public_sftp_error(error), False
+        except Exception as error:
+            self.close()
+            return None, public_sftp_error(error), False
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._entries_context is not None:
+            try:
+                self._entries_context.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._entries_context = None
+            self._entries = None
+        if self._session_context is not None:
+            try:
+                self._session_context.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._session_context = None
+
+
+def open_directory_listing(session_id, remote_path='.'):
+    """Open a dedicated, bounded SFTP enumeration for opaque pagination."""
+    try:
+        return _SFTPDirectoryListing(session_id, remote_path), None
+    except SFTPOperationError as error:
+        return None, public_sftp_error(error)
+    except Exception as error:
+        return None, public_sftp_error(error)
+
+
 def _is_cancelled(cancel_event):
     return cancel_event is not None and cancel_event.is_set()
 
@@ -814,6 +916,16 @@ def close_sftp_cache(session_id):
                 sftp.close()
             except Exception:
                 pass
+    try:
+        from .file_service import file_service
+        file_service.discard_directory_snapshots(
+            source_id=f'sftp-session:{session_id}',
+        )
+        file_service.discard_directory_snapshots(
+            source_id=f'sftp-quick:{session_id}',
+        )
+    except Exception:
+        pass
     _cleanup_sftp_lock(session_id)
 
 def sanitize_path(remote_path):
@@ -841,45 +953,21 @@ def sanitize_path(remote_path):
 
     return normalized
 
-def _list_directory_window(
-    session_id,
-    remote_path='.',
-    *,
-    cursor=0,
-    page_size=None,
-):
-    """Read one metadata-bounded directory window and one lookahead entry."""
+def _read_directory_listing(session_id, remote_path='.'):
+    """Materialize one metadata-bounded directory snapshot."""
     try:
-        if type(cursor) is not int or cursor < 0 or cursor > config.MAX_TRANSFER_MEMBERS:
-            return None, 'Invalid directory cursor', None
-        if page_size is None:
-            page_size = config.REMOTE_LISTING_PAGE_SIZE
-        if type(page_size) is not int or not 1 <= page_size <= config.MAX_TRANSFER_MEMBERS:
-            return None, 'Invalid directory page size', None
         safe_path = sanitize_path(remote_path)
         if safe_path is None:
-            return None, "Invalid path: path traversal detected", None
+            return None, "Invalid path: path traversal detected"
 
         with sftp_session(session_id) as (sftp, source_type):
             files = []
             member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
-            index = 0
-            next_cursor = None
             with _directory_entries(
                 sftp, safe_path, member_budget=member_budget
             ) as entries:
-                while True:
-                    try:
-                        entry = next(entries)
-                    except StopIteration:
-                        break
+                for entry in entries:
                     is_symlink = stat.S_ISLNK(entry.st_mode)
-                    if index < cursor:
-                        index += 1
-                        continue
-                    if len(files) >= page_size:
-                        next_cursor = cursor + len(files)
-                        break
                     files.append({
                         'name': entry.filename,
                         'size': entry.st_size,
@@ -888,36 +976,20 @@ def _list_directory_window(
                         'is_symlink': is_symlink,
                         'modified': entry.st_mtime
                     })
-                    index += 1
-        return files, None, next_cursor
+        return files, None
     except TransferMemberLimitExceeded:
-        return None, 'Directory exceeds configured member limit', None
+        return None, 'Directory exceeds configured member limit'
     except RemoteMetadataLimitExceeded as e:
-        return None, public_sftp_error(e), None
+        return None, public_sftp_error(e)
     except SFTPOperationError as e:
-        return None, public_sftp_error(e), None
+        return None, public_sftp_error(e)
     except Exception as e:
-        return None, public_sftp_error(e), None
-
-
-def list_directory_page(session_id, remote_path='.', *, cursor=0):
-    """Return one bounded page for the interactive browser."""
-    return _list_directory_window(
-        session_id,
-        remote_path,
-        cursor=cursor,
-        page_size=config.REMOTE_LISTING_PAGE_SIZE,
-    )
+        return None, public_sftp_error(e)
 
 
 def list_directory(session_id, remote_path='.'):
-    """Compatibility API for internal callers that require one full listing."""
-    files, error, _next_cursor = _list_directory_window(
-        session_id,
-        remote_path,
-        page_size=config.MAX_TRANSFER_MEMBERS,
-    )
-    return files, error
+    """Return one bounded snapshot for service-layer pagination."""
+    return _read_directory_listing(session_id, remote_path)
 
 
 def probe_sftp_capability(session_id):

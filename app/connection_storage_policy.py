@@ -113,6 +113,26 @@ def enforce_store_read_limit(path, *, record_count=None, maximum_count=None):
         _error(f'more than {maximum_count} stored records are not allowed')
 
 
+def enforce_store_recovery_limit(path, *, record_count=None):
+    """Bound legacy recovery before and after JSON deserialization.
+
+    Recovery deliberately permits a store larger than the normal read limit,
+    but it must never become an unbounded parsing path.  Call once before the
+    load for the byte ceiling and again with the decoded record count.
+    """
+    if _file_size(path) > config.CONNECTION_STORE_RECOVERY_MAX_BYTES:
+        _error('stored data exceeds its recovery byte limit')
+    if (
+        record_count is not None
+        and record_count > config.CONNECTION_STORE_RECOVERY_MAX_RECORDS
+    ):
+        _error(
+            'more than '
+            f'{config.CONNECTION_STORE_RECOVERY_MAX_RECORDS} recovery records '
+            'are not allowed'
+        )
+
+
 def enforce_store_transition(
     *,
     path,
@@ -121,22 +141,31 @@ def enforce_store_transition(
     prospective_count,
     previous_count,
     maximum_count,
+    previous_document=None,
 ):
     """Reject growth while allowing deletion from legacy oversized stores."""
     path = Path(path)
     current_size = _file_size(path)
     other_size = _file_size(other_path)
     prospective_size = _serialized_size(prospective_document)
+    previous_size = current_size
+    if previous_document is not None:
+        previous_size = max(
+            previous_size,
+            _serialized_size(previous_document),
+        )
+        if prospective_size > config.CONNECTION_STORE_RECOVERY_MAX_BYTES:
+            _error('one connection store would exceed its recovery byte limit')
     if prospective_count > maximum_count and prospective_count > previous_count:
         _error(f'more than {maximum_count} records are not allowed')
     if (
         prospective_size > config.CONNECTION_STORE_MAX_BYTES
-        and prospective_size > current_size
+        and prospective_size > previous_size
     ):
         _error('one connection store would exceed its byte limit')
     if (
         prospective_size + other_size > config.CONNECTION_CONFIG_MAX_BYTES
-        and prospective_size + other_size > current_size + other_size
+        and prospective_size + other_size > previous_size + other_size
     ):
         _error('combined connection data would exceed its byte limit')
     return prospective_size

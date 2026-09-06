@@ -341,31 +341,106 @@ def test_directory_listing_is_returned_in_bounded_pages(monkeypatch):
         for index, name in enumerate(('one', 'two', 'three'))
     ]
 
+    class EntryIterator:
+        def __init__(self, values):
+            self.values = iter(values)
+            self.pulls = 0
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            value = next(self.values)
+            self.pulls += 1
+            return value
+
+        def close(self):
+            self.closed = True
+
+    iterator = EntryIterator(entries)
+    sessions = []
+
     class FakeSFTP:
         def listdir_iter(self, _path):
-            return iter(entries)
+            return iterator
 
     @contextmanager
-    def fake_session(_identifier):
-        yield FakeSFTP(), 'session'
+    def fake_session(identifier, *, io_lane='control'):
+        sessions.append((identifier, io_lane, 'open'))
+        try:
+            yield FakeSFTP(), 'session'
+        finally:
+            sessions.append((identifier, io_lane, 'close'))
 
     monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
     monkeypatch.setattr(config, 'REMOTE_FILENAME_MAX_BYTES', 64)
     monkeypatch.setattr(config, 'REMOTE_LISTING_MAX_METADATA_BYTES', 4096)
 
-    first, error, next_cursor = sftp_handler._list_directory_window(
-        'session', '/', cursor=0, page_size=2
-    )
+    listing, error = sftp_handler.open_directory_listing('session', '/')
+    assert error is None
+
+    first, error, has_more = listing.read_page(2)
     assert error is None
     assert [item['name'] for item in first] == ['one', 'two']
-    assert next_cursor == 2
+    assert has_more is True
+    assert iterator.pulls == 3
 
-    second, error, next_cursor = sftp_handler._list_directory_window(
-        'session', '/', cursor=2, page_size=2
-    )
+    second, error, has_more = listing.read_page(2)
     assert error is None
     assert [item['name'] for item in second] == ['three']
-    assert next_cursor is None
+    assert has_more is False
+    assert iterator.closed is True
+    assert sessions == [
+        ('session', 'transfer', 'open'),
+        ('session', 'transfer', 'close'),
+    ]
+
+
+def test_directory_page_member_budget_is_cumulative(monkeypatch):
+    import stat
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    import config
+    import app.sftp_handler as sftp_handler
+
+    entries = [
+        SimpleNamespace(
+            filename=f'item-{index}',
+            st_size=index,
+            st_mode=stat.S_IFREG | 0o600,
+            st_mtime=index,
+        )
+        for index in range(4)
+    ]
+
+    class FakeSFTP:
+        def listdir_iter(self, _path):
+            return iter(entries)
+
+    @contextmanager
+    def fake_session(_identifier, *, io_lane='control'):
+        assert io_lane == 'transfer'
+        yield FakeSFTP(), 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    monkeypatch.setattr(config, 'MAX_TRANSFER_MEMBERS', 3)
+    monkeypatch.setattr(config, 'REMOTE_FILENAME_MAX_BYTES', 64)
+    monkeypatch.setattr(config, 'REMOTE_LISTING_MAX_METADATA_BYTES', 4096)
+
+    listing, error = sftp_handler.open_directory_listing('session', '/')
+    assert error is None
+    first, error, has_more = listing.read_page(2)
+    assert error is None
+    assert len(first) == 2
+    assert has_more is True
+
+    second, error, has_more = listing.read_page(2)
+
+    assert second is None
+    assert error == 'Directory exceeds configured member limit'
+    assert has_more is False
 
 
 def test_transfer_lane_owns_and_closes_a_fresh_sftp_channel(monkeypatch):

@@ -1104,3 +1104,116 @@ def test_legacy_oversized_profile_store_is_not_listed_but_can_be_deleted(
             user_id, profile['id']
         ) == (True, None)
         assert profile_manager.load_profiles(user_id) == []
+
+
+def test_profile_recovery_ceiling_rejects_before_json_load(app, monkeypatch):
+    import config
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-recovery-hard-limit')
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(b'x' * 257)
+        monkeypatch.setattr(config, 'CONNECTION_STORE_RECOVERY_MAX_BYTES', 256)
+        monkeypatch.setattr(
+            profile_manager,
+            'load_json_migrated',
+            lambda *_args, **_kwargs: pytest.fail(
+                'oversized recovery store was parsed'
+            ),
+        )
+
+        deleted, error = profile_manager.delete_profile(user_id, 'target')
+
+    assert deleted is False
+    assert error == (
+        'Connection storage quota exceeded: stored data exceeds its recovery '
+        'byte limit'
+    )
+
+
+def test_profile_recovery_record_ceiling_rejects_after_bounded_load(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager, storage_migrations
+
+    user_id = create_user(app, 'profile-recovery-record-limit')
+    document = {
+        'schema_version': 1,
+        'profiles': [
+            {'id': 'target', 'name': 'Target'},
+            {'id': 'other', 'name': 'Other'},
+        ],
+    }
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_RECORDS',
+            1,
+        )
+        monkeypatch.setattr(
+            storage_migrations,
+            'migrate_document',
+            lambda *_args: pytest.fail('over-record store was migrated'),
+        )
+
+        deleted, error = profile_manager.delete_profile(user_id, 'target')
+
+        assert path.read_bytes() == original
+        assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+    assert deleted is False
+    assert error == (
+        'Connection storage quota exceeded: more than 1 recovery records '
+        'are not allowed'
+    )
+
+
+def test_profile_recovery_delete_persists_valid_legacy_shrink(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'profile-recovery-legacy-shrink')
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = json.dumps({
+            'schema_version': 1,
+            'profiles': [
+                {'id': 'target', 'name': 'Target'},
+                {'id': 'other', 'name': 'Other'},
+            ],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(original) - 1,
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original) - 1,
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            4096,
+        )
+
+        assert profile_manager.delete_profile(user_id, 'target') == (True, None)
+
+        document = json.loads(path.read_text(encoding='utf-8'))
+        assert document['schema_version'] == CURRENT_STORAGE_VERSIONS['profiles']
+        assert [item['id'] for item in document['profiles']] == ['other']
+        assert path.stat().st_size > len(original)

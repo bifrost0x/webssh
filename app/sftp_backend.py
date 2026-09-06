@@ -21,12 +21,8 @@ class SFTPBackend:
     def list_directory(self, source, path):
         return sftp_handler.list_directory(source.handle_id, path)
 
-    def list_directory_page(self, source, path, *, cursor=0):
-        return sftp_handler.list_directory_page(
-            source.handle_id,
-            path,
-            cursor=cursor,
-        )
+    def open_directory_listing(self, source, path):
+        return sftp_handler.open_directory_listing(source.handle_id, path)
 
     def stat_or_raise(self, source, path, *, follow_links=False):
         if follow_links:

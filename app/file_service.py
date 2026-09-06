@@ -1,5 +1,12 @@
 """Authorization and capability boundary for all file source operations."""
 
+import hashlib
+import hmac
+import re
+import secrets
+import time
+from threading import Lock, RLock, Timer
+
 import config
 
 from .file_backend import FileWriteOutcome
@@ -18,6 +25,8 @@ class FileService:
 
     def __init__(self, resolver):
         self.resolver = resolver
+        self._directory_snapshots = {}
+        self._directory_snapshot_lock = Lock()
 
     def resolve(self, source_id, user_id, capability):
         source = self.resolver.resolve(source_id, user_id)
@@ -40,22 +49,400 @@ class FileService:
         source = self.resolve(source_id, user_id, FileCapability.LIST)
         return source.backend.list_directory(source, path)
 
-    def list_directory_page(self, source_id, *, user_id, path, cursor=0):
+    def list_directory_page(
+        self,
+        source_id,
+        *,
+        user_id,
+        path,
+        cursor=0,
+        client_id=None,
+    ):
         source = self.resolve(source_id, user_id, FileCapability.LIST)
-        paged = getattr(source.backend, 'list_directory_page', None)
-        if callable(paged):
-            return paged(source, path, cursor=cursor)
-        files, error = source.backend.list_directory(source, path)
-        if error:
-            return None, error, None
-        page_size = config.REMOTE_LISTING_PAGE_SIZE
-        page = files[cursor:cursor + page_size]
-        next_cursor = (
-            cursor + len(page)
-            if cursor + len(page) < len(files)
-            else None
+        if cursor != 0:
+            return self._continue_directory_snapshot(
+                source,
+                user_id=user_id,
+                path=path,
+                cursor=cursor,
+                client_id=client_id,
+            )
+
+        opener = getattr(source.backend, 'open_directory_listing', None)
+        if not callable(opener):
+            return None, 'Directory pagination unavailable', None
+
+        owner_key = str(user_id)
+        snapshot_id, state = self._reserve_directory_snapshot(
+            source,
+            owner_key=owner_key,
+            path=path,
+            client_id=client_id,
         )
+        if state is None:
+            return None, 'Too many active directory listings', None
+
+        try:
+            listing, error = opener(source, path)
+            with state['lock']:
+                state['listing'] = listing
+            if error or listing is None:
+                self._retire_directory_snapshot(snapshot_id, state)
+                return (
+                    None,
+                    error or 'Directory pagination unavailable',
+                    None,
+                )
+            with self._directory_snapshot_lock:
+                cancelled = (
+                    self._directory_snapshots.get(snapshot_id) is not state
+                    or state['status'] != 'opening'
+                )
+            if cancelled:
+                self._retire_directory_snapshot(snapshot_id, state)
+                return None, 'Directory listing cancelled', None
+
+            page_size = state['page_size']
+            page, error, has_more = listing.read_page(page_size)
+        except Exception:
+            self._retire_directory_snapshot(snapshot_id, state)
+            raise
+
+        if error:
+            self._retire_directory_snapshot(snapshot_id, state)
+            return None, error, None
+        if not isinstance(page, list) or len(page) > page_size:
+            self._retire_directory_snapshot(snapshot_id, state)
+            return None, 'Invalid directory response', None
+        if not has_more:
+            self._retire_directory_snapshot(snapshot_id, state)
+            return page, None, None
+        if not page:
+            self._retire_directory_snapshot(snapshot_id, state)
+            return None, 'Invalid directory response', None
+
+        now = time.monotonic()
+        with self._directory_snapshot_lock:
+            if (
+                self._directory_snapshots.get(snapshot_id) is not state
+                or state['status'] != 'opening'
+            ):
+                cancelled = True
+            else:
+                cancelled = False
+                state['status'] = 'active'
+                state['next_offset'] = len(page)
+                state['last_used'] = now
+                self._arm_directory_snapshot_locked(snapshot_id, state)
+        if cancelled:
+            self._retire_directory_snapshot(snapshot_id, state)
+            return None, 'Directory listing cancelled', None
+
+        return (
+            page,
+            None,
+            self._directory_cursor(
+                snapshot_id,
+                state['next_offset'],
+                state['signing_key'],
+            ),
+        )
+
+    def _reserve_directory_snapshot(
+        self,
+        source,
+        *,
+        owner_key,
+        path,
+        client_id,
+    ):
+        snapshot_id = secrets.token_urlsafe(18)
+        state = {
+            'owner': owner_key,
+            'source_id': str(source.source_id),
+            'path': str(path),
+            'handle_id': str(source.handle_id),
+            'backend_id': id(source.backend),
+            'client_id': '' if client_id is None else str(client_id),
+            'listing': None,
+            'page_size': config.REMOTE_LISTING_PAGE_SIZE,
+            'next_offset': 0,
+            'signing_key': secrets.token_bytes(32),
+            'last_used': time.monotonic(),
+            'status': 'opening',
+            'lock': RLock(),
+            'timer': None,
+        }
+
+        while True:
+            retired = []
+            with self._directory_snapshot_lock:
+                retired = self._prune_directory_snapshots_locked(
+                    time.monotonic()
+                )
+                if not retired:
+                    retired = self._retire_for_directory_capacity_locked(
+                        owner_key
+                    )
+                if not retired:
+                    owner_count = sum(
+                        candidate['owner'] == owner_key
+                        for candidate in self._directory_snapshots.values()
+                    )
+                    if (
+                        owner_count
+                        >= config.REMOTE_LISTING_SNAPSHOT_MAX_PER_USER
+                        or len(self._directory_snapshots)
+                        >= config.REMOTE_LISTING_SNAPSHOT_MAX_STATES
+                    ):
+                        return None, None
+                    while snapshot_id in self._directory_snapshots:
+                        snapshot_id = secrets.token_urlsafe(18)
+                    self._directory_snapshots[snapshot_id] = state
+                    return snapshot_id, state
+            self._close_directory_states(retired)
+
+    @staticmethod
+    def _directory_cursor(snapshot_id, offset, signing_key):
+        message = f'{snapshot_id}:{offset}'.encode('ascii')
+        signature = hmac.new(
+            signing_key,
+            message,
+            hashlib.sha256,
+        ).hexdigest()[:32]
+        return f'v1.{snapshot_id}.{offset}.{signature}'
+
+    @staticmethod
+    def _parse_directory_cursor(cursor):
+        if (
+            not isinstance(cursor, str)
+            or not 1 <= len(cursor) <= 160
+        ):
+            return None
+        match = re.fullmatch(
+            r'v1\.([A-Za-z0-9_-]{16,64})\.([1-9][0-9]{0,7})\.([0-9a-f]{32})',
+            cursor,
+        )
+        if match is None:
+            return None
+        return match.group(1), int(match.group(2)), match.group(3)
+
+    def _continue_directory_snapshot(
+        self,
+        source,
+        *,
+        user_id,
+        path,
+        cursor,
+        client_id,
+    ):
+        parsed = self._parse_directory_cursor(cursor)
+        if parsed is None:
+            return None, 'Invalid or expired directory cursor', None
+        snapshot_id, offset, supplied_signature = parsed
+        now = time.monotonic()
+        with self._directory_snapshot_lock:
+            retired = self._prune_directory_snapshots_locked(now)
+        self._close_directory_states(retired)
+        with self._directory_snapshot_lock:
+            state = self._directory_snapshots.get(snapshot_id)
+        if state is None:
+            return None, 'Invalid or expired directory cursor', None
+
+        with state['lock']:
+            with self._directory_snapshot_lock:
+                if (
+                    self._directory_snapshots.get(snapshot_id) is not state
+                    or state['status'] != 'active'
+                ):
+                    return None, 'Invalid or expired directory cursor', None
+            expected_cursor = self._directory_cursor(
+                snapshot_id,
+                offset,
+                state['signing_key'],
+            )
+            expected_signature = expected_cursor.rsplit('.', 1)[-1]
+            if not hmac.compare_digest(
+                supplied_signature,
+                expected_signature,
+            ):
+                return None, 'Invalid or expired directory cursor', None
+            if (
+                state['owner'] != str(user_id)
+                or state['source_id'] != str(source.source_id)
+                or state['path'] != str(path)
+                or state['handle_id'] != str(source.handle_id)
+                or state['backend_id'] != id(source.backend)
+                or state['client_id'] != (
+                    '' if client_id is None else str(client_id)
+                )
+                or offset != state['next_offset']
+            ):
+                return None, 'Invalid or expired directory cursor', None
+
+            page, error, has_more = state['listing'].read_page(
+                state['page_size']
+            )
+            if (
+                error
+                or not isinstance(page, list)
+                or len(page) > state['page_size']
+                or has_more and not page
+            ):
+                self._retire_directory_snapshot(snapshot_id, state)
+                return None, error or 'Invalid directory response', None
+
+            if not has_more:
+                self._retire_directory_snapshot(snapshot_id, state)
+                return page, None, None
+
+            state['next_offset'] += len(page)
+            state['last_used'] = now
+            with self._directory_snapshot_lock:
+                if (
+                    self._directory_snapshots.get(snapshot_id) is not state
+                    or state['status'] != 'active'
+                ):
+                    return None, 'Invalid or expired directory cursor', None
+                self._arm_directory_snapshot_locked(snapshot_id, state)
+            next_cursor = self._directory_cursor(
+                snapshot_id,
+                state['next_offset'],
+                state['signing_key'],
+            )
         return page, None, next_cursor
+
+    def _prune_directory_snapshots_locked(self, now):
+        expiry = float(config.REMOTE_LISTING_SNAPSHOT_TTL_SECONDS)
+        retired = []
+        for snapshot_id, state in tuple(self._directory_snapshots.items()):
+            if (
+                state['status'] == 'active'
+                and now - state['last_used'] >= expiry
+            ):
+                state['status'] = 'closing'
+                retired.append((snapshot_id, state))
+        return retired
+
+    def _retire_for_directory_capacity_locked(self, owner_key):
+        per_user = config.REMOTE_LISTING_SNAPSHOT_MAX_PER_USER
+        owned_count = sum(
+            state['owner'] == owner_key
+            for state in self._directory_snapshots.values()
+        )
+        if owned_count >= per_user:
+            owned = [
+                (state['last_used'], snapshot_id, state)
+                for snapshot_id, state in self._directory_snapshots.items()
+                if state['owner'] == owner_key
+                and state['status'] == 'active'
+            ]
+            if owned:
+                _last_used, snapshot_id, state = min(owned)
+                state['status'] = 'closing'
+                return [(snapshot_id, state)]
+            return []
+
+        maximum = config.REMOTE_LISTING_SNAPSHOT_MAX_STATES
+        if len(self._directory_snapshots) >= maximum:
+            candidates = [
+                (state['last_used'], snapshot_id, state)
+                for snapshot_id, state in self._directory_snapshots.items()
+                if state['owner'] == owner_key
+                and state['status'] == 'active'
+            ]
+            if candidates:
+                _last_used, snapshot_id, state = min(candidates)
+                state['status'] = 'closing'
+                return [(snapshot_id, state)]
+        return []
+
+    def _arm_directory_snapshot_locked(self, snapshot_id, state):
+        timer = state.get('timer')
+        if timer is not None:
+            timer.cancel()
+        expected_last_used = state['last_used']
+        timer = Timer(
+            config.REMOTE_LISTING_SNAPSHOT_TTL_SECONDS,
+            self._expire_directory_snapshot,
+            args=(snapshot_id, state, expected_last_used),
+        )
+        timer.daemon = True
+        state['timer'] = timer
+        timer.start()
+
+    def _expire_directory_snapshot(
+        self,
+        snapshot_id,
+        state,
+        expected_last_used,
+    ):
+        with self._directory_snapshot_lock:
+            if (
+                self._directory_snapshots.get(snapshot_id) is not state
+                or state['last_used'] != expected_last_used
+                or state['status'] != 'active'
+            ):
+                return
+            state['status'] = 'closing'
+        self._close_directory_state(snapshot_id, state)
+
+    def _retire_directory_snapshot(self, snapshot_id, state):
+        with self._directory_snapshot_lock:
+            if self._directory_snapshots.get(snapshot_id) is not state:
+                return
+            state['status'] = 'closing'
+        self._close_directory_state(snapshot_id, state)
+
+    def _close_directory_state(self, snapshot_id, state):
+        with state['lock']:
+            timer = state.get('timer')
+            if timer is not None:
+                timer.cancel()
+                state['timer'] = None
+            listing = state.get('listing')
+            state['listing'] = None
+            try:
+                if listing is not None:
+                    listing.close()
+            except Exception:
+                pass
+        with self._directory_snapshot_lock:
+            if self._directory_snapshots.get(snapshot_id) is state:
+                self._directory_snapshots.pop(snapshot_id, None)
+
+    def _close_directory_states(self, states):
+        for snapshot_id, state in states:
+            self._close_directory_state(snapshot_id, state)
+
+    def discard_directory_snapshots(
+        self,
+        *,
+        user_id=None,
+        source_id=None,
+        client_id=None,
+    ):
+        """Drop cached directory metadata after a source lifecycle change."""
+        owner_key = None if user_id is None else str(user_id)
+        source_key = None if source_id is None else str(source_id)
+        client_key = None if client_id is None else str(client_id)
+        retired = []
+        with self._directory_snapshot_lock:
+            for snapshot_id, state in tuple(
+                self._directory_snapshots.items()
+            ):
+                if owner_key is not None and state['owner'] != owner_key:
+                    continue
+                if source_key is not None and state['source_id'] != source_key:
+                    continue
+                if client_key is not None and state['client_id'] != client_key:
+                    continue
+                if state['status'] == 'opening':
+                    state['status'] = 'cancelled'
+                elif state['status'] == 'active':
+                    state['status'] = 'closing'
+                    retired.append((snapshot_id, state))
+        self._close_directory_states(retired)
 
     def get_home_directory(self, source_id, *, user_id):
         source = self.resolve(source_id, user_id, FileCapability.LIST)

@@ -837,6 +837,59 @@ test('a correlated listing updates an inactive source tab without replacing the 
     assert.equal(inactiveState.files[0].name, 'late.txt');
 });
 
+test('opaque directory cursors append pages and are echoed unchanged', () => {
+    const listeners = {};
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.1.${'a'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/srv',
+        loading: true,
+        pendingDirectoryRequestId: 'left:directory:1',
+        pendingDirectoryPath: '/srv',
+        pendingDirectoryCursor: 0,
+    });
+    Object.assign(manager, {
+        requestSequence: 1,
+        socket: {
+            on(event, callback) { listeners[event] = callback; },
+            emit(event, payload) { emitted.push({ event, payload }); },
+        },
+        isOpen: true,
+        panes: { left: state, right: manager.createEmptyPaneState() },
+        updatePathInput() {},
+        renderPane() {},
+        setLoadingTimeout() {},
+    });
+    manager.setupSocketListeners();
+
+    listeners.directory_listing({
+        source_id: 'sftp-session:session-a',
+        request_id: 'left:directory:1',
+        path: '/srv',
+        cursor: 0,
+        files: [{ name: 'one' }],
+        next_cursor: token,
+    });
+    assert.equal(state.nextDirectoryCursor, token);
+    assert.equal(manager.requestNextDirectoryPage('left'), true);
+    assert.equal(emitted[0].event, 'list_directory');
+    assert.equal(emitted[0].payload.cursor, token);
+
+    listeners.directory_listing({
+        source_id: 'sftp-session:session-a',
+        request_id: emitted[0].payload.request_id,
+        path: '/srv',
+        cursor: token,
+        files: [{ name: 'two' }],
+        next_cursor: null,
+    });
+
+    assert.deepEqual(state.files, [{ name: 'one' }, { name: 'two' }]);
+    assert.equal(state.nextDirectoryCursor, null);
+    assert.equal(state.loadingMore, false);
+});
+
 test('single-pane workspace can activate either side even on a narrow viewport', () => {
     const manager = Object.create(SFTPFileManager.prototype);
     manager.initializeWorkspaceState();
@@ -1662,6 +1715,7 @@ test('Move picker accepts only its correlated directory listing and shows folder
         request_id: requests[0].payload.request_id,
         files: [],
     }), false);
+    const token = `v1.abcdefghijklmnop.2.${'b'.repeat(32)}`;
     assert.equal(manager.consumeMovePickerListing({
         source_id: 'sftp-session:shared',
         path: '/source',
@@ -1673,6 +1727,7 @@ test('Move picker accepts only its correlated directory listing and shows folder
             { name: 'nested/name', is_dir: true },
             { name: 'a-first', is_dir: true },
         ],
+        next_cursor: token,
     }), true);
     assert.equal(manager.movePicker.loading, false);
     assert.equal(manager.movePicker.validTarget, true);
@@ -1680,6 +1735,70 @@ test('Move picker accepts only its correlated directory listing and shows folder
         { name: 'a-first', path: '/source/a-first' },
         { name: 'z-last', path: '/source/z-last' },
     ]);
+    assert.equal(manager.movePicker.nextCursor, token);
+
+    assert.equal(manager.requestMovePickerDirectory('/source', token), true);
+    assert.equal(requests[1].payload.cursor, token);
+    assert.equal(manager.consumeMovePickerListing({
+        source_id: 'sftp-session:shared',
+        path: '/source',
+        request_id: requests[1].payload.request_id,
+        cursor: token,
+        files: [{ name: 'middle', is_dir: true }],
+        next_cursor: null,
+    }), true);
+    assert.deepEqual(manager.movePicker.directories, [
+        { name: 'a-first', path: '/source/a-first' },
+        { name: 'middle', path: '/source/middle' },
+        { name: 'z-last', path: '/source/z-last' },
+    ]);
+    assert.equal(manager.movePicker.nextCursor, null);
+});
+
+test('Move picker consumes a correlated continuation listing error immediately', () => {
+    const listeners = {};
+    const token = `v1.abcdefghijklmnop.2.${'b'.repeat(32)}`;
+    let renders = 0;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        socket: { on(event, callback) { listeners[event] = callback; } },
+        isOpen: true,
+        panes: {},
+        displayMode: 'embedded',
+        renderMovePicker() { renders += 1; },
+        t(_key, fallback) { return fallback; },
+        movePicker: {
+            sourceId: 'sftp-session:shared',
+            sourceKind: 'sftp',
+            sourcePath: '/source',
+            targetPath: '/source',
+            pendingPath: '/source',
+            pendingRequestId: 'move-picker:directory:2',
+            pendingCursor: token,
+            directories: [{ name: 'existing', path: '/source/existing' }],
+            loading: true,
+            validTarget: true,
+            listingTimeout: null,
+        },
+    });
+    manager.setupSocketListeners();
+
+    listeners.error({
+        operation: 'list_directory',
+        source_id: 'sftp-session:shared',
+        request_id: 'move-picker:directory:2',
+        path: '/source',
+        cursor: token,
+        error: 'Failed to list directory: listing expired',
+    });
+
+    assert.equal(manager.movePicker.loading, false);
+    assert.equal(manager.movePicker.validTarget, false);
+    assert.equal(manager.movePicker.error,
+        'The destination folder could not be opened.');
+    assert.deepEqual(manager.movePicker.directories, []);
+    assert.equal(manager.movePicker.pendingRequestId, null);
+    assert.equal(renders, 1);
 });
 
 test('Move picker correlates SMB listing paths case-insensitively', () => {

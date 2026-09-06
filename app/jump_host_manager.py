@@ -15,6 +15,7 @@ from .audit_logger import log_error, log_info
 from .connection_storage_policy import (
     ConnectionStorageLimitError,
     enforce_store_read_limit,
+    enforce_store_recovery_limit,
     enforce_store_transition,
     validate_jump_host,
 )
@@ -26,6 +27,9 @@ from .storage_utils import (
     storage_lock,
 )
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
+
+
+_JUMP_HOST_USAGE_DETAIL_LIMIT = 20
 
 
 def _is_valid_host(host):
@@ -113,7 +117,13 @@ def load_jump_hosts(user_id):
         return _load_jump_hosts_for_read_with_lock_held(user_id)
 
 
-def save_jump_hosts(user_id, jump_hosts, *, previous_count=None):
+def save_jump_hosts(
+    user_id,
+    jump_hosts,
+    *,
+    previous_count=None,
+    previous_document=None,
+):
     try:
         f = _get_file(user_id)
         document = {
@@ -129,6 +139,7 @@ def save_jump_hosts(user_id, jump_hosts, *, previous_count=None):
             prospective_count=len(jump_hosts),
             previous_count=previous_count,
             maximum_count=config.JUMP_HOST_MAX_RECORDS,
+            previous_document=previous_document,
         )
         f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(f, document)
@@ -143,10 +154,42 @@ def save_jump_hosts(user_id, jump_hosts, *, previous_count=None):
 def _load_profile_references(user_id):
     from . import profile_manager
 
-    path = profile_manager.get_user_profiles_file(user_id)
+    profiles, error = profile_manager._load_profiles_for_recovery_delete(
+        user_id
+    )
+    if error:
+        return []
+    return profiles
+
+
+def _load_jump_hosts_for_recovery_delete(user_id):
+    """Load legacy jump hosts within the hard recovery ceiling."""
+    path = _get_file(user_id)
     if path is None:
         return []
-    return profile_manager._load_profiles_for_read_with_lock_held(user_id)
+    enforce_store_recovery_limit(path)
+    data = load_json_migrated(
+        path,
+        'jump_hosts',
+        lambda: {'jump_hosts': []},
+        _valid_jump_host_document,
+        persist_migration=False,
+        pre_migration_check=lambda document: enforce_store_recovery_limit(
+            path,
+            record_count=(
+                len(document['jump_hosts'])
+                if isinstance(document, dict)
+                and isinstance(document.get('jump_hosts'), list)
+                else None
+            ),
+        ),
+    )
+    jump_hosts = data['jump_hosts']
+    enforce_store_recovery_limit(
+        path,
+        record_count=len(jump_hosts),
+    )
+    return jump_hosts
 
 
 def _get_jump_host_with_coordinator_held(user_id, jump_host_id):
@@ -245,34 +288,45 @@ def delete_jump_host(user_id, jump_host_id):
         with storage_lock(f'command-config:{user_id}'):
             with storage_lock(f'profiles:{user_id}'):
                 profiles = _load_profile_references(user_id)
-            usages = [
-                safe_reference_name(profile.get('name'))
-                for profile in profiles
+            usage_count = 0
+            usages = []
+            for profile in profiles:
                 if (
-                    isinstance(profile, dict)
-                    and profile.get('jump_host_id') == jump_host_id
-                )
-            ]
-            if usages:
-                noun = 'profile' if len(usages) == 1 else 'profiles'
+                    not isinstance(profile, dict)
+                    or profile.get('jump_host_id') != jump_host_id
+                ):
+                    continue
+                usage_count += 1
+                if len(usages) < _JUMP_HOST_USAGE_DETAIL_LIMIT:
+                    usages.append(safe_reference_name(profile.get('name')))
+            if usage_count:
+                noun = 'profile' if usage_count == 1 else 'profiles'
+                details = ''
+                if usage_count > len(usages):
+                    details = f' (showing first {len(usages)})'
                 return (
                     False,
-                    f'Jump host is used by {len(usages)} {noun}',
+                    f'Jump host is used by {usage_count} {noun}{details}',
                     usages,
                 )
 
             with storage_lock(f'jump_hosts:{user_id}'):
-                jump_hosts = _load_jump_hosts_with_lock_held(user_id)
+                jump_hosts = _load_jump_hosts_for_recovery_delete(user_id)
                 new_list = [
                     jump_host for jump_host in jump_hosts
                     if jump_host.get('id') != jump_host_id
                 ]
                 if len(new_list) == len(jump_hosts):
                     return False, 'Jump host not found', []
+                previous_document = {
+                    'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+                    'jump_hosts': jump_hosts,
+                }
                 if save_jump_hosts(
                     user_id,
                     new_list,
                     previous_count=len(jump_hosts),
+                    previous_document=previous_document,
                 ):
                     return True, None, []
                 return False, 'Failed to delete jump host', []

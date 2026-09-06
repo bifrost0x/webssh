@@ -1684,20 +1684,22 @@ class SFTPFileManager {
                 if (this.getPaneSourceId(state) === data.source_id &&
                     state.pendingDirectoryRequestId === data.request_id &&
                     state.pendingDirectoryPath === data.path &&
-                    state.pendingDirectoryCursor === (data.cursor || 0)) {
+                    state.pendingDirectoryCursor === (data.cursor ?? 0)) {
                     if (state.loadingTimeout) {
                         clearTimeout(state.loadingTimeout);
                         state.loadingTimeout = null;
                     }
-                    const cursor = Number.isInteger(data.cursor) ? data.cursor : 0;
-                    state.files = cursor > 0
+                    const cursor = data.cursor ?? 0;
+                    state.files = cursor !== 0
                         ? [...state.files, ...(data.files || [])]
                         : (data.files || []);
                     state.path = data.path;
                     state.loading = false;
                     state.loadingMore = false;
                     state.error = null;
-                    state.nextDirectoryCursor = Number.isInteger(data.next_cursor)
+                    state.nextDirectoryCursor = this.isDirectoryContinuationCursor(
+                        data.next_cursor,
+                    )
                         ? data.next_cursor
                         : null;
                     state.pendingDirectoryRequestId = null;
@@ -2406,7 +2408,7 @@ class SFTPFileManager {
     requestNextDirectoryPage(pane) {
         const state = this.panes[pane];
         const cursor = state?.nextDirectoryCursor;
-        if (!Number.isInteger(cursor) || cursor < 1 || state.loadingMore) return false;
+        if (!this.isDirectoryContinuationCursor(cursor) || state.loadingMore) return false;
         const requestId = this.nextRequestId(pane, 'directory-page');
         state.loadingMore = true;
         state.pendingDirectoryRequestId = requestId;
@@ -2421,6 +2423,14 @@ class SFTPFileManager {
         this.renderPane(pane);
         this.setLoadingTimeout(pane);
         return true;
+    }
+
+    isDirectoryContinuationCursor(cursor) {
+        if (Number.isInteger(cursor)) return cursor > 0;
+        return typeof cursor === 'string'
+            && cursor.length >= 1
+            && cursor.length <= 160
+            && /^[A-Za-z0-9._-]+$/.test(cursor);
     }
 
     setLoadingTimeout(pane, timeout = 10000) {
@@ -2844,7 +2854,7 @@ class SFTPFileManager {
             `;
         }).join('');
 
-        if (Number.isInteger(state.nextDirectoryCursor)) {
+        if (this.isDirectoryContinuationCursor(state.nextDirectoryCursor)) {
             html += `
                 <button type="button" class="fm-load-more" data-load-more>
                     ${this.escapeHtml(state.loadingMore
@@ -3498,7 +3508,7 @@ class SFTPFileManager {
         dialog.querySelector('[data-move-picker-list]').addEventListener('click', event => {
             if (event.target.closest('[data-move-picker-more]')) {
                 const picker = this.movePicker;
-                if (Number.isInteger(picker?.nextCursor)) {
+                if (this.isDirectoryContinuationCursor(picker?.nextCursor)) {
                     this.requestMovePickerDirectory(
                         picker.targetPath,
                         picker.nextCursor,
@@ -3683,7 +3693,7 @@ class SFTPFileManager {
             && picker.loading
             && data?.source_id === picker.sourceId
             && data?.request_id === picker.pendingRequestId
-            && (data?.cursor || 0) === picker.pendingCursor
+            && (data?.cursor ?? 0) === picker.pendingCursor
             && responsePath
             && fold(responsePath) === fold(picker.pendingPath),
         );
@@ -3720,11 +3730,11 @@ class SFTPFileManager {
             }))
             .filter(item => item.path)
             .sort((left, right) => left.name.localeCompare(right.name));
-        picker.directories = cursor > 0
+        picker.directories = cursor !== 0
             ? [...picker.directories, ...directories]
                 .sort((left, right) => left.name.localeCompare(right.name))
             : directories;
-        picker.nextCursor = Number.isInteger(data.next_cursor)
+        picker.nextCursor = this.isDirectoryContinuationCursor(data.next_cursor)
             ? data.next_cursor
             : null;
         this.renderMovePicker();
@@ -3799,7 +3809,7 @@ class SFTPFileManager {
                 : picker.error
                     ? `<div class="fm-move-picker-empty is-error"><span class="material-icons" aria-hidden="true">folder_off</span>${this.escapeHtml(this.t('fm.movePickerListFailed', 'The destination folder could not be opened.'))}</div>`
                     : picker.directories.length === 0
-                        && !Number.isInteger(picker.nextCursor)
+                        && !this.isDirectoryContinuationCursor(picker.nextCursor)
                         ? `<div class="fm-move-picker-empty"><span class="material-icons" aria-hidden="true">folder_open</span>${this.escapeHtml(this.t('fm.movePickerNoFolders', 'No subfolders'))}</div>`
                         : picker.directories.map((directory, index) => `
                             <button type="button" class="fm-move-picker-directory" data-move-picker-directory="${index}">
@@ -3807,7 +3817,7 @@ class SFTPFileManager {
                                 <span>${this.escapeHtml(directory.name)}</span>
                                 <span class="material-icons" aria-hidden="true">chevron_right</span>
                             </button>`).join('') + (
-                                Number.isInteger(picker.nextCursor)
+                                this.isDirectoryContinuationCursor(picker.nextCursor)
                                     ? `<button type="button" class="fm-load-more" data-move-picker-more>${this.escapeHtml(this.t('fm.loadMore', 'Load more'))}</button>`
                                     : ''
                             );

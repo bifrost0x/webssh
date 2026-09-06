@@ -1428,6 +1428,55 @@ def test_jump_host_delete_returns_in_use_and_not_found_codes(
     assert missing_events == [('error', missing)]
 
 
+def test_jump_host_delete_socket_payload_caps_reference_details(
+    app,
+    monkeypatch,
+):
+    from app import jump_host_manager, profile_manager
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'jump_delete_detail_cap')
+    detail_limit = jump_host_manager._JUMP_HOST_USAGE_DETAIL_LIMIT
+    with app.app_context():
+        jump_host, error = jump_host_manager.add_jump_host(
+            user_id,
+            'Bastion',
+            'bastion.example',
+            22,
+            'jump-user',
+            'password',
+        )
+        assert error is None
+        profiles = [
+            {
+                'id': f'profile-{index}',
+                'name': f'Profile {index}',
+                'jump_host_id': jump_host['id'],
+            }
+            for index in range(detail_limit + 7)
+        ]
+        assert profile_manager.save_profiles(user_id, profiles)
+
+    result, emitted = call_socket_handler(
+        app,
+        monkeypatch,
+        socket_events.handle_delete_jump_host,
+        sid,
+        {'jump_host_id': jump_host['id']},
+    )
+
+    assert result == {
+        'success': False,
+        'error': (
+            f'Jump host is used by {len(profiles)} profiles '
+            f'(showing first {detail_limit})'
+        ),
+        'code': 'in_use',
+        'usages': [f'Profile {index}' for index in range(detail_limit)],
+    }
+    assert emitted == [('error', result)]
+
+
 def test_missing_command_update_and_profile_delete_emit_structured_errors(
     app, monkeypatch
 ):

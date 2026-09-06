@@ -118,6 +118,14 @@ class FileBackend(Protocol):
     def list_directory(self, source: 'ResolvedFileSource', path: str) -> Any:
         ...
 
+    def open_directory_listing(
+        self,
+        source: 'ResolvedFileSource',
+        path: str,
+    ) -> Any:
+        """Open one bounded, incremental directory enumeration."""
+        ...
+
     def stat(
         self,
         source: 'ResolvedFileSource',
