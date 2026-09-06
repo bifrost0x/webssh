@@ -12,7 +12,12 @@ from .auth import (init_auth, authenticate_user, register_user,
                    password_exceeds_bcrypt_limit)
 from .audit_logger import (log_rate_limit_exceeded, log_info, log_warning, log_error,
                               log_login_attempt, log_logout, log_registration, log_password_change)
-from .user_settings import get_user_settings, save_user_settings
+from .user_settings import (
+    AUTHENTICATION_SESSION_DURATION_MINUTES,
+    DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+    get_user_settings,
+    save_user_settings,
+)
 from .app_settings import is_registration_enabled, set_registration_enabled
 from .storage_errors import StorageCorruptionError
 from .tailscale_ssh import user_can_use_tailscale_ssh
@@ -809,6 +814,10 @@ def create_app(
                 'disconnect_session_action',
                 'retry',
             ),
+            authentication_session_duration_minutes=settings.get(
+                'authentication_session_duration_minutes',
+                DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES,
+            ),
             is_admin=bool(current_user.is_admin),
         )
 
@@ -822,6 +831,7 @@ def create_app(
             'theme',
             'confirm_session_close',
             'disconnect_session_action',
+            'authentication_session_duration_minutes',
         }
         if not data or set(data) - allowed:
             return jsonify({'error': 'Invalid settings payload'}), 400
@@ -857,6 +867,16 @@ def create_app(
                     'error': 'Invalid disconnect session action',
                 }), 400
             updates['disconnect_session_action'] = action
+        if 'authentication_session_duration_minutes' in data:
+            duration = data['authentication_session_duration_minutes']
+            if (
+                type(duration) is not int
+                or duration not in AUTHENTICATION_SESSION_DURATION_MINUTES
+            ):
+                return jsonify({
+                    'error': 'Invalid authentication session duration',
+                }), 400
+            updates['authentication_session_duration_minutes'] = duration
 
         if not save_user_settings(current_user.id, updates):
             return jsonify({'error': 'Failed to save settings'}), 500

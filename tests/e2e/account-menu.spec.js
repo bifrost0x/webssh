@@ -34,6 +34,15 @@ test('account menu opens the Settings Center and persists close confirmation', a
     await expect(page.locator('#settingsLanguageSelect')).not.toHaveValue('');
     await expect(page.locator('#scrollbackInput')).toHaveValue('500');
     await expect(closeConfirmation).not.toBeChecked();
+    const signInDuration = page.locator('#authenticationSessionDurationSelect');
+    await expect(signInDuration).toHaveValue('30');
+
+    await signInDuration.selectOption('120');
+    await expect(signInDuration).not.toBeDisabled();
+    await expect(page.locator('body')).toHaveAttribute(
+        'data-authentication-session-duration-minutes',
+        '120',
+    );
 
     await closeConfirmation.check();
     await expect(closeConfirmation).not.toBeDisabled();
@@ -43,6 +52,7 @@ test('account menu opens the Settings Center and persists close confirmation', a
     await expect(page.locator('body')).toHaveAttribute('data-confirm-session-close', 'true');
     await expect(page.locator('[data-account-panel="preferences"]')).toBeVisible();
     await expect(closeConfirmation).toBeChecked();
+    await expect(signInDuration).toHaveValue('120');
     await closeConfirmation.uncheck();
     await expect(closeConfirmation).not.toBeDisabled();
 
@@ -90,6 +100,7 @@ test('account menu and settings stay inside a mobile viewport', async ({ page })
     await expect(page.locator('[data-account-panel="preferences"]')).not.toHaveClass(/\bhidden\b/);
     await expect(page.locator('#scrollbackInput')).toBeVisible();
     await expect(page.locator('#confirmSessionCloseInput')).toBeVisible();
+    await expect(page.locator('#authenticationSessionDurationSelect')).toBeVisible();
     const layout = await page.evaluate(() => ({
         viewport: window.innerWidth,
         document: document.documentElement.scrollWidth,

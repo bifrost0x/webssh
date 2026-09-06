@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/admin.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
 </head>
-<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}">
+<body data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-authentication-session-duration-minutes="{{ authentication_session_duration_minutes }}">
     <header class="header">
         <div class="header-content">
             <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">
@@ -93,6 +93,19 @@
                 <div class="admin-settings-row">
                     <div><label for="settingsLanguageSelect"><strong data-i18n="account.language">Language</strong></label><p class="admin-muted" data-i18n="settings.languageHint">Change interface labels without reloading the page.</p></div>
                     <select id="settingsLanguageSelect" class="form-control settings-preference-control"></select>
+                </div>
+            </div>
+            <div class="admin-settings-surface settings-preferences-surface">
+                <div class="admin-settings-intro"><h3 data-i18n="settings.signInSession">Sign-in session</h3><p class="admin-muted" data-i18n="settings.signInSessionHint">Control how long a normal WebSSH sign-in remains valid.</p></div>
+                <div class="admin-settings-row">
+                    <div><label for="authenticationSessionDurationSelect"><strong data-i18n="settings.signInDuration">Sign-in duration</strong></label><p class="admin-muted" data-i18n="settings.signInDurationHint">A normal WebSSH sign-in expires after this time, even while an SSH session is active. This is separate from the SSH idle timeout. Changes apply to the next sign-in; Remember me continues to use seven days.</p></div>
+                    <select id="authenticationSessionDurationSelect" class="form-control settings-preference-control">
+                        <option value="30" data-i18n="settings.duration30Minutes">30 minutes (default)</option>
+                        <option value="60" data-i18n="settings.duration1Hour">1 hour</option>
+                        <option value="120" data-i18n="settings.duration2Hours">2 hours</option>
+                        <option value="240" data-i18n="settings.duration4Hours">4 hours</option>
+                        <option value="480" data-i18n="settings.duration8Hours">8 hours</option>
+                    </select>
                 </div>
             </div>
             <div class="admin-settings-surface settings-preferences-surface">

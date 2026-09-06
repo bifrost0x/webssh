@@ -40,6 +40,26 @@ sensitive action and target.
 - Authenticated Socket.IO events use `socket_login_required` and resource
   operations add ownership checks.
 
+## Browser sign-in duration
+
+A normal WebSSH browser sign-in expires after 30 minutes by default, even while
+an SSH session is active. This authentication lifetime is separate from the SSH
+idle timeout. Each user can select 30 minutes, 1 hour, 2 hours, 4 hours, or 8
+hours under **Settings → Preferences → Sign-in session**. The selected duration
+applies to the next sign-in and remains an absolute limit from that successful
+authentication.
+
+Flask's signed session-cookie validation window covers the longest selectable
+duration, while the server-side authentication-session record remains the
+authoritative per-user expiry. A shorter selection therefore cannot be extended
+by retaining or replaying the signed browser cookie.
+
+Selecting **Remember me** at sign-in continues to use the separate seven-day
+remember duration. It is not changed by the personal normal-session setting.
+Longer normal sessions still retain server-side authentication records,
+account-generation checks, ownership enforcement, and immediate revocation on
+logout, account lock, or deletion. No option disables expiration.
+
 ## Deployment and Admin feature gates
 
 Passkeys, TOTP, OIDC, LDAP, and Recovery each have three states:

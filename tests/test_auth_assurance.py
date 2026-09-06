@@ -217,6 +217,115 @@ def test_finalizer_hashes_browser_session_token_and_records_assurance(app):
         assert AuthenticationSession.query.count() == 1
 
 
+def test_non_remembered_login_uses_per_user_session_duration(app):
+    from app.auth_assurance import (
+        AssuranceLevel,
+        begin_authentication,
+        consume_pending,
+        finalize_login,
+    )
+    from app.models import User, db
+    from app.user_settings import save_user_settings
+
+    user_id = _create_user(app, 'custom_session_duration')
+    with app.test_request_context('/'):
+        assert save_user_settings(user_id, {
+            'authentication_session_duration_minutes': 480,
+        })
+        user = db.session.get(User, user_id)
+        token = begin_authentication(
+            user,
+            'password',
+            assurance=AssuranceLevel.BASIC,
+            session_binding='browser-a',
+            remember=False,
+            continuation='/',
+        )
+        pending = consume_pending(token, 'browser-a')
+        row = finalize_login(pending, methods=['password'])
+
+        assert row.expires_at - row.authenticated_at == timedelta(hours=8)
+
+
+def test_flask_cookie_window_covers_selected_session_duration(
+    app,
+    client,
+    monkeypatch,
+):
+    from itsdangerous import TimestampSigner
+    from app.user_settings import save_user_settings
+
+    user_id = _create_user(app, 'long_cookie_window')
+    with app.app_context():
+        assert save_user_settings(user_id, {
+            'authentication_session_duration_minutes': 480,
+        })
+
+    clock = {'now': 1_800_000_000}
+    monkeypatch.setattr(
+        TimestampSigner,
+        'get_timestamp',
+        lambda _signer: clock['now'],
+    )
+    assert client.post('/login', data={
+        'username': 'long_cookie_window',
+        'password': 'password123',
+    }).status_code == 302
+
+    clock['now'] += 31 * 60
+
+    response = client.get('/settings')
+
+    assert response.status_code == 200
+    assert b'data-authentication-session-duration-minutes="480"' in response.data
+
+
+def test_corrupt_user_settings_fall_back_to_secure_default(
+    app,
+    monkeypatch,
+):
+    from app import user_settings
+    from app.auth_assurance import _session_lifetime
+    from app.storage_errors import StorageCorruptionError
+
+    def fail_to_load_settings(_user_id):
+        raise StorageCorruptionError('settings.json', 'invalid settings')
+
+    monkeypatch.setattr(user_settings, 'get_user_settings', fail_to_load_settings)
+    with app.test_request_context('/'):
+        assert _session_lifetime(False, 1) == timedelta(minutes=30)
+
+
+def test_remembered_login_keeps_separate_remember_duration(app):
+    from app.auth_assurance import (
+        AssuranceLevel,
+        begin_authentication,
+        consume_pending,
+        finalize_login,
+    )
+    from app.models import User, db
+    from app.user_settings import save_user_settings
+
+    user_id = _create_user(app, 'remember_duration_override')
+    with app.test_request_context('/'):
+        assert save_user_settings(user_id, {
+            'authentication_session_duration_minutes': 30,
+        })
+        user = db.session.get(User, user_id)
+        token = begin_authentication(
+            user,
+            'password',
+            assurance=AssuranceLevel.BASIC,
+            session_binding='browser-a',
+            remember=True,
+            continuation='/',
+        )
+        pending = consume_pending(token, 'browser-a')
+        row = finalize_login(pending, methods=['password'])
+
+        assert row.expires_at - row.authenticated_at == timedelta(days=7)
+
+
 def test_finalizer_rejects_unconsumed_and_already_finalized_pending_rows(app):
     from app.auth_assurance import (
         AssuranceLevel,

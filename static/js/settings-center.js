@@ -272,6 +272,45 @@
         });
     }
 
+    function initAuthenticationSessionDuration() {
+        const select = document.getElementById(
+            'authenticationSessionDurationSelect'
+        );
+        if (!select) { return; }
+        const allowed = new Set(['30', '60', '120', '240', '480']);
+        const initial = document.body.dataset.authenticationSessionDurationMinutes
+            || '30';
+        select.value = allowed.has(initial) ? initial : '30';
+        select.addEventListener('change', async () => {
+            const previous = document.body.dataset.authenticationSessionDurationMinutes
+                || '30';
+            const requested = select.value;
+            select.disabled = true;
+            setPreferenceStatus(t('settings.saving', 'Saving setting…'));
+            try {
+                if (!allowed.has(requested)) {
+                    throw new Error(t('settings.saveFailed', 'Failed to save setting'));
+                }
+                await savePreference({
+                    authentication_session_duration_minutes: Number.parseInt(
+                        requested,
+                        10,
+                    ),
+                });
+                document.body.dataset.authenticationSessionDurationMinutes = requested;
+                setPreferenceStatus(t(
+                    'settings.sessionDurationSaved',
+                    'Sign-in duration saved. It will apply at your next sign-in.'
+                ));
+            } catch (error) {
+                select.value = allowed.has(previous) ? previous : '30';
+                setPreferenceStatus(error.message, true);
+            } finally {
+                select.disabled = false;
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         initNavigation();
         initLanguage();
@@ -282,6 +321,7 @@
             'confirmSessionClose',
             'confirm_session_close',
         );
+        initAuthenticationSessionDuration();
         initDisconnectAction();
     });
 })();
