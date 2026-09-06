@@ -73,7 +73,7 @@ test('uses paired cards for jump hosts and SSH keys plus full-page settings', as
     await page.locator('#accountBtnHeader').click();
     await page.locator('#accountSettingsBtn').click();
     await expect(page).toHaveURL(/\/settings#preferences$/);
-    await expect(page.locator('.settings-preferences-surface')).toHaveCount(2);
+    await expect(page.locator('.settings-preferences-surface')).toHaveCount(3);
     await expect(page.locator('.admin-navigation')).toBeVisible();
 });
 

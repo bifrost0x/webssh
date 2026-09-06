@@ -159,6 +159,7 @@ def test_account_preferences_api_validates_and_persists_supported_values(
         "theme": "obsidian",
         "confirm_session_close": True,
         "disconnect_session_action": "close",
+        "authentication_session_duration_minutes": 480,
     })
     invalid = client.post(
         "/api/account/preferences",
@@ -172,11 +173,15 @@ def test_account_preferences_api_validates_and_persists_supported_values(
         "notepad": "",
         "confirm_session_close": True,
         "disconnect_session_action": "close",
+        "authentication_session_duration_minutes": 480,
     }
     assert invalid.status_code == 400
     assert b'data-theme="obsidian"' in rendered.data
     assert b'data-confirm-session-close="true"' in rendered.data
     assert b'data-disconnect-session-action="close"' in rendered.data
+    assert b'data-authentication-session-duration-minutes="480"' in rendered.data
+    assert b'id="authenticationSessionDurationSelect"' in rendered.data
+    assert b'even while an SSH session is active' in rendered.data
 
 
 @pytest.mark.parametrize(
@@ -193,6 +198,16 @@ def test_account_preferences_api_validates_and_persists_supported_values(
             "disconnect_session_action",
             {},
             "Invalid disconnect session action",
+        ),
+        (
+            "authentication_session_duration_minutes",
+            False,
+            "Invalid authentication session duration",
+        ),
+        (
+            "authentication_session_duration_minutes",
+            1440,
+            "Invalid authentication session duration",
         ),
     ],
 )

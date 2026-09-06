@@ -2,11 +2,17 @@ from .storage_errors import StorageCorruptionError
 from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 
+AUTHENTICATION_SESSION_DURATION_MINUTES = frozenset({30, 60, 120, 240, 480})
+DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES = 30
+
 DEFAULT_SETTINGS = {
     'theme': 'glass',
     'notepad': '',
     'confirm_session_close': False,
     'disconnect_session_action': 'retry',
+    'authentication_session_duration_minutes': (
+        DEFAULT_AUTHENTICATION_SESSION_DURATION_MINUTES
+    ),
 }
 
 
@@ -39,6 +45,15 @@ def _valid_settings(value):
         )
     ):
         return False
+    if (
+        'authentication_session_duration_minutes' in value
+        and (
+            type(value['authentication_session_duration_minutes']) is not int
+            or value['authentication_session_duration_minutes']
+            not in AUTHENTICATION_SESSION_DURATION_MINUTES
+        )
+    ):
+        return False
     return True
 
 
@@ -62,6 +77,14 @@ def _valid_settings_update(value):
             or (
                 isinstance(value['disconnect_session_action'], str)
                 and value['disconnect_session_action'] in {'retry', 'close'}
+            )
+        )
+        and (
+            'authentication_session_duration_minutes' not in value
+            or (
+                type(value['authentication_session_duration_minutes']) is int
+                and value['authentication_session_duration_minutes']
+                in AUTHENTICATION_SESSION_DURATION_MINUTES
             )
         )
     )
