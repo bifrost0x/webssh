@@ -476,10 +476,31 @@ def restore_uploaded_backup(operation_id):
 
     username = current_user.username
     source_ip = request.remote_addr or 'unknown'
-    log_security_event('RESTORE_STARTED', user=username, ip=source_ip)
     from .restore_service import start_restore
-    start_restore(current_app._get_current_object(), socketio, record,
-                  username, source_ip)
+    try:
+        start_restore(current_app._get_current_object(), socketio, record,
+                      username, source_ip)
+    except BaseException as error:
+        control_flow_error = not isinstance(error, Exception)
+        if (
+            not control_flow_error
+            and not getattr(error, 'restore_worker_started', False)
+        ):
+            backup_operations.reset_unstarted_restore(record.operation_id)
+        if control_flow_error:
+            raise
+        log_security_event(
+            'RESTORE_START_FAILED',
+            level=logging.ERROR,
+            user=username,
+            ip=source_ip,
+            error_type=type(error).__name__,
+        )
+        return jsonify({
+            'error': 'Restore could not be started',
+            'code': 'RESTORE_START_FAILED',
+        }), 503
+    log_security_event('RESTORE_STARTED', user=username, ip=source_ip)
     return jsonify(_operation_payload(record)), 202
 
 

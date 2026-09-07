@@ -18,6 +18,18 @@ _WRITE_WARNING_CODES = frozenset({
 })
 
 
+class FileSourceChanged(RuntimeError):
+    """A previously enumerated remote object no longer matches its path."""
+
+    public_code = 'SOURCE_CHANGED'
+
+
+class FileOperationCancelled(RuntimeError):
+    """A backend stopped promptly because the caller cancelled its work."""
+
+    public_code = 'CANCELLED'
+
+
 @dataclass(frozen=True, slots=True)
 class FileReaderLease:
     """One readable remote object and metadata obtained from that handle."""

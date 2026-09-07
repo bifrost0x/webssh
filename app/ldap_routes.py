@@ -7,7 +7,8 @@ import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask import (Blueprint, current_app, jsonify, redirect, render_template,
+                   request, session, url_for)
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -194,6 +195,11 @@ def ldap_login():
             and (mapping.user.is_locked or mapping.user.is_admin)
         ):
             raise LDAPLookupRejected('Identity is not linked to an active user')
+        if mapping is not None:
+            from .ldap_session import ldap_revocation_pending
+
+            if ldap_revocation_pending(current_app, mapping.user_id):
+                raise LDAPUnavailable('LDAP access invalidation is pending')
         if mapping is None and not config.LDAP_AUTO_PROVISION:
             raise LDAPLookupRejected('Identity is not linked to an active user')
         if not directory.verify_password(

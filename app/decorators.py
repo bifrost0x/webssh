@@ -1,6 +1,6 @@
 from functools import wraps
-from flask_socketio import disconnect, emit
-from flask import request, abort
+from flask_socketio import emit
+from flask import abort, current_app, request
 from flask_login import current_user
 import config
 from .auth import get_user_from_socket, login_manager
@@ -10,9 +10,17 @@ from .audit_logger import log_warning
 def _socket_authentication_is_valid(user):
     """Validate that the browser assurance session owns the socket user."""
     from .auth_assurance import current_authentication_session
+    from .ldap_session import ldap_revocation_pending
 
     auth_session = current_authentication_session()
-    return auth_session is not None and auth_session.user_id == user.id
+    return (
+        auth_session is not None
+        and auth_session.user_id == user.id
+        and not (
+            user.is_ldap_managed
+            and ldap_revocation_pending(current_app, user.id)
+        )
+    )
 
 
 def admin_required(f):
@@ -72,7 +80,10 @@ def socket_login_required(f):
         user = get_user_from_socket(socket_sid)
         if not user:
             log_warning("Unauthorized socket event attempt", event=f.__name__, sid=socket_sid)
-            disconnect()
+            from . import socketio
+            from .socket_events import disconnect_socket_transport
+
+            disconnect_socket_transport(socketio.server, socket_sid)
             return
         if not _socket_authentication_is_valid(user):
             payload = {
@@ -87,7 +98,10 @@ def socket_login_required(f):
                 sid=socket_sid,
             )
             emit('error', payload)
-            disconnect()
+            from . import socketio
+            from .socket_events import disconnect_socket_transport
+
+            disconnect_socket_transport(socketio.server, socket_sid)
             return payload
         kwargs['current_user'] = user
         return f(*args, **kwargs)

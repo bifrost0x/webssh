@@ -189,6 +189,21 @@ class BackupOperationRegistry:
             record.expires_at = time.time() + config.BACKUP_OPERATION_TIMEOUT
             return record
 
+    def reset_unstarted_restore(self, operation_id):
+        """Make a verified upload retryable after its worker failed to start."""
+        with self._lock:
+            record = self._records.get(str(operation_id))
+            if (
+                record is None
+                or record.kind != 'uploaded_backup'
+                or record.status != 'restoring'
+            ):
+                return None
+            record.status = 'verified'
+            record.error = None
+            record.expires_at = time.time() + config.BACKUP_DOWNLOAD_TTL
+            return record
+
     def prepare_restore(self, operation_id, owner_id, session_id, ttl=300):
         with self._lock:
             record = self.get(operation_id, owner_id, session_id)

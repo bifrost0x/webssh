@@ -738,24 +738,40 @@ def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
     return total, has_symlink
 
 
-def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
-                               cancel_event, max_bytes, chunk_size,
-                               max_members=None, temp_dir=None, progress=None):
-    """Build a ZIP on disk while bounding every remote read and total input."""
-    if temp_dir is not None:
-        temp_dir = Path(temp_dir)
-        temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(temp_dir, 0o700)
+def _create_private_temporary_archive(temp_dir):
     temporary = tempfile.NamedTemporaryFile(
         suffix='.zip', delete=False, dir=temp_dir
     )
     archive_path = Path(temporary.name)
-    temporary.close()
-    os.chmod(archive_path, 0o600)
+    try:
+        temporary.close()
+        os.chmod(archive_path, 0o600)
+    except BaseException:
+        try:
+            temporary.close()
+        except BaseException:
+            pass
+        try:
+            archive_path.unlink(missing_ok=True)
+        except BaseException:
+            pass
+        raise
+    return archive_path
+
+
+def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
+                               cancel_event, max_bytes, chunk_size,
+                               max_members=None, temp_dir=None, progress=None):
+    """Build a ZIP on disk while bounding every remote read and total input."""
     transferred = 0
     member_budget = _TransferMemberBudget(
         config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
     )
+    if temp_dir is not None:
+        temp_dir = Path(temp_dir)
+        temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(temp_dir, 0o700)
+    archive_path = _create_private_temporary_archive(temp_dir)
 
     def add_directory(archive, remote_path, archive_prefix, depth=0):
         nonlocal transferred
@@ -827,8 +843,11 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
         if archive_path.stat().st_size > max_bytes:
             raise TransferSizeExceeded()
         return archive_path
-    except Exception:
-        archive_path.unlink(missing_ok=True)
+    except BaseException:
+        try:
+            archive_path.unlink(missing_ok=True)
+        except BaseException:
+            pass
         raise
 
 def get_sftp_client(session_id):

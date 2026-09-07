@@ -783,7 +783,7 @@
                 const status = document.getElementById('editorStatus');
                 if (data.code === 'SMB_RECOVERABLE_REPLACE_REQUIRED') {
                     if (this.recoverableReplaceSources.has(this.currentSourceId)) {
-                        this.saveEdit('recoverable_swap');
+                        this.saveEdit('recoverable_swap', data.save_challenge);
                         return true;
                     }
                     const prompt = window.i18n
@@ -791,7 +791,7 @@
                         : 'This server cannot replace the file in one safe step. WebSSH can save it with a temporary recovery backup and restore the original if replacement fails. Use this method for this SMB connection until the page is reloaded?';
                     if (window.confirm(prompt)) {
                         this.recoverableReplaceSources.add(this.currentSourceId);
-                        this.saveEdit('recoverable_swap');
+                        this.saveEdit('recoverable_swap', data.save_challenge);
                     } else if (status) {
                         status.textContent = window.i18n
                             ? i18n.t('editor.recoverableDeclined')
@@ -1008,7 +1008,7 @@
             showNotification(msg, 'error');
         },
 
-        saveEdit(replaceStrategy = null) {
+        saveEdit(replaceStrategy = null, saveChallenge = null) {
             if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
@@ -1022,7 +1022,7 @@
                     ? 'recoverable_swap'
                     : 'atomic'
             );
-            socket.emit('save_file', {
+            const payload = {
                 source_id: this.currentSourceId,
                 path: this.currentPath,
                 content: textarea.value,
@@ -1031,7 +1031,11 @@
                 expected_revision: this.editRevision,
                 replace_strategy: selectedStrategy,
                 request_id: this.currentSaveRequestId,
-            });
+            };
+            if (typeof saveChallenge === 'string' && saveChallenge) {
+                payload.save_challenge = saveChallenge;
+            }
+            socket.emit('save_file', payload);
         },
 
         handleFileSaved(data) {

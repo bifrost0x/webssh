@@ -5,7 +5,7 @@ import hmac
 import re
 import secrets
 import time
-from threading import Lock, RLock, Timer
+from threading import Event, Lock, RLock, Timer
 
 import config
 
@@ -57,6 +57,7 @@ class FileService:
         path,
         cursor=0,
         client_id=None,
+        request_id=None,
     ):
         source = self.resolve(source_id, user_id, FileCapability.LIST)
         if cursor != 0:
@@ -78,6 +79,7 @@ class FileService:
             owner_key=owner_key,
             path=path,
             client_id=client_id,
+            request_id=request_id,
         )
         if state is None:
             return None, 'Too many active directory listings', None
@@ -155,6 +157,7 @@ class FileService:
         owner_key,
         path,
         client_id,
+        request_id,
     ):
         snapshot_id = secrets.token_urlsafe(18)
         state = {
@@ -164,13 +167,21 @@ class FileService:
             'handle_id': str(source.handle_id),
             'backend_id': id(source.backend),
             'client_id': '' if client_id is None else str(client_id),
+            'request_id': (
+                request_id
+                if self._valid_directory_request_id(request_id)
+                else ''
+            ),
             'listing': None,
             'page_size': config.REMOTE_LISTING_PAGE_SIZE,
             'next_offset': 0,
             'signing_key': secrets.token_bytes(32),
             'last_used': time.monotonic(),
             'status': 'opening',
+            'cancel_waiter': False,
+            'close_started': False,
             'lock': RLock(),
+            'closed': Event(),
             'timer': None,
         }
 
@@ -227,6 +238,14 @@ class FileService:
             return None
         return match.group(1), int(match.group(2)), match.group(3)
 
+    @staticmethod
+    def _valid_directory_request_id(request_id):
+        return (
+            isinstance(request_id, str)
+            and re.fullmatch(r'[A-Za-z0-9:._-]{1,128}', request_id)
+            is not None
+        )
+
     def _continue_directory_snapshot(
         self,
         source,
@@ -249,6 +268,7 @@ class FileService:
         if state is None:
             return None, 'Invalid or expired directory cursor', None
 
+        retire_result = None
         with state['lock']:
             with self._directory_snapshot_lock:
                 if (
@@ -289,27 +309,55 @@ class FileService:
                 or len(page) > state['page_size']
                 or has_more and not page
             ):
-                self._retire_directory_snapshot(snapshot_id, state)
-                return None, error or 'Invalid directory response', None
-
-            if not has_more:
-                self._retire_directory_snapshot(snapshot_id, state)
-                return page, None, None
-
-            state['next_offset'] += len(page)
-            state['last_used'] = now
-            with self._directory_snapshot_lock:
-                if (
-                    self._directory_snapshots.get(snapshot_id) is not state
-                    or state['status'] != 'active'
-                ):
-                    return None, 'Invalid or expired directory cursor', None
-                self._arm_directory_snapshot_locked(snapshot_id, state)
-            next_cursor = self._directory_cursor(
-                snapshot_id,
-                state['next_offset'],
-                state['signing_key'],
-            )
+                retire_result = (
+                    None,
+                    error or 'Invalid directory response',
+                    None,
+                )
+            elif not has_more:
+                retire_result = (page, None, None)
+            else:
+                state['next_offset'] += len(page)
+                state['last_used'] = now
+                with self._directory_snapshot_lock:
+                    if (
+                        self._directory_snapshots.get(snapshot_id) is not state
+                    ):
+                        return (
+                            None,
+                            'Invalid or expired directory cursor',
+                            None,
+                        )
+                    if state['status'] == 'active':
+                        self._arm_directory_snapshot_locked(snapshot_id, state)
+                    elif state['status'] != 'closing':
+                        return (
+                            None,
+                            'Invalid or expired directory cursor',
+                            None,
+                        )
+                next_cursor = self._directory_cursor(
+                    snapshot_id,
+                    state['next_offset'],
+                    state['signing_key'],
+                )
+            if retire_result is not None:
+                with self._directory_snapshot_lock:
+                    if (
+                        self._directory_snapshots.get(snapshot_id) is state
+                        and state['status'] == 'active'
+                    ):
+                        state['status'] = 'closing'
+                        # This continuation owns the synchronous close. Cancel
+                        # retransmissions should acknowledge it, not compete
+                        # for the backend handle or add another waiter.
+                        state['cancel_waiter'] = True
+        if retire_result is not None:
+            # Do not retain the per-state RLock while backend close may block.
+            # This lets duplicate authenticated cancellations observe the one
+            # elected closer and return immediately.
+            self._retire_directory_snapshot(snapshot_id, state)
+            return retire_result
         return page, None, next_cursor
 
     def _prune_directory_snapshots_locked(self, now):
@@ -394,22 +442,156 @@ class FileService:
             state['status'] = 'closing'
         self._close_directory_state(snapshot_id, state)
 
+    def cancel_directory_snapshot(
+        self,
+        cursor,
+        *,
+        user_id,
+        source_id,
+        client_id,
+    ):
+        """Close exactly one caller-owned paginated directory snapshot."""
+        parsed = self._parse_directory_cursor(cursor)
+        if parsed is None:
+            return False
+        snapshot_id, offset, supplied_signature = parsed
+        with self._directory_snapshot_lock:
+            state = self._directory_snapshots.get(snapshot_id)
+        if state is None:
+            return False
+
+        should_close = False
+        wait_for_close = False
+        # Cursor signing material and ownership are immutable after state
+        # publication. Validate and elect the closer under the registry lock,
+        # without queueing every duplicate behind a remote read that owns the
+        # per-state lock.
+        with self._directory_snapshot_lock:
+            if self._directory_snapshots.get(snapshot_id) is not state:
+                return False
+            expected_cursor = self._directory_cursor(
+                snapshot_id,
+                offset,
+                state['signing_key'],
+            )
+            expected_signature = expected_cursor.rsplit('.', 1)[-1]
+            valid = (
+                hmac.compare_digest(
+                    supplied_signature,
+                    expected_signature,
+                )
+                and state['owner'] == str(user_id)
+                and state['source_id'] == str(source_id)
+                and state['client_id'] == (
+                    '' if client_id is None else str(client_id)
+                )
+            )
+            if not valid:
+                return False
+            if state['status'] == 'active':
+                state['status'] = 'closing'
+                if not state['cancel_waiter']:
+                    state['cancel_waiter'] = True
+                    should_close = True
+            elif state['status'] in {'cancelled', 'closing'}:
+                # Preserve the synchronous close guarantee for one elected
+                # caller only. Duplicate retransmissions acknowledge the
+                # already-owned cancellation immediately instead of each
+                # retaining an Engine.IO worker until backend I/O returns.
+                if not state['cancel_waiter']:
+                    state['cancel_waiter'] = True
+                    wait_for_close = True
+            else:
+                return False
+
+        if should_close:
+            self._close_directory_state(snapshot_id, state)
+        elif wait_for_close:
+            state['closed'].wait()
+        return True
+
+    def cancel_directory_request(
+        self,
+        request_id,
+        *,
+        user_id,
+        source_id,
+        client_id,
+    ):
+        """Cancel page zero by its exact caller-owned request identity."""
+        if not self._valid_directory_request_id(request_id):
+            return False
+        owner_key = str(user_id)
+        source_key = str(source_id)
+        client_key = '' if client_id is None else str(client_id)
+        retired = []
+        wait_for_close = []
+        matched = False
+        with self._directory_snapshot_lock:
+            for snapshot_id, state in tuple(
+                self._directory_snapshots.items()
+            ):
+                if (
+                    state.get('request_id') != request_id
+                    or state['owner'] != owner_key
+                    or state['source_id'] != source_key
+                    or state['client_id'] != client_key
+                ):
+                    continue
+                if state['status'] == 'opening':
+                    state['status'] = 'cancelled'
+                    matched = True
+                    if not state['cancel_waiter']:
+                        state['cancel_waiter'] = True
+                        wait_for_close.append(state)
+                elif state['status'] == 'active':
+                    state['status'] = 'closing'
+                    retired.append((snapshot_id, state))
+                    matched = True
+                    state['cancel_waiter'] = True
+                elif state['status'] in {'cancelled', 'closing'}:
+                    matched = True
+                    if not state['cancel_waiter']:
+                        state['cancel_waiter'] = True
+                        wait_for_close.append(state)
+        self._close_directory_states(retired)
+        # An opening listing cannot safely be closed while its backend owns
+        # open_directory_listing() or the initial read_page(). Wait on only
+        # the exactly authorized states so a FIFO replacement cannot acquire
+        # another backend channel before retirement has completed.
+        for state in wait_for_close:
+            state['closed'].wait()
+        return matched
+
     def _close_directory_state(self, snapshot_id, state):
         with state['lock']:
+            if state['close_started']:
+                return
+            state['close_started'] = True
+            state['cancel_waiter'] = True
             timer = state.get('timer')
             if timer is not None:
-                timer.cancel()
+                try:
+                    timer.cancel()
+                except Exception:
+                    pass
                 state['timer'] = None
             listing = state.get('listing')
             state['listing'] = None
-            try:
-                if listing is not None:
-                    listing.close()
-            except Exception:
-                pass
-        with self._directory_snapshot_lock:
-            if self._directory_snapshots.get(snapshot_id) is state:
-                self._directory_snapshots.pop(snapshot_id, None)
+        try:
+            # The status transition happened before this point, so no new page
+            # read can start. Close outside the state lock: duplicate cancel
+            # requests can now observe the elected closer and return without
+            # accumulating blocked worker threads behind slow backend I/O.
+            if listing is not None:
+                listing.close()
+        except Exception:
+            pass
+        finally:
+            with self._directory_snapshot_lock:
+                if self._directory_snapshots.get(snapshot_id) is state:
+                    self._directory_snapshots.pop(snapshot_id, None)
+            state['closed'].set()
 
     def _close_directory_states(self, states):
         for snapshot_id, state in states:

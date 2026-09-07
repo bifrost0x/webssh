@@ -957,6 +957,269 @@ test('opaque directory cursors append pages and are echoed unchanged', () => {
     assert.equal(state.loadingMore, false);
 });
 
+test('starting a new pane listing retires its previous exact cursor first', () => {
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.1.${'a'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/old',
+        nextDirectoryCursor: token,
+    });
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        panes: { left: state, right: manager.createEmptyPaneState() },
+    });
+
+    manager.requestDirectoryForState('left', state, '/new');
+
+    assert.deepEqual(emitted.map(item => item.event), [
+        'cancel_directory_listing',
+        'list_directory',
+    ]);
+    assert.equal(emitted[0].payload.source_id, 'sftp-session:session-a');
+    assert.equal(emitted[0].payload.cursor, token);
+    assert.equal(emitted[1].payload.remote_path, '/new');
+    assert.equal(emitted[1].payload.cursor, 0);
+});
+
+test('starting a new pane page zero cancels its exact prior request first', () => {
+    const emitted = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/old',
+        loading: true,
+        pendingDirectoryRequestId: 'left:directory:old',
+        pendingDirectoryPath: '/old',
+        pendingDirectoryCursor: 0,
+    });
+    const otherState = filePane(manager, 'sftp-session:session-a', {
+        path: '/other',
+        loading: true,
+        pendingDirectoryRequestId: 'right:directory:untouched',
+        pendingDirectoryPath: '/other',
+        pendingDirectoryCursor: 0,
+    });
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        panes: { left: state, right: otherState },
+    });
+
+    manager.requestDirectoryForState('left', state, '/new');
+
+    assert.deepEqual(emitted.map(item => item.event), [
+        'cancel_directory_listing',
+        'list_directory',
+    ]);
+    assert.equal(
+        emitted[0].payload.listing_request_id,
+        'left:directory:old',
+    );
+    assert.notEqual(
+        emitted[0].payload.request_id,
+        emitted[0].payload.listing_request_id,
+    );
+    assert.equal(emitted[1].payload.remote_path, '/new');
+    assert.equal(emitted[1].payload.cursor, 0);
+    assert.equal(
+        otherState.pendingDirectoryRequestId,
+        'right:directory:untouched',
+    );
+});
+
+test('an unclaimed directory response immediately retires its returned cursor', () => {
+    const listeners = {};
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.1.${'b'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: {
+            on(event, callback) { listeners[event] = callback; },
+            emit(event, payload) { emitted.push({ event, payload }); },
+        },
+        isOpen: true,
+        displayMode: 'embedded',
+        panes: {
+            left: filePane(manager, 'sftp-session:session-a'),
+            right: manager.createEmptyPaneState(),
+        },
+    });
+    manager.setupSocketListeners();
+
+    listeners.directory_listing({
+        source_id: 'sftp-session:session-a',
+        request_id: 'abandoned:directory:1',
+        path: '/abandoned',
+        cursor: 0,
+        files: [{ name: 'first-page' }],
+        next_cursor: token,
+    });
+
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(emitted[0].payload.cursor, token);
+});
+
+test('closing a source tab retires its paginated directory snapshot', () => {
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.1.${'c'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const state = filePane(manager, 'sftp-session:session-a', {
+        nextDirectoryCursor: token,
+    });
+    const tab = manager.workspace.openTab(
+        'left',
+        fileSource('sftp-session:session-a'),
+        state,
+    );
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        isOpen: true,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        updatePathInput() {},
+        updatePaneBadge() {},
+        renderPane() {},
+        renderWorkspaceChrome() {},
+    });
+
+    manager.closeSourceTab('left', tab.id);
+
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(emitted[0].payload.cursor, token);
+});
+
+test('closing a source tab cancels only its pending page-zero request', () => {
+    const emitted = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const closingState = filePane(manager, 'sftp-session:session-a', {
+        loading: true,
+        pendingDirectoryRequestId: 'left:directory:pending',
+        pendingDirectoryPath: '/srv/a',
+        pendingDirectoryCursor: 0,
+    });
+    const remainingState = filePane(manager, 'sftp-session:session-a', {
+        loading: true,
+        pendingDirectoryRequestId: 'left:directory:remaining',
+        pendingDirectoryPath: '/srv/b',
+        pendingDirectoryCursor: 0,
+    });
+    const closingTab = manager.workspace.openTab(
+        'left',
+        closingState.source,
+        closingState,
+    );
+    manager.workspace.openTab(
+        'left',
+        remainingState.source,
+        remainingState,
+    );
+    manager.workspace.activateTab('left', closingTab.id);
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        displayMode: 'modal',
+        isOpen: true,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        updatePathInput() {},
+        updatePaneBadge() {},
+        renderPane() {},
+        renderWorkspaceChrome() {},
+    });
+
+    manager.closeSourceTab('left', closingTab.id);
+
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(
+        emitted[0].payload.listing_request_id,
+        'left:directory:pending',
+    );
+    assert.equal(
+        remainingState.pendingDirectoryRequestId,
+        'left:directory:remaining',
+    );
+});
+
+test('closing the manager retires snapshots and refreshes them on next use', () => {
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.1.${'d'.repeat(32)}`;
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/srv',
+        files: [{ name: 'partial' }],
+        nextDirectoryCursor: token,
+    });
+    manager.workspace.openTab('left', state.source, state);
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        requestSequence: 0,
+        displayMode: 'modal',
+        isOpen: true,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        modal: { classList: classList(), setAttribute() {} },
+        closeSourceLauncher() {},
+        closeContextMenu() {},
+        setLoadingTimeout() {},
+    });
+
+    manager.close({ restorePrimaryWorkspace: false });
+
+    assert.equal(state.directoryNeedsRefresh, true);
+    assert.equal(state.nextDirectoryCursor, null);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(emitted[0].payload.cursor, token);
+
+    assert.equal(manager.resumeDirectoryListingIfNeeded('left', state), true);
+    assert.equal(state.directoryNeedsRefresh, false);
+    assert.equal(emitted.at(-1).event, 'list_directory');
+    assert.equal(emitted.at(-1).payload.remote_path, '/srv');
+    assert.equal(emitted.at(-1).payload.cursor, 0);
+});
+
+test('closing the manager cancels a pending page-zero request before reopen', () => {
+    const emitted = [];
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.initializeWorkspaceState();
+    const state = filePane(manager, 'sftp-session:session-a', {
+        path: '/srv',
+        loading: true,
+        pendingDirectoryRequestId: 'left:directory:pending',
+        pendingDirectoryPath: '/srv',
+        pendingDirectoryCursor: 0,
+    });
+    manager.workspace.openTab('left', state.source, state);
+    manager.syncPaneFromWorkspace('left');
+    Object.assign(manager, {
+        requestSequence: 0,
+        displayMode: 'modal',
+        isOpen: true,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        modal: { classList: classList(), setAttribute() {} },
+        closeSourceLauncher() {},
+        closeContextMenu() {},
+        setLoadingTimeout() {},
+    });
+
+    manager.close({ restorePrimaryWorkspace: false });
+
+    assert.equal(state.directoryNeedsRefresh, true);
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(
+        emitted[0].payload.listing_request_id,
+        'left:directory:pending',
+    );
+    assert.equal(manager.resumeDirectoryListingIfNeeded('left', state), true);
+    assert.equal(emitted[1].event, 'list_directory');
+    assert.equal(emitted[1].payload.cursor, 0);
+});
+
 test('pane continuation keeps rows in place and restores load-more focus and scroll', () => {
     const previousDocument = global.document;
     const listeners = {};
@@ -1135,7 +1398,12 @@ test('a stale pane timeout cannot finish a newer hidden directory request', () =
         assert.equal(state.error, null);
         assert.equal(renders, 0);
         assert.equal(notifications, 0);
-        assert.equal(emitted.length, 2);
+        assert.deepEqual(emitted.map(item => item.event), [
+            'list_directory',
+            'cancel_directory_listing',
+            'list_directory',
+        ]);
+        assert.equal(emitted[1].payload.listing_request_id, firstRequestId);
     } finally {
         global.setTimeout = previousSetTimeout;
         global.clearTimeout = previousClearTimeout;
@@ -1185,6 +1453,73 @@ test('the current pane timeout still terminates only its correlated request', ()
     }
 });
 
+test('a pane continuation timeout cancels its cursor and restarts page zero once', () => {
+    const previousSetTimeout = global.setTimeout;
+    const previousClearTimeout = global.clearTimeout;
+    const timers = [];
+    global.setTimeout = callback => {
+        const timer = { callback, cleared: false };
+        timers.push(timer);
+        return timer;
+    };
+    global.clearTimeout = timer => { timer.cleared = true; };
+
+    try {
+        const token = `v1.abcdefghijklmnop.1.${'e'.repeat(32)}`;
+        const emitted = [];
+        const manager = Object.create(SFTPFileManager.prototype);
+        const state = filePane(manager, 'sftp-session:session-a', {
+            path: '/srv',
+            files: [{ name: 'first-page' }],
+            nextDirectoryCursor: token,
+        });
+        Object.assign(manager, {
+            requestSequence: 0,
+            socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+            isOpen: true,
+            displayMode: 'embedded',
+            panes: { left: state, right: manager.createEmptyPaneState() },
+            renderPane() {},
+            showNotification() {},
+            t(_key, fallback) { return fallback; },
+        });
+
+        assert.equal(manager.requestNextDirectoryPage('left'), true);
+        assert.equal(timers.length, 1);
+        timers[0].callback();
+
+        assert.deepEqual(emitted.map(item => item.event), [
+            'list_directory',
+            'cancel_directory_listing',
+            'list_directory',
+        ]);
+        assert.equal(emitted[1].payload.cursor, token);
+        assert.equal(emitted[2].payload.cursor, 0);
+        assert.equal(state.loading, true);
+        assert.equal(state.loadingMore, false);
+        assert.equal(state.nextDirectoryCursor, null);
+        assert.equal(state.pendingDirectoryCursor, 0);
+        assert.equal(timers.length, 2);
+        const recoveryRequestId = state.pendingDirectoryRequestId;
+
+        timers[1].callback();
+
+        assert.equal(state.loading, false);
+        assert.equal(state.pendingDirectoryRequestId, null);
+        assert.equal(emitted.filter(item => item.event === 'list_directory').length, 2);
+        assert.equal(emitted.filter(
+            item => item.event === 'cancel_directory_listing',
+        ).length, 2);
+        assert.equal(
+            emitted.at(-1).payload.listing_request_id,
+            recoveryRequestId,
+        );
+    } finally {
+        global.setTimeout = previousSetTimeout;
+        global.clearTimeout = previousClearTimeout;
+    }
+});
+
 test('pane synchronous continuation errors include the cursor and stale cursor errors are ignored', () => {
     const previousDocument = global.document;
     global.document = { getElementById: () => null };
@@ -1225,10 +1560,15 @@ test('pane synchronous continuation errors include the cursor and stale cursor e
 
         assert.doesNotThrow(() => manager.requestNextDirectoryPage('left'));
         assert.equal(localErrors[0].cursor, token);
-        assert.equal(emitted.length, 2);
-        assert.equal(emitted[0].payload.cursor, token);
-        assert.equal(emitted[1].payload.cursor, 0);
-        const recoveryRequestId = emitted[1].payload.request_id;
+        const listingRequests = emitted.filter(item => item.event === 'list_directory');
+        assert.equal(listingRequests.length, 2);
+        assert.equal(listingRequests[0].payload.cursor, token);
+        assert.equal(listingRequests[1].payload.cursor, 0);
+        assert.equal(emitted.some(item => (
+            item.event === 'cancel_directory_listing'
+            && item.payload.cursor === token
+        )), true);
+        const recoveryRequestId = listingRequests[1].payload.request_id;
         assert.equal(state.loading, true);
         assert.equal(state.pendingDirectoryRequestId, recoveryRequestId);
 
@@ -1332,16 +1672,20 @@ test('a failed continuation restarts once from page zero', () => {
         error: 'Failed to list directory: listing expired',
     });
 
-    assert.equal(emitted.length, 1);
-    assert.equal(emitted[0].event, 'list_directory');
-    assert.equal(emitted[0].payload.source_id, 'sftp-session:session-a');
-    assert.equal(emitted[0].payload.remote_path, '/srv');
-    assert.equal(emitted[0].payload.cursor, 0);
-    assert.notEqual(emitted[0].payload.request_id, 'left:directory-page:2');
+    const listingRequest = emitted.find(item => item.event === 'list_directory');
+    const cancellations = emitted.filter(
+        item => item.event === 'cancel_directory_listing',
+    );
+    assert.equal(cancellations.length, 1);
+    assert.equal(cancellations[0].payload.cursor, token);
+    assert.equal(listingRequest.payload.source_id, 'sftp-session:session-a');
+    assert.equal(listingRequest.payload.remote_path, '/srv');
+    assert.equal(listingRequest.payload.cursor, 0);
+    assert.notEqual(listingRequest.payload.request_id, 'left:directory-page:2');
     assert.equal(state.loading, true);
     assert.equal(state.loadingMore, false);
     assert.equal(state.nextDirectoryCursor, null);
-    assert.equal(state.pendingDirectoryRequestId, emitted[0].payload.request_id);
+    assert.equal(state.pendingDirectoryRequestId, listingRequest.payload.request_id);
     assert.equal(state.pendingDirectoryCursor, 0);
     assert.equal(state.directoryContinuationView, null);
     assert.deepEqual(state.files, [{ name: 'stale-page' }]);
@@ -1353,7 +1697,7 @@ test('a failed continuation restarts once from page zero', () => {
 
     listeners.directory_listing({
         source_id: 'sftp-session:session-a',
-        request_id: emitted[0].payload.request_id,
+        request_id: listingRequest.payload.request_id,
         path: '/srv',
         cursor: 0,
         files: [{ name: 'fresh-page' }],
@@ -1363,6 +1707,109 @@ test('a failed continuation restarts once from page zero', () => {
     assert.deepEqual(state.files, [{ name: 'fresh-page' }]);
     assert.equal(state.loading, false);
     assert.equal(state.nextDirectoryCursor, null);
+});
+
+test('a hidden continuation recovery keeps an exact state-bound timeout', () => {
+    const previousSetTimeout = global.setTimeout;
+    const previousClearTimeout = global.clearTimeout;
+    const timers = [];
+    global.setTimeout = callback => {
+        const timer = { callback, cleared: false };
+        timers.push(timer);
+        return timer;
+    };
+    global.clearTimeout = timer => { timer.cleared = true; };
+
+    try {
+        const listeners = {};
+        const emitted = [];
+        const token = `v1.abcdefghijklmnop.1.${'f'.repeat(32)}`;
+        const manager = Object.create(SFTPFileManager.prototype);
+        manager.initializeWorkspaceState();
+        const hiddenState = filePane(manager, 'sftp-session:hidden', {
+            path: '/srv/hidden',
+            files: [{ name: 'stale-page' }],
+            loadingMore: true,
+            nextDirectoryCursor: token,
+            pendingDirectoryRequestId: 'left:directory-page:hidden',
+            pendingDirectoryPath: '/srv/hidden',
+            pendingDirectoryCursor: token,
+        });
+        const activeState = filePane(manager, 'sftp-session:active', {
+            path: '/srv/active',
+            files: [{ name: 'visible.txt' }],
+        });
+        const hiddenTab = manager.workspace.openTab(
+            'left',
+            hiddenState.source,
+            hiddenState,
+        );
+        manager.workspace.openTab(
+            'left',
+            activeState.source,
+            activeState,
+        );
+        manager.syncPaneFromWorkspace('left');
+        Object.assign(manager, {
+            requestSequence: 0,
+            socket: {
+                on(event, callback) { listeners[event] = callback; },
+                emit(event, payload) { emitted.push({ event, payload }); },
+            },
+            isOpen: true,
+            displayMode: 'modal',
+            setActivePane() {},
+            updatePathInput() {},
+            updatePaneBadge() {},
+            renderPane() {},
+            renderWorkspaceChrome() {},
+            showNotification() {},
+            t(_key, fallback) { return fallback; },
+        });
+        manager.setupSocketListeners();
+
+        listeners.error({
+            operation: 'list_directory',
+            source_id: 'sftp-session:hidden',
+            request_id: 'left:directory-page:hidden',
+            path: '/srv/hidden',
+            cursor: token,
+            error: 'Failed to list directory: listing expired',
+        });
+
+        const recovery = emitted.find(
+            item => item.event === 'list_directory',
+        ).payload;
+        assert.equal(hiddenState.loading, true);
+        assert.equal(hiddenState.loadingMore, false);
+        assert.equal(hiddenState.pendingDirectoryRequestId, recovery.request_id);
+        assert.equal(timers.length, 1);
+        assert.equal(hiddenState.loadingTimeout, timers[0]);
+        assert.equal(activeState.loadingTimeout, null);
+        assert.equal(manager.panes.left, activeState);
+
+        timers[0].callback();
+
+        assert.equal(hiddenState.loading, false);
+        assert.equal(hiddenState.loadingTimeout, null);
+        assert.equal(
+            hiddenState.error,
+            'Connection timeout - could not load directory',
+        );
+        assert.equal(activeState.files[0].name, 'visible.txt');
+        const requestCancellation = emitted.find(item => (
+            item.event === 'cancel_directory_listing'
+            && item.payload.listing_request_id === recovery.request_id
+        ));
+        assert.ok(requestCancellation);
+
+        manager.activateSourceTab('left', hiddenTab.id);
+        assert.equal(manager.panes.left, hiddenState);
+        assert.equal(manager.panes.left.loading, false);
+    } finally {
+        global.setTimeout = previousSetTimeout;
+        global.clearTimeout = previousClearTimeout;
+    }
 });
 
 test('a failed page-zero recovery is not retried again', () => {
@@ -1400,7 +1847,9 @@ test('a failed page-zero recovery is not retried again', () => {
         cursor: token,
         error: 'Failed to list directory: listing expired',
     });
-    const recoveryRequest = emitted[0].payload;
+    const recoveryRequest = emitted.find(
+        item => item.event === 'list_directory',
+    ).payload;
 
     listeners.error({
         operation: 'list_directory',
@@ -1410,7 +1859,16 @@ test('a failed page-zero recovery is not retried again', () => {
         error: 'Failed to list directory: backend unavailable',
     });
 
-    assert.equal(emitted.length, 1);
+    assert.equal(emitted.filter(item => item.event === 'list_directory').length, 1);
+    const cancellations = emitted.filter(
+        item => item.event === 'cancel_directory_listing',
+    );
+    assert.equal(cancellations.length, 2);
+    assert.equal(cancellations[0].payload.cursor, token);
+    assert.equal(
+        cancellations[1].payload.listing_request_id,
+        recoveryRequest.request_id,
+    );
     assert.equal(state.loading, false);
     assert.equal(state.loadingMore, false);
     assert.equal(state.nextDirectoryCursor, null);
@@ -2283,6 +2741,61 @@ test('Move picker accepts only its correlated directory listing and shows folder
     assert.equal(manager.movePicker.nextCursor, null);
 });
 
+test('closing the Move picker retires its exact directory snapshot', () => {
+    const emitted = [];
+    const token = `v1.abcdefghijklmnop.2.${'d'.repeat(32)}`;
+    let removed = false;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        movePicker: {
+            sourceId: 'sftp-session:shared',
+            nextCursor: token,
+            pendingCursor: 0,
+            element: { remove() { removed = true; } },
+            previousFocus: null,
+        },
+    });
+
+    assert.equal(manager.closeMovePicker(), true);
+
+    assert.equal(removed, true);
+    assert.equal(manager.movePicker, null);
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(emitted[0].payload.cursor, token);
+});
+
+test('closing the Move picker cancels its pending page-zero request', () => {
+    const emitted = [];
+    let removed = false;
+    const manager = Object.create(SFTPFileManager.prototype);
+    Object.assign(manager, {
+        requestSequence: 0,
+        socket: { emit(event, payload) { emitted.push({ event, payload }); } },
+        movePicker: {
+            sourceId: 'sftp-session:shared',
+            pendingRequestId: 'move-picker:directory:pending',
+            pendingCursor: 0,
+            nextCursor: null,
+            element: { remove() { removed = true; } },
+            previousFocus: null,
+        },
+    });
+
+    assert.equal(manager.closeMovePicker(), true);
+
+    assert.equal(removed, true);
+    assert.equal(manager.movePicker, null);
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'cancel_directory_listing');
+    assert.equal(
+        emitted[0].payload.listing_request_id,
+        'move-picker:directory:pending',
+    );
+});
+
 test('Move picker continuation preserves rows, scroll and focus through the final page', () => {
     const previousDocument = global.document;
     const requests = [];
@@ -2420,7 +2933,9 @@ test('Move picker synchronous continuation errors carry the cursor and stale err
         manager.movePicker.directories = [{ name: 'existing', path: '/source/existing' }];
         manager.movePicker.nextCursor = token;
         assert.equal(manager.requestMovePickerDirectory('/source', token), true);
-        const currentRequestId = requests[1].payload.request_id;
+        const currentRequestId = requests.filter(
+            request => request.event === 'list_directory',
+        ).at(-1).payload.request_id;
         assert.equal(manager.movePicker.pendingRequestId, currentRequestId);
 
         assert.equal(manager.consumeMovePickerError(staleError, 'stale request'), false);
@@ -2437,7 +2952,20 @@ test('Move picker synchronous continuation errors carry the cursor and stale err
             request_id: currentRequestId,
             cursor: token,
         }, 'current request'), true);
-        assert.equal(manager.movePicker.loading, false);
+        const recoveryRequest = requests.filter(
+            request => request.event === 'list_directory',
+        ).at(-1).payload;
+        assert.equal(recoveryRequest.cursor, 0);
+        assert.equal(manager.movePicker.loading, true);
+        assert.equal(manager.movePicker.pendingRequestId, recoveryRequest.request_id);
+        assert.equal(manager.consumeMovePickerListing({
+            source_id: 'sftp-session:shared',
+            request_id: recoveryRequest.request_id,
+            path: '/source',
+            cursor: 0,
+            files: [],
+            next_cursor: null,
+        }), true);
     } finally {
         global.document = previousDocument;
     }
@@ -2445,11 +2973,15 @@ test('Move picker synchronous continuation errors carry the cursor and stale err
 
 test('Move picker consumes a correlated continuation listing error immediately', () => {
     const listeners = {};
+    const emitted = [];
     const token = `v1.abcdefghijklmnop.2.${'b'.repeat(32)}`;
     let renders = 0;
     const manager = Object.create(SFTPFileManager.prototype);
     Object.assign(manager, {
-        socket: { on(event, callback) { listeners[event] = callback; } },
+        socket: {
+            on(event, callback) { listeners[event] = callback; },
+            emit(event, payload) { emitted.push({ event, payload }); },
+        },
         isOpen: true,
         panes: {},
         displayMode: 'embedded',
@@ -2482,21 +3014,38 @@ test('Move picker consumes a correlated continuation listing error immediately',
         error: 'Failed to list directory: listing expired',
     });
 
-    assert.equal(manager.movePicker.loading, false);
+    const recoveryRequest = emitted.find(item => item.event === 'list_directory');
+    assert.equal(manager.movePicker.loading, true);
     assert.equal(manager.movePicker.loadingMore, false);
-    assert.equal(manager.movePicker.validTarget, true);
+    assert.equal(manager.movePicker.validTarget, false);
     assert.equal(manager.movePicker.error, null);
-    assert.equal(manager.movePicker.continuationError,
-        'The destination folder could not be opened.');
-    assert.deepEqual(manager.movePicker.directories, [
-        { name: 'existing', path: '/source/existing' },
-    ]);
-    assert.equal(manager.movePicker.nextCursor, token);
-    assert.equal(manager.movePicker.pendingRequestId, null);
+    assert.equal(manager.movePicker.continuationError, null);
+    assert.deepEqual(manager.movePicker.directories, []);
+    assert.equal(manager.movePicker.nextCursor, null);
+    assert.equal(manager.movePicker.pendingRequestId, recoveryRequest.payload.request_id);
+    assert.equal(recoveryRequest.payload.cursor, 0);
+    assert.equal(emitted.some(item => (
+        item.event === 'cancel_directory_listing'
+        && item.payload.cursor === token
+    )), true);
     assert.equal(renders, 1);
+
+    listeners.directory_listing({
+        source_id: 'sftp-session:shared',
+        request_id: recoveryRequest.payload.request_id,
+        path: '/source',
+        cursor: 0,
+        files: [{ name: 'fresh', is_dir: true }],
+        next_cursor: null,
+    });
+    assert.equal(manager.movePicker.loading, false);
+    assert.equal(manager.movePicker.validTarget, true);
+    assert.deepEqual(manager.movePicker.directories, [
+        { name: 'fresh', path: '/source/fresh' },
+    ]);
 });
 
-test('Move picker continuation timeout preserves rows, target, scroll and retry focus', () => {
+test('Move picker continuation timeout restarts once and page-zero failure is terminal', () => {
     const previousDocument = global.document;
     const previousSetTimeout = global.setTimeout;
     const previousClearTimeout = global.clearTimeout;
@@ -2549,22 +3098,20 @@ test('Move picker continuation timeout preserves rows, target, scroll and retry 
 
         timers[0].callback();
 
-        assert.equal(manager.movePicker.loading, false);
+        assert.equal(manager.movePicker.loading, true);
         assert.equal(manager.movePicker.loadingMore, false);
-        assert.equal(manager.movePicker.validTarget, true);
+        assert.equal(manager.movePicker.validTarget, false);
         assert.equal(manager.movePicker.error, null);
-        assert.equal(manager.movePicker.continuationError,
-            'The destination folder could not be opened.');
-        assert.deepEqual(manager.movePicker.directories, [
-            { name: 'existing', path: '/target/existing' },
-        ]);
-        assert.equal(manager.movePicker.nextCursor, token);
+        assert.equal(manager.movePicker.continuationError, null);
+        assert.deepEqual(manager.movePicker.directories, []);
+        assert.equal(manager.movePicker.nextCursor, null);
+        assert.equal(timers.length, 2);
+
+        timers[1].callback();
+
+        assert.equal(manager.movePicker.loading, false);
         assert.equal(manager.movePicker.pendingRequestId, null);
-        assert.equal(list.scrollTop, 291);
-        assert.notEqual(list.currentLoadMore, oldLoadMore);
-        assert.equal(list.currentLoadMore.disabled, false);
-        assert.deepEqual(list.currentLoadMore.focusOptions, { preventScroll: true });
-        assert.equal(global.document.activeElement, list.currentLoadMore);
+        assert.equal(timers.length, 2);
         const status = manager.movePicker.element.querySelector('[data-move-picker-status]');
         assert.equal(status.dataset.state, 'error');
         assert.equal(status.textContent, 'The destination folder could not be opened.');
@@ -4553,4 +5100,14 @@ test('structured byte limit renders the exact localized size and limit kind', ()
         'The transfer exceeds the configured limit.',
         { limit_kind: 'raw', limit_bytes: -1, actual_bytes: true },
     ), 'The transfer exceeds the configured limit.');
+});
+
+test('source identity changes keep their actionable transfer message', () => {
+    const manager = Object.create(SFTPFileManager.prototype);
+    manager.t = (_key, fallback) => fallback;
+
+    assert.equal(manager.transferFailureMessage(
+        'SOURCE_CHANGED',
+        'The source changed during the transfer. Try again.',
+    ), 'The source changed during the transfer. Try again.');
 });

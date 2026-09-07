@@ -17,9 +17,11 @@ from app.file_sources import (
 def reset_file_control_budget_state():
     socket_events._file_control_budgets.clear()
     socket_events._editor_save_budgets.clear()
+    socket_events._editor_retry_challenges.clear()
     yield
     socket_events._file_control_budgets.clear()
     socket_events._editor_save_budgets.clear()
+    socket_events._editor_retry_challenges.clear()
 
 
 class ListingBackend:
@@ -214,6 +216,48 @@ def test_editor_save_budget_charges_exact_utf8_bytes_and_preserves_one_save(
     )['source_id'] is None
 
 
+def test_editor_retry_challenge_is_one_time_and_body_socket_bound(monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, 'MAX_EDITOR_FILE_SIZE', 32)
+    payload = {
+        'source_id': 'smb-quick:owned',
+        'path': '/note.txt',
+        'content': 'original',
+        'encoding': 'utf-8',
+        'newline': 'lf',
+        'expected_revision': 'a' * 64,
+        'replace_strategy': 'recoverable_swap',
+    }
+    token = socket_events._issue_editor_retry_challenge(
+        payload,
+        7,
+        'socket-a',
+    )
+
+    assert socket_events._consume_editor_retry_challenge(
+        {**payload, 'content': 'modified', 'save_challenge': token},
+        7,
+        'socket-a',
+    ) is False
+    assert socket_events._consume_editor_retry_challenge(
+        {**payload, 'save_challenge': token},
+        7,
+        'socket-a',
+    ) is False
+
+    second = socket_events._issue_editor_retry_challenge(
+        payload,
+        7,
+        'socket-a',
+    )
+    assert socket_events._consume_editor_retry_challenge(
+        {**payload, 'save_challenge': second},
+        7,
+        'socket-b',
+    ) is False
+
+
 def test_empty_editor_budget_rejects_before_walking_editor_body(monkeypatch):
     import config
 
@@ -244,6 +288,50 @@ def test_empty_editor_budget_rejects_before_walking_editor_body(monkeypatch):
     )
 
     assert identity == {'source_id': None, 'request_id': 'save:drained'}
+
+
+def test_unknown_editor_retry_token_does_no_body_work_before_budget_gate(
+    monkeypatch,
+):
+    import config
+
+    monkeypatch.setattr(config, 'EDITOR_SAVE_BYTES_PER_MINUTE', 8)
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10_000)
+    monkeypatch.setattr(socket_events.time, 'monotonic', lambda: 10.0)
+    assert socket_events._consume_editor_save_budget(
+        7, 8, now=10.0
+    ) is True
+    monkeypatch.setattr(
+        socket_events,
+        '_editor_retry_fingerprint',
+        lambda *_args, **_kwargs: pytest.fail(
+            'an unknown token hashed the editor body before budget admission'
+        ),
+    )
+    payload = {
+        'source_id': 'sftp-session:owned',
+        'request_id': 'save:unknown-challenge',
+        'path': '/note.txt',
+        'content': 'A' * 1024,
+        'replace_strategy': 'recoverable_swap',
+        'save_challenge': 'x' * 43,
+    }
+
+    assert socket_events._consume_editor_retry_challenge(
+        payload,
+        7,
+        'socket-a',
+    ) is False
+    identity = socket_events._file_request_identity(
+        payload,
+        user_id=7,
+        allow_editor_content=True,
+    )
+
+    assert identity == {
+        'source_id': None,
+        'request_id': 'save:unknown-challenge',
+    }
 
 
 def test_invalid_editor_metadata_still_charges_the_bounded_body(monkeypatch):
@@ -754,7 +842,11 @@ def test_smb_editor_requests_per_save_recoverable_swap_consent(
         'target_host': 'host.test',
         'share': 'Share',
     }
-    assert emitted[0] == ('error', {
+    event, failure = emitted[0]
+    challenge = failure.pop('save_challenge')
+    assert event == 'error'
+    assert len(challenge) >= 32
+    assert failure == {
         'error': 'This SMB account cannot replace the file atomically.',
         'code': 'SMB_RECOVERABLE_REPLACE_REQUIRED',
         'revision': 'a' * 64,
@@ -762,7 +854,106 @@ def test_smb_editor_requests_per_save_recoverable_swap_consent(
         'source_id': 'smb-quick:owned',
         'request_id': 'save:smb:1',
         'path': '/note.txt',
-    })
+    }
+
+
+def test_smb_recoverable_retry_reuses_one_exact_editor_body_budget(
+    app,
+    monkeypatch,
+):
+    import config
+
+    emitted, user = capture(monkeypatch)
+    monkeypatch.setattr(
+        socket_events,
+        'log_file_source_operation',
+        lambda **_details: None,
+    )
+    monkeypatch.setattr(config, 'MAX_EDITOR_FILE_SIZE', 8)
+    monkeypatch.setattr(config, 'EDITOR_SAVE_BYTES_PER_MINUTE', 8)
+    monkeypatch.setattr(config, 'FILE_CONTROL_BYTES_PER_MINUTE', 10_000)
+    monkeypatch.setattr(socket_events.time, 'monotonic', lambda: 10.0)
+
+    class RecoverableBackend(OperationBackend):
+        def write_file_text(
+            self,
+            source,
+            path,
+            content,
+            *,
+            encoding,
+            newline,
+            allow_non_atomic=False,
+            expected_revision=None,
+            replace_strategy='atomic',
+        ):
+            self.calls.append((replace_strategy, content))
+            if replace_strategy == 'atomic':
+                return FileWriteOutcome(
+                    success=False,
+                    error='Recoverable replacement consent is required.',
+                    code='SMB_RECOVERABLE_REPLACE_REQUIRED',
+                    revision=expected_revision,
+                )
+            return FileWriteOutcome(
+                success=True,
+                revision='b' * 64,
+            )
+
+    backend = RecoverableBackend()
+    source = make_source(
+        'smb-quick:owned',
+        tuple(FileCapability),
+        backend,
+        kind='smb',
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'file_service',
+        FileService(SimpleNamespace(resolve=lambda *_args: source)),
+    )
+    common = {
+        'source_id': 'smb-quick:owned',
+        'path': '/note.txt',
+        'content': '12345678',
+        'encoding': 'utf-8',
+        'newline': 'lf',
+        'expected_revision': 'a' * 64,
+    }
+
+    with app.test_request_context('/socket.io'):
+        socket_events.handle_save_file.__wrapped__({
+            **common,
+            'request_id': 'save:smb:first',
+            'replace_strategy': 'atomic',
+        }, current_user=user)
+        challenge = emitted[-1][1]['save_challenge']
+        socket_events.handle_save_file.__wrapped__({
+            **common,
+            'request_id': 'save:smb:retry',
+            'replace_strategy': 'recoverable_swap',
+            'save_challenge': challenge,
+        }, current_user=user)
+        socket_events.handle_save_file.__wrapped__({
+            **common,
+            'request_id': 'save:smb:replay',
+            'replace_strategy': 'recoverable_swap',
+            'save_challenge': challenge,
+        }, current_user=user)
+
+    assert backend.calls == [
+        ('atomic', '12345678'),
+        ('recoverable_swap', '12345678'),
+    ]
+    assert [event for event, _payload in emitted] == [
+        'error',
+        'file_saved',
+        'error',
+    ]
+    assert emitted[1][1]['revision'] == 'b' * 64
+    assert emitted[2][1]['source_id'] is None
+    assert socket_events._editor_save_budgets[user.id] == (0.0, 10.0)
+    assert socket_events._editor_retry_challenges == {}
 
 
 def test_smb_editor_surfaces_recovery_artifacts_without_raw_paths(app, monkeypatch):

@@ -141,7 +141,12 @@ def test_success_is_correlated_and_password_never_reaches_response(app, monkeypa
 
 @pytest.mark.parametrize(
     'code',
-    ('PERMISSION_DENIED', 'SHARE_UNAVAILABLE', 'TIMEOUT'),
+    (
+        'PERMISSION_DENIED',
+        'SHARE_UNAVAILABLE',
+        'TIMEOUT',
+        'IDENTITY_UNAVAILABLE',
+    ),
 )
 def test_connect_preserves_actionable_share_failure_codes(app, monkeypatch, code):
     import app.socket_events as socket_events

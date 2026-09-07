@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, abort
+from flask import (Flask, abort, current_app, flash, jsonify, redirect,
+                   render_template, request, session, url_for)
 from flask_socketio import SocketIO
 from flask_login import login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -110,6 +111,257 @@ def get_client_ip():
     """
     return request.remote_addr or 'unknown'
 
+
+def _engineio_admission_user(app, environ):
+    """Resolve an authenticated browser before Engine.IO retains its transport."""
+    from .maintenance_mode import is_active
+
+    if is_active():
+        return None
+    lifecycle = app.extensions.get('runtime_lifecycle')
+    if lifecycle is None or not lifecycle.accepting_work():
+        return None
+
+    from .auth_assurance import (
+        current_authentication_session,
+        recovery_session_required,
+    )
+    from werkzeug.exceptions import HTTPException
+
+    with app.request_context(environ):
+        try:
+            preprocessing_response = app.preprocess_request()
+        except HTTPException:
+            # Security gates such as recovery-only sessions use abort() for an
+            # expected denial. Treat them like any other rejected admission.
+            return None
+        if preprocessing_response is not None:
+            return None
+        if not current_user.is_authenticated:
+            return None
+        auth_session = current_authentication_session()
+        if auth_session is None or recovery_session_required(auth_session):
+            return None
+        return int(current_user.id)
+
+
+def _engineio_admission_is_current(app, environ, expected_user_id):
+    """Recheck mutable auth state after the transport reservation is visible."""
+    from flask import g
+
+    from .auth_assurance import (
+        current_authentication_session,
+        recovery_session_required,
+    )
+    from .ldap_session import ldap_revocation_pending
+    from .maintenance_mode import is_active
+    from .models import db
+
+    if is_active():
+        return False
+    lifecycle = app.extensions.get('runtime_lifecycle')
+    if lifecycle is None or not lifecycle.accepting_work():
+        return False
+
+    with app.request_context(environ):
+        # The first admission pass may share an outer app context in tests or
+        # embedded WSGI hosts. Expire ORM state and Flask-Login's request cache
+        # so a concurrently committed lock/generation change is observable.
+        db.session.expire_all()
+        g.pop('_login_user', None)
+        if (
+            not current_user.is_authenticated
+            or int(current_user.id) != int(expected_user_id)
+            or (
+                current_user.is_ldap_managed
+                and (
+                    not config.LDAP_ENABLED
+                    or ldap_revocation_pending(app, current_user.id)
+                )
+            )
+        ):
+            return False
+        stored_epoch = session.get('_auth_epoch')
+        if stored_epoch is not None:
+            from .session_epoch import current_epoch
+
+            if stored_epoch != current_epoch():
+                return False
+        auth_session = current_authentication_session()
+        return (
+            auth_session is not None
+            and auth_session.user_id == int(expected_user_id)
+            and not recovery_session_required(auth_session)
+        )
+
+
+def _install_engineio_admission(app):
+    """Bound transports before they can retain Engine.IO state or threads."""
+    from threading import Event
+
+    from .socket_capacity import SocketCapacityRegistry
+
+    server = socketio.server
+    engineio_server = server.eio
+    original_socketio_handle_connect = server._handle_connect
+    original_handle_connect = engineio_server._handle_connect
+    original_connect = engineio_server.handlers.get('connect')
+    original_disconnect = engineio_server.handlers.get('disconnect')
+    if not callable(original_connect) or not callable(original_disconnect):
+        raise RuntimeError('Socket.IO Engine.IO lifecycle handlers are unavailable')
+
+    capacity = SocketCapacityRegistry()
+    app.extensions['engineio_socket_capacity'] = capacity
+    # Bind admission state to this exact Engine.IO server. Delayed cleanup
+    # workers must never consult a newer app/server created by a test or reload.
+    engineio_server._webssh_socket_capacity = capacity
+
+    def handle_socketio_namespace_connect(engineio_sid, namespace, data):
+        """Keep revocation outside Socket.IO's complete connect frame."""
+        owner_id = capacity.owner(engineio_sid)
+        if owner_id is None:
+            if app.testing and engineio_sid not in engineio_server.sockets:
+                return original_socketio_handle_connect(
+                    engineio_sid,
+                    namespace,
+                    data,
+                )
+            return None
+        engineio_socket = engineio_server.sockets.get(engineio_sid)
+        if engineio_socket is None:
+            return None
+        with capacity.admission_guard(engineio_sid, owner_id) as admitted:
+            if (
+                not admitted
+                or engineio_server.sockets.get(engineio_sid)
+                is not engineio_socket
+            ):
+                return None
+            return original_socketio_handle_connect(
+                engineio_sid,
+                namespace,
+                data,
+            )
+
+    def handle_engineio_http_connect(
+        environ,
+        start_response,
+        transport,
+        jsonp_index=None,
+    ):
+        """Signal when Engine.IO no longer owns initial socket bookkeeping."""
+        failed = False
+        try:
+            return original_handle_connect(
+                environ,
+                start_response,
+                transport,
+                jsonp_index=jsonp_index,
+            )
+        except BaseException:
+            failed = True
+            raise
+        finally:
+            initialization = environ.pop(
+                'webssh.engineio_initialization',
+                None,
+            )
+            if initialization is not None:
+                engineio_sid, engineio_socket, initialization_done = (
+                    initialization
+                )
+                if failed:
+                    current_socket = engineio_server.sockets.get(
+                        engineio_sid
+                    )
+                    if current_socket is engineio_socket:
+                        try:
+                            engineio_socket.close(
+                                wait=False,
+                                abort=True,
+                                reason=(
+                                    engineio_server.reason.SERVER_DISCONNECT
+                                ),
+                            )
+                        except BaseException:
+                            pass
+                        finally:
+                            if (
+                                engineio_server.sockets.get(engineio_sid)
+                                is engineio_socket
+                            ):
+                                engineio_server.sockets.pop(
+                                    engineio_sid,
+                                    None,
+                                )
+                            capacity.release(engineio_sid)
+                    elif current_socket is None:
+                        capacity.release(engineio_sid)
+                initialization_done.set()
+
+    def handle_engineio_connect(engineio_sid, environ):
+        engineio_socket = engineio_server.sockets.get(engineio_sid)
+        if engineio_socket is None:
+            return False
+        initialization_done = Event()
+        engineio_socket._webssh_initialization_done = initialization_done
+        environ['webssh.engineio_initialization'] = (
+            engineio_sid,
+            engineio_socket,
+            initialization_done,
+        )
+        try:
+            user_id = _engineio_admission_user(app, environ)
+            if user_id is None or not capacity.reserve(
+                user_id,
+                engineio_sid,
+                config.MAX_SOCKET_CONNECTIONS,
+                config.MAX_SOCKET_CONNECTIONS_PER_USER,
+            ):
+                return False
+            if (
+                not _engineio_admission_is_current(app, environ, user_id)
+                or capacity.owner(engineio_sid) != user_id
+                or capacity.is_terminal(engineio_sid)
+            ):
+                capacity.release(engineio_sid)
+                return False
+            result = original_connect(engineio_sid, environ)
+        except Exception as error:
+            capacity.release(engineio_sid)
+            # Engine.IO has already inserted this SID before invoking its
+            # connect handler. Returning False lets Engine.IO remove it; an
+            # escaping exception would retain the half-open transport.
+            try:
+                log_error(
+                    'Engine.IO transport admission failed closed',
+                    error_type=type(error).__name__,
+                    sid=engineio_sid,
+                )
+            except Exception:
+                # Logging must never turn a controlled rejection into a
+                # retained Engine.IO transport.
+                pass
+            return False
+        if result is not None and result is not True:
+            capacity.release(engineio_sid)
+        return result
+
+    def handle_engineio_disconnect(engineio_sid, reason):
+        try:
+            return original_disconnect(engineio_sid, reason)
+        finally:
+            capacity.release(engineio_sid)
+
+    # python-socketio installs its bookkeeping callbacks first. Chain them
+    # through Engine.IO's public event API so rejected transports never reach
+    # ping scheduling, polling retention, or WebSocket handling.
+    server._handle_connect = handle_socketio_namespace_connect
+    engineio_server._handle_connect = handle_engineio_http_connect
+    engineio_server.on('connect', handle_engineio_connect)
+    engineio_server.on('disconnect', handle_engineio_disconnect)
+
+
 def _initialize_persistent_storage(app):
     """Initialize storage and schema for serving or explicit CLI mutation."""
     if app.extensions.get('persistent_storage_initialized'):
@@ -155,6 +407,10 @@ def create_app(
     init_static_delivery(app)
     app.extensions['runtime_lifecycle'] = RuntimeLifecycle(
         max_workers=config.BACKGROUND_WORKERS
+    )
+    from .ldap_session import LDAPRevocationFence
+    app.extensions['ldap_revocation_fence'] = LDAPRevocationFence(
+        config.DATA_DIR / '.ldap-revocation-fences'
     )
     app.extensions['maintenance_cli_invocation'] = maintenance_cli_invocation
 
@@ -239,6 +495,26 @@ def create_app(
 
     @app.before_request
     def enforce_restore_maintenance_and_session_epoch():
+        def invalidate_ldap_browser_access(reason):
+            from . import user_lifecycle
+            from .ldap_session import persist_ldap_authentication_invalidation
+
+            user_id = current_user.id
+            username = current_user.username
+            invalidation_error = persist_ldap_authentication_invalidation(
+                current_app._get_current_object(),
+                current_user,
+            )
+            if invalidation_error is not None:
+                log_error(
+                    'LDAP authentication invalidation failed',
+                    user=username,
+                    reason=reason,
+                    error_type=type(invalidation_error).__name__,
+                )
+            user_lifecycle.revoke_user_access(user_id, socketio)
+            clear_browser_authentication()
+
         if is_active() and request.path not in {
             '/health',
             '/ready',
@@ -255,13 +531,18 @@ def create_app(
         if (
             current_user.is_authenticated
             and current_user.is_ldap_managed
+        ):
+            from .ldap_session import ldap_revocation_pending
+
+            if ldap_revocation_pending(current_app, current_user.id):
+                invalidate_ldap_browser_access('pending_invalidation')
+                return redirect(url_for('login'))
+        if (
+            current_user.is_authenticated
+            and current_user.is_ldap_managed
             and not config.LDAP_ENABLED
         ):
-            from . import user_lifecycle
-
-            user_id = current_user.id
-            user_lifecycle.revoke_user_access(user_id, socketio)
-            clear_browser_authentication()
+            invalidate_ldap_browser_access('disabled')
             return redirect(url_for('login'))
         if (
             current_user.is_authenticated
@@ -270,21 +551,21 @@ def create_app(
             and int(time.time()) - int(session.get('_ldap_verified_at', 0))
             >= config.LDAP_SESSION_REVALIDATION_SECONDS
         ):
-            from . import user_lifecycle
             from .ldap_service import LDAPLookupRejected, LDAPUnavailable
-            from .ldap_session import revalidate_user
+            from .ldap_session import revalidate_user_durably
 
             try:
-                revalidate_user(current_user)
+                revalidate_user_durably(
+                    current_app._get_current_object(),
+                    current_user,
+                )
             except (LDAPLookupRejected, LDAPUnavailable) as exc:
-                user_id = current_user.id
                 log_warning(
                     'LDAP session revalidation rejected',
                     user=current_user.username,
                     error=type(exc).__name__,
                 )
-                user_lifecycle.revoke_user_access(user_id, socketio)
-                clear_browser_authentication()
+                invalidate_ldap_browser_access(type(exc).__name__)
                 return redirect(url_for('login'))
             session['_ldap_verified_at'] = int(time.time())
         if initialize_storage and current_user.is_authenticated:
@@ -445,6 +726,7 @@ def create_app(
         logger=False,
         engineio_logger=False
     )
+    _install_engineio_admission(app)
 
     @app.after_request
     def add_security_headers(response):

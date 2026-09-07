@@ -610,6 +610,29 @@ def _remote_zip_path(sftp, ssh_client, remote_path, cancel_event=None):
     return archive_path, size
 
 
+def _create_private_temporary_archive(temp_directory):
+    temporary = tempfile.NamedTemporaryFile(
+        suffix='.zip',
+        delete=False,
+        dir=temp_directory,
+    )
+    archive_path = Path(temporary.name)
+    try:
+        temporary.close()
+        archive_path.chmod(0o600)
+    except BaseException:
+        try:
+            temporary.close()
+        except BaseException:
+            pass
+        try:
+            archive_path.unlink(missing_ok=True)
+        except BaseException:
+            pass
+        raise
+    return archive_path
+
+
 def _build_backend_zip_to_disk(
     source,
     remote_folder,
@@ -619,32 +642,33 @@ def _build_backend_zip_to_disk(
     max_bytes,
     chunk_size,
     temp_dir,
+    expected_root_identities=None,
 ):
     """Build a bounded local ZIP through only the FileBackend contract."""
-    temp_directory = Path(temp_dir)
-    temp_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary = tempfile.NamedTemporaryFile(
-        suffix='.zip',
-        delete=False,
-        dir=temp_directory,
-    )
-    archive_path = Path(temporary.name)
-    temporary.close()
-    archive_path.chmod(0o600)
     budget = TransferBudget(
         max_bytes=max_bytes,
         max_members=config.MAX_TRANSFER_MEMBERS,
     )
     root = remote_folder.rstrip('/')
+    temp_directory = Path(temp_dir)
+    temp_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    archive_path = _create_private_temporary_archive(temp_directory)
 
     try:
+        iterator_kwargs = {
+            'budget': budget,
+            'cancel_event': cancel_event,
+            'follow_links': False,
+            'io_lane': 'transfer',
+        }
+        if expected_root_identities is not None:
+            iterator_kwargs['_expected_identities'] = (
+                expected_root_identities
+            )
         entries = list(source.backend.iter_tree(
             source,
             remote_folder,
-            budget=budget,
-            cancel_event=cancel_event,
-            follow_links=False,
-            io_lane='transfer',
+            **iterator_kwargs,
         ))
         if any(entry.get('is_symlink') for entry in entries):
             raise RemoteTransferError('Reparse points are not supported')
@@ -682,8 +706,14 @@ def _build_backend_zip_to_disk(
                 if entry.get('is_dir'):
                     archive.writestr(archive_name.rstrip('/') + '/', b'')
                     continue
+                reader_kwargs = {'io_lane': 'transfer'}
+                identity_chain = entry.get('_smb_identity_chain')
+                if identity_chain is not None:
+                    reader_kwargs['_expected_identities'] = identity_chain
                 with source.backend.open_reader(
-                    source, entry_path, io_lane='transfer'
+                    source,
+                    entry_path,
+                    **reader_kwargs,
                 ) as lease:
                     if not isinstance(lease, FileReaderLease):
                         raise RemoteTransferError('Source reader unavailable')
@@ -715,8 +745,11 @@ def _build_backend_zip_to_disk(
                 'Archive exceeds transfer size limit'
             )
         return archive_path
-    except Exception:
-        archive_path.unlink(missing_ok=True)
+    except BaseException:
+        try:
+            archive_path.unlink(missing_ok=True)
+        except BaseException:
+            pass
         raise
 
 
@@ -799,6 +832,9 @@ def download_folder_transfer(token):
                     max_bytes=config.MAX_ZIP_DOWNLOAD_SIZE,
                     chunk_size=TRANSFER_CHUNK_SIZE,
                     temp_dir=config.TRANSFER_TEMP_DIR,
+                    expected_root_identities=remote_stat.get(
+                        '_smb_identity_chain'
+                    ),
                 )
                 archive_size = local_archive.stat().st_size
             except Exception:

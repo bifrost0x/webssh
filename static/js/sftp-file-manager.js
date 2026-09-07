@@ -65,6 +65,7 @@ class SFTPFileManager {
             nextDirectoryCursor: null,
             loadingMore: false,
             directoryContinuationView: null,
+            directoryNeedsRefresh: false,
             autoHomeEligible: false
         };
     }
@@ -720,6 +721,7 @@ class SFTPFileManager {
         if (!tab) return null;
         this.syncPaneFromWorkspace(pane);
         this.setActivePane(pane);
+        this.resumeDirectoryListingIfNeeded(pane, tab.paneState);
         this.updatePathInput(pane, tab.paneState.path || '/');
         this.updatePaneBadge(pane);
         this.renderPane(pane);
@@ -730,8 +732,10 @@ class SFTPFileManager {
     closeSourceTab(pane, tabId) {
         const result = this.workspace.closeTab(pane, tabId);
         if (!result.closed) return null;
+        this.cancelDirectoryListingForState(result.closed.paneState);
         this.releaseQuickConnectionIfUnused(result.closed.source);
         this.syncPaneFromWorkspace(pane);
+        this.resumeDirectoryListingIfNeeded(pane, result.active?.paneState);
         this.updatePathInput(pane, this.panes[pane].path || '/');
         this.updatePaneBadge(pane);
         this.renderPane(pane);
@@ -1680,9 +1684,10 @@ class SFTPFileManager {
         if (!this.socket) return;
 
         this.socket.on('directory_listing', (data) => {
-            if (this.consumeMovePickerListing(data)) return;
+            let consumed = this.consumeMovePickerListing(data);
             this.getPaneStateEntries().forEach(({ pane, state, visible }) => {
-                if (this.getPaneSourceId(state) === data.source_id &&
+                if (!consumed &&
+                    this.getPaneSourceId(state) === data.source_id &&
                     state.pendingDirectoryRequestId === data.request_id &&
                     state.pendingDirectoryPath === data.path &&
                     state.pendingDirectoryCursor === (data.cursor ?? 0)) {
@@ -1698,6 +1703,7 @@ class SFTPFileManager {
                     state.loading = false;
                     state.loadingMore = false;
                     state.error = null;
+                    state.directoryNeedsRefresh = false;
                     state.nextDirectoryCursor = this.isDirectoryContinuationCursor(
                         data.next_cursor,
                     )
@@ -1713,8 +1719,15 @@ class SFTPFileManager {
                     } else {
                         state.directoryContinuationView = null;
                     }
+                    consumed = true;
                 }
             });
+            if (!consumed && this.isDirectoryContinuationCursor(data?.next_cursor)) {
+                // A page-zero or continuation response can arrive after its
+                // tab, path, or picker was abandoned. Retire the exact server
+                // snapshot instead of holding its SFTP/SMB channel until TTL.
+                this.cancelDirectoryCursor(data?.source_id, data.next_cursor);
+            }
         });
 
         this.socket.on('home_directory', (data) => {
@@ -1867,6 +1880,12 @@ class SFTPFileManager {
                 state.loadingTimeout = null;
             }
             const wasLoadingMore = state.loadingMore;
+            if (!wasLoadingMore && state.pendingDirectoryCursor === 0) {
+                this.cancelDirectoryRequest(
+                    this.getPaneSourceId(state),
+                    state.pendingDirectoryRequestId,
+                );
+            }
             state.loading = false;
             state.loadingMore = false;
             state.error = wasLoadingMore ? null : errorMessage;
@@ -1883,10 +1902,9 @@ class SFTPFileManager {
                     state,
                     state.path,
                 );
-                if (visible
-                    && state.loading
+                if (state.loading
                     && state.pendingDirectoryRequestId === recoveryRequestId) {
-                    this.setLoadingTimeout(pane);
+                    this.setLoadingTimeout(pane, 10000, state);
                 }
             }
             if (visible) this.renderPane(pane);
@@ -2020,6 +2038,7 @@ class SFTPFileManager {
         this.loadWorkspaceProfiles();
         ['left', 'right'].forEach(pane => {
             this.syncPaneFromWorkspace(pane);
+            this.resumeDirectoryListingIfNeeded(pane, this.panes[pane]);
             this.updatePathInput(pane, this.panes[pane].path || '/');
             this.updatePaneBadge(pane);
             this.renderPane(pane);
@@ -2037,6 +2056,11 @@ class SFTPFileManager {
         const wasPrimaryWorkspace = primaryWorkspace?.isElementActive(this.modal) === true;
         const embeddedTarget = this.suspendedEmbeddedTarget;
         this.suspendedEmbeddedTarget = null;
+        this.getPaneStateEntries().forEach(({ state }) => {
+            this.cancelDirectoryListingForState(state, {
+                refreshOnNextOpen: true,
+            });
+        });
         this.isOpen = false;
         this.displayMode = 'closed';
         this.closeMovePicker({ restoreFocus: false });
@@ -2219,7 +2243,10 @@ class SFTPFileManager {
                     return sourceId === `sftp-session:${sessionId}`
                         || sourceId === `sftp-quick:${sessionId}`;
                 });
-                matchingTabs.forEach(tab => this.workspace.closeTab(pane, tab.id));
+                matchingTabs.forEach(tab => {
+                    this.cancelDirectoryListingForState(tab.paneState);
+                    this.workspace.closeTab(pane, tab.id);
+                });
                 this.syncPaneFromWorkspace(pane);
                 if (this.isOpen && this.displayMode === 'modal') {
                     this.updatePathInput(pane, this.panes[pane].path || '/');
@@ -2238,7 +2265,10 @@ class SFTPFileManager {
             if (sourceId === `sftp-session:${sessionId}`
                 || sourceId === `sftp-quick:${sessionId}`) {
                 if (visible) this.resetPane(pane);
-                else Object.assign(state, this.createEmptyPaneState());
+                else {
+                    this.cancelDirectoryListingForState(state);
+                    Object.assign(state, this.createEmptyPaneState());
+                }
             }
         });
         this.updateSessionLists();
@@ -2294,9 +2324,7 @@ class SFTPFileManager {
             return;
         }
 
-        if (state.loadingTimeout) {
-            clearTimeout(state.loadingTimeout);
-        }
+        this.cancelDirectoryListingForState(state);
         Object.keys(state).forEach(key => delete state[key]);
         Object.assign(state, this.createEmptyPaneState());
         state.loading = true;
@@ -2417,17 +2445,97 @@ class SFTPFileManager {
         return this.requestDirectoryForState(pane, state, path);
     }
 
-    requestDirectoryForState(pane, state, path) {
-        if (state.loadingTimeout) {
-            clearTimeout(state.loadingTimeout);
-            state.loadingTimeout = null;
+    cancelDirectoryCursor(sourceId, cursor) {
+        if (!sourceId
+                || !this.isDirectoryContinuationCursor(cursor)
+                || !this.socket?.emit) return false;
+        try {
+            this.socket.emit('cancel_directory_listing', {
+                source_id: sourceId,
+                request_id: this.nextRequestId('directory', 'cancel'),
+                cursor,
+            });
+            return true;
+        } catch {
+            return false;
         }
+    }
+
+    cancelDirectoryRequest(sourceId, listingRequestId) {
+        if (!sourceId
+                || !this.isDirectoryRequestId(listingRequestId)
+                || !this.socket?.emit) return false;
+        try {
+            this.socket.emit('cancel_directory_listing', {
+                source_id: sourceId,
+                request_id: this.nextRequestId('directory', 'cancel'),
+                listing_request_id: listingRequestId,
+            });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    cancelDirectoryListingForState(state, options = {}) {
+        if (!state) return false;
+        const sourceId = this.getPaneSourceId(state);
+        let emitted = false;
+        if (state.pendingDirectoryCursor === 0) {
+            emitted = this.cancelDirectoryRequest(
+                sourceId,
+                state.pendingDirectoryRequestId,
+            ) || emitted;
+        }
+        const cursors = new Set([
+            state.nextDirectoryCursor,
+            state.pendingDirectoryCursor,
+        ].filter(cursor => this.isDirectoryContinuationCursor(cursor)));
+        cursors.forEach(cursor => {
+            emitted = this.cancelDirectoryCursor(sourceId, cursor) || emitted;
+        });
+        if (state.loadingTimeout) clearTimeout(state.loadingTimeout);
+        const shouldRefresh = options.refreshOnNextOpen === true
+            && Boolean(sourceId)
+            && this.sourceCan(state, 'list');
+        state.loadingTimeout = null;
+        state.loading = false;
+        state.loadingMore = false;
+        state.pendingDirectoryRequestId = null;
+        state.pendingDirectoryPath = null;
+        state.pendingDirectoryCursor = 0;
+        state.nextDirectoryCursor = null;
+        state.directoryContinuationView = null;
+        state.directoryNeedsRefresh = shouldRefresh;
+        return emitted;
+    }
+
+    resumeDirectoryListingIfNeeded(pane, state) {
+        if (!state?.directoryNeedsRefresh
+                || !this.getPaneSourceId(state)
+                || !this.sourceCan(state, 'list')) return false;
+        const requestId = this.requestDirectoryForState(
+            pane,
+            state,
+            state.path || '/',
+        );
+        if (!requestId) {
+            state.directoryNeedsRefresh = true;
+            return false;
+        }
+        this.setLoadingTimeout(pane);
+        return true;
+    }
+
+    requestDirectoryForState(pane, state, path) {
+        this.cancelDirectoryListingForState(state);
         state.selected?.clear();
         state.path = path;
         state.loading = true;
         state.loadingMore = false;
         state.directoryContinuationView = null;
         state.nextDirectoryCursor = null;
+        state.directoryNeedsRefresh = false;
         const requestId = this.nextRequestId(pane, 'directory');
         state.pendingDirectoryRequestId = requestId;
         state.pendingDirectoryPath = path;
@@ -2542,8 +2650,15 @@ class SFTPFileManager {
             && /^[A-Za-z0-9._-]+$/.test(cursor);
     }
 
-    setLoadingTimeout(pane, timeout = 10000) {
-        const state = this.panes[pane];
+    isDirectoryRequestId(requestId) {
+        return typeof requestId === 'string'
+            && requestId.length >= 1
+            && requestId.length <= 128
+            && /^[A-Za-z0-9:._-]+$/.test(requestId);
+    }
+
+    setLoadingTimeout(pane, timeout = 10000, targetState = null) {
+        const state = targetState || this.panes[pane];
         if (!state?.loading && !state?.loadingMore) return false;
 
         if (state.loadingTimeout) {
@@ -2564,16 +2679,16 @@ class SFTPFileManager {
                     || state.pendingDirectoryPath !== requestPath
                     || state.pendingDirectoryCursor !== requestCursor
                     || (!state.loading && !state.loadingMore)) return;
-            state.loadingTimeout = null;
-            state.loading = false;
-            state.loadingMore = false;
-            state.pendingDirectoryRequestId = null;
-            state.pendingDirectoryPath = null;
-            state.pendingDirectoryCursor = 0;
-            state.directoryContinuationView = null;
-            state.error = this.t('fm.connectionTimeout', 'Connection timeout - could not load directory');
-            this.renderPane(pane);
-            this.showNotification(this.t('fm.loadTimeout', 'Failed to load directory: timeout'), 'error');
+            this.consumePaneDirectoryError({
+                operation: 'list_directory',
+                source_id: sourceId,
+                request_id: requestId,
+                path: requestPath,
+                cursor: requestCursor,
+            }, this.t(
+                'fm.connectionTimeout',
+                'Connection timeout - could not load directory',
+            ));
         }, timeout);
         state.loadingTimeout = loadingTimeout;
         return true;
@@ -2853,9 +2968,7 @@ class SFTPFileManager {
 
     resetPane(pane) {
         const state = this.panes[pane];
-        if (state.loadingTimeout) {
-            clearTimeout(state.loadingTimeout);
-        }
+        this.cancelDirectoryListingForState(state);
         Object.keys(state).forEach(key => delete state[key]);
         Object.assign(state, this.createEmptyPaneState());
         const select = document.getElementById(`fm${this.capitalize(pane)}Source`);
@@ -3760,7 +3873,7 @@ class SFTPFileManager {
     closeMovePicker(options = {}) {
         const picker = this.movePicker;
         if (!picker) return false;
-        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        this.cancelMovePickerDirectoryListing(picker);
         picker.element?.remove();
         this.movePicker = null;
         if (options.restoreFocus !== false) picker.previousFocus?.focus?.();
@@ -3773,13 +3886,45 @@ class SFTPFileManager {
         return normalized.split('/').slice(0, -1).join('/') || '/';
     }
 
+    cancelMovePickerDirectoryListing(picker = this.movePicker) {
+        if (!picker) return false;
+        let emitted = false;
+        if (picker.pendingCursor === 0) {
+            emitted = this.cancelDirectoryRequest(
+                picker.sourceId,
+                picker.pendingRequestId,
+            ) || emitted;
+        }
+        const cursors = new Set([
+            picker.nextCursor,
+            picker.pendingCursor,
+        ].filter(cursor => this.isDirectoryContinuationCursor(cursor)));
+        cursors.forEach(cursor => {
+            emitted = this.cancelDirectoryCursor(
+                picker.sourceId,
+                cursor,
+            ) || emitted;
+        });
+        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        picker.listingTimeout = null;
+        picker.loading = false;
+        picker.loadingMore = false;
+        picker.pendingPath = null;
+        picker.pendingRequestId = null;
+        picker.pendingCursor = 0;
+        picker.nextCursor = null;
+        picker.continuationView = null;
+        return emitted;
+    }
+
     requestMovePickerDirectory(path, cursor = 0) {
         const picker = this.movePicker;
         const targetPath = this.canonicalMovePath(path);
         if (!picker || !targetPath || !this.socket?.emit) return false;
-        if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
-        const requestId = this.nextRequestId('move-picker', 'directory');
         const loadingMore = cursor !== 0;
+        if (!loadingMore) this.cancelMovePickerDirectoryListing(picker);
+        else if (picker.listingTimeout) clearTimeout(picker.listingTimeout);
+        const requestId = this.nextRequestId('move-picker', 'directory');
         picker.pendingPath = targetPath;
         picker.pendingRequestId = requestId;
         picker.loading = true;
@@ -3936,22 +4081,39 @@ class SFTPFileManager {
             'fm.movePickerListFailed',
             'The destination folder could not be opened.',
         );
+        if (wasLoadingMore) {
+            const recoveryPath = picker.targetPath;
+            this.cancelMovePickerDirectoryListing(picker);
+            // The server retires a failed continuation. Restart once from
+            // page zero so the picker cannot retain an enabled dead cursor.
+            if (!this.requestMovePickerDirectory(recoveryPath)) {
+                picker.error = message;
+                picker.continuationError = null;
+                picker.validTarget = false;
+                picker.directories = [];
+                this.renderMovePicker();
+            }
+            return true;
+        }
+        if (picker.pendingCursor === 0) {
+            this.cancelDirectoryRequest(
+                picker.sourceId,
+                picker.pendingRequestId,
+            );
+        }
         picker.loading = false;
         picker.loadingMore = false;
-        picker.error = wasLoadingMore ? null : message;
-        picker.continuationError = wasLoadingMore ? message : null;
-        if (!wasLoadingMore) {
-            picker.continuationView = null;
-            picker.validTarget = false;
-            picker.directories = [];
-            picker.nextCursor = null;
-        }
+        picker.error = message;
+        picker.continuationError = null;
+        picker.continuationView = null;
+        picker.validTarget = false;
+        picker.directories = [];
+        picker.nextCursor = null;
         picker.pendingPath = null;
         picker.pendingRequestId = null;
         picker.pendingCursor = 0;
         picker.listingTimeout = null;
         this.renderMovePicker();
-        if (wasLoadingMore) this.restoreMovePickerContinuationView(picker, data);
         return true;
     }
 
@@ -5090,6 +5252,7 @@ class SFTPFileManager {
             SHARE_UNAVAILABLE: 'The SMB share is unavailable.',
             TIMEOUT: 'The file operation timed out.',
             SOURCE_UNAVAILABLE: 'The file source is no longer available. Reconnect and try again.',
+            SOURCE_CHANGED: 'The source changed during the transfer. Try again.',
             LIMIT_EXCEEDED: 'The transfer exceeds the configured limit.',
             CANCELLED: 'The transfer was cancelled.',
             ATOMIC_REPLACE_UNAVAILABLE: 'Safe overwrite is unavailable for this destination.',

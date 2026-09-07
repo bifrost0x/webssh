@@ -39,11 +39,33 @@ def _disconnect_sockets(socketio):
     try:
         participants = tuple(manager.get_participants('/', None))
     except Exception:
-        return
+        participants = ()
+    from .socket_events import (
+        disconnect_engineio_transport,
+        disconnect_socket_transport,
+    )
+
     for participant in participants:
         sid = participant[0] if isinstance(participant, tuple) else participant
         try:
-            server.disconnect(sid, namespace='/')
+            disconnect_socket_transport(server, sid)
+        except Exception:
+            continue
+
+    engineio_server = getattr(server, 'eio', None)
+    capacity = getattr(
+        engineio_server,
+        '_webssh_socket_capacity',
+        None,
+    )
+    engineio_sids = capacity.sids() if capacity is not None else ()
+    for engineio_sid in engineio_sids:
+        try:
+            disconnect_engineio_transport(
+                server,
+                engineio_sid,
+                drain=False,
+            )
         except Exception:
             continue
 
@@ -150,11 +172,39 @@ def _perform_restore(app, socketio, record, username, source_ip,
 def start_restore(app, socketio, record, username, source_ip,
                   restart_callback=request_process_restart):
     require_durable_recovery_storage()
+    launched = threading.Event()
+
+    def run_restore():
+        launched.set()
+        _perform_restore(
+            app,
+            socketio,
+            record,
+            username,
+            source_ip,
+            restart_callback,
+        )
+
     thread = threading.Thread(
-        target=_perform_restore,
-        args=(app, socketio, record, username, source_ip, restart_callback),
+        target=run_restore,
         name='webssh-restore',
         daemon=False,
     )
-    thread.start()
+    try:
+        thread.start()
+    except BaseException as error:
+        # A non-Exception interruption can land after the OS thread was
+        # created but before Thread.ident or the target's event is observable.
+        # That state is inherently ambiguous, so keep the operation restoring
+        # and never permit a second worker against the same archive.
+        worker_started = (
+            not isinstance(error, Exception)
+            or launched.is_set()
+            or getattr(thread, 'ident', None) is not None
+        )
+        try:
+            error.restore_worker_started = worker_started
+        except Exception:
+            pass
+        raise
     return thread

@@ -1,6 +1,7 @@
 """Security boundaries for optional LDAP authentication."""
 
 import sqlite3
+import time
 from dataclasses import dataclass
 from threading import Event, Thread
 from urllib.parse import urlsplit
@@ -1125,9 +1126,19 @@ def test_linked_user_cannot_be_promoted_to_admin(app, client):
 
 
 def test_disabling_ldap_invalidates_existing_linked_browser_session(app, client):
-    from app.models import LDAPIdentity, db
+    from app.models import AuthenticationSession, LDAPIdentity, User, db
 
     user_id = _create_user(app, "alice")
+    other_client = app.test_client()
+    assert client.post(
+        '/login',
+        data={'username': 'alice', 'password': 'password123'},
+    ).status_code == 302
+    session_cookie_name = app.config['SESSION_COOKIE_NAME']
+    other_client.set_cookie(
+        session_cookie_name,
+        client.get_cookie(session_cookie_name).value,
+    )
     with app.app_context():
         db.session.add(LDAPIdentity(
             user_id=user_id,
@@ -1137,9 +1148,9 @@ def test_disabling_ldap_invalidates_existing_linked_browser_session(app, client)
             distinguished_name="uid=alice,dc=example,dc=com",
         ))
         db.session.commit()
-    with client.session_transaction() as browser_session:
-        browser_session["_user_id"] = str(user_id)
-        browser_session["_fresh"] = True
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 1
 
     response = client.get("/")
 
@@ -1147,6 +1158,15 @@ def test_disabling_ldap_invalidates_existing_linked_browser_session(app, client)
     assert response.headers["Location"].endswith("/login")
     with client.session_transaction() as browser_session:
         assert "_user_id" not in browser_session
+    with app.app_context():
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 0
+        assert db.session.get(User, user_id).auth_generation == 1
+
+    other_response = other_client.get('/')
+    assert other_response.status_code == 302
+    assert '/login' in other_response.headers['Location']
 
 
 def test_due_ldap_session_revalidation_fails_closed(
@@ -1157,9 +1177,19 @@ def test_due_ldap_session_revalidation_fails_closed(
     import config
     import app.ldap_session as ldap_session
     from app.ldap_service import LDAPUnavailable
-    from app.models import LDAPIdentity, db
+    from app.models import AuthenticationSession, LDAPIdentity, User, db
 
     user_id = _create_user(app, "alice")
+    other_client = app.test_client()
+    assert client.post(
+        '/login',
+        data={'username': 'alice', 'password': 'password123'},
+    ).status_code == 302
+    session_cookie_name = app.config['SESSION_COOKIE_NAME']
+    other_client.set_cookie(
+        session_cookie_name,
+        client.get_cookie(session_cookie_name).value,
+    )
     with app.app_context():
         db.session.add(LDAPIdentity(
             user_id=user_id,
@@ -1169,6 +1199,9 @@ def test_due_ldap_session_revalidation_fails_closed(
             distinguished_name="uid=alice,dc=example,dc=com",
         ))
         db.session.commit()
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 1
     monkeypatch.setattr(config, "LDAP_ENABLED", True)
     monkeypatch.setattr(
         ldap_session,
@@ -1176,9 +1209,9 @@ def test_due_ldap_session_revalidation_fails_closed(
         lambda _user: (_ for _ in ()).throw(LDAPUnavailable("offline")),
     )
     with client.session_transaction() as browser_session:
-        browser_session["_user_id"] = str(user_id)
-        browser_session["_fresh"] = True
         browser_session["_ldap_verified_at"] = 0
+    with other_client.session_transaction() as browser_session:
+        browser_session["_ldap_verified_at"] = int(time.time())
 
     response = client.get("/")
 
@@ -1186,18 +1219,35 @@ def test_due_ldap_session_revalidation_fails_closed(
     assert response.headers["Location"].endswith("/login")
     with client.session_transaction() as browser_session:
         assert "_user_id" not in browser_session
+    with app.app_context():
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 0
+        assert db.session.get(User, user_id).auth_generation == 1
+
+    other_response = other_client.get('/')
+    assert other_response.status_code == 302
+    assert '/login' in other_response.headers['Location']
 
 
 def test_background_revalidation_revokes_invalid_linked_socket_owner(
     app,
+    client,
     monkeypatch,
 ):
     import app.ldap_session as ldap_session
     from app.ldap_service import LDAPLookupRejected
-    from app.models import LDAPIdentity, db
+    from app.models import AuthenticationSession, LDAPIdentity, User, db
 
     user_id = _create_user(app, "alice")
+    assert client.post(
+        '/login',
+        data={'username': 'alice', 'password': 'password123'},
+    ).status_code == 302
     with app.app_context():
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 1
         db.session.add(LDAPIdentity(
             user_id=user_id,
             provider="default",
@@ -1221,6 +1271,83 @@ def test_background_revalidation_revokes_invalid_linked_socket_owner(
     ldap_session.revalidate_all_linked_users(app, socketio_instance=object())
 
     assert revoked == [user_id]
+    with app.app_context():
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 0
+        assert db.session.get(User, user_id).auth_generation == 1
+
+
+@pytest.mark.parametrize(
+    ('marker_failure', 'propagates'),
+    ((OSError('disk full'), False), (KeyboardInterrupt(), True)),
+)
+def test_ldap_marker_failure_still_commits_database_invalidation(
+    app,
+    client,
+    monkeypatch,
+    marker_failure,
+    propagates,
+):
+    import app.ldap_session as ldap_session
+    from app.models import AuthenticationSession, LDAPIdentity, User, db
+
+    user_id = _create_user(app, 'ldap_marker_failure')
+    assert client.post(
+        '/login',
+        data={
+            'username': 'ldap_marker_failure',
+            'password': 'password123',
+        },
+    ).status_code == 302
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=user_id,
+            provider='default',
+            subject='stable-marker-failure-id',
+            directory_username='ldap_marker_failure',
+            distinguished_name=(
+                'uid=ldap_marker_failure,dc=example,dc=com'
+            ),
+        ))
+        db.session.commit()
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 1
+
+        fence = app.extensions['ldap_revocation_fence']
+        monkeypatch.setattr(
+            fence,
+            '_write_marker_locked',
+            lambda _user_id: (_ for _ in ()).throw(marker_failure),
+        )
+        monkeypatch.setattr(
+            ldap_session,
+            'log_security_event',
+            lambda *_args, **_kwargs: None,
+        )
+        user = db.session.get(User, user_id)
+        if propagates:
+            with pytest.raises(KeyboardInterrupt):
+                ldap_session.persist_ldap_authentication_invalidation(
+                    app,
+                    user,
+                )
+        else:
+            assert ldap_session.persist_ldap_authentication_invalidation(
+                app,
+                user,
+            ) is None
+
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 0
+        assert db.session.get(User, user_id).auth_generation == 1
+        marker_directory = fence._marker_directory
+
+    assert ldap_session.LDAPRevocationFence(
+        marker_directory,
+    ).contains(user_id) is False
 
 
 def test_admin_can_run_redacted_ldap_readiness_probe(
