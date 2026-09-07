@@ -720,6 +720,70 @@
         window.location.assign(started.authorization_url);
     }
 
+    function renderOidcIdentity() {
+        const button = document.getElementById('oidcIdentityAction');
+        const status = document.getElementById('oidcIdentityStatus');
+        if (!button || !status) { return; }
+        const identityCount = Number.parseInt(
+            button.dataset.identityCount || '0', 10
+        );
+        const actionLabel = button.querySelector('.oidc-identity-action-label');
+        const action = identityCount > 0
+            ? t('security.addOidcIdentity', 'Link another identity')
+            : t('security.connectOidc', 'Connect identity provider');
+        if (actionLabel) {
+            actionLabel.textContent = action;
+        } else {
+            button.textContent = action;
+        }
+        if (identityCount === 1) {
+            status.textContent = t(
+                'security.oidcConnectedOne',
+                '1 OIDC identity linked'
+            );
+        } else if (identityCount > 1) {
+            status.textContent = t(
+                'security.oidcConnectedMany',
+                '{count} OIDC identities linked'
+            ).replace('{count}', String(identityCount));
+        } else {
+            status.textContent = t(
+                'security.oidcNotConnected',
+                'Not connected'
+            );
+        }
+    }
+
+    async function loadOidcIdentity() {
+        const button = document.getElementById('oidcIdentityAction');
+        const status = document.getElementById('oidcIdentityStatus');
+        if (!button || !status) { return; }
+        const data = await api('/api/account/oidc');
+        button.dataset.identityCount = String(data.identities?.length || 0);
+        renderOidcIdentity();
+    }
+
+    async function linkOidcIdentity() {
+        const button = document.getElementById('oidcIdentityAction');
+        if (!button) { return; }
+        const userId = Number.parseInt(
+            document.querySelector('meta[name="current-user-id"]')?.content || '',
+            10
+        );
+        if (!Number.isInteger(userId)) {
+            throw new Error(t(
+                'security.accountIdentityUnavailable',
+                'Account identity is unavailable'
+            ));
+        }
+        const headers = await stepUpHeaders('oidc.self_link', userId);
+        if (headers === null) { return; }
+        const started = await api('/api/account/oidc/link/start', {
+            method: 'POST', headers, body: {}
+        });
+        window.location.assign(started.authorization_url);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('securityConfirmationForm')?.addEventListener('submit', event => {
             event.preventDefault();
@@ -744,6 +808,11 @@
         });
         window.addEventListener('languageChanged', renderGitHubIdentity);
         loadGitHubIdentity().catch(error => notify(error.message, 'error'));
+        document.getElementById('oidcIdentityAction')?.addEventListener('click', () => {
+            linkOidcIdentity().catch(error => notify(error.message, 'error'));
+        });
+        window.addEventListener('languageChanged', renderOidcIdentity);
+        loadOidcIdentity().catch(error => notify(error.message, 'error'));
         document.getElementById('recoveryGenerateBtn')?.addEventListener('click', async () => {
             try {
                 const headers = await stepUpHeaders('recovery.rotate');

@@ -95,6 +95,7 @@ def _action_target(action, data):
         "totp.enroll": "totp",
         "totp.delete": "totp",
         "recovery.rotate": "recovery",
+        "oidc.self_link": "oidc",
     }.get(action)
     if feature is not None and not feature_is_active(feature):
         raise StepUpError("step-up request is invalid")
@@ -553,15 +554,13 @@ def oidc_step_up_start():
     from .oidc_routes import begin_oidc_account_step_up
 
     try:
-        response = begin_oidc_account_step_up(
+        return begin_oidc_account_step_up(
             intent=intent,
             continuation=data.get("continuation") or "/security",
+            return_authorization_url=True,
         )
     except (OIDCStateError, StepUpError):
         return _error("step_up_failed", 403)
-    if isinstance(response, tuple):
-        return response
-    return jsonify({"authorization_url": response.headers["Location"]})
 
 
 @account_step_up_blueprint.post("/api/account/step-up/status")

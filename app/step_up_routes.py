@@ -332,14 +332,12 @@ def oidc_step_up_start():
     continuation = str(data.get("continuation") or "/admin")
     from .oidc_routes import begin_oidc_step_up
 
-    response = begin_oidc_step_up(
+    return begin_oidc_step_up(
         action=action,
         target_hash=hash_step_up_target(target),
         continuation=continuation,
+        return_authorization_url=True,
     )
-    if isinstance(response, tuple):
-        return response
-    return jsonify({"authorization_url": response.headers["Location"]})
 
 
 @step_up_blueprint.get("/api/step-up/oidc/result")

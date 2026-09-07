@@ -90,4 +90,7 @@ def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):
             'step_up_action',
             'step_up_target_hash',
             'step_up_intent_id',
+            'user_id',
+            'auth_generation',
+            'authentication_session_id',
         } <= columns

@@ -268,3 +268,94 @@ def test_oidc_account_step_up_state_binds_only_persistent_intent_id(app):
     assert intent.step_up_intent_id == 42
     assert intent.step_up_action is None
     assert intent.step_up_target_hash is None
+
+
+def test_oidc_link_state_is_bound_to_one_local_account(app):
+    from app.oidc_service import consume_login_state, create_login_state
+
+    with app.app_context():
+        create_login_state(
+            state="link-state-token",
+            nonce="link-nonce-token",
+            session_binding="link-browser-binding",
+            code_verifier="link-pkce-verifier",
+            purpose="link",
+            user_id=42,
+            auth_generation=3,
+            authentication_session_id=99,
+            continuation="/security",
+        )
+
+        intent = consume_login_state(
+            state="link-state-token",
+            session_binding="link-browser-binding",
+        )
+
+    assert intent.purpose == "link"
+    assert intent.user_id == 42
+    assert intent.auth_generation == 3
+    assert intent.authentication_session_id == 99
+    assert intent.continuation == "/security"
+    assert intent.requested_acr is None
+    assert intent.step_up_action is None
+    assert intent.step_up_target_hash is None
+    assert intent.step_up_intent_id is None
+
+
+@pytest.mark.parametrize("values", [
+    {"purpose": "link"},
+    {"purpose": "link", "user_id": 0},
+    {"purpose": "link", "user_id": True},
+    {
+        "purpose": "link",
+        "user_id": 7,
+        "auth_generation": 0,
+        "authentication_session_id": 1,
+        "requested_acr": "aal2",
+    },
+    {"purpose": "login", "user_id": 7},
+    {"purpose": "login", "auth_generation": 0},
+    {"purpose": "login", "authentication_session_id": 1},
+    {
+        "purpose": "step_up",
+        "user_id": 7,
+        "step_up_action": "user.lock",
+        "step_up_target_hash": "a" * 64,
+    },
+])
+def test_oidc_state_rejects_mixed_link_context(app, values):
+    from app.oidc_service import OIDCStateError, create_login_state
+
+    with app.app_context(), pytest.raises(OIDCStateError):
+        create_login_state(
+            state="invalid-link-state",
+            nonce="invalid-link-nonce",
+            session_binding="invalid-link-binding",
+            code_verifier="invalid-link-verifier",
+            **values,
+        )
+
+
+def test_authentication_invalidation_removes_pending_oidc_link_state(app):
+    from app.auth_assurance import invalidate_user_authentication
+    from app.models import OIDCLoginState, User, db
+    from app.oidc_service import create_login_state
+
+    user_id = _create_user(app, "pending_oidc_link_user")
+    with app.app_context():
+        create_login_state(
+            state="pending-link-state",
+            nonce="pending-link-nonce",
+            session_binding="pending-link-binding",
+            code_verifier="pending-link-verifier",
+            purpose="link",
+            user_id=user_id,
+            auth_generation=0,
+            authentication_session_id=1,
+            continuation="/security",
+        )
+        user = db.session.get(User, user_id)
+        invalidate_user_authentication(user)
+        db.session.commit()
+
+        assert OIDCLoginState.query.filter_by(user_id=user_id).count() == 0

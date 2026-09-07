@@ -347,6 +347,9 @@ def invalidate_user_authentication(
     GitHubOAuthState.query.filter_by(user_id=user.id).delete(
         synchronize_session=False
     )
+    OIDCLoginState.query.filter_by(user_id=user.id).delete(
+        synchronize_session=False
+    )
     if step_up_intent_ids:
         GitHubOAuthState.query.filter(
             GitHubOAuthState.step_up_intent_id.in_(step_up_intent_ids)

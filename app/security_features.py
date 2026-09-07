@@ -197,7 +197,7 @@ def all_feature_statuses():
 def request_feature_name(path):
     """Return the feature protecting an authentication endpoint, if any."""
     path = str(path or '')
-    if path.startswith('/oidc/') or (
+    if path.startswith('/oidc/') or path.startswith('/api/account/oidc') or (
         path.startswith('/admin/api/users/')
         and ('/oidc-' in path or path.endswith('/oidc-identities'))
     ):
