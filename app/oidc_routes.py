@@ -17,6 +17,7 @@ from flask import (
     render_template,
     request,
     session,
+    url_for,
 )
 from flask_login import current_user, login_required
 from sqlalchemy import insert, literal, select
@@ -413,7 +414,7 @@ def oidc_self_link_start():
         user_id=target.id,
         auth_generation=int(target.auth_generation or 0),
         authentication_session_id=auth_session.id,
-        continuation="/security",
+        continuation=url_for("security_center"),
         return_authorization_url=True,
     )
 

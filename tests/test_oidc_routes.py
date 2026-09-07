@@ -3,6 +3,8 @@
 import logging
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
+
 from tests.step_up_helpers import (
     account_password_step_up_headers,
     password_step_up_headers,
@@ -97,8 +99,12 @@ def test_oidc_routes_are_hidden_when_disabled_but_local_login_works(
     assert local.status_code == 302
 
 
+@pytest.mark.parametrize(("script_name", "expected_location"), (
+    ("", "/settings"),
+    ("/webssh", "/webssh/settings"),
+))
 def test_authenticated_user_can_link_verified_oidc_identity_after_step_up(
-    app, client, monkeypatch
+    app, client, monkeypatch, script_name, expected_location
 ):
     from flask import redirect
     import config
@@ -134,26 +140,40 @@ def test_authenticated_user_can_link_verified_oidc_identity_after_step_up(
             }
 
     monkeypatch.setattr(oidc_routes, "_client", lambda: Provider())
+    request_environment = {"SCRIPT_NAME": script_name}
 
-    denied = client.post("/api/account/oidc/link/start", json={})
+    denied = client.post(
+        "/api/account/oidc/link/start",
+        json={},
+        environ_overrides=request_environment,
+    )
     headers = account_password_step_up_headers(
         client, "oidc.self_link", user_id
     )[0]
     started = client.post(
-        "/api/account/oidc/link/start", json={}, headers=headers
+        "/api/account/oidc/link/start",
+        json={},
+        headers=headers,
+        environ_overrides=request_environment,
     )
     state = parse_qs(urlsplit(
         started.get_json()["authorization_url"]
     ).query)["state"][0]
-    callback = client.get(f"/oidc/callback?code=code&state={state}")
-    status = client.get("/api/account/oidc")
+    callback = client.get(
+        f"/oidc/callback?code=code&state={state}",
+        environ_overrides=request_environment,
+    )
+    status = client.get(
+        "/api/account/oidc",
+        environ_overrides=request_environment,
+    )
 
     assert denied.status_code == 403
     assert started.status_code == 200
     assert authorization["prompt"] == "login"
     assert "max_age" not in authorization
     assert callback.status_code == 302
-    assert callback.headers["Location"].endswith("/security")
+    assert callback.headers["Location"] == expected_location
     assert status.status_code == 200
     assert status.get_json()["identities"][0]["issuer"] == (
         "https://issuer.example"
