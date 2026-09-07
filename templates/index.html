@@ -48,7 +48,7 @@
                 </nav>
 
                 <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
-                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button" onclick="document.getElementById('newTabBtn').click(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
+                    <button id="mobileQuickConnectAction" class="mobile-more-action" type="button" onclick="window.openDefaultConnectionModal?.(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
                     <button id="mobileToolsAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.workspaceLayoutController?.setNotesOpen(true, 'user'); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">edit_note</span><span data-i18n="workspaceContext.notes">Notes</span></button>
                     <button id="mobileBroadcastAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.BroadcastInput?.toggle(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
                     <button id="mobileTranscriptAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); document.getElementById('saveTranscriptBtn').click(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">save</span><span data-i18n="terminal.saveTranscript">Save Transcript</span></button>
@@ -115,7 +115,7 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><rect x="8" y="4" width="8" height="5"></rect><rect x="8" y="15" width="8" height="4" rx="1"></rect></svg>
                 </button>
                 <div class="tab-row-divider"></div>
-                <button class="btn-new-tab material-icons" id="newTabBtn" title="Quick Connect" data-i18n-title="connection.newConnection" aria-label="Quick Connect" data-i18n-aria-label="connection.newConnection">add</button>
+                <button class="btn-new-tab material-icons" id="newTabBtn" title="Select a session or use Quick Connect" data-i18n-title="panes.selectSession" aria-label="Select a session or use Quick Connect" data-i18n-aria-label="panes.selectSession">add</button>
             </div>
         </div>
     </header>

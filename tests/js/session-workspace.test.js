@@ -553,6 +553,73 @@ test('SFTP capability tracker retries a busy probe without opening the pane', ()
     }]);
 });
 
+test('SFTP capability tracker keeps remote resource shortage retryable', () => {
+    const handlers = {};
+    const emitted = [];
+    const timers = new Map();
+    let nextTimer = 1;
+    let nextRequest = 1;
+    const { coordinator, calls } = createHarness({
+        isWideDesktop: () => true,
+    });
+    const updateCoordinator = () => coordinator.update({
+        layout: 1,
+        sessionId: 'capacity',
+        session: { host: 'capacity.example', connected: true },
+        sessionCount: 1,
+        sftpCapability: tracker.get('capacity'),
+    });
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit(event, payload) { emitted.push([event, payload]); },
+        },
+        onChange: updateCoordinator,
+        createRequestId: () => `probe-${nextRequest++}`,
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+
+    updateCoordinator();
+    tracker.probeIfNeeded(coordinator.getState());
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        handlers.session_sftp_capability({
+            success: false,
+            available: false,
+            reason: 'resource_shortage',
+            session_id: 'capacity',
+            request_id: `probe-${attempt}`,
+        });
+        assert.equal(tracker.get('capacity'), 'probing');
+        assert.equal(coordinator.getState().sftpOpen, false);
+        const retry = [...timers.entries()]
+            .find(([_id, timer]) => timer.delay === 60000);
+        assert.notEqual(retry, undefined);
+        timers.delete(retry[0]);
+        retry[1].callback();
+    }
+
+    assert.equal(emitted.at(-1)[1].request_id, 'probe-4');
+    handlers.session_sftp_capability({
+        success: true,
+        available: true,
+        session_id: 'capacity',
+        request_id: 'probe-4',
+    });
+    assert.equal(tracker.get('capacity'), 'available');
+    assert.equal(coordinator.getState().sftpEnabled, true);
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(
+        calls.filter(call => call[0] === 'files.open'),
+        [['files.open', 'capacity', 'capacity.example']]
+    );
+    assert.equal(timers.size, 0);
+});
+
 test('SFTP capability tracker cancels retries while the session is ineligible', () => {
     const handlers = {};
     const emitted = [];

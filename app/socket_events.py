@@ -2503,13 +2503,16 @@ def handle_probe_session_sftp(data, current_user=None):
     safe_session_id = session_id if valid_identifiers else ''
     safe_request_id = request_id if valid_identifiers else ''
 
-    def emit_result(*, success, available=False):
-        emit('session_sftp_capability', {
+    def emit_result(*, success, available=False, reason=None):
+        payload = {
             'success': success,
             'session_id': safe_session_id,
             'request_id': safe_request_id,
             'available': available,
-        })
+        }
+        if reason == sftp_handler.CAPABILITY_RESOURCE_SHORTAGE:
+            payload['reason'] = reason
+        emit('session_sftp_capability', payload)
 
     if not valid_identifiers:
         emit_result(success=False)
@@ -2540,6 +2543,12 @@ def handle_probe_session_sftp(data, current_user=None):
         emit_result(success=False)
         return
 
+    if available == sftp_handler.CAPABILITY_RESOURCE_SHORTAGE:
+        emit_result(
+            success=False,
+            reason=sftp_handler.CAPABILITY_RESOURCE_SHORTAGE,
+        )
+        return
     if available is None:
         emit_result(success=False)
         return
@@ -3237,7 +3246,12 @@ def handle_request_session_insights(data, current_user=None):
             'request_id': safe_request_id,
             'error': 'Session insights unavailable',
         }
-        if reason in {'busy', 'transient', 'unsupported'}:
+        if reason in {
+            'busy',
+            'transient',
+            'unsupported',
+            'resource_shortage',
+        }:
             payload['reason'] = reason
         emit('session_insights', payload)
 

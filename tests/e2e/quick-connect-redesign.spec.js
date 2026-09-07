@@ -15,6 +15,11 @@ test.afterEach(async ({ page }) => {
     await assertNoExternalRequests(page);
 });
 
+async function openQuickConnect(page) {
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+}
+
 test('keeps Quick Connect in the workspace without a duplicate header action', async ({ page }) => {
     await expect(page.locator('#newConnectionBtn')).toHaveCount(0);
 
@@ -35,8 +40,12 @@ test('keeps Quick Connect in the workspace without a duplicate header action', a
     await page.evaluate(profiles => window.ProfileManager.setProfiles(profiles), savedProfiles);
 
     await newTab.click();
-    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
-    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect(page.locator('.terminal-pane.active .profile-launcher')).toBeVisible();
+    await expect(newTab).toHaveAttribute(
+        'aria-label',
+        'Select a session or use Quick Connect',
+    );
 
     await centralLauncher.click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
@@ -54,6 +63,23 @@ test('keeps Quick Connect in the workspace without a duplicate header action', a
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
 });
 
+test('action-bar plus targets the active pane when another pane is empty', async ({ page }) => {
+    await page.evaluate(() => {
+        window.__launcherTargetPane = null;
+        SessionManager.getActivePaneIndex = () => 1;
+        SessionManager.getActiveSession = () => ({id: 'active-session'});
+        SessionManager.getFirstEmptyPaneIndex = () => 0;
+        SessionManager.showConnectionLauncher = paneIndex => {
+            window.__launcherTargetPane = paneIndex;
+            return true;
+        };
+    });
+
+    await page.locator('#newTabBtn').click();
+
+    await expect.poll(() => page.evaluate(() => window.__launcherTargetPane)).toBe(1);
+});
+
 test('presents a focused two-column quick connect without a saved-profile picker', async ({ page }) => {
     await page.evaluate(() => {
         for (let index = 0; index < 7; index += 1) {
@@ -62,7 +88,7 @@ test('presents a focused two-column quick connect without a saved-profile picker
             );
         }
     });
-    await page.locator('#newTabBtn').click();
+    await openQuickConnect(page);
 
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(page.locator('#connectionDetailsCard')).toBeVisible();
@@ -126,7 +152,7 @@ test('presents a focused two-column quick connect without a saved-profile picker
 });
 
 test('uses the requested connection details and advanced settings hierarchy', async ({ page }) => {
-    await page.locator('#newTabBtn').click();
+    await openQuickConnect(page);
 
     const hierarchy = await page.locator('#connectionModal').evaluate(modal => {
         const detailsContent = modal.querySelector('.quick-connect-details-content');
@@ -175,7 +201,7 @@ test('keeps modal actions fixed while expanded content scrolls inside', async ({
             );
         }
     });
-    await page.locator('#newTabBtn').click();
+    await openQuickConnect(page);
     await page.locator('#connectionAdvancedSettings > summary').click();
     await expect(page.locator('#connectionModal .modal-content')).toHaveCSS('transform', 'none');
 
@@ -242,7 +268,7 @@ test.describe('mobile quick connect', () => {
                 'mobile.internal', 22, 'mobile'
             );
         });
-        await page.locator('#newTabBtn').click();
+        await openQuickConnect(page);
 
         const geometry = await page.locator('#connectionModal').evaluate(modal => {
             const details = modal.querySelector('#connectionDetailsCard')

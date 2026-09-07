@@ -55,9 +55,14 @@
             return true;
         }
 
-        function scheduleRetry(sessionId) {
+        function scheduleRetry(sessionId, reason = null) {
+            const resourceShortage = reason === 'resource_shortage';
             const retries = retryCounts.get(sessionId) || 0;
-            if (retries >= 2 && activeProbeSessionId === sessionId) {
+            if (
+                !resourceShortage
+                && retries >= 2
+                && activeProbeSessionId === sessionId
+            ) {
                 clearRetry(sessionId);
                 retryCounts.delete(sessionId);
                 capabilities.set(sessionId, 'inconclusive');
@@ -68,11 +73,15 @@
                 retryTimers.has(sessionId)
                 || activeProbeSessionId !== sessionId
             ) return;
-            retryCounts.set(sessionId, retries + 1);
+            if (resourceShortage) {
+                retryCounts.delete(sessionId);
+            } else {
+                retryCounts.set(sessionId, retries + 1);
+            }
             const timerId = setTimeoutFn(() => {
                 retryTimers.delete(sessionId);
                 if (activeProbeSessionId === sessionId) startProbe(sessionId);
-            }, 10000);
+            }, resourceShortage ? 60000 : 10000);
             retryTimers.set(sessionId, timerId);
         }
 
@@ -88,7 +97,12 @@
             clearTimeoutFn(request.timeoutId);
             pending.delete(sessionId);
             if (data.success !== true) {
-                scheduleRetry(sessionId);
+                scheduleRetry(
+                    sessionId,
+                    data.reason === 'resource_shortage'
+                        ? 'resource_shortage'
+                        : null
+                );
                 return;
             }
             clearRetry(sessionId);

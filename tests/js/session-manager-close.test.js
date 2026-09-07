@@ -195,6 +195,44 @@ test('explicit logout retains namespaced convenience data', () => {
     );
 });
 
+test('connection launcher unassigns the active session without disconnecting it', () => {
+    const {
+        manager, createElement, registerElement,
+    } = loadSessionManager(false, 'retry');
+    const terminalsContainer = registerElement('terminalsContainer', createElement());
+    const pane = createElement();
+    const terminal = registerElement('terminal-session-a', createElement());
+    pane.appendChild(terminal);
+    manager.sessions = {
+        'session-a': {
+            id: 'session-a',
+            terminalId: 'terminal-session-a',
+        },
+    };
+    manager.paneAssignments = ['session-a'];
+    const rendered = [];
+    const activated = [];
+    manager.renderPane = paneIndex => rendered.push(paneIndex);
+    manager.setActivePane = paneIndex => activated.push(paneIndex);
+
+    assert.equal(manager.showConnectionLauncher(0), true);
+
+    assert.deepEqual(manager.paneAssignments, [null]);
+    assert.equal(terminal.parentNode, terminalsContainer);
+    assert.equal(terminal.classList.contains('unassigned'), true);
+    assert.equal(manager.sessions['session-a'].id, 'session-a');
+    assert.deepEqual(rendered, [0]);
+    assert.deepEqual(activated, [0]);
+});
+
+test('connection launcher rejects a pane outside the current layout', () => {
+    const {manager} = loadSessionManager(false, 'retry');
+    manager.paneAssignments = [null];
+
+    assert.equal(manager.showConnectionLauncher(1), false);
+    assert.deepEqual(manager.paneAssignments, [null]);
+});
+
 function prepareSession(manager) {
     manager.sessions = {
         sessionA: { username: 'alice', host: 'example.test' },

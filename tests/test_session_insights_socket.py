@@ -150,6 +150,24 @@ def test_session_insights_socket_returns_generic_collector_failure(monkeypatch):
     })]
 
 
+def test_session_insights_socket_preserves_resource_shortage_retry_signal(
+        monkeypatch):
+    emitted, calls = invoke(
+        monkeypatch,
+        {'session_id': 'owned-session', 'request_id': 'sample-capacity'},
+        collector_result=(None, 'resource_shortage'),
+    )
+
+    assert calls == [('owned-session', False)]
+    assert emitted == [('session_insights', {
+        'success': False,
+        'session_id': 'owned-session',
+        'request_id': 'sample-capacity',
+        'error': 'Session insights unavailable',
+        'reason': 'resource_shortage',
+    })]
+
+
 @pytest.mark.parametrize(
     ('requested_value', 'expected'),
     [

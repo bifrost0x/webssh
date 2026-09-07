@@ -1022,6 +1022,32 @@ const SessionManager = {
             .filter(index => index !== null);
     },
 
+    showConnectionLauncher(paneIndex) {
+        if (
+            !Number.isInteger(paneIndex)
+            || paneIndex < 0
+            || paneIndex >= this.paneAssignments.length
+        ) {
+            return false;
+        }
+
+        const sessionId = this.paneAssignments[paneIndex];
+        const session = sessionId ? this.sessions[sessionId] : null;
+        const wrapper = session
+            ? document.getElementById(session.terminalId)
+            : null;
+        const container = document.getElementById('terminalsContainer');
+        if (wrapper && container) {
+            wrapper.classList.add('unassigned');
+            container.appendChild(wrapper);
+        }
+
+        this.paneAssignments[paneIndex] = null;
+        this.renderPane(paneIndex);
+        this.setActivePane(paneIndex);
+        return true;
+    },
+
     updateSplitControls() {
         document.querySelectorAll('.split-btn').forEach(btn => {
             const layout = parseInt(btn.dataset.layout, 10);

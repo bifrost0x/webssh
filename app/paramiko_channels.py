@@ -11,6 +11,29 @@ from paramiko.sftp import SFTPError
 import config
 
 
+SSH_OPEN_FAILED_RESOURCE_SHORTAGE = 4
+
+
+def optional_channel_rejection_fields(error):
+    """Describe a remote capacity rejection for an optional SSH channel.
+
+    RFC 4254 reason code 4 is supplied by the remote SSH server.  Keep the
+    server-provided text out of application logs because it is untrusted, and
+    leave retry policy to the caller because this condition can be temporary.
+    Do not classify other channel failures here: callers may need to retry or
+    fail a primary SSH operation for those errors.
+    """
+    if not isinstance(error, paramiko.ChannelException):
+        return None
+    code = getattr(error, 'code', None)
+    if type(code) is not int or code != SSH_OPEN_FAILED_RESOURCE_SHORTAGE:
+        return None
+    return {
+        'ssh_channel_code': SSH_OPEN_FAILED_RESOURCE_SHORTAGE,
+        'ssh_channel_reason': 'remote_resource_shortage',
+    }
+
+
 class BoundedSFTPClient(paramiko.SFTPClient):
     """Reject attacker-declared SFTP packets before allocating their body."""
 

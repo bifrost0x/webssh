@@ -1560,6 +1560,11 @@
         return activeIndex !== null && activeIndex !== undefined ? activeIndex : 0;
     }
 
+    function openDefaultConnectionModal() {
+        openConnectionModalForPane(getDefaultPaneIndex());
+    }
+    window.openDefaultConnectionModal = openDefaultConnectionModal;
+
     const savedConnectionLauncher = (
         ConnectionLauncher.createConnectionLauncher({
             getProfile: profileId => ProfileManager.getProfile(profileId),
@@ -2025,7 +2030,7 @@
         }
 
         const actions = [
-            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => openConnectionModalForPane(getDefaultPaneIndex()) },
+            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: openDefaultConnectionModal },
             { id: 'command-library', labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { id: 'file-transfer', labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
             { id: 'manage-keys', labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
@@ -2257,7 +2262,9 @@
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {
             newTabBtn.addEventListener('click', () => {
-                openConnectionModalForPane(getDefaultPaneIndex());
+                SessionManager.showConnectionLauncher(
+                    SessionManager.getActivePaneIndex()
+                );
             });
         }
 

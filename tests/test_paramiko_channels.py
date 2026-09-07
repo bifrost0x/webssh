@@ -6,6 +6,42 @@ import paramiko
 import pytest
 
 
+def test_optional_channel_rejection_fields_accepts_only_remote_resource_shortage():
+    from app import paramiko_channels
+
+    assert paramiko_channels.optional_channel_rejection_fields(
+        paramiko.ChannelException(4, 'server-controlled text')
+    ) == {
+        'ssh_channel_code': 4,
+        'ssh_channel_reason': 'remote_resource_shortage',
+    }
+    assert paramiko_channels.optional_channel_rejection_fields(
+        paramiko.ChannelException(1, 'Administratively prohibited')
+    ) is None
+    assert paramiko_channels.optional_channel_rejection_fields(
+        paramiko.SSHException('transport race')
+    ) is None
+
+
+def test_primary_shell_keeps_remote_resource_shortage_fatal():
+    from app import paramiko_channels
+
+    class RejectingTransport:
+        def open_session(self, timeout=None):
+            raise paramiko.ChannelException(4, 'Resource shortage')
+
+    with pytest.raises(paramiko.ChannelException) as error:
+        paramiko_channels.open_shell_channel(
+            RejectingTransport(),
+            timeout=1,
+            term='xterm-256color',
+            width=80,
+            height=24,
+        )
+
+    assert error.value.code == 4
+
+
 class BlockingTransport:
     def __init__(self):
         self.open_timeout = None

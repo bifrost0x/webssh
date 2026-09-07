@@ -411,6 +411,30 @@ test('backs off regular polling after three transient failures', () => {
     );
 });
 
+test('backs off immediately but retries remote channel resource shortage', () => {
+    const runtime = fakeRuntime();
+    runtime.controller.setSession('capacity-limited', true);
+    const request = runtime.emitted.at(-1).payload;
+
+    runtime.handlers.get('session_insights')({
+        success: false,
+        reason: 'resource_shortage',
+        session_id: 'capacity-limited',
+        request_id: request.request_id,
+    });
+
+    assert.equal(runtime.intervals.size, 0);
+    assert.equal(runtime.renders.at(-1).status, 'unavailable');
+    const retry = [...runtime.timeouts.values()].find(
+        timer => timer.delay === insights.BACKOFF_RETRY_MS,
+    );
+    assert.ok(retry);
+
+    retry.callback();
+    assert.equal(runtime.emitted.length, 2);
+    assert.equal(runtime.intervals.size, 1);
+});
+
 
 test('keeps the newest 150 structured samples per session', () => {
     let now = 0;
