@@ -41,6 +41,22 @@ test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => 
     await expect(page.locator('#securityActionConfirmation')).toHaveValue('');
 });
 
+test('linked users see the safe OIDC self-link status and action', async ({ page }) => {
+    await login(page, 'e2e_user');
+    await page.goto('/settings');
+
+    const status = page.locator('#oidcIdentityStatus');
+    const action = page.locator('#oidcIdentityAction');
+    await expect(status).toHaveText('1 OIDC identity linked');
+    await expect(action).toContainText('Link another identity');
+    await expect(page.getByText('existing-e2e-subject')).toHaveCount(0);
+
+    await action.click();
+    const confirmation = page.locator('#securityConfirmationModal');
+    await expect(confirmation).toHaveClass(/show/);
+    await expect(confirmation).toHaveAttribute('aria-hidden', 'false');
+});
+
 test('admin navigation and users become readable cards on a mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await login(page);
