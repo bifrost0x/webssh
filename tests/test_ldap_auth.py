@@ -1230,6 +1230,121 @@ def test_due_ldap_session_revalidation_fails_closed(
     assert '/login' in other_response.headers['Location']
 
 
+def test_ldap_validation_receipts_are_non_sliding_and_identity_bound(
+    tmp_path,
+    monkeypatch,
+):
+    import app.ldap_session as ldap_session
+
+    monotonic = [10.0]
+    epoch = [1000.0]
+    fence = ldap_session.LDAPRevocationFence(
+        tmp_path / 'ldap-fence',
+        clock=lambda: monotonic[0],
+        epoch_clock=lambda: epoch[0],
+    )
+
+    class Identity:
+        id = 7
+        provider = 'default'
+        subject = 'stable-subject'
+        directory_username = 'alice'
+
+    class User:
+        id = 3
+        auth_generation = 2
+        is_locked = False
+        is_admin = False
+        ldap_identity = Identity()
+
+    class Application:
+        extensions = {'ldap_revocation_fence': fence}
+
+    user = User()
+    application = Application()
+    validations = []
+    monkeypatch.setattr(
+        ldap_session,
+        'revalidate_user',
+        lambda candidate: validations.append(candidate.id),
+    )
+
+    first = ldap_session.ensure_recent_ldap_validation(
+        application,
+        user,
+        max_age_seconds=5,
+    )
+    monotonic[0] = 14.999
+    epoch[0] = 1500.0
+    cached = ldap_session.ensure_recent_ldap_validation(
+        application,
+        user,
+        max_age_seconds=5,
+    )
+
+    assert cached is first
+    assert cached.verified_at_epoch == 1000
+    assert validations == [user.id]
+
+    # A cache hit must not extend the validation interval. At the exact
+    # boundary a new directory lookup is required.
+    monotonic[0] = 15.0
+    epoch[0] = 2000.0
+    boundary = ldap_session.ensure_recent_ldap_validation(
+        application,
+        user,
+        max_age_seconds=5,
+    )
+    assert boundary is not first
+    assert boundary.verified_at_epoch == 2000
+    assert validations == [user.id, user.id]
+
+    # A receipt is tied to the stable LDAP mapping and authentication epoch.
+    user.ldap_identity.subject = 'replacement-subject'
+    monotonic[0] = 15.1
+    epoch[0] = 3000.0
+    remapped = ldap_session.ensure_recent_ldap_validation(
+        application,
+        user,
+        max_age_seconds=5,
+    )
+    assert remapped.identity_key != boundary.identity_key
+    assert validations == [user.id, user.id, user.id]
+
+    # A scheduled sweep may reuse work completed after it began, but it must
+    # not let a pre-sweep foreground receipt postpone directory validation.
+    assert ldap_session.revalidate_user_durably(
+        application,
+        user,
+        not_before_monotonic=15.0,
+    ) is remapped
+    epoch[0] = 4000.0
+    forced = ldap_session.revalidate_user_durably(
+        application,
+        user,
+        not_before_monotonic=15.1,
+    )
+    assert forced.verified_at_epoch == 4000
+    assert validations == [user.id, user.id, user.id, user.id]
+    assert fence.contains(user.id) is False
+
+
+def test_stale_ldap_validation_cannot_clear_newer_revocation(tmp_path):
+    import app.ldap_session as ldap_session
+    from app.ldap_service import LDAPLookupRejected
+
+    fence = ldap_session.LDAPRevocationFence(tmp_path / 'ldap-fence')
+    token = fence.begin_validation(9)
+
+    fence.mark(9)
+    with pytest.raises(LDAPLookupRejected):
+        fence.complete_validation(9, token, ('stale-identity',))
+    fence.fail_validation(9, token)
+
+    assert fence.contains(9) is True
+    assert fence._marker_path(9).read_bytes() == b'pending\n'
+
+
 def test_background_revalidation_revokes_invalid_linked_socket_owner(
     app,
     client,

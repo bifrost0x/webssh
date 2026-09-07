@@ -78,6 +78,17 @@ def run_checks():
         if link is not None:
             assert link['is_dir'] is False
 
+        hidden_listing, error = backend.list_directory(source, '/known-only')
+        assert hidden_listing is None and error == 'Permission denied', (
+            hidden_listing,
+            error,
+        )
+        with backend.open_reader(source, '/known-only/known.txt') as lease:
+            known_payload = b''.join(
+                iter(lambda: lease.reader.read(65536), b'')
+            )
+        assert known_payload == b'Known-path integration fixture\n'
+
         payload = ('SMB 3.1.1 encrypted round trip — ' * 4096).encode('utf-8')
         with backend.open_atomic_writer(
             source,

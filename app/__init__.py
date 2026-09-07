@@ -552,13 +552,27 @@ def create_app(
             >= config.LDAP_SESSION_REVALIDATION_SECONDS
         ):
             from .ldap_service import LDAPLookupRejected, LDAPUnavailable
-            from .ldap_session import revalidate_user_durably
+            from .ldap_session import (
+                LDAPValidationInProgress,
+                ensure_recent_ldap_validation,
+            )
 
             try:
-                revalidate_user_durably(
+                receipt = ensure_recent_ldap_validation(
                     current_app._get_current_object(),
                     current_user,
+                    max_age_seconds=(
+                        config.LDAP_SESSION_REVALIDATION_SECONDS
+                    ),
                 )
+            except LDAPValidationInProgress:
+                response = jsonify({
+                    'error': 'Directory session validation is in progress',
+                    'code': 'ldap_validation_in_progress',
+                })
+                response.status_code = 503
+                response.headers['Retry-After'] = '1'
+                return response
             except (LDAPLookupRejected, LDAPUnavailable) as exc:
                 log_warning(
                     'LDAP session revalidation rejected',
@@ -567,7 +581,7 @@ def create_app(
                 )
                 invalidate_ldap_browser_access(type(exc).__name__)
                 return redirect(url_for('login'))
-            session['_ldap_verified_at'] = int(time.time())
+            session['_ldap_verified_at'] = receipt.verified_at_epoch
         if initialize_storage and current_user.is_authenticated:
             from .session_epoch import current_epoch
             epoch = current_epoch()

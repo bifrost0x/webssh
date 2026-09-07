@@ -388,10 +388,10 @@ def _open_verified_path(
 
     Normal paths use exact directory queries from the already-open parent.
     Some SMB servers deny those queries while still permitting access to a
-    known child.  In that compatibility case we hold metadata handles for
-    every opaque component and perform a second full identity pass.  This
-    rejects ordinary one-way replacement but cannot exclude a synchronized
-    rename-away/rename-back (ABA) by another principal.
+    known child.  In that compatibility case we reacquire and hold metadata
+    handles for every non-root prefix without write or delete sharing, then
+    perform a second full identity pass.  The retained prefix handles bind the
+    verified namespace while preserving access to known children.
     """
     root, components = _split_unc(path)
     if expected_identities is None:
@@ -485,6 +485,67 @@ def _open_verified_path(
     opaque_records = []
     try:
         current_info = _query_open_info(current)
+
+        def retain_opaque_prefix(component_count):
+            """Reacquire prefixes and deny namespace/attribute mutation."""
+            nonlocal current, current_info, current_path
+
+            if opaque_records:
+                return
+            if component_count == 0:
+                opaque_records.append((current_path, current, current_info))
+                return
+
+            pinned = []
+            pin_path = root
+            try:
+                for position in range(component_count):
+                    pin_path += '\\' + components[position]
+                    pin = _open_raw(
+                        pin_path,
+                        is_directory=True,
+                        desired_access=read_attributes,
+                        connection_kwargs=connection_kwargs,
+                        share_access='r',
+                    )
+                    try:
+                        pin_info = _query_open_info(
+                            pin,
+                            name=components[position],
+                        )
+                        if (
+                            pin_info.file_id != identity_chain[position]
+                            or not _verified_directory_flag(pin_info)
+                        ):
+                            raise SMBProtocolError('CONFLICT')
+                    except BaseException:
+                        try:
+                            pin.close()
+                        except Exception:
+                            pass
+                        raise
+                    pinned.append((pin_path, pin, pin_info))
+            except BaseException:
+                for _pin_path, pin, _pin_info in reversed(pinned):
+                    try:
+                        pin.close()
+                    except Exception:
+                        pass
+                raise
+
+            try:
+                current.close()
+            except BaseException:
+                for _pin_path, pin, _pin_info in reversed(pinned):
+                    try:
+                        pin.close()
+                    except Exception:
+                        pass
+                raise
+
+            opaque_records.extend(pinned)
+            current_path, current, current_info = pinned[-1]
+
         if opaque:
             opaque_records.append((root, current, current_info))
         if not components:
@@ -503,12 +564,8 @@ def _open_verified_path(
                 except Exception as exc:
                     if not _permission_denied(exc):
                         raise
+                    retain_opaque_prefix(index)
                     opaque = True
-                    opaque_records.append((
-                        current_path,
-                        current,
-                        current_info,
-                    ))
 
             if opaque:
                 desired_access = leaf_access() if is_leaf else read_attributes
@@ -518,6 +575,7 @@ def _open_verified_path(
                         is_directory=True,
                         desired_access=desired_access,
                         connection_kwargs=connection_kwargs,
+                        share_access='r',
                     )
                 elif purpose in {'file_read', 'file_move'}:
                     child = _open_raw(
@@ -629,6 +687,7 @@ def _open_verified_path(
                 )
                 if not allow_opaque_fallback:
                     raise
+                retain_opaque_prefix(index)
                 child = _open_raw(
                     child_path,
                     is_directory=True,
@@ -637,7 +696,7 @@ def _open_verified_path(
                     share_access=(
                         'r'
                         if purpose == 'directory_pin' and is_leaf
-                        else 'rwd'
+                        else ('rwd' if is_leaf else 'r')
                     ),
                 )
                 opaque = True
@@ -655,14 +714,6 @@ def _open_verified_path(
                 raise
 
             if opaque:
-                # The parent was the authority that bound this child's ID.
-                # Retain and reverify it as part of the opaque path rather
-                # than leaking it or accepting a parent replacement.
-                opaque_records.append((
-                    current_path,
-                    current,
-                    current_info,
-                ))
                 opaque_records.append((child_path, child, info))
             else:
                 try:

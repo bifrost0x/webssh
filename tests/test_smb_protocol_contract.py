@@ -1145,16 +1145,24 @@ def test_verified_walk_preserves_access_when_exact_child_query_is_denied(
     handles = []
 
     class Handle:
-        def __init__(self, path):
+        def __init__(self, path, desired_access, share_access):
             self.path = path
+            self.desired_access = desired_access
+            self.share_access = share_access
             self.closed = False
             handles.append(self)
 
         def close(self):
             self.closed = True
 
-    def open_raw(path, **_kwargs):
-        return Handle(path)
+    def open_raw(
+        path,
+        *,
+        desired_access,
+        share_access='rwd',
+        **_kwargs,
+    ):
+        return Handle(path, desired_access, share_access)
 
     def exact_child(handle, name):
         exact_queries.append((handle.path, name))
@@ -1182,6 +1190,13 @@ def test_verified_walk_preserves_access_when_exact_child_query_is_denied(
 
     assert info.identity_chain == (10, 20, 30)
     assert exact_queries == [(root, 'visible'), (visible, 'opaque')]
+    visible_handles = [handle for handle in handles if handle.path == visible]
+    assert [handle.share_access for handle in visible_handles[:2]] == [
+        'rwd',
+        'r',
+    ]
+    opaque_handles = [handle for handle in handles if handle.path == opaque]
+    assert opaque_handles[0].share_access == 'r'
     raw.close()
     assert all(handle.closed for handle in handles)
 
@@ -1346,6 +1361,230 @@ def test_verified_walk_opaque_fallback_rejects_one_way_swap(
         smb_protocol._open_verified_path(leaf, purpose=purpose)
 
     assert error.value.public_code == expected_code
+    assert all(handle.closed for handle in handles)
+
+
+def test_verified_walk_opaque_prefix_pin_blocks_synchronized_aba(monkeypatch):
+    from app import smb_protocol
+
+    root = r'\\server\Docs'
+    protected = root + r'\protected'
+    leaf = protected + r'\file.txt'
+    list_access = int(
+        smb_protocol.DirectoryAccessMask.FILE_LIST_DIRECTORY
+        | smb_protocol.DirectoryAccessMask.FILE_READ_ATTRIBUTES
+    )
+    state = ['original']
+    list_denied = [False]
+    occurrences = {}
+    handles = []
+    swap_attempts = []
+
+    class Handle:
+        def __init__(self, path, share_access, info):
+            self.path = path
+            self.share_access = share_access
+            self.info = info
+            self.closed = False
+            handles.append(self)
+
+        def close(self):
+            self.closed = True
+
+    def try_swap(target):
+        blocked = any(
+            handle.path == protected
+            and not handle.closed
+            and 'd' not in handle.share_access
+            for handle in handles
+        )
+        swap_attempts.append((target, blocked))
+        if not blocked:
+            state[0] = target
+
+    def object_info(path):
+        if path == root:
+            return _object_info('', 1, directory=True)
+        if path == protected:
+            return _object_info(
+                'protected',
+                100 if state[0] == 'original' else 200,
+                directory=True,
+            )
+        if path == leaf:
+            return _object_info(
+                'file.txt',
+                101 if state[0] == 'original' else 201,
+            )
+        raise AssertionError(f'unexpected path: {path}')
+
+    def open_raw(
+        path,
+        *,
+        desired_access,
+        share_access='rwd',
+        **_kwargs,
+    ):
+        if path == root and desired_access == list_access and not list_denied[0]:
+            list_denied[0] = True
+            raise SMBProtocolError('PERMISSION_DENIED')
+
+        occurrence = occurrences.get(path, 0) + 1
+        occurrences[path] = occurrence
+        if path == protected and occurrence == 2:
+            try_swap('original')
+        elif path == leaf and occurrence == 2:
+            try_swap('alternate')
+        handle = Handle(path, share_access, object_info(path))
+        if path == protected and occurrence == 1:
+            try_swap('alternate')
+        return handle
+
+    monkeypatch.setattr(smb_protocol, '_open_raw', open_raw)
+    monkeypatch.setattr(
+        smb_protocol,
+        '_query_open_info',
+        lambda handle, **_kwargs: handle.info,
+    )
+    monkeypatch.setattr(
+        smb_protocol,
+        '_query_exact_child',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('opaque root must not be enumerated')
+        ),
+    )
+
+    raw, info = smb_protocol._open_verified_path(
+        leaf,
+        purpose='file_read',
+    )
+
+    assert info.file_id == 101
+    assert info.identity_chain == (100, 101)
+    assert swap_attempts == [
+        ('alternate', True),
+        ('original', True),
+        ('alternate', True),
+    ]
+    protected_pin = next(
+        handle
+        for handle in handles
+        if handle.path == protected and handle.share_access == 'r'
+    )
+    assert protected_pin.closed is True
+    raw.close()
+    assert all(handle.closed for handle in handles)
+
+
+def test_verified_walk_opaque_prefix_pin_blocks_reparse_aba(monkeypatch):
+    from app import smb_protocol
+
+    root = r'\\server\Docs'
+    protected = root + r'\protected'
+    leaf = protected + r'\file.txt'
+    list_access = int(
+        smb_protocol.DirectoryAccessMask.FILE_LIST_DIRECTORY
+        | smb_protocol.DirectoryAccessMask.FILE_READ_ATTRIBUTES
+    )
+    state = ['original']
+    list_denied = [False]
+    occurrences = {}
+    handles = []
+    mutation_attempts = []
+
+    class Handle:
+        def __init__(self, path, share_access, info):
+            self.path = path
+            self.share_access = share_access
+            self.info = info
+            self.closed = False
+            handles.append(self)
+
+        def close(self):
+            self.closed = True
+
+    def try_reparse(target):
+        blocked = any(
+            handle.path == protected
+            and not handle.closed
+            and 'w' not in handle.share_access
+            for handle in handles
+        )
+        mutation_attempts.append((target, blocked))
+        if not blocked:
+            state[0] = target
+
+    def object_info(path):
+        if path == root:
+            return _object_info('', 1, directory=True)
+        if path == protected:
+            return _object_info(
+                'protected',
+                100 if state[0] == 'original' else 200,
+                directory=True,
+            )
+        if path == leaf:
+            return _object_info(
+                'file.txt',
+                101 if state[0] == 'original' else 201,
+            )
+        raise AssertionError(f'unexpected path: {path}')
+
+    def open_raw(
+        path,
+        *,
+        desired_access,
+        share_access='rwd',
+        **_kwargs,
+    ):
+        if path == root and desired_access == list_access and not list_denied[0]:
+            list_denied[0] = True
+            raise SMBProtocolError('PERMISSION_DENIED')
+
+        occurrence = occurrences.get(path, 0) + 1
+        occurrences[path] = occurrence
+        if path == protected and occurrence == 2:
+            try_reparse('original')
+        elif path == leaf and occurrence == 2:
+            try_reparse('alternate')
+        handle = Handle(path, share_access, object_info(path))
+        if path == protected and occurrence == 1:
+            try_reparse('alternate')
+        return handle
+
+    monkeypatch.setattr(smb_protocol, '_open_raw', open_raw)
+    monkeypatch.setattr(
+        smb_protocol,
+        '_query_open_info',
+        lambda handle, **_kwargs: handle.info,
+    )
+    monkeypatch.setattr(
+        smb_protocol,
+        '_query_exact_child',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError('opaque root must not be enumerated')
+        ),
+    )
+
+    raw, info = smb_protocol._open_verified_path(
+        leaf,
+        purpose='file_read',
+    )
+
+    assert info.file_id == 101
+    assert info.identity_chain == (100, 101)
+    assert mutation_attempts == [
+        ('alternate', True),
+        ('original', True),
+        ('alternate', True),
+    ]
+    protected_pin = next(
+        handle
+        for handle in handles
+        if handle.path == protected and handle.share_access == 'r'
+    )
+    assert protected_pin.closed is True
+    raw.close()
     assert all(handle.closed for handle in handles)
 
 

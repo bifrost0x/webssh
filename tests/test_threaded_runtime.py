@@ -680,6 +680,154 @@ def test_engineio_accepts_successfully_revalidated_ldap_session(
     assert app.extensions['engineio_socket_capacity'].count() == 0
 
 
+def test_due_ldap_validation_coalesces_before_engineio_capacity(
+    app,
+    monkeypatch,
+):
+    import config
+    import app.ldap_session as ldap_session
+    from app import socketio
+    from app.models import AuthenticationSession, User, db
+
+    _create_bootstrap_user(app, 'engineio_ldap_coalesce_bootstrap')
+    username = 'engineio_ldap_coalesce'
+    seed_client, user_id = _logged_in_http_client(app, username)
+    _mark_user_ldap_managed(app, user_id, username)
+    with seed_client.session_transaction() as browser_session:
+        browser_session['_ldap_verified_at'] = 0
+    cookie_name = app.config['SESSION_COOKIE_NAME']
+    stale_cookie = seed_client.get_cookie(cookie_name).value
+
+    monkeypatch.setattr(config, 'LDAP_ENABLED', True)
+    monkeypatch.setattr(config, 'MAX_SOCKET_CONNECTIONS', 4)
+    monkeypatch.setattr(config, 'MAX_SOCKET_CONNECTIONS_PER_USER', 1)
+
+    lookup_entered = threading.Event()
+    release_lookup = threading.Event()
+    lookup_user_ids = []
+
+    def blocking_revalidation(user):
+        lookup_user_ids.append(user.id)
+        lookup_entered.set()
+        assert release_lookup.wait(5)
+
+    monkeypatch.setattr(
+        ldap_session,
+        'revalidate_user',
+        blocking_revalidation,
+    )
+
+    leader_client = app.test_client()
+    leader_client.set_cookie(cookie_name, stale_cookie)
+    leader_responses = []
+    failures = []
+
+    def run_leader():
+        try:
+            with app.app_context():
+                leader_responses.append(leader_client.get('/'))
+        except BaseException as error:
+            failures.append(error)
+
+    leader = threading.Thread(target=run_leader)
+    leader.start()
+    assert lookup_entered.wait(2)
+
+    follower_clients = [app.test_client() for _ in range(4)]
+    for follower_client in follower_clients:
+        follower_client.set_cookie(cookie_name, stale_cookie)
+    follower_responses = [None] * len(follower_clients)
+
+    def run_follower(index):
+        try:
+            with app.app_context():
+                if index == 0:
+                    follower_responses[index] = follower_clients[index].get('/')
+                else:
+                    follower_responses[index] = _engineio_handshake(
+                        follower_clients[index],
+                        f'ldap-coalesce-{index}',
+                    )
+        except BaseException as error:
+            failures.append(error)
+
+    followers = [
+        threading.Thread(target=run_follower, args=(index,))
+        for index in range(len(follower_clients))
+    ]
+    for follower in followers:
+        follower.start()
+
+    deadline = time.monotonic() + 2
+    while any(follower.is_alive() for follower in followers):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        for follower in followers:
+            follower.join(min(0.02, remaining))
+
+    followers_finished_before_release = all(
+        not follower.is_alive() for follower in followers
+    )
+    capacity_while_lookup_blocked = (
+        app.extensions['engineio_socket_capacity'].count()
+    )
+    retained_sockets_while_lookup_blocked = len(
+        socketio.server.eio.sockets
+    )
+
+    release_lookup.set()
+    leader.join(3)
+    for follower in followers:
+        follower.join(3)
+
+    assert followers_finished_before_release is True
+    assert not leader.is_alive()
+    assert all(not follower.is_alive() for follower in followers)
+    assert failures == []
+    assert lookup_user_ids == [user_id]
+    assert len(leader_responses) == 1
+    assert leader_responses[0].status_code == 200
+    assert follower_responses[0].status_code == 503
+    assert follower_responses[0].get_json()['code'] == (
+        'ldap_validation_in_progress'
+    )
+    assert follower_responses[0].headers['Retry-After'] == '1'
+    assert [
+        response.status_code for response in follower_responses[1:]
+    ] == [401, 401, 401]
+    assert capacity_while_lookup_blocked == 0
+    assert retained_sockets_while_lookup_blocked == 0
+
+    with follower_clients[0].session_transaction() as browser_session:
+        assert '_user_id' in browser_session
+    with app.app_context():
+        assert AuthenticationSession.query.filter_by(
+            user_id=user_id,
+        ).count() == 1
+        assert db.session.get(User, user_id).auth_generation == 0
+
+    # Engine.IO cannot persist the nested Flask session cookie. The shared,
+    # identity-bound receipt therefore has to make this stale-cookie retry
+    # cheap while the ordinary socket capacity checks still apply.
+    retry_client = app.test_client()
+    retry_client.set_cookie(cookie_name, stale_cookie)
+    retry = _engineio_handshake(retry_client, 'ldap-coalesce-retry')
+    engineio_sid = _engineio_sid(retry)
+    try:
+        assert retry.status_code == 200
+        assert lookup_user_ids == [user_id]
+        assert (
+            app.extensions['engineio_socket_capacity'].owner(engineio_sid)
+            == user_id
+        )
+    finally:
+        _close_engineio_socket(engineio_sid)
+
+    assert socketio.server.eio.sockets == {}
+    assert app.extensions['engineio_socket_capacity'].count() == 0
+
+
 @pytest.mark.parametrize('state', ('expired', 'locked', 'recovery'))
 def test_engineio_rejects_stale_or_restricted_browser_session(
     app,
