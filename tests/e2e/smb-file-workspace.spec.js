@@ -362,6 +362,7 @@ test('SMB editor remembers recoverable-swap consent for the current connection',
             error: 'This SMB account cannot replace the file atomically.',
             code: 'SMB_RECOVERABLE_REPLACE_REQUIRED',
             revision: 'a'.repeat(64),
+            save_challenge: 'c'.repeat(43),
         });
         preview.saveEdit();
 
@@ -381,12 +382,14 @@ test('SMB editor remembers recoverable-swap consent for the current connection',
     expect(state.emitted[1]).toMatchObject({
         expected_revision: 'a'.repeat(64),
         replace_strategy: 'recoverable_swap',
+        save_challenge: 'c'.repeat(43),
     });
     expect(state.emitted[1]).not.toHaveProperty('allow_non_atomic');
     expect(state.emitted[2]).toMatchObject({
         expected_revision: 'a'.repeat(64),
         replace_strategy: 'recoverable_swap',
     });
+    expect(state.emitted[2]).not.toHaveProperty('save_challenge');
     expect(state.status).toBe('Saving...');
     await assertNoExternalRequests(page);
 });

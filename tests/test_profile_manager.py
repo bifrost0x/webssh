@@ -109,6 +109,31 @@ def test_profile_tmux_preference_is_validated_and_persisted(app):
         assert profile_manager.load_profiles(user_id)[0]['use_tmux'] is False
 
 
+def test_profile_persistence_strips_response_only_tailscale_authorization(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'tailscale-response-only')
+    profile = {
+        'id': 'tailscale-profile',
+        'name': 'Tailnet server',
+        'host': 'tiny-server',
+        'port': 22,
+        'username': 'root',
+        'auth_type': 'tailscale',
+        'tailscale_authorized': True,
+    }
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, [profile]) is True
+        stored = profile_manager.load_profiles(user_id)
+
+    assert profile['tailscale_authorized'] is True
+    assert stored == [{
+        key: value
+        for key, value in profile.items()
+        if key != 'tailscale_authorized'
+    }]
+
+
 def test_profile_edit_without_tmux_field_preserves_existing_preference(app):
     from app import profile_manager
 
@@ -154,6 +179,25 @@ def test_profile_rejects_non_boolean_tmux_preference(app):
 
         assert profile is None
         assert error == 'use_tmux must be a boolean'
+        assert profile_manager.load_profiles(user_id) == []
+
+
+def test_profile_rejects_tailscale_with_jump_host(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'tailscale-jump-profile')
+    with app.app_context():
+        profile, error = profile_manager.upsert_profile(user_id, {
+            'name': 'Invalid routed target',
+            'host': 'server.tailnet.ts.net',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'tailscale',
+            'jump_host_id': 'jump-host-1',
+        })
+
+        assert profile is None
+        assert error == 'Tailscale SSH cannot be used with a jump host'
         assert profile_manager.load_profiles(user_id) == []
 
 
@@ -970,3 +1014,537 @@ def test_profile_update_preserves_unknown_stored_fields(app):
 
     assert error is None
     assert updated['future'] == {'version': 2}
+
+
+def test_profile_count_quota_is_atomic_and_delete_remains_available(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-count-quota')
+    monkeypatch.setattr(config, 'PROFILE_MAX_RECORDS', 1)
+    payload = {
+        'name': 'First',
+        'host': 'example.com',
+        'port': 22,
+        'username': 'deploy',
+        'auth_type': 'password',
+    }
+    with app.app_context():
+        first, error = profile_manager.upsert_profile(user_id, payload)
+        assert error is None
+
+        second, error = profile_manager.upsert_profile(
+            user_id, {**payload, 'name': 'Second'}
+        )
+
+        assert second is None
+        assert error.startswith('Connection storage quota exceeded:')
+        assert profile_manager.load_profiles(user_id) == [first]
+        assert profile_manager.delete_profile(user_id, first['id']) == (
+            True, None
+        )
+
+
+def test_profile_cannot_reference_another_users_ssh_key(
+    app,
+    rsa_private_key_pem,
+):
+    from app import key_manager, profile_manager
+
+    owner_id = create_user(app, 'profile-key-owner')
+    attacker_id = create_user(app, 'profile-key-attacker')
+    with app.app_context():
+        key, error = key_manager.save_key(
+            owner_id, 'Owner key', rsa_private_key_pem
+        )
+        assert error is None
+
+        profile, error = profile_manager.upsert_profile(attacker_id, {
+            'name': 'Foreign key',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'key',
+            'key_id': key['id'],
+        })
+
+    assert profile is None
+    assert error == 'SSH key not found'
+
+
+def test_legacy_oversized_profile_store_has_bounded_offline_recovery(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import command_set_manager, profile_manager
+    from app.connection_storage_policy import ConnectionStorageLimitError
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'oversized-profile-recovery')
+    profile = {
+        'id': 'legacy-large',
+        'name': 'Legacy',
+        'future': 'x' * 1024,
+    }
+    with app.app_context():
+        command_set, error = command_set_manager.upsert_command_set(user_id, {
+            'name': 'Recovery guard',
+            'steps': [{'type': 'inline', 'command': 'true'}],
+        })
+        assert error is None
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_text(json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': [profile],
+        }), encoding='utf-8')
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 256)
+
+        with pytest.raises(ConnectionStorageLimitError):
+            profile_manager.load_profiles(user_id)
+        summaries, summary_error = (
+            profile_manager.load_profile_recovery_summaries(user_id)
+        )
+        assert summary_error is None
+        assert summaries == [{
+            'id': 'legacy-large',
+            'name': 'Legacy',
+            'host': '',
+            'selector': summaries[0]['selector'],
+        }]
+        expected = (
+            'Connection storage quota exceeded: stored data exceeds its byte limit'
+        )
+        assert profile_manager.upsert_profile(user_id, {
+            'name': 'New',
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        }) == (None, expected)
+        assert profile_manager.update_profile_organization(
+            user_id, profile['id'], {'favorite': True}
+        ) == (None, expected)
+        assert profile_manager.move_profile(
+            user_id, profile['id'], '', 'Production', 0
+        ) == (None, expected)
+        assert profile_manager.assign_command_set(
+            user_id, profile['id'], command_set['id']
+        ) == (None, expected)
+        assert profile_manager.delete_profile(
+            user_id, profile['id']
+        ) == (False, expected)
+        assert profile_manager.delete_profile_recovery_record(
+            user_id, summaries[0]['selector']
+        ) == (True, None)
+        assert profile_manager.load_profiles(user_id) == []
+
+
+def test_normal_profile_delete_removes_only_first_duplicate_id(app):
+    from app import profile_manager
+
+    user_id = create_user(app, 'duplicate-profile-delete')
+    with app.app_context():
+        assert profile_manager.save_profiles(user_id, [
+            {'id': 'duplicate-id', 'name': 'First'},
+            {'id': 'duplicate-id', 'name': 'Second'},
+        ])
+
+        assert profile_manager.delete_profile(
+            user_id,
+            'duplicate-id',
+        ) == (True, None)
+
+        assert profile_manager.load_profiles(user_id) == [
+            {'id': 'duplicate-id', 'name': 'Second'},
+        ]
+
+
+def test_normal_profile_delete_from_compact_limit_store_stays_readable(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'compact-profile-delete')
+    profiles = [
+        {'id': str(index), 'name': 'x'}
+        for index in range(50)
+    ]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+        'profiles': profiles,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(original),
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original),
+        )
+
+        assert profile_manager.delete_profile(
+            user_id,
+            profiles[-1]['id'],
+        ) == (True, None)
+
+        expected = json.dumps({
+            **document,
+            'profiles': profiles[:-1],
+        }, separators=(',', ':')).encode('utf-8')
+        assert path.read_bytes() == expected
+        assert len(expected) < len(original)
+        assert profile_manager.load_profiles(user_id) == profiles[:-1]
+
+
+def test_profile_shrink_uses_compact_fallback_at_combined_cap(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'compact-profile-update')
+    profiles = [
+        {
+            'id': f'profile-{index}',
+            'name': 'x' * 128,
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+            'key_id': None,
+            'startup_mode': 'none',
+            'created_at': '2026-01-01T00:00:00.000000+00:00',
+            'updated_at': '2026-01-01T00:00:00.000000+00:00',
+            'sort_order': index,
+        }
+        for index in range(20)
+    ]
+    profile = profiles[0]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+        'profiles': profiles,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+    jump_document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+        'jump_hosts': [],
+    }
+    jump_bytes = json.dumps(
+        jump_document,
+        separators=(',', ':'),
+    ).encode('utf-8')
+
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(original)
+        (path.parent / 'jump_hosts.json').write_bytes(jump_bytes)
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 100_000)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original) + len(jump_bytes),
+        )
+
+        updated, error = profile_manager.upsert_profile(user_id, {
+            'id': profile['id'],
+            'name': 'Short',
+            'host': profile['host'],
+            'port': profile['port'],
+            'username': profile['username'],
+            'auth_type': profile['auth_type'],
+        })
+
+        assert error is None
+        assert updated['name'] == 'Short'
+        persisted = path.read_bytes()
+        persisted_document = json.loads(persisted.decode('utf-8'))
+        assert persisted == json.dumps(
+            persisted_document,
+            separators=(',', ':'),
+        ).encode('utf-8')
+        assert len(persisted) < len(original)
+        assert len(persisted) + len(jump_bytes) <= (
+            config.CONNECTION_CONFIG_MAX_BYTES
+        )
+        reloaded = profile_manager.load_profiles(user_id)
+        assert reloaded[0] == updated
+        assert [item['id'] for item in reloaded[1:]] == [
+            item['id'] for item in profiles[1:]
+        ]
+
+
+def test_profile_recovery_ceiling_rejects_before_json_load(app, monkeypatch):
+    import config
+    from app import profile_manager
+    from app.connection_storage_policy import ConnectionStorageLimitError
+
+    user_id = create_user(app, 'profile-recovery-hard-limit')
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(b'x' * 257)
+        monkeypatch.setattr(config, 'CONNECTION_STORE_RECOVERY_MAX_BYTES', 256)
+        monkeypatch.setattr(
+            profile_manager,
+            'load_json_migrated',
+            lambda *_args, **_kwargs: pytest.fail(
+                'oversized recovery store was parsed'
+            ),
+        )
+
+        with pytest.raises(ConnectionStorageLimitError):
+            profile_manager.load_profile_recovery_summaries(user_id)
+
+        deleted, error = profile_manager.delete_profile_recovery_record(
+            user_id,
+            'r1:0:' + ('0' * 64),
+        )
+
+    assert deleted is False
+    assert error == (
+        'Connection storage quota exceeded: stored data exceeds its recovery '
+        'byte limit'
+    )
+
+
+def test_profile_recovery_record_ceiling_rejects_after_bounded_load(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager, storage_migrations
+
+    user_id = create_user(app, 'profile-recovery-record-limit')
+    document = {
+        'schema_version': 1,
+        'profiles': [
+            {'id': 'target', 'name': 'Target'},
+            {'id': 'other', 'name': 'Other'},
+        ],
+    }
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_RECORDS',
+            1,
+        )
+        monkeypatch.setattr(
+            storage_migrations,
+            'migrate_document',
+            lambda *_args: pytest.fail('over-record store was migrated'),
+        )
+
+        deleted, error = profile_manager.delete_profile_recovery_record(
+            user_id,
+            'r1:0:' + ('0' * 64),
+        )
+
+        assert path.read_bytes() == original
+        assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+    assert deleted is False
+    assert error == (
+        'Connection storage quota exceeded: more than 1 recovery records '
+        'are not allowed'
+    )
+
+
+def test_profile_recovery_delete_persists_valid_legacy_shrink(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'profile-recovery-legacy-shrink')
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        original = json.dumps({
+            'schema_version': 1,
+            'profiles': [
+                {'id': 'target', 'name': 'Target'},
+                {'id': 'other', 'name': 'Other'},
+            ],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(original) - 1,
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original) - 1,
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            4096,
+        )
+
+        summaries, error = profile_manager.load_profile_recovery_summaries(
+            user_id
+        )
+        assert error is None
+        selector = next(
+            item['selector'] for item in summaries if item['id'] == 'target'
+        )
+        assert profile_manager.delete_profile_recovery_record(
+            user_id,
+            selector,
+        ) == (True, None)
+
+        document = json.loads(path.read_text(encoding='utf-8'))
+        assert document['schema_version'] == CURRENT_STORAGE_VERSIONS['profiles']
+        assert [item['id'] for item in document['profiles']] == ['other']
+        assert path.read_bytes() == json.dumps(
+            document,
+            separators=(',', ':'),
+        ).encode('utf-8')
+        assert path.stat().st_size < len(original)
+
+
+def test_profile_recovery_delete_compacts_exact_hard_cap_store(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'profile-recovery-compact-cap')
+    profiles = [
+        {'id': str(index), 'name': 'x'}
+        for index in range(50)
+    ]
+    document = {
+        'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+        'profiles': profiles,
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+    assert len(original) == 1173
+
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(original)
+        monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 64)
+        monkeypatch.setattr(config, 'CONNECTION_CONFIG_MAX_BYTES', 64)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            len(original),
+        )
+
+        summaries, error = profile_manager.load_profile_recovery_summaries(
+            user_id
+        )
+        assert error is None
+        assert profile_manager.delete_profile_recovery_record(
+            user_id,
+            summaries[-1]['selector'],
+        ) == (True, None)
+
+        expected = json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': profiles[:-1],
+        }, separators=(',', ':')).encode('utf-8')
+        assert path.read_bytes() == expected
+        assert len(expected) < len(original)
+
+
+def test_profile_recovery_delete_never_grows_migrated_store(
+    app,
+    monkeypatch,
+):
+    import json
+    import config
+    from app import profile_manager
+
+    user_id = create_user(app, 'profile-recovery-migration-no-growth')
+    document = {
+        'schema_version': 1,
+        'profiles': [
+            {'id': str(index), 'name': 'x'}
+            for index in range(3)
+        ],
+    }
+    original = json.dumps(document, separators=(',', ':')).encode('utf-8')
+    assert len(original) == 99
+
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        path.write_bytes(original)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(original) - 1,
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(original) - 1,
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+            4096,
+        )
+        summaries, error = profile_manager.load_profile_recovery_summaries(
+            user_id
+        )
+        assert error is None
+
+        deleted, error = profile_manager.delete_profile_recovery_record(
+            user_id,
+            summaries[-1]['selector'],
+        )
+
+        assert deleted is False
+        assert error == (
+            'Connection storage quota exceeded: recovery deletion would grow '
+            'its connection store'
+        )
+        assert path.read_bytes() == original
+
+
+def test_normal_profile_save_keeps_pretty_json(app):
+    import json
+    from app import profile_manager
+    from app.storage_migrations import CURRENT_STORAGE_VERSIONS
+
+    user_id = create_user(app, 'profile-normal-pretty-json')
+    profiles = [{'id': 'profile-1', 'name': 'Production'}]
+    with app.app_context():
+        path = profile_manager.get_user_profiles_file(user_id)
+        assert profile_manager.save_profiles(user_id, profiles) is True
+
+        assert path.read_bytes() == json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': profiles,
+        }, indent=2).encode('utf-8')

@@ -21,6 +21,10 @@ volumes:
 Without this volume, users, profiles, keys, host trust, settings, backups, and
 the auto-generated application secret disappear with the container.
 
+The repository Compose file also mounts `webssh_recovery` at `/app/recovery`.
+This separate durable volume stores online-restore rollback state and must not
+be nested below or shared with `/app/data`.
+
 ## Base homelab deployment
 
 ```bash
@@ -45,6 +49,13 @@ environment:
 When `SECRET_KEY` is not supplied, the container entrypoint creates a strong
 secret and persists it at `DATA_DIR/secret_key`. This makes ordinary container
 recreation safe as long as the data volume is preserved.
+
+If the container `DATA_DIR` is overridden, it must be absolute and that exact
+directory must be mounted persistently. Logs, keys, and `secret_key` all move
+together. If a legacy `/app/data/secret_key` exists, copy it to the new
+`DATA_DIR` with mode `0600` before starting; startup refuses to silently create
+a second encryption root. An explicitly supplied external `SECRET_KEY` still
+takes precedence and is not copied into the data directory.
 
 Provide an external secret only when the deployment has a deliberate secret
 management policy. A changed or lost `SECRET_KEY` invalidates browser sessions
@@ -87,6 +98,13 @@ docker compose up -d
 docker compose ps
 curl -fsS http://localhost:5000/ready
 ```
+
+If an earlier image already created the `webssh_recovery` volume with a
+root-owned `/app/recovery` and startup now reports `Permission denied`, stop the
+service before repairing it. An empty recovery volume may be removed and
+recreated by Compose. Never remove a non-empty recovery volume during or after
+an interrupted restore; preserve its contents and have an administrator change
+the volume root to the image's `appuser` UID/GID with mode `0700` instead.
 
 Record the currently deployed immutable image digest before replacing it:
 

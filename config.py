@@ -169,6 +169,89 @@ def _csv_env(name):
     )
 
 
+def parse_tailscale_ssh_target(raw_value):
+    """Return one canonical ``(host, port)`` Tailscale SSH policy entry."""
+    if not isinstance(raw_value, str):
+        raise ValueError('Tailscale SSH target must be text')
+    value = raw_value.strip()
+    if not value or len(value) > 261 or '%' in value:
+        raise ValueError('Invalid Tailscale SSH target')
+
+    host = value
+    port = 22
+    if value.startswith('['):
+        closing = value.find(']')
+        if closing < 0:
+            raise ValueError('Invalid bracketed Tailscale SSH target')
+        host = value[1:closing]
+        suffix = value[closing + 1:]
+        if suffix:
+            port_text = suffix[1:] if suffix.startswith(':') else ''
+            if (
+                not port_text
+                or len(port_text) > 5
+                or not port_text.isascii()
+                or not port_text.isdigit()
+            ):
+                raise ValueError('Invalid Tailscale SSH target port')
+            port = int(port_text)
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError(
+                'Bracketed Tailscale SSH targets must be IPv6 addresses'
+            ) from exc
+        if address.version != 6:
+            raise ValueError(
+                'Bracketed Tailscale SSH targets must be IPv6 addresses'
+            )
+        canonical_host = address.compressed
+    else:
+        if '[' in value or ']' in value:
+            raise ValueError('Invalid bracketed Tailscale SSH target')
+        if value.count(':') == 1:
+            possible_host, possible_port = value.rsplit(':', 1)
+            if (
+                possible_port
+                and len(possible_port) <= 5
+                and possible_port.isascii()
+                and possible_port.isdigit()
+            ):
+                host = possible_host
+                port = int(possible_port)
+
+        host = host.rstrip('.')
+        try:
+            canonical_host = ipaddress.ip_address(host).compressed
+        except ValueError:
+            if ':' in host:
+                raise ValueError('Invalid Tailscale SSH target')
+            try:
+                canonical_host = host.encode('idna').decode('ascii').lower()
+            except UnicodeError as exc:
+                raise ValueError('Invalid Tailscale SSH target') from exc
+            if (
+                not canonical_host
+                or len(canonical_host) > 253
+                or any(
+                    not label
+                    or len(label) > 63
+                    or label.startswith('-')
+                    or label.endswith('-')
+                    or not all(
+                        character.isalnum() or character == '-'
+                        for character in label
+                    )
+                    for label in canonical_host.split('.')
+                )
+            ):
+                raise ValueError('Invalid Tailscale SSH target')
+
+    if not 1 <= port <= 65535:
+        raise ValueError('Invalid Tailscale SSH target port')
+    return canonical_host, port
+
+
 LDAP_CONNECT_TIMEOUT = _bounded_int_env(
     'LDAP_CONNECT_TIMEOUT', 5, 1, 15
 )
@@ -223,6 +306,9 @@ BACKUP_TEMP_DIR = Path(os.environ.get(
     'BACKUP_TEMP_DIR',
     Path(tempfile.gettempdir()) / 'webssh-backup-operations',
 ))
+BACKUP_RECOVERY_DURABLE = (
+    os.environ.get('BACKUP_RECOVERY_DURABLE', 'false').lower() == 'true'
+)
 
 
 # Atomic, in-process resource quotas. Per-user defaults remain below their
@@ -351,6 +437,15 @@ MAX_UPLOAD_SIZE = 1024 * 1024 * 100
 MAX_EDITOR_FILE_SIZE = _positive_int_env(
     'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024
 )
+# Inline editor saves retain the per-file ceiling above and additionally share
+# a rolling per-user byte budget.  Four maximum-size saves per minute preserve
+# ordinary edit/save workflows while bounding aggregate encode and backend I/O.
+EDITOR_SAVE_BYTES_PER_MINUTE = _bounded_int_env(
+    'EDITOR_SAVE_BYTES_PER_MINUTE',
+    4 * MAX_EDITOR_FILE_SIZE,
+    MAX_EDITOR_FILE_SIZE,
+    64 * MAX_EDITOR_FILE_SIZE,
+)
 # Socket.IO now carries control events and bounded editor text only; bulk file
 # transfers use streaming HTTP routes. JSON can expand control characters to a
 # six-byte ``\uXXXX`` escape, so retain that worst-case expansion plus a small
@@ -417,6 +512,80 @@ COMMAND_CONFIG_MAX_BYTES = _bounded_int_env(
     16 * 1024 * 1024,
 )
 
+# Browser file-control messages share a transport with bounded editor content.
+# Keep their identifiers and paths small enough that one authenticated account
+# cannot turn the editor envelope into repeated response and log amplification.
+FILE_CONTROL_MAX_PATH_BYTES = _bounded_int_env(
+    'FILE_CONTROL_MAX_PATH_BYTES', 4096, 512, 16 * 1024
+)
+REMOTE_FILENAME_MAX_BYTES = _bounded_int_env(
+    'REMOTE_FILENAME_MAX_BYTES', 4096, 255, 16 * 1024
+)
+REMOTE_LISTING_MAX_METADATA_BYTES = _bounded_int_env(
+    'REMOTE_LISTING_MAX_METADATA_BYTES',
+    4 * 1024 * 1024,
+    64 * 1024,
+    16 * 1024 * 1024,
+)
+REMOTE_LISTING_PAGE_SIZE = _bounded_int_env(
+    'REMOTE_LISTING_PAGE_SIZE', 500, 50, 1000
+)
+REMOTE_LISTING_SNAPSHOT_TTL_SECONDS = _bounded_int_env(
+    'REMOTE_LISTING_SNAPSHOT_TTL_SECONDS', 60, 10, 300
+)
+REMOTE_LISTING_SNAPSHOT_MAX_STATES = _bounded_int_env(
+    'REMOTE_LISTING_SNAPSHOT_MAX_STATES', 8, 1, 64
+)
+REMOTE_LISTING_SNAPSHOT_MAX_PER_USER = _bounded_int_env(
+    'REMOTE_LISTING_SNAPSHOT_MAX_PER_USER', 4, 1, 8
+)
+SFTP_MAX_PACKET_BYTES = _bounded_int_env(
+    'SFTP_MAX_PACKET_BYTES', 1024 * 1024, 64 * 1024, 4 * 1024 * 1024
+)
+SFTP_MAX_HANDLE_BYTES = _bounded_int_env(
+    'SFTP_MAX_HANDLE_BYTES', 16 * 1024, 256, 64 * 1024
+)
+FILE_CONTROL_BYTES_PER_MINUTE = _bounded_int_env(
+    'FILE_CONTROL_BYTES_PER_MINUTE',
+    2 * 1024 * 1024,
+    64 * 1024,
+    16 * 1024 * 1024,
+)
+
+# Saved connection metadata lives beside the database and encrypted keys.
+# Prospective limits still allow deletion and shrinking of legacy oversized
+# stores so administrators can recover without hand-editing JSON files.
+PROFILE_MAX_RECORDS = _bounded_int_env(
+    'PROFILE_MAX_RECORDS', 500, 10, 2000
+)
+JUMP_HOST_MAX_RECORDS = _bounded_int_env(
+    'JUMP_HOST_MAX_RECORDS', 100, 10, 1000
+)
+CONNECTION_STORE_MAX_BYTES = _bounded_int_env(
+    'CONNECTION_STORE_MAX_BYTES',
+    2 * 1024 * 1024,
+    64 * 1024,
+    8 * 1024 * 1024,
+)
+CONNECTION_CONFIG_MAX_BYTES = _bounded_int_env(
+    'CONNECTION_CONFIG_MAX_BYTES',
+    4 * 1024 * 1024,
+    CONNECTION_STORE_MAX_BYTES,
+    16 * 1024 * 1024,
+)
+CONNECTION_STORE_RECOVERY_MAX_BYTES = _bounded_int_env(
+    'CONNECTION_STORE_RECOVERY_MAX_BYTES',
+    max(16 * 1024 * 1024, CONNECTION_STORE_MAX_BYTES),
+    CONNECTION_STORE_MAX_BYTES,
+    64 * 1024 * 1024,
+)
+CONNECTION_STORE_RECOVERY_MAX_RECORDS = _bounded_int_env(
+    'CONNECTION_STORE_RECOVERY_MAX_RECORDS',
+    max(10_000, PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS),
+    max(PROFILE_MAX_RECORDS, JUMP_HOST_MAX_RECORDS),
+    100_000,
+)
+
 # Admin panel: comma-separated usernames granted admin on startup.
 ADMIN_USERS = [u.strip() for u in os.environ.get('ADMIN_USERS', '').split(',') if u.strip()]
 ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
@@ -426,10 +595,11 @@ ADMIN_PANEL_ENABLED = os.environ.get('ADMIN_PANEL_ENABLED', 'True') == 'True'
 # unless the operator explicitly enables it and grants access to trusted users.
 TAILSCALE_SSH_ENABLED = os.environ.get('TAILSCALE_SSH_ENABLED', 'false').lower() == 'true'
 TAILSCALE_SSH_ALLOWED_WEBSSH_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_WEBSSH_USERS')
-TAILSCALE_SSH_ALLOWED_TARGETS = frozenset(
-    target.lower() for target in _csv_env('TAILSCALE_SSH_ALLOWED_TARGETS')
-)
+TAILSCALE_SSH_ALLOWED_TARGETS = _csv_env('TAILSCALE_SSH_ALLOWED_TARGETS')
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS = _csv_env('TAILSCALE_SSH_ALLOWED_REMOTE_USERS')
+TAILSCALE_SSH_INTERFACE = os.environ.get(
+    'TAILSCALE_SSH_INTERFACE', 'tailscale0'
+).strip()
 
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
@@ -588,6 +758,10 @@ RATELIMIT_COMMAND_MUTATION = os.environ.get(
     'COMMAND_MUTATION_RATELIMIT',
     '60 per minute',
 )
+RATELIMIT_CONNECTION_MUTATION = os.environ.get(
+    'CONNECTION_MUTATION_RATELIMIT',
+    '60 per minute',
+)
 
 REGISTRATION_ENABLED = os.environ.get(
     'REGISTRATION_ENABLED',
@@ -717,6 +891,17 @@ def validate_security_config():
         ):
             raise ValueError
         return canonical
+
+    tailscale_target_pairs = set()
+    malformed_tailscale_targets = False
+    if TAILSCALE_SSH_ENABLED:
+        for tailscale_target in TAILSCALE_SSH_ALLOWED_TARGETS:
+            try:
+                tailscale_target_pairs.add(
+                    parse_tailscale_ssh_target(tailscale_target)
+                )
+            except (TypeError, ValueError):
+                malformed_tailscale_targets = True
 
     if SMB_ENABLED and not SMB_ALLOWED_TARGETS:
         raise RuntimeError(
@@ -981,6 +1166,26 @@ def validate_security_config():
             )
         if not BLOCK_INTERNAL_SSH:
             violations.append('BLOCK_INTERNAL_SSH must be true')
+        if TAILSCALE_SSH_ENABLED:
+            if not TAILSCALE_SSH_ALLOWED_TARGETS:
+                violations.append(
+                    'TAILSCALE_SSH_ALLOWED_TARGETS must contain exact host and '
+                    'port entries when TAILSCALE_SSH_ENABLED is true'
+                )
+            elif malformed_tailscale_targets:
+                violations.append(
+                    'TAILSCALE_SSH_ALLOWED_TARGETS contains a malformed target'
+                )
+            elif not tailscale_target_pairs:
+                violations.append(
+                    'TAILSCALE_SSH_ALLOWED_TARGETS must contain at least one '
+                    'valid target'
+                )
+            if not TAILSCALE_SSH_INTERFACE:
+                violations.append(
+                    'TAILSCALE_SSH_INTERFACE must name the trusted Tailscale '
+                    'network interface'
+                )
         if not _trusted_proxies_explicit:
             violations.append(
                 'TRUSTED_PROXIES must be set explicitly, including 0 when '
@@ -1016,6 +1221,27 @@ def validate_security_config():
         warnings.append(
             'BLOCK_INTERNAL_SSH is disabled for the homelab profile'
         )
+    if TAILSCALE_SSH_ENABLED:
+        if not TAILSCALE_SSH_ALLOWED_TARGETS:
+            warnings.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS is empty; Tailscale SSH '
+                'connections fail closed in the homelab profile'
+            )
+        elif malformed_tailscale_targets:
+            warnings.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS contains malformed entries; '
+                'those entries are ignored in the homelab profile'
+            )
+        if TAILSCALE_SSH_ALLOWED_TARGETS and not tailscale_target_pairs:
+            warnings.append(
+                'TAILSCALE_SSH_ALLOWED_TARGETS contains no valid targets; '
+                'Tailscale SSH connections fail closed in the homelab profile'
+            )
+        if not TAILSCALE_SSH_INTERFACE:
+            warnings.append(
+                'TAILSCALE_SSH_INTERFACE is empty; Tailscale SSH connections '
+                'fail closed in the homelab profile'
+            )
     return warnings
 
 

@@ -1,5 +1,8 @@
 /* exported SessionManager */
 const SessionManager = {
+    legacyDisplayNameStorageKey: 'sessionDisplayNames',
+    displayNameStoragePrefix: 'sessionDisplayNames:',
+    activeDisplayNameScopeKey: 'sessionDisplayNames:activeScope',
     sessions: {},
     activeSessionId: null,
     pendingConnections: {},
@@ -12,6 +15,7 @@ const SessionManager = {
     ) ? document.body.dataset.disconnectSessionAction : 'retry',
 
     init() {
+        this.initializeDisplayNameStorage();
         if (window.socket) {
             window.socket.on('ssh_session_restored', (data) => {
                 this.restoreSession(data);
@@ -30,6 +34,56 @@ const SessionManager = {
             sessionBar.classList.remove('hidden');
         }
         this.updateSessionMeta(null);
+    },
+
+    displayNameScope() {
+        return String(document.body?.dataset.connectionHistoryScope || '').trim();
+    },
+
+    displayNameStorageKey() {
+        const scope = this.displayNameScope();
+        return scope ? `${this.displayNameStoragePrefix}${scope}` : null;
+    },
+
+    initializeDisplayNameStorage() {
+        try {
+            localStorage.removeItem(this.legacyDisplayNameStorageKey);
+            localStorage.removeItem(this.activeDisplayNameScopeKey);
+        } catch {
+            // Session aliases are optional when browser storage is unavailable.
+        }
+    },
+
+    readDisplayNames() {
+        const key = this.displayNameStorageKey();
+        if (!key) return {};
+        try {
+            const value = JSON.parse(localStorage.getItem(key) || '{}');
+            return value && typeof value === 'object' && !Array.isArray(value)
+                ? value
+                : {};
+        } catch {
+            return {};
+        }
+    },
+
+    writeDisplayNames(value) {
+        const key = this.displayNameStorageKey();
+        if (!key) return;
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+            console.error('Failed to save session display name');
+        }
+    },
+
+    clearScopedBrowserStorage() {
+        try {
+            localStorage.removeItem(this.legacyDisplayNameStorageKey);
+            localStorage.removeItem(this.activeDisplayNameScopeKey);
+        } catch {
+            // Logout must continue even when browser storage is unavailable.
+        }
     },
 
     restoreSession(data) {
@@ -114,12 +168,10 @@ const SessionManager = {
 
         // Save display name to localStorage by host:port:user key
         if (display_name) {
-            try {
-                const stored = JSON.parse(localStorage.getItem('sessionDisplayNames') || '{}');
-                const hostKey = `${host}:${port}:${username}`;
-                stored[hostKey] = display_name;
-                localStorage.setItem('sessionDisplayNames', JSON.stringify(stored));
-            } catch {}
+            const stored = this.readDisplayNames();
+            const hostKey = `${host}:${port}:${username}`;
+            stored[hostKey] = display_name;
+            this.writeDisplayNames(stored);
         }
 
         this.createSessionTab(session_id);
@@ -672,27 +724,22 @@ const SessionManager = {
 
     saveSessionDisplayName(sessionId, displayName) {
         const session = this.sessions[sessionId];
-        // Save to localStorage by session ID
-        try {
-            const stored = JSON.parse(localStorage.getItem('sessionDisplayNames') || '{}');
-            if (displayName) {
-                stored[sessionId] = displayName;
-            } else {
-                delete stored[sessionId];
-            }
-            // Also save by host:port:user key so it survives session ID changes
-            if (session) {
-                const hostKey = `${session.host}:${session.port}:${session.username}`;
-                if (displayName) {
-                    stored[hostKey] = displayName;
-                } else {
-                    delete stored[hostKey];
-                }
-            }
-            localStorage.setItem('sessionDisplayNames', JSON.stringify(stored));
-        } catch {
-            console.error('Failed to save session display name');
+        const stored = this.readDisplayNames();
+        if (displayName) {
+            stored[sessionId] = displayName;
+        } else {
+            delete stored[sessionId];
         }
+        // Also save by host:port:user key so it survives session ID changes.
+        if (session) {
+            const hostKey = `${session.host}:${session.port}:${session.username}`;
+            if (displayName) {
+                stored[hostKey] = displayName;
+            } else {
+                delete stored[hostKey];
+            }
+        }
+        this.writeDisplayNames(stored);
         // Save to server DB
         if (window.socket) {
             window.socket.emit('save_session_name', {
@@ -703,19 +750,15 @@ const SessionManager = {
     },
 
     getStoredDisplayName(sessionId, host, port, username) {
-        try {
-            const stored = JSON.parse(localStorage.getItem('sessionDisplayNames') || '{}');
-            // Check by session ID first
-            if (stored[sessionId]) return stored[sessionId];
-            // Check by host:port:user key (persists across session ID changes)
-            if (host && port && username) {
-                const hostKey = `${host}:${port}:${username}`;
-                if (stored[hostKey]) return stored[hostKey];
-            }
-            return null;
-        } catch {
-            return null;
+        const stored = this.readDisplayNames();
+        // Check by session ID first.
+        if (stored[sessionId]) return stored[sessionId];
+        // Check by host:port:user key (persists across session ID changes).
+        if (host && port && username) {
+            const hostKey = `${host}:${port}:${username}`;
+            if (stored[hostKey]) return stored[hostKey];
         }
+        return null;
     },
 
     updateSessionMeta(sessionId) {

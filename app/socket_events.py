@@ -1,5 +1,12 @@
-from flask_socketio import emit, join_room, disconnect
+from flask_socketio import (
+    ConnectionRefusedError,
+    disconnect,
+    emit,
+    join_room,
+)
 from flask import copy_current_request_context, request, current_app, url_for
+from contextlib import contextmanager
+from functools import wraps
 from . import (socketio, ssh_manager, profile_manager, key_manager,
                sftp_handler, jump_host_manager, post_connect_manager,
                session_insights, runtime_inventory, smb_share_manager)
@@ -26,6 +33,7 @@ from .tailscale_ssh import (
 )
 from .storage_errors import StorageCorruptionError
 from .command_storage_policy import CommandStorageLimitError
+from .connection_storage_policy import ConnectionStorageLimitError
 from .network_policy import canonicalize_hostname
 from .ssh_errors import connection_error_payload
 from . import binary_transfer, connection_pool
@@ -34,6 +42,10 @@ from .quota_manager import QuotaKind, quota_manager
 from .socket_capacity import socket_capacity
 from .ssh_input_budget import budget_from_config
 from .ssh_output_flow import ssh_output_flow
+from .socket_protocol import (
+    SOCKET_PROTOCOL_MISMATCH_EVENT,
+    SOCKET_WIRE_REVISION,
+)
 from .remote_transfer import (
     RemoteTransferCancelled,
     RemoteTransferError,
@@ -52,6 +64,7 @@ from .file_sources import (
 )
 from .file_service import file_service
 from .smb_diagnostics import smb_diagnostic_log_fields
+import hashlib
 import posixpath
 import re
 import secrets
@@ -66,12 +79,47 @@ STORAGE_ERROR_MESSAGE = (
 
 
 _SMB_REQUEST_ID = re.compile(r'[A-Za-z0-9:._-]{1,128}')
+_FILE_SOURCE_ID_MAX_BYTES = 160
+_FILE_CONTROL_SMALL_TEXT_MAX_BYTES = 128
+_FILE_CONTROL_PATH_FIELDS = frozenset({
+    'remote_path',
+    'path',
+    'old_path',
+    'new_path',
+    'source_path',
+    'dest_path',
+})
+_FILE_CONTROL_SOURCE_FIELDS = frozenset({
+    'source_id',
+    'destination_source_id',
+})
+_FILE_CONTROL_SMALL_FIELDS = frozenset({
+    'request_id',
+    'listing_request_id',
+    'transfer_id',
+    'expected_revision',
+    'direction',
+    'encoding',
+    'newline',
+    'replace_strategy',
+    'save_challenge',
+    'conflict_policy',
+})
+_FILE_CONTROL_CHECKED = object()
+_file_control_budgets = {}
+_editor_save_budgets = {}
+_editor_retry_challenges = {}
+_file_control_budget_lock = threading.Lock()
+_EDITOR_RETRY_CHALLENGE_TTL_SECONDS = 120.0
+_EDITOR_RETRY_CHALLENGE_MAX_STATES = 256
+_EDITOR_RETRY_CHALLENGE_MAX_PER_USER = 4
 _SMB_CONNECT_CODES = frozenset({
     'AUTHENTICATION_REQUIRED',
     'CONNECTION_FAILED',
     'CONNECT_CANCELLED',
     'DIALECT_REQUIRED',
     'ENCRYPTION_REQUIRED',
+    'IDENTITY_UNAVAILABLE',
     'INVALID_REQUEST',
     'PERMISSION_DENIED',
     'QUOTA_EXCEEDED',
@@ -81,6 +129,8 @@ _SMB_CONNECT_CODES = frozenset({
     'TARGET_NOT_ALLOWED',
     'TIMEOUT',
 })
+_ENGINEIO_REJECTION_DRAIN_SECONDS = 1.0
+_ENGINEIO_REJECTION_POLL_SECONDS = 0.01
 _smb_attempts_lock = threading.RLock()
 _smb_attempts = {}
 _ssh_banner_prompts_lock = threading.RLock()
@@ -137,10 +187,81 @@ def _cancel_smb_attempts_for_socket(user_id, socket_sid):
         handle.cancel()
 
 
-def _file_request_identity(payload):
+def _file_request_identity(
+    payload,
+    user_id=None,
+    *,
+    allow_editor_content=False,
+    editor_budget_exempt=False,
+):
+    if isinstance(payload, dict) and payload.get(
+        '_file_control_checked'
+    ) is not _FILE_CONTROL_CHECKED:
+        if user_id is None:
+            try:
+                socket_user = get_user_from_socket(request.sid)
+                user_id = socket_user.id if socket_user is not None else None
+            except Exception:
+                user_id = None
+        budget_now = time.monotonic()
+        reserved = user_id is not None and _consume_file_control_budget(
+            user_id, 256, now=budget_now
+        )
+        if not reserved:
+            _sanitize_file_control_payload(payload)
+            valid = False
+        else:
+            editor_body = (
+                allow_editor_content
+                and isinstance(payload.get('content'), str)
+            )
+            editor_reserved = (
+                not editor_body
+                or editor_budget_exempt
+                or _consume_editor_save_budget(
+                    user_id,
+                    1,
+                    now=budget_now,
+                )
+            )
+            if not editor_reserved:
+                _sanitize_file_control_payload(payload)
+                valid = False
+            else:
+                byte_count, editor_bytes = _file_control_payload_metrics(
+                    payload,
+                    allow_editor_content=allow_editor_content,
+                )
+                valid = _sanitize_file_control_payload(payload)
+                remainder = max(0, byte_count - 256)
+                if remainder and not _consume_file_control_budget(
+                    user_id,
+                    remainder,
+                    now=budget_now,
+                ):
+                    valid = False
+                if (
+                    editor_body
+                    and not editor_budget_exempt
+                    and editor_bytes is not None
+                    and editor_bytes > 1
+                    and not _consume_editor_save_budget(
+                        user_id,
+                        editor_bytes - 1,
+                        now=budget_now,
+                    )
+                ):
+                    valid = False
+        payload['_file_control_valid'] = valid
+        payload['_file_control_checked'] = _FILE_CONTROL_CHECKED
+    if isinstance(payload, dict) and not payload.get(
+        '_file_control_valid', False
+    ):
+        payload['source_id'] = None
     request_id = payload.get('request_id')
     if (
         not isinstance(request_id, str)
+        or len(request_id) > 128
         or not re.fullmatch(r'[A-Za-z0-9:._-]{1,128}', request_id)
     ):
         request_id = None
@@ -148,6 +269,333 @@ def _file_request_identity(payload):
         'source_id': payload.get('source_id'),
         'request_id': request_id,
     }
+
+
+def _utf8_text_within(value, maximum):
+    if not isinstance(value, str) or len(value) > maximum:
+        return False
+    try:
+        return len(value.encode('utf-8')) <= maximum
+    except UnicodeEncodeError:
+        return False
+
+
+def _bounded_utf8_size(value, maximum):
+    """Measure UTF-8 incrementally and stop before an oversized full copy."""
+    if not isinstance(value, str) or len(value) > maximum:
+        return None
+    size = 0
+    for offset in range(0, len(value), 4096):
+        try:
+            size += len(str(value[offset:offset + 4096]).encode('utf-8'))
+        except UnicodeEncodeError:
+            return None
+        if size > maximum:
+            return None
+    return size
+
+
+def _file_control_payload_metrics(payload, *, allow_editor_content=False):
+    """Bound all control metadata without reserializing the attacker payload.
+
+    Editor content is measured separately so it can retain its larger
+    legitimate per-file allowance without weakening the tighter metadata
+    bucket. Every other value, including unknown or nested fields, is charged
+    here so a caller cannot hide an editor-envelope-sized allocation behind a
+    harmless request.
+    """
+    maximum_charge = config.FILE_CONTROL_BYTES_PER_MINUTE + 1
+    cost = 0
+    editor_bytes = 0
+    stack = [(payload, 0, False)]
+    visited = 0
+    while stack:
+        value, depth, editor_content = stack.pop()
+        visited += 1
+        if visited > 1024 or depth > 8:
+            return maximum_charge, None
+        if editor_content:
+            size = _bounded_utf8_size(
+                value,
+                config.MAX_EDITOR_FILE_SIZE,
+            )
+            if size is None:
+                return maximum_charge, None
+            editor_bytes += size
+            continue
+        if isinstance(value, dict):
+            if len(value) > 1024:
+                return maximum_charge, None
+            for key, item in value.items():
+                if not isinstance(key, str) or len(key) > 256:
+                    return maximum_charge, None
+                try:
+                    cost += len(key.encode('utf-8'))
+                except UnicodeEncodeError:
+                    return maximum_charge, None
+                stack.append((
+                    item,
+                    depth + 1,
+                    allow_editor_content
+                    and depth == 0
+                    and key == 'content'
+                    and isinstance(item, str),
+                ))
+        elif isinstance(value, (list, tuple)):
+            if len(value) > 1024:
+                return maximum_charge, None
+            for item in value:
+                stack.append((item, depth + 1, False))
+        elif isinstance(value, str):
+            size = _bounded_utf8_size(
+                value,
+                max(0, config.FILE_CONTROL_BYTES_PER_MINUTE - cost),
+            )
+            if size is None:
+                return maximum_charge, None
+            cost += size
+        elif isinstance(value, (bytes, bytearray, memoryview)):
+            cost += len(value)
+        else:
+            # JSON scalars and unexpected objects still consume parser and
+            # object memory; use a small conservative accounting charge.
+            cost += 16
+        if cost > config.FILE_CONTROL_BYTES_PER_MINUTE:
+            return maximum_charge, None
+    # A conservative floor also bounds CPU/event amplification independently
+    # of how little metadata a syntactically empty request carries.
+    return max(256, cost), editor_bytes
+
+
+def _file_control_payload_cost(payload, *, allow_editor_content=False):
+    """Compatibility wrapper returning the metadata charge only."""
+    cost, _editor_bytes = _file_control_payload_metrics(
+        payload,
+        allow_editor_content=allow_editor_content,
+    )
+    return cost
+
+
+def _consume_file_control_budget(user_id, byte_count, now=None):
+    """Apply a constant-memory per-user token bucket to control metadata."""
+    current = time.monotonic() if now is None else float(now)
+    key = int(user_id)
+    capacity = config.FILE_CONTROL_BYTES_PER_MINUTE
+    with _file_control_budget_lock:
+        available, updated_at = _file_control_budgets.get(
+            key,
+            (float(capacity), current),
+        )
+        elapsed = max(0.0, current - updated_at)
+        available = min(
+            float(capacity),
+            available + (elapsed * capacity / 60.0),
+        )
+        if byte_count > capacity or byte_count > available:
+            # Oversized attempts exhaust the bucket too; otherwise an attacker
+            # could repeat rejected editor-envelope allocations for free.
+            _file_control_budgets[key] = (0.0, current)
+            return False
+        _file_control_budgets[key] = (available - byte_count, current)
+        return True
+
+
+def _consume_editor_save_budget(user_id, byte_count, now=None):
+    """Charge accepted editor bodies against an exact per-user byte bucket."""
+    current = time.monotonic() if now is None else float(now)
+    key = int(user_id)
+    capacity = config.EDITOR_SAVE_BYTES_PER_MINUTE
+    with _file_control_budget_lock:
+        available, updated_at = _editor_save_budgets.get(
+            key,
+            (float(capacity), current),
+        )
+        elapsed = max(0.0, current - updated_at)
+        available = min(
+            float(capacity),
+            available + (elapsed * capacity / 60.0),
+        )
+        if byte_count > capacity or byte_count > available:
+            _editor_save_budgets[key] = (0.0, current)
+            return False
+        _editor_save_budgets[key] = (available - byte_count, current)
+        return True
+
+
+def _current_socket_sid():
+    try:
+        socket_sid = request.sid
+    except (AttributeError, RuntimeError):
+        return ''
+    return socket_sid if isinstance(socket_sid, str) else ''
+
+
+def _editor_retry_fingerprint(payload, user_id, socket_sid):
+    """Build a bounded identity for one exact editor body and destination."""
+    if not isinstance(payload, dict):
+        return None
+    source_id = payload.get('source_id')
+    path = payload.get('path')
+    content = payload.get('content')
+    encoding = payload.get('encoding', 'utf-8')
+    newline = payload.get('newline', 'lf')
+    expected_revision = payload.get('expected_revision')
+    if (
+        not _utf8_text_within(source_id, _FILE_SOURCE_ID_MAX_BYTES)
+        or not _utf8_text_within(
+            path,
+            config.FILE_CONTROL_MAX_PATH_BYTES,
+        )
+        or not _utf8_text_within(
+            encoding,
+            _FILE_CONTROL_SMALL_TEXT_MAX_BYTES,
+        )
+        or not _utf8_text_within(
+            newline,
+            _FILE_CONTROL_SMALL_TEXT_MAX_BYTES,
+        )
+        or (
+            expected_revision is not None
+            and not _utf8_text_within(
+                expected_revision,
+                _FILE_CONTROL_SMALL_TEXT_MAX_BYTES,
+            )
+        )
+        or not isinstance(content, str)
+        or len(content) > config.MAX_EDITOR_FILE_SIZE
+    ):
+        return None
+
+    digest = hashlib.sha256()
+    byte_count = 0
+    for offset in range(0, len(content), 4096):
+        try:
+            encoded = content[offset:offset + 4096].encode('utf-8')
+        except UnicodeEncodeError:
+            return None
+        byte_count += len(encoded)
+        if byte_count > config.MAX_EDITOR_FILE_SIZE:
+            return None
+        digest.update(encoded)
+    return (
+        int(user_id),
+        socket_sid,
+        source_id,
+        path,
+        encoding,
+        newline,
+        expected_revision,
+        byte_count,
+        digest.hexdigest(),
+    )
+
+
+def _prune_editor_retry_challenges_locked(now):
+    for token, state in tuple(_editor_retry_challenges.items()):
+        if state['expires_at'] <= now:
+            _editor_retry_challenges.pop(token, None)
+
+
+def _issue_editor_retry_challenge(payload, user_id, socket_sid=None):
+    """Authorize one same-body recoverable retry without a second byte charge."""
+    socket_sid = _current_socket_sid() if socket_sid is None else socket_sid
+    fingerprint = _editor_retry_fingerprint(payload, user_id, socket_sid)
+    if fingerprint is None:
+        return None
+    now = time.monotonic()
+    with _file_control_budget_lock:
+        _prune_editor_retry_challenges_locked(now)
+        owned = [
+            (state['issued_at'], token)
+            for token, state in _editor_retry_challenges.items()
+            if state['fingerprint'][0] == int(user_id)
+        ]
+        while len(owned) >= _EDITOR_RETRY_CHALLENGE_MAX_PER_USER:
+            _issued_at, oldest = min(owned)
+            _editor_retry_challenges.pop(oldest, None)
+            owned = [entry for entry in owned if entry[1] != oldest]
+        while (
+            len(_editor_retry_challenges)
+            >= _EDITOR_RETRY_CHALLENGE_MAX_STATES
+        ):
+            oldest = min(
+                _editor_retry_challenges,
+                key=lambda token: _editor_retry_challenges[token]['issued_at'],
+            )
+            _editor_retry_challenges.pop(oldest, None)
+        token = secrets.token_urlsafe(32)
+        while token in _editor_retry_challenges:
+            token = secrets.token_urlsafe(32)
+        _editor_retry_challenges[token] = {
+            'fingerprint': fingerprint,
+            'user_id': int(user_id),
+            'socket_sid': socket_sid,
+            'issued_at': now,
+            'expires_at': now + _EDITOR_RETRY_CHALLENGE_TTL_SECONDS,
+        }
+        return token
+
+
+def _consume_editor_retry_challenge(payload, user_id, socket_sid=None):
+    """Consume a valid challenge exactly once and bind it to the same save."""
+    if (
+        not isinstance(payload, dict)
+        or payload.get('replace_strategy') != 'recoverable_swap'
+    ):
+        return False
+    token = payload.get('save_challenge')
+    if (
+        not isinstance(token, str)
+        or re.fullmatch(r'[A-Za-z0-9_-]{32,64}', token) is None
+    ):
+        return False
+    socket_sid = _current_socket_sid() if socket_sid is None else socket_sid
+    now = time.monotonic()
+    with _file_control_budget_lock:
+        _prune_editor_retry_challenges_locked(now)
+        state = _editor_retry_challenges.get(token)
+        if (
+            state is None
+            or state['expires_at'] <= now
+            or state['user_id'] != int(user_id)
+            or state['socket_sid'] != socket_sid
+        ):
+            return False
+        # Claim the unguessable, coarsely bound token before doing any
+        # body-sized work.  Invalid/replayed tokens therefore reach the normal
+        # metadata/editor budget gates without hashing their content first,
+        # while concurrent replays cannot both receive an exemption.
+        _editor_retry_challenges.pop(token, None)
+    fingerprint = _editor_retry_fingerprint(payload, user_id, socket_sid)
+    return (
+        fingerprint is not None
+        and state['fingerprint'] == fingerprint
+    )
+
+
+def _sanitize_file_control_payload(payload):
+    """Bound file-control metadata before it is copied, logged, or emitted."""
+    if not isinstance(payload, dict):
+        return False
+    invalid = False
+    limits = (
+        (_FILE_CONTROL_PATH_FIELDS, config.FILE_CONTROL_MAX_PATH_BYTES),
+        (_FILE_CONTROL_SOURCE_FIELDS, _FILE_SOURCE_ID_MAX_BYTES),
+        (_FILE_CONTROL_SMALL_FIELDS, _FILE_CONTROL_SMALL_TEXT_MAX_BYTES),
+    )
+    for fields, maximum in limits:
+        for field in fields:
+            if field not in payload or payload[field] is None:
+                continue
+            if not _utf8_text_within(payload[field], maximum):
+                payload[field] = None
+                invalid = True
+    if invalid:
+        # Every file handler already rejects a missing source ID before backend
+        # resolution. Clearing it also prevents exception paths from reflecting
+        # any other invalid control field.
+        payload['source_id'] = None
+    return not invalid
 
 
 def _file_request_source_id(payload, user_id):
@@ -159,6 +607,24 @@ def _file_request_source_id(payload, user_id):
 
 def _valid_file_request(identity):
     return bool(identity.get('source_id') and identity.get('request_id'))
+
+
+def _valid_directory_cursor(cursor):
+    return (
+        cursor == 0
+        or (
+            isinstance(cursor, str)
+            and 1 <= len(cursor) <= 160
+            and re.fullmatch(r'[A-Za-z0-9._-]+', cursor) is not None
+        )
+    )
+
+
+def _valid_directory_request_id(request_id):
+    return (
+        isinstance(request_id, str)
+        and _SMB_REQUEST_ID.fullmatch(request_id) is not None
+    )
 
 
 def _public_file_source(source_id, user_id):
@@ -318,9 +784,323 @@ def _validate_ssh_params(host, port, username, allow_internal=False):
 
     return canonicalize_hostname(host), port, username, None
 
+
+def _socket_wire_revision(auth):
+    if not isinstance(auth, dict):
+        return None
+    revision = auth.get('wire_revision')
+    return revision if type(revision) is int else None
+
+
+def _engineio_transport_is_admitted(user):
+    """Bind the Socket.IO namespace identity to its admitted transport."""
+    engineio_sid = socketio.server.manager.eio_sid_from_sid(request.sid, '/')
+    if engineio_sid is None:
+        return False
+    if engineio_sid not in socketio.server.eio.sockets:
+        # Flask-SocketIO's in-process test client bypasses Engine.IO and has no
+        # transport to retain. Keep that test-only adapter compatible, while a
+        # missing transport in a serving process remains a fail-closed state.
+        return bool(current_app.testing)
+    capacity = current_app.extensions.get('engineio_socket_capacity')
+    return (
+        capacity is not None
+        and capacity.owner(engineio_sid) == int(user.id)
+        and not capacity.is_terminal(engineio_sid)
+    )
+
+
+@contextmanager
+def _engineio_namespace_admission_guard(user):
+    """Linearize namespace initialization against transport revocation."""
+    engineio_sid = socketio.server.manager.eio_sid_from_sid(request.sid, '/')
+    if engineio_sid is None:
+        yield False
+        return
+    engineio_socket = socketio.server.eio.sockets.get(engineio_sid)
+    if engineio_socket is None:
+        # The in-process Flask-SocketIO test adapter has no Engine.IO socket.
+        yield bool(current_app.testing)
+        return
+    capacity = current_app.extensions.get('engineio_socket_capacity')
+    if capacity is None:
+        yield False
+        return
+    with capacity.admission_guard(engineio_sid, user.id) as admitted:
+        yield (
+            admitted
+            and socketio.server.eio.sockets.get(engineio_sid)
+            is engineio_socket
+        )
+
+
+def _engineio_cleanup_context(
+    server=None,
+    namespace_sid=None,
+    *,
+    engineio_sid=None,
+):
+    """Capture one exact transport before its namespace mapping is removed."""
+    server = socketio.server if server is None else server
+    manager = getattr(server, 'manager', None)
+    engineio_server = getattr(server, 'eio', None)
+    if manager is None or engineio_server is None:
+        return None
+    if engineio_sid is None:
+        if namespace_sid is None:
+            try:
+                namespace_sid = request.sid
+            except (AttributeError, RuntimeError):
+                return None
+        try:
+            engineio_sid = manager.eio_sid_from_sid(namespace_sid, '/')
+        except Exception:
+            return None
+    if engineio_sid is None:
+        return None
+    engineio_socket = engineio_server.sockets.get(engineio_sid)
+    capacity = getattr(engineio_server, '_webssh_socket_capacity', None)
+    if capacity is None:
+        try:
+            capacity = current_app.extensions.get('engineio_socket_capacity')
+        except RuntimeError:
+            capacity = None
+    if engineio_socket is None or capacity is None:
+        return None
+    owner_id = capacity.owner(engineio_sid)
+    if owner_id is None:
+        return None
+    return (
+        server,
+        manager,
+        engineio_server,
+        engineio_sid,
+        engineio_socket,
+        capacity,
+        owner_id,
+    )
+
+
+def _terminalize_engineio_cleanup(cleanup_context):
+    if cleanup_context is None:
+        return False
+    _server, _manager, _eio, engineio_sid, _socket, capacity, owner_id = (
+        cleanup_context
+    )
+    return capacity.mark_terminal(engineio_sid) == owner_id
+
+
+def _abort_exact_engineio_transport(cleanup_context):
+    """Abort only the captured socket and idempotently release its slot."""
+    (
+        _server,
+        _manager,
+        engineio_server,
+        engineio_sid,
+        engineio_socket,
+        capacity,
+        owner_id,
+    ) = cleanup_context
+    if capacity.owner(engineio_sid) != owner_id:
+        return
+    current_socket = engineio_server.sockets.get(engineio_sid)
+    if current_socket is None:
+        capacity.release(engineio_sid)
+        return
+    if current_socket is not engineio_socket:
+        return
+    try:
+        engineio_socket.close(
+            wait=False,
+            abort=True,
+            reason=engineio_server.reason.SERVER_DISCONNECT,
+        )
+    except Exception:
+        pass
+    finally:
+        if engineio_server.sockets.get(engineio_sid) is engineio_socket:
+            engineio_server.sockets.pop(engineio_sid, None)
+        capacity.release(engineio_sid)
+
+
+def _schedule_engineio_cleanup(cleanup_context, *, drain=True):
+    """Drain queued advisories briefly, then release a terminal transport."""
+    if cleanup_context is None:
+        return
+    (
+        _server,
+        manager,
+        engineio_server,
+        engineio_sid,
+        engineio_socket,
+        _capacity,
+        _owner_id,
+    ) = cleanup_context
+
+    def close_after_drain():
+        initialization_done = getattr(
+            engineio_socket,
+            '_webssh_initialization_done',
+            None,
+        )
+        while (
+            initialization_done is not None
+            and not initialization_done.is_set()
+            and not getattr(engineio_socket, 'connected', False)
+            and engineio_server.sockets.get(engineio_sid) is engineio_socket
+        ):
+            try:
+                engineio_server.sleep(_ENGINEIO_REJECTION_POLL_SECONDS)
+            except Exception:
+                time.sleep(_ENGINEIO_REJECTION_POLL_SECONDS)
+        if drain:
+            deadline = time.monotonic() + _ENGINEIO_REJECTION_DRAIN_SECONDS
+            while time.monotonic() < deadline:
+                try:
+                    namespace_gone = manager.sid_from_eio_sid(
+                        engineio_sid,
+                        '/',
+                    ) is None
+                except Exception:
+                    namespace_gone = False
+                try:
+                    queue_empty = engineio_socket.queue.empty()
+                except Exception:
+                    queue_empty = False
+                if namespace_gone and queue_empty:
+                    break
+                try:
+                    engineio_server.sleep(_ENGINEIO_REJECTION_POLL_SECONDS)
+                except Exception:
+                    time.sleep(_ENGINEIO_REJECTION_POLL_SECONDS)
+        _abort_exact_engineio_transport(cleanup_context)
+
+    try:
+        engineio_server.start_background_task(close_after_drain)
+    except Exception:
+        initialization_done = getattr(
+            engineio_socket,
+            '_webssh_initialization_done',
+            None,
+        )
+        initialization_owns_socket = (
+            initialization_done is not None
+            and not initialization_done.is_set()
+            and not getattr(engineio_socket, 'connected', False)
+            and engineio_server.sockets.get(engineio_sid) is engineio_socket
+        )
+        if initialization_owns_socket:
+            # Never remove a socket while Engine.IO's _handle_connect frame
+            # still owns its unconditional rejection cleanup. The configured
+            # runtime is threading, so retain the same asynchronous guarantee
+            # even if Engine.IO's task helper itself fails.
+            try:
+                threading.Thread(
+                    target=close_after_drain,
+                    name='webssh-engineio-cleanup',
+                    daemon=True,
+                ).start()
+            except Exception:
+                # The terminal reservation still prevents namespace binding.
+                # Popping here would race Engine.IO and turn a clean 401 into
+                # a server-side KeyError.
+                return
+        else:
+            # Scheduling failure on an initialized socket is safe to complete
+            # synchronously and must not retain its capacity slot.
+            _abort_exact_engineio_transport(cleanup_context)
+
+
+def disconnect_socket_transport(server, namespace_sid, *, drain=True):
+    """Disconnect a namespace and retire its exact Engine.IO transport."""
+    if server is None:
+        return False
+    cleanup_context = _engineio_cleanup_context(server, namespace_sid)
+    terminalized = _terminalize_engineio_cleanup(cleanup_context)
+    try:
+        server.disconnect(namespace_sid, namespace='/')
+    finally:
+        if terminalized:
+            _schedule_engineio_cleanup(cleanup_context, drain=drain)
+    return True
+
+
+def disconnect_engineio_transport(server, engineio_sid, *, drain=False):
+    """Retire an admitted transport even before a namespace is connected."""
+    if server is None:
+        return False
+    cleanup_context = _engineio_cleanup_context(
+        server,
+        engineio_sid=engineio_sid,
+    )
+    if not _terminalize_engineio_cleanup(cleanup_context):
+        return False
+    _server, manager, _eio, captured_sid, *_rest = cleanup_context
+    try:
+        try:
+            namespace_sid = manager.sid_from_eio_sid(captured_sid, '/')
+        except Exception:
+            namespace_sid = None
+        if namespace_sid is not None:
+            server.disconnect(namespace_sid, namespace='/')
+    finally:
+        _schedule_engineio_cleanup(
+            cleanup_context,
+            drain=drain and namespace_sid is not None,
+        )
+    return True
+
+
+def _close_transport_after_rejected_connect(handler):
+    """Ensure every unsuccessful namespace connect releases Engine.IO."""
+    @wraps(handler)
+    def wrapped(*args, **kwargs):
+        cleanup_context = _engineio_cleanup_context()
+        accepted = False
+        try:
+            result = handler(*args, **kwargs)
+            accepted = result is not False
+            return result
+        finally:
+            if not accepted:
+                if _terminalize_engineio_cleanup(cleanup_context):
+                    _schedule_engineio_cleanup(cleanup_context)
+
+    return wrapped
+
+
+def _reject_socket_protocol_mismatch(auth, user):
+    received_revision = _socket_wire_revision(auth)
+    message = 'WebSSH was updated. Reload this page to continue.'
+    mismatch_payload = {
+        'status': 'reload_required',
+        'code': SOCKET_PROTOCOL_MISMATCH_EVENT,
+        'message': message,
+        'required_revision': SOCKET_WIRE_REVISION,
+    }
+    if received_revision is not None:
+        mismatch_payload['received_revision'] = received_revision
+    socket_sid = request.sid
+    log_warning(
+        'Socket wire revision mismatch',
+        user=user.username,
+        sid=socket_sid,
+        received_revision=received_revision,
+        required_revision=SOCKET_WIRE_REVISION,
+    )
+    raise ConnectionRefusedError(message, mismatch_payload)
+
+
 @socketio.on('connect')
-def handle_connect():
+@_close_transport_after_rejected_connect
+def handle_connect(auth=None):
     """Handle client connection - authenticate and restore sessions."""
+    from .maintenance_mode import is_active
+
+    if is_active():
+        emit('connected', {'status': 'unavailable'})
+        return False
+
     from flask import session as flask_session
 
     user_id = flask_session.get('_user_id')
@@ -343,6 +1123,19 @@ def handle_connect():
         disconnect()
         return False
 
+    if user.is_ldap_managed:
+        from .ldap_session import ldap_revocation_pending
+
+        if ldap_revocation_pending(current_app, user.id):
+            log_warning(
+                'Socket connection rejected by pending LDAP revocation',
+                user_id=user.id,
+                sid=request.sid,
+            )
+            emit('connected', {'status': 'unauthenticated'})
+            disconnect()
+            return False
+
     from .auth_assurance import (
         current_authentication_session,
         recovery_session_required,
@@ -358,43 +1151,72 @@ def handle_connect():
         disconnect()
         return False
 
+    if _socket_wire_revision(auth) != SOCKET_WIRE_REVISION:
+        return _reject_socket_protocol_mismatch(auth, user)
+
     socket_sid = request.sid
-    if not socket_capacity.reserve(
-        user.id,
-        socket_sid,
-        config.MAX_SOCKET_CONNECTIONS,
-        config.MAX_SOCKET_CONNECTIONS_PER_USER,
-    ):
-        log_warning(
-            'Socket connection capacity reached',
-            user_id=user.id,
-            sid=socket_sid,
-        )
-        emit('connected', {'status': 'unavailable'})
-        disconnect()
-        return False
+    with _engineio_namespace_admission_guard(user) as admitted:
+        if not admitted or not _engineio_transport_is_admitted(user):
+            log_warning(
+                'Socket connection rejected without transport admission',
+                user_id=user.id,
+                sid=socket_sid,
+            )
+            return False
 
-    ssh_output_flow.register_socket(socket_sid)
+        if not socket_capacity.reserve(
+            user.id,
+            socket_sid,
+            config.MAX_SOCKET_CONNECTIONS,
+            config.MAX_SOCKET_CONNECTIONS_PER_USER,
+        ):
+            log_warning(
+                'Socket connection capacity reached',
+                user_id=user.id,
+                sid=socket_sid,
+            )
+            emit('connected', {'status': 'unavailable'})
+            disconnect()
+            return False
 
-    user_agent = request.headers.get('User-Agent', '')
-    try:
-        register_socket_session(user.id, socket_sid, user_agent)
-    except Exception:
-        ssh_output_flow.release_socket(socket_sid)
-        socket_capacity.release(socket_sid)
-        raise
+        ssh_output_flow.register_socket(socket_sid)
+        user_agent = request.headers.get('User-Agent', '')
+        try:
+            register_socket_session(user.id, socket_sid, user_agent)
+            room = f'user_{user.id}'
+            join_room(room)
 
-    room = f'user_{user.id}'
-    join_room(room)
-
-    log_info(f"Client connected: {user.username}", user=user.username, sid=socket_sid)
-
-    restore_user_sessions(user.id, socket_sid)
-
-    emit('connected', {
-        'status': 'success',
-        'username': user.username
-    })
+            log_info(
+                f"Client connected: {user.username}",
+                user=user.username,
+                sid=socket_sid,
+            )
+            restore_user_sessions(user.id, socket_sid)
+            emit('connected', {
+                'status': 'success',
+                'username': user.username,
+                'wire_revision': SOCKET_WIRE_REVISION,
+            })
+        except BaseException:
+            ssh_output_flow.release_socket(socket_sid)
+            socket_capacity.release(socket_sid)
+            try:
+                SocketSession.query.filter_by(
+                    socket_sid=socket_sid,
+                ).delete(synchronize_session=False)
+                db.session.commit()
+            except BaseException as cleanup_error:
+                try:
+                    db.session.rollback()
+                except BaseException:
+                    pass
+                log_error(
+                    'Socket connect rollback failed',
+                    user_id=user.id,
+                    sid=socket_sid,
+                    exception_type=type(cleanup_error).__name__,
+                )
+            raise
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -434,6 +1256,11 @@ def handle_disconnect():
                 user_id=user_id,
                 exception_type=type(error).__name__,
             )
+
+        file_service.discard_directory_snapshots(
+            user_id=user_id,
+            client_id=socket_sid,
+        )
 
         # The process-local capacity registry is authoritative for this
         # single-worker runtime and remains available if persistent socket
@@ -680,6 +1507,10 @@ def handle_ssh_connect(data, current_user=None):
             if live_jump_host.get('auth_type') == 'password':
                 proxy_jump['password'] = runtime_password
 
+        if auth_type == 'tailscale' and proxy_jump:
+            emit_error('Tailscale SSH cannot be used with a jump host')
+            return
+
         # Preserve precise missing-reference errors without running PBKDF2 or
         # decrypting attacker-selected stored keys before the attempt budget.
         if (
@@ -749,6 +1580,7 @@ def handle_ssh_connect(data, current_user=None):
                     current_user,
                     host,
                     username,
+                    port=port,
                 )
             )
             log_tailscale_ssh_usage(
@@ -1177,20 +2009,31 @@ def handle_ssh_disconnect(data, current_user=None):
     except Exception:
         emit('ssh_error', {'error': 'Disconnect failed'})
 
+
+def _public_profile(current_user, stored_profile):
+    """Return a response copy with authorization derived from live policy."""
+    profile = dict(stored_profile)
+    profile.pop('tailscale_authorized', None)
+    if profile.get('auth_type') == 'tailscale':
+        profile['tailscale_authorized'] = profile_is_authorized_for_launch(
+            current_user,
+            profile,
+        )
+    return profile
+
+
 @socketio.on('list_profiles')
 @socket_login_required
 def handle_list_profiles(current_user=None):
     """Return list of saved connection profiles for this user."""
     try:
-        profiles = []
-        for stored_profile in profile_manager.load_profiles(current_user.id):
-            profile = dict(stored_profile)
-            if profile.get('auth_type') == 'tailscale':
-                profile['tailscale_authorized'] = (
-                    profile_is_authorized_for_launch(current_user, profile)
-                )
-            profiles.append(profile)
+        profiles = [
+            _public_profile(current_user, stored_profile)
+            for stored_profile in profile_manager.load_profiles(current_user.id)
+        ]
         emit('profiles_list', {'profiles': profiles})
+    except ConnectionStorageLimitError as error:
+        return _command_set_error(str(error))
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1202,13 +2045,22 @@ def handle_list_profiles(current_user=None):
 def handle_save_profile(data, current_user=None):
     """Create or update a connection profile without starting SSH."""
     try:
-        data = data if isinstance(data, dict) else {}
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = dict(data) if isinstance(data, dict) else {}
+        data.pop('tailscale_authorized', None)
         auth_type = data.get('auth_type')
         host = data.get('host')
         username = data.get('username')
 
         if auth_type == 'tailscale':
-            access_error = validate_tailscale_ssh_access(current_user, host, username)
+            access_error = validate_tailscale_ssh_access(
+                current_user,
+                host,
+                username,
+                port=data.get('port', 22),
+            )
             if access_error:
                 emit('error', {'error': access_error})
                 return {'success': False, 'error': access_error}
@@ -1219,9 +2071,9 @@ def handle_save_profile(data, current_user=None):
             emit('error', {'error': error})
             return {'success': False, 'error': error}
         else:
-            payload = {'success': True, 'profile': profile}
+            response_profile = _public_profile(current_user, profile)
+            payload = {'success': True, 'profile': response_profile}
             emit('profile_saved', payload)
-            handle_list_profiles(current_user=current_user)
             return payload
 
     except StorageCorruptionError as error:
@@ -1236,6 +2088,10 @@ def handle_save_profile(data, current_user=None):
 def handle_delete_profile(data, current_user=None):
     """Delete a connection profile for this user."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
         profile_id = data.get('profile_id')
         if not profile_id:
             emit('error', {'error': 'Profile ID required'})
@@ -1246,7 +2102,6 @@ def handle_delete_profile(data, current_user=None):
             return _command_set_error(error)
         payload = {'success': True, 'profile_id': profile_id}
         emit('profile_deleted', payload)
-        handle_list_profiles(current_user=current_user)
         return payload
 
     except StorageCorruptionError as storage_error:
@@ -1261,6 +2116,9 @@ def handle_delete_profile(data, current_user=None):
 def handle_update_profile_organization(data, current_user=None):
     """Update grouping metadata without resubmitting connection secrets."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
         data = data if isinstance(data, dict) else {}
         profile_id = data.get('profile_id')
         if not isinstance(profile_id, str) or not profile_id:
@@ -1277,9 +2135,11 @@ def handle_update_profile_organization(data, current_user=None):
         )
         if error:
             return {'success': False, 'error': error}
-        payload = {'success': True, 'profile': profile}
+        payload = {
+            'success': True,
+            'profile': _public_profile(current_user, profile),
+        }
         emit('profile_organization_updated', payload)
-        handle_list_profiles(current_user=current_user)
         return payload
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
@@ -1296,6 +2156,9 @@ def handle_update_profile_organization(data, current_user=None):
 def handle_move_profile(data, current_user=None):
     """Move one profile atomically within the user's flat group structure."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
         data = data if isinstance(data, dict) else {}
         profile_id = data.get('profile_id')
         if not isinstance(profile_id, str) or not profile_id:
@@ -1329,17 +2192,51 @@ def handle_move_profile(data, current_user=None):
             confirm_source_group_removal=confirmed,
         )
         if error:
+            organization = [
+                {
+                    'id': profile.get('id'),
+                    'group': profile.get('group', ''),
+                    'sort_order': profile.get('sort_order', 0),
+                }
+                for profile in (result or {}).get('profiles', ())
+                if isinstance(profile.get('id'), str)
+            ]
             return {
                 'success': False,
                 'error': error,
-                **(result or {}),
+                'requires_confirmation': bool(
+                    (result or {}).get('requires_confirmation')
+                ),
+                'organization': organization,
             }
         if result.get('requires_confirmation'):
-            return {'success': False, **result}
+            return {
+                'success': False,
+                'requires_confirmation': True,
+                'profile_id': result.get('profile_id'),
+                'profile_name': result.get('profile_name', ''),
+                'source_group': result.get('source_group', ''),
+            }
 
-        payload = {'success': True, **result}
+        organization = [
+            {
+                'id': profile.get('id'),
+                'group': profile.get('group', ''),
+                'sort_order': profile.get('sort_order', 0),
+                **(
+                    {'updated_at': profile['updated_at']}
+                    if 'updated_at' in profile else {}
+                ),
+            }
+            for profile in result.get('profiles', ())
+            if isinstance(profile.get('id'), str)
+        ]
+        payload = {
+            'success': True,
+            'requires_confirmation': False,
+            'organization': organization,
+        }
         emit('profile_organization_updated', payload)
-        handle_list_profiles(current_user=current_user)
         return payload
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
@@ -1353,6 +2250,8 @@ def handle_list_jump_hosts(current_user=None):
     """Return list of saved jump hosts for this user."""
     try:
         emit('jump_hosts_list', {'jump_hosts': jump_host_manager.load_jump_hosts(current_user.id)})
+    except ConnectionStorageLimitError as error:
+        return _command_set_error(str(error))
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1364,6 +2263,10 @@ def handle_list_jump_hosts(current_user=None):
 def handle_save_jump_host(data, current_user=None):
     """Save a new jump host (bastion) for this user. Never stores a password."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
         jump_host, error = jump_host_manager.add_jump_host(
             user_id=current_user.id,
             name=data.get('name'),
@@ -1374,10 +2277,11 @@ def handle_save_jump_host(data, current_user=None):
             key_id=data.get('key_id')
         )
         if error:
-            emit('error', {'error': error})
+            return _command_set_error(error)
         else:
-            emit('jump_host_saved', {'jump_host': jump_host})
-            handle_list_jump_hosts(current_user=current_user)
+            payload = {'success': True, 'jump_host': jump_host}
+            emit('jump_host_saved', payload)
+            return payload
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
@@ -1389,6 +2293,10 @@ def handle_save_jump_host(data, current_user=None):
 def handle_delete_jump_host(data, current_user=None):
     """Delete a jump host for this user."""
     try:
+        limited = _connection_mutation_rate_limit(current_user)
+        if limited:
+            return limited
+        data = data if isinstance(data, dict) else {}
         jump_host_id = data.get('jump_host_id')
         if not jump_host_id:
             emit('error', {'error': 'Jump host ID required'})
@@ -1397,9 +2305,9 @@ def handle_delete_jump_host(data, current_user=None):
             current_user.id, jump_host_id
         )
         if success:
-            emit('jump_host_deleted', {'jump_host_id': jump_host_id})
-            handle_list_jump_hosts(current_user=current_user)
-            return {'success': True, 'jump_host_id': jump_host_id}
+            payload = {'success': True, 'jump_host_id': jump_host_id}
+            emit('jump_host_deleted', payload)
+            return payload
         else:
             return _command_set_error(error, usages)
     except StorageCorruptionError as error:
@@ -1638,6 +2546,48 @@ def handle_probe_session_sftp(data, current_user=None):
     emit_result(success=True, available=available is True)
 
 
+@socketio.on('cancel_directory_listing')
+@socket_login_required
+def handle_cancel_directory_listing(data, current_user=None):
+    """Release one exact paginated listing without exposing its existence."""
+    payload = data if isinstance(data, dict) else {}
+    identity = _file_request_identity(payload, current_user.id)
+    cursor = payload.get('cursor')
+    listing_request_id = payload.get('listing_request_id')
+    valid_cursor = cursor != 0 and _valid_directory_cursor(cursor)
+    valid_request_id = _valid_directory_request_id(listing_request_id)
+    if (
+        _valid_file_request(identity)
+        and (valid_cursor or valid_request_id)
+    ):
+        try:
+            try:
+                client_id = request.sid
+            except (AttributeError, RuntimeError):
+                client_id = None
+            if valid_cursor:
+                file_service.cancel_directory_snapshot(
+                    cursor,
+                    user_id=current_user.id,
+                    source_id=identity['source_id'],
+                    client_id=client_id,
+                )
+            if valid_request_id:
+                file_service.cancel_directory_request(
+                    listing_request_id,
+                    user_id=current_user.id,
+                    source_id=identity['source_id'],
+                    client_id=client_id,
+                )
+        except Exception as error:
+            log_error(
+                'Directory listing cancellation failed',
+                user_id=current_user.id,
+                exception_type=type(error).__name__,
+            )
+    return {'success': True}
+
+
 @socketio.on('list_directory')
 @socket_login_required
 def handle_list_directory(data, current_user=None):
@@ -1646,28 +2596,43 @@ def handle_list_directory(data, current_user=None):
     _t0 = _time.time()
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         source_id = identity.get('source_id')
         remote_path = payload.get('remote_path', '.')
+        cursor = payload.get('cursor', 0)
         request_context = {
             'operation': 'list_directory',
             **identity,
             'path': remote_path,
         }
 
-        if not _valid_file_request(identity):
+        if (
+            not _valid_file_request(identity)
+            or not _valid_directory_cursor(cursor)
+        ):
             emit('error', {
                 'error': 'Source ID and request ID required',
                 **request_context,
             })
             return
 
+        if cursor != 0:
+            request_context['cursor'] = cursor
+
         try:
             _t1 = _time.time()
-            files, error = file_service.list_directory(
+            try:
+                client_id = request.sid
+            except (AttributeError, RuntimeError):
+                # Direct unit invocation has no active Socket.IO request.
+                client_id = None
+            files, error, next_cursor = file_service.list_directory_page(
                 source_id,
                 user_id=current_user.id,
                 path=remote_path,
+                cursor=cursor,
+                client_id=client_id,
+                request_id=identity['request_id'],
             )
         except FileSourceUnavailable:
             log_warning(
@@ -1689,16 +2654,23 @@ def handle_list_directory(data, current_user=None):
                 **identity,
                 'path': remote_path,
                 'files': files,
+                'cursor': cursor,
+                'next_cursor': next_cursor,
             })
 
     except Exception as e:
         log_error("list_directory exception", error=str(e), elapsed_ms=int((_time.time()-_t0)*1000))
-        emit('error', {
+        error_payload = {
             'error': 'Failed to list directory',
             'operation': 'list_directory',
             **_file_request_identity(payload),
             'path': payload.get('remote_path', '.'),
-        })
+        }
+        if _valid_directory_cursor(payload.get('cursor', 0)):
+            cursor = payload.get('cursor', 0)
+            if cursor != 0:
+                error_payload['cursor'] = cursor
+        emit('error', error_payload)
 
 @socketio.on('set_theme')
 @socket_login_required
@@ -2006,6 +2978,19 @@ def handle_delete_command(data, current_user=None):
 _COMMAND_MUTATION_RATE_ERROR = (
     'Too many command changes. Please wait before trying again.'
 )
+_CONNECTION_MUTATION_RATE_ERROR = (
+    'Too many saved-connection changes. Please wait before trying again.'
+)
+
+
+def _connection_mutation_rate_limit(current_user):
+    if config.RATELIMIT_ENABLED and check_socket_rate_limit(
+        current_user.id,
+        'connection_mutation',
+        config.RATELIMIT_CONNECTION_MUTATION,
+    ):
+        return _command_set_error(_CONNECTION_MUTATION_RATE_ERROR)
+    return None
 
 
 def _command_mutation_rate_limit(current_user):
@@ -2030,7 +3015,11 @@ def _command_set_error(error, usages=None):
         code = 'not_found'
     elif error == _COMMAND_MUTATION_RATE_ERROR:
         code = 'rate_limited'
+    elif error == _CONNECTION_MUTATION_RATE_ERROR:
+        code = 'rate_limited'
     elif error and error.startswith('Command storage quota exceeded:'):
+        code = 'quota_exceeded'
+    elif error and error.startswith('Connection storage quota exceeded:'):
         code = 'quota_exceeded'
     elif error and 'unreadable' in error:
         code = 'storage_error'
@@ -2184,11 +3173,10 @@ def handle_convert_legacy_command_set(data, current_user=None):
     payload = {
         'success': True,
         'command_set': command_set,
-        'profile': updated_profile,
+        'profile': _public_profile(current_user, updated_profile),
     }
     emit('command_set_converted', payload)
     handle_list_command_sets(current_user=current_user)
-    handle_list_profiles(current_user=current_user)
     return payload
 
 @socketio.on('save_session_name')
@@ -2367,7 +3355,7 @@ def handle_request_session_runtime_inventory(data, current_user=None):
 def handle_prepare_transfer(data, current_user=None):
     """Issue only metadata for a later bounded HTTP transfer."""
     payload = data if isinstance(data, dict) else {}
-    identity = _file_request_identity(payload)
+    identity = _file_request_identity(payload, current_user.id)
     try:
         if not _valid_file_request(identity):
             return {
@@ -2424,7 +3412,13 @@ def handle_prepare_transfer(data, current_user=None):
 @socket_login_required
 def handle_cancel_transfer(data, current_user=None):
     """Cancel a prepared or streaming transfer owned by this user only."""
-    transfer_id = data.get('transfer_id') if isinstance(data, dict) else None
+    payload = data if isinstance(data, dict) else {}
+    # Cancellation is a file-control event too: apply the same small-field and
+    # rolling-byte policy before using attacker-controlled identifiers.
+    _file_request_identity(payload, current_user.id)
+    transfer_id = payload.get('transfer_id')
+    if not payload.get('_file_control_valid') or not transfer_id:
+        return {'success': False, 'state': 'unavailable'}
     try:
         result = transfer_manager.cancel_with_result(
             transfer_id, current_user.id
@@ -2449,7 +3443,7 @@ def handle_download_file_binary(data, current_user=None):
     """Handle binary file download (no base64 encoding)."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         remote_path = payload.get('remote_path')
         for_preview = payload.get('for_preview', False)
         context = {
@@ -3022,6 +4016,10 @@ def handle_quick_disconnect(data, current_user=None):
             return
 
         if result in {'closed', 'deferred'}:
+            file_service.discard_directory_snapshots(
+                user_id=current_user.id,
+                source_id=f'sftp-quick:{connection_id}',
+            )
             emit('quick_disconnect_success', {'connection_id': connection_id})
         else:
             emit('error', {'error': 'Connection not found'})
@@ -3036,7 +4034,8 @@ def handle_quick_disconnect(data, current_user=None):
 def handle_file_source_disconnect(data, current_user=None):
     """Close an owned ephemeral source without revealing foreign sources."""
     payload = data if isinstance(data, dict) else {}
-    source_id = payload.get('source_id')
+    identity = _file_request_identity(payload, current_user.id)
+    source_id = identity.get('source_id')
     try:
         kind, handle_id = parse_source_id(source_id)
     except Exception:
@@ -3054,6 +4053,10 @@ def handle_file_source_disconnect(data, current_user=None):
         result = 'unavailable'
 
     if result in {'closed', 'deferred'}:
+        file_service.discard_directory_snapshots(
+            user_id=current_user.id,
+            source_id=source_id,
+        )
         emit(
             'file_source_disconnect_success',
             {'source_id': source_id},
@@ -3067,7 +4070,7 @@ def handle_create_directory(data, current_user=None):
     """Create a directory on remote server."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         remote_path = payload.get('remote_path')
         context = {
             'operation': 'create_directory',
@@ -3129,7 +4132,7 @@ def handle_create_directory(data, current_user=None):
 def handle_rename_file(data, current_user=None):
     """Rename a file or directory on remote server."""
     payload = data if isinstance(data, dict) else {}
-    identity = _file_request_identity(payload)
+    identity = _file_request_identity(payload, current_user.id)
     old_path = payload.get('old_path')
     new_path = payload.get('new_path')
     response_context = {
@@ -3238,7 +4241,7 @@ def handle_delete_item(data, current_user=None):
     """Delete a file or directory (recursive) on remote server."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'delete_item',
@@ -3301,7 +4304,7 @@ def handle_get_home_directory(data, current_user=None):
     _t0 = _time.time()
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         request_context = {
             'operation': 'get_home_directory',
             **identity,
@@ -3353,7 +4356,7 @@ def handle_check_exists(data, current_user=None):
     """Check if a file or directory exists on remote server."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'check_exists',
@@ -3396,7 +4399,7 @@ def handle_get_file_stat(data, current_user=None):
     """Get detailed file statistics."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'get_file_stat',
@@ -3445,7 +4448,7 @@ def handle_preview_file(data, current_user=None):
     """
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         max_bytes = payload.get('max_bytes', 512000)
         offset = payload.get('offset', 0)
@@ -3521,7 +4524,7 @@ def handle_open_file_for_edit(data, current_user=None):
     """Load a full text file for inline editing (no truncation, text only)."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         path = payload.get('path')
         context = {
             'operation': 'open_file_for_edit',
@@ -3576,7 +4579,16 @@ def handle_save_file(data, current_user=None):
     """Save revision-bound editor content through its file source backend."""
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        editor_budget_exempt = _consume_editor_retry_challenge(
+            payload,
+            current_user.id,
+        )
+        identity = _file_request_identity(
+            payload,
+            current_user.id,
+            allow_editor_content=True,
+            editor_budget_exempt=editor_budget_exempt,
+        )
         path = payload.get('path')
         content = payload.get('content')
         encoding = payload.get('encoding', 'utf-8')
@@ -3663,6 +4675,16 @@ def handle_save_file(data, current_user=None):
                 failure['revision'] = outcome.revision
             if outcome.recovery_leaves:
                 failure['recovery_leaves'] = list(outcome.recovery_leaves)
+            if (
+                outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
+                and replace_strategy == 'atomic'
+            ):
+                challenge = _issue_editor_retry_challenge(
+                    payload,
+                    current_user.id,
+                )
+                if challenge is not None:
+                    failure['save_challenge'] = challenge
             emit('error', failure)
             return
 
@@ -3706,7 +4728,7 @@ def handle_transfer_server_to_server(data, current_user=None):
     """
     try:
         payload = data if isinstance(data, dict) else {}
-        identity = _file_request_identity(payload)
+        identity = _file_request_identity(payload, current_user.id)
         source_id = identity.get('source_id')
         requested_source_path = payload.get('source_path')
         destination_source_id = payload.get('destination_source_id')

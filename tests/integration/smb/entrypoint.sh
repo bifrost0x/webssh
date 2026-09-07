@@ -28,4 +28,12 @@ chown root:root /srv/samba/docs/atomic-denied /srv/samba/docs/atomic-denied/repl
 chmod 1733 /srv/samba/docs/atomic-denied
 chmod 666 /srv/samba/docs/atomic-denied/replace-denied.txt
 
+# Known descendants remain accessible even when the parent directory itself
+# may be traversed but not listed. This exercises the opaque-path fallback.
+mkdir -p /srv/samba/docs/known-only
+printf '%s\n' 'Known-path integration fixture' > /srv/samba/docs/known-only/known.txt
+chown root:root /srv/samba/docs/known-only /srv/samba/docs/known-only/known.txt
+chmod 711 /srv/samba/docs/known-only
+chmod 644 /srv/samba/docs/known-only/known.txt
+
 exec smbd --foreground --no-process-group --debug-stdout --configfile=/etc/samba/smb.conf

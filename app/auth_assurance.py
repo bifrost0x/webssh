@@ -425,9 +425,15 @@ def finalize_login(pending, *, methods, strong_authenticated_at=None):
         ) from exc
 
     user = db.session.get(User, pending.user_id)
+    fenced_ldap_identity = False
+    if user is not None and user.is_ldap_managed:
+        from .ldap_session import ldap_revocation_pending
+
+        fenced_ldap_identity = ldap_revocation_pending(current_app, user.id)
     if (
         user is None
         or user.is_locked
+        or fenced_ldap_identity
         or (
             user.is_admin
             and (user.is_ldap_managed or user.is_github_managed)

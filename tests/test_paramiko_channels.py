@@ -120,8 +120,8 @@ def test_open_sftp_sets_bounded_normal_operation_timeout(monkeypatch):
     transport = Transport()
     marker = object()
     monkeypatch.setattr(
-        paramiko_channels.paramiko,
-        'SFTPClient',
+        paramiko_channels,
+        'BoundedSFTPClient',
         lambda channel: marker,
     )
 
@@ -166,10 +166,48 @@ def test_open_sftp_uses_one_shared_absolute_deadline(monkeypatch):
 
     guard = type('Guard', (), {'cancel': lambda self: None})()
     monkeypatch.setattr(paramiko_channels, '_request_guard', lambda *_args: guard)
-    monkeypatch.setattr(paramiko_channels.paramiko, 'SFTPClient', lambda _channel: object())
+    monkeypatch.setattr(
+        paramiko_channels,
+        'BoundedSFTPClient',
+        lambda _channel: object(),
+    )
 
     paramiko_channels.open_sftp_client(
         Transport(), timeout=5, operation_timeout=5, deadline=12.0
     )
 
     assert channel.timeouts == pytest.approx([1.6, 1.2])
+
+
+def test_sftp_packet_limit_closes_channel_before_declared_body_read(
+    monkeypatch,
+):
+    import struct
+    import config
+    from app import paramiko_channels
+    from paramiko.sftp import SFTPError
+
+    monkeypatch.setattr(config, 'SFTP_MAX_PACKET_BYTES', 1024)
+
+    class Socket:
+        def __init__(self):
+            self.closed = False
+            self.reads = []
+
+        def recv(self, size):
+            self.reads.append(size)
+            if len(self.reads) == 1:
+                return struct.pack('>I', 1025)
+            raise AssertionError('oversized SFTP packet body was read')
+
+        def close(self):
+            self.closed = True
+
+    client = object.__new__(paramiko_channels.BoundedSFTPClient)
+    client.sock = Socket()
+
+    with pytest.raises(SFTPError, match='packet exceeds'):
+        client._read_packet()
+
+    assert client.sock.reads == [4]
+    assert client.sock.closed is True

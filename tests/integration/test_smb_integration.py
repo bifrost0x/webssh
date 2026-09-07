@@ -78,6 +78,17 @@ def run_checks():
         if link is not None:
             assert link['is_dir'] is False
 
+        hidden_listing, error = backend.list_directory(source, '/known-only')
+        assert hidden_listing is None and error == 'Permission denied', (
+            hidden_listing,
+            error,
+        )
+        with backend.open_reader(source, '/known-only/known.txt') as lease:
+            known_payload = b''.join(
+                iter(lambda: lease.reader.read(65536), b'')
+            )
+        assert known_payload == b'Known-path integration fixture\n'
+
         payload = ('SMB 3.1.1 encrypted round trip — ' * 4096).encode('utf-8')
         with backend.open_atomic_writer(
             source,
@@ -91,6 +102,40 @@ def run_checks():
         with backend.open_reader(source, '/round-trip.bin') as lease:
             downloaded = b''.join(iter(lambda: lease.reader.read(65536), b''))
         assert hashlib.sha256(downloaded).digest() == hashlib.sha256(payload).digest()
+
+        actual_source = pool.get_source(
+            descriptor.source_id,
+            'integration-user',
+        )
+        original_invoke = actual_source.session.invoke
+        response_lost = False
+
+        def commit_then_timeout(name, *args, **kwargs):
+            nonlocal response_lost
+            result = original_invoke(name, *args, **kwargs)
+            if (
+                name == 'rename_open_handle_verified'
+                and args[1].endswith(r'\ack-reconciled.bin')
+                and not response_lost
+            ):
+                response_lost = True
+                raise SMBProtocolError('TIMEOUT')
+            return result
+
+        actual_source.session.invoke = commit_then_timeout
+        try:
+            with backend.open_atomic_writer(
+                source,
+                '/ack-reconciled.bin',
+                replace=False,
+                cancel_event=Event(),
+            ) as remote_file:
+                remote_file.write(b'committed despite lost response')
+        finally:
+            actual_source.session.invoke = original_invoke
+        assert response_lost is True
+        with backend.open_reader(source, '/ack-reconciled.bin') as lease:
+            assert lease.reader.read() == b'committed despite lost response'
 
         unicode_stat, error = backend.get_file_stat(source, '/Überblick.txt')
         assert error is None and unicode_stat['size'] > 0
@@ -111,10 +156,85 @@ def run_checks():
             newline='lf',
             expected_revision=original_revision,
         )
+        assert edit_outcome.code == 'SMB_RECOVERABLE_REPLACE_REQUIRED'
+        edit_outcome = backend.write_file_text(
+            source,
+            '/atomic-edit.txt',
+            'after',
+            encoding='utf-8',
+            newline='lf',
+            expected_revision=original_revision,
+            replace_strategy='recoverable_swap',
+        )
         assert edit_outcome.success is True, edit_outcome
         assert edit_outcome.revision == hashlib.sha256(b'after').hexdigest()
         with backend.open_reader(source, '/atomic-edit.txt') as lease:
             assert lease.reader.read() == b'after'
+
+        for scenario, target_rename, expected_bytes in (
+            ('recovery-rename-interrupt', 1, b'before'),
+            ('install-rename-interrupt', 2, b'before'),
+            ('backup-delete-interrupt', None, b'after'),
+        ):
+            editor_path = f'/{scenario}.txt'
+            with backend.open_atomic_writer(
+                source,
+                editor_path,
+                replace=False,
+                cancel_event=Event(),
+            ) as remote_file:
+                remote_file.write(b'before')
+            original_invoke = actual_source.session.invoke
+            rename_count = 0
+            interrupted = False
+
+            def interrupt_after_committed_phase(name, *args, **kwargs):
+                nonlocal interrupted, rename_count
+                result = original_invoke(name, *args, **kwargs)
+                if interrupted:
+                    return result
+                if name == 'rename_open_handle_verified':
+                    rename_count += 1
+                    if rename_count == target_rename:
+                        interrupted = True
+                        raise KeyboardInterrupt
+                elif (
+                    target_rename is None
+                    and name == 'delete_open_handle_verified'
+                ):
+                    interrupted = True
+                    raise KeyboardInterrupt
+                return result
+
+            actual_source.session.invoke = interrupt_after_committed_phase
+            try:
+                try:
+                    backend.write_file_text(
+                        source,
+                        editor_path,
+                        'after',
+                        encoding='utf-8',
+                        newline='lf',
+                        expected_revision=hashlib.sha256(b'before').hexdigest(),
+                        replace_strategy='recoverable_swap',
+                    )
+                except KeyboardInterrupt:
+                    pass
+                else:
+                    raise AssertionError(
+                        f'{scenario} did not propagate its control-flow abort'
+                    )
+            finally:
+                actual_source.session.invoke = original_invoke
+            assert interrupted is True
+            with backend.open_reader(source, editor_path) as lease:
+                assert lease.reader.read() == expected_bytes
+            listing, error = backend.list_directory(source, '/')
+            assert error is None, error
+            assert not any(
+                scenario in item['name'] and '.webssh-' in item['name']
+                for item in listing
+            )
 
         protected_path = '/atomic-denied/replace-denied.txt'
         with backend.open_reader(source, protected_path) as lease:

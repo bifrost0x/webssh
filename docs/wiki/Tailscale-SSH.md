@@ -11,7 +11,7 @@ Use Tailscale SSH only when you have:
 - a dedicated Tailscale tag for the WebSSH node;
 - narrow tailnet ACL and SSH rules;
 - trusted WebSSH administrators or an explicit non-admin allowlist;
-- exact target allowlists where practical;
+- a mandatory exact target-and-port allowlist;
 - exact remote operating-system username allowlists;
 - a tested local WebSSH administrator and recovery path;
 - persistent Tailscale node state.
@@ -24,14 +24,28 @@ remote-user, and tailnet policy.
 ```bash
 TAILSCALE_SSH_ENABLED=true
 TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
-TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
+TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
+TAILSCALE_SSH_INTERFACE=tailscale0
 ```
 
 Administrators are authorized by role when the feature is enabled. The user
-allowlist adds specifically trusted non-admin WebSSH accounts. Empty target or
-remote-user lists remove that extra application-level restriction, so define
-them for a shared multi-user deployment.
+allowlist adds specifically trusted non-admin WebSSH accounts. The target list
+is required when the feature is enabled. A bare hostname, IPv4 address, or IPv6
+address means port 22; use `hostname:port`, `IPv4:port`, or `[IPv6]:port` for
+another port. Production refuses to start with an empty or malformed enabled
+target list or an empty interface. Homelab emits security warnings, ignores
+individual malformed entries so valid siblings still work, and fails every
+connection closed if no valid target or interface remains. Dormant values are
+tolerated while the feature is disabled. WebSSH resolves once, accepts only an
+address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
+`tailscale0`), pins that address, and binds the connecting socket to the same
+interface. A route change cannot silently move the connection to another
+interface. An empty remote-user list still delegates that dimension to
+tailnet SSH policy.
+
+Tailscale authentication cannot be combined with ProxyJump. The route and
+interface proof applies only to a direct connection from the WebSSH host.
 
 ## Tailnet policy concept
 
@@ -106,16 +120,22 @@ services:
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
       - SESSION_COOKIE_SECURE=false
+      - BACKUP_TEMP_DIR=/app/recovery
+      - BACKUP_RECOVERY_DURABLE=true
       - TAILSCALE_SSH_ENABLED=false
       - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=
       - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server
       - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root
+      - TAILSCALE_SSH_INTERFACE=tailscale0
     volumes:
       - webssh_data:/app/data
+      - webssh_recovery:/app/recovery
 
 volumes:
   tailscale_state:
   webssh_data:
+  webssh_recovery:
+    driver: local
 ```
 
 The example starts with Tailscale SSH disabled.

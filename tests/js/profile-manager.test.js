@@ -41,6 +41,31 @@ test('partial key mutation replies preserve transient usability', () => {
     assert.equal(manager.keys[0].usable, true);
 });
 
+test('profile upsert replaces fields cleared by the authoritative server record', () => {
+    const manager = loadProfileManager();
+    manager.renderProfileSelect = () => {};
+    manager.renderManagementList = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.profiles = [{
+        id: 'profile-1',
+        name: 'Production API',
+        group: 'Production',
+        favorite: true,
+    }];
+
+    manager.upsertProfile({
+        id: 'profile-1',
+        name: 'Production API',
+    });
+
+    assert.deepEqual(manager.profiles, [{
+        id: 'profile-1',
+        name: 'Production API',
+    }]);
+    assert.equal('group' in manager.profiles[0], false);
+    assert.equal('favorite' in manager.profiles[0], false);
+});
+
 test('failed key replacement preserves private-key draft for retry', () => {
     const manager = loadProfileManager();
     manager.keys = [{
@@ -131,6 +156,35 @@ test('favorite acknowledgement replaces cleared organization fields', () => {
 
     assert.equal(manager.profiles[0].favorite, undefined);
     assert.equal(manager.profiles[0].tailscale_authorized, true);
+});
+
+test('favorite acknowledgement adopts fresh tailscale authorization', () => {
+    const manager = loadProfileManager();
+    manager.profiles = [{
+        id: 'profile-1',
+        name: 'Tailnet API',
+        favorite: false,
+        tailscale_authorized: true,
+    }];
+    manager.renderManagementList = () => {};
+    manager.refreshEmptyPanes = () => {};
+    manager.renderProfileSelect = () => {};
+    manager.organizationPending = new Set();
+    manager.t = (_key, fallback) => fallback;
+    manager.toggleFavorite('profile-1', acknowledgement => {
+        acknowledgement({
+            success: true,
+            profile: {
+                id: 'profile-1',
+                name: 'Tailnet API',
+                favorite: true,
+                tailscale_authorized: false,
+            },
+        });
+    });
+
+    assert.equal(manager.profiles[0].favorite, true);
+    assert.equal(manager.profiles[0].tailscale_authorized, false);
 });
 
 test('collapsed group state toggles for the session but search keeps matches visible', () => {
@@ -252,7 +306,9 @@ test('moving a profile applies only the authoritative successful response', () =
         });
         acknowledge({
             success: true,
-            profiles: [{id: 'profile-1', name: 'API', group: 'Homelab', sort_order: 0}],
+            organization: [{
+                id: 'profile-1', group: 'Homelab', sort_order: 0,
+            }],
         });
     });
 
@@ -280,7 +336,7 @@ test('move failure keeps the original state and adopts authoritative stale state
         acknowledge({
             success: false,
             error: 'Profile group changed; retry move',
-            profiles: [{id: 'profile-1', name: 'API', group: 'Current'}],
+            organization: [{id: 'profile-1', group: 'Current', sort_order: 0}],
         });
     }), true);
     assert.equal(manager.profiles[0].group, 'Current');
@@ -307,14 +363,13 @@ test('group removal acknowledgement opens confirmation and retries explicitly', 
                 requires_confirmation: true,
                 profile_name: 'DB',
                 source_group: 'Databases',
-                profiles: manager.profiles,
             });
             return;
         }
         acknowledge({
             success: true,
             requires_confirmation: false,
-            profiles: [{id: 'profile-1', name: 'DB', group: 'Apps', sort_order: 0}],
+            organization: [{id: 'profile-1', group: 'Apps', sort_order: 0}],
         });
     };
     const move = {

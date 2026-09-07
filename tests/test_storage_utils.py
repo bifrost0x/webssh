@@ -630,3 +630,7 @@ def test_safe_reference_name_bounds_and_sanitizes_display_text():
     assert safe_reference_name(None) == ""
     assert safe_reference_name("ok\x00name") == "ok\ufffdname"
     assert safe_reference_name("x" * 140) == "x" * 128
+    multibyte = safe_reference_name("\n" + ("\u00e9" * 140))
+    assert multibyte.startswith("\ufffd")
+    assert "\n" not in multibyte
+    assert len(multibyte.encode("utf-8")) <= 128

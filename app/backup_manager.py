@@ -17,13 +17,20 @@ from .storage_utils import atomic_copy_file, fsync_parent_directory
 
 _FORMAT_VERSION = 2
 _LEGACY_FORMAT_VERSION = 1
-_CURRENT_DATA_SCHEMA_VERSION = 1
-_DATA_SCHEMA_MIGRATIONS = {0: 1}
+_CURRENT_DATA_SCHEMA_VERSION = 2
+_DATA_SCHEMA_MIGRATIONS = {0: 1, 1: 2}
 _PRODUCER = 'webssh'
 _MANIFEST_NAME = 'manifest.json'
 _DATA_PREFIX = 'data/'
 _DATABASE_PATH = 'app.db'
-_EXCLUDED_TOP_LEVEL_DIRECTORIES = {'logs', 'tmp'}
+_RESTORE_PRESERVED_TOP_LEVEL_DIRECTORIES = {'logs', 'tmp'}
+_RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES = {
+    '.ldap-revocation-fences',
+}
+_BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES = (
+    _RESTORE_PRESERVED_TOP_LEVEL_DIRECTORIES
+    | _RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES
+)
 
 
 class BackupIntegrityError(ValueError):
@@ -300,9 +307,14 @@ def _stage_source(data_dir, stage, excluded_relative_paths=frozenset()):
         if current == data_dir:
             directory_names[:] = [
                 name for name in directory_names
-                if name not in _EXCLUDED_TOP_LEVEL_DIRECTORIES
+                if name not in _BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES
             ]
         for file_name in file_names:
+            if (
+                current == data_dir
+                and file_name in _BACKUP_EXCLUDED_TOP_LEVEL_DIRECTORIES
+            ):
+                continue
             source = current / file_name
             relative = source.relative_to(data_dir).as_posix()
             if relative in excluded_relative_paths:
@@ -621,7 +633,7 @@ def _existing_persistent_files(data_dir):
         if current == data_dir:
             directory_names[:] = [
                 name for name in directory_names
-                if name not in _EXCLUDED_TOP_LEVEL_DIRECTORIES
+                if name not in _RESTORE_PRESERVED_TOP_LEVEL_DIRECTORIES
             ]
         for directory_name in directory_names:
             if (current / directory_name).is_symlink():
@@ -634,7 +646,7 @@ def _existing_persistent_files(data_dir):
             if (
                 len(relative.parts) > 1
                 and relative.parts[0]
-                in _EXCLUDED_TOP_LEVEL_DIRECTORIES
+                in _RESTORE_PRESERVED_TOP_LEVEL_DIRECTORIES
             ):
                 continue
             path_stat = path.lstat()
@@ -749,10 +761,21 @@ def restore_backup(archive, data_dir):
     manifest = verify_backup(archive)
     require_restore_compatible(manifest)
     _validate_restore_targets(data_dir, manifest)
+    restorable_manifest = BackupManifest(
+        manifest.format_version,
+        tuple(
+            item for item in manifest.files
+            if PurePosixPath(item.path).parts[0]
+            not in _RESTORE_DISCARDED_TOP_LEVEL_DIRECTORIES
+        ),
+        manifest.data_schema_version,
+        manifest.created_at,
+        manifest.producer,
+    )
     existing_paths = _existing_persistent_files(data_dir)
     manifest_paths = {
         Path(*PurePosixPath(item.path).parts)
-        for item in manifest.files
+        for item in restorable_manifest.files
     }
     extra_paths = existing_paths - manifest_paths
     data_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -773,7 +796,7 @@ def restore_backup(archive, data_dir):
                     'backup changed after initial verification'
                 )
             extracted_total = 0
-            for item in manifest.files:
+            for item in restorable_manifest.files:
                 relative = Path(*PurePosixPath(item.path).parts)
                 target = stage / relative
                 target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -806,11 +829,11 @@ def restore_backup(archive, data_dir):
                         f'backup checksum or size mismatch for {item.path}'
                     )
                 os.chmod(target, 0o600)
-        _verify_staged_files(stage, manifest)
+        _verify_staged_files(stage, restorable_manifest)
         _restore_staged_files(
             stage,
             data_dir,
-            manifest,
+            restorable_manifest,
             rollback,
             extra_paths,
         )

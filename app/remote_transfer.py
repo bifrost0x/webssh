@@ -12,7 +12,7 @@ import config
 
 from .smb_backend import FileConflict, NonAtomicOverwriteRequired
 from .smb_protocol import SMBProtocolError
-from .file_backend import FileReaderLease
+from .file_backend import FileReaderLease, FileSourceChanged
 
 
 class RemoteTransferError(RuntimeError):
@@ -168,18 +168,25 @@ def _copy_file(
     progress,
     chunk_size,
     digest,
+    expected_identities=None,
 ):
-    file_stat = _stat_or_raise(source, source_path)
-    if not file_stat or file_stat.get('is_dir'):
-        raise RemoteTransferError('Source file unavailable')
-    if file_stat.get('is_symlink'):
-        raise RemoteTransferError('Reparse points are not supported')
+    if expected_identities is None:
+        file_stat = _stat_or_raise(source, source_path)
+        if not file_stat or file_stat.get('is_dir'):
+            raise RemoteTransferError('Source file unavailable')
+        if file_stat.get('is_symlink'):
+            raise RemoteTransferError('Reparse points are not supported')
     _check_cancelled(cancel_event)
 
     copied = 0
     try:
+        reader_kwargs = {'io_lane': 'transfer'}
+        if expected_identities is not None:
+            reader_kwargs['_expected_identities'] = expected_identities
         with source.backend.open_reader(
-            source, source_path, io_lane='transfer'
+            source,
+            source_path,
+            **reader_kwargs,
         ) as lease:
             if not isinstance(lease, FileReaderLease):
                 raise RemoteTransferError('Source reader is unavailable')
@@ -218,6 +225,7 @@ def _copy_file(
         RemoteTransferError,
         RemoteTransferCancelled,
         FileConflict,
+        FileSourceChanged,
         NonAtomicOverwriteRequired,
         SMBProtocolError,
         PermissionError,
@@ -324,16 +332,23 @@ def _copy_remote_entry_locked(
             progress=progress,
             chunk_size=chunk_size,
             digest=digest,
+            expected_identities=source_stat.get('_smb_identity_chain'),
         )
         return TransferResult(copied, 1, digest.hexdigest())
 
+    iterator_kwargs = {
+        'budget': budget,
+        'cancel_event': cancel_event,
+        'follow_links': False,
+        'io_lane': 'transfer',
+    }
+    root_identities = source_stat.get('_smb_identity_chain')
+    if root_identities is not None:
+        iterator_kwargs['_expected_identities'] = root_identities
     entries = list(source.backend.iter_tree(
         source,
         source_path,
-        budget=budget,
-        cancel_event=cancel_event,
-        follow_links=False,
-        io_lane='transfer',
+        **iterator_kwargs,
     ))
     if any(entry.get('is_symlink') for entry in entries):
         raise RemoteTransferError('Reparse points are not supported')
@@ -393,6 +408,7 @@ def _copy_remote_entry_locked(
             progress=progress,
             chunk_size=chunk_size,
             digest=digest,
+            expected_identities=entry.get('_smb_identity_chain'),
         )
     return TransferResult(
         budget.bytes_used,

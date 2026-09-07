@@ -172,6 +172,37 @@ test('passkey step-up serializes the assertion and returns an exact grant header
     });
 });
 
+test('initial-factor bootstrap submits only the action-bound enrollment code', async () => {
+    const calls = [];
+    const client = createAccountStepUpClient({
+        api: async (path, options) => {
+            calls.push([path, options]);
+            if (path.endsWith('/intents')) {
+                return {
+                    intent: 'intent-bootstrap',
+                    preferred_method: 'bootstrap',
+                    methods: ['bootstrap']
+                };
+            }
+            return { grant: 'grant-bootstrap' };
+        },
+        requestSecret: async method => {
+            assert.equal(method, 'bootstrap');
+            return 'operator-issued-code';
+        }
+    });
+
+    assert.equal(
+        await client.authorize('passkey.enroll', 17),
+        'grant-bootstrap'
+    );
+    assert.equal(calls[1][0], '/api/account/step-up/bootstrap');
+    assert.deepEqual(calls[1][1].body, {
+        intent: 'intent-bootstrap',
+        code: 'operator-issued-code'
+    });
+});
+
 test('account step-up lets the user choose an available strong method', async () => {
     const calls = [];
     const client = createAccountStepUpClient({

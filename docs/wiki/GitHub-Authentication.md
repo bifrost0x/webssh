@@ -154,6 +154,15 @@ single-use state, a five-minute server-side state record, an exact callback,
 and bounded local continuations. WebSSH uses the immutable numeric GitHub user
 ID as the identity key; login, display name, and email are never durable keys.
 
+GitHub authorization is accepted only for primary sign-in and account linking.
+It cannot satisfy the fresh Step-up required for passkey enrollment, recovery
+changes, provider configuration, restore, or other sensitive account actions,
+because the callback does not provide WebSSH with signed recent-authentication
+evidence. Use a local password, an existing passkey, TOTP, or an eligible
+recovery method for those Step-up checks. The narrowly scoped initial-factor
+bootstrap below is the only exception for a factorless account that WebSSH
+itself auto-provisioned from GitHub.
+
 Existing users connect GitHub from their Security settings after a WebSSH
 Step-up check and a successful GitHub authorization. A GitHub identity can be
 linked to only one WebSSH account, and each WebSSH account can have only one
@@ -169,6 +178,31 @@ Auto-provisioning is disabled by default. When disabled, an unknown GitHub
 identity is rejected without matching by username or email. When enabled,
 WebSSH creates a new non-admin account and its identity binding atomically.
 GitHub metadata can never create or promote an administrator.
+
+### Bootstrap the first independent factor
+
+An auto-provisioned account has no known local password. Before that user can
+disconnect GitHub, a trusted host operator must authorize enrollment of the
+first Passkey (or TOTP authenticator) with a short-lived, single-use code. For
+example:
+
+```bash
+docker compose exec webssh /app/entrypoint.sh flask --app start:app \
+  issue-factor-bootstrap --username ACCOUNT --action passkey.enroll
+```
+
+Run this command only on a trusted host after verifying the requested WebSSH
+account. The command refuses local, locked, MFA-enabled, or already-factorized
+accounts. It prints a random code that expires after ten minutes and is bound
+to the exact account, current authentication generation, and enrollment
+action. Issuing a new code invalidates every earlier code for that account;
+the code itself is never written to the database or audit log.
+
+The user then signs in with GitHub, opens **Security**, starts the matching
+Passkey or authenticator enrollment, and enters the operator-issued code when
+prompted. WebSSH consumes the code before issuing the normal session-bound,
+single-use enrollment grant. The user should enroll and test a Passkey before
+disconnecting GitHub because TOTP alone is not a primary sign-in replacement.
 
 ## Organization policy
 

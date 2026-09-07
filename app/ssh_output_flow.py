@@ -332,7 +332,9 @@ def _disconnect_lagging_socket(
         # The disconnect still releases server resources if the advisory
         # marker cannot be delivered over an already-broken transport.
         pass
-    server.disconnect(socket_sid, namespace='/')
+    from .socket_events import disconnect_socket_transport
+
+    disconnect_socket_transport(server, socket_sid)
     # Production disconnect handlers release first; keep this idempotent
     # fallback for test servers and disconnects without an application event.
     (flow_controller or ssh_output_flow).release_socket(socket_sid)

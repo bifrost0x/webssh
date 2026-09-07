@@ -1,5 +1,6 @@
 import paramiko
 import pytest
+import socket
 import threading
 
 from app import ssh_manager
@@ -153,6 +154,7 @@ def test_output_snapshot_carries_a_monotone_sequence_watermark():
 def install_ssh_clients(monkeypatch, *connect_errors):
     clients = ClientList()
     opened_sockets = []
+    required_interfaces = []
 
     def client_factory():
         index = len(clients)
@@ -174,13 +176,15 @@ def install_ssh_clients(monkeypatch, *connect_errors):
         ),
     )
 
-    def open_socket(target, timeout):
+    def open_socket(target, timeout, *, required_interface=None):
         result = FakeValidatedSocket(target.hostname)
         opened_sockets.append(result)
+        required_interfaces.append(required_interface)
         return result
 
     monkeypatch.setattr(ssh_manager, 'open_validated_socket', open_socket)
     clients.opened_sockets = opened_sockets
+    clients.required_interfaces = required_interfaces
     return clients
 
 
@@ -210,6 +214,41 @@ def test_tailscale_backend_requires_exact_authorization_before_resolving(
 
     assert session_id is None
     assert error == 'Tailscale SSH authorization is invalid'
+
+
+def test_tailscale_backend_rejects_proxy_jump_before_reservation_or_network(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        ssh_manager.quota_manager,
+        'reserve',
+        lambda *_args, **_kwargs: pytest.fail(
+            'Tailscale ProxyJump reserved a session'
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'open_validated_socket',
+        lambda *_args, **_kwargs: pytest.fail(
+            'Tailscale ProxyJump opened a socket'
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager.paramiko,
+        'SSHClient',
+        lambda: pytest.fail('Tailscale ProxyJump created an SSH client'),
+    )
+
+    session_id, error = connect_target(
+        auth_type='tailscale',
+        proxy_jump_host='bastion.example',
+        proxy_jump_port=22,
+        proxy_jump_username='jump-user',
+        proxy_jump_password='jump-password',
+    )
+
+    assert session_id is None
+    assert error == 'Tailscale SSH cannot be used with a jump host'
 
 
 def test_ssh_manager_exposes_the_shared_loader():
@@ -495,7 +534,11 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
         tailscale_authorization=TailscaleSSHAuthorization(
             user_id=7,
             host='target.example',
+            port=22,
             remote_username='alice',
+            resolved_target=ResolvedTarget(
+                'target.example', 22, '192.0.2.10', socket.AF_INET
+            ),
         ),
         use_tmux=True,
         reconnect_tmux_name='existing_session',
@@ -514,6 +557,7 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
         'auth_strategy': strategy,
     }
     assert ssh_manager.sessions[session_id]['auth_type'] == 'tailscale'
+    assert clients.required_interfaces == ['tailscale0']
     probe_channel, tmux_channel = clients[0].transport.session_channels
     assert probe_channel.command == 'command -v tmux'
     assert tmux_channel.pty == ('xterm-256color', 80, 24)
@@ -521,6 +565,16 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
         'env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u '
         'new-session -A -s existing_session'
     )
+
+
+def test_password_connection_does_not_bind_a_network_interface(monkeypatch):
+    clients = install_ssh_clients(monkeypatch)
+
+    session_id, error = connect_target(password='secret')
+
+    assert error is None
+    assert session_id in ssh_manager.sessions
+    assert clients.required_interfaces == [None]
 
 
 def test_password_tmux_preserves_remote_locale(monkeypatch):

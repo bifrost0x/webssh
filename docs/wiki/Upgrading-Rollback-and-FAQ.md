@@ -59,6 +59,14 @@ Use all Compose files from the same release or commit.
 - Optional identity providers work.
 - Logs show no migration, maintenance, or permission error.
 
+Browser tabs opened before an upgrade may still run an incompatible Socket.IO
+client. WebSSH rejects the mismatch before restoring or registering runtime
+sessions. Clients that support the wire-revision check reload once and then
+show a persistent manual reload action instead of retrying in a loop. A tab
+from an older release cannot interpret the structured refusal and may show
+only that it was disconnected; reload that tab manually. Clear an intervening
+proxy or browser cache if a current tab still reports a mismatch.
+
 ## Image-only rollback
 
 If the new runtime fails but persistent data is intact, stop the candidate and
@@ -66,6 +74,9 @@ start the previously recorded immutable image against the same `/app/data`
 volume. Do not restore or rewrite data merely to roll back the image.
 
 After rollback, verify readiness, login, stored keys, terminal access, and SFTP.
+Tabs from a wire-revision-aware newer image detect that the older server omits
+or reports a different revision and reload once to fetch that server's bundle.
+Reload manually if a tab remains disconnected after the rollback.
 If the newer application migrated data beyond the older version's supported
 schema, image-only rollback may be blocked; consult release notes and the native
 backup compatibility result before forcing any change.

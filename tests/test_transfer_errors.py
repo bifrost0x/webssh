@@ -2,6 +2,7 @@ import errno
 
 import pytest
 
+from app.file_backend import FileOperationCancelled, FileSourceChanged
 from app.remote_transfer import (
     RemoteTransferCancelled,
     RemoteTransferConflict,
@@ -80,6 +81,14 @@ from app.transfer_errors import TransferFailure, classify_transfer_failure
             True,
         ),
         (
+            FileSourceChanged(r'secret \\server\share'),
+            'download',
+            'SOURCE_CHANGED',
+            'The source changed during the transfer. Try again.',
+            409,
+            True,
+        ),
+        (
             RemoteTransferLimitExceeded('sensitive limit details'),
             'remote_transfer',
             'LIMIT_EXCEEDED',
@@ -90,6 +99,14 @@ from app.transfer_errors import TransferFailure, classify_transfer_failure
         (
             RemoteTransferCancelled('sensitive cancellation details'),
             'remote_transfer',
+            'CANCELLED',
+            'The transfer was cancelled.',
+            409,
+            False,
+        ),
+        (
+            FileOperationCancelled('sensitive cancellation details'),
+            'folder_download',
             'CANCELLED',
             'The transfer was cancelled.',
             409,

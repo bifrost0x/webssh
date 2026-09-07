@@ -1,3 +1,4 @@
+import json
 import os
 import secrets
 import stat
@@ -194,6 +195,163 @@ def warn_if_no_admin():
         )
 
 
+@click.command('issue-factor-bootstrap')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--action',
+    required=True,
+    type=click.Choice(('passkey.enroll', 'totp.enroll'), case_sensitive=True),
+)
+def issue_factor_bootstrap(username, action):
+    """Issue a one-use code for a GitHub-only user's first durable factor."""
+    from . import _initialize_persistent_storage
+    from .factor_bootstrap import (
+        FactorBootstrapError,
+        issue_factor_bootstrap as issue_code,
+    )
+    from .maintenance_mode import is_active
+
+    if is_active():
+        raise click.ClickException(
+            'Factor bootstrap is unavailable during restore maintenance.'
+        )
+    _initialize_persistent_storage(current_app._get_current_object())
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        raise click.ClickException('Eligible account not found.')
+    try:
+        token, expires_at = issue_code(user, action)
+    except FactorBootstrapError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _audit_operation(
+        'FACTOR_BOOTSTRAP_ISSUED',
+        user=user.username,
+        action=action,
+        expires_at=expires_at.replace(tzinfo=timezone.utc).isoformat(),
+    )
+    expiry = expires_at.replace(tzinfo=timezone.utc).isoformat().replace(
+        '+00:00', 'Z'
+    )
+    click.echo(f'Enrollment code: {token}')
+    click.echo(
+        f'Expires at: {expiry}. This code is single-use and bound to '
+        f'{user.username} and {action}.'
+    )
+
+
+@click.group('connection-store')
+def connection_store_cli():
+    """Inspect or reduce quarantined legacy connection stores offline."""
+
+
+def _connection_store_user(username):
+    from . import _initialize_persistent_storage
+
+    _initialize_persistent_storage(current_app._get_current_object())
+    user = User.query.filter_by(username=username).first()
+    if user is None:
+        raise click.ClickException('Account not found.')
+    return user
+
+
+@connection_store_cli.command('list')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--kind',
+    required=True,
+    type=click.Choice(('profiles', 'jump-hosts'), case_sensitive=True),
+)
+@click.option('--confirm-offline', is_flag=True)
+def connection_store_list(username, kind, confirm_offline):
+    """List bounded, non-secret record summaries for offline recovery."""
+    from . import jump_host_manager, profile_manager
+    from .backup_coordination import OperationBusyError, operation_lock
+    from .connection_storage_policy import ConnectionStorageLimitError
+    from .storage_errors import StorageCorruptionError
+
+    _require_offline_confirmation(confirm_offline)
+    try:
+        with operation_lock():
+            user = _connection_store_user(username)
+            if kind == 'profiles':
+                records, error = (
+                    profile_manager.load_profile_recovery_summaries(user.id)
+                )
+                if error:
+                    raise click.ClickException(error)
+            else:
+                records = (
+                    jump_host_manager.load_jump_host_recovery_summaries(
+                        user.id
+                    )
+                )
+            click.echo(json.dumps({
+                'count': len(records),
+                'kind': kind,
+                'records': records,
+            }, ensure_ascii=True, sort_keys=True))
+    except (
+        ConnectionStorageLimitError,
+        OperationBusyError,
+        StorageCorruptionError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+@connection_store_cli.command('delete')
+@click.option('--username', required=True, metavar='NAME')
+@click.option(
+    '--kind',
+    required=True,
+    type=click.Choice(('profiles', 'jump-hosts'), case_sensitive=True),
+)
+@click.option('--selector', required=True, metavar='SELECTOR')
+@click.option('--confirm-offline', is_flag=True)
+def connection_store_delete(
+    username,
+    kind,
+    selector,
+    confirm_offline,
+):
+    """Delete one exact legacy record while WebSSH is stopped."""
+    from . import jump_host_manager, profile_manager
+    from .backup_coordination import OperationBusyError, operation_lock
+    from .storage_errors import StorageCorruptionError
+
+    _require_offline_confirmation(confirm_offline)
+    try:
+        with operation_lock():
+            user = _connection_store_user(username)
+            if kind == 'profiles':
+                deleted, error = (
+                    profile_manager.delete_profile_recovery_record(
+                        user.id,
+                        selector,
+                    )
+                )
+            else:
+                deleted, error, _usages = (
+                    jump_host_manager.delete_jump_host_recovery_record(
+                        user.id,
+                        selector,
+                    )
+                )
+            if not deleted:
+                raise click.ClickException(
+                    error or 'Record could not be deleted.'
+                )
+            _audit_operation(
+                'CONNECTION_STORE_RECOVERY_DELETE',
+                user=user.username,
+                kind=kind,
+                selector=selector,
+            )
+            label = 'profile' if kind == 'profiles' else 'jump-host'
+            click.echo(f'Deleted one {label} recovery record.')
+    except (OperationBusyError, StorageCorruptionError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 @click.group('backup')
 def backup_cli():
     """Create, verify, or restore WebSSH data backups."""
@@ -332,5 +490,7 @@ def rotate_secret_key(confirm_offline):
 
 def register_cli(app):
     app.cli.add_command(create_admin)
+    app.cli.add_command(issue_factor_bootstrap)
+    app.cli.add_command(connection_store_cli)
     app.cli.add_command(backup_cli)
     app.cli.add_command(rotate_secret_key)

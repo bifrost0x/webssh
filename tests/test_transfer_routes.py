@@ -1675,33 +1675,45 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
 
     transfer_routes, manager = transfer_components
     payload = b'encrypted-smb-folder-body'
+    root_identity_chain = (17,)
 
     class Backend:
         def stat(self, _source, path, *, follow_links=False):
             assert follow_links is False
             if path == '/reports':
-                return {'size': 0, 'is_dir': True, 'is_symlink': False}, None
+                return {
+                    'size': 0,
+                    'is_dir': True,
+                    'is_symlink': False,
+                    '_smb_identity_chain': root_identity_chain,
+                }, None
             return {
                 'size': len(payload), 'is_dir': False, 'is_symlink': False,
             }, None
 
         def iter_tree(
                 self, _source, path, *, budget, cancel_event,
-                follow_links=False, io_lane='control'):
+                follow_links=False, io_lane='control',
+                _expected_identities=None):
             assert path == '/reports'
             assert isinstance(budget, TransferBudget)
             assert follow_links is False
             assert io_lane == 'transfer'
+            assert _expected_identities == root_identity_chain
             budget.consume()
             yield {
                 'name': 'report.txt', 'path': '/reports/report.txt',
                 'size': len(payload), 'is_dir': False, 'is_symlink': False,
+                '_smb_identity_chain': (17, 23),
             }
 
         @contextmanager
-        def open_reader(self, _source, path, *, io_lane='control'):
+        def open_reader(
+                self, _source, path, *, io_lane='control',
+                _expected_identities=None):
             assert path == '/reports/report.txt'
             assert io_lane == 'transfer'
+            assert _expected_identities == (17, 23)
             with TrackingRemoteFile(payload) as remote:
                 yield FileReaderLease(reader=remote, size=len(payload))
 
@@ -1735,6 +1747,62 @@ def test_smb_folder_download_builds_bounded_local_zip_via_backend(
         assert archive.namelist() == ['reports/report.txt']
         assert archive.read('reports/report.txt') == payload
     assert manager._records == {}
+
+
+def test_backend_zip_chmod_failure_removes_temporary_archive(
+    tmp_path,
+    monkeypatch,
+):
+    from app import transfer_routes
+
+    def reject_chmod(_path, mode):
+        assert mode == 0o600
+        raise OSError('chmod unavailable')
+
+    monkeypatch.setattr(transfer_routes.Path, 'chmod', reject_chmod)
+
+    with pytest.raises(OSError, match='chmod unavailable'):
+        transfer_routes._build_backend_zip_to_disk(
+            SimpleNamespace(backend=None),
+            '/reports',
+            'reports',
+            cancel_event=SimpleNamespace(is_set=lambda: False),
+            max_bytes=1024,
+            chunk_size=4,
+            temp_dir=tmp_path,
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_backend_zip_base_exception_removes_temporary_archive(
+    tmp_path,
+    monkeypatch,
+):
+    from app import transfer_routes
+
+    monkeypatch.setattr(
+        transfer_routes.zipfile,
+        'ZipFile',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        transfer_routes._build_backend_zip_to_disk(
+            SimpleNamespace(
+                backend=SimpleNamespace(
+                    iter_tree=lambda *_args, **_kwargs: []
+                )
+            ),
+            '/reports',
+            'reports',
+            cancel_event=SimpleNamespace(is_set=lambda: False),
+            max_bytes=1024,
+            chunk_size=4,
+            temp_dir=tmp_path,
+        )
+
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_folder_download_preflight_reports_smb_permission_failure(
@@ -1795,6 +1863,74 @@ def test_folder_download_preflight_reports_smb_permission_failure(
         {'room': f'user_{user_id}'},
     )]
     assert 'private' not in repr(response.get_json())
+
+
+def test_smb_folder_enumeration_cancellation_is_reported_as_cancelled(
+        app, client, monkeypatch, transfer_components):
+    import app as app_package
+    from app.file_backend import FileOperationCancelled
+
+    transfer_routes, manager = transfer_components
+
+    class Backend:
+        def stat(self, _source, _path, *, follow_links=False):
+            assert follow_links is False
+            return {'size': 0, 'is_dir': True, 'is_symlink': False}, None
+
+        def iter_tree(
+                self, _source, _path, *, budget, cancel_event,
+                follow_links=False, io_lane='control'):
+            assert follow_links is False
+            assert io_lane == 'transfer'
+            raise FileOperationCancelled('private backend detail')
+            yield  # pragma: no cover - generator contract
+
+    resolved = SimpleNamespace(
+        handle_id='smb-handle', backend=Backend(), source_id='smb-quick:owned',
+    )
+    monkeypatch.setattr(
+        transfer_routes.file_service, 'resolve',
+        lambda *_args, **_kwargs: resolved,
+    )
+    monkeypatch.setattr(
+        transfer_routes, '_audit_transfer_source', lambda *_args, **_kwargs: None
+    )
+    emitted = []
+    monkeypatch.setattr(
+        app_package.socketio,
+        'emit',
+        lambda event, payload, **kwargs: emitted.append((event, payload, kwargs)),
+    )
+    user_id = _login(client, app, 'folder_enumeration_cancelled')
+    record = manager.create(
+        user_id=user_id,
+        source_id='smb-quick:owned',
+        direction='download',
+        metadata={
+            'remote_path': '/reports', 'filename': 'reports', 'archive': True,
+        },
+    )
+
+    response = client.get(f'/api/transfers/{record.token}/folder-download')
+
+    expected = {
+        'error_code': 'CANCELLED',
+        'error': 'The transfer was cancelled.',
+        'retryable': False,
+    }
+    assert response.status_code == 409
+    assert response.get_json() == expected
+    assert emitted == [(
+        'transfer_finished',
+        {
+            'transfer_id': record.transfer_id,
+            'direction': 'download',
+            'status': 'cancelled',
+            **expected,
+        },
+        {'room': f'user_{user_id}'},
+    )]
+    assert record.request_done_event.is_set()
 
 
 def test_folder_download_rejects_oversized_opened_archive_before_first_chunk(

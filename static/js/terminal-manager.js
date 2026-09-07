@@ -62,7 +62,9 @@ const TerminalManager = {
         };
     },
 
-    decodeOsc52Clipboard(data, maxBytes = 1024 * 1024) {
+    // Keep the encoded form below xterm's deterministic 200,000-character
+    // OSC/DCS parser ceiling (128 KiB becomes at most 174,764 base64 chars).
+    decodeOsc52Clipboard(data, maxBytes = 128 * 1024) {
         if (typeof data !== 'string') return null;
         const separator = data.indexOf(';');
         if (separator < 0) return null;

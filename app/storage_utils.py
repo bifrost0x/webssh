@@ -20,6 +20,7 @@ from .backup_coordination import persistent_write
 
 
 T = TypeVar('T')
+SAFE_REFERENCE_MAX_BYTES = 128
 
 _locks = {}
 _locks_guard = threading.Lock()
@@ -64,12 +65,16 @@ class _CoordinatedStorageLock:
 
 
 def safe_reference_name(value):
-    """Return bounded printable display text for cross-store references."""
+    """Return printable display text within a fixed UTF-8 byte budget."""
     value = value if isinstance(value, str) else ''
-    return ''.join(
+    sanitized = ''.join(
         character if character.isprintable() else '\ufffd'
         for character in value
-    )[:128]
+    )
+    return sanitized.encode('utf-8')[:SAFE_REFERENCE_MAX_BYTES].decode(
+        'utf-8',
+        errors='ignore',
+    )
 
 
 def storage_lock(key):
@@ -125,8 +130,12 @@ def load_json_migrated(
     store_name: str,
     default_factory: Callable[[], T],
     validator: Callable[[object], bool],
+    *,
+    persist_migration: bool = True,
+    pre_migration_check: Callable[[object], None] | None = None,
+    migration_payload_factory: Callable[[object], bytes | None] | None = None,
 ) -> T:
-    """Load a current document, migrating an existing legacy file in place.
+    """Load a current document, optionally migrating a legacy file in place.
 
     The caller must hold the store's ``storage_lock`` so backup, migration, and
     the active-file replace are part of the same serialized operation.
@@ -139,6 +148,9 @@ def load_json_migrated(
         store_name,
         validator,
         default_factory=default_factory,
+        persist_migration=persist_migration,
+        pre_migration_check=pre_migration_check,
+        migration_payload_factory=migration_payload_factory,
     )
 
 

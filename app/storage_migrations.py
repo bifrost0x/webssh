@@ -9,11 +9,15 @@ from typing import Callable
 import uuid
 
 from .storage_errors import StorageCorruptionError
-from .storage_utils import atomic_write_json, fsync_parent_directory
+from .storage_utils import (
+    atomic_write_bytes,
+    atomic_write_json,
+    fsync_parent_directory,
+)
 
 
 CURRENT_STORAGE_VERSIONS = {
-    'profiles': 2,
+    'profiles': 3,
     'command_sets': 2,
     'jump_hosts': 2,
     'keys': 2,
@@ -51,6 +55,18 @@ def migrate_profiles_v1_to_v2(document):
             else:
                 profile['startup_mode'] = 'none'
     result['schema_version'] = 2
+    return result
+
+
+def migrate_profiles_v2_to_v3(document):
+    """Remove response-only authorization state from persisted profiles."""
+    result = deepcopy(document)
+    profiles = result.get('profiles')
+    if isinstance(profiles, list):
+        for profile in profiles:
+            if isinstance(profile, dict):
+                profile.pop('tailscale_authorized', None)
+    result['schema_version'] = 3
     return result
 
 
@@ -109,6 +125,7 @@ _MIGRATIONS = {
     }
     for store_name in CURRENT_STORAGE_VERSIONS
 }
+_MIGRATIONS['profiles'][2] = migrate_profiles_v2_to_v3
 
 
 def migrate_document(store_name: str, document: object) -> tuple[object, bool]:
@@ -179,12 +196,19 @@ def migrate_file(
     store_name: str,
     validator: Callable[[object], bool] | None = None,
     default_factory: Callable[[], object] | None = None,
+    *,
+    persist_migration: bool = True,
+    pre_migration_check: Callable[[object], None] | None = None,
+    migration_payload_factory: Callable[[object], bytes | None] | None = None,
 ) -> object:
-    """Load and migrate one file, backing it up before the first write.
+    """Load and validate one file, optionally persisting its migration.
 
     A default is used only when the initial file open raises
     ``FileNotFoundError``. Any later disappearance or other filesystem error
-    fails closed.
+    fails closed. ``pre_migration_check`` runs after decoding but before the
+    migration copies or transforms the document.  A payload factory may return
+    exact approved bytes or ``None`` to keep a safe migration in memory when no
+    persisted representation satisfies the caller's storage policy.
     """
     path = Path(path)
     source_missing = False
@@ -210,6 +234,9 @@ def migrate_file(
         except json.JSONDecodeError as exc:
             raise StorageCorruptionError(path, 'invalid JSON') from exc
 
+    if pre_migration_check is not None:
+        pre_migration_check(document)
+
     try:
         migrated, changed = migrate_document(store_name, document)
     except ValueError as exc:
@@ -221,9 +248,20 @@ def migrate_file(
             raise StorageCorruptionError(path, 'validation failed') from exc
         if not valid:
             raise StorageCorruptionError(path, 'validation failed')
-    if source_missing or not changed:
+    if source_missing or not changed or not persist_migration:
         return migrated
 
+    migration_payload = None
+    if migration_payload_factory is not None:
+        migration_payload = migration_payload_factory(migrated)
+        if migration_payload is None:
+            return migrated
+        if not isinstance(migration_payload, bytes):
+            raise TypeError('migration payload factory must return bytes or None')
+
     backup_before_migration(path)
-    atomic_write_json(path, migrated)
+    if migration_payload_factory is None:
+        atomic_write_json(path, migrated)
+    else:
+        atomic_write_bytes(path, migration_payload)
     return migrated

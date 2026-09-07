@@ -55,6 +55,13 @@ _FAILURE_DEFINITIONS = {
         'retryable': True,
         'http_status': 404,
     },
+    'SOURCE_CHANGED': {
+        'messages': frozenset({
+            'The source changed during the transfer. Try again.',
+        }),
+        'retryable': True,
+        'http_status': 409,
+    },
     'LIMIT_EXCEEDED': {
         'messages': frozenset({'The transfer exceeds the configured limit.'}),
         'retryable': False,

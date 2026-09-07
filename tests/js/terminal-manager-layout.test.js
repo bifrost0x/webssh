@@ -96,6 +96,8 @@ test('OSC 52 clipboard payloads are bounded, targeted, and decoded as UTF-8', ()
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;?'), null);
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;%%%'), null);
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;dG9vIGxhcmdl', 4), null);
+    const oversized = Buffer.alloc(128 * 1024 + 1, 0x61).toString('base64');
+    assert.equal(TerminalManager.decodeOsc52Clipboard(`c;${oversized}`), null);
 });
 
 test('OSC 52 handler requires a user action before writing the clipboard', async () => {

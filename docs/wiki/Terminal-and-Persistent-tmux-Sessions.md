@@ -31,6 +31,10 @@ requires a fresh **Copy** click before the remote text reaches the browser
 clipboard. Replayed output and ordinary non-tmux SSH sessions cannot request a
 clipboard write. Browser clipboard permissions still apply.
 
+Remote OSC 52 clipboard requests are limited to 128 KiB of decoded UTF-8 text.
+Oversized OSC/DCS control strings are discarded by the terminal parser before
+they can accumulate unbounded browser memory.
+
 ## Broadcast input
 
 Broadcast mode sends the same input to every open SSH session. Treat it as a

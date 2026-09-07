@@ -174,6 +174,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         return None, "User identity is required"
     user_id = host_key_store.user_id
 
+    if auth_type == 'tailscale' and proxy_jump_host:
+        return None, 'Tailscale SSH cannot be used with a jump host'
+
     tailscale_target_authorized = False
     if auth_type == 'tailscale':
         if (
@@ -184,6 +187,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             or not tailscale_authorization.matches(
                 user_id,
                 host,
+                port,
                 username,
             )
         ):
@@ -209,23 +213,27 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 host = canonicalize_hostname(host)
                 proxy_jump_host = canonicalize_hostname(proxy_jump_host)
                 try:
-                    target = resolve_allowed_target(
-                        host,
-                        port,
-                        allow_internal=(
-                            not config.BLOCK_INTERNAL_SSH
-                            or tailscale_target_authorized
-                        ),
+                    target = (
+                        tailscale_authorization.resolved_target
+                        if tailscale_target_authorized
+                        else resolve_allowed_target(
+                            host,
+                            port,
+                            allow_internal=not config.BLOCK_INTERNAL_SSH,
+                        )
                     )
                     channel_destination = (target.ip, target.port)
                     host = target.hostname
                     port = target.port
                 except ValueError:
                     remote_dns_allowed = (
-                        not config.BLOCK_INTERNAL_SSH
-                        or proxy_jump_remote_dns_allowed(
+                        not tailscale_target_authorized
+                        and (
+                            not config.BLOCK_INTERNAL_SSH
+                            or proxy_jump_remote_dns_allowed(
                             host,
                             config.PROXY_JUMP_REMOTE_DNS_ALLOWLIST,
+                        )
                         )
                     )
                     if not remote_dns_allowed:
@@ -306,19 +314,27 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
                 return None, "Jump host connection failed"
         else:
-            target = resolve_allowed_target(
-                host,
-                port,
-                allow_internal=(
-                    not config.BLOCK_INTERNAL_SSH
-                    or tailscale_target_authorized
-                ),
+            target = (
+                tailscale_authorization.resolved_target
+                if tailscale_target_authorized
+                else resolve_allowed_target(
+                    host,
+                    port,
+                    allow_internal=not config.BLOCK_INTERNAL_SSH,
+                )
             )
             host = target.hostname
             port = target.port
-            validated_socket = open_validated_socket(
-                target, config.SSH_CONNECT_TIMEOUT
-            )
+            if tailscale_target_authorized:
+                validated_socket = open_validated_socket(
+                    target,
+                    config.SSH_CONNECT_TIMEOUT,
+                    required_interface=config.TAILSCALE_SSH_INTERFACE,
+                )
+            else:
+                validated_socket = open_validated_socket(
+                    target, config.SSH_CONNECT_TIMEOUT
+                )
             sock = validated_socket
 
         client = paramiko.SSHClient()

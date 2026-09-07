@@ -70,8 +70,30 @@ jobs:
         include:
           - python_version: '3.14'
             check_name: pytest
+            pytest_targets: tests/
+            pytest_ignores: --ignore=tests/integration
           - python_version: '3.11'
             check_name: pytest (Python 3.11 minimum)
+            # The production runtime runs the complete suite above.  The
+            # documented minimum version keeps a representative compatibility
+            # gate across startup, authentication, storage migrations, remote
+            # protocols, pagination, and threaded transport admission.
+            pytest_targets: >-
+              tests/test_admin_cli.py
+              tests/test_auth.py
+              tests/test_entrypoint.py
+              tests/test_factor_bootstrap.py
+              tests/test_file_service.py
+              tests/test_gunicorn_command.py
+              tests/test_ldap_auth.py
+              tests/test_network_policy.py
+              tests/test_production_config.py
+              tests/test_sftp_handler.py
+              tests/test_smb_protocol_contract.py
+              tests/test_ssh_manager.py
+              tests/test_storage_migrations.py
+              tests/test_threaded_runtime.py
+            pytest_ignores: ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -97,8 +119,9 @@ jobs:
 
       - name: Run tests
         run: >-
-          pytest tests/
-          --ignore=tests/integration
+          python -m compileall -q app tests &&
+          pytest ${{ matrix.pytest_targets }}
+          ${{ matrix.pytest_ignores }}
           -q
           -n 2
           --dist=loadscope
@@ -311,8 +334,10 @@ jobs:
         run: |
           image_tag="webssh-ci:${GITHUB_SHA}"
           container_name="webssh-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          recovery_volume="webssh-ci-recovery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ownership_label="webssh.ci-run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ownership_value="${ownership_label#*=}"
+          recovery_volume_created=0
 
           cleanup_start_failure() {
             status=$?
@@ -321,7 +346,16 @@ jobs:
             if [ "$status" -ne 0 ] && docker container inspect "$container_name" >/dev/null 2>&1; then
               if actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$container_name" 2>/dev/null)"; then
                 if [ "$actual_label" = "$ownership_value" ]; then
-                  docker rm --force "$container_name" || true
+                  docker rm --force --volumes "$container_name" || true
+                fi
+              fi
+            fi
+
+            if [ "$status" -ne 0 ] && [ "$recovery_volume_created" = "1" ] \
+              && docker volume inspect "$recovery_volume" >/dev/null 2>&1; then
+              if actual_label="$(docker volume inspect --format '{{ index .Labels "webssh.ci-run" }}' "$recovery_volume" 2>/dev/null)"; then
+                if [ "$actual_label" = "$ownership_value" ]; then
+                  docker volume rm "$recovery_volume" || true
                 fi
               fi
             fi
@@ -334,6 +368,10 @@ jobs:
             echo "Refusing to reuse pre-existing container $container_name" >&2
             exit 1
           fi
+          if docker volume inspect "$recovery_volume" >/dev/null 2>&1; then
+            echo "Refusing to reuse pre-existing volume $recovery_volume" >&2
+            exit 1
+          fi
 
           docker build --build-arg VCS_REF="${GITHUB_SHA}" --tag "$image_tag" .
           image_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image_tag")"
@@ -341,9 +379,16 @@ jobs:
             echo "Built image revision does not match the checkout" >&2
             exit 1
           fi
+          docker volume create \
+            --label "$ownership_label" \
+            "$recovery_volume" >/dev/null
+          recovery_volume_created=1
           docker run --detach --name "$container_name" \
             --label "$ownership_label" \
             --env SECRET_KEY="container-smoke-test-secret" \
+            --env BACKUP_TEMP_DIR=/app/recovery \
+            --env BACKUP_RECOVERY_DURABLE=true \
+            --mount type=volume,source="$recovery_volume",target=/app/recovery \
             --publish 127.0.0.1::5000 \
             "$image_tag"
 
@@ -351,26 +396,47 @@ jobs:
             echo "WEBSSH_CI_CONTAINER=$container_name"
             echo "WEBSSH_CI_CONTAINER_LABEL_VALUE=$ownership_value"
             echo "WEBSSH_CI_CONTAINER_CREATED=1"
+            echo "WEBSSH_CI_RECOVERY_VOLUME=$recovery_volume"
+            echo "WEBSSH_CI_RECOVERY_VOLUME_CREATED=1"
           } >> "$GITHUB_ENV"
           trap - EXIT
 
-      - name: Verify gthread worker and readiness
+      - name: Verify recovery volume, gthread worker and readiness
         shell: bash
         run: |
           binding="$(docker port "$WEBSSH_CI_CONTAINER" 5000/tcp | head --lines=1)"
           port="${binding##*:}"
+          ready=0
 
           for attempt in {1..30}; do
             ready_status="$(curl --output /dev/null --silent --show-error --write-out '%{http_code}' "http://127.0.0.1:${port}/ready" || true)"
             if docker logs "$WEBSSH_CI_CONTAINER" 2>&1 | grep --quiet --fixed-strings "Using worker: gthread" \
               && [ "$ready_status" = "200" ]; then
-              exit 0
+              ready=1
+              break
             fi
             sleep 1
           done
 
-          docker logs "$WEBSSH_CI_CONTAINER" >&2
-          exit 1
+          if [ "$ready" != "1" ]; then
+            docker logs "$WEBSSH_CI_CONTAINER" >&2
+            exit 1
+          fi
+
+          mounted_volume="$(docker inspect --format '{{ range .Mounts }}{{ if eq .Destination "/app/recovery" }}{{ .Name }}{{ end }}{{ end }}' "$WEBSSH_CI_CONTAINER")"
+          if [ "$mounted_volume" != "$WEBSSH_CI_RECOVERY_VOLUME" ]; then
+            echo "Recovery path is not backed by the fresh CI volume" >&2
+            exit 1
+          fi
+          docker exec "$WEBSSH_CI_CONTAINER" sh -eu -c '
+            expected_owner="$(id -u):$(id -g):700"
+            actual_owner="$(stat --format=%u:%g:%a /app/recovery)"
+            test "$actual_owner" = "$expected_owner"
+            test -w /app/recovery
+            probe=/app/recovery/.webssh-ci-write-probe
+            : > "$probe"
+            rm -f "$probe"
+          '
 
       - name: Verify graceful gthread shutdown
         shell: bash
@@ -385,17 +451,27 @@ jobs:
           test "$exit_code" = "0"
 
       - name: Clean up created container
-        if: always() && env.WEBSSH_CI_CONTAINER_CREATED == '1'
+        if: always()
         shell: bash
         run: |
-          if ! docker container inspect "$WEBSSH_CI_CONTAINER" >/dev/null 2>&1; then
-            exit 0
+          if [ "${WEBSSH_CI_CONTAINER_CREATED:-0}" = "1" ] \
+            && docker container inspect "$WEBSSH_CI_CONTAINER" >/dev/null 2>&1; then
+            actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_CI_CONTAINER")"
+            if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
+              echo "Refusing to remove container with unexpected ownership label" >&2
+              exit 1
+            fi
+
+            docker rm --force --volumes "$WEBSSH_CI_CONTAINER"
           fi
 
-          actual_label="$(docker container inspect --format '{{ index .Config.Labels "webssh.ci-run" }}' "$WEBSSH_CI_CONTAINER")"
-          if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
-            echo "Refusing to remove container with unexpected ownership label" >&2
-            exit 1
-          fi
+          if [ "${WEBSSH_CI_RECOVERY_VOLUME_CREATED:-0}" = "1" ] \
+            && docker volume inspect "$WEBSSH_CI_RECOVERY_VOLUME" >/dev/null 2>&1; then
+            actual_label="$(docker volume inspect --format '{{ index .Labels "webssh.ci-run" }}' "$WEBSSH_CI_RECOVERY_VOLUME")"
+            if [ "$actual_label" != "$WEBSSH_CI_CONTAINER_LABEL_VALUE" ]; then
+              echo "Refusing to remove volume with unexpected ownership label" >&2
+              exit 1
+            fi
 
-          docker rm --force "$WEBSSH_CI_CONTAINER"
+            docker volume rm "$WEBSSH_CI_RECOVERY_VOLUME"
+          fi

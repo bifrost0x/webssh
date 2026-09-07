@@ -11,10 +11,46 @@
 
     const APP_ROOT = document.querySelector('meta[name="app-root"]')?.content || '';
     window.APP_ROOT = APP_ROOT;
-    window.socket = io({ path: APP_ROOT + '/socket.io' });
+    const socketProtocol = window.WebSSHSocketProtocol;
+    if (!socketProtocol) {
+        throw new Error('Socket protocol module is unavailable');
+    }
+    window.socket = io({
+        path: APP_ROOT + '/socket.io',
+        auth: { wire_revision: socketProtocol.WIRE_REVISION },
+    });
     const outputFlowReconnect = window.WebSSHSocketReconnect.create(
         window.socket
     );
+
+    let socketProtocolReloadPending = false;
+
+    function reloadForSocketProtocolMismatch() {
+        socketProtocolReloadPending = true;
+        showSocketProtocolReloadNotice();
+        window.location.reload();
+    }
+
+    window.addEventListener('beforeunload', (event) => {
+        if (socketProtocolReloadPending) {
+            socketProtocolReloadPending = false;
+            return;
+        }
+        const activeSessions = Object.values(SessionManager.sessions).filter(
+            session => session.connected
+        );
+        if (activeSessions.length > 0) {
+            const message = window.i18n
+                ? window.i18n.t(
+                    'session.closeWarning',
+                    'You have active SSH sessions. They will be closed.',
+                )
+                : 'You have active SSH sessions. They will be closed.';
+            event.preventDefault();
+            event.returnValue = message;
+            return message;
+        }
+    });
 
     window.escapeHtml = function(text) {
         if (!text) return '';
@@ -65,7 +101,9 @@
                     try {
                         presentation.action.onClick();
                     } finally {
-                        dismiss();
+                        if (presentation.action.dismissOnClick !== false) {
+                            dismiss();
+                        }
                     }
                 });
             } else {
@@ -76,11 +114,57 @@
         }
         container.appendChild(notification);
 
-        const timeout = presentation.duration
-            || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
-        fadeTimer = setTimeout(dismiss, timeout);
+        if (presentation.persistent !== true) {
+            const timeout = presentation.duration
+                || (notificationType === 'success' || notificationType === 'info' ? 2000 : 3000);
+            fadeTimer = setTimeout(dismiss, timeout);
+        }
         return dismiss;
     };
+
+    let socketProtocolReloadNoticeVisible = false;
+
+    function showSocketProtocolReloadNotice() {
+        if (socketProtocolReloadNoticeVisible) return;
+        socketProtocolReloadNoticeVisible = true;
+        showNotification({
+            message: window.i18n
+                ? i18n.t('connection.reloadRequired')
+                : 'WebSSH was updated. Reload this page to continue.',
+            type: 'error',
+            persistent: true,
+            onDismiss: () => {
+                socketProtocolReloadNoticeVisible = false;
+            },
+            action: {
+                label: window.i18n
+                    ? i18n.t('connection.reloadPage')
+                    : 'Reload page',
+                onClick: reloadForSocketProtocolMismatch,
+                dismissOnClick: false,
+            },
+        });
+    }
+
+    let socketProtocolStorage = null;
+    try {
+        socketProtocolStorage = window.sessionStorage;
+    } catch {
+        // Some privacy modes intentionally deny access to sessionStorage.
+    }
+    const socketProtocolMismatch = socketProtocol.createMismatchController({
+        storage: socketProtocolStorage,
+        disconnect: () => window.socket?.disconnect(),
+        reload: reloadForSocketProtocolMismatch,
+        showManualReload: showSocketProtocolReloadNotice,
+    });
+    socket.on(socketProtocol.MISMATCH_EVENT, data => {
+        socketProtocolMismatch.handleMismatch(data);
+    });
+    socket.on('connect_error', error => {
+        if (error?.data?.code !== 'socket_protocol_mismatch') return;
+        socketProtocolMismatch.handleMismatch(error.data);
+    });
 
     window.ModalManager = {
         activeModal: null,
@@ -699,7 +783,7 @@
                 const status = document.getElementById('editorStatus');
                 if (data.code === 'SMB_RECOVERABLE_REPLACE_REQUIRED') {
                     if (this.recoverableReplaceSources.has(this.currentSourceId)) {
-                        this.saveEdit('recoverable_swap');
+                        this.saveEdit('recoverable_swap', data.save_challenge);
                         return true;
                     }
                     const prompt = window.i18n
@@ -707,7 +791,7 @@
                         : 'This server cannot replace the file in one safe step. WebSSH can save it with a temporary recovery backup and restore the original if replacement fails. Use this method for this SMB connection until the page is reloaded?';
                     if (window.confirm(prompt)) {
                         this.recoverableReplaceSources.add(this.currentSourceId);
-                        this.saveEdit('recoverable_swap');
+                        this.saveEdit('recoverable_swap', data.save_challenge);
                     } else if (status) {
                         status.textContent = window.i18n
                             ? i18n.t('editor.recoverableDeclined')
@@ -924,7 +1008,7 @@
             showNotification(msg, 'error');
         },
 
-        saveEdit(replaceStrategy = null) {
+        saveEdit(replaceStrategy = null, saveChallenge = null) {
             if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
@@ -938,7 +1022,7 @@
                     ? 'recoverable_swap'
                     : 'atomic'
             );
-            socket.emit('save_file', {
+            const payload = {
                 source_id: this.currentSourceId,
                 path: this.currentPath,
                 content: textarea.value,
@@ -947,7 +1031,11 @@
                 expected_revision: this.editRevision,
                 replace_strategy: selectedStrategy,
                 request_id: this.currentSaveRequestId,
-            });
+            };
+            if (typeof saveChallenge === 'string' && saveChallenge) {
+                payload.save_challenge = saveChallenge;
+            }
+            socket.emit('save_file', payload);
         },
 
         handleFileSaved(data) {
@@ -1120,6 +1208,15 @@
 
     socket.on('connected', (data) => {
         if (data && data.status === 'success' && window.socket) {
+            if (!socketProtocol.isCompatibleServer(data)) {
+                socketProtocolMismatch.handleMismatch({
+                    status: 'reload_required',
+                    code: socketProtocol.MISMATCH_EVENT,
+                    required_revision: data.wire_revision,
+                });
+                return;
+            }
+            socketProtocolMismatch.markCompatible();
             window.socket.emit('get_notepad');
         }
     });
@@ -1240,11 +1337,13 @@
         ProfileManager.setProfiles(data.profiles);
     });
 
-    socket.on('profile_saved', () => {
+    socket.on('profile_saved', (data) => {
+        ProfileManager.upsertProfile(data?.profile);
         showNotification('Saved connection updated successfully', 'success');
     });
 
-    socket.on('profile_deleted', () => {
+    socket.on('profile_deleted', (data) => {
+        ProfileManager.removeProfile(data?.profile_id);
         showNotification('Saved connection deleted successfully', 'success');
     });
 
@@ -1286,13 +1385,15 @@
         if (window.JumpHostManager) window.JumpHostManager.setJumpHosts(data.jump_hosts);
     });
 
-    socket.on('jump_host_saved', () => {
+    socket.on('jump_host_saved', (data) => {
+        window.JumpHostManager?.upsertJumpHost(data?.jump_host);
         showNotification(window.i18n ? i18n.t('jumphosts.savedOk') : 'Jump host saved', 'success');
         document.getElementById('jumpHostForm')?.reset();
         document.getElementById('jhKeyGroup')?.classList.add('hidden');
     });
 
-    socket.on('jump_host_deleted', () => {
+    socket.on('jump_host_deleted', (data) => {
+        window.JumpHostManager?.removeJumpHost(data?.jump_host_id);
         showNotification(window.i18n ? i18n.t('jumphosts.deleted') : 'Jump host deleted', 'success');
     });
 
@@ -2466,6 +2567,7 @@
         document.getElementById('logoutBtn').addEventListener('click', () => {
             const message = window.i18n ? i18n.t('auth.logoutConfirm') : 'Are you sure you want to logout? Active SSH sessions will be preserved.';
             if (confirm(message)) {
+                SessionManager.clearScopedBrowserStorage();
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.action = APP_ROOT + '/logout';
@@ -2635,18 +2737,6 @@
 
         document.getElementById('closeCommandPaletteModal')?.addEventListener('click', () => {
             window.ModalManager.close(document.getElementById('commandPaletteModal'));
-        });
-
-        window.addEventListener('beforeunload', (e) => {
-            const activeSessions = Object.values(SessionManager.sessions).filter(s => s.connected);
-            if (activeSessions.length > 0) {
-                const message = window.i18n
-                    ? window.i18n.t('session.closeWarning', 'You have active SSH sessions. They will be closed.')
-                    : 'You have active SSH sessions. They will be closed.';
-                e.preventDefault();
-                e.returnValue = message;
-                return message;
-            }
         });
 
     });
