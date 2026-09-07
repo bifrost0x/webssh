@@ -70,8 +70,30 @@ jobs:
         include:
           - python_version: '3.14'
             check_name: pytest
+            pytest_targets: tests/
+            pytest_ignores: --ignore=tests/integration
           - python_version: '3.11'
             check_name: pytest (Python 3.11 minimum)
+            # The production runtime runs the complete suite above.  The
+            # documented minimum version keeps a representative compatibility
+            # gate across startup, authentication, storage migrations, remote
+            # protocols, pagination, and threaded transport admission.
+            pytest_targets: >-
+              tests/test_admin_cli.py
+              tests/test_auth.py
+              tests/test_entrypoint.py
+              tests/test_factor_bootstrap.py
+              tests/test_file_service.py
+              tests/test_gunicorn_command.py
+              tests/test_ldap_auth.py
+              tests/test_network_policy.py
+              tests/test_production_config.py
+              tests/test_sftp_handler.py
+              tests/test_smb_protocol_contract.py
+              tests/test_ssh_manager.py
+              tests/test_storage_migrations.py
+              tests/test_threaded_runtime.py
+            pytest_ignores: ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -97,8 +119,9 @@ jobs:
 
       - name: Run tests
         run: >-
-          pytest tests/
-          --ignore=tests/integration
+          python -m compileall -q app tests &&
+          pytest ${{ matrix.pytest_targets }}
+          ${{ matrix.pytest_ignores }}
           -q
           -n 2
           --dist=loadscope

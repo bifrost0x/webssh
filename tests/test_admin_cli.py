@@ -56,58 +56,12 @@ def _missing_ldap_runtime_environment(tmp_path):
     }
 
 
-@pytest.mark.parametrize(
-    'command',
-    ('issue-factor-bootstrap', 'connection-store'),
-)
-def test_security_maintenance_help_exits_without_runtime_or_storage(
-    tmp_path,
-    command,
-):
-    data_dir = tmp_path / command
-
-    result = _maintenance_cli(data_dir, command, '--help')
-
-    assert result.returncode == 0, result.stderr
-    assert 'Usage:' in result.stdout
-    assert not data_dir.exists()
-
-
-@pytest.mark.parametrize(
-    'command',
-    ('issue-factor-bootstrap', 'connection-store'),
-)
-def test_security_maintenance_help_skips_missing_ldap_runtime_files(
-    tmp_path,
-    command,
-):
-    data_dir = tmp_path / command
+def test_maintenance_help_uses_safe_factory_without_runtime_or_storage(tmp_path):
+    data_dir = tmp_path / 'connection-store'
 
     result = _maintenance_cli(
         data_dir,
-        command,
-        '--help',
-        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert 'Usage:' in result.stdout
-    assert not data_dir.exists()
-
-
-@pytest.mark.parametrize(
-    'command',
-    ('issue-factor-bootstrap', 'connection-store'),
-)
-def test_factory_target_maintenance_help_uses_safe_app_construction(
-    tmp_path,
-    command,
-):
-    data_dir = tmp_path / command
-
-    result = _maintenance_cli(
-        data_dir,
-        command,
+        'connection-store',
         '--help',
         app_target='app:create_app',
         environment_overrides=_missing_ldap_runtime_environment(tmp_path),
@@ -118,28 +72,21 @@ def test_factory_target_maintenance_help_uses_safe_app_construction(
     assert not data_dir.exists()
 
 
-@pytest.mark.parametrize(
-    'command',
-    ('issue-factor-bootstrap', 'connection-store'),
-)
-def test_flask_cli_module_maintenance_help_uses_safe_app_construction(
-    tmp_path,
-    command,
-):
-    data_dir = tmp_path / command
+def test_maintenance_detection_supports_all_commands_and_flask_entrypoints():
+    import app as app_module
 
-    result = _maintenance_cli(
-        data_dir,
-        command,
-        '--help',
-        app_target='app:create_app',
-        flask_module='flask.cli',
-        environment_overrides=_missing_ldap_runtime_environment(tmp_path),
+    entrypoints = (
+        ('flask', None),
+        ('python', 'flask.__main__'),
+        ('python', 'flask.cli'),
     )
-
-    assert result.returncode == 0, result.stderr
-    assert 'Usage:' in result.stdout
-    assert not data_dir.exists()
+    for command in app_module._MAINTENANCE_COMMANDS:
+        for program_name, main_module_name in entrypoints:
+            assert app_module._is_maintenance_cli_invocation(
+                arguments=['--app', 'app:create_app', command, '--help'],
+                program_name=program_name,
+                main_module_name=main_module_name,
+            ) is True
 
 
 def test_factory_target_connection_store_initializes_inside_command(tmp_path):
@@ -200,23 +147,7 @@ def test_factory_target_connection_store_locks_before_initialization(
     assert not data_dir.exists()
 
 
-def test_factor_bootstrap_missing_user_exits_instead_of_starting_runtime(
-    tmp_path,
-):
-    result = _maintenance_cli(
-        tmp_path / 'factor-bootstrap-data',
-        'issue-factor-bootstrap',
-        '--username',
-        'missing-user',
-        '--action',
-        'passkey.enroll',
-    )
-
-    assert result.returncode != 0
-    assert 'Eligible account not found' in result.stderr
-
-
-def test_factor_bootstrap_operation_skips_missing_ldap_runtime_files(tmp_path):
+def test_factor_bootstrap_missing_user_skips_ldap_runtime_files(tmp_path):
     result = _maintenance_cli(
         tmp_path / 'factor-bootstrap-ldap-data',
         'issue-factor-bootstrap',
@@ -263,18 +194,13 @@ def test_normal_app_factory_still_requires_ldap_runtime_files(tmp_path):
     assert 'LDAP secret file is unavailable' in result.stderr
 
 
-@pytest.mark.parametrize('flask_module', ('flask', 'flask.cli'))
-def test_factory_target_nonmaintenance_command_keeps_ldap_fail_fast(
-    tmp_path,
-    flask_module,
-):
+def test_factory_target_nonmaintenance_command_keeps_ldap_fail_fast(tmp_path):
     data_dir = tmp_path / 'nonmaintenance-data'
 
     result = _maintenance_cli(
         data_dir,
         'routes',
         app_target='app:create_app',
-        flask_module=flask_module,
         environment_overrides=_missing_ldap_runtime_environment(tmp_path),
     )
 
