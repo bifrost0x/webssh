@@ -277,23 +277,34 @@ def update_user_command(user_id, command_id, name, command, parameters, descript
 
 def delete_user_command(user_id, command_id):
     """Delete a user command."""
-    from .command_set_manager import _get_command_usage_with_coordinator_held
+    from .command_set_manager import (
+        _get_command_usage_summary_with_coordinator_held,
+    )
 
     with storage_lock(f'command-config:{user_id}'):
-        usages, error = _get_command_usage_with_coordinator_held(
-            user_id, command_id
+        usage_count, usage_types, usages, error = (
+            _get_command_usage_summary_with_coordinator_held(
+                user_id,
+                command_id,
+            )
         )
         if error:
             return False, error, []
-        if usages:
-            usage_types = {usage.get('type') for usage in usages}
+        if usage_count:
             if usage_types == {'command_set'}:
-                noun = 'command set' if len(usages) == 1 else 'command sets'
+                noun = 'command set' if usage_count == 1 else 'command sets'
             elif usage_types == {'profile'}:
-                noun = 'profile' if len(usages) == 1 else 'profiles'
+                noun = 'profile' if usage_count == 1 else 'profiles'
             else:
-                noun = 'reference' if len(usages) == 1 else 'references'
-            return False, f'Command is used by {len(usages)} {noun}', usages
+                noun = 'reference' if usage_count == 1 else 'references'
+            details = ''
+            if usage_count > len(usages):
+                details = f' (showing first {len(usages)})'
+            return (
+                False,
+                f'Command is used by {usage_count} {noun}{details}',
+                usages,
+            )
 
         with storage_lock(f'commands:{user_id}'):
             user_cmds, error = _load_user_commands_for_write(user_id)

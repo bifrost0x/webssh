@@ -50,15 +50,49 @@ def revoke_user_access(user_id, socketio_instance=None):
 
     server = getattr(socketio_instance, 'server', None)
     if server is not None:
+        from .socket_events import (
+            disconnect_engineio_transport,
+            disconnect_socket_transport,
+        )
+
         for socket_sid in socket_sids:
             try:
-                server.disconnect(socket_sid, namespace='/')
+                disconnect_socket_transport(server, socket_sid)
             except Exception as exc:
                 result['errors'].append(f'socket:{socket_sid}:{exc}')
                 log_warning(
                     "Failed to disconnect revoked Socket.IO session",
                     user_id=user_id,
                     sid=socket_sid,
+                    error=str(exc),
+                )
+
+        engineio_server = getattr(server, 'eio', None)
+        engineio_capacity = getattr(
+            engineio_server,
+            '_webssh_socket_capacity',
+            None,
+        )
+        engineio_sids = (
+            engineio_capacity.sids_for_user(user_id)
+            if engineio_capacity is not None
+            else ()
+        )
+        for engineio_sid in engineio_sids:
+            try:
+                disconnect_engineio_transport(
+                    server,
+                    engineio_sid,
+                    drain=False,
+                )
+            except Exception as exc:
+                result['errors'].append(
+                    f'engineio:{engineio_sid}:{exc}'
+                )
+                log_warning(
+                    'Failed to retire revoked Engine.IO transport',
+                    user_id=user_id,
+                    sid=engineio_sid,
                     error=str(exc),
                 )
 

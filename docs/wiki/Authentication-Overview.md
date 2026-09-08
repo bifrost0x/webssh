@@ -16,7 +16,7 @@ upgrade a session silently.
 | Passkey/WebAuthn | Disabled | Credential owned by a local account | Phishing-resistant local sign-in |
 | Authenticator app (TOTP) | Disabled | Encrypted secret owned by a local account | Optional second factor after password, LDAP, or basic OIDC |
 | Recovery code | Enabled | One-time code owned by a local account | Second-factor recovery after valid primary login |
-| OIDC | Disabled | Exact issuer and subject linked by an admin | Existing OpenID Provider |
+| OIDC | Disabled | Exact issuer and subject linked by the user or an admin | Existing OpenID Provider |
 | GitHub App | Disabled | Immutable numeric GitHub user ID | Linked GitHub identities and optional controlled provisioning |
 | LDAP/Active Directory | Disabled | Stable directory ID linked by an admin | Lab or organization directory authentication |
 
@@ -122,9 +122,11 @@ the plaintext set offline; it cannot be displayed again.
 ## OpenID Connect
 
 OIDC uses the authorization-code flow with PKCE, nonce, state, and a
-session-bound one-use login record. An administrator must link the exact issuer
-and subject to a local account. Optional subject and email-domain rules are
-additional admission filters, not identity keys.
+session-bound one-use state record. An eligible signed-in user can link the
+provider-verified issuer and subject to their own local account after
+action-bound confirmation. An administrator-managed link remains available as
+a recovery fallback. Optional subject and email-domain rules are additional
+admission filters, not identity keys.
 
 Assurance is conservative: absent, malformed, or unmapped signed claims remain
 `BASIC`. Provider push can be used only through the provider's own policy and a

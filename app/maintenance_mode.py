@@ -17,6 +17,55 @@ _lock = threading.RLock()
 _state = None
 _state_path = None
 _STATUS_NAME = 'restore-status.json'
+_KNOWN_STATES = {
+    'preparing', 'in_progress', 'succeeded', 'failed', 'rollback_failed',
+}
+
+
+def _unreadable_status():
+    return {
+        'state': 'rollback_failed',
+        'message': 'Restore status is unreadable',
+        'updated_at': time.time(),
+    }
+
+
+def _valid_status_document(document) -> bool:
+    """Reject every malformed persisted state instead of failing open."""
+    if not isinstance(document, dict):
+        return False
+    state = document.get('state')
+    if state not in _KNOWN_STATES:
+        return False
+    if (
+        not isinstance(document.get('operation_id'), str)
+        or not document['operation_id']
+        or len(document['operation_id']) > 256
+        or not isinstance(document.get('message'), str)
+        or type(document.get('updated_at')) not in {int, float}
+    ):
+        return False
+    fingerprint = document.get('data_fingerprint')
+    if fingerprint is not None and (
+        not isinstance(fingerprint, str)
+        or len(fingerprint) != 64
+        or any(character not in '0123456789abcdef' for character in fingerprint)
+    ):
+        return False
+    rollback_relative = document.get('rollback_relative')
+    if rollback_relative is not None:
+        if not isinstance(rollback_relative, str):
+            return False
+        path = PurePath(rollback_relative)
+        if path.is_absolute() or '..' in path.parts or len(path.parts) != 2:
+            return False
+    if state == 'in_progress' and (
+        fingerprint is None or rollback_relative is None
+    ):
+        return False
+    if state == 'preparing' and fingerprint is None:
+        return False
+    return True
 
 
 def _status_path() -> Path:
@@ -67,13 +116,9 @@ def _read():
     except FileNotFoundError:
         return None
     except (OSError, UnicodeError, json.JSONDecodeError):
-        return {
-            'state': 'rollback_failed',
-            'message': 'Restore status is unreadable',
-            'updated_at': time.time(),
-        }
-    if not isinstance(document, dict):
-        return None
+        return _unreadable_status()
+    if not _valid_status_document(document):
+        return _unreadable_status()
     _state = document
     _state_path = path
     return dict(document)
@@ -199,7 +244,11 @@ def recover_interrupted_restore() -> None:
         return
     operation_id = str(document.get('operation_id') or 'unknown')
     if document.get('data_fingerprint') != _data_fingerprint():
-        mark_failed(operation_id, 'Interrupted restore belongs to another data directory')
+        mark_failed(
+            operation_id,
+            'Interrupted restore belongs to another data directory',
+            rollback_failed=True,
+        )
         return
     if document.get('state') == 'preparing':
         mark_failed(operation_id, 'Restore stopped before persistent state changed')

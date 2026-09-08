@@ -66,7 +66,7 @@ def test_index_exposes_only_bounded_numeric_transfer_limits():
 
 def test_profile_manager_builds_safe_contextual_launcher_buttons():
     source = read('static/js/profile-manager.js')
-    assert 'createEmptyPaneContent(paneIndex)' in source
+    assert 'createEmptyPaneContent(paneIndex, options = {})' in source
     assert "button.type = 'button'" in source
     assert 'button.dataset.profileId = profile.id' in source
     assert 'name.textContent = profile.name' in source
@@ -76,6 +76,8 @@ def test_profile_manager_builds_safe_contextual_launcher_buttons():
     assert 'profile-launcher-search' in source
     assert 'profile-launcher-section-title' in source
     assert 'ProfileLauncherUtils.buildProfileSections' in source
+    assert 'returnCopy.textContent = returnText' in source
+    assert 'options.onReturn()' in source
     assert 'innerHTML = profile' not in source
 
 
@@ -103,7 +105,7 @@ def test_saved_connections_uses_the_shared_management_panel_hierarchy():
     assert 'class="management-panel-actions"' in panel
 
 
-def test_profile_dependencies_refresh_only_empty_panes():
+def test_profile_dependencies_refresh_empty_and_staged_launcher_panes():
     profiles = read('static/js/profile-manager.js')
     jump_hosts = read('static/js/jump-host-manager.js')
     sessions = read('static/js/session-manager.js')
@@ -111,7 +113,7 @@ def test_profile_dependencies_refresh_only_empty_panes():
     assert profiles.count('this.refreshEmptyPanes()') >= 2
     assert 'SessionManager.refreshEmptyPanes()' in jump_hosts
     assert 'refreshEmptyPanes()' in sessions
-    assert 'if (!this.paneAssignments[index])' in sessions
+    assert '|| this.connectionLauncherSessions.has(index)' in sessions
 
 
 def test_dynamic_empty_panes_refresh_after_language_changes():

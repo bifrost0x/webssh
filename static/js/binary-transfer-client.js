@@ -5,6 +5,7 @@ const TRANSFER_FAILURES = Object.freeze({
     SHARE_UNAVAILABLE: 'The SMB share is unavailable.',
     TIMEOUT: 'The file operation timed out.',
     SOURCE_UNAVAILABLE: 'The file source is no longer available. Reconnect and try again.',
+    SOURCE_CHANGED: 'The source changed during the transfer. Try again.',
     LIMIT_EXCEEDED: 'The transfer exceeds the configured limit.',
     CANCELLED: 'The transfer was cancelled.',
     ATOMIC_REPLACE_UNAVAILABLE: 'Safe overwrite is unavailable for this destination.',

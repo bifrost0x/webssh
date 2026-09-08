@@ -104,6 +104,44 @@ def test_validate_projects_only_fields_for_selected_mode(app, monkeypatch):
     assert empty == {'startup_mode': 'none'}
 
 
+@pytest.mark.parametrize('override', [
+    pytest.param('x' * 4097, id='ascii'),
+    pytest.param('\U0001f512' * 4097, id='multibyte'),
+])
+def test_validate_rejects_oversized_override_before_resolution(
+    app,
+    monkeypatch,
+    override,
+):
+    from app import command_manager, post_connect_manager
+
+    monkeypatch.setattr(
+        command_manager, 'get_all_commands',
+        lambda user_id, os_filter=None: library_commands(),
+    )
+    monkeypatch.setattr(
+        post_connect_manager,
+        '_resolve_command',
+        lambda *_args, **_kwargs: pytest.fail(
+            'oversized override reached command concatenation'
+        ),
+    )
+    user_id = create_user(app)
+
+    with app.app_context():
+        stored, error = post_connect_manager.validate_configuration(
+            user_id,
+            {
+                'startup_mode': 'command',
+                'command_id': 'cmd-echo',
+                'parameters_override': override,
+            },
+        )
+
+    assert stored is None
+    assert error == 'Command parameters must not exceed 4096 characters'
+
+
 def test_resolve_single_command_uses_default_or_override_parameters(app, monkeypatch):
     from app import command_manager
     from app.post_connect_manager import resolve_configuration

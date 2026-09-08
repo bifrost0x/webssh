@@ -17,7 +17,7 @@ Use this mode only in a trusted homelab or similarly controlled environment:
 2. Limit that tag to TCP port 22 on only the required target tag or hosts.
 3. Limit Tailscale SSH rules to the required remote OS usernames.
 4. Keep WebSSH registration disabled or tightly controlled.
-5. Configure WebSSH's optional target and remote-username allowlists as a
+5. Configure WebSSH's mandatory target and optional remote-username allowlists as a
    second boundary. Tailnet ACL and SSH policy remain authoritative.
 
 Every authorized or denied Tailscale SSH attempt is written to the security
@@ -31,15 +31,30 @@ Tailscale SSH is off by default. Enable it explicitly:
 ```env
 TAILSCALE_SSH_ENABLED=true
 TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
-TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
+TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
 TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
+TAILSCALE_SSH_INTERFACE=tailscale0
 ```
 
 Administrators are allowed when the feature is enabled. The
 `TAILSCALE_SSH_ALLOWED_WEBSSH_USERS` list grants access to additional WebSSH
-usernames. Empty target or remote-user allowlists add no extra restriction;
-they do not bypass Tailscale policy. Target matching is exact and
-case-insensitive, while remote OS usernames are exact and case-sensitive.
+usernames. The target allowlist is mandatory whenever the feature is enabled.
+A bare hostname, IPv4 address, or IPv6 address means port 22. Use
+`hostname:port`, `IPv4:port`, or `[IPv6]:port` for another port. Target matching
+is exact and case-insensitive, while remote OS usernames are exact and
+case-sensitive. A production deployment refuses to start when the enabled
+feature has an empty or malformed target list or an empty interface. The
+homelab profile emits security warnings, ignores individual malformed entries
+so valid siblings still work, and fails every connection closed if no valid
+target or interface remains. Values stay dormant while the feature is disabled.
+After DNS resolution, WebSSH accepts only an
+address whose kernel route uses `TAILSCALE_SSH_INTERFACE` (default
+`tailscale0`), pins that address, and binds the connecting socket to the same
+interface. A route change cannot silently move the connection to another
+interface.
+
+Tailscale authentication cannot be combined with ProxyJump. The route and
+interface proof applies only to a direct connection from the WebSSH host.
 
 ## Example tailnet policy
 
@@ -145,18 +160,25 @@ services:
       - CORS_ORIGINS=*
       - ALLOW_CORS_WILDCARD=true
       - SESSION_COOKIE_SECURE=false
+      # Keep online-restore rollback state durable and separate from DATA_DIR.
+      - BACKUP_TEMP_DIR=/app/recovery
+      - BACKUP_RECOVERY_DURABLE=true
       # Keep disabled until an administrator has been created with the CLI.
       - TAILSCALE_SSH_ENABLED=false
       # Leave empty to allow only existing WebSSH administrators.
       - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=
       - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server
       - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root
+      - TAILSCALE_SSH_INTERFACE=tailscale0
     volumes:
       - webssh_data:/app/data
+      - webssh_recovery:/app/recovery
 
 volumes:
   tailscale_state:
   webssh_data:
+  webssh_recovery:
+    driver: local
 ```
 
 After the administrator bootstrap and allowlist configuration, enable the

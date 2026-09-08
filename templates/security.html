@@ -214,6 +214,12 @@
                 <button class="btn btn-secondary settings-security-method-action" type="button" id="githubIdentityAction" aria-describedby="githubIdentityStatus"><span class="material-icons" aria-hidden="true">link</span><span class="github-identity-action-label" data-i18n="security.connectGithub">Connect GitHub</span></button>
             </div>
             {% endif %}
+            {% if oidc_enabled and not ldap_managed and not github_managed and not recovery_mode %}
+            <div class="admin-settings-row settings-security-method-row settings-security-method-row-oidc" id="oidc">
+                <div class="settings-security-method-summary"><span class="material-icons settings-security-method-icon" aria-hidden="true">badge</span><div><strong data-i18n="security.methodOidc">Identity provider</strong><p class="admin-muted" data-i18n="security.manageOidcHint">Link an identity by signing in with the configured provider. WebSSH stores only its verified issuer and subject.</p><p class="settings-security-method-status" id="oidcIdentityStatus" role="status" aria-live="polite" data-i18n="security.loadingLinkedAccount">Loading linked account…</p></div></div>
+                <button class="btn btn-secondary settings-security-method-action" type="button" id="oidcIdentityAction" aria-describedby="oidcIdentityStatus"><span class="material-icons" aria-hidden="true">link</span><span class="oidc-identity-action-label" data-i18n="security.connectOidc">Connect identity provider</span></button>
+            </div>
+            {% endif %}
             {% if recovery_codes_enabled %}
             <div class="admin-settings-row settings-security-method-row">
                 <div class="settings-security-method-summary"><span class="material-icons settings-security-method-icon" aria-hidden="true">vpn_key</span><div><strong data-i18n="security.recoveryCodes">Recovery codes</strong><p class="admin-muted" data-i18n="security.manageRecoveryCodesHint">Generate and store emergency sign-in codes.</p></div></div>

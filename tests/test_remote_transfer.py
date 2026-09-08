@@ -29,34 +29,53 @@ class _PartialWriter(BytesIO):
 
 
 class _Backend:
-    def __init__(self, files=None, tree=None):
+    def __init__(self, files=None, tree=None, root_identities=None):
         self.files = dict(files or {})
         self.tree = list(tree or [])
         self.readers = []
+        self.reader_identities = []
         self.commits = []
         self.created = []
         self.writer_opens = 0
+        self.stat_paths = []
+        self.root_identities = root_identities
+        self.tree_identities = []
 
     def normalize_path(self, path):
         return path if isinstance(path, str) and path.startswith('/') else None
 
     def stat(self, _source, path, *, follow_links=False):
         assert follow_links is False
+        self.stat_paths.append(path)
         if path in self.files:
-            return {
+            result = {
                 'path': path, 'size': len(self.files[path]),
                 'is_dir': False, 'is_symlink': False,
-            }, None
+            }
+            if self.root_identities is not None:
+                result['_smb_identity_chain'] = self.root_identities
+            return result, None
         if path == '/folder':
-            return {
+            result = {
                 'path': path, 'size': 0,
                 'is_dir': True, 'is_symlink': False,
-            }, None
+            }
+            if self.root_identities is not None:
+                result['_smb_identity_chain'] = self.root_identities
+            return result, None
         return None, 'File or directory not found'
 
     @contextmanager
-    def open_reader(self, _source, path, *, io_lane='control'):
+    def open_reader(
+        self,
+        _source,
+        path,
+        *,
+        io_lane='control',
+        _expected_identities=None,
+    ):
         assert io_lane == 'transfer'
+        self.reader_identities.append(_expected_identities)
         reader = _BoundedReader(self.files[path])
         self.readers.append(reader)
         with reader:
@@ -83,10 +102,11 @@ class _Backend:
 
     def iter_tree(
         self, _source, _path, *, budget, cancel_event,
-        follow_links=False, io_lane='control',
+        follow_links=False, io_lane='control', _expected_identities=None,
     ):
         assert follow_links is False
         assert io_lane == 'transfer'
+        self.tree_identities.append(_expected_identities)
         for entry in self.tree:
             budget.consume()
             if cancel_event.is_set():
@@ -140,6 +160,67 @@ def test_remote_copy_streams_through_one_atomic_commit(
     assert len(destination_backend.commits) == 1
     assert result.sha256 == hashlib.sha256(payload).hexdigest()
     assert max(source_backend.readers[0].read_sizes) == 31
+
+
+def test_single_file_copy_binds_reader_to_classified_smb_root():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    identity_chain = (71, 73)
+    source_backend = _Backend(
+        {'/source.bin': b'bound'},
+        root_identities=identity_chain,
+    )
+    destination_backend = _Backend()
+
+    copy_remote_entry(
+        _source('smb', source_backend),
+        '/source.bin',
+        _source('sftp', destination_backend),
+        '/target.bin',
+        conflict_policy='replace',
+        budget=TransferBudget(max_bytes=10, max_members=1),
+        cancel_event=Event(),
+        progress=None,
+        chunk_size=2,
+    )
+
+    assert source_backend.reader_identities == [identity_chain]
+    assert destination_backend.files['/target.bin'] == b'bound'
+
+
+def test_directory_copy_binds_traversal_to_classified_smb_root():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    root_chain = (41,)
+    leaf_chain = (41, 73)
+    source_backend = _Backend(
+        files={'/folder/a.bin': b'bound'},
+        tree=[{
+            'name': 'a.bin',
+            'path': '/folder/a.bin',
+            'size': 5,
+            'is_dir': False,
+            'is_symlink': False,
+            '_smb_identity_chain': leaf_chain,
+        }],
+        root_identities=root_chain,
+    )
+    destination_backend = _Backend()
+
+    copy_remote_entry(
+        _source('smb', source_backend),
+        '/folder',
+        _source('sftp', destination_backend),
+        '/copy',
+        conflict_policy='replace',
+        budget=TransferBudget(max_bytes=10, max_members=2),
+        cancel_event=Event(),
+        progress=None,
+        chunk_size=2,
+    )
+
+    assert source_backend.tree_identities == [root_chain]
+    assert source_backend.reader_identities == [leaf_chain]
 
 
 def test_remote_copy_rejects_opened_object_before_destination_writer():
@@ -291,6 +372,94 @@ def test_directory_total_size_is_rejected_before_destination_mutation():
     assert destination_backend.commits == []
 
 
+def test_directory_copy_binds_reader_to_enumerated_smb_identity_chain():
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    identity_chain = (41, 73)
+    source_backend = _Backend(
+        files={'/folder/a.bin': b'bound'},
+        tree=[{
+            'name': 'a.bin',
+            'path': '/folder/a.bin',
+            'size': 5,
+            'is_dir': False,
+            'is_symlink': False,
+            '_smb_identity_chain': identity_chain,
+        }],
+    )
+    destination_backend = _Backend()
+
+    copy_remote_entry(
+        _source('smb', source_backend),
+        '/folder',
+        _source('sftp', destination_backend),
+        '/copy',
+        conflict_policy='replace',
+        budget=TransferBudget(max_bytes=10, max_members=2),
+        cancel_event=Event(),
+        progress=None,
+        chunk_size=2,
+    )
+
+    assert source_backend.reader_identities == [identity_chain]
+    assert source_backend.stat_paths == ['/folder']
+    assert destination_backend.files['/copy/a.bin'] == b'bound'
+
+
+@pytest.mark.parametrize('race', ['missing', 'reparse', 'directory'])
+def test_directory_copy_preserves_bound_smb_source_change(race):
+    from app.file_backend import FileSourceChanged
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+
+    identity_chain = (41, 73)
+
+    class ChangedBackend(_Backend):
+        @contextmanager
+        def open_reader(
+            self,
+            _source,
+            path,
+            *,
+            io_lane='control',
+            _expected_identities=None,
+        ):
+            assert path == '/folder/a.bin'
+            assert io_lane == 'transfer'
+            assert _expected_identities == identity_chain
+            raise FileSourceChanged(f'enumerated source became {race}')
+            yield  # pragma: no cover - contextmanager contract
+
+    source_backend = ChangedBackend(
+        files={'/folder/a.bin': b'old'},
+        tree=[{
+            'name': 'a.bin',
+            'path': '/folder/a.bin',
+            'size': 3,
+            'is_dir': False,
+            'is_symlink': False,
+            '_smb_identity_chain': identity_chain,
+        }],
+    )
+
+    with pytest.raises(FileSourceChanged) as error:
+        copy_remote_entry(
+            _source('smb', source_backend),
+            '/folder',
+            _source('sftp', _Backend()),
+            '/copy',
+            conflict_policy='replace',
+            budget=TransferBudget(max_bytes=10, max_members=2),
+            cancel_event=Event(),
+            progress=None,
+            chunk_size=2,
+        )
+
+    assert error.value.public_code == 'SOURCE_CHANGED'
+    # Only the root classification is unbound. The enumerated leaf goes
+    # directly through its expected-ID reader instead of a pathname re-stat.
+    assert source_backend.stat_paths == ['/folder']
+
+
 def test_same_source_and_path_is_rejected_as_a_noop_conflict():
     from app.remote_transfer import (
         RemoteTransferConflict,
@@ -326,6 +495,75 @@ def test_typed_source_stat_permission_failure_is_not_collapsed():
             budget=TransferBudget(max_bytes=10, max_members=1),
             cancel_event=Event(), progress=None, chunk_size=2,
         )
+
+
+def test_remote_copy_preserves_source_identity_change_classification():
+    from app.file_backend import FileSourceChanged
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+    from app.transfer_errors import classify_transfer_failure
+
+    class ChangedSourceBackend(_Backend):
+        @contextmanager
+        def open_reader(
+            self,
+            _source,
+            _path,
+            *,
+            io_lane='control',
+            _expected_identities=None,
+        ):
+            assert io_lane == 'transfer'
+            raise FileSourceChanged('private source path')
+            yield  # pragma: no cover - required by contextmanager semantics
+
+    with pytest.raises(FileSourceChanged) as failure:
+        copy_remote_entry(
+            _source('smb', ChangedSourceBackend({'/source.bin': b'value'})),
+            '/source.bin',
+            _source('smb', _Backend()),
+            '/target.bin',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=10, max_members=1),
+            cancel_event=Event(), progress=None, chunk_size=2,
+        )
+
+    assert classify_transfer_failure(
+        failure.value, operation='remote_transfer'
+    ).code == 'SOURCE_CHANGED'
+
+
+def test_remote_copy_preserves_backend_enumeration_cancellation():
+    from app.file_backend import FileOperationCancelled
+    from app.remote_transfer import TransferBudget, copy_remote_entry
+    from app.transfer_errors import classify_transfer_failure
+
+    class CancelledTreeBackend(_Backend):
+        def iter_tree(
+            self, _source, _path, *, budget, cancel_event,
+            follow_links=False, io_lane='control',
+        ):
+            assert follow_links is False
+            assert io_lane == 'transfer'
+            raise FileOperationCancelled('private backend detail')
+            yield  # pragma: no cover - generator contract
+
+    with pytest.raises(FileOperationCancelled) as failure:
+        copy_remote_entry(
+            _source('smb', CancelledTreeBackend()),
+            '/folder',
+            _source('smb', _Backend()),
+            '/copy',
+            conflict_policy='error',
+            budget=TransferBudget(max_bytes=10, max_members=2),
+            cancel_event=Event(),
+            progress=None,
+            chunk_size=2,
+        )
+
+    assert classify_transfer_failure(
+        failure.value,
+        operation='remote_transfer',
+    ).code == 'CANCELLED'
 
 
 def test_typed_destination_directory_permission_failure_is_not_collapsed():

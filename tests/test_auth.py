@@ -241,10 +241,12 @@ class TestUserRegistration:
             assert first.is_admin is True
 
         from app import socketio
+        from app.socket_protocol import SOCKET_WIRE_REVISION
 
         socket_client = socketio.test_client(
             app,
             flask_test_client=client,
+            auth={'wire_revision': SOCKET_WIRE_REVISION},
         )
         assert socket_client.is_connected()
         socket_client.disconnect()

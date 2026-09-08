@@ -41,6 +41,20 @@ function controlledSocket() {
     };
 }
 
+test('source identity changes remain actionable and retryable', () => {
+    const client = new BinaryTransferClient(controlledSocket().socket);
+
+    assert.deepEqual(client.normalizeFailure({
+        error_code: 'SOURCE_CHANGED',
+        error: 'The source changed during the transfer. Try again.',
+        retryable: true,
+    }), {
+        errorCode: 'SOURCE_CHANGED',
+        error: 'The source changed during the transfer. Try again.',
+        retryable: true,
+    });
+});
+
 test('uploads the File directly over HTTP after socket metadata preparation', async () => {
     const emitted = [];
     const socket = { on() {}, emit(event, payload, ack) {

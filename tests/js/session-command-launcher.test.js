@@ -313,13 +313,16 @@ test('mounts with the real top-level const manager pattern', () => {
     });
     context.window = context;
     vm.runInContext(`
+        let launcherOpen = false;
         const SessionManager = {
             paneAssignments: ['real-session'],
             getActivePaneIndex: () => 0,
+            getActiveSession: () => launcherOpen ? null : 'real-session',
             getSession: id => id === 'real-session'
                 ? { connected: true, displayName: 'Production Edge' }
                 : null,
         };
+        window.setLauncherOpen = open => { launcherOpen = open; };
         const CommandLibrary = {
             commands: [{
                 id: 'status',
@@ -384,6 +387,15 @@ test('mounts with the real top-level const manager pattern', () => {
         context.socket.emissions[0][1].data,
         'sudo systemctl status webssh'
     );
+
+    context.setLauncherOpen(true);
+    context.SessionCommandLauncher.sync();
+    context.SessionCommandLauncher.render();
+    const blockedInsert = context.SessionCommandLauncher.popup.findByText('Insert');
+    assert.equal(blockedInsert.disabled, true);
+    blockedInsert.listeners.click();
+    assert.equal(context.socket.emissions.length, 1);
+
     assert.equal(panel.hidden, false);
     assert.ok(context.SessionCommandLauncher.popup);
 

@@ -3,10 +3,26 @@ import ipaddress
 import uuid
 from datetime import datetime, timezone
 
+import config
+
 from .audit_logger import log_error
+from .connection_storage_policy import (
+    ConnectionStorageLimitError,
+    enforce_store_read_limit,
+    enforce_store_recovery_limit,
+    enforce_store_transition,
+    recovery_record_selector,
+    resolve_recovery_record_selector,
+    validate_profile,
+)
 from .post_connect_manager import infer_mode, validate_configuration
 from .storage_errors import StorageCorruptionError
-from .storage_utils import atomic_write_json, load_json_migrated, storage_lock
+from .storage_utils import (
+    atomic_write_bytes,
+    load_json_migrated,
+    safe_reference_name,
+    storage_lock,
+)
 from .storage_migrations import CURRENT_STORAGE_VERSIONS
 from .startup_commands import normalize_startup_commands
 
@@ -99,6 +115,8 @@ def _optional_string(item, field, allow_none=False):
 def _valid_profile(item):
     if not isinstance(item, dict):
         return False
+    if 'tailscale_authorized' in item:
+        return False
     if not isinstance(item.get('id'), str) or not isinstance(item.get('name'), str):
         return False
     for field in (
@@ -121,7 +139,7 @@ def _valid_profile(item):
         'none', 'free_text', 'command', 'command_set',
     }:
         return False
-    for field in ('use_tmux', 'tailscale_authorized', 'favorite'):
+    for field in ('use_tmux', 'favorite'):
         if field in item and type(item[field]) is not bool:
             return False
     if 'sort_order' in item and not _valid_sort_order(item['sort_order']):
@@ -142,9 +160,25 @@ _PROFILE_FIELDS = {
     'id', 'name', 'host', 'port', 'username', 'auth_type', 'key_id',
     'jump_host_id', 'startup_mode', 'startup_commands', 'command_id',
     'command_set_id', 'parameters_override', 'use_tmux',
-    'tailscale_authorized', 'group', 'favorite', 'created_at', 'updated_at',
+    'group', 'favorite', 'created_at', 'updated_at',
     'sort_order',
 }
+
+
+def _profile_migration_payload(profiles_file, document):
+    """Return a quota-safe exact migration payload, or keep it in memory."""
+    profiles = document['profiles']
+    try:
+        return enforce_store_transition(
+            path=profiles_file,
+            other_path=profiles_file.parent / 'jump_hosts.json',
+            prospective_document=document,
+            prospective_count=len(profiles),
+            previous_count=None,
+            maximum_count=config.PROFILE_MAX_RECORDS,
+        )
+    except ConnectionStorageLimitError:
+        return None
 
 
 def _load_profiles_with_lock_held(user_id):
@@ -156,38 +190,140 @@ def _load_profiles_with_lock_held(user_id):
         'profiles',
         lambda: {'profiles': []},
         _valid_profile_document,
+        migration_payload_factory=lambda document: (
+            _profile_migration_payload(profiles_file, document)
+        ),
     )
     return data['profiles']
 
 
+def _load_profiles_for_read_with_lock_held(user_id):
+    """Load only a response-safe profile store while its lock is held."""
+    profiles_file = get_user_profiles_file(user_id)
+    if profiles_file is None:
+        return []
+    enforce_store_read_limit(profiles_file)
+    profiles = _load_profiles_with_lock_held(user_id)
+    enforce_store_read_limit(
+        profiles_file,
+        record_count=len(profiles),
+        maximum_count=config.PROFILE_MAX_RECORDS,
+    )
+    return profiles
+
+
 def load_profiles(user_id):
     """Load all connection profiles for a specific user."""
-    with storage_lock(f'profiles:{user_id}'):
-        return _load_profiles_with_lock_held(user_id)
+    # A read can persist a schema migration.  Hold the same coordinator used
+    # by normal profile and jump-host mutations so the sibling-store size check
+    # and the eventual migration write are one cross-store quota transaction.
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'profiles:{user_id}'):
+            return _load_profiles_for_read_with_lock_held(user_id)
 
 
 def _load_profiles_for_write(user_id):
-    """Load profiles without masking corruption before a mutation."""
+    """Load only a response-safe profile store before normal mutation."""
     profiles_file = get_user_profiles_file(user_id)
     if not profiles_file:
         return None, 'User not found'
-    return _load_profiles_with_lock_held(user_id), None
+    return _load_profiles_for_read_with_lock_held(user_id), None
 
-def save_profiles(user_id, profiles):
-    """Save profiles list to JSON file for a specific user."""
+
+def _load_profiles_for_recovery_delete(user_id):
+    """Load an oversized legacy store within the hard recovery ceilings."""
+    profiles_file = get_user_profiles_file(user_id)
+    if not profiles_file:
+        return None, 'User not found'
+    enforce_store_recovery_limit(profiles_file)
+    data = load_json_migrated(
+        profiles_file,
+        'profiles',
+        lambda: {'profiles': []},
+        _valid_profile_document,
+        persist_migration=False,
+        pre_migration_check=lambda document: enforce_store_recovery_limit(
+            profiles_file,
+            record_count=(
+                len(document['profiles'])
+                if isinstance(document, dict)
+                and isinstance(document.get('profiles'), list)
+                else None
+            ),
+        ),
+    )
+    profiles = data['profiles']
+    enforce_store_recovery_limit(
+        profiles_file,
+        record_count=len(profiles),
+    )
+    return profiles, None
+
+
+def load_profile_recovery_summaries(user_id):
+    """Return bounded, non-secret selectors for offline legacy recovery."""
+    with storage_lock(f'profiles:{user_id}'):
+        profiles, error = _load_profiles_for_recovery_delete(user_id)
+        if error:
+            return None, error
+        scope = f'profiles:{user_id}'
+        return [
+            {
+                'selector': recovery_record_selector(
+                    scope,
+                    index,
+                    profile,
+                ),
+                'id': safe_reference_name(profile.get('id')),
+                'name': safe_reference_name(profile.get('name')),
+                'host': safe_reference_name(profile.get('host')),
+            }
+            for index, profile in enumerate(profiles)
+            if isinstance(profile, dict)
+        ], None
+
+def save_profiles(
+    user_id,
+    profiles,
+    *,
+    previous_count=None,
+    previous_document=None,
+    compact=False,
+):
+    """Save profiles, compacting only explicitly requested recovery writes."""
     try:
         profiles_file = get_user_profiles_file(user_id)
+        stored_profiles = []
+        for profile in profiles:
+            stored_profile = dict(profile) if isinstance(profile, dict) else profile
+            if isinstance(stored_profile, dict):
+                # This is derived from live launch policy for responses only.
+                stored_profile.pop('tailscale_authorized', None)
+            stored_profiles.append(stored_profile)
         document = {
             'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
-            'profiles': profiles,
+            'profiles': stored_profiles,
         }
         if not profiles_file or not _valid_profile_document(document):
             return False
 
+        payload = enforce_store_transition(
+            path=profiles_file,
+            other_path=profiles_file.parent / 'jump_hosts.json',
+            prospective_document=document,
+            prospective_count=len(stored_profiles),
+            previous_count=previous_count,
+            maximum_count=config.PROFILE_MAX_RECORDS,
+            previous_document=previous_document,
+            compact=compact,
+        )
+
         profiles_file.parent.mkdir(parents=True, exist_ok=True)
 
-        atomic_write_json(profiles_file, document)
+        atomic_write_bytes(profiles_file, payload)
         return True
+    except ConnectionStorageLimitError:
+        raise
     except Exception as e:
         log_error("Error saving profiles", user_id=user_id, error=str(e))
         return False
@@ -223,6 +359,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
         return None, 'Invalid username format'
     if auth_type not in {'password', 'key', 'tailscale'}:
         return None, 'Invalid auth_type'
+    if auth_type == 'tailscale' and payload.get('jump_host_id'):
+        return None, 'Tailscale SSH cannot be used with a jump host'
 
     group, error = _normalize_group(payload.get('group', _UNSET))
     if error:
@@ -237,6 +375,13 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     key_id = payload.get('key_id')
     if auth_type == 'key' and not key_id:
         return None, 'key_id required for key authentication'
+    if key_id is not None and not isinstance(key_id, str):
+        return None, 'Invalid key reference'
+    if auth_type == 'key':
+        from .key_manager import get_key
+
+        if get_key(user_id, key_id) is None:
+            return None, 'SSH key not found'
 
     post_connect, error = validate_configuration(
         user_id,
@@ -315,6 +460,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                     return None, error
 
                 profile_id = payload.get('id')
+                previous_count = len(profiles)
                 now = datetime.now(timezone.utc).isoformat()
                 if profile_id:
                     for index, existing in enumerate(profiles):
@@ -361,6 +507,7 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                                     profiles, target_group, exclude_id=profile_id
                                 )
                             profiles[index] = result
+                            validate_profile(result, existing)
                             break
                     else:
                         return None, 'Profile not found'
@@ -375,12 +522,19 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                         'updated_at': now,
                     }
                     profiles.append(result)
+                    validate_profile(result)
 
-                if save_profiles(user_id, profiles):
+                if save_profiles(
+                    user_id,
+                    profiles,
+                    previous_count=previous_count,
+                ):
                     return result, None
                 return None, 'Failed to save profile'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as exc:
         log_error('Error saving profile', user_id=user_id, error=str(exc))
         return None, 'Failed to save profile'
@@ -441,6 +595,7 @@ def update_profile_organization(user_id, profile_id, patch):
                 for profile in profiles:
                     if profile.get('id') != profile_id:
                         continue
+                    previous = dict(profile)
                     if group is not _UNSET:
                         if group:
                             profile['group'] = group
@@ -452,12 +607,19 @@ def update_profile_organization(user_id, profile_id, patch):
                         else:
                             profile.pop('favorite', None)
                     profile['updated_at'] = datetime.now(timezone.utc).isoformat()
-                    if not save_profiles(user_id, profiles):
+                    validate_profile(profile, previous)
+                    if not save_profiles(
+                        user_id,
+                        profiles,
+                        previous_count=len(profiles),
+                    ):
                         return None, 'Failed to save profile'
                     return dict(profile), None
                 return None, 'Profile not found'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as exc:
         log_error(
             'Error updating profile organization',
@@ -501,6 +663,7 @@ def move_profile(
                 )
                 if profile is None:
                     return None, 'Profile not found'
+                previous = dict(profile)
 
                 source_group = profile.get('group')
                 if _group_key(source_group) != _group_key(expected_source_group):
@@ -549,7 +712,12 @@ def move_profile(
                     if member.get('id') == profile_id:
                         member['updated_at'] = now
 
-                if not save_profiles(user_id, profiles):
+                validate_profile(profile, previous)
+                if not save_profiles(
+                    user_id,
+                    profiles,
+                    previous_count=len(profiles),
+                ):
                     return None, 'Failed to save profile'
                 return {
                     'profiles': profiles,
@@ -557,6 +725,8 @@ def move_profile(
                 }, None
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as exc:
         log_error(
             'Error moving profile',
@@ -573,17 +743,82 @@ def delete_profile(user_id, profile_id):
                 profiles, error = _load_profiles_for_write(user_id)
                 if error:
                     return False, error
-                found = any(profile.get('id') == profile_id for profile in profiles)
-                if not found:
+                index = next(
+                    (
+                        index
+                        for index, profile in enumerate(profiles)
+                        if profile.get('id') == profile_id
+                    ),
+                    None,
+                )
+                if index is None:
                     return False, 'Profile not found'
-                remaining = [profile for profile in profiles if profile.get('id') != profile_id]
-                if save_profiles(user_id, remaining):
+                previous_document = {
+                    'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+                    'profiles': profiles,
+                }
+                remaining = list(profiles)
+                remaining.pop(index)
+                if save_profiles(
+                    user_id,
+                    remaining,
+                    previous_count=len(profiles),
+                    previous_document=previous_document,
+                ):
                     return True, None
                 return False, 'Failed to delete profile'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return False, str(exc)
     except Exception as e:
         log_error("Error deleting profile", user_id=user_id, error=str(e))
+        return False, 'Failed to delete profile'
+
+
+def delete_profile_recovery_record(user_id, selector):
+    """Delete one selector-bound profile from an offline recovery store."""
+    try:
+        with storage_lock(f'command-config:{user_id}'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profiles_for_recovery_delete(user_id)
+                if error:
+                    return False, error
+                index = resolve_recovery_record_selector(
+                    f'profiles:{user_id}',
+                    profiles,
+                    selector,
+                )
+                if index is None:
+                    return (
+                        False,
+                        'Recovery selector not found; list the store again.',
+                    )
+                previous_document = {
+                    'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+                    'profiles': profiles,
+                }
+                remaining = list(profiles)
+                remaining.pop(index)
+                if save_profiles(
+                    user_id,
+                    remaining,
+                    previous_count=len(profiles),
+                    previous_document=previous_document,
+                    compact=True,
+                ):
+                    return True, None
+                return False, 'Failed to delete profile'
+    except StorageCorruptionError:
+        raise
+    except ConnectionStorageLimitError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        log_error(
+            'Error deleting recovery profile',
+            user_id=user_id,
+            error=str(exc),
+        )
         return False, 'Failed to delete profile'
 
 
@@ -608,12 +843,19 @@ def assign_command_set(user_id, profile_id, command_set_id):
                     if profile.get('id') == profile_id:
                         profile['startup_mode'] = 'command_set'
                         profile['command_set_id'] = command_set['id']
-                        if not save_profiles(user_id, profiles):
+                        validate_profile(profile)
+                        if not save_profiles(
+                            user_id,
+                            profiles,
+                            previous_count=len(profiles),
+                        ):
                             return None, 'Failed to save profile'
                         return profile, None
                 return None, 'Profile not found'
     except StorageCorruptionError:
         raise
+    except ConnectionStorageLimitError as exc:
+        return None, str(exc)
     except Exception as e:
         log_error('Error assigning command set to profile', user_id=user_id, error=str(e))
         return None, str(e)

@@ -136,6 +136,15 @@
             if (!created.methods.includes(method)) {
                 throw new Error('No supported authentication method is available.');
             }
+            if (method === 'bootstrap') {
+                const secret = await requestSecret(method);
+                if (secret === null || secret === undefined) { return null; }
+                const completed = await api('/api/account/step-up/bootstrap', {
+                    method: 'POST',
+                    body: { intent: created.intent, code: secret }
+                });
+                return completed.grant;
+            }
             if (method === 'password' || method === 'ldap') {
                 const secret = await requestSecret(method);
                 if (secret === null || secret === undefined) { return null; }
@@ -178,10 +187,7 @@
             if (method === 'oidc' || method === 'github') {
                 const started = await api(`/api/account/step-up/${method}/start`, {
                     method: 'POST',
-                    body: {
-                        intent: created.intent,
-                        continuation: '/security'
-                    }
+                    body: { intent: created.intent }
                 });
                 openAuthorization(started.authorization_url);
                 for (let attempt = 0; attempt < 120; attempt += 1) {

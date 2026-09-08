@@ -8,6 +8,8 @@ from threading import Lock
 from paramiko import SSHException
 
 from . import ssh_manager
+from .audit_logger import log_info
+from .paramiko_channels import optional_channel_rejection_fields
 
 
 DEFAULT_MAX_BYTES = 16 * 1024
@@ -443,7 +445,17 @@ def collect_linux_stats(session_id, *, timeout=DEFAULT_TIMEOUT,
             return None, 'unsupported'
 
         return parse_output()
-    except SSHException:
+    except SSHException as error:
+        rejection = optional_channel_rejection_fields(error)
+        if rejection:
+            log_info(
+                'Diagnostics temporarily unavailable because the remote SSH '
+                'server reported insufficient capacity for an additional '
+                'channel',
+                session_id=session_id,
+                **rejection,
+            )
+            return None, 'resource_shortage'
         return None, 'transient'
     except (OSError, socket.timeout):
         return None, 'transient'

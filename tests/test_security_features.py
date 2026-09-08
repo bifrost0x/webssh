@@ -206,8 +206,10 @@ def test_admin_disabled_oidc_blocks_new_provider_login(app, client, monkeypatch)
         db.session.commit()
 
     response = client.get('/oidc/login')
+    self_link = client.post('/api/account/oidc/link/start', json={})
 
     assert response.status_code == 404
+    assert self_link.status_code == 404
 
 
 def test_admin_disabled_oidc_is_not_advertised_in_templates(

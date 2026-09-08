@@ -89,6 +89,12 @@ class User(db.Model, UserMixin):
         cascade='all, delete-orphan',
         lazy='dynamic',
     )
+    factor_bootstrap_tokens = db.relationship(
+        'FactorBootstrapToken',
+        backref='user',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
 
     def set_password(self, password):
         """Hash and set user password using bcrypt."""
@@ -224,6 +230,19 @@ def ensure_security_columns():
         additions.append(
             "ALTER TABLE oidc_login_states ADD COLUMN step_up_intent_id "
             "INTEGER"
+        )
+    if 'user_id' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN user_id INTEGER"
+        )
+    if 'auth_generation' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN auth_generation INTEGER"
+        )
+    if 'authentication_session_id' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN "
+            "authentication_session_id INTEGER"
         )
     for statement in additions:
         db.session.execute(text(statement))
@@ -534,6 +553,32 @@ class TOTPEnrollment(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
 
 
+class FactorBootstrapToken(db.Model):
+    """One-use local-operator authorization for an initial durable factor."""
+
+    __tablename__ = 'factor_bootstrap_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    token_hash = db.Column(
+        db.String(64), unique=True, nullable=False, index=True
+    )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=False,
+        index=True,
+    )
+    auth_generation = db.Column(db.Integer, nullable=False)
+    action = db.Column(db.String(96), nullable=False, index=True)
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    consumed_at = db.Column(db.DateTime)
+
+
 class StepUpGrant(db.Model):
     """Single-use authorization for one action and target."""
 
@@ -612,6 +657,7 @@ def cleanup_expired_security_rows(limit=500, now=None):
     for model in (
         StepUpIntent,
         StepUpGrant,
+        FactorBootstrapToken,
         GitHubOAuthState,
         PendingAuthentication,
         TOTPEnrollment,
@@ -636,7 +682,7 @@ def cleanup_expired_security_rows(limit=500, now=None):
 
 
 class OIDCIdentity(db.Model):
-    """Administrator-approved stable external identity mapping."""
+    """Verified stable external identity mapping to a WebSSH account."""
 
     __tablename__ = 'oidc_identities'
     __table_args__ = (
@@ -679,6 +725,15 @@ class OIDCLoginState(db.Model):
         default='login',
         server_default='login',
     )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=True,
+    )
+    auth_generation = db.Column(db.Integer, nullable=True)
+    # No foreign key: an in-flight provider redirect must never block logout
+    # or deletion of the server-side authentication session it references.
+    authentication_session_id = db.Column(db.Integer, nullable=True)
     continuation = db.Column(
         db.String(512),
         nullable=False,

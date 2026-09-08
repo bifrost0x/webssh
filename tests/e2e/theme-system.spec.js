@@ -283,6 +283,7 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     await page.goto('/login');
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'paper');
+    await expect(page.locator('body')).toHaveAttribute('data-theme-background-ready', '');
 
     const authTheme = await page.evaluate(() => ({
         backdropImage: getComputedStyle(document.body, '::before').backgroundImage,

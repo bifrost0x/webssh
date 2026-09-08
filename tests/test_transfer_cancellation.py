@@ -792,6 +792,61 @@ def test_fallback_zip_cancellation_removes_temporary_archive(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_fallback_zip_chmod_failure_removes_temporary_archive(
+    tmp_path,
+    monkeypatch,
+):
+    from app import sftp_handler
+
+    real_chmod = os.chmod
+
+    def reject_archive_chmod(path, mode):
+        if mode == 0o600:
+            raise OSError('chmod unavailable')
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr(sftp_handler.os, 'chmod', reject_archive_chmod)
+
+    with pytest.raises(OSError, match='chmod unavailable'):
+        sftp_handler.build_fallback_zip_to_disk(
+            None,
+            '/reports',
+            'reports',
+            cancel_event=threading.Event(),
+            max_bytes=1024,
+            chunk_size=4,
+            temp_dir=tmp_path,
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_fallback_zip_base_exception_removes_temporary_archive(
+    tmp_path,
+    monkeypatch,
+):
+    from app import sftp_handler
+
+    monkeypatch.setattr(
+        sftp_handler.zipfile,
+        'ZipFile',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        sftp_handler.build_fallback_zip_to_disk(
+            None,
+            '/reports',
+            'reports',
+            cancel_event=threading.Event(),
+            max_bytes=1024,
+            chunk_size=4,
+            temp_dir=tmp_path,
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_empty_directory_entries_cannot_exceed_reserved_zip_bytes(tmp_path):
     from app.sftp_handler import TransferSizeExceeded, build_fallback_zip_to_disk
 

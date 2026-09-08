@@ -111,6 +111,23 @@ def test_settings_cards_keep_consistent_vertical_spacing():
     )
 
 
+def test_factor_confirmation_uses_secret_specific_autocomplete_metadata():
+    security_template = (ROOT / "templates/security.html").read_text(
+        encoding="utf-8"
+    )
+    webauthn_script = (ROOT / "static/js/webauthn.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'id="securityConfirmationPassword" class="form-control" '
+        'autocomplete="current-password"'
+    ) in security_template
+    assert "settings.authentication === 'bootstrap'" in webauthn_script
+    assert "? 'one-time-code'" in webauthn_script
+    assert ": 'current-password';" in webauthn_script
+
+
 def test_linked_github_identity_is_presented_as_a_security_method(app, client):
     from app.models import GitHubIdentity, db
 
@@ -133,6 +150,27 @@ def test_linked_github_identity_is_presented_as_a_security_method(app, client):
     assert b'class="admin-settings-row settings-security-method-row settings-security-method-row-github"' in response.data
     assert b'data-i18n="security.manageGithubHint"' in response.data
     assert b'class="github-identity-action-label"' in response.data
+
+
+def test_active_oidc_is_presented_as_a_verified_self_link_method(
+    app, client, monkeypatch
+):
+    import config
+
+    _create_user(app, "oidc_security_user")
+    _login(client, "oidc_security_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    methods = response.data.index(b'id="settingsSecurityMethodsTitle"')
+    oidc = response.data.index(b'id="oidc"')
+    assert methods < oidc
+    assert b'id="oidcIdentityStatus"' in response.data
+    assert b'id="oidcIdentityAction"' in response.data
+    assert b'data-i18n="security.manageOidcHint"' in response.data
+    assert b'data-i18n="security.connectOidc"' in response.data
 
 
 def test_standard_user_settings_do_not_expose_administration_navigation(

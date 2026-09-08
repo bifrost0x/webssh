@@ -70,6 +70,87 @@ test('Android compositions discard stale helper input before xterm records the o
     assert.equal(listeners.size, 0);
 });
 
+test('Android IME fallback does not reprocess text delivered before keydown 229', () => {
+    const listeners = new Map();
+    const textarea = {
+        value: '',
+        addEventListener(name, listener, capture = false) {
+            listeners.set(`${name}:${capture}`, listener);
+        },
+        removeEventListener(name, listener, capture = false) {
+            const key = `${name}:${capture}`;
+            if (listeners.get(key) === listener) listeners.delete(key);
+        },
+    };
+    const dispose = TerminalManager.setupAndroidCompositionGuard({
+        textarea,
+        options: {screenReaderMode: false},
+    }, true);
+    let stopped = 0;
+
+    listeners.get('input:true')({
+        data: '1',
+        inputType: 'insertText',
+        isComposing: false,
+        timeStamp: 100,
+    });
+    listeners.get('keydown:true')({
+        key: 'Unidentified',
+        keyCode: 229,
+        isComposing: false,
+        timeStamp: 101,
+        stopImmediatePropagation() { stopped += 1; },
+    });
+
+    assert.equal(stopped, 1);
+    dispose();
+    assert.equal(listeners.size, 0);
+});
+
+test('Android IME guard leaves control keys and active compositions to xterm', () => {
+    const listeners = new Map();
+    const textarea = {
+        value: '',
+        addEventListener(name, listener, capture = false) {
+            listeners.set(`${name}:${capture}`, listener);
+        },
+        removeEventListener(name, listener, capture = false) {
+            const key = `${name}:${capture}`;
+            if (listeners.get(key) === listener) listeners.delete(key);
+        },
+        setSelectionRange() {},
+    };
+    const dispose = TerminalManager.setupAndroidCompositionGuard({
+        textarea,
+        options: {screenReaderMode: false},
+    }, true);
+    let stopped = 0;
+    const dispatchKeydown = overrides => listeners.get('keydown:true')({
+        keyCode: 229,
+        isComposing: false,
+        timeStamp: 200,
+        stopImmediatePropagation() { stopped += 1; },
+        ...overrides,
+    });
+
+    listeners.get('input:true')({
+        data: 'x',
+        inputType: 'insertText',
+        isComposing: false,
+        timeStamp: 199,
+    });
+    dispatchKeydown({key: 'Backspace'});
+    dispatchKeydown({key: 'c', ctrlKey: true});
+    listeners.get('compositionstart:true')();
+    dispatchKeydown({key: 'a', isComposing: true});
+    listeners.get('compositionend:true')();
+    dispatchKeydown({key: 'a'});
+
+    assert.equal(stopped, 1);
+    dispose();
+    assert.equal(listeners.size, 0);
+});
+
 test('Android composition guard preserves screen-reader helper input', () => {
     let listenerAdded = false;
     const textarea = {
@@ -96,6 +177,8 @@ test('OSC 52 clipboard payloads are bounded, targeted, and decoded as UTF-8', ()
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;?'), null);
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;%%%'), null);
     assert.equal(TerminalManager.decodeOsc52Clipboard('c;dG9vIGxhcmdl', 4), null);
+    const oversized = Buffer.alloc(128 * 1024 + 1, 0x61).toString('base64');
+    assert.equal(TerminalManager.decodeOsc52Clipboard(`c;${oversized}`), null);
 });
 
 test('OSC 52 handler requires a user action before writing the clipboard', async () => {

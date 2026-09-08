@@ -40,6 +40,11 @@ SECURITY_ENV_NAMES = {
     'SMB_ALLOWED_TARGETS',
     'SMB_ENABLED',
     'STEP_UP_MAX_AGE_SECONDS',
+    'TAILSCALE_SSH_ALLOWED_REMOTE_USERS',
+    'TAILSCALE_SSH_ALLOWED_TARGETS',
+    'TAILSCALE_SSH_ALLOWED_WEBSSH_USERS',
+    'TAILSCALE_SSH_ENABLED',
+    'TAILSCALE_SSH_INTERFACE',
     'TOTP_ENABLED',
     'TRUSTED_PROXIES',
     'WEBAUTHN_ENABLED',
@@ -90,6 +95,131 @@ def test_safe_production_profile_loads():
     result = _load_config(_production_env())
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    'target',
+    (
+        'tiny-server',
+        'tiny-server:2200',
+        '100.64.0.10',
+        '100.64.0.10:2200',
+        'fd7a:115c:a1e0::10',
+        '[fd7a:115c:a1e0::10]:2200',
+    ),
+)
+def test_production_tailscale_accepts_supported_exact_targets(target):
+    result = _load_config(_production_env(
+        TAILSCALE_SSH_ENABLED='true',
+        TAILSCALE_SSH_ALLOWED_TARGETS=target,
+        TAILSCALE_SSH_INTERFACE='tailscale0',
+    ))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    'targets',
+    (
+        '',
+        'bad target',
+        'tiny-server,bad target',
+        '[fd7a:115c:a1e0::10',
+        'tiny-server:65536',
+    ),
+)
+def test_production_tailscale_rejects_empty_or_malformed_targets(targets):
+    result = _load_config(_production_env(
+        TAILSCALE_SSH_ENABLED='true',
+        TAILSCALE_SSH_ALLOWED_TARGETS=targets,
+        TAILSCALE_SSH_INTERFACE='tailscale0',
+    ))
+
+    assert result.returncode != 0
+    assert 'TAILSCALE_SSH_ALLOWED_TARGETS' in result.stdout + result.stderr
+
+
+def test_production_tailscale_rejects_empty_interface():
+    result = _load_config(_production_env(
+        TAILSCALE_SSH_ENABLED='true',
+        TAILSCALE_SSH_ALLOWED_TARGETS='tiny-server',
+        TAILSCALE_SSH_INTERFACE='   ',
+    ))
+
+    assert result.returncode != 0
+    assert 'TAILSCALE_SSH_INTERFACE' in result.stdout + result.stderr
+
+
+def test_disabled_tailscale_tolerates_dormant_policy_values():
+    result = _load_config(
+        _production_env(
+            TAILSCALE_SSH_ENABLED='false',
+            TAILSCALE_SSH_ALLOWED_TARGETS='bad target',
+            TAILSCALE_SSH_INTERFACE='',
+        ),
+        'import json, config; '
+        'print(json.dumps(config.SECURITY_CONFIG_WARNINGS))',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'TAILSCALE_SSH_' not in result.stdout.splitlines()[-1]
+
+
+@pytest.mark.parametrize(
+    ('overrides', 'warning_fragments'),
+    (
+        (
+            {
+                'TAILSCALE_SSH_ALLOWED_TARGETS': '',
+                'TAILSCALE_SSH_INTERFACE': 'tailscale0',
+            },
+            ('TAILSCALE_SSH_ALLOWED_TARGETS is empty', 'fail closed'),
+        ),
+        (
+            {
+                'TAILSCALE_SSH_ALLOWED_TARGETS': 'tiny-server,bad target',
+                'TAILSCALE_SSH_INTERFACE': 'tailscale0',
+            },
+            ('TAILSCALE_SSH_ALLOWED_TARGETS contains malformed entries',),
+        ),
+        (
+            {
+                'TAILSCALE_SSH_ALLOWED_TARGETS': 'bad target',
+                'TAILSCALE_SSH_INTERFACE': 'tailscale0',
+            },
+            (
+                'TAILSCALE_SSH_ALLOWED_TARGETS contains malformed entries',
+                'TAILSCALE_SSH_ALLOWED_TARGETS contains no valid targets',
+                'fail closed',
+            ),
+        ),
+        (
+            {
+                'TAILSCALE_SSH_ALLOWED_TARGETS': 'tiny-server',
+                'TAILSCALE_SSH_INTERFACE': ' ',
+            },
+            ('TAILSCALE_SSH_INTERFACE is empty', 'fail closed'),
+        ),
+    ),
+)
+def test_homelab_tailscale_misconfiguration_warns_without_blocking_startup(
+    overrides,
+    warning_fragments,
+):
+    result = _load_config(
+        _production_env(
+            DEPLOYMENT_PROFILE='homelab',
+            TAILSCALE_SSH_ENABLED='true',
+            **overrides,
+        ),
+        'import json, config; '
+        'print(json.dumps(config.SECURITY_CONFIG_WARNINGS))',
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    warnings = result.stdout.splitlines()[-1]
+    for fragment in warning_fragments:
+        assert fragment in warnings
 
 
 def test_smb_is_disabled_by_default():

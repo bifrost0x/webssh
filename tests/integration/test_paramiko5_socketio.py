@@ -108,6 +108,7 @@ def terminal_marker_command(marker, prefix=''):
 def create_authenticated_socket(app, username):
     from app import socketio
     from app.auth import register_user
+    from app.socket_protocol import SOCKET_WIRE_REVISION
 
     with app.app_context():
         user, error = register_user(username, 'socket-password-123')
@@ -124,6 +125,7 @@ def create_authenticated_socket(app, username):
     socket_client = socketio.test_client(
         app,
         flask_test_client=http_client,
+        auth={'wire_revision': SOCKET_WIRE_REVISION},
     )
     assert socket_client.is_connected()
     wait_for_event(socket_client, 'connected')

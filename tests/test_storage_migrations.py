@@ -89,6 +89,35 @@ def test_profiles_preserve_legacy_and_explicit_post_connect_semantics():
     assert by_id['absent-override']['startup_mode'] == 'command'
 
 
+@pytest.mark.parametrize('schema_version', [0, 1, 2])
+def test_profiles_migration_removes_response_only_tailscale_authorization(
+    schema_version,
+):
+    source = {
+        'schema_version': schema_version,
+        'profiles': [
+            {
+                'id': 'tailnet-server',
+                'name': 'Tailnet server',
+                'tailscale_authorized': True,
+            },
+            {
+                'id': 'ordinary-server',
+                'name': 'Ordinary server',
+            },
+        ],
+    }
+
+    migrated, changed = migrate_document('profiles', source)
+
+    assert changed is True
+    assert migrated['schema_version'] == CURRENT_STORAGE_VERSIONS['profiles']
+    assert 'tailscale_authorized' not in migrated['profiles'][0]
+    assert migrated['profiles'][1]['id'] == 'ordinary-server'
+    assert migrated['profiles'][1]['name'] == 'Ordinary server'
+    assert source['profiles'][0]['tailscale_authorized'] is True
+
+
 def test_future_versions_and_unknown_stores_are_rejected():
     with pytest.raises(ValueError, match='future storage version'):
         migrate_document(
@@ -352,6 +381,388 @@ def test_manager_rejects_future_version_without_backup_or_write(app):
         assert exc_info.value.reason == 'unsupported schema'
         assert path.read_bytes() == source
         assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+
+def test_profile_manager_rejects_response_only_field_in_current_document(app):
+    from app import profile_manager
+    from app.models import User, db
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-response-only-current')
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
+        source = json.dumps({
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': [
+                {
+                    'id': 'tailnet-server',
+                    'name': 'Tailnet server',
+                    'tailscale_authorized': True,
+                }
+            ],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(source)
+
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            profile_manager.load_profiles(user_id)
+
+        assert exc_info.value.reason == 'validation failed'
+        assert path.read_bytes() == source
+        assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+
+def test_profile_manager_persists_response_only_field_migration(app):
+    from app import profile_manager
+    from app.models import User, db
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-response-only-legacy')
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
+        source = json.dumps({
+            'schema_version': 2,
+            'profiles': [
+                {
+                    'id': 'tailnet-server',
+                    'name': 'Tailnet server',
+                    'tailscale_authorized': True,
+                }
+            ],
+        }, separators=(',', ':')).encode('utf-8')
+        path.write_bytes(source)
+
+        loaded = profile_manager.load_profiles(user_id)
+
+        assert loaded == [{
+            'id': 'tailnet-server',
+            'name': 'Tailnet server',
+        }]
+        stored = json.loads(path.read_text(encoding='utf-8'))
+        assert stored == {
+            'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+            'profiles': loaded,
+        }
+        backups = list(path.parent.glob('profiles.json.*.bak'))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == source
+
+
+def test_profile_v2_migration_uses_exact_compact_fallback_and_reloads(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import profile_manager
+    from app.models import User, db
+
+    profiles = [
+        {'id': str(index), 'name': 'x'}
+        for index in range(50)
+    ]
+    profiles[0]['tailscale_authorized'] = True
+    source_document = {
+        'schema_version': 2,
+        'profiles': profiles,
+    }
+    source = json.dumps(
+        source_document,
+        separators=(',', ':'),
+    ).encode('utf-8')
+    expected_profiles = [
+        {
+            key: value
+            for key, value in profile.items()
+            if key != 'tailscale_authorized'
+        }
+        for profile in profiles
+    ]
+    expected = json.dumps({
+        'schema_version': CURRENT_STORAGE_VERSIONS['profiles'],
+        'profiles': expected_profiles,
+    }, separators=(',', ':')).encode('utf-8')
+    assert len(source) == 1201
+    assert len(expected) == 1173
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-profile-exact-cap')
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
+        path.write_bytes(source)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(source),
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(source),
+        )
+
+        first = profile_manager.load_profiles(user_id)
+        assert first == expected_profiles
+        assert path.read_bytes() == expected
+        backups = list(path.parent.glob('profiles.json.*.bak'))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == source
+
+        assert profile_manager.load_profiles(user_id) == expected_profiles
+        assert path.read_bytes() == expected
+        assert list(path.parent.glob('profiles.json.*.bak')) == backups
+
+
+def test_jump_v1_migration_uses_exact_compact_fallback_and_reloads(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import jump_host_manager
+    from app.models import User, db
+
+    jump_hosts = [
+        {
+            'id': str(index),
+            'name': 'x',
+            'host': 'b.example',
+            'port': 22,
+            'username': 'u',
+            'auth_type': 'password',
+        }
+        for index in range(30)
+    ]
+    source = json.dumps({
+        'schema_version': 1,
+        'jump_hosts': jump_hosts,
+    }, separators=(',', ':')).encode('utf-8')
+    expected = json.dumps({
+        'schema_version': CURRENT_STORAGE_VERSIONS['jump_hosts'],
+        'jump_hosts': jump_hosts,
+    }, separators=(',', ':')).encode('utf-8')
+    assert len(source) == 2725
+    assert len(expected) == len(source)
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-jump-exact-cap')
+        path = db.session.get(User, user_id).get_data_dir() / 'jump_hosts.json'
+        path.write_bytes(source)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(source),
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(source),
+        )
+
+        first = jump_host_manager.load_jump_hosts(user_id)
+        assert first == jump_hosts
+        assert path.read_bytes() == expected
+        backups = list(path.parent.glob('jump_hosts.json.*.bak'))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == source
+
+        assert jump_host_manager.load_jump_hosts(user_id) == jump_hosts
+        assert path.read_bytes() == expected
+        assert list(path.parent.glob('jump_hosts.json.*.bak')) == backups
+
+
+def test_growing_profile_migration_stays_in_memory_without_touching_source(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import profile_manager
+    from app.models import User, db
+
+    profiles = [
+        {'id': str(index), 'name': 'x'}
+        for index in range(3)
+    ]
+    source = json.dumps({
+        'schema_version': 1,
+        'profiles': profiles,
+    }, separators=(',', ':')).encode('utf-8')
+    expected = [
+        {**profile, 'startup_mode': 'none'}
+        for profile in profiles
+    ]
+    assert len(source) == 99
+
+    with app.app_context():
+        user_id = _create_user(app, 'migration-profile-in-memory')
+        path = db.session.get(User, user_id).get_data_dir() / 'profiles.json'
+        path.write_bytes(source)
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_STORE_MAX_BYTES',
+            len(source),
+        )
+        monkeypatch.setattr(
+            config,
+            'CONNECTION_CONFIG_MAX_BYTES',
+            len(source),
+        )
+
+        assert profile_manager.load_profiles(user_id) == expected
+        assert path.read_bytes() == source
+        assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+        assert profile_manager.load_profiles(user_id) == expected
+        assert path.read_bytes() == source
+        assert list(path.parent.glob('profiles.json.*.bak')) == []
+
+
+def test_profile_and_jump_migrations_serialize_combined_quota_accounting(
+    app,
+    monkeypatch,
+):
+    import config
+    from app import jump_host_manager, profile_manager, storage_migrations
+    from app.models import User, db
+    from app.storage_utils import storage_lock as real_storage_lock
+
+    profile_source_document = {
+        'profiles': [{'id': 'profile-1', 'name': 'Profile'}],
+    }
+    jump_source_document = {
+        'jump_hosts': [{
+            'id': 'jump-1',
+            'name': 'Jump',
+            'host': 'jump.example',
+            'port': 22,
+            'username': 'deploy',
+            'auth_type': 'password',
+        }],
+    }
+    profile_migrated, _ = migrate_document(
+        'profiles', profile_source_document
+    )
+    jump_migrated, _ = migrate_document(
+        'jump_hosts', jump_source_document
+    )
+    def encode(document):
+        return json.dumps(
+            document,
+            separators=(',', ':'),
+        ).encode('utf-8')
+    profile_source = encode(profile_source_document)
+    jump_source = encode(jump_source_document)
+    profile_payload = encode(profile_migrated)
+    jump_payload = encode(jump_migrated)
+    combined_cap = max(
+        len(profile_payload) + len(jump_source),
+        len(profile_source) + len(jump_payload),
+    )
+    assert len(profile_payload) + len(jump_payload) > combined_cap
+
+    first_write_entered = threading.Event()
+    release_first_write = threading.Event()
+    jump_coordinator_requested = threading.Event()
+    jump_payload_entered = threading.Event()
+    real_atomic_write_bytes = storage_migrations.atomic_write_bytes
+    real_jump_payload_factory = (
+        jump_host_manager._jump_host_migration_payload
+    )
+    results = {}
+    errors = []
+
+    def blocking_first_write(path, payload):
+        if not first_write_entered.is_set():
+            first_write_entered.set()
+            if not release_first_write.wait(timeout=2):
+                raise AssertionError('timed out releasing first migration write')
+        return real_atomic_write_bytes(path, payload)
+
+    def instrumented_jump_storage_lock(key):
+        if (
+            threading.current_thread().name == 'jump-migration'
+            and key == f'command-config:{user_id}'
+        ):
+            jump_coordinator_requested.set()
+        return real_storage_lock(key)
+
+    def observed_jump_payload_factory(path, document):
+        jump_payload_entered.set()
+        return real_jump_payload_factory(path, document)
+
+    def load_profiles():
+        try:
+            with app.app_context():
+                results['profiles'] = profile_manager.load_profiles(user_id)
+        except BaseException as exc:  # pragma: no cover - asserted below
+            errors.append(exc)
+
+    def load_jump_hosts():
+        try:
+            with app.app_context():
+                results['jump_hosts'] = jump_host_manager.load_jump_hosts(
+                    user_id
+                )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            errors.append(exc)
+
+    with app.app_context():
+        user_id = _create_user(app, 'concurrent-migration-quota')
+        data_dir = db.session.get(User, user_id).get_data_dir()
+        profile_path = data_dir / 'profiles.json'
+        jump_path = data_dir / 'jump_hosts.json'
+        profile_path.write_bytes(profile_source)
+        jump_path.write_bytes(jump_source)
+
+    monkeypatch.setattr(config, 'CONNECTION_STORE_MAX_BYTES', 10_000)
+    monkeypatch.setattr(
+        config,
+        'CONNECTION_CONFIG_MAX_BYTES',
+        combined_cap,
+    )
+    monkeypatch.setattr(
+        storage_migrations,
+        'atomic_write_bytes',
+        blocking_first_write,
+    )
+    monkeypatch.setattr(
+        jump_host_manager,
+        'storage_lock',
+        instrumented_jump_storage_lock,
+    )
+    monkeypatch.setattr(
+        jump_host_manager,
+        '_jump_host_migration_payload',
+        observed_jump_payload_factory,
+    )
+
+    profile_thread = threading.Thread(
+        target=load_profiles,
+        name='profile-migration',
+        daemon=True,
+    )
+    jump_thread = threading.Thread(
+        target=load_jump_hosts,
+        name='jump-migration',
+        daemon=True,
+    )
+    try:
+        profile_thread.start()
+        assert first_write_entered.wait(timeout=2)
+        jump_thread.start()
+        assert jump_coordinator_requested.wait(timeout=2)
+        assert jump_payload_entered.wait(timeout=0.1) is False
+    finally:
+        release_first_write.set()
+        profile_thread.join(timeout=2)
+        jump_thread.join(timeout=2)
+
+    assert profile_thread.is_alive() is False
+    assert jump_thread.is_alive() is False
+    assert errors == []
+    assert results == {
+        'profiles': profile_migrated['profiles'],
+        'jump_hosts': jump_migrated['jump_hosts'],
+    }
+    assert profile_path.read_bytes() == profile_payload
+    assert jump_path.read_bytes() == jump_source
+    assert profile_path.stat().st_size + jump_path.stat().st_size <= combined_cap
+    assert len(list(data_dir.glob('profiles.json.*.bak'))) == 1
+    assert list(data_dir.glob('jump_hosts.json.*.bak')) == []
 
 
 @pytest.mark.parametrize(

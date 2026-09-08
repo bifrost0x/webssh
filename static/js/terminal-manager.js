@@ -47,7 +47,17 @@ const TerminalManager = {
             return () => {};
         }
 
-        const resetStaleInput = () => {
+        const eventSurface = terminal.element || textarea;
+        const targetsTextarea = event => (
+            eventSurface === textarea || event.target === textarea
+        );
+        let compositionActive = false;
+        let recentTextInput = null;
+
+        const resetStaleInput = event => {
+            if (!targetsTextarea(event)) return;
+            compositionActive = true;
+            recentTextInput = null;
             // Some Android IMEs replace xterm's accumulated helper value when a
             // composition starts. Starting from that stale offset truncates the
             // same number of characters from the committed terminal input.
@@ -55,14 +65,81 @@ const TerminalManager = {
             textarea.setSelectionRange?.(0, 0);
         };
 
-        // Capture runs before xterm records the composition's start offset.
-        textarea.addEventListener('compositionstart', resetStaleInput, true);
+        const finishComposition = event => {
+            if (!targetsTextarea(event)) return;
+            compositionActive = false;
+            recentTextInput = null;
+        };
+
+        const rememberTextInput = event => {
+            if (
+                !targetsTextarea(event)
+                || compositionActive
+                || event.isComposing
+                || event.inputType !== 'insertText'
+                || typeof event.data !== 'string'
+                || event.data.length === 0
+            ) {
+                return;
+            }
+            recentTextInput = {
+                data: event.data,
+                timeStamp: Number(event.timeStamp),
+            };
+        };
+
+        const suppressDuplicateImeFallback = event => {
+            if (!targetsTextarea(event)) return;
+            const keyCode = Number(event.keyCode || event.which);
+            if (
+                keyCode !== 229
+                || compositionActive
+                || event.isComposing
+                || event.ctrlKey
+                || event.metaKey
+                || event.altKey
+            ) {
+                return;
+            }
+
+            const key = typeof event.key === 'string' ? event.key : '';
+            const printableKey = Array.from(key).length === 1;
+            const keyTime = Number(event.timeStamp);
+            const inputDelay = keyTime - recentTextInput?.timeStamp;
+            const followsTextInput = (
+                Number.isFinite(inputDelay)
+                && inputDelay >= 0
+                && inputDelay <= 50
+                && ['', 'Unidentified', 'Process'].includes(key)
+            );
+            if (!printableKey && !followsTextInput) return;
+
+            // Android IMEs can deliver insertText before a printable keydown 229
+            // without any composition events. xterm has already accepted that
+            // input, so its deferred textarea-diff fallback would duplicate it.
+            // Do not prevent the browser default: a keydown-first IME still needs
+            // to produce its subsequent input event.
+            recentTextInput = null;
+            event.stopImmediatePropagation?.();
+        };
+
+        // Capture on xterm's parent runs before xterm's own capture listeners on
+        // the helper textarea. This matters for keydown as well as composition.
+        eventSurface.addEventListener('compositionstart', resetStaleInput, true);
+        eventSurface.addEventListener('compositionend', finishComposition, true);
+        eventSurface.addEventListener('input', rememberTextInput, true);
+        eventSurface.addEventListener('keydown', suppressDuplicateImeFallback, true);
         return () => {
-            textarea.removeEventListener('compositionstart', resetStaleInput, true);
+            eventSurface.removeEventListener('compositionstart', resetStaleInput, true);
+            eventSurface.removeEventListener('compositionend', finishComposition, true);
+            eventSurface.removeEventListener('input', rememberTextInput, true);
+            eventSurface.removeEventListener('keydown', suppressDuplicateImeFallback, true);
         };
     },
 
-    decodeOsc52Clipboard(data, maxBytes = 1024 * 1024) {
+    // Keep the encoded form below xterm's deterministic 200,000-character
+    // OSC/DCS parser ceiling (128 KiB becomes at most 174,764 base64 chars).
+    decodeOsc52Clipboard(data, maxBytes = 128 * 1024) {
         if (typeof data !== 'string') return null;
         const separator = data.indexOf(';');
         if (separator < 0) return null;

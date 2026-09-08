@@ -2,6 +2,24 @@
 
 
 MAX_STARTUP_COMMANDS_LENGTH = 4096
+MAX_STARTUP_COMMANDS_UTF8_BYTES = MAX_STARTUP_COMMANDS_LENGTH * 4
+
+
+def validate_command_parameters(value):
+    """Bound a parameter fragment before it can be concatenated."""
+    if not isinstance(value, str):
+        return 'Command parameters must be a string'
+    if len(value) > MAX_STARTUP_COMMANDS_LENGTH:
+        return 'Command parameters must not exceed 4096 characters'
+    try:
+        encoded_size = len(value.encode('utf-8'))
+    except UnicodeEncodeError:
+        return 'Command parameters must be valid UTF-8'
+    if encoded_size > MAX_STARTUP_COMMANDS_UTF8_BYTES:
+        return 'Command parameters exceed the UTF-8 byte limit'
+    if '\x00' in value:
+        return 'Commands cannot contain NUL bytes'
+    return None
 
 
 def normalize_startup_commands(value):

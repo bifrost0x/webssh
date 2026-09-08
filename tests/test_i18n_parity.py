@@ -150,15 +150,15 @@ def test_saved_connection_and_quick_connect_terms_are_consistent():
             ), f'{match.group(1)}:{key} still uses legacy profile terminology'
 
 
-def test_new_tab_accessible_name_uses_quick_connect_translation():
+def test_new_tab_accessible_name_describes_the_connection_launcher():
     source = Path('templates/index.html').read_text(encoding='utf-8')
     new_tab = re.search(r'<button[^>]+id="newTabBtn"[^>]*>', source)
 
     assert new_tab is not None
-    assert 'title="Quick Connect"' in new_tab.group(0)
-    assert 'aria-label="Quick Connect"' in new_tab.group(0)
-    assert 'data-i18n-title="connection.newConnection"' in new_tab.group(0)
-    assert 'data-i18n-aria-label="connection.newConnection"' in new_tab.group(0)
+    assert 'title="Select a session or use Quick Connect"' in new_tab.group(0)
+    assert 'aria-label="Select a session or use Quick Connect"' in new_tab.group(0)
+    assert 'data-i18n-title="panes.selectSession"' in new_tab.group(0)
+    assert 'data-i18n-aria-label="panes.selectSession"' in new_tab.group(0)
 
 
 def test_english_visible_fallbacks_avoid_legacy_connection_terms():
@@ -307,6 +307,7 @@ def test_recent_settings_and_github_surfaces_are_runtime_localized():
         'security.passkeysAndMfa',
         'security.githubManagedHint',
         'security.manageGithubHint',
+        'security.manageOidcHint',
     ):
         assert re.search(
             rf'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="{re.escape(key)}"',
@@ -363,6 +364,8 @@ def test_connection_state_messages_use_the_active_locale():
         'connection.lostReconnecting',
         'connection.lostReconnectingAttempt',
         'connection.disconnectedFromServer',
+        'connection.reloadRequired',
+        'connection.reloadPage',
     ):
         assert f"i18n.t('{key}')" in source
 

@@ -1,10 +1,111 @@
 """Bound Paramiko channel handshakes and long-lived channel operations."""
 
+import logging
+import re
 import socket
+import struct
 import time
 from threading import Timer
 
 import paramiko
+from paramiko.sftp import SFTPError
+
+import config
+
+
+SSH_OPEN_FAILED_RESOURCE_SHORTAGE = 4
+_PARAMIKO_TRANSPORT_LOGGER = 'paramiko.transport'
+_CHANNEL_OPEN_FAILURE_LOG = re.compile(
+    r'\ASecsh channel (?P<channel_id>[0-9]+) open FAILED: .*: '
+    r'(?P<reason>Administratively prohibited|Connect failed|'
+    r'Unknown channel type|Resource shortage|\(unknown code\))\Z',
+    re.DOTALL,
+)
+_CHANNEL_OPEN_FAILURE_FILTER_MARKER = (
+    '_webssh_paramiko_channel_open_failure_filter'
+)
+
+
+class _ChannelOpenFailureLogFilter(logging.Filter):
+    """Remove the SSH server's description from Paramiko failure records."""
+
+    _webssh_paramiko_channel_open_failure_filter = True
+
+    def filter(self, record):
+        if (
+            record.name != _PARAMIKO_TRANSPORT_LOGGER
+            or record.levelno != logging.ERROR
+            or record.args
+            or not isinstance(record.msg, str)
+        ):
+            return True
+        match = _CHANNEL_OPEN_FAILURE_LOG.fullmatch(record.msg)
+        if match:
+            record.msg = (
+                f"Secsh channel {match.group('channel_id')} open FAILED: "
+                f"{match.group('reason')} (server description omitted)"
+            )
+            record.args = ()
+        return True
+
+
+def _install_channel_open_failure_log_filter():
+    logger = logging.getLogger(_PARAMIKO_TRANSPORT_LOGGER)
+    for existing_filter in logger.filters:
+        if getattr(
+            existing_filter,
+            _CHANNEL_OPEN_FAILURE_FILTER_MARKER,
+            False,
+        ):
+            return existing_filter
+    channel_filter = _ChannelOpenFailureLogFilter()
+    logger.addFilter(channel_filter)
+    return channel_filter
+
+
+_install_channel_open_failure_log_filter()
+
+
+def optional_channel_rejection_fields(error):
+    """Describe a remote capacity rejection for an optional SSH channel.
+
+    RFC 4254 reason code 4 is supplied by the remote SSH server.  Keep the
+    server-provided text out of application logs because it is untrusted, and
+    leave retry policy to the caller because this condition can be temporary.
+    Do not classify other channel failures here: callers may need to retry or
+    fail a primary SSH operation for those errors.
+    """
+    if not isinstance(error, paramiko.ChannelException):
+        return None
+    code = getattr(error, 'code', None)
+    if type(code) is not int or code != SSH_OPEN_FAILED_RESOURCE_SHORTAGE:
+        return None
+    return {
+        'ssh_channel_code': SSH_OPEN_FAILED_RESOURCE_SHORTAGE,
+        'ssh_channel_reason': 'remote_resource_shortage',
+    }
+
+
+class BoundedSFTPClient(paramiko.SFTPClient):
+    """Reject attacker-declared SFTP packets before allocating their body."""
+
+    def _read_packet(self):
+        header = self._read_all(4)
+        size = struct.unpack('>I', header)[0]
+        if size > config.SFTP_MAX_PACKET_BYTES:
+            try:
+                self.sock.close()
+            finally:
+                raise SFTPError('SFTP packet exceeds configured byte limit')
+        data = self._read_all(size)
+        if self.ultra_debug:
+            self._log(
+                paramiko.common.DEBUG,
+                paramiko.util.format_binary(data, 'IN: '),
+            )
+        if size > 0:
+            return data[0], data[1:]
+        return 0, bytes()
 
 
 def _request_guard(channel, timeout):
@@ -51,7 +152,7 @@ def open_sftp_client(transport, *, timeout, operation_timeout, deadline=None):
     timeout_guard = _request_guard(channel, handshake_timeout)
     try:
         channel.invoke_subsystem('sftp')
-        sftp = paramiko.SFTPClient(channel)
+        sftp = BoundedSFTPClient(channel)
         if channel.closed:
             raise socket.timeout('SFTP request exceeded its deadline')
         channel.settimeout(_remaining_timeout(deadline, operation_timeout))

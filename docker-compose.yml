@@ -55,8 +55,9 @@ services:
       # Configure narrow allowlists; see docs/tailscale-ssh.md.
       # - TAILSCALE_SSH_ENABLED=true
       # - TAILSCALE_SSH_ALLOWED_WEBSSH_USERS=operator
-      # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10
+      # - TAILSCALE_SSH_ALLOWED_TARGETS=tiny-server,100.64.0.10:2222
       # - TAILSCALE_SSH_ALLOWED_REMOTE_USERS=root,ubuntu
+      # - TAILSCALE_SSH_INTERFACE=tailscale0
 
       # Enabled by default: host-key management, recovery codes, audit export.
       # The false switches disable them; internal-target blocking is opt-in.
@@ -76,7 +77,8 @@ services:
       # - BACKUP_UPLOAD_MAX_SIZE=1073741824
       # - BACKUP_OPERATION_TIMEOUT=1800
       # - BACKUP_DOWNLOAD_TTL=600
-      # - BACKUP_TEMP_DIR=/tmp/webssh-backup-operations
+      - BACKUP_TEMP_DIR=/app/recovery
+      - BACKUP_RECOVERY_DURABLE=true
 
       # Optional feature: Passkeys. Set the exact public domain and origin.
       # - WEBAUTHN_ENABLED=true
@@ -109,6 +111,7 @@ services:
     #   - redis
     volumes:
       - webssh_data:/app/data
+      - webssh_recovery:/app/recovery
     healthcheck:
       test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '5000') + '/ready', timeout=2).read(1)"]
       interval: 30s
@@ -125,4 +128,5 @@ services:
 
 volumes:
   webssh_data:
+  webssh_recovery:
     driver: local

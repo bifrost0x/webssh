@@ -253,6 +253,7 @@ for (const [code, message] of [
     ['PERMISSION_DENIED', 'You do not have permission to open this SMB share.'],
     ['SHARE_UNAVAILABLE', 'The SMB share could not be found or opened.'],
     ['TIMEOUT', 'The SMB server did not respond in time.'],
+    ['IDENTITY_UNAVAILABLE', 'This SMB server cannot provide the stable file identities required for secure access.'],
 ]) {
     test(`${code} shows its actionable connection reason`, () => {
         const { dialog, elements } = harness();

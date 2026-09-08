@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import config
+import pytest
 
 
 def _configure_temp_root(monkeypatch, tmp_path):
@@ -85,6 +86,80 @@ def test_rollback_failure_archive_survives_orphan_cleanup(
     assert maintenance.public_status()['state'] == 'idle'
 
 
+@pytest.mark.parametrize('status_payload', [
+    b'{not-json',
+    b'null',
+    b'[]',
+    b'{}',
+    b'{"state":"unexpected"}',
+])
+def test_corrupt_maintenance_status_preserves_all_recovery_archives(
+    client,
+    monkeypatch,
+    tmp_path,
+    status_payload,
+):
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    from app.backup_operations import BackupOperationRegistry
+
+    root = maintenance._status_path().parent
+    operation = root / 'operation-unknown'
+    operation.mkdir()
+    rollback = operation / 'rollback.zip'
+    rollback.write_bytes(b'emergency')
+    maintenance._status_path().write_bytes(status_payload)
+    maintenance._state = None
+    maintenance._state_path = None
+
+    BackupOperationRegistry().cleanup_orphans()
+
+    assert rollback.read_bytes() == b'emergency'
+    assert maintenance.public_status()['state'] == 'rollback_failed'
+    assert client.get('/ready').status_code == 503
+
+
+@pytest.mark.parametrize('status_payload', [
+    b'{not-json',
+    b'null',
+    b'[]',
+    b'{}',
+    b'{"state":"unexpected"}',
+])
+def test_corrupt_maintenance_status_blocks_all_startup_initialization(
+    monkeypatch,
+    tmp_path,
+    status_payload,
+):
+    import app as app_module
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    maintenance._status_path().write_bytes(status_payload)
+    maintenance._state = None
+    maintenance._state_path = None
+    initialized = []
+    runtime_jobs = []
+    monkeypatch.setattr(
+        app_module,
+        '_initialize_persistent_storage',
+        lambda created_app: initialized.append(created_app),
+    )
+    monkeypatch.setattr(
+        app_module.RuntimeLifecycle,
+        'start_job',
+        lambda self, name, target: runtime_jobs.append(name),
+    )
+
+    created_app = app_module.create_app(
+        initialize_storage=True,
+        start_runtime=True,
+        initialize_oidc=False,
+    )
+
+    assert initialized == []
+    assert runtime_jobs == []
+    assert created_app.test_client().get('/ready').status_code == 503
+
+
 def test_interrupted_restore_sanitizes_rollback_before_epoch_rotation(
     monkeypatch, tmp_path
 ):
@@ -137,6 +212,37 @@ def test_interrupted_restore_sanitizes_rollback_before_epoch_rotation(
         ('rotate',),
     ]
     assert maintenance.public_status()['state'] == 'failed'
+
+
+def test_interrupted_restore_with_mismatched_data_dir_stays_fail_closed(
+    monkeypatch, tmp_path
+):
+    import json
+
+    maintenance = _configure_temp_root(monkeypatch, tmp_path)
+    root = maintenance._status_path().parent
+    operation = root / 'operation-mismatch'
+    operation.mkdir()
+    rollback = operation / 'rollback.zip'
+    rollback.write_bytes(b'emergency')
+    maintenance.begin_preparing('mismatch')
+    maintenance.mark_in_progress(
+        'mismatch', 'operation-mismatch/rollback.zip'
+    )
+    document = json.loads(maintenance._status_path().read_text('utf-8'))
+    document['data_fingerprint'] = '0' * 64
+    maintenance._status_path().write_text(json.dumps(document), 'utf-8')
+    maintenance._state = None
+    maintenance._state_path = None
+
+    maintenance.recover_interrupted_restore()
+
+    assert maintenance.is_active() is True
+    assert maintenance.public_status()['state'] == 'rollback_failed'
+    assert maintenance.protected_operation_directory_name() == (
+        'operation-mismatch'
+    )
+    assert rollback.read_bytes() == b'emergency'
 
 
 def test_failed_restore_runs_emergency_rollback_and_restarts(

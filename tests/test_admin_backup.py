@@ -332,12 +332,261 @@ def test_uploaded_backup_is_session_bound_and_requires_two_step_reauth(
     ).status_code in {302, 404}
 
 
+@pytest.mark.parametrize(
+    'failure',
+    ('durability_recheck', 'thread_start', 'thread_start_control_flow'),
+)
+def test_restore_start_failure_recovery_matches_launch_certainty(
+    app,
+    client,
+    isolated_operations,
+    tmp_path,
+    monkeypatch,
+    failure,
+):
+    import app.backup_coordination as backup_coordination
+    import app.restore_service as restore_service
+
+    username = {
+        'thread_start_control_flow': 'restore_start_control',
+    }.get(failure, f'restore_start_{failure}')
+    user_id = _create_user(app, username, admin=True)
+    _login(client, username)
+    backup_session_id = 'restore-start-test-session-id-000000000001'
+    with client.session_transaction() as browser_session:
+        browser_session['_backup_admin_session_id'] = backup_session_id
+
+    record = isolated_operations.create(
+        'uploaded_backup',
+        user_id,
+        backup_session_id,
+        status='verified',
+    )
+    record.archive_path.write_bytes(_valid_archive(tmp_path).read_bytes())
+    token = isolated_operations.prepare_restore(
+        record.operation_id,
+        user_id,
+        backup_session_id,
+    )
+
+    # The endpoint's first durability gate succeeds. Exercise failures that
+    # occur only after begin_restore() has consumed the confirmation token.
+    monkeypatch.setattr(
+        backup_coordination,
+        'require_durable_recovery_storage',
+        lambda: None,
+    )
+    if failure == 'durability_recheck':
+        monkeypatch.setattr(
+            restore_service,
+            'require_durable_recovery_storage',
+            lambda: (_ for _ in ()).throw(
+                RuntimeError('recovery storage changed')
+            ),
+        )
+
+        class UnexpectedThread:
+            def __init__(self, *_args, **_kwargs):
+                raise AssertionError('worker must not be created')
+
+        monkeypatch.setattr(restore_service.threading, 'Thread', UnexpectedThread)
+    else:
+        monkeypatch.setattr(
+            restore_service,
+            'require_durable_recovery_storage',
+            lambda: None,
+        )
+
+        class FailedThread:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def start(self):
+                if failure == 'thread_start_control_flow':
+                    raise KeyboardInterrupt
+                raise RuntimeError('thread capacity unavailable')
+
+        monkeypatch.setattr(restore_service.threading, 'Thread', FailedThread)
+
+    request_kwargs = {
+        'json': {
+            'confirmation_token': token,
+            'confirmation_phrase': 'RESTORE',
+            'confirm_destructive_restore': True,
+        },
+        'headers': _step_up(client, 'backup.restore', record.operation_id),
+    }
+    if failure == 'thread_start_control_flow':
+        with pytest.raises(KeyboardInterrupt):
+            client.post(
+                f'/admin/api/backups/{record.operation_id}/restore',
+                **request_kwargs,
+            )
+    else:
+        response = client.post(
+            f'/admin/api/backups/{record.operation_id}/restore',
+            **request_kwargs,
+        )
+        assert response.status_code == 503
+        assert response.json == {
+            'error': 'Restore could not be started',
+            'code': 'RESTORE_START_FAILED',
+        }
+    if failure == 'thread_start_control_flow':
+        # A control-flow interruption may occur immediately after CPython has
+        # created the OS thread but before ident or the target is observable.
+        # Keep the consumed operation fail-closed instead of permitting two
+        # workers against the same archive.
+        assert record.status == 'restoring'
+        with pytest.raises(KeyError):
+            isolated_operations.prepare_restore(
+                record.operation_id,
+                user_id,
+                backup_session_id,
+            )
+        isolated_operations.reset_unstarted_restore(record.operation_id)
+        return
+    assert record.status == 'verified'
+    assert record.error is None
+    assert record.metadata == {}
+
+    # A failed launch must require a fresh confirmation but keep the verified
+    # archive available for an ordinary retry.
+    with pytest.raises(KeyError):
+        isolated_operations.begin_restore(
+            record.operation_id,
+            user_id,
+            backup_session_id,
+            token,
+        )
+    replacement_token = isolated_operations.prepare_restore(
+        record.operation_id,
+        user_id,
+        backup_session_id,
+    )
+    started = []
+    monkeypatch.setattr(
+        restore_service,
+        'start_restore',
+        lambda app, socketio, retry_record, username, source_ip: (
+            started.append(retry_record)
+        ),
+    )
+    retried = client.post(
+        f'/admin/api/backups/{record.operation_id}/restore',
+        json={
+            'confirmation_token': replacement_token,
+            'confirmation_phrase': 'RESTORE',
+            'confirm_destructive_restore': True,
+        },
+        headers=_step_up(client, 'backup.restore', record.operation_id),
+    )
+
+    assert retried.status_code == 202
+    assert started == [record]
+    assert record.status == 'restoring'
+
+
+def test_restore_start_interruption_after_launch_never_enables_retry(
+    app,
+    client,
+    isolated_operations,
+    tmp_path,
+    monkeypatch,
+):
+    import threading
+
+    import app.backup_coordination as backup_coordination
+    import app.restore_service as restore_service
+
+    username = 'restore_launched_interrupt'
+    user_id = _create_user(app, username, admin=True)
+    _login(client, username)
+    backup_session_id = 'restore-launched-test-session-id-0000000001'
+    with client.session_transaction() as browser_session:
+        browser_session['_backup_admin_session_id'] = backup_session_id
+
+    record = isolated_operations.create(
+        'uploaded_backup',
+        user_id,
+        backup_session_id,
+        status='verified',
+    )
+    record.archive_path.write_bytes(_valid_archive(tmp_path).read_bytes())
+    token = isolated_operations.prepare_restore(
+        record.operation_id,
+        user_id,
+        backup_session_id,
+    )
+    monkeypatch.setattr(
+        backup_coordination,
+        'require_durable_recovery_storage',
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        restore_service,
+        'require_durable_recovery_storage',
+        lambda: None,
+    )
+
+    worker_entered = threading.Event()
+    allow_worker_exit = threading.Event()
+    monkeypatch.setattr(
+        restore_service,
+        '_perform_restore',
+        lambda *_args: (
+            worker_entered.set(),
+            allow_worker_exit.wait(2),
+        ),
+    )
+    real_thread = threading.Thread
+    started_threads = []
+
+    class StartedThenInterruptedThread(real_thread):
+        def start(self):
+            started_threads.append(self)
+            super().start()
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        restore_service.threading,
+        'Thread',
+        StartedThenInterruptedThread,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        client.post(
+            f'/admin/api/backups/{record.operation_id}/restore',
+            json={
+                'confirmation_token': token,
+                'confirmation_phrase': 'RESTORE',
+                'confirm_destructive_restore': True,
+            },
+            headers=_step_up(client, 'backup.restore', record.operation_id),
+        )
+
+    assert worker_entered.wait(1)
+    assert record.status == 'restoring'
+    with pytest.raises(KeyError):
+        isolated_operations.prepare_restore(
+            record.operation_id,
+            user_id,
+            backup_session_id,
+        )
+
+    allow_worker_exit.set()
+    for worker in started_threads:
+        worker.join(2)
+        assert not worker.is_alive()
+    isolated_operations.reset_unstarted_restore(record.operation_id)
+
+
 def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
     app, client, isolated_operations, tmp_path, monkeypatch
 ):
     user_id = _create_user(app, 'future_restore_admin', admin=True)
     current = _valid_archive(tmp_path)
-    future = _archive_with_data_schema(current, tmp_path / 'future.zip', 2)
+    future = _archive_with_data_schema(current, tmp_path / 'future.zip', 3)
     _login(client, 'future_restore_admin')
 
     uploaded = client.post(
@@ -351,8 +600,8 @@ def test_future_schema_is_verified_but_blocked_at_both_restore_gates(
 
     assert verified.json['status'] == 'verified'
     assert verified.json['summary']['compatible'] is False
-    assert verified.json['summary']['data_schema_version'] == 2
-    assert verified.json['summary']['current_data_schema_version'] == 1
+    assert verified.json['summary']['data_schema_version'] == 3
+    assert verified.json['summary']['current_data_schema_version'] == 2
     assert verified.json['summary']['compatibility_reason'] == (
         'backup data schema is newer than this WebSSH version'
     )

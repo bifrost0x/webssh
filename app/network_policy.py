@@ -73,7 +73,13 @@ def _ip_is_internal(address):
     )
 
 
-def resolve_allowed_target(hostname, port, allow_internal=False):
+def resolve_allowed_target(
+    hostname,
+    port,
+    allow_internal=False,
+    *,
+    target_validator=None,
+):
     """Resolve once and select the first policy-allowed TCP address."""
     canonical = canonicalize_hostname(hostname)
     try:
@@ -91,12 +97,15 @@ def resolve_allowed_target(hostname, port, allow_internal=False):
     if literal is not None:
         if not allow_internal and _ip_is_internal(literal):
             raise ValueError('Connections to this address are not allowed')
-        return ResolvedTarget(
+        target = ResolvedTarget(
             canonical,
             clean_port,
             literal.compressed,
             socket.AF_INET6 if literal.version == 6 else socket.AF_INET,
         )
+        if target_validator is not None and not target_validator(target):
+            raise ValueError('Connections to this address are not allowed')
+        return target
 
     try:
         candidates = socket.getaddrinfo(
@@ -128,22 +137,54 @@ def resolve_allowed_target(hostname, port, allow_internal=False):
         if address.version == 6 and family != socket.AF_INET6:
             continue
         if allow_internal or not _ip_is_internal(address):
-            return ResolvedTarget(
+            target = ResolvedTarget(
                 canonical,
                 clean_port,
                 address.compressed,
                 family,
                 sockaddr,
             )
+            if target_validator is None or target_validator(target):
+                return target
 
     raise ValueError('Connections to this address are not allowed')
 
 
-def open_validated_socket(target, timeout):
-    """Connect a TCP socket to the already resolved address without DNS."""
+_LINUX_IP_UNICAST_IF = 50
+_LINUX_IPV6_UNICAST_IF = 76
+
+
+def _bind_unicast_interface(connected, family, interface):
+    """Bind one Linux unicast socket to an interface by index."""
+    interface_index = socket.htonl(socket.if_nametoindex(interface))
+    if family == socket.AF_INET:
+        connected.setsockopt(
+            socket.IPPROTO_IP,
+            _LINUX_IP_UNICAST_IF,
+            interface_index,
+        )
+        return
+    if family == socket.AF_INET6:
+        connected.setsockopt(
+            socket.IPPROTO_IPV6,
+            _LINUX_IPV6_UNICAST_IF,
+            interface_index,
+        )
+        return
+    raise ValueError('Connections through this interface are not supported')
+
+
+def open_validated_socket(target, timeout, *, required_interface=None):
+    """Connect the pinned address, optionally through one exact interface."""
     connected = socket.socket(target.family, socket.SOCK_STREAM)
     try:
         connected.settimeout(timeout)
+        if required_interface is not None:
+            _bind_unicast_interface(
+                connected,
+                target.family,
+                required_interface,
+            )
         connected.connect(target.sockaddr)
         return connected
     except Exception:

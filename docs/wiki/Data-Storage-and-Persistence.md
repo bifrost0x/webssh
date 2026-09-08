@@ -2,6 +2,11 @@
 
 All durable WebSSH state belongs under `DATA_DIR`. Mount that directory on persistent storage and back it up as one coordinated unit.
 
+Container deployments require an absolute `DATA_DIR`. The entrypoint derives
+the logs, SSH-key storage, and generated `secret_key` from this single
+canonical root and refuses ambiguous legacy/new secret files. External secret
+manager values remain outside this filesystem contract.
+
 ## Directory layout
 
 Typical content includes:
@@ -49,11 +54,14 @@ Profiles, commands, command sets, jump hosts, application settings, notes, encry
 
 JSON-backed state follows a full load-modify-save cycle while holding the shared storage lock. Writes use an atomic temporary-file replacement and filesystem synchronization. Corrupt JSON is not silently replaced with an empty default because doing so could turn a recoverable incident into permanent data loss.
 
-Do not edit these files while WebSSH is running. Use the UI or supported APIs, or stop every process before a controlled offline repair.
+Do not edit these files while WebSSH is running. Use the UI or supported APIs.
+For an oversized legacy profile or jump-host store, stop every process and use
+the `connection-store` Flask CLI so recovery remains inside the configured hard
+byte and record ceilings; avoid hand-editing JSON.
 
 ## Additive migrations
 
-Persisted JSON schemas are migrated additively. Current schema version 2 covers profiles, command sets, jump hosts, keys, settings, and application settings. Before changing a file, migration creates a private backup and writes the upgraded representation atomically.
+Persisted JSON schemas are migrated additively. Profiles currently use schema version 3; command sets, jump hosts, keys, settings, application settings, and SMB shares use version 2. Before changing a file, migration creates a private backup and writes the upgraded representation atomically. The profile v3 migration removes transient Tailscale launch-authorization state from disk; that state is derived from the live server policy for each response.
 
 Database changes likewise preserve existing installations. Always take a verified native backup before upgrading across versions.
 
@@ -74,3 +82,8 @@ Run the container or process under a dedicated identity and restrict `DATA_DIR` 
 ## Backup rule
 
 Use WebSSH's native backup workflow for a live instance. For an offline filesystem backup, stop every WebSSH process first and capture the complete directory consistently. See [Backup, Restore, and Secret Rotation](Backup-Restore-and-Secret-Rotation).
+
+Online restore has a second persistence boundary: its private rollback journal
+and emergency archive must use a durable absolute `BACKUP_TEMP_DIR` outside
+`DATA_DIR`, with `BACKUP_RECOVERY_DURABLE=true`. Do not place that directory on
+ephemeral container storage.

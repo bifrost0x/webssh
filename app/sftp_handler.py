@@ -4,6 +4,7 @@ import socket
 import stat
 import posixpath
 import secrets
+import struct
 import tempfile
 import time
 import zipfile
@@ -22,8 +23,11 @@ from paramiko.sftp import (
 from paramiko.sftp_attr import SFTPAttributes
 import config
 from . import ssh_manager
-from .paramiko_channels import open_sftp_client
-from .audit_logger import log_warning, log_error
+from .paramiko_channels import (
+    open_sftp_client,
+    optional_channel_rejection_fields,
+)
+from .audit_logger import log_info, log_warning, log_error
 from .file_backend import FileReaderLease, FileWriteOutcome
 
 _sftp_cache = {}
@@ -33,6 +37,7 @@ _sftp_session_locks = {}
 _sftp_session_locks_lock = Lock()
 CAPABILITY_RATE_LIMIT = '10 per minute'
 CAPABILITY_TIMEOUT = 3.0
+CAPABILITY_RESOURCE_SHORTAGE = 'resource_shortage'
 
 _capability_probe_locks = {}
 _capability_probe_locks_guard = Lock()
@@ -212,6 +217,43 @@ class TransferMemberLimitExceeded(SFTPOperationError):
     """A recursive SFTP operation exceeded its entry-count limit."""
 
 
+class RemoteMetadataLimitExceeded(SFTPOperationError):
+    """Remote-controlled directory metadata exceeded its byte budget."""
+
+
+_PUBLIC_SFTP_ERROR = 'Remote file operation failed'
+_PUBLIC_SFTP_ERROR_MAX_BYTES = 512
+
+
+def public_sftp_error(error, fallback=_PUBLIC_SFTP_ERROR):
+    """Return only small, application-authored SFTP errors to clients."""
+    if isinstance(error, SFTPOperationError):
+        message = str(error)
+        if len(message) > _PUBLIC_SFTP_ERROR_MAX_BYTES:
+            return fallback
+        message = message.strip()
+        try:
+            message_size = len(message.encode('utf-8'))
+        except UnicodeEncodeError:
+            message_size = _PUBLIC_SFTP_ERROR_MAX_BYTES + 1
+        if message and message_size <= _PUBLIC_SFTP_ERROR_MAX_BYTES:
+            return message
+    return fallback
+
+
+def _log_sftp_channel_rejection(identifier, error):
+    rejection = optional_channel_rejection_fields(error)
+    if not rejection:
+        return False
+    log_info(
+        'SFTP temporarily unavailable because the remote SSH server reported '
+        'insufficient capacity for an additional channel',
+        session_id=identifier,
+        **rejection,
+    )
+    return True
+
+
 class UploadConflict(SFTPOperationError):
     """The upload destination exists and replacement was not approved."""
 
@@ -225,26 +267,219 @@ class AtomicOverwriteUnavailable(SFTPOperationError):
 
 
 class _TransferMemberBudget:
-    def __init__(self, limit):
+    def __init__(self, limit, metadata_limit=None):
         if type(limit) is not int or limit < 1:
             raise ValueError('transfer member limit must be a positive integer')
         self.limit = limit
         self.used = 0
+        self.metadata_limit = (
+            config.REMOTE_LISTING_MAX_METADATA_BYTES
+            if metadata_limit is None else metadata_limit
+        )
+        if type(self.metadata_limit) is not int or self.metadata_limit < 1:
+            raise ValueError('metadata limit must be a positive integer')
+        self.metadata_used = 0
 
-    def consume(self):
+    def consume(self, name=None, extra_metadata_bytes=0):
         self.used += 1
         if self.used > self.limit:
             raise TransferMemberLimitExceeded()
+        if name is None:
+            return
+        if type(extra_metadata_bytes) is not int or extra_metadata_bytes < 0:
+            raise RemoteMetadataLimitExceeded('Invalid remote metadata size')
+        name_size = _remote_metadata_text_size(name)
+        next_size = (
+            self.metadata_used
+            + name_size
+            + extra_metadata_bytes
+            + 128
+        )
+        if next_size > self.metadata_limit:
+            raise RemoteMetadataLimitExceeded(
+                'Directory metadata exceeds configured byte limit'
+            )
+        self.metadata_used = next_size
+
+    def consume_entry(self, entry):
+        name = getattr(entry, 'filename', None)
+        extra = getattr(entry, '_webssh_extra_metadata_bytes', None)
+        if extra is None:
+            longname = getattr(entry, 'longname', None)
+            extra = _remote_metadata_text_size(longname) if isinstance(
+                longname, str
+            ) else 0
+        self.consume(name, extra)
 
 
-def _iter_paramiko_directory_entries(sftp, remote_path):
+def _remote_metadata_text_size(value):
+    maximum = config.REMOTE_FILENAME_MAX_BYTES
+    if not isinstance(value, str) or len(value) > maximum:
+        raise RemoteMetadataLimitExceeded(
+            'Remote filename exceeds configured byte limit'
+        )
+    try:
+        size = len(value.encode('utf-8'))
+    except UnicodeEncodeError as exc:
+        raise RemoteMetadataLimitExceeded(
+            'Remote filename is not valid UTF-8'
+        ) from exc
+    if size > maximum:
+        raise RemoteMetadataLimitExceeded(
+            'Remote filename exceeds configured byte limit'
+        )
+    return size
+
+
+def _message_uint32(message, label):
+    remainder = message.get_remainder()
+    if len(remainder) < 4:
+        raise RemoteMetadataLimitExceeded(f'Malformed remote {label}')
+    value = struct.unpack_from('>I', remainder)[0]
+    message.get_bytes(4)
+    return value
+
+
+def _bounded_message_text(message, label):
+    remainder = message.get_remainder()
+    if len(remainder) < 4:
+        raise RemoteMetadataLimitExceeded(f'Malformed remote {label}')
+    length = struct.unpack_from('>I', remainder)[0]
+    if (
+        length > config.REMOTE_FILENAME_MAX_BYTES
+        or 4 + length > len(remainder)
+    ):
+        raise RemoteMetadataLimitExceeded(
+            f'Remote {label} exceeds configured byte limit'
+        )
+    raw = remainder[4:4 + length]
+    try:
+        value = raw.decode('utf-8')
+    except UnicodeDecodeError as exc:
+        raise RemoteMetadataLimitExceeded(
+            f'Remote {label} is not valid UTF-8'
+        ) from exc
+    message.get_bytes(4 + length)
+    return value
+
+
+def _bounded_message_binary(message, label, maximum):
+    remainder = message.get_remainder()
+    if len(remainder) < 4:
+        raise RemoteMetadataLimitExceeded(f'Malformed remote {label}')
+    length = struct.unpack_from('>I', remainder)[0]
+    if length > maximum or 4 + length > len(remainder):
+        raise RemoteMetadataLimitExceeded(
+            f'Remote {label} exceeds configured byte limit'
+        )
+    value = bytes(remainder[4:4 + length])
+    message.get_bytes(4 + length)
+    return value
+
+
+def _bounded_sftp_attributes(message, filename, longname):
+    """Parse SFTP v3 attrs without Paramiko's unbounded extension loop."""
+    remainder = message.get_remainder()
+    offset = 0
+
+    def take(format_string, label):
+        nonlocal offset
+        size = struct.calcsize(format_string)
+        if offset + size > len(remainder):
+            raise RemoteMetadataLimitExceeded(f'Malformed remote {label}')
+        value = struct.unpack_from(format_string, remainder, offset)[0]
+        offset += size
+        return value
+
+    flags = take('>I', 'attributes')
+    known_flags = (
+        SFTPAttributes.FLAG_SIZE
+        | SFTPAttributes.FLAG_UIDGID
+        | SFTPAttributes.FLAG_PERMISSIONS
+        | SFTPAttributes.FLAG_AMTIME
+        | SFTPAttributes.FLAG_EXTENDED
+    )
+    if flags & ~known_flags:
+        raise RemoteMetadataLimitExceeded('Unsupported remote attributes')
+
+    attributes = SFTPAttributes()
+    attributes._flags = flags
+    extension_bytes = 0
+    if flags & SFTPAttributes.FLAG_SIZE:
+        attributes.st_size = take('>Q', 'file size')
+    if flags & SFTPAttributes.FLAG_UIDGID:
+        attributes.st_uid = take('>I', 'file owner')
+        attributes.st_gid = take('>I', 'file group')
+    if flags & SFTPAttributes.FLAG_PERMISSIONS:
+        attributes.st_mode = take('>I', 'file permissions')
+    if flags & SFTPAttributes.FLAG_AMTIME:
+        attributes.st_atime = take('>I', 'access time')
+        attributes.st_mtime = take('>I', 'modification time')
+    if flags & SFTPAttributes.FLAG_EXTENDED:
+        extension_count = take('>I', 'attribute extensions')
+        if extension_count > 16:
+            raise RemoteMetadataLimitExceeded(
+                'Remote attributes contain too many extensions'
+            )
+        extension_limit = min(
+            config.REMOTE_LISTING_MAX_METADATA_BYTES,
+            64 * 1024,
+        )
+        for _index in range(extension_count):
+            values = []
+            for label in ('extension name', 'extension value'):
+                length = take('>I', label)
+                if (
+                    length > config.REMOTE_FILENAME_MAX_BYTES
+                    or offset + length > len(remainder)
+                ):
+                    raise RemoteMetadataLimitExceeded(
+                        f'Remote {label} exceeds configured byte limit'
+                    )
+                extension_bytes += length
+                if extension_bytes > extension_limit:
+                    raise RemoteMetadataLimitExceeded(
+                        'Remote attribute extensions exceed byte limit'
+                    )
+                values.append(bytes(remainder[offset:offset + length]))
+                offset += length
+            attributes.attr[values[0]] = values[1]
+
+    message.get_bytes(offset)
+    attributes.filename = filename
+    attributes.longname = longname
+    attributes._webssh_extra_metadata_bytes = (
+        _remote_metadata_text_size(longname) + extension_bytes
+    )
+    return attributes
+
+
+def _iter_paramiko_directory_entries(sftp, remote_path, *, member_budget=None):
     """Stream one directory and always close its remote SFTP handle."""
+    if member_budget is None:
+        member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
     adjusted_path = sftp._adjust_cwd(remote_path)
     sftp._log(10, f'listdir({adjusted_path!r})')
     response_type, message = sftp._request(CMD_OPENDIR, adjusted_path)
     if response_type != CMD_HANDLE:
         raise SFTPError('Expected handle')
-    handle = message.get_binary()
+    try:
+        handle = _bounded_message_binary(
+            message,
+            'directory handle',
+            config.SFTP_MAX_HANDLE_BYTES,
+        )
+        if message.get_remainder():
+            raise RemoteMetadataLimitExceeded(
+                'Directory handle response contains trailing metadata'
+            )
+    except RemoteMetadataLimitExceeded:
+        # Do not reflect an attacker-sized opaque handle in READDIR or CLOSE.
+        try:
+            sftp.close()
+        except Exception:
+            pass
+        raise
     try:
         while True:
             try:
@@ -253,14 +488,27 @@ def _iter_paramiko_directory_entries(sftp, remote_path):
                 return
             if response_type != CMD_NAME:
                 raise SFTPError('Expected name response')
-            for _index in range(message.get_int()):
-                filename = message.get_text()
-                longname = message.get_text()
-                attributes = SFTPAttributes._from_msg(
+            entry_count = _message_uint32(message, 'directory entry count')
+            if entry_count == 0:
+                raise RemoteMetadataLimitExceeded(
+                    'Malformed empty directory response'
+                )
+            for _index in range(entry_count):
+                filename = _bounded_message_text(message, 'filename')
+                longname = _bounded_message_text(message, 'longname')
+                attributes = _bounded_sftp_attributes(
                     message, filename, longname
                 )
+                # Charge every server-controlled entry before filtering dot
+                # names. Recursive callers pass one shared budget, so a server
+                # cannot reset count or metadata limits at each directory.
+                member_budget.consume_entry(attributes)
                 if filename not in ('.', '..'):
                     yield attributes
+            if message.get_remainder():
+                raise RemoteMetadataLimitExceeded(
+                    'Directory response contains trailing metadata'
+                )
     finally:
         try:
             sftp._request(CMD_CLOSE, handle)
@@ -276,22 +524,142 @@ def _iter_paramiko_directory_entries(sftp, remote_path):
 
 
 @contextmanager
-def _directory_entries(sftp, remote_path):
+def _directory_entries(sftp, remote_path, *, member_budget=None):
+    source_iterator = None
     if isinstance(sftp, SFTPClient):
-        iterator = _iter_paramiko_directory_entries(sftp, remote_path)
+        iterator = _iter_paramiko_directory_entries(
+            sftp,
+            remote_path,
+            member_budget=member_budget,
+        )
     else:
         factory = getattr(sftp, 'listdir_iter', None)
-        iterator = (
+        source_iterator = (
             factory(remote_path)
             if callable(factory)
             else iter(sftp.listdir_attr(remote_path))
         )
+        if member_budget is None:
+            iterator = source_iterator
+        else:
+            def budgeted_entries():
+                for entry in source_iterator:
+                    member_budget.consume_entry(entry)
+                    yield entry
+
+            iterator = budgeted_entries()
     try:
         yield iterator
     finally:
         close = getattr(iterator, 'close', None)
         if callable(close):
             close()
+        if source_iterator is not None and source_iterator is not iterator:
+            close = getattr(source_iterator, 'close', None)
+            if callable(close):
+                close()
+
+
+class _SFTPDirectoryListing:
+    """One bounded directory enumeration continued across UI pages."""
+
+    def __init__(self, session_id, remote_path):
+        self._session_context = None
+        self._entries_context = None
+        self._entries = None
+        self._lookahead = None
+        self._closed = False
+        safe_path = sanitize_path(remote_path)
+        if safe_path is None:
+            raise SFTPOperationError('Invalid path: path traversal detected')
+        try:
+            self._session_context = sftp_session(
+                session_id,
+                io_lane='transfer',
+            )
+            sftp, _source_type = self._session_context.__enter__()
+            self._entries_context = _directory_entries(
+                sftp,
+                safe_path,
+                member_budget=_TransferMemberBudget(
+                    config.MAX_TRANSFER_MEMBERS
+                ),
+            )
+            self._entries = self._entries_context.__enter__()
+        except Exception:
+            self.close()
+            raise
+
+    @staticmethod
+    def _payload(entry):
+        return {
+            'name': entry.filename,
+            'size': entry.st_size,
+            'mode': entry.st_mode,
+            'is_dir': stat.S_ISDIR(entry.st_mode),
+            'is_symlink': stat.S_ISLNK(entry.st_mode),
+            'modified': entry.st_mtime,
+        }
+
+    def read_page(self, page_size):
+        if self._closed:
+            return None, 'Directory listing expired', False
+        try:
+            page = []
+            if self._lookahead is not None:
+                page.append(self._lookahead)
+                self._lookahead = None
+            while len(page) < page_size:
+                page.append(self._payload(next(self._entries)))
+            try:
+                self._lookahead = self._payload(next(self._entries))
+            except StopIteration:
+                self.close()
+                return page, None, False
+            return page, None, True
+        except StopIteration:
+            self.close()
+            return page, None, False
+        except TransferMemberLimitExceeded:
+            self.close()
+            return None, 'Directory exceeds configured member limit', False
+        except RemoteMetadataLimitExceeded as error:
+            self.close()
+            return None, public_sftp_error(error), False
+        except SFTPOperationError as error:
+            self.close()
+            return None, public_sftp_error(error), False
+        except Exception as error:
+            self.close()
+            return None, public_sftp_error(error), False
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self._entries_context is not None:
+            try:
+                self._entries_context.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._entries_context = None
+            self._entries = None
+        if self._session_context is not None:
+            try:
+                self._session_context.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._session_context = None
+
+
+def open_directory_listing(session_id, remote_path='.'):
+    """Open a dedicated, bounded SFTP enumeration for opaque pagination."""
+    try:
+        return _SFTPDirectoryListing(session_id, remote_path), None
+    except SFTPOperationError as error:
+        return None, public_sftp_error(error)
+    except Exception as error:
+        return None, public_sftp_error(error)
 
 
 def _is_cancelled(cancel_event):
@@ -347,9 +715,10 @@ def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
         raise TransferCancelled()
     total = 0
     has_symlink = False
-    with _directory_entries(sftp, remote_folder) as entries:
+    with _directory_entries(
+        sftp, remote_folder, member_budget=_member_budget
+    ) as entries:
         for entry in entries:
-            _member_budget.consume()
             name = entry.filename
             if (
                 not isinstance(name, str)
@@ -386,24 +755,40 @@ def inspect_remote_tree(sftp, remote_folder, *, cancel_event, max_bytes,
     return total, has_symlink
 
 
-def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
-                               cancel_event, max_bytes, chunk_size,
-                               max_members=None, temp_dir=None, progress=None):
-    """Build a ZIP on disk while bounding every remote read and total input."""
-    if temp_dir is not None:
-        temp_dir = Path(temp_dir)
-        temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(temp_dir, 0o700)
+def _create_private_temporary_archive(temp_dir):
     temporary = tempfile.NamedTemporaryFile(
         suffix='.zip', delete=False, dir=temp_dir
     )
     archive_path = Path(temporary.name)
-    temporary.close()
-    os.chmod(archive_path, 0o600)
+    try:
+        temporary.close()
+        os.chmod(archive_path, 0o600)
+    except BaseException:
+        try:
+            temporary.close()
+        except BaseException:
+            pass
+        try:
+            archive_path.unlink(missing_ok=True)
+        except BaseException:
+            pass
+        raise
+    return archive_path
+
+
+def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
+                               cancel_event, max_bytes, chunk_size,
+                               max_members=None, temp_dir=None, progress=None):
+    """Build a ZIP on disk while bounding every remote read and total input."""
     transferred = 0
     member_budget = _TransferMemberBudget(
         config.MAX_TRANSFER_MEMBERS if max_members is None else max_members
     )
+    if temp_dir is not None:
+        temp_dir = Path(temp_dir)
+        temp_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(temp_dir, 0o700)
+    archive_path = _create_private_temporary_archive(temp_dir)
 
     def add_directory(archive, remote_path, archive_prefix, depth=0):
         nonlocal transferred
@@ -412,10 +797,11 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
         if _is_cancelled(cancel_event):
             raise TransferCancelled()
         saw_entry = False
-        with _directory_entries(sftp, remote_path) as entries:
+        with _directory_entries(
+            sftp, remote_path, member_budget=member_budget
+        ) as entries:
             for entry in entries:
                 saw_entry = True
-                member_budget.consume()
                 if _is_cancelled(cancel_event):
                     raise TransferCancelled()
                 name = entry.filename
@@ -474,8 +860,11 @@ def build_fallback_zip_to_disk(sftp, remote_folder, folder_name, *,
         if archive_path.stat().st_size > max_bytes:
             raise TransferSizeExceeded()
         return archive_path
-    except Exception:
-        archive_path.unlink(missing_ok=True)
+    except BaseException:
+        try:
+            archive_path.unlink(missing_ok=True)
+        except BaseException:
+            pass
         raise
 
 def get_sftp_client(session_id):
@@ -525,7 +914,8 @@ def get_sftp_client(session_id):
 
         return sftp, None
     except Exception as e:
-        return None, str(e)
+        _log_sftp_channel_rejection(session_id, e)
+        return None, public_sftp_error(e, 'Failed to open SFTP channel')
 
 def get_sftp_client_fresh(session_id):
     """Open an uncached SFTP channel for a session or quick connection."""
@@ -542,7 +932,8 @@ def get_sftp_client_fresh(session_id):
 
         return sftp, None
     except Exception as e:
-        return None, str(e)
+        _log_sftp_channel_rejection(session_id, e)
+        return None, public_sftp_error(e, 'Failed to open SFTP channel')
 
 
 def get_ssh_client(identifier):
@@ -563,6 +954,16 @@ def close_sftp_cache(session_id):
                 sftp.close()
             except Exception:
                 pass
+    try:
+        from .file_service import file_service
+        file_service.discard_directory_snapshots(
+            source_id=f'sftp-session:{session_id}',
+        )
+        file_service.discard_directory_snapshots(
+            source_id=f'sftp-quick:{session_id}',
+        )
+    except Exception:
+        pass
     _cleanup_sftp_lock(session_id)
 
 def sanitize_path(remote_path):
@@ -590,8 +991,8 @@ def sanitize_path(remote_path):
 
     return normalized
 
-def list_directory(session_id, remote_path='.'):
-    """List files in remote directory with path validation."""
+def _read_directory_listing(session_id, remote_path='.'):
+    """Materialize one metadata-bounded directory snapshot."""
     try:
         safe_path = sanitize_path(remote_path)
         if safe_path is None:
@@ -600,13 +1001,10 @@ def list_directory(session_id, remote_path='.'):
         with sftp_session(session_id) as (sftp, source_type):
             files = []
             member_budget = _TransferMemberBudget(config.MAX_TRANSFER_MEMBERS)
-            with _directory_entries(sftp, safe_path) as entries:
-                while True:
-                    try:
-                        entry = next(entries)
-                    except StopIteration:
-                        break
-                    member_budget.consume()
+            with _directory_entries(
+                sftp, safe_path, member_budget=member_budget
+            ) as entries:
+                for entry in entries:
                     is_symlink = stat.S_ISLNK(entry.st_mode)
                     files.append({
                         'name': entry.filename,
@@ -619,10 +1017,17 @@ def list_directory(session_id, remote_path='.'):
         return files, None
     except TransferMemberLimitExceeded:
         return None, 'Directory exceeds configured member limit'
+    except RemoteMetadataLimitExceeded as e:
+        return None, public_sftp_error(e)
     except SFTPOperationError as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
     except Exception as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
+
+
+def list_directory(session_id, remote_path='.'):
+    """Return one bounded snapshot for service-layer pagination."""
+    return _read_directory_listing(session_id, remote_path)
 
 
 def probe_sftp_capability(session_id):
@@ -631,8 +1036,10 @@ def probe_sftp_capability(session_id):
     Opening the subsystem alone is insufficient for some appliances, so the
     probe performs one bounded directory read through a fresh short-lived
     channel. It never waits behind cached SFTP operations and concurrent probes
-    for the same session are deduplicated. ``None`` is retryable busy/timeout.
-    Remote exception details intentionally stay server-side.
+    for the same session are deduplicated. ``None`` is a generic retryable busy
+    or timeout result; ``CAPABILITY_RESOURCE_SHORTAGE`` preserves the distinct
+    retry signal for temporary remote channel exhaustion. Remote exception
+    details intentionally stay server-side.
     """
     probe_lock = _acquire_capability_probe(session_id)
     if probe_lock is None:
@@ -685,11 +1092,13 @@ def probe_sftp_capability(session_id):
         return True
     except (socket.timeout, TimeoutError):
         return None
-    except Exception:
+    except Exception as error:
         if deadline_expired.is_set() or (
             deadline is not None and time.monotonic() >= deadline
         ):
             return None
+        if _log_sftp_channel_rejection(session_id, error):
+            return CAPABILITY_RESOURCE_SHORTAGE
         return False
     finally:
         if deadline_guard is not None:
@@ -712,9 +1121,9 @@ def create_directory(session_id, remote_path):
             sftp.mkdir(safe_path)
         return True, None
     except SFTPOperationError as e:
-        return False, str(e)
+        return False, public_sftp_error(e)
     except Exception as e:
-        return False, str(e)
+        return False, public_sftp_error(e)
 
 
 def upload_request_stream(
@@ -799,9 +1208,9 @@ def rename_item(session_id, old_path, new_path):
             sftp.rename(safe_old, safe_new)
         return True, None
     except SFTPOperationError as e:
-        return False, str(e)
+        return False, public_sftp_error(e)
     except Exception as e:
-        return False, str(e)
+        return False, public_sftp_error(e)
 
 def delete_directory_recursive(
     session_id,
@@ -838,14 +1247,15 @@ def delete_directory_recursive(
                 raise ValueError("Maximum recursion depth exceeded")
 
             _check_cancelled()
-            with _directory_entries(sftp_client, dir_path) as entries:
+            with _directory_entries(
+                sftp_client, dir_path, member_budget=member_budget
+            ) as entries:
                 while True:
                     _check_cancelled()
                     try:
                         entry = next(entries)
                     except StopIteration:
                         break
-                    member_budget.consume()
                     _check_cancelled()
                     name = entry.filename
                     if not _is_safe_transfer_entry_name(name):
@@ -885,11 +1295,11 @@ def delete_directory_recursive(
     except TransferCancelled:
         return False, 'Operation cancelled'
     except SFTPOperationError as e:
-        return False, str(e)
+        return False, public_sftp_error(e)
     except FileNotFoundError:
         return False, "File or directory not found"
     except Exception as e:
-        return False, str(e)
+        return False, public_sftp_error(e)
 
 def get_home_directory(session_id):
     """Get the home directory (current working directory) of the SFTP session."""
@@ -898,9 +1308,9 @@ def get_home_directory(session_id):
             home_path = sftp.normalize('.')
         return home_path, None
     except SFTPOperationError as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
     except Exception as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
 
 def check_exists(session_id, path):
     """Check if a file or directory exists on remote server."""
@@ -917,9 +1327,9 @@ def check_exists(session_id, path):
             except FileNotFoundError:
                 return {'exists': False, 'is_dir': False, 'size': 0}, None
     except SFTPOperationError as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
     except Exception as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
 
 def get_file_stat(session_id, path):
     """Get detailed file/directory statistics."""
@@ -941,11 +1351,11 @@ def get_file_stat(session_id, path):
             'permissions': oct(file_stat.st_mode)[-3:]
         }, None
     except SFTPOperationError as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
     except FileNotFoundError:
         return None, "File not found"
     except Exception as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
 
 def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=None):
     """
@@ -1032,14 +1442,25 @@ def read_file_preview(session_id, path, max_bytes=512000, offset=0, tail_lines=N
             'offset': offset
         }, None
 
+    except ValueError as e:
+        message = str(e)
+        if message in {
+            'max_bytes must be a positive integer',
+            'offset must be a non-negative integer',
+            'tail_lines must be a positive integer',
+            'offset exceeds the supported file size',
+            'tail_lines exceeds the configured limit',
+        }:
+            return None, message
+        return None, public_sftp_error(e)
     except SFTPOperationError as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
     except FileNotFoundError:
         return None, "File not found"
     except PermissionError:
         return None, "Permission denied"
     except Exception as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
 
 def read_file_for_edit(session_id, path, max_bytes=None):
     """
@@ -1109,13 +1530,13 @@ def read_file_for_edit(session_id, path, max_bytes=None):
         }, None
 
     except SFTPOperationError as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
     except FileNotFoundError:
         return None, "File not found"
     except PermissionError:
         return None, "Permission denied"
     except Exception as e:
-        return None, str(e)
+        return None, public_sftp_error(e)
 
 def write_file_text(
     session_id,
@@ -1197,9 +1618,9 @@ def write_file_text(
             revision=hashlib.sha256(data).hexdigest(),
         )
     except SFTPOperationError as e:
-        return FileWriteOutcome(success=False, error=str(e))
+        return FileWriteOutcome(success=False, error=public_sftp_error(e))
     except Exception as e:
-        return FileWriteOutcome(success=False, error=str(e))
+        return FileWriteOutcome(success=False, error=public_sftp_error(e))
 
 def get_sftp_client_from_pool(connection_id):
     """Get SFTP client from temporary connection pool."""
@@ -1229,7 +1650,7 @@ def get_any_sftp_client(identifier):
             _sftp_cache[identifier] = sftp
         return sftp, None, 'pool'
 
-    return None, f"No active connection found for: {identifier}", None
+    return None, 'No active connection found', None
 
 
 def _is_safe_transfer_entry_name(name):
@@ -1257,7 +1678,9 @@ def _remove_sftp_tree(sftp, remote_path, *, max_members, max_depth=50,
             return False
 
         try:
-            with _directory_entries(sftp, path) as entries:
+            with _directory_entries(
+                sftp, path, member_budget=member_budget
+            ) as entries:
                 while True:
                     if _is_cancelled(cancel_event):
                         return False
@@ -1265,7 +1688,6 @@ def _remove_sftp_tree(sftp, remote_path, *, max_members, max_depth=50,
                         entry = next(entries)
                     except StopIteration:
                         break
-                    member_budget.consume()
                     if _is_cancelled(cancel_event):
                         return False
                     name = getattr(entry, 'filename', None)
@@ -1332,7 +1754,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
     directory_total = None
     event_context = dict(event_context or {})
     if conflict_policy not in {'error', 'replace'}:
-        return False, SFTPOperationError('unsupported conflict policy')
+        return False, 'unsupported conflict policy'
 
     try:
         sftp_source, error = get_sftp_client_fresh(source_session_id)
@@ -1455,9 +1877,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
                 raise TransferCancelled()
 
             total = 0
-            with _directory_entries(sftp_source, src_dir) as entries:
+            with _directory_entries(
+                sftp_source,
+                src_dir,
+                member_budget=preflight_member_budget,
+            ) as entries:
                 for entry in entries:
-                    preflight_member_budget.consume()
                     if _is_cancelled(cancel_event):
                         raise TransferCancelled()
                     name = entry.filename
@@ -1504,9 +1929,12 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
 
             sftp_dest.mkdir(dst_dir)
 
-            with _directory_entries(sftp_source, src_dir) as entries:
+            with _directory_entries(
+                sftp_source,
+                src_dir,
+                member_budget=transfer_member_budget,
+            ) as entries:
                 for entry in entries:
-                    transfer_member_budget.consume()
                     if _is_cancelled(cancel_event):
                         raise TransferCancelled()
                     name = entry.filename
@@ -1608,7 +2036,7 @@ def transfer_server_to_server(source_session_id, source_path, dest_session_id,
             transfer_id=transfer_id,
             exception_type=type(e).__name__,
         )
-        return False, e
+        return False, public_sftp_error(e, 'Server-to-server transfer failed')
     finally:
         if sftp_source is not None:
             try:

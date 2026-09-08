@@ -22,6 +22,20 @@ window.JumpHostManager = {
         }
     },
 
+    upsertJumpHost(jumpHost) {
+        if (!jumpHost || !jumpHost.id) return;
+        this.setJumpHosts(this.jumpHosts.some(item => item.id === jumpHost.id)
+            ? this.jumpHosts.map(item => item.id === jumpHost.id
+                ? {...item, ...jumpHost}
+                : item)
+            : [...this.jumpHosts, jumpHost]);
+    },
+
+    removeJumpHost(jumpHostId) {
+        if (!jumpHostId) return;
+        this.setJumpHosts(this.jumpHosts.filter(item => item.id !== jumpHostId));
+    },
+
     getById(id) {
         return this.jumpHosts.find(j => j.id === id) || null;
     },

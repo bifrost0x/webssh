@@ -299,12 +299,12 @@ def test_cli_verify_reports_legacy_restore_compatibility(tmp_path):
 
 
 def test_cli_verify_reports_future_schema_without_accepting_restore(tmp_path):
-    archive = tmp_path / 'future-v2.zip'
+    archive = tmp_path / 'future-v3.zip'
     _write_manifest_archive(
         archive,
         {'app.db': _webssh_database_bytes(tmp_path)},
         format_version=2,
-        data_schema_version=2,
+        data_schema_version=3,
     )
 
     result = _maintenance_cli(
@@ -313,7 +313,7 @@ def test_cli_verify_reports_future_schema_without_accepting_restore(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert 'format v2' in result.stdout
-    assert 'data schema 2' in result.stdout
+    assert 'data schema 3' in result.stdout
     assert 'restore incompatible' in result.stdout
 
 
@@ -326,9 +326,26 @@ def test_new_backup_records_v2_compatibility_metadata(tmp_path):
     manifest = create_backup(data_dir, archive)
 
     assert manifest.format_version == 2
-    assert manifest.data_schema_version == 1
+    assert manifest.data_schema_version == 2
     assert manifest.producer == 'webssh'
     assert manifest.created_at.endswith('Z')
+
+
+def test_previous_backup_data_schema_remains_restore_compatible():
+    manifest = backup_manager.BackupManifest(
+        format_version=2,
+        files=(),
+        data_schema_version=1,
+        created_at='2026-08-03T12:00:00Z',
+        producer='webssh',
+    )
+
+    compatibility = backup_manager.evaluate_backup_compatibility(manifest)
+
+    assert compatibility.compatible is True
+    assert compatibility.legacy is False
+    assert compatibility.current_data_schema_version == 2
+    assert compatibility.reason == 'backup data schema can be migrated'
 
 
 def test_v1_backup_is_legacy_and_migratable(tmp_path):
@@ -349,12 +366,12 @@ def test_v1_backup_is_legacy_and_migratable(tmp_path):
 
 
 def test_future_data_schema_verifies_but_is_not_restore_compatible(tmp_path):
-    archive = tmp_path / 'future-v2.zip'
+    archive = tmp_path / 'future-v3.zip'
     _write_manifest_archive(
         archive,
         {'app.db': _webssh_database_bytes(tmp_path)},
         format_version=2,
-        data_schema_version=2,
+        data_schema_version=3,
     )
 
     manifest = verify_backup(archive)
@@ -365,12 +382,12 @@ def test_future_data_schema_verifies_but_is_not_restore_compatible(tmp_path):
 
 
 def test_future_data_schema_is_rejected_before_restore_mutates_data(tmp_path):
-    archive = tmp_path / 'future-v2.zip'
+    archive = tmp_path / 'future-v3.zip'
     _write_manifest_archive(
         archive,
         {'app.db': _webssh_database_bytes(tmp_path)},
         format_version=2,
-        data_schema_version=2,
+        data_schema_version=3,
     )
     restore_dir = tmp_path / 'restore'
     restore_dir.mkdir()
@@ -550,7 +567,7 @@ def test_create_verify_and_restore_round_trip(tmp_path):
     assert _snapshot(restored_dir) == expected_files
 
 
-def test_backup_excludes_logs_and_transfer_temporary_files(tmp_path):
+def test_backup_excludes_runtime_only_files(tmp_path):
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
     expected_files = _write_representative_data(data_dir)
@@ -558,6 +575,9 @@ def test_backup_excludes_logs_and_transfer_temporary_files(tmp_path):
     (data_dir / 'logs' / 'webssh.log').write_bytes(b'active log')
     (data_dir / 'tmp').mkdir()
     (data_dir / 'tmp' / 'partial-upload').write_bytes(b'partial')
+    fences = data_dir / '.ldap-revocation-fences'
+    fences.mkdir()
+    (fences / '42.pending').write_bytes(b'pending\n')
     archive = tmp_path / 'backup.zip'
 
     manifest = create_backup(data_dir, archive)
@@ -568,6 +588,30 @@ def test_backup_excludes_logs_and_transfer_temporary_files(tmp_path):
         sorted(expected_files)
     )
     assert _snapshot(restored_dir) == expected_files
+
+
+def test_restore_discards_current_and_archived_ldap_revocation_fences(
+    tmp_path,
+):
+    archive = tmp_path / 'backup-with-runtime-fence.zip'
+    _write_manifest_archive(
+        archive,
+        {
+            'app.db': _webssh_database_bytes(tmp_path),
+            '.ldap-revocation-fences/42.pending': b'pending\n',
+        },
+        format_version=2,
+        data_schema_version=2,
+    )
+    restore_dir = tmp_path / 'restore'
+    existing_fence = restore_dir / '.ldap-revocation-fences/99.pending'
+    existing_fence.parent.mkdir(parents=True)
+    existing_fence.write_bytes(b'pending\n')
+
+    restore_backup(archive, restore_dir)
+
+    assert not existing_fence.exists()
+    assert not (restore_dir / '.ldap-revocation-fences/42.pending').exists()
 
 
 def test_corrupt_member_fails_before_restore_writes_anything(tmp_path):
@@ -848,12 +892,16 @@ def test_restore_removes_stale_persistent_files_but_keeps_runtime_files(
     temporary = restore_dir / 'tmp/active-transfer'
     temporary.parent.mkdir()
     temporary.write_bytes(b'keep active temp state')
+    fence = restore_dir / '.ldap-revocation-fences/99.pending'
+    fence.parent.mkdir()
+    fence.write_bytes(b'pending\n')
 
     restore_backup(archive, restore_dir)
 
     assert not stale.exists()
     assert log.read_bytes() == b'keep current runtime log'
     assert temporary.read_bytes() == b'keep active temp state'
+    assert not fence.exists()
     persistent_snapshot = {
         path: payload
         for path, payload in _snapshot(restore_dir).items()

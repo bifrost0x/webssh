@@ -16,7 +16,6 @@ import config
 from .audit_logger import log_rate_limit_exceeded, log_security_event
 from .auth import (
     check_rate_limit,
-    check_reauth_rate_limit,
     user_creation_transaction,
     validate_new_user,
 )
@@ -124,28 +123,16 @@ def github_step_up_start():
         return jsonify({'error': 'Invalid request'}), 400
     token = data.get('intent')
     try:
-        intent = account_step_up_intent(token, current_authentication_session())
+        account_step_up_intent(token, current_authentication_session())
     except StepUpError:
         return jsonify({'error': 'Step-up authentication failed'}), 403
-    if current_user.github_identity is None:
-        return jsonify({'error': 'Step-up authentication failed'}), 403
-    client_ip = request.remote_addr or 'unknown'
-    if config.RATELIMIT_ENABLED and check_reauth_rate_limit(
-        current_user.id,
-        client_ip,
-        'account_step_up_github_start',
-        config.RATELIMIT_REAUTH,
-    ):
-        log_rate_limit_exceeded('account_step_up_github_start', client_ip)
-        response = jsonify({'error': 'Step-up authentication failed'})
-        response.status_code = 429
-        response.headers['Retry-After'] = '60'
-        return response
-    return jsonify({'authorization_url': _begin_authorization(
-        purpose='step_up',
-        step_up_intent_id=intent.id,
-        continuation=data.get('continuation') or '/security',
-    )})
+    log_security_event(
+        'ACCOUNT_STEP_UP_REJECTED',
+        user=current_user.username,
+        method='github',
+        reason='fresh_authentication_unavailable',
+    )
+    return jsonify({'error': 'Step-up authentication failed'}), 403
 
 
 def _provision_username(login, github_user_id):
@@ -240,32 +227,13 @@ def _complete_link(intent, profile):
 
 
 def _complete_step_up(intent, profile):
-    from .auth_assurance import current_authentication_session
-    from .step_up import approve_account_step_up_intent_by_id, StepUpError
-
-    auth_session = current_authentication_session()
-    identity = current_user.github_identity if current_user.is_authenticated else None
-    if (
-        auth_session is None
-        or identity is None
-        or identity.github_user_id != profile.user_id
-    ):
-        return jsonify({'error': 'Step-up authentication failed'}), 403
-    try:
-        approved = approve_account_step_up_intent_by_id(
-            intent.step_up_intent_id,
-            auth_session,
-            assurance=AssuranceLevel.BASIC,
-            method='github',
-        )
-    except StepUpError:
-        return jsonify({'error': 'Step-up authentication failed'}), 403
     log_security_event(
-        'ACCOUNT_STEP_UP_GRANTED', user=current_user.username,
-        method='github', action=approved.action,
-        assurance=AssuranceLevel.BASIC.value, result='approved',
+        'ACCOUNT_STEP_UP_REJECTED',
+        user=(current_user.username if current_user.is_authenticated else None),
+        method='github',
+        reason='fresh_authentication_unavailable',
     )
-    return redirect(intent.continuation)
+    return jsonify({'error': 'Step-up authentication failed'}), 403
 
 
 def _complete_login(intent, profile, settings):

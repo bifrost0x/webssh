@@ -17,6 +17,21 @@ class OperationBusyError(RuntimeError):
     """Raised when another backup-sensitive operation owns the process lock."""
 
 
+def require_durable_recovery_storage() -> None:
+    """Fail closed before web restore can mutate persistent application data."""
+    if not config.BACKUP_RECOVERY_DURABLE:
+        raise RuntimeError(
+            'Web restore requires durable recovery storage'
+        )
+    configured = Path(config.BACKUP_TEMP_DIR).expanduser()
+    if not configured.is_absolute():
+        raise RuntimeError('BACKUP_TEMP_DIR must be absolute for web restore')
+    # This also rejects overlap with DATA_DIR, symlinks and non-private paths.
+    # Durability itself is an operator/mount contract represented by the
+    # explicit BACKUP_RECOVERY_DURABLE acknowledgement.
+    ensure_backup_temp_dir()
+
+
 @dataclass(frozen=True)
 class OperationToken:
     value: str

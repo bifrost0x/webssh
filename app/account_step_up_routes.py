@@ -6,7 +6,7 @@ import json
 import secrets
 from threading import Lock
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, url_for
 from flask_login import current_user, login_required
 from webauthn import (
     base64url_to_bytes,
@@ -29,11 +29,13 @@ from .auth_assurance import (
     available_mfa_methods,
     current_authentication_session,
 )
+from .factor_bootstrap import (
+    consume_factor_bootstrap,
+    has_live_factor_bootstrap,
+)
 from .ldap_service import LDAPDirectory, LDAPLookupRejected, LDAPUnavailable
-from .github_auth_service import github_auth_is_active
 from .models import (
     LDAPIdentity,
-    GitHubIdentity,
     OIDCIdentity,
     TOTPAuthenticator,
     User,
@@ -93,6 +95,7 @@ def _action_target(action, data):
         "totp.enroll": "totp",
         "totp.delete": "totp",
         "recovery.rotate": "recovery",
+        "oidc.self_link": "oidc",
     }.get(action)
     if feature is not None and not feature_is_active(feature):
         raise StepUpError("step-up request is invalid")
@@ -142,12 +145,9 @@ def _allowed_methods(user, auth_session, required_assurance):
         and OIDCIdentity.query.filter_by(user_id=user.id).first() is not None
     ):
         return ["oidc"]
-    if (
-        "github" in methods
-        and github_auth_is_active()
-        and GitHubIdentity.query.filter_by(user_id=user.id).first() is not None
-    ):
-        return ["github"]
+    # GitHub's OAuth authorization response has no signed authentication-time
+    # evidence. An ambient provider session cannot prove fresh independent
+    # authentication for factor or recovery changes.
     if (
         "ldap" in methods
         and feature_is_active("ldap")
@@ -156,12 +156,17 @@ def _allowed_methods(user, auth_session, required_assurance):
         return ["ldap"]
     if "password" in methods and not user.is_ldap_managed:
         return ["password"]
-    if (
-        "passkey" in methods
-        and "passkey" in available_mfa_methods(user)
-    ):
+    if "passkey" in available_mfa_methods(user):
         return ["passkey"]
     return []
+
+
+def _bootstrap_available(user, auth_session, action):
+    """Require both the GitHub login and a local operator-issued code."""
+    return bool(
+        "github" in authentication_methods(auth_session)
+        and has_live_factor_bootstrap(user, action)
+    )
 
 
 def _intent_context(token):
@@ -237,7 +242,10 @@ def create_intent():
         methods = _allowed_methods(user, auth_session, required)
         recent = recent_strong_assurance(auth_session)
         if not methods and recent is None:
-            return _error("step_up_failed", 403)
+            if _bootstrap_available(user, auth_session, action):
+                methods = ["bootstrap"]
+            else:
+                return _error("step_up_failed", 403)
         token, intent = create_account_step_up_intent(
             auth_session, action, target
         )
@@ -260,6 +268,42 @@ def create_intent():
         "methods": methods,
         "expires_in": 300,
     })
+
+
+@account_step_up_blueprint.post("/api/account/step-up/bootstrap")
+@login_required
+def bootstrap_step_up():
+    try:
+        data = _request_data()
+        token = data.get("intent")
+        intent, user, auth_session = _intent_context(token)
+        if not _bootstrap_available(user, auth_session, intent.action):
+            return _error("step_up_failed", 403)
+    except StepUpError:
+        return _error("step_up_failed", 403)
+    if _reauth_limited("bootstrap"):
+        return _rate_limit_error()
+    if not consume_factor_bootstrap(
+        user,
+        intent.action,
+        data.get("code"),
+    ):
+        log_security_event(
+            "ACCOUNT_STEP_UP_REJECTED",
+            user=current_user.username,
+            action=intent.action,
+            method="bootstrap",
+        )
+        return _error("step_up_failed", 403)
+    try:
+        return _complete_intent(
+            token,
+            auth_session,
+            AssuranceLevel.BASIC.value,
+            "bootstrap",
+        )
+    except StepUpError:
+        return _error("step_up_failed", 403)
 
 
 @account_step_up_blueprint.post("/api/account/step-up/password")
@@ -510,15 +554,13 @@ def oidc_step_up_start():
     from .oidc_routes import begin_oidc_account_step_up
 
     try:
-        response = begin_oidc_account_step_up(
+        return begin_oidc_account_step_up(
             intent=intent,
-            continuation=data.get("continuation") or "/security",
+            continuation=url_for("security_center"),
+            return_authorization_url=True,
         )
     except (OIDCStateError, StepUpError):
         return _error("step_up_failed", 403)
-    if isinstance(response, tuple):
-        return response
-    return jsonify({"authorization_url": response.headers["Location"]})
 
 
 @account_step_up_blueprint.post("/api/account/step-up/status")

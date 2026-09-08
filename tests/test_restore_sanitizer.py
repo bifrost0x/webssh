@@ -2,6 +2,7 @@ import sqlite3
 
 
 TRANSIENT_TABLES = (
+    'factor_bootstrap_tokens',
     'github_oauth_states',
     'oidc_login_states',
     'step_up_grants',

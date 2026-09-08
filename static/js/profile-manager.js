@@ -254,6 +254,20 @@ const ProfileManager = {
         }
     },
 
+    upsertProfile(profile) {
+        if (!profile || !profile.id) return;
+        this.setProfiles(this.profiles.some(item => item.id === profile.id)
+            ? this.profiles.map(item => item.id === profile.id
+                ? profile
+                : item)
+            : [...this.profiles, profile]);
+    },
+
+    removeProfile(profileId) {
+        if (!profileId) return;
+        this.setProfiles(this.profiles.filter(item => item.id !== profileId));
+    },
+
     setKeys(keys) {
         this.keys = Array.isArray(keys) ? keys : [];
         this.renderKeySelect();
@@ -289,9 +303,16 @@ const ProfileManager = {
         });
     },
 
-    createEmptyPaneContent(paneIndex) {
+    createEmptyPaneContent(paneIndex, options = {}) {
         const empty = document.createElement('div');
         empty.className = 'pane-empty profile-launcher';
+        const returnLabel = typeof options.returnLabel === 'string'
+            ? options.returnLabel.trim()
+            : '';
+        const canReturn = returnLabel && typeof options.onReturn === 'function';
+        if (canReturn) {
+            empty.classList.add('profile-launcher-replacement');
+        }
 
         const icon = document.createElement('div');
         icon.className = 'pane-empty-icon material-icons';
@@ -302,17 +323,46 @@ const ProfileManager = {
         const profiles = this.profilesLoaded ? this.profiles : [];
         const title = document.createElement('div');
         title.className = 'profile-launcher-title';
-        title.textContent = profiles.length
+        title.textContent = canReturn
+            ? this.t('panes.selectSession', 'Select a session or use Quick Connect')
+            : profiles.length
             ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Hosts')
             : (window.i18n ? i18n.t('panes.emptyPane') : 'Empty pane');
         empty.appendChild(title);
 
         const hint = document.createElement('div');
         hint.className = 'profile-launcher-hint';
-        hint.textContent = profiles.length
+        hint.textContent = canReturn
+            ? this.t(
+                'panes.sessionPreserved',
+                '{label} remains open. This pane changes only after another connection succeeds.',
+            ).replace('{label}', returnLabel)
+            : profiles.length
             ? (window.i18n ? i18n.t('connection.savedProfilesHint') : 'Choose a saved connection to connect')
             : (window.i18n ? i18n.t('panes.selectSession') : 'Select a session or open a connection');
         empty.appendChild(hint);
+
+        if (canReturn) {
+            const returnButton = document.createElement('button');
+            returnButton.type = 'button';
+            returnButton.className = 'btn btn-secondary profile-launcher-return';
+            const returnText = this.t(
+                'panes.returnToSession',
+                'Back to {label}',
+            ).replace('{label}', returnLabel);
+            const returnIcon = document.createElement('span');
+            returnIcon.className = 'material-icons';
+            returnIcon.setAttribute('aria-hidden', 'true');
+            returnIcon.textContent = 'arrow_back';
+            const returnCopy = document.createElement('span');
+            returnCopy.textContent = returnText;
+            returnButton.append(returnIcon, returnCopy);
+            returnButton.addEventListener('click', event => {
+                event.stopPropagation();
+                options.onReturn();
+            });
+            empty.appendChild(returnButton);
+        }
 
         if (profiles.length) {
             const search = document.createElement('input');
@@ -326,6 +376,7 @@ const ProfileManager = {
                 'aria-label',
                 this.t('profiles.search', 'Search saved connections'),
             );
+            search.addEventListener('click', event => event.stopPropagation());
             const sectionContainer = document.createElement('div');
             sectionContainer.className = 'profile-launcher-sections';
 
@@ -1337,12 +1388,17 @@ const ProfileManager = {
                 return;
             }
             const transientAuthorization = profile.tailscale_authorized;
+            const acknowledgedAuthorization = (
+                typeof acknowledgement.profile.tailscale_authorized === 'boolean'
+                    ? acknowledgement.profile.tailscale_authorized
+                    : transientAuthorization
+            );
             this.profiles = this.profiles.map(item => item.id === profileId
                 ? {
                     ...acknowledgement.profile,
-                    ...(transientAuthorization === undefined
+                    ...(acknowledgedAuthorization === undefined
                         ? {}
-                        : {tailscale_authorized: transientAuthorization}),
+                        : {tailscale_authorized: acknowledgedAuthorization}),
                 }
                 : item);
             this.renderProfileSelect();
@@ -1364,6 +1420,31 @@ const ProfileManager = {
                     ? {}
                     : {tailscale_authorized: authorization}),
             };
+        });
+        return true;
+    },
+
+    applyOrganizationPatch(organization) {
+        if (!Array.isArray(organization)) return false;
+        const changes = new Map(organization
+            .filter(item => item && typeof item.id === 'string')
+            .map(item => [item.id, item]));
+        this.profiles = this.profiles.map(profile => {
+            const patch = changes.get(profile.id);
+            if (!patch) return profile;
+            const updated = {...profile};
+            if (typeof patch.group === 'string' && patch.group) {
+                updated.group = patch.group;
+            } else {
+                delete updated.group;
+            }
+            if (Number.isInteger(patch.sort_order) && patch.sort_order >= 0) {
+                updated.sort_order = patch.sort_order;
+            }
+            if (typeof patch.updated_at === 'string') {
+                updated.updated_at = patch.updated_at;
+            }
+            return updated;
         });
         return true;
     },
@@ -1391,8 +1472,8 @@ const ProfileManager = {
         this.renderManagementList();
         send(payload, acknowledgement => {
             this.organizationPending.delete(profile.id);
-            if (Array.isArray(acknowledgement?.profiles)) {
-                this.adoptAuthoritativeProfiles(acknowledgement.profiles);
+            if (Array.isArray(acknowledgement?.organization)) {
+                this.applyOrganizationPatch(acknowledgement.organization);
             }
             if (acknowledgement?.requires_confirmation === true) {
                 this.pendingProfileMove = {
@@ -1406,7 +1487,8 @@ const ProfileManager = {
                 this.openProfileMoveConfirmation();
                 return;
             }
-            if (!acknowledgement?.success || !Array.isArray(acknowledgement.profiles)) {
+            if (!acknowledgement?.success
+                    || !Array.isArray(acknowledgement.organization)) {
                 window.showNotification?.(
                     acknowledgement?.error || this.t(
                         'profiles.saveFailed', 'Failed to save connection'

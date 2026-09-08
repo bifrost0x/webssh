@@ -23,12 +23,19 @@ class RecordingSocket:
         self.timeout = None
         self.connected_to = None
         self.closed = False
+        self.socket_options = []
+        self.operations = []
 
     def settimeout(self, timeout):
         self.timeout = timeout
 
     def connect(self, address):
+        self.operations.append(('connect', address))
         self.connected_to = address
+
+    def setsockopt(self, level, option, value):
+        self.operations.append(('setsockopt', level, option, value))
+        self.socket_options.append((level, option, value))
 
     def close(self):
         self.closed = True
@@ -134,6 +141,34 @@ def test_allow_internal_selects_private_candidate(monkeypatch):
     ).ip == '10.0.0.8'
 
 
+def test_resolution_validator_selects_only_the_pinned_network_route(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *args, **kwargs: [
+            addr(socket.AF_INET, '10.0.0.8'),
+            addr(socket.AF_INET, '100.64.0.9'),
+        ],
+    )
+    checked = []
+
+    def tailnet_only(target):
+        checked.append(target.ip)
+        return target.ip.startswith('100.64.')
+
+    target = resolve_allowed_target(
+        'node.example',
+        22,
+        allow_internal=True,
+        target_validator=tailnet_only,
+    )
+
+    assert target.ip == '100.64.0.9'
+    assert checked == ['10.0.0.8', '100.64.0.9']
+
+
 @pytest.mark.parametrize(
     ('raw', 'canonical', 'ip', 'family'),
     [
@@ -195,6 +230,84 @@ def test_open_socket_closes_it_when_connect_fails(monkeypatch):
     with pytest.raises(TimeoutError):
         open_validated_socket(target, timeout=3)
 
+    assert created[0].closed is True
+
+
+@pytest.mark.parametrize(
+    ('family', 'ip', 'expected_option'),
+    [
+        (
+            socket.AF_INET,
+            '100.64.0.10',
+            (socket.IPPROTO_IP, 50, socket.htonl(52)),
+        ),
+        (
+            socket.AF_INET6,
+            'fd7a:115c:a1e0::10',
+            (socket.IPPROTO_IPV6, 76, socket.htonl(52)),
+        ),
+    ],
+)
+def test_open_socket_binds_required_interface_before_connect(
+    monkeypatch,
+    family,
+    ip,
+    expected_option,
+):
+    created = []
+
+    def fake_socket(socket_family, socktype):
+        result = RecordingSocket(socket_family, socktype)
+        created.append(result)
+        return result
+
+    monkeypatch.setattr(socket, 'socket', fake_socket)
+    monkeypatch.setattr(socket, 'if_nametoindex', lambda name: 52)
+    target = ResolvedTarget('tail-node', 22, ip, family)
+
+    connected = open_validated_socket(
+        target,
+        timeout=3,
+        required_interface='tailscale0',
+    )
+
+    assert connected is created[0]
+    assert connected.socket_options == [expected_option]
+    assert connected.connected_to == target.sockaddr
+    assert connected.operations == [
+        ('setsockopt', *expected_option),
+        ('connect', target.sockaddr),
+    ]
+
+
+def test_open_socket_closes_before_connect_when_interface_binding_fails(
+    monkeypatch,
+):
+    created = []
+
+    def fake_socket(family, socktype):
+        result = RecordingSocket(family, socktype)
+        created.append(result)
+        return result
+
+    monkeypatch.setattr(socket, 'socket', fake_socket)
+    monkeypatch.setattr(
+        socket,
+        'if_nametoindex',
+        lambda _name: (_ for _ in ()).throw(OSError('missing interface')),
+    )
+    target = ResolvedTarget(
+        'tail-node', 22, '100.64.0.10', socket.AF_INET
+    )
+
+    with pytest.raises(OSError, match='missing interface'):
+        open_validated_socket(
+            target,
+            timeout=3,
+            required_interface='tailscale0',
+        )
+
+    assert created[0].connected_to is None
     assert created[0].closed is True
 
 

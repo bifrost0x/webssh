@@ -12,6 +12,7 @@
         TIMEOUT: ['smb.error.timeout', 'The SMB server did not respond in time.'],
         ENCRYPTION_REQUIRED: ['smb.error.encryption', 'The server does not support the required SMB encryption.'],
         DIALECT_REQUIRED: ['smb.error.dialect', 'The server does not support SMB 3.1.1.'],
+        IDENTITY_UNAVAILABLE: ['smb.error.identityUnavailable', 'This SMB server cannot provide the stable file identities required for secure access.'],
         RUNTIME_SHUTTING_DOWN: ['smb.error.shutdown', 'The server is shutting down.'],
         INVALID_REQUEST: ['smb.error.invalid', 'Check the connection details and try again.'],
         CONNECTION_FAILED: ['smb.error.connection', 'The SMB connection could not be established.'],

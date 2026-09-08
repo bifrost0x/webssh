@@ -16,6 +16,10 @@ _RESERVED_DEVICE = re.compile(
     r'(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z',
     re.IGNORECASE,
 )
+# Recursive SMB operations already stop after 50 levels.  Keep ample headroom
+# for an ordinary pre-existing prefix while placing a fixed ceiling on the
+# number of verified handles and round trips a single path can require.
+SMB_PATH_MAX_COMPONENTS = 128
 
 
 def _validate_component(value, *, maximum, allow_dollar=False):
@@ -53,6 +57,10 @@ class SMBShareName:
 class SMBPath:
     segments: tuple[str, ...]
 
+    def __post_init__(self):
+        if len(self.segments) > SMB_PATH_MAX_COMPONENTS:
+            raise SMBPathRejected('SMB path has too many components')
+
     @classmethod
     def parse(cls, value):
         if not isinstance(value, str) or not value.startswith('/'):
@@ -62,7 +70,11 @@ class SMBPath:
         if len(value) > 4096 or value.endswith('/') or '//' in value:
             raise SMBPathRejected('Invalid SMB path')
         segments = tuple(
-            _validate_component(segment, maximum=255)
+            _validate_component(
+                segment,
+                maximum=255,
+                allow_dollar=True,
+            )
             for segment in value[1:].split('/')
         )
         return cls(segments)
@@ -71,7 +83,13 @@ class SMBPath:
         return '/' + '/'.join(self.segments)
 
     def child(self, name):
-        return SMBPath(self.segments + (_validate_component(name, maximum=255),))
+        return SMBPath(self.segments + (
+            _validate_component(
+                name,
+                maximum=255,
+                allow_dollar=True,
+            ),
+        ))
 
     def parent(self):
         if not self.segments:
