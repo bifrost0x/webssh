@@ -399,6 +399,58 @@ test('Android IME composition sends the complete value without its stale prefix'
     await assertNoExternalRequests(page);
 });
 
+test('Android IME input-before-keydown rollover is forwarded exactly once', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const terminal = TerminalManager.terminals[terminalKey];
+        const textarea = terminal.textarea;
+        window.__androidCompositionDispose = TerminalManager.setupAndroidCompositionGuard(
+            terminal,
+            true,
+        );
+
+        for (const character of '12345') {
+            textarea.value += character;
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            textarea.dispatchEvent(new InputEvent('input', {
+                bubbles: true,
+                composed: true,
+                data: character,
+                inputType: 'insertText',
+            }));
+            const keydown = new KeyboardEvent('keydown', {
+                bubbles: true,
+                cancelable: true,
+                key: 'Unidentified',
+            });
+            Object.defineProperty(keydown, 'keyCode', {value: 229});
+            textarea.dispatchEvent(keydown);
+            const keyup = new KeyboardEvent('keyup', {
+                bubbles: true,
+                key: character,
+            });
+            Object.defineProperty(keyup, 'keyCode', {
+                value: character.charCodeAt(0),
+            });
+            textarea.dispatchEvent(keyup);
+        }
+    });
+
+    await expect.poll(() => page.evaluate(() => window.__workspaceEvents
+        .filter(event => event.event === 'ssh_input')
+        .map(event => event.payload.data)
+        .join(''))).toBe('12345');
+    await page.waitForTimeout(50);
+    expect(await page.evaluate(() => window.__workspaceEvents
+        .filter(event => event.event === 'ssh_input')
+        .map(event => event.payload.data)
+        .join(''))).toBe('12345');
+    await page.evaluate(() => window.__androidCompositionDispose());
+    await assertNoExternalRequests(page);
+});
+
 test('tmux resync ignores replayed OSC 52 and accepts a live clipboard selection', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page, {
