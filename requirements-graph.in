@@ -1,2 +1,2 @@
 # Build-only dependency for the published repository code graph.
-graphifyy==0.9.51
+graphifyy==0.9.53
