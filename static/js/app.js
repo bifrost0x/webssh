@@ -1520,6 +1520,7 @@
     const cancelledSessionIds = new Set();
     let connectTimer = null;
     let connectSeconds = 0;
+    const CONNECT_CANCEL_ACK_TIMEOUT_MS = 5000;
     const TRANSIENT_ID_TTL_MS = 120000;
     const MAX_TRANSIENT_IDS = 128;
 
@@ -1725,36 +1726,72 @@
         }
         cancellingConnectRequestIds.add(requestId);
         setPendingCancellationBusy(requestId, true);
+        let settled = false;
+        const settleCancellation = acknowledgement => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(acknowledgementTimer);
+            cancellingConnectRequestIds.delete(requestId);
+            setPendingCancellationBusy(requestId, false);
+            const requestStillPending = (
+                requestId === currentConnectRequestId
+                || pendingRequestPaneMap.has(requestId)
+            );
+            let cancelled = acknowledgement?.cancelled === true || (
+                acknowledgement?.success === true
+                && acknowledgement?.cancelled !== false
+            );
+            if (cancelled) {
+                finishConnectionCancellation(requestId);
+            } else if (
+                acknowledgement?.reason === 'not_found'
+                && requestStillPending
+            ) {
+                // The server no longer owns this request. Honour the user's
+                // cancellation locally and discard any success that was
+                // already in flight for the same correlated request.
+                cancelled = true;
+                finishConnectionCancellation(requestId);
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelAlreadyStopped')
+                        : 'The connection attempt is no longer active.',
+                    'info',
+                );
+            } else if (
+                acknowledgement?.reason === 'already_committed'
+                && requestStillPending
+            ) {
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelTooLate')
+                        : 'The connection is already finishing and can no longer be cancelled safely.',
+                    'info',
+                );
+            } else if (requestStillPending) {
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelUnconfirmed')
+                        : 'Cancellation was not confirmed. The attempt is still pending; try cancelling again.',
+                    'warning',
+                    7000,
+                );
+            }
+            if (typeof onSettled === 'function') {
+                onSettled(cancelled, acknowledgement);
+            }
+        };
+        const acknowledgementTimer = window.setTimeout(() => {
+            settleCancellation({
+                success: false,
+                cancelled: false,
+                reason: 'ack_timeout',
+            });
+        }, CONNECT_CANCEL_ACK_TIMEOUT_MS);
         socket.emit(
             'ssh_connect_cancel',
             { client_request_id: requestId },
-            acknowledgement => {
-                cancellingConnectRequestIds.delete(requestId);
-                setPendingCancellationBusy(requestId, false);
-                const cancelled = acknowledgement?.cancelled === true || (
-                    acknowledgement?.success === true
-                    && acknowledgement?.cancelled !== false
-                );
-                if (cancelled) {
-                    finishConnectionCancellation(requestId);
-                } else if (
-                    acknowledgement?.reason === 'already_committed'
-                    && (
-                        requestId === currentConnectRequestId
-                        || pendingRequestPaneMap.has(requestId)
-                    )
-                ) {
-                    showNotification(
-                        window.i18n
-                            ? i18n.t('connection.cancelTooLate')
-                            : 'The connection is already finishing and can no longer be cancelled safely.',
-                        'info',
-                    );
-                }
-                if (typeof onSettled === 'function') {
-                    onSettled(cancelled, acknowledgement);
-                }
-            },
+            settleCancellation,
         );
         return true;
     }
@@ -1765,12 +1802,12 @@
         const shouldReactivatePane = Number.isInteger(targetPane)
             && Boolean(SessionManager.getWorkspaceSession?.())
             && !SessionManager.getActiveSession();
-        cancelConnectionAttempt(modalRequestId, cancelled => {
-            if (cancelled && shouldReactivatePane) {
-                SessionManager.setActivePane(targetPane);
-                window.requestAnimationFrame(() => SessionManager.focusActivePane());
-            }
-        });
+        const reactivatePreservedPane = () => {
+            if (!shouldReactivatePane) return;
+            SessionManager.setActivePane(targetPane);
+            window.requestAnimationFrame(() => SessionManager.focusActivePane());
+        };
+        cancelConnectionAttempt(modalRequestId);
         connectionModalRequestId = null;
         window.ModalManager.close(document.getElementById('connectionModal'));
         clearPendingPane();
@@ -1778,6 +1815,10 @@
             setConnectLoading(false);
             stopConnectTimer();
         }
+        // The replacement remains staged until ssh_connected, so returning to
+        // the preserved session is safe even while cancellation is pending or
+        // the server has already crossed its commit boundary.
+        reactivatePreservedPane();
     }
 
     function getDefaultPaneIndex() {

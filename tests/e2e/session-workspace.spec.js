@@ -1571,6 +1571,177 @@ test('a late cancellation keeps and opens the already committed connection', asy
     await assertNoExternalRequests(page);
 });
 
+test('a lost cancellation acknowledgement stays retryable and clears a finished request safely', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await page.evaluate(() => {
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__cancelRecoveryEvents = [];
+        window.__cancelRecoveryResponse = 'drop';
+        window.socket.emit = function holdCancellation(event, payload, ...rest) {
+            if (
+                event === 'ssh_connect'
+                || event === 'ssh_connect_cancel'
+                || event === 'ssh_discard_late_connection'
+            ) {
+                window.__cancelRecoveryEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                if (
+                    event === 'ssh_connect_cancel'
+                    && window.__cancelRecoveryResponse === 'not_found'
+                ) {
+                    queueMicrotask(() => rest[0]?.({
+                        success: false,
+                        cancelled: false,
+                        reason: 'not_found',
+                    }));
+                }
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+    });
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('cancel-recovery.example');
+    await page.locator('#usernameInput').fill('deploy');
+    await page.locator('#passwordInput').fill('replacement-password');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__cancelRecoveryEvents.find(entry => entry.event === 'ssh_connect')
+            ?.payload.client_request_id
+    ))).toBeTruthy();
+    const requestId = await page.evaluate(() => (
+        window.__cancelRecoveryEvents.find(entry => entry.event === 'ssh_connect')
+            .payload.client_request_id
+    ));
+    const pendingTab = page.locator(`[data-pending-id="${requestId}"]`).first();
+    const pendingCancel = pendingTab.getByRole('button', { name: 'Cancel connection' });
+
+    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('workspace-linux');
+    await expect(
+        page.locator('.terminal-pane.active .xterm-helper-textarea')
+    ).toBeFocused();
+    await expect(pendingCancel).toHaveAttribute('aria-busy', 'true');
+
+    await expect(page.getByText(
+        'Cancellation was not confirmed. The attempt is still pending; try cancelling again.',
+        { exact: true },
+    )).toBeVisible({ timeout: 8000 });
+    await expect(pendingCancel).toHaveAttribute('aria-busy', 'false');
+
+    await page.evaluate(() => {
+        window.__cancelRecoveryResponse = 'not_found';
+    });
+    await pendingCancel.click();
+    await expect(pendingTab).toHaveCount(0);
+    await expect(page.getByText(
+        'The connection attempt is no longer active.',
+        { exact: true },
+    )).toBeVisible();
+
+    await page.evaluate(activeRequestId => {
+        window.socket.listeners('ssh_connected').forEach(listener => listener({
+            session_id: 'cancel-recovery-late-session',
+            host: 'cancel-recovery.example',
+            port: 22,
+            username: 'deploy',
+            client_request_id: activeRequestId,
+        }));
+    }, requestId);
+    await expect.poll(() => page.evaluate(activeRequestId => (
+        window.__cancelRecoveryEvents.some(entry => (
+            entry.event === 'ssh_discard_late_connection'
+            && entry.payload.client_request_id === activeRequestId
+            && entry.payload.session_id === 'cancel-recovery-late-session'
+        ))
+    ), requestId)).toBe(true);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('workspace-linux');
+
+    await page.locator('#newTabBtn').click();
+    await expect(page.locator('.terminal-pane.active .profile-launcher-new')).toBeVisible();
+    await assertNoExternalRequests(page);
+});
+
+test('a failed late replacement leaves the preserved terminal active', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await page.evaluate(() => {
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__lateReplacementEvents = [];
+        window.socket.emit = function holdLateReplacement(event, payload, ...rest) {
+            if (event === 'ssh_connect' || event === 'ssh_connect_cancel') {
+                window.__lateReplacementEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                if (event === 'ssh_connect_cancel') {
+                    queueMicrotask(() => rest[0]?.({
+                        success: false,
+                        cancelled: false,
+                        reason: 'already_committed',
+                    }));
+                }
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+    });
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('late-replacement.example');
+    await page.locator('#usernameInput').fill('deploy');
+    await page.locator('#passwordInput').fill('replacement-password');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__lateReplacementEvents.find(entry => entry.event === 'ssh_connect')
+            ?.payload.client_request_id
+    ))).toBeTruthy();
+    const requestId = await page.evaluate(() => (
+        window.__lateReplacementEvents.find(entry => entry.event === 'ssh_connect')
+            .payload.client_request_id
+    ));
+
+    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('workspace-linux');
+    await expect(
+        page.locator('.terminal-pane.active .xterm-helper-textarea')
+    ).toBeFocused();
+    await expect(page.locator('.notification')).toContainText(
+        'can no longer be cancelled safely',
+    );
+
+    await page.evaluate(activeRequestId => {
+        window.socket.listeners('ssh_error').forEach(listener => listener({
+            error: 'Late replacement failed',
+            client_request_id: activeRequestId,
+        }));
+    }, requestId);
+    await expect(page.locator(`[data-pending-id="${requestId}"]`)).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('workspace-linux');
+    await expect(
+        page.locator('.terminal-pane.active .xterm-helper-textarea')
+    ).toBeFocused();
+    expect(await page.evaluate(() => window.__workspaceEvents.filter(
+        entry => entry.event === 'ssh_disconnect'
+            && entry.payload?.session_id === 'workspace-linux'
+    ))).toEqual([]);
+    await assertNoExternalRequests(page);
+});
+
 test('failed and cancelled replacements preserve the current session until a successful replacement', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
@@ -1685,6 +1856,13 @@ test('failed and cancelled replacements preserve the current session until a suc
         '/srv/webssh/current',
     );
 
+    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('workspace-linux');
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await page.locator('#passwordInput').fill('replacement-password');
     await page.locator('#connectBtn').click();
     await expect.poll(() => page.evaluate(() => window.__heldConnectAttempts.length))
