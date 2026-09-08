@@ -42,6 +42,24 @@ test('admin can inspect, unlink, and add an OIDC identity', async ({ page }) => 
 });
 
 test('linked users see the safe OIDC self-link status and action', async ({ page }) => {
+    let linkRequestHeaders;
+    await page.route('**/api/account/oidc/link/start', async route => {
+        linkRequestHeaders = route.request().headers();
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                authorization_url: 'https://issuer.example/authorize?state=e2e-link',
+            }),
+        });
+    });
+    await page.route('https://issuer.example/authorize?state=e2e-link', route => (
+        route.fulfill({
+            status: 200,
+            contentType: 'text/html',
+            body: '<title>OIDC authorization</title>',
+        })
+    ));
     await login(page, 'e2e_user');
     await page.goto('/settings');
 
@@ -49,12 +67,19 @@ test('linked users see the safe OIDC self-link status and action', async ({ page
     const action = page.locator('#oidcIdentityAction');
     await expect(status).toHaveText('1 OIDC identity linked');
     await expect(action).toContainText('Link another identity');
+    await expect(action).toHaveAttribute('data-connected', 'true');
     await expect(page.getByText('existing-e2e-subject')).toHaveCount(0);
 
     await action.click();
     const confirmation = page.locator('#securityConfirmationModal');
     await expect(confirmation).toHaveClass(/show/);
     await expect(confirmation).toHaveAttribute('aria-hidden', 'false');
+    await page.locator('#securityConfirmationPassword').fill('browser-password');
+    await page.locator('#securityConfirmationSubmit').click();
+    await expect(page).toHaveURL(
+        'https://issuer.example/authorize?state=e2e-link'
+    );
+    expect(linkRequestHeaders['x-webssh-step-up']).toBeTruthy();
 });
 
 test('admin navigation and users become readable cards on a mobile viewport', async ({ page }) => {

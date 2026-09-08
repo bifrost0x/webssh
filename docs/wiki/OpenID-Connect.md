@@ -15,7 +15,8 @@ existing local account:
 Email addresses and usernames are not identity keys. Optional subject and email
 domain allowlists are additional policy checks.
 
-OIDC identities cannot be linked to LDAP-managed accounts.
+OIDC identities cannot be linked to LDAP-managed or GitHub-provisioned
+accounts.
 
 ## Provider requirements
 
@@ -128,7 +129,7 @@ or secret details.
 The recommended path does not require copying a provider subject:
 
 1. Enable and activate OIDC.
-2. Sign in to the target WebSSH account with an existing local method.
+2. Sign in to the target WebSSH account with an existing sign-in method.
 3. Open **Settings → Security methods → Identity provider**.
 4. Choose **Connect identity provider** and complete the action-bound WebSSH
    confirmation.
@@ -193,7 +194,12 @@ and subject.
 | Callback rejected | exact callback, state cookie, proxy origin, system time |
 | Identity not linked | Sign in locally and use **Settings → Security methods → Identity provider**, or verify the administrator mapping for the exact issuer and subject |
 | Domain rejected | email claim and `OIDC_ALLOWED_DOMAINS` |
-| User rejected after link | locked account or LDAP-managed state |
+| User rejected after link | locked, LDAP-managed, or GitHub-provisioned account state |
+
+Operator audit events distinguish an absent mapping (`unlinked`), a locked
+target (`account_locked`), and an incompatible externally managed target
+(`externally_managed`). Browser responses remain generic so they do not disclose
+account state.
 
 ## Recovery
 
@@ -205,3 +211,11 @@ Disabling OIDC in the Admin Panel blocks later OIDC starts without forcibly
 terminating existing browser or SSH sessions. Existing work reaches its normal
 configured lifetime. Explicit account lock, deletion, and MFA reset still
 revoke the target account.
+
+## Upgrade compatibility
+
+Self-service linking requires no new environment variable or provider
+registration. The additive database migration adds only nullable account and
+session bindings to the short-lived OIDC state table. Existing users, OIDC
+identity mappings, pending login or Step-up states, and the administrator link
+and unlink flows remain compatible.

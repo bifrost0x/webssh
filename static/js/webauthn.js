@@ -727,6 +727,7 @@
         const identityCount = Number.parseInt(
             button.dataset.identityCount || '0', 10
         );
+        button.dataset.connected = String(identityCount > 0);
         const actionLabel = button.querySelector('.oidc-identity-action-label');
         const action = identityCount > 0
             ? t('security.addOidcIdentity', 'Link another identity')

@@ -682,7 +682,7 @@ def cleanup_expired_security_rows(limit=500, now=None):
 
 
 class OIDCIdentity(db.Model):
-    """Administrator-approved stable external identity mapping."""
+    """Verified stable external identity mapping to a WebSSH account."""
 
     __tablename__ = 'oidc_identities'
     __table_args__ = (

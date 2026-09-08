@@ -3496,7 +3496,7 @@ const translations = {
         'security.managePasskeysHint': 'Anmeldedaten für die passwortlose Anmeldung verwalten.',
         'security.manageAuthenticatorHint': 'Zeitbasierte Einmalcodes verwalten.',
         'security.manageGithubHint': 'Die mit diesem WebSSH-Konto verwendete GitHub-Identität verknüpfen oder trennen.',
-        'security.manageOidcHint': 'Verknüpfe eine Identität durch Anmeldung beim konfigurierten Anbieter. WebSSH speichert nur den verifizierten Aussteller und Betreff.',
+        'security.manageOidcHint': 'Verknüpfe eine Identität durch Anmeldung beim konfigurierten Anbieter. WebSSH speichert nur den verifizierten Aussteller und die Subjektkennung.',
         'security.manageRecoveryCodesHint': 'Notfall-Anmeldecodes erzeugen und sicher aufbewahren.',
         'security.githubManagedTitle': 'GitHub-Anmeldung',
         'security.githubManagedHint': 'GitHub steuert diese primäre Anmeldung. WebSSH verwirft das temporäre GitHub-Token nach der Identitäts- und Organisationsprüfung.',

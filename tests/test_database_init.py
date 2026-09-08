@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+import hashlib
+
 from sqlalchemy import inspect, text
 
 
@@ -74,6 +77,27 @@ def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):
             'expires_at DATETIME NOT NULL'
             ')'
         ))
+        db.session.execute(
+            text(
+                'INSERT INTO oidc_login_states '
+                '(state_hash, session_binding_hash, nonce, code_verifier, '
+                'expires_at) VALUES '
+                '(:state_hash, :binding_hash, :nonce, :verifier, :expires_at)'
+            ),
+            {
+                'state_hash': hashlib.sha256(
+                    b'legacy-login-state'
+                ).hexdigest(),
+                'binding_hash': hashlib.sha256(
+                    b'legacy-browser-binding'
+                ).hexdigest(),
+                'nonce': 'legacy-nonce',
+                'verifier': 'legacy-verifier',
+                'expires_at': datetime.now(timezone.utc).replace(
+                    tzinfo=None
+                ) + timedelta(minutes=5),
+            },
+        )
         db.session.commit()
 
         ensure_security_columns()
@@ -94,3 +118,14 @@ def test_legacy_oidc_state_adds_assurance_intent_columns_idempotently(app):
             'auth_generation',
             'authentication_session_id',
         } <= columns
+        from app.oidc_service import consume_login_state
+
+        intent = consume_login_state(
+            state='legacy-login-state',
+            session_binding='legacy-browser-binding',
+        )
+        assert intent.purpose == 'login'
+        assert intent.continuation == '/'
+        assert intent.user_id is None
+        assert intent.auth_generation is None
+        assert intent.authentication_session_id is None

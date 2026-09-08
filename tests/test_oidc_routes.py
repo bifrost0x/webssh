@@ -300,6 +300,213 @@ def test_oidc_self_link_rejects_mismatched_subject_sources(
         assert OIDCIdentity.query.filter_by(user_id=user_id).count() == 0
 
 
+@pytest.mark.parametrize(("allowed_subjects", "allowed_domains", "claims"), (
+    (
+        {"different-subject"},
+        set(),
+        {"iss": "https://issuer.example", "sub": "policy-subject"},
+    ),
+    (
+        set(),
+        {"example.com"},
+        {
+            "iss": "https://issuer.example",
+            "sub": "policy-subject",
+            "email": "user@other.example",
+            "email_verified": True,
+        },
+    ),
+    (
+        set(),
+        {"example.com"},
+        {
+            "iss": "https://issuer.example",
+            "sub": "policy-subject",
+            "email": "user@example.com",
+            "email_verified": False,
+        },
+    ),
+))
+def test_oidc_self_link_enforces_subject_and_domain_policies(
+    app,
+    client,
+    monkeypatch,
+    allowed_subjects,
+    allowed_domains,
+    claims,
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity
+
+    user_id = _create_user(app, "oidc_policy_rejected_user")
+    _login(client, "oidc_policy_rejected_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", allowed_subjects)
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", allowed_domains)
+    state = "self-link-policy-rejection"
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, claims),
+    )
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid or expired OIDC login"
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(user_id=user_id).count() == 0
+
+
+def test_oidc_self_link_accepts_matching_subject_and_domain_policies(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity
+
+    user_id = _create_user(app, "oidc_policy_accepted_user")
+    _login(client, "oidc_policy_accepted_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", {"policy-subject"})
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", {"example.com"})
+    state = "self-link-policy-accepted"
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, {
+            "iss": "https://issuer.example",
+            "sub": "policy-subject",
+            "email": "user@example.com",
+            "email_verified": True,
+        }),
+    )
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="policy-subject",
+        ).count() == 1
+
+
+@pytest.mark.parametrize(("account_state", "expected_status"), (
+    ("locked", 403),
+    ("ldap", 302),
+    ("github", 409),
+))
+def test_oidc_self_link_start_rejects_ineligible_accounts(
+    app, client, monkeypatch, account_state, expected_status
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import (
+        GitHubIdentity,
+        LDAPIdentity,
+        OIDCLoginState,
+        User,
+        db,
+    )
+
+    user_id = _create_user(app, "oidc_ineligible_link_user")
+    _login(client, "oidc_ineligible_link_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        if account_state == "locked":
+            user.is_locked = True
+        elif account_state == "ldap":
+            db.session.add(LDAPIdentity(
+                user_id=user_id,
+                provider="default",
+                subject="ineligible-directory-subject",
+                directory_username="oidc_ineligible_link_user",
+                distinguished_name=(
+                    "uid=oidc_ineligible_link_user,dc=example,dc=com"
+                ),
+            ))
+        else:
+            db.session.add(GitHubIdentity(
+                user_id=user_id,
+                github_user_id="424200",
+                login="oidc-ineligible-link-user",
+                provisioned_by_github=True,
+            ))
+        db.session.commit()
+
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("provider must not be contacted")
+        ),
+    )
+    response = client.post(
+        "/api/account/oidc/link/start", json={}, headers=headers
+    )
+
+    assert response.status_code == expected_status
+    if account_state == "ldap":
+        assert response.headers["Location"] == "/login"
+    with app.app_context():
+        assert OIDCLoginState.query.count() == 0
+
+
+def test_oidc_self_link_start_rejects_an_expired_authentication_session(
+    app, client, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import AuthenticationSession, OIDCLoginState, db
+
+    user_id = _create_user(app, "oidc_expired_link_session")
+    _login(client, "oidc_expired_link_session")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+    with app.app_context():
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=user_id
+        ).one()
+        auth_session.expires_at = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            - timedelta(seconds=1)
+        )
+        db.session.commit()
+
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("provider must not be contacted")
+        ),
+    )
+    response = client.post(
+        "/api/account/oidc/link/start", json={}, headers=headers
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == (
+        "/login?next=/api/account/oidc/link/start"
+    )
+    with app.app_context():
+        assert OIDCLoginState.query.count() == 0
+
+
 def test_oidc_self_link_is_idempotent_for_the_same_local_account(
     app, client, monkeypatch
 ):
@@ -1430,6 +1637,47 @@ def test_oidc_step_up_requests_fresh_provider_authentication(
         "urn:example:aal2 urn:example:aal3"
     )
     assert "code_verifier" not in observed
+
+
+def test_oidc_admin_step_up_uses_generated_application_root_continuation(
+    app, client, monkeypatch
+):
+    from flask import redirect
+
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import AuthenticationSession, OIDCLoginState, db
+
+    admin_id = _create_user(app, "subfolder_stepup_admin", is_admin=True)
+    _login(client, "subfolder_stepup_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    with app.app_context():
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=admin_id
+        ).one()
+        auth_session.methods_json = '["oidc"]'
+        db.session.commit()
+
+    class Provider:
+        def authorize_redirect(self, _callback, **values):
+            return redirect(
+                "https://issuer.example/authorize?state=" + values["state"]
+            )
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: Provider())
+    response = client.post(
+        "/api/step-up/oidc/start",
+        json={
+            "action": "settings.update",
+            "target": "global",
+            "continuation": "/client-controlled-path",
+        },
+        environ_overrides={"SCRIPT_NAME": "/webssh"},
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert OIDCLoginState.query.one().continuation == "/webssh/admin"
 
 
 def test_oidc_step_up_state_cannot_be_replayed_as_a_login(

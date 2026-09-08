@@ -654,7 +654,8 @@
     content: '';
 }
 
-.settings-security-method-row-github:has(#githubIdentityAction[data-connected="true"]) .settings-security-method-status::before {
+.settings-security-method-row-github:has(#githubIdentityAction[data-connected="true"]) .settings-security-method-status::before,
+.settings-security-method-row-oidc:has(#oidcIdentityAction[data-connected="true"]) .settings-security-method-status::before {
     background: var(--success-color, #22c55e);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color, #22c55e) 16%, transparent);
 }

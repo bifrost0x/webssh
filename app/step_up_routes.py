@@ -6,7 +6,7 @@ import secrets
 import time
 from threading import Lock
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, url_for
 from flask_login import current_user, login_required
 from webauthn import (
     base64url_to_bytes,
@@ -329,13 +329,12 @@ def oidc_step_up_start():
         current_authentication_session()
     ):
         return _failure()
-    continuation = str(data.get("continuation") or "/admin")
     from .oidc_routes import begin_oidc_step_up
 
     return begin_oidc_step_up(
         action=action,
         target_hash=hash_step_up_target(target),
-        continuation=continuation,
+        continuation=url_for("admin_page"),
         return_authorization_url=True,
     )
 

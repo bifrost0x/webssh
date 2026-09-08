@@ -6,7 +6,7 @@ import json
 import secrets
 from threading import Lock
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, url_for
 from flask_login import current_user, login_required
 from webauthn import (
     base64url_to_bytes,
@@ -556,7 +556,7 @@ def oidc_step_up_start():
     try:
         return begin_oidc_account_step_up(
             intent=intent,
-            continuation=data.get("continuation") or "/security",
+            continuation=url_for("security_center"),
             return_authorization_url=True,
         )
     except (OIDCStateError, StepUpError):
