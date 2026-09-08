@@ -152,6 +152,27 @@ def test_linked_github_identity_is_presented_as_a_security_method(app, client):
     assert b'class="github-identity-action-label"' in response.data
 
 
+def test_active_oidc_is_presented_as_a_verified_self_link_method(
+    app, client, monkeypatch
+):
+    import config
+
+    _create_user(app, "oidc_security_user")
+    _login(client, "oidc_security_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+
+    response = client.get("/settings")
+
+    assert response.status_code == 200
+    methods = response.data.index(b'id="settingsSecurityMethodsTitle"')
+    oidc = response.data.index(b'id="oidc"')
+    assert methods < oidc
+    assert b'id="oidcIdentityStatus"' in response.data
+    assert b'id="oidcIdentityAction"' in response.data
+    assert b'data-i18n="security.manageOidcHint"' in response.data
+    assert b'data-i18n="security.connectOidc"' in response.data
+
+
 def test_standard_user_settings_do_not_expose_administration_navigation(
     app, client
 ):

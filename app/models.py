@@ -231,6 +231,19 @@ def ensure_security_columns():
             "ALTER TABLE oidc_login_states ADD COLUMN step_up_intent_id "
             "INTEGER"
         )
+    if 'user_id' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN user_id INTEGER"
+        )
+    if 'auth_generation' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN auth_generation INTEGER"
+        )
+    if 'authentication_session_id' not in existing:
+        additions.append(
+            "ALTER TABLE oidc_login_states ADD COLUMN "
+            "authentication_session_id INTEGER"
+        )
     for statement in additions:
         db.session.execute(text(statement))
     if additions:
@@ -669,7 +682,7 @@ def cleanup_expired_security_rows(limit=500, now=None):
 
 
 class OIDCIdentity(db.Model):
-    """Administrator-approved stable external identity mapping."""
+    """Verified stable external identity mapping to a WebSSH account."""
 
     __tablename__ = 'oidc_identities'
     __table_args__ = (
@@ -712,6 +725,15 @@ class OIDCLoginState(db.Model):
         default='login',
         server_default='login',
     )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id'),
+        nullable=True,
+    )
+    auth_generation = db.Column(db.Integer, nullable=True)
+    # No foreign key: an in-flight provider redirect must never block logout
+    # or deletion of the server-side authentication session it references.
+    authentication_session_id = db.Column(db.Integer, nullable=True)
     continuation = db.Column(
         db.String(512),
         nullable=False,

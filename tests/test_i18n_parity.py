@@ -307,6 +307,7 @@ def test_recent_settings_and_github_surfaces_are_runtime_localized():
         'security.passkeysAndMfa',
         'security.githubManagedHint',
         'security.manageGithubHint',
+        'security.manageOidcHint',
     ):
         assert re.search(
             rf'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="{re.escape(key)}"',

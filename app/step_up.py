@@ -48,6 +48,7 @@ ACCOUNT_STEP_UP_ACTIONS = frozenset({
     "recovery.rotate",
     "github.link",
     "github.unlink",
+    "oidc.self_link",
 })
 
 

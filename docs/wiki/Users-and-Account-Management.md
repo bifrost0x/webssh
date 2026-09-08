@@ -7,8 +7,10 @@ settings, notes, SSH keys, host trust, live sessions, and transfer ownership.
 
 ### Standard user
 
-A standard user can manage their own SSH/SFTP data and security factors. They
-cannot access the Admin Panel or another user's state.
+A standard user can manage their own SSH/SFTP data and security factors. When
+OIDC is active, an eligible user can also link a provider identity to their own
+account after action-bound confirmation. They cannot access the Admin Panel or
+another user's state.
 
 ### Administrator
 
@@ -132,10 +134,12 @@ back into the active namespace.
 ## External identity ownership
 
 External identity resolves to a local WebSSH account. OIDC always requires an
-administrator-created link. LDAP uses the same controlled link by default;
-explicit `LDAP_AUTO_PROVISION=true` can instead create a non-admin account only
-after successful directory authentication and only when no local username or
-stable identity collides.
+explicit verified link: an eligible signed-in user can self-link to their own
+account, while an administrator-managed link remains available as a recovery
+fallback. LDAP uses a controlled administrator link by default; explicit
+`LDAP_AUTO_PROVISION=true` can instead create a non-admin account only after
+successful directory authentication and only when no local username or stable
+identity collides.
 
 - OIDC uses the provider's stable issuer and subject. Email alone is never an
   identity key.

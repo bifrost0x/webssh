@@ -247,7 +247,7 @@ def test_oidc_session_never_offers_or_accepts_local_password(
     assert rejected.get_json()["code"] == "step_up_failed"
 
 
-def test_oidc_account_starts_are_bound_to_independent_persistent_intents(
+def test_oidc_account_starts_use_independent_intents_and_generated_continuation(
     app,
     client,
     monkeypatch,
@@ -283,14 +283,20 @@ def test_oidc_account_starts_are_bound_to_independent_persistent_intents(
         "target": user_id,
     }).get_json()
 
-    first_started = client.post("/api/account/step-up/oidc/start", json={
-        "intent": first["intent"],
-        "continuation": "/security",
-    })
-    second_started = client.post("/api/account/step-up/oidc/start", json={
-        "intent": second["intent"],
-        "continuation": "/security",
-    })
+    request_environment = {"SCRIPT_NAME": "/webssh"}
+    first_started = client.post(
+        "/api/account/step-up/oidc/start",
+        json={
+            "intent": first["intent"],
+            "continuation": "/client-controlled-path",
+        },
+        environ_overrides=request_environment,
+    )
+    second_started = client.post(
+        "/api/account/step-up/oidc/start",
+        json={"intent": second["intent"]},
+        environ_overrides=request_environment,
+    )
 
     assert first_started.status_code == 200
     assert second_started.status_code == 200
@@ -300,6 +306,7 @@ def test_oidc_account_starts_are_bound_to_independent_persistent_intents(
         assert rows[0].step_up_intent_id != rows[1].step_up_intent_id
         assert all(row.step_up_action is None for row in rows)
         assert all(row.step_up_target_hash is None for row in rows)
+        assert all(row.continuation == "/webssh/settings" for row in rows)
 
 
 def test_ldap_session_uses_fresh_directory_resolution_and_bind(

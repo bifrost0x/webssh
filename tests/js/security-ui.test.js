@@ -76,8 +76,9 @@ test('OIDC account step-up never asks for a local password', async () => {
     let secretRequests = 0;
     const opened = [];
     let polls = 0;
+    let startOptions;
     const client = createAccountStepUpClient({
-        api: async path => {
+        api: async (path, options) => {
             if (path.endsWith('/intents')) {
                 return {
                     intent: 'intent-oidc',
@@ -86,6 +87,7 @@ test('OIDC account step-up never asks for a local password', async () => {
                 };
             }
             if (path.endsWith('/oidc/start')) {
+                startOptions = options;
                 return { authorization_url: 'https://idp.example/authorize' };
             }
             polls += 1;
@@ -104,6 +106,7 @@ test('OIDC account step-up never asks for a local password', async () => {
     assert.equal(await client.authorize('recovery.rotate', 17), 'grant-oidc');
     assert.equal(secretRequests, 0);
     assert.deepEqual(opened, ['https://idp.example/authorize']);
+    assert.deepEqual(startOptions.body, { intent: 'intent-oidc' });
     assert.equal(polls, 2);
 });
 

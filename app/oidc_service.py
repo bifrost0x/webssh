@@ -17,7 +17,7 @@ class OIDCStateError(ValueError):
 
 
 _oidc_state_lock = Lock()
-_STATE_PURPOSES = frozenset({"login", "step_up"})
+_STATE_PURPOSES = frozenset({"login", "link", "step_up"})
 _ACTION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,95}$")
 _TARGET_HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _MAX_AMR_VALUES = 16
@@ -34,6 +34,9 @@ class OIDCLoginIntent:
     nonce: str
     code_verifier: str
     purpose: str
+    user_id: int | None
+    auth_generation: int | None
+    authentication_session_id: int | None
     continuation: str
     requested_acr: str | None
     step_up_action: str | None
@@ -86,6 +89,9 @@ def _normalize_requested_acr(value):
 def _normalize_state_intent(
     *,
     purpose,
+    user_id,
+    auth_generation,
+    authentication_session_id,
     continuation,
     requested_acr,
     step_up_action,
@@ -99,12 +105,56 @@ def _normalize_state_intent(
     requested_acr = _normalize_requested_acr(requested_acr)
     if purpose == "login":
         if (
-            step_up_action is not None
+            user_id is not None
+            or auth_generation is not None
+            or authentication_session_id is not None
+            or step_up_action is not None
             or step_up_target_hash is not None
             or step_up_intent_id is not None
         ):
             raise OIDCStateError("login state contains step-up context")
-        return purpose, continuation, requested_acr, None, None, None
+        return (
+            purpose,
+            None,
+            None,
+            None,
+            continuation,
+            requested_acr,
+            None,
+            None,
+            None,
+        )
+    if purpose == "link":
+        if (
+            type(user_id) is not int
+            or user_id < 1
+            or type(auth_generation) is not int
+            or auth_generation < 0
+            or type(authentication_session_id) is not int
+            or authentication_session_id < 1
+            or requested_acr is not None
+            or step_up_action is not None
+            or step_up_target_hash is not None
+            or step_up_intent_id is not None
+        ):
+            raise OIDCStateError("link state context is invalid")
+        return (
+            purpose,
+            user_id,
+            auth_generation,
+            authentication_session_id,
+            continuation,
+            None,
+            None,
+            None,
+            None,
+        )
+    if (
+        user_id is not None
+        or auth_generation is not None
+        or authentication_session_id is not None
+    ):
+        raise OIDCStateError("step-up state contains link context")
     if step_up_intent_id is not None:
         if (
             not isinstance(step_up_intent_id, int)
@@ -116,6 +166,9 @@ def _normalize_state_intent(
             raise OIDCStateError("step-up intent reference is invalid")
         return (
             purpose,
+            None,
+            None,
+            None,
             continuation,
             requested_acr,
             None,
@@ -128,7 +181,17 @@ def _normalize_state_intent(
         raise OIDCStateError("step-up action is invalid")
     if not _TARGET_HASH_PATTERN.fullmatch(target_hash):
         raise OIDCStateError("step-up target is invalid")
-    return purpose, continuation, requested_acr, action, target_hash, None
+    return (
+        purpose,
+        None,
+        None,
+        None,
+        continuation,
+        requested_acr,
+        action,
+        target_hash,
+        None,
+    )
 
 
 def create_login_state(
@@ -138,6 +201,9 @@ def create_login_state(
     session_binding,
     code_verifier,
     purpose="login",
+    user_id=None,
+    auth_generation=None,
+    authentication_session_id=None,
     continuation="/",
     requested_acr=None,
     step_up_action=None,
@@ -160,6 +226,9 @@ def create_login_state(
         raise OIDCStateError("OIDC state values are too long")
     (
         purpose,
+        user_id,
+        auth_generation,
+        authentication_session_id,
         continuation,
         requested_acr,
         step_up_action,
@@ -167,6 +236,9 @@ def create_login_state(
         step_up_intent_id,
     ) = _normalize_state_intent(
         purpose=purpose,
+        user_id=user_id,
+        auth_generation=auth_generation,
+        authentication_session_id=authentication_session_id,
         continuation=continuation,
         requested_acr=requested_acr,
         step_up_action=step_up_action,
@@ -193,6 +265,9 @@ def create_login_state(
             nonce=nonce,
             code_verifier=code_verifier,
             purpose=purpose,
+            user_id=user_id,
+            auth_generation=auth_generation,
+            authentication_session_id=authentication_session_id,
             continuation=continuation,
             requested_acr=requested_acr,
             step_up_action=step_up_action,
@@ -218,6 +293,9 @@ def consume_login_state(*, state, session_binding, now=None):
             "nonce": row.nonce,
             "code_verifier": row.code_verifier,
             "purpose": row.purpose,
+            "user_id": row.user_id,
+            "auth_generation": row.auth_generation,
+            "authentication_session_id": row.authentication_session_id,
             "continuation": row.continuation,
             "requested_acr": row.requested_acr,
             "step_up_action": row.step_up_action,
@@ -231,6 +309,9 @@ def consume_login_state(*, state, session_binding, now=None):
             raise OIDCStateError("OIDC login state has expired")
         (
             intent_values["purpose"],
+            intent_values["user_id"],
+            intent_values["auth_generation"],
+            intent_values["authentication_session_id"],
             intent_values["continuation"],
             intent_values["requested_acr"],
             intent_values["step_up_action"],
@@ -238,6 +319,11 @@ def consume_login_state(*, state, session_binding, now=None):
             intent_values["step_up_intent_id"],
         ) = _normalize_state_intent(
             purpose=intent_values["purpose"],
+            user_id=intent_values["user_id"],
+            auth_generation=intent_values["auth_generation"],
+            authentication_session_id=(
+                intent_values["authentication_session_id"]
+            ),
             continuation=intent_values["continuation"],
             requested_acr=intent_values["requested_acr"],
             step_up_action=intent_values["step_up_action"],

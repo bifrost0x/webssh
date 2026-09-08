@@ -1,8 +1,14 @@
 """Feature flag, linking, and local-login resilience for OIDC."""
 
 import logging
+from urllib.parse import parse_qs, urlsplit
 
-from tests.step_up_helpers import password_step_up_headers
+import pytest
+
+from tests.step_up_helpers import (
+    account_password_step_up_headers,
+    password_step_up_headers,
+)
 
 
 def _create_user(app, username, *, is_admin=False):
@@ -27,6 +33,47 @@ def _login(client, username):
 
 def _step_up(client, action, target):
     return password_step_up_headers(client, action, target)[0]
+
+
+def _authentication_context(app, user_id):
+    from app.models import AuthenticationSession, User, db
+
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=user_id
+        ).one()
+        return int(user.auth_generation or 0), auth_session.id
+
+
+def _prepare_oidc_self_link_callback(
+    app,
+    client,
+    user_id,
+    *,
+    state,
+    continuation="/settings",
+):
+    from app.models import db
+    from app.oidc_service import create_login_state
+
+    auth_generation, auth_session_id = _authentication_context(app, user_id)
+    binding = f"binding-{state}"
+    with app.app_context():
+        create_login_state(
+            state=state,
+            nonce=f"nonce-{state}",
+            session_binding=binding,
+            code_verifier=f"verifier-{state}",
+            purpose="link",
+            user_id=user_id,
+            auth_generation=auth_generation,
+            authentication_session_id=auth_session_id,
+            continuation=continuation,
+        )
+        db.session.commit()
+    with client.session_transaction() as browser_session:
+        browser_session["oidc_binding"] = binding
 
 
 def _prepare_oidc_callback(app, client, user_id, *, state, subject):
@@ -71,13 +118,786 @@ def test_oidc_routes_are_hidden_when_disabled_but_local_login_works(
     _create_user(app, "local_admin", is_admin=True)
 
     oidc = client.get("/oidc/login")
+    oidc_self_link = client.post("/api/account/oidc/link/start", json={})
     local = client.post(
         "/login",
         data={"username": "local_admin", "password": "password123"},
     )
 
     assert oidc.status_code == 404
+    assert oidc_self_link.status_code == 404
     assert local.status_code == 302
+
+
+@pytest.mark.parametrize(("script_name", "expected_location"), (
+    ("", "/settings"),
+    ("/webssh", "/webssh/settings"),
+))
+def test_authenticated_user_can_link_verified_oidc_identity_after_step_up(
+    app, client, monkeypatch, script_name, expected_location
+):
+    from flask import redirect
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity
+
+    user_id = _create_user(app, "oidc_self_link_user")
+    _login(client, "oidc_self_link_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    authorization = {}
+
+    class Provider:
+        def authorize_redirect(self, callback, **values):
+            assert callback == "https://localhost/oidc/callback"
+            authorization.update(values)
+            return redirect(
+                "https://issuer.example/authorize?state=" + values["state"]
+            )
+
+        def authorize_access_token(self, *, code_verifier):
+            assert len(code_verifier) >= 43
+            return {"id_token": "validated-id-token"}
+
+        def parse_id_token(self, token, *, nonce):
+            assert token["id_token"] == "validated-id-token"
+            assert nonce == authorization["nonce"]
+            return {
+                "iss": "https://issuer.example",
+                "sub": "provider-verified-subject",
+            }
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: Provider())
+    request_environment = {"SCRIPT_NAME": script_name}
+
+    denied = client.post(
+        "/api/account/oidc/link/start",
+        json={},
+        environ_overrides=request_environment,
+    )
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+    started = client.post(
+        "/api/account/oidc/link/start",
+        json={},
+        headers=headers,
+        environ_overrides=request_environment,
+    )
+    state = parse_qs(urlsplit(
+        started.get_json()["authorization_url"]
+    ).query)["state"][0]
+    callback = client.get(
+        f"/oidc/callback?code=code&state={state}",
+        environ_overrides=request_environment,
+    )
+    status = client.get(
+        "/api/account/oidc",
+        environ_overrides=request_environment,
+    )
+
+    assert denied.status_code == 403
+    assert started.status_code == 200
+    assert authorization["prompt"] == "login"
+    assert "max_age" not in authorization
+    assert callback.status_code == 302
+    assert callback.headers["Location"] == expected_location
+    assert status.status_code == 200
+    assert status.get_json()["identities"][0]["issuer"] == (
+        "https://issuer.example"
+    )
+    assert "subject" not in status.get_json()["identities"][0]
+    with app.app_context():
+        row = OIDCIdentity.query.filter_by(user_id=user_id).one()
+        assert row.subject == "provider-verified-subject"
+
+
+@pytest.mark.parametrize("authorization_location", (
+    "javascript:alert(document.domain)",
+    "http://issuer.example/authorize?state={state}",
+    "https://user@issuer.example/authorize?state={state}",
+    "https://issuer.example/authorize?state={state}#fragment",
+    "https://issuer.example/authorize?state={state}&state=duplicate",
+    "https://issuer.example/authorize",
+))
+def test_oidc_self_link_rejects_an_unsafe_authorization_location(
+    app, client, monkeypatch, authorization_location
+):
+    from flask import redirect
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCLoginState
+
+    user_id = _create_user(app, "oidc_unsafe_redirect_user")
+    _login(client, "oidc_unsafe_redirect_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+
+    class UnsafeProvider:
+        def authorize_redirect(self, _callback, **values):
+            return redirect(authorization_location.format(
+                state=values["state"]
+            ))
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: UnsafeProvider())
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+
+    response = client.post(
+        "/api/account/oidc/link/start", json={}, headers=headers
+    )
+
+    assert response.status_code == 503
+    assert response.get_json()["error"] == "Identity provider unavailable"
+    with app.app_context():
+        assert OIDCLoginState.query.filter_by(user_id=user_id).count() == 0
+
+
+def test_oidc_self_link_rejects_mismatched_subject_sources(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity
+
+    user_id = _create_user(app, "oidc_mismatched_subject_user")
+    _login(client, "oidc_mismatched_subject_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    state = "mismatched-subject-sources"
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+
+    class MismatchedProvider:
+        def authorize_access_token(self, *, code_verifier):
+            assert code_verifier == f"verifier-{state}"
+            return {
+                "id_token": "validated-id-token",
+                "userinfo": {
+                    "iss": "https://issuer.example",
+                    "sub": "userinfo-subject",
+                },
+            }
+
+        def parse_id_token(self, token, *, nonce):
+            assert token["id_token"] == "validated-id-token"
+            assert nonce == f"nonce-{state}"
+            return {
+                "iss": "https://issuer.example",
+                "sub": "signed-token-subject",
+            }
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: MismatchedProvider())
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid or expired OIDC login"
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(user_id=user_id).count() == 0
+
+
+@pytest.mark.parametrize(("allowed_subjects", "allowed_domains", "claims"), (
+    (
+        {"different-subject"},
+        set(),
+        {"iss": "https://issuer.example", "sub": "policy-subject"},
+    ),
+    (
+        set(),
+        {"example.com"},
+        {
+            "iss": "https://issuer.example",
+            "sub": "policy-subject",
+            "email": "user@other.example",
+            "email_verified": True,
+        },
+    ),
+    (
+        set(),
+        {"example.com"},
+        {
+            "iss": "https://issuer.example",
+            "sub": "policy-subject",
+            "email": "user@example.com",
+            "email_verified": False,
+        },
+    ),
+))
+def test_oidc_self_link_enforces_subject_and_domain_policies(
+    app,
+    client,
+    monkeypatch,
+    allowed_subjects,
+    allowed_domains,
+    claims,
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity
+
+    user_id = _create_user(app, "oidc_policy_rejected_user")
+    _login(client, "oidc_policy_rejected_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", allowed_subjects)
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", allowed_domains)
+    state = "self-link-policy-rejection"
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, claims),
+    )
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid or expired OIDC login"
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(user_id=user_id).count() == 0
+
+
+def test_oidc_self_link_accepts_matching_subject_and_domain_policies(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity
+
+    user_id = _create_user(app, "oidc_policy_accepted_user")
+    _login(client, "oidc_policy_accepted_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", {"policy-subject"})
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", {"example.com"})
+    state = "self-link-policy-accepted"
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, {
+            "iss": "https://issuer.example",
+            "sub": "policy-subject",
+            "email": "user@example.com",
+            "email_verified": True,
+        }),
+    )
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 302
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="policy-subject",
+        ).count() == 1
+
+
+@pytest.mark.parametrize(("account_state", "expected_status"), (
+    ("locked", 403),
+    ("ldap", 302),
+    ("github", 409),
+))
+def test_oidc_self_link_start_rejects_ineligible_accounts(
+    app, client, monkeypatch, account_state, expected_status
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import (
+        GitHubIdentity,
+        LDAPIdentity,
+        OIDCLoginState,
+        User,
+        db,
+    )
+
+    user_id = _create_user(app, "oidc_ineligible_link_user")
+    _login(client, "oidc_ineligible_link_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        if account_state == "locked":
+            user.is_locked = True
+        elif account_state == "ldap":
+            db.session.add(LDAPIdentity(
+                user_id=user_id,
+                provider="default",
+                subject="ineligible-directory-subject",
+                directory_username="oidc_ineligible_link_user",
+                distinguished_name=(
+                    "uid=oidc_ineligible_link_user,dc=example,dc=com"
+                ),
+            ))
+        else:
+            db.session.add(GitHubIdentity(
+                user_id=user_id,
+                github_user_id="424200",
+                login="oidc-ineligible-link-user",
+                provisioned_by_github=True,
+            ))
+        db.session.commit()
+
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("provider must not be contacted")
+        ),
+    )
+    response = client.post(
+        "/api/account/oidc/link/start", json={}, headers=headers
+    )
+
+    assert response.status_code == expected_status
+    if account_state == "ldap":
+        assert response.headers["Location"] == "/login"
+    with app.app_context():
+        assert OIDCLoginState.query.count() == 0
+
+
+def test_oidc_self_link_start_rejects_an_expired_authentication_session(
+    app, client, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import AuthenticationSession, OIDCLoginState, db
+
+    user_id = _create_user(app, "oidc_expired_link_session")
+    _login(client, "oidc_expired_link_session")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+    with app.app_context():
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=user_id
+        ).one()
+        auth_session.expires_at = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            - timedelta(seconds=1)
+        )
+        db.session.commit()
+
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("provider must not be contacted")
+        ),
+    )
+    response = client.post(
+        "/api/account/oidc/link/start", json={}, headers=headers
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == (
+        "/login?next=/api/account/oidc/link/start"
+    )
+    with app.app_context():
+        assert OIDCLoginState.query.count() == 0
+
+
+def test_oidc_self_link_is_idempotent_for_the_same_local_account(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity, db
+
+    user_id = _create_user(app, "oidc_idempotent_link_user")
+    _login(client, "oidc_idempotent_link_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    state = "idempotent-self-link"
+    with app.app_context():
+        db.session.add(OIDCIdentity(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="already-linked-subject",
+        ))
+        db.session.commit()
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider(state, {
+            "iss": "https://issuer.example",
+            "sub": "already-linked-subject",
+        }),
+    )
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/settings"
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="already-linked-subject",
+        ).count() == 1
+
+
+def test_oidc_self_link_unique_constraint_race_fails_closed(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity, db
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.sql.dml import Insert
+
+    user_id = _create_user(app, "oidc_link_race_user")
+    _login(client, "oidc_link_race_user")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    state = "self-link-storage-race"
+    with app.app_context():
+        db.session.add(OIDCIdentity(
+            user_id=user_id,
+            issuer="https://issuer.example",
+            subject="existing-safe-subject",
+        ))
+        db.session.commit()
+    _prepare_oidc_self_link_callback(app, client, user_id, state=state)
+    original_execute = db.session.execute
+
+    class RacingProvider:
+        def authorize_access_token(self, *, code_verifier):
+            assert code_verifier == f"verifier-{state}"
+
+            def fail_identity_insert(statement, *args, **kwargs):
+                if isinstance(statement, Insert):
+                    raise IntegrityError(
+                        "simulated unique race",
+                        {},
+                        RuntimeError("unique constraint"),
+                    )
+                return original_execute(statement, *args, **kwargs)
+
+            monkeypatch.setattr(db.session, "execute", fail_identity_insert)
+            return {"id_token": "validated-id-token"}
+
+        def parse_id_token(self, token, *, nonce):
+            assert token["id_token"] == "validated-id-token"
+            assert nonce == f"nonce-{state}"
+            return {
+                "iss": "https://issuer.example",
+                "sub": "racing-subject",
+            }
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: RacingProvider())
+
+    response = client.get(f"/oidc/callback?state={state}")
+
+    assert response.status_code == 409
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(
+            issuer="https://issuer.example",
+            subject="racing-subject",
+        ).count() == 0
+        assert OIDCIdentity.query.filter_by(
+            user_id=user_id,
+            subject="existing-safe-subject",
+        ).count() == 1
+
+
+def test_oidc_self_link_stops_if_account_authentication_is_invalidated(
+    app, client, monkeypatch
+):
+    from flask import redirect
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.auth_assurance import invalidate_user_authentication
+    from app.models import OIDCIdentity, User, db
+
+    user_id = _create_user(app, "oidc_revoked_during_link")
+    _login(client, "oidc_revoked_during_link")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    authorization = {}
+
+    class RevokingProvider:
+        def authorize_redirect(self, _callback, **values):
+            authorization.update(values)
+            return redirect(
+                "https://issuer.example/authorize?state=" + values["state"]
+            )
+
+        def authorize_access_token(self, **_kwargs):
+            target = db.session.get(User, user_id)
+            invalidate_user_authentication(target)
+            db.session.commit()
+            return {"id_token": "validated-before-revocation"}
+
+        def parse_id_token(self, token, *, nonce):
+            assert token["id_token"] == "validated-before-revocation"
+            assert nonce == authorization["nonce"]
+            return {
+                "iss": "https://issuer.example",
+                "sub": "revoked-flow-subject",
+            }
+
+    monkeypatch.setattr(
+        oidc_routes, "_client", lambda: RevokingProvider()
+    )
+    headers = account_password_step_up_headers(
+        client, "oidc.self_link", user_id
+    )[0]
+    started = client.post(
+        "/api/account/oidc/link/start", json={}, headers=headers
+    )
+    state = parse_qs(urlsplit(
+        started.get_json()["authorization_url"]
+    ).query)["state"][0]
+
+    response = client.get(f"/oidc/callback?code=code&state={state}")
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "OIDC identity linking failed"
+    with app.app_context():
+        assert OIDCIdentity.query.filter_by(user_id=user_id).count() == 0
+
+
+def test_oidc_self_link_callback_rejects_account_switch_before_provider(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import db
+    from app.oidc_service import create_login_state
+
+    original_user_id = _create_user(app, "oidc_link_original")
+    _create_user(app, "oidc_link_switched")
+    _login(client, "oidc_link_original")
+    auth_generation, auth_session_id = _authentication_context(
+        app, original_user_id
+    )
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    binding = "account-switch-binding"
+    with app.app_context():
+        create_login_state(
+            state="account-switch-state",
+            nonce="account-switch-nonce",
+            session_binding=binding,
+            code_verifier="account-switch-verifier",
+            purpose="link",
+            user_id=original_user_id,
+            auth_generation=auth_generation,
+            authentication_session_id=auth_session_id,
+            continuation="/security",
+        )
+        db.session.commit()
+    assert client.post("/logout").status_code == 302
+    _login(client, "oidc_link_switched")
+    with client.session_transaction() as browser_session:
+        browser_session["oidc_binding"] = binding
+
+    def provider_must_not_run():
+        raise AssertionError("provider must not be contacted")
+
+    monkeypatch.setattr(oidc_routes, "_client", provider_must_not_run)
+
+    response = client.get("/oidc/callback?state=account-switch-state")
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "OIDC identity linking failed"
+
+
+def test_oidc_self_link_never_moves_an_identity_between_accounts(
+    app, client, monkeypatch
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import OIDCIdentity, db
+    from app.oidc_service import create_login_state
+
+    owner_id = _create_user(app, "oidc_subject_owner")
+    target_id = _create_user(app, "oidc_subject_target")
+    _login(client, "oidc_subject_target")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    binding = "identity-collision-binding"
+    auth_generation, auth_session_id = _authentication_context(
+        app, target_id
+    )
+    with app.app_context():
+        db.session.add(OIDCIdentity(
+            user_id=owner_id,
+            issuer="https://issuer.example",
+            subject="already-owned-subject",
+        ))
+        create_login_state(
+            state="identity-collision-state",
+            nonce="nonce-identity-collision",
+            session_binding=binding,
+            code_verifier="verifier-identity-collision",
+            purpose="link",
+            user_id=target_id,
+            auth_generation=auth_generation,
+            authentication_session_id=auth_session_id,
+            continuation="/security",
+        )
+        db.session.commit()
+    with client.session_transaction() as browser_session:
+        browser_session["oidc_binding"] = binding
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider("identity-collision", {
+            "iss": "https://issuer.example",
+            "sub": "already-owned-subject",
+        }),
+    )
+
+    response = client.get(
+        "/oidc/callback?state=identity-collision-state"
+    )
+
+    assert response.status_code == 409
+    with app.app_context():
+        row = OIDCIdentity.query.filter_by(
+            issuer="https://issuer.example",
+            subject="already-owned-subject",
+        ).one()
+        assert row.user_id == owner_id
+        assert OIDCIdentity.query.filter_by(user_id=target_id).count() == 0
+
+
+def test_unlinked_oidc_login_has_a_distinct_operator_reason(
+    app, client, monkeypatch, caplog
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import db
+    from app.oidc_service import create_login_state
+
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+    with app.app_context():
+        create_login_state(
+            state="unlinked-audit-state",
+            nonce="nonce-unlinked-audit",
+            session_binding="unlinked-audit-binding",
+            code_verifier="verifier-unlinked-audit",
+        )
+        db.session.commit()
+    with client.session_transaction() as browser_session:
+        browser_session["oidc_binding"] = "unlinked-audit-binding"
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider("unlinked-audit", {
+            "iss": "https://issuer.example",
+            "sub": "must-not-appear-in-the-audit-log",
+        }),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="security_audit"):
+        response = client.get("/oidc/callback?state=unlinked-audit-state")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert response.status_code == 403
+    assert any(
+        message.startswith("OIDC_IDENTITY_REJECTED")
+        and "reason=unlinked" in message
+        for message in messages
+    )
+    assert all(
+        "must-not-appear-in-the-audit-log" not in message
+        for message in messages
+    )
+
+
+def test_oidc_login_audits_locked_and_external_accounts_separately(
+    app, client, monkeypatch, caplog
+):
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import LDAPIdentity, User, db
+
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    monkeypatch.setattr(config, "OIDC_ISSUER", "https://issuer.example")
+    monkeypatch.setattr(config, "OIDC_ALLOWED_SUBJECTS", set())
+    monkeypatch.setattr(config, "OIDC_ALLOWED_DOMAINS", set())
+
+    locked_id = _create_user(app, "oidc_locked_identity")
+    _prepare_oidc_callback(
+        app,
+        client,
+        locked_id,
+        state="locked-reason",
+        subject="locked-subject",
+    )
+    with app.app_context():
+        db.session.get(User, locked_id).is_locked = True
+        db.session.commit()
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider("locked-reason", {
+            "iss": "https://issuer.example",
+            "sub": "locked-subject",
+        }),
+    )
+    with caplog.at_level(logging.WARNING, logger="security_audit"):
+        locked = client.get("/oidc/callback?state=locked-reason")
+
+    external_id = _create_user(app, "oidc_external_identity")
+    _prepare_oidc_callback(
+        app,
+        client,
+        external_id,
+        state="external-reason",
+        subject="external-subject",
+    )
+    with app.app_context():
+        db.session.add(LDAPIdentity(
+            user_id=external_id,
+            provider="default",
+            subject="directory-subject",
+            directory_username="oidc_external_identity",
+            distinguished_name=(
+                "uid=oidc_external_identity,dc=example,dc=com"
+            ),
+        ))
+        db.session.commit()
+    monkeypatch.setattr(
+        oidc_routes,
+        "_client",
+        lambda: _signed_provider("external-reason", {
+            "iss": "https://issuer.example",
+            "sub": "external-subject",
+        }),
+    )
+    with caplog.at_level(logging.WARNING, logger="security_audit"):
+        external = client.get("/oidc/callback?state=external-reason")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert locked.status_code == 403
+    assert external.status_code == 403
+    assert any("reason=account_locked" in message for message in messages)
+    assert any("reason=externally_managed" in message for message in messages)
 
 
 def test_admin_link_requires_password_confirmation_and_stable_subject(
@@ -817,6 +1637,47 @@ def test_oidc_step_up_requests_fresh_provider_authentication(
         "urn:example:aal2 urn:example:aal3"
     )
     assert "code_verifier" not in observed
+
+
+def test_oidc_admin_step_up_uses_generated_application_root_continuation(
+    app, client, monkeypatch
+):
+    from flask import redirect
+
+    import config
+    import app.oidc_routes as oidc_routes
+    from app.models import AuthenticationSession, OIDCLoginState, db
+
+    admin_id = _create_user(app, "subfolder_stepup_admin", is_admin=True)
+    _login(client, "subfolder_stepup_admin")
+    monkeypatch.setattr(config, "OIDC_ENABLED", True)
+    with app.app_context():
+        auth_session = AuthenticationSession.query.filter_by(
+            user_id=admin_id
+        ).one()
+        auth_session.methods_json = '["oidc"]'
+        db.session.commit()
+
+    class Provider:
+        def authorize_redirect(self, _callback, **values):
+            return redirect(
+                "https://issuer.example/authorize?state=" + values["state"]
+            )
+
+    monkeypatch.setattr(oidc_routes, "_client", lambda: Provider())
+    response = client.post(
+        "/api/step-up/oidc/start",
+        json={
+            "action": "settings.update",
+            "target": "global",
+            "continuation": "/client-controlled-path",
+        },
+        environ_overrides={"SCRIPT_NAME": "/webssh"},
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert OIDCLoginState.query.one().continuation == "/webssh/admin"
 
 
 def test_oidc_step_up_state_cannot_be_replayed_as_a_login(

@@ -173,7 +173,7 @@
     async function oidcStepUp(action, target, generation) {
         const started = await api('/api/step-up/oidc/start', {
             method: 'POST',
-            body: { action, target, continuation: '/admin' }
+            body: { action, target }
         });
         const popup = window.open(started.authorization_url, 'webssh-oidc-step-up', 'popup,width=720,height=760');
         if (!popup) { throw new Error('Allow the OIDC authentication popup and try again'); }

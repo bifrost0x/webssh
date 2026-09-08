@@ -5,7 +5,8 @@ is disabled by default and never auto-provisions a WebSSH account.
 
 ## Identity model
 
-An administrator links an exact provider identity to an existing local account:
+A signed-in user or administrator links an exact provider identity to an
+existing local account:
 
 ```text
 (normalized issuer, subject) -> WebSSH user
@@ -14,7 +15,8 @@ An administrator links an exact provider identity to an existing local account:
 Email addresses and usernames are not identity keys. Optional subject and email
 domain allowlists are additional policy checks.
 
-OIDC identities cannot be linked to LDAP-managed accounts.
+OIDC identities cannot be linked to LDAP-managed or GitHub-provisioned
+accounts.
 
 ## Provider requirements
 
@@ -124,6 +126,23 @@ or secret details.
 
 ## Link an identity
 
+The recommended path does not require copying a provider subject:
+
+1. Enable and activate OIDC.
+2. Sign in to the target WebSSH account with an existing sign-in method.
+3. Open **Settings → Security methods → Identity provider**.
+4. Choose **Connect identity provider** and complete the action-bound WebSSH
+   confirmation.
+5. Sign in to the configured provider.
+
+The callback is bound to the same browser session and local account. WebSSH
+stores only the provider-verified issuer and subject after the state, nonce,
+PKCE, allowlist, and domain checks succeed. It never searches for a matching
+username or email address. Repeating the flow can attach another identity from
+the same provider to the account.
+
+### Administrator fallback
+
 1. Enable OIDC and restart WebSSH.
 2. Sign in as a local administrator.
 3. Create or select the target local account.
@@ -133,7 +152,15 @@ or secret details.
 7. Confirm the exact target username.
 8. Sign out and test OIDC login with the target identity.
 
-The mapping is unique. A provider identity cannot be attached to multiple users.
+Manual entry is intended for recovery or providers where the target user cannot
+complete the self-link flow. Obtain the exact subject from trusted provider
+documentation or operator tooling; an email address or display name is not a
+substitute. The mapping is unique, so a provider identity cannot be attached to
+multiple users.
+
+For providers such as Tinyauth whose subject depends on the provider username
+and OIDC client ID, prefer the self-link flow. It captures the signed subject
+directly and avoids version-specific subject reconstruction.
 
 ## Unlink an identity
 
@@ -165,9 +192,14 @@ and subject.
 | Admin toggle disabled | Deployment flag or provider readiness failed; fix Compose/secret/discovery and recreate the container |
 | Provider unavailable | discovery URL, DNS, TLS, secret file, egress |
 | Callback rejected | exact callback, state cookie, proxy origin, system time |
-| Identity not linked | Admin mapping for issuer and subject |
+| Identity not linked | Sign in locally and use **Settings → Security methods → Identity provider**, or verify the administrator mapping for the exact issuer and subject |
 | Domain rejected | email claim and `OIDC_ALLOWED_DOMAINS` |
-| User rejected after link | locked account or LDAP-managed state |
+| User rejected after link | locked, LDAP-managed, or GitHub-provisioned account state |
+
+Operator audit events distinguish an absent mapping (`unlinked`), a locked
+target (`account_locked`), and an incompatible externally managed target
+(`externally_managed`). Browser responses remain generic so they do not disclose
+account state.
 
 ## Recovery
 
@@ -179,3 +211,11 @@ Disabling OIDC in the Admin Panel blocks later OIDC starts without forcibly
 terminating existing browser or SSH sessions. Existing work reaches its normal
 configured lifetime. Explicit account lock, deletion, and MFA reset still
 revoke the target account.
+
+## Upgrade compatibility
+
+Self-service linking requires no new environment variable or provider
+registration. The additive database migration adds only nullable account and
+session bindings to the short-lived OIDC state table. Existing users, OIDC
+identity mappings, pending login or Step-up states, and the administrator link
+and unlink flows remain compatible.
