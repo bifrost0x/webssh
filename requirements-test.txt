@@ -1,3 +1,8 @@
+--require-hashes
+async-timeout==5.0.1 ; python_full_version < '3.11.3' \
+    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
+    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
+    # via redis
 authlib==1.8.0 \
     --hash=sha256:88aebbd9af6757e14e912d5dc007ae1dc1f3e27e3b2152ce7c552ee2c3b3c121 \
     --hash=sha256:f3ecd5f1da737262fb53bf1a4d95c4ea1ad9dd509316587a255c99ab1838a4f0
@@ -157,7 +162,7 @@ certifi==2026.7.22 \
     --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775 \
     --hash=sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55
     # via requests
-cffi==2.1.1 \
+cffi==2.1.1 ; platform_python_implementation != 'PyPy' \
     --hash=sha256:046bfc24911b37851ee1b51aab8bffe713d89c68c6a057b09484ce9fd5f69b4e \
     --hash=sha256:06c72bb76605a4b0cd0aad6930b69d4baf7dd5d806cfc409b824191099700e66 \
     --hash=sha256:0beceaabe56af686895136a2de78db54ecd8e4046b236b8fd6d6cb61389e9bf2 \
@@ -362,6 +367,13 @@ click==8.4.2 \
     # via
     #   flask
     #   flask-socketio
+colorama==0.4.6 ; sys_platform == 'win32' \
+    --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
+    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
+    # via
+    #   click
+    #   pytest
+    #   qrcode
 cryptography==50.0.1 \
     --hash=sha256:01f41478cf33fc605a6a089cd56d28b45c6c0b45a1928b61797f2621a04bac71 \
     --hash=sha256:05ba322c4da95b262a212c345af888ef2c37c88c0509756ea00a0e6d68850f23 \
@@ -451,7 +463,7 @@ flask-wtf==1.3.0 \
     --hash=sha256:61d5dabc50c3df885c297dcbd80810443a5d632106c8a69cab8ce740f0cdd7cc \
     --hash=sha256:dc5e3a4ce97f75c47bf6c1c72ad2c3b7bdf579a2ed13aebcc5d3d81fe2571160
     # via -r requirements.in
-greenlet==3.5.5 \
+greenlet==3.5.5 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' \
     --hash=sha256:03115c2e0a371999bf8ae616aa8d653f96641d4705c457aebaa187276e9f7537 \
     --hash=sha256:03551ed792cb1b4fc0277a0c60dfd8c343894a0ba06fe60dcd22f568b433da39 \
     --hash=sha256:0e5a7de979d764aea1f5b6e95cf92b5b37741b9823702041f34b126e7f690277 \
@@ -685,7 +697,7 @@ pyasn1-modules==0.4.2 \
     --hash=sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a \
     --hash=sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6
     # via webauthn
-pycparser==3.0 \
+pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy' \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
     # via cffi
@@ -838,10 +850,43 @@ sqlalchemy==2.0.51 \
     --hash=sha256:e5ea1a213be1fcd5e49d9904c3b9939211ded90bc2a64e93f4c01963474285de \
     --hash=sha256:fa268106c8987639a17a18514cfe0cd9bf17420ab887e1e1bf486da8836135b1
     # via flask-sqlalchemy
+sspilib==0.6.0 ; sys_platform == 'win32' \
+    --hash=sha256:03335e14f8563e350506b47a15887a99f08102a80cfb6bd715ad83ab1c2c89ae \
+    --hash=sha256:0482631c67a57d8710ecbba3bbe49a9fb60e153dfcfee6d1f9b8a8ff6e419548 \
+    --hash=sha256:05883cd90cb2c67f18fd2418ab0f959549fbe6a9a4fc8013679411af23226d6e \
+    --hash=sha256:071e4e2a617a39a33e31de2c1f313427533879acabe475fedea31f129f7970bb \
+    --hash=sha256:2758aac58b6ca0aa5b726bdc76cea7d020820ac9831f4082b5b6fceda2cb48d0 \
+    --hash=sha256:3b24b6c19657f7b8b74a92e6cadb3ae5e25602ee348a7142cebb5194a0eed01b \
+    --hash=sha256:5937dbe41c34cbbfabbafb84238a06aa8912210cae8a4b909fa20f965868cc89 \
+    --hash=sha256:68a34e702fd81de3d74ea8caf6bc6a1218af551b75d0573a3b0607124a54e5f2 \
+    --hash=sha256:6ad61668c4eea0fdeefd1f596c4fb7b3f45237b1a5989c12d4412729bded7231 \
+    --hash=sha256:70223bdfefde9656c48dd17bb58fd0fb7e879e5b08ab028267d585206f393886 \
+    --hash=sha256:73343ba40b04de0486ab92f60b729eb0768657f71e4c279555d3273f323c0ce4 \
+    --hash=sha256:737adc3b14c2079480bcd10139fbab0b2ad683a24a6046ef69d9c769f4672c0a \
+    --hash=sha256:76a289f415f9beb6a2f3f0cb37b655863616c303b2a06754e1bb84ad86348aab \
+    --hash=sha256:7ea194eeb68d8848fde7125a7ac67fbd4a9052442b7ce69ce6c0c8115227ec67 \
+    --hash=sha256:83f99ed351d3091434f182579d20a419fa7baf03ec154632b5f7f3fbc6aa0788 \
+    --hash=sha256:8957c47c6d4e145a9e111a4c2a2b357ea15cb69719ff99fc0088fbd612618226 \
+    --hash=sha256:8b4b911f59f03601c23357146814e784c9a7612f34f5b933bdb1c50591b173d0 \
+    --hash=sha256:9073afb8f30dc0e7f3a40b39fef0fc29e4bda6a3d4e77936f3c496cedc4beade \
+    --hash=sha256:97bb2e9d4d916d4d6f566888a81997bb3ab0e05ac41549fa0fbebabac66de0e8 \
+    --hash=sha256:aa97562ca3d27a0ba5c830c56bff0fb6d3c8257bd16589b63869a212de6c92bd \
+    --hash=sha256:b4d4e3402230f14cd93999f3953619163075bcaca3e13dcf2ab5942c269627f4 \
+    --hash=sha256:b65fa6f90e523daa6eb95c0aa707cd6c04705bdfab3e42c00723d23141bc74ad \
+    --hash=sha256:b79f8088f8e2826586e5eb14b68f03f443637df178e95c190765c8065fc57a37 \
+    --hash=sha256:b841fabe630101d9e2be6ba56407a2a539087ee85d6ca1477748c21135c9f636 \
+    --hash=sha256:be2b500e7b745569794e8cfa557510f6c18e5402ad8f1fa1abe7adf53b3f3964 \
+    --hash=sha256:bf125782912e4a9012822619eb41e2c9c0e32cb9148efb649e608804b4b4e313 \
+    --hash=sha256:cbc8cf653e71b32ab7cf11d1630866cf12133fb235422f3f9bccb60ba62290e4 \
+    --hash=sha256:d239d78f9619d4fc76a9d57eb929258de50024c56097e73737d46ad58be0acaa \
+    --hash=sha256:fe8c7c9f749ffd302336a7820889ad9189c237d1f6d24e1232d7e2c653433d5b
+    # via pyspnego
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
     --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
-    # via sqlalchemy
+    # via
+    #   pyopenssl
+    #   sqlalchemy
 urllib3==2.7.0 \
     --hash=sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c \
     --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897
