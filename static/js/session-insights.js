@@ -214,6 +214,16 @@
         }
 
         function renderFailure(reason = 'transient', responseRequest = null) {
+            if (reason === 'resource_shortage') {
+                failureCount = Math.max(failureCount, 3);
+                pauseRegularPolling();
+                render(currentState(
+                    lastGood ? 'stale' : 'unavailable',
+                    lastGood ? { ...lastGood } : {},
+                ));
+                scheduleRetry();
+                return;
+            }
             if (reason === 'unsupported') {
                 if (responseRequest?.includeDiagnostics) {
                     unsupportedDiagnosticsSessions.add(sessionId);

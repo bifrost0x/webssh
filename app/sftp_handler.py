@@ -23,8 +23,11 @@ from paramiko.sftp import (
 from paramiko.sftp_attr import SFTPAttributes
 import config
 from . import ssh_manager
-from .paramiko_channels import open_sftp_client
-from .audit_logger import log_warning, log_error
+from .paramiko_channels import (
+    open_sftp_client,
+    optional_channel_rejection_fields,
+)
+from .audit_logger import log_info, log_warning, log_error
 from .file_backend import FileReaderLease, FileWriteOutcome
 
 _sftp_cache = {}
@@ -34,6 +37,7 @@ _sftp_session_locks = {}
 _sftp_session_locks_lock = Lock()
 CAPABILITY_RATE_LIMIT = '10 per minute'
 CAPABILITY_TIMEOUT = 3.0
+CAPABILITY_RESOURCE_SHORTAGE = 'resource_shortage'
 
 _capability_probe_locks = {}
 _capability_probe_locks_guard = Lock()
@@ -235,6 +239,19 @@ def public_sftp_error(error, fallback=_PUBLIC_SFTP_ERROR):
         if message and message_size <= _PUBLIC_SFTP_ERROR_MAX_BYTES:
             return message
     return fallback
+
+
+def _log_sftp_channel_rejection(identifier, error):
+    rejection = optional_channel_rejection_fields(error)
+    if not rejection:
+        return False
+    log_info(
+        'SFTP temporarily unavailable because the remote SSH server reported '
+        'insufficient capacity for an additional channel',
+        session_id=identifier,
+        **rejection,
+    )
+    return True
 
 
 class UploadConflict(SFTPOperationError):
@@ -897,6 +914,7 @@ def get_sftp_client(session_id):
 
         return sftp, None
     except Exception as e:
+        _log_sftp_channel_rejection(session_id, e)
         return None, public_sftp_error(e, 'Failed to open SFTP channel')
 
 def get_sftp_client_fresh(session_id):
@@ -914,6 +932,7 @@ def get_sftp_client_fresh(session_id):
 
         return sftp, None
     except Exception as e:
+        _log_sftp_channel_rejection(session_id, e)
         return None, public_sftp_error(e, 'Failed to open SFTP channel')
 
 
@@ -1017,8 +1036,10 @@ def probe_sftp_capability(session_id):
     Opening the subsystem alone is insufficient for some appliances, so the
     probe performs one bounded directory read through a fresh short-lived
     channel. It never waits behind cached SFTP operations and concurrent probes
-    for the same session are deduplicated. ``None`` is retryable busy/timeout.
-    Remote exception details intentionally stay server-side.
+    for the same session are deduplicated. ``None`` is a generic retryable busy
+    or timeout result; ``CAPABILITY_RESOURCE_SHORTAGE`` preserves the distinct
+    retry signal for temporary remote channel exhaustion. Remote exception
+    details intentionally stay server-side.
     """
     probe_lock = _acquire_capability_probe(session_id)
     if probe_lock is None:
@@ -1071,11 +1092,13 @@ def probe_sftp_capability(session_id):
         return True
     except (socket.timeout, TimeoutError):
         return None
-    except Exception:
+    except Exception as error:
         if deadline_expired.is_set() or (
             deadline is not None and time.monotonic() >= deadline
         ):
             return None
+        if _log_sftp_channel_rejection(session_id, error):
+            return CAPABILITY_RESOURCE_SHORTAGE
         return False
     finally:
         if deadline_guard is not None:

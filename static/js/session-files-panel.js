@@ -41,13 +41,20 @@
             status.hidden = false;
             const target = targetLabel(session);
             const checking = ['unknown', 'probing'].includes(nextStatus);
-            const key = checking
-                ? 'workspace.sftpChecking'
-                : 'workspace.sftpUnavailable';
-            const fallback = checking
-                ? 'Checking SFTP for {target}...'
-                : 'SFTP is not available for {target}.';
-            status.textContent = String(translate(key, fallback))
+            const resourceShortage = nextStatus === 'resource_shortage';
+            const key = resourceShortage
+                ? 'workspace.sftpResourceShortage'
+                : checking
+                    ? 'workspace.sftpChecking'
+                    : 'workspace.sftpUnavailable';
+            const fallback = resourceShortage
+                ? 'The SSH server has no free channel capacity for SFTP on {target}. WebSSH will retry automatically in about one minute.'
+                : checking
+                    ? 'Checking SFTP for {target}...'
+                    : 'SFTP is not available for {target}.';
+            const translated = translate(key, fallback);
+            const message = translated && translated !== key ? translated : fallback;
+            status.textContent = String(message)
                 .replace('{target}', target);
         }
 

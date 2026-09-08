@@ -589,6 +589,7 @@ test('captures the current Quick Connect surface at Full HD scale without outbou
         process.env.WEBSSH_CAPTURE_EXPECT_SAVED_CONNECTIONS || 'Hosts',
     );
     await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(page.locator('#connectionModalTitle')).toHaveText(
         process.env.WEBSSH_CAPTURE_EXPECT_QUICK_CONNECT || 'Quick Connect',
@@ -623,6 +624,7 @@ test('captures seeded command and connection option surfaces at Full HD scale', 
 
     await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
     await expect(page.locator('#connectionModalTitle')).toHaveText('Quick Connect');
@@ -936,6 +938,7 @@ test('captures six current Command Sets animation frames without remote actions'
 
     await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
     await expect(page.locator('#connectionModalTitle')).toHaveText('Quick Connect');

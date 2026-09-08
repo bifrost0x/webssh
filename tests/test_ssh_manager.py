@@ -584,10 +584,23 @@ def test_password_tmux_preserves_remote_locale(monkeypatch):
         password='secret',
         use_tmux=True,
         reconnect_tmux_name='existing_session',
+        client_request_id='tmux-reconnect-request',
     )
 
     assert error is None
     assert session_id in ssh_manager.sessions
+    assert ssh_manager.get_session(session_id) == {
+        'id': session_id,
+        'host': 'target.example',
+        'port': 22,
+        'username': 'alice',
+        'connected': True,
+        'via_jump': None,
+        'use_tmux': True,
+        'tmux_session_name': 'existing_session',
+        'tmux_reconnect': True,
+        'client_request_id': 'tmux-reconnect-request',
+    }
     _, tmux_channel = clients[0].transport.session_channels
     assert tmux_channel.command == 'tmux new-session -A -s existing_session'
 

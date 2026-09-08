@@ -551,3 +551,60 @@ def test_collect_linux_stats_treats_generic_ssh_channel_race_as_transient(monkey
 
     assert stats is None
     assert error == 'transient'
+
+
+def test_collect_linux_stats_backs_off_after_optional_channel_resource_shortage(
+        monkeypatch):
+    from paramiko import ChannelException
+
+    install_session(monkeypatch)
+    monkeypatch.setattr(
+        session_insights.ssh_manager,
+        '_open_exec_channel',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ChannelException(4, 'server-controlled text')
+        ),
+    )
+    logged = []
+    monkeypatch.setattr(
+        session_insights,
+        'log_info',
+        lambda message, **fields: logged.append((message, fields)),
+    )
+
+    stats, error = session_insights.collect_linux_stats('owned-session')
+
+    assert stats is None
+    assert error == 'resource_shortage'
+    assert logged == [(
+        'Diagnostics temporarily unavailable because the remote SSH server '
+        'reported insufficient capacity for an additional channel',
+        {
+            'session_id': 'owned-session',
+            'ssh_channel_code': 4,
+            'ssh_channel_reason': 'remote_resource_shortage',
+        },
+    )]
+
+
+def test_collect_linux_stats_keeps_other_channel_rejections_retryable(monkeypatch):
+    from paramiko import ChannelException
+
+    install_session(monkeypatch)
+    monkeypatch.setattr(
+        session_insights.ssh_manager,
+        '_open_exec_channel',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ChannelException(1, 'Administratively prohibited')
+        ),
+    )
+    monkeypatch.setattr(
+        session_insights,
+        'log_info',
+        lambda *_args, **_kwargs: pytest.fail('unexpected optional rejection log'),
+    )
+
+    stats, error = session_insights.collect_linux_stats('owned-session')
+
+    assert stats is None
+    assert error == 'transient'

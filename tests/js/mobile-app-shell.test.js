@@ -128,6 +128,7 @@ function fixture() {
     };
     const sessionManager = {
         getActiveSession() { return 'active'; },
+        getWorkspaceSession() { return 'active'; },
         getSession(id) { return id === 'active' ? session : null; },
         getDisplayLabel() { return 'Production'; },
     };
@@ -257,6 +258,29 @@ test('session tool dock availability follows the active session context', () => 
     });
     assert.equal(files.disabled, false);
     assert.equal(files.getAttribute('aria-disabled'), 'false');
+});
+
+test('launcher keeps Files context but disables hidden-terminal command input', () => {
+    const {createController} = require('../../static/js/mobile-app-shell.js');
+    const state = fixture();
+    state.sessionManager.getActiveSession = () => null;
+    const controller = createController({
+        window: state.windowRef,
+        document: state.documentRef,
+        sessionManager: state.sessionManager,
+    });
+    controller.init();
+
+    const files = state.views.find(
+        button => button.dataset.mobileView === 'session-files',
+    );
+    const commands = state.views.find(
+        button => button.dataset.mobileView === 'session-commands',
+    );
+    assert.equal(state.elements.mobileSessionSummaryLabel.textContent, 'Production');
+    assert.equal(state.elements.mobileCommandToggle.disabled, true);
+    assert.equal(files.disabled, false);
+    assert.equal(commands.disabled, true);
 });
 
 test('short coarse-pointer landscape keeps the phone shell above 767px', () => {

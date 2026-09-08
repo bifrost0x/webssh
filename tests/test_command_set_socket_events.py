@@ -704,6 +704,560 @@ def test_ssh_connect_does_not_reacquire_coordinator_or_emit_while_holding_it(
     )]
 
 
+def test_ssh_connect_correlates_unexpected_worker_failure(app, monkeypatch):
+    import threading
+    from flask import request
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'connect_worker_failure')
+    emitted = []
+    completed = threading.Event()
+
+    def record_emit(event, payload=None, **_kwargs):
+        emitted.append((event, payload))
+        if event == 'ssh_error':
+            completed.set()
+
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        record_emit,
+    )
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda host, port, username, **_kwargs: (
+            host, int(port), username, None
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError('local failure')),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'client_request_id': 'replacement-request',
+        })
+
+    assert completed.wait(2)
+    assert emitted == [(
+        'ssh_error',
+        {
+            'error': 'Connection failed',
+            'client_request_id': 'replacement-request',
+        },
+    )]
+
+
+def test_ssh_connect_cancel_signals_only_the_matching_background_job(
+        app, monkeypatch):
+    import threading
+    import time
+    from flask import request
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'connect_request_cancel')
+    entered = threading.Event()
+    completed = threading.Event()
+    emitted = []
+
+    def wait_for_cancellation(**kwargs):
+        cancellation = kwargs['cancel_event']
+        entered.set()
+        assert cancellation.wait(2)
+        completed.set()
+        return None, 'Connection cancelled'
+
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda host, port, username, **_kwargs: (
+            host, int(port), username, None
+        ),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        wait_for_cancellation,
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'client_request_id': 'cancel-this-request',
+        })
+
+    assert entered.wait(2)
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        acknowledgement = socket_events.handle_ssh_connect_cancel({
+            'client_request_id': 'cancel-this-request',
+        })
+
+    assert acknowledgement == {'success': True, 'cancelled': True}
+    assert completed.wait(2)
+    assert not any(event in {'ssh_connected', 'ssh_error'} for event, _ in emitted)
+    attempt_key = (str(_user_id), sid, 'cancel-this-request')
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        with socket_events._ssh_connect_attempts_lock:
+            if attempt_key not in socket_events._ssh_connect_attempts:
+                break
+        time.sleep(0.01)
+    with socket_events._ssh_connect_attempts_lock:
+        assert attempt_key not in socket_events._ssh_connect_attempts
+
+
+def test_ssh_connect_cancel_is_scoped_to_user_socket_request_and_banner(app):
+    import threading
+    from flask import request
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'connect_cancel_scope')
+    other_user_id, other_sid = create_socket_user(
+        app, 'connect_cancel_scope_other'
+    )
+
+    class RecordingHandle:
+        def __init__(self):
+            self.cancel_calls = 0
+
+        def cancel(self):
+            self.cancel_calls += 1
+
+    target_request = 'target-request'
+    other_request = 'other-request'
+    attempt_cases = {
+        'matching': (
+            (str(user_id), sid, target_request),
+            {'cancel_event': threading.Event(), 'handle': RecordingHandle()},
+        ),
+        'other_request': (
+            (str(user_id), sid, other_request),
+            {'cancel_event': threading.Event(), 'handle': RecordingHandle()},
+        ),
+        'other_socket': (
+            (str(user_id), other_sid, target_request),
+            {'cancel_event': threading.Event(), 'handle': RecordingHandle()},
+        ),
+        'other_user': (
+            (str(other_user_id), sid, target_request),
+            {'cancel_event': threading.Event(), 'handle': RecordingHandle()},
+        ),
+    }
+    banner_cases = {
+        'matching-banner': {
+            'event': threading.Event(),
+            'accepted': True,
+            'socket_sid': sid,
+            'user_id': user_id,
+            'client_request_id': target_request,
+        },
+        'other-request-banner': {
+            'event': threading.Event(),
+            'accepted': True,
+            'socket_sid': sid,
+            'user_id': user_id,
+            'client_request_id': other_request,
+        },
+        'other-socket-banner': {
+            'event': threading.Event(),
+            'accepted': True,
+            'socket_sid': other_sid,
+            'user_id': user_id,
+            'client_request_id': target_request,
+        },
+        'other-user-banner': {
+            'event': threading.Event(),
+            'accepted': True,
+            'socket_sid': sid,
+            'user_id': other_user_id,
+            'client_request_id': target_request,
+        },
+    }
+    attempt_keys = [case[0] for case in attempt_cases.values()]
+    banner_ids = list(banner_cases)
+
+    with socket_events._ssh_connect_attempts_lock:
+        socket_events._ssh_connect_attempts.update(
+            dict(attempt_cases.values())
+        )
+    with socket_events._ssh_banner_prompts_lock:
+        socket_events._ssh_banner_prompts.update(banner_cases)
+    try:
+        with app.test_request_context('/socket.io'):
+            request.sid = sid
+            acknowledgement = socket_events.handle_ssh_connect_cancel({
+                'client_request_id': target_request,
+            })
+
+        assert acknowledgement == {'success': True, 'cancelled': True}
+        matching_attempt = attempt_cases['matching'][1]
+        assert matching_attempt['cancel_event'].is_set()
+        assert matching_attempt['handle'].cancel_calls == 1
+        for name in ('other_request', 'other_socket', 'other_user'):
+            attempt = attempt_cases[name][1]
+            assert not attempt['cancel_event'].is_set()
+            assert attempt['handle'].cancel_calls == 0
+
+        matching_banner = banner_cases['matching-banner']
+        assert matching_banner['event'].is_set()
+        assert matching_banner['accepted'] is False
+        for name in (
+            'other-request-banner',
+            'other-socket-banner',
+            'other-user-banner',
+        ):
+            banner = banner_cases[name]
+            assert not banner['event'].is_set()
+            assert banner['accepted'] is True
+    finally:
+        with socket_events._ssh_connect_attempts_lock:
+            for attempt_key in attempt_keys:
+                socket_events._ssh_connect_attempts.pop(attempt_key, None)
+        with socket_events._ssh_banner_prompts_lock:
+            for prompt_id in banner_ids:
+                socket_events._ssh_banner_prompts.pop(prompt_id, None)
+
+
+def test_ssh_connect_cancel_rejects_an_already_committed_attempt(app):
+    import threading
+    from flask import request
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'connect_cancel_too_late')
+
+    class RecordingHandle:
+        def __init__(self):
+            self.cancel_calls = 0
+
+        def cancel(self):
+            self.cancel_calls += 1
+
+    request_id = 'committed-request'
+    attempt_key = (str(user_id), sid, request_id)
+    attempt = {
+        'cancel_event': threading.Event(),
+        'commit_lock': threading.Lock(),
+        'handle': RecordingHandle(),
+        'state': 'committed',
+    }
+    with socket_events._ssh_connect_attempts_lock:
+        socket_events._ssh_connect_attempts[attempt_key] = attempt
+    try:
+        with app.test_request_context('/socket.io'):
+            request.sid = sid
+            acknowledgement = socket_events.handle_ssh_connect_cancel({
+                'client_request_id': request_id,
+            })
+
+        assert acknowledgement == {
+            'success': False,
+            'cancelled': False,
+            'reason': 'already_committed',
+        }
+        assert not attempt['cancel_event'].is_set()
+        assert attempt['handle'].cancel_calls == 0
+    finally:
+        with socket_events._ssh_connect_attempts_lock:
+            socket_events._ssh_connect_attempts.pop(attempt_key, None)
+
+
+def test_cancelled_tmux_reconnect_preserves_existing_remote_session(
+        app, monkeypatch):
+    import threading
+    import config
+    from flask import request
+    from app import ssh_manager
+    from app.models import db, SSHSession
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'cancel_tmux_reconnect')
+    tmux_name = 'webssh_existing_remote_session'
+    with app.app_context():
+        db.session.add(SSHSession(
+            session_id='disconnected-reconnect-candidate',
+            user_id=user_id,
+            host='example.com',
+            port=22,
+            username='deploy',
+            connected=False,
+            is_persistent=True,
+            tmux_session_name=tmux_name,
+        ))
+        db.session.commit()
+
+    entered_connection = threading.Event()
+    closed_session = threading.Event()
+    close_calls = []
+    emitted = []
+
+    def finish_after_cancellation(**kwargs):
+        assert kwargs['reconnect_tmux_name'] == tmux_name
+        entered_connection.set()
+        assert kwargs['cancel_event'].wait(2)
+        return 'cancelled-reconnect-session', None
+
+    def record_close(session_id, kill_tmux=False):
+        close_calls.append((session_id, kill_tmux))
+        closed_session.set()
+        return True
+
+    monkeypatch.setattr(config, 'TMUX_ENABLED', True)
+    monkeypatch.setattr(
+        socket_events,
+        '_validate_ssh_params',
+        lambda host, port, username, **_kwargs: (
+            host, int(port), username, None
+        ),
+    )
+    monkeypatch.setattr(
+        socket_events,
+        'emit',
+        lambda event, payload=None, **_kwargs: emitted.append((event, payload)),
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'create_ssh_connection',
+        finish_after_cancellation,
+    )
+    monkeypatch.setattr(ssh_manager, 'close_session', record_close)
+    monkeypatch.setattr(
+        ssh_manager,
+        'get_session',
+        lambda _session_id: (_ for _ in ()).throw(
+            AssertionError('cancelled reconnect must stop before persistence')
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        socket_events.handle_ssh_connect({
+            'host': 'example.com',
+            'port': 22,
+            'username': 'deploy',
+            'password': 'secret',
+            'use_tmux': True,
+            'reconnect_tmux_name': tmux_name,
+            'client_request_id': 'cancel-reconnect-request',
+        })
+
+    assert entered_connection.wait(2)
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        acknowledgement = socket_events.handle_ssh_connect_cancel({
+            'client_request_id': 'cancel-reconnect-request',
+        })
+
+    assert acknowledgement == {'success': True, 'cancelled': True}
+    assert closed_session.wait(2)
+    assert close_calls == [('cancelled-reconnect-session', False)]
+    assert not any(event in {'ssh_connected', 'ssh_error'} for event, _ in emitted)
+
+
+def test_late_cancelled_tmux_reconnect_is_detached_and_remains_available(
+        app, monkeypatch):
+    from flask import request
+    from app import ssh_manager
+    from app.models import db, SSHSession
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'late_cancel_tmux_reconnect')
+    session_id = 'late-reconnect-session'
+    request_id = 'late-reconnect-request'
+    tmux_name = 'webssh_existing_remote_session'
+    with app.app_context():
+        db.session.add(SSHSession(
+            session_id=session_id,
+            user_id=user_id,
+            host='example.com',
+            port=22,
+            username='deploy',
+            connected=True,
+            is_persistent=True,
+            tmux_session_name=tmux_name,
+        ))
+        db.session.commit()
+
+    close_calls = []
+    emitted = []
+    monkeypatch.setattr(
+        ssh_manager,
+        'get_session',
+        lambda candidate: {
+            'id': candidate,
+            'use_tmux': True,
+            'tmux_session_name': tmux_name,
+            'tmux_reconnect': True,
+            'client_request_id': request_id,
+        } if candidate == session_id else None,
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'close_session',
+        lambda candidate, kill_tmux=False: (
+            close_calls.append((candidate, kill_tmux)) or True
+        ),
+    )
+    monkeypatch.setattr(
+        socket_events.socketio,
+        'emit',
+        lambda event, payload=None, **kwargs: emitted.append(
+            (event, payload, kwargs)
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        acknowledgement = socket_events.handle_ssh_discard_late_connection({
+            'session_id': session_id,
+            'client_request_id': request_id,
+        })
+
+    assert acknowledgement == {'success': True}
+    assert close_calls == [(session_id, False)]
+    assert emitted == [(
+        'ssh_disconnected',
+        {
+            'session_id': session_id,
+            'reason': 'Cancelled connection discarded',
+        },
+        {'room': f'user_{user_id}'},
+    )]
+    with app.app_context():
+        candidates = SSHSession.query.filter_by(
+            user_id=user_id,
+            tmux_session_name=tmux_name,
+        ).all()
+        assert len(candidates) == 1
+        assert candidates[0].session_id == session_id
+        assert candidates[0].connected is False
+        assert candidates[0].is_persistent is True
+
+
+def test_late_cancelled_new_tmux_is_removed_and_killed(app, monkeypatch):
+    from flask import request
+    from app import ssh_manager
+    from app.models import db, SSHSession
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'late_cancel_new_tmux')
+    session_id = 'late-new-tmux-session'
+    request_id = 'late-new-tmux-request'
+    with app.app_context():
+        db.session.add(SSHSession(
+            session_id=session_id,
+            user_id=user_id,
+            host='example.com',
+            port=22,
+            username='deploy',
+            connected=True,
+            is_persistent=True,
+            tmux_session_name='webssh_new_remote_session',
+        ))
+        db.session.commit()
+
+    close_calls = []
+    monkeypatch.setattr(
+        ssh_manager,
+        'get_session',
+        lambda candidate: {
+            'id': candidate,
+            'use_tmux': True,
+            'tmux_reconnect': False,
+            'client_request_id': request_id,
+        } if candidate == session_id else None,
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'close_session',
+        lambda candidate, kill_tmux=False: (
+            close_calls.append((candidate, kill_tmux)) or True
+        ),
+    )
+    monkeypatch.setattr(socket_events.socketio, 'emit', lambda *_args, **_kwargs: None)
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        acknowledgement = socket_events.handle_ssh_discard_late_connection({
+            'session_id': session_id,
+            'client_request_id': request_id,
+        })
+
+    assert acknowledgement == {'success': True}
+    assert close_calls == [(session_id, True)]
+    with app.app_context():
+        assert SSHSession.query.filter_by(session_id=session_id).first() is None
+
+
+def test_late_connection_discard_rejects_a_different_request_id(
+        app, monkeypatch):
+    from flask import request
+    from app import ssh_manager
+    from app.models import db, SSHSession
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'late_cancel_request_scope')
+    session_id = 'late-request-scope-session'
+    with app.app_context():
+        db.session.add(SSHSession(
+            session_id=session_id,
+            user_id=user_id,
+            host='example.com',
+            port=22,
+            username='deploy',
+            connected=True,
+            is_persistent=False,
+        ))
+        db.session.commit()
+
+    monkeypatch.setattr(
+        ssh_manager,
+        'get_session',
+        lambda _candidate: {
+            'client_request_id': 'actual-request',
+            'tmux_reconnect': False,
+            'use_tmux': False,
+        },
+    )
+    monkeypatch.setattr(
+        ssh_manager,
+        'close_session',
+        lambda *_args, **_kwargs: pytest.fail(
+            'mismatched request must not close the session'
+        ),
+    )
+
+    with app.test_request_context('/socket.io'):
+        request.sid = sid
+        acknowledgement = socket_events.handle_ssh_discard_late_connection({
+            'session_id': session_id,
+            'client_request_id': 'different-request',
+        })
+
+    assert acknowledgement == {'success': False}
+    with app.app_context():
+        assert SSHSession.query.filter_by(session_id=session_id).one().connected
+
+
 def test_shutdown_rejects_new_ssh_and_quick_connections_before_network(
         app, monkeypatch):
     from flask import request

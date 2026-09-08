@@ -478,8 +478,16 @@
             listen(elements.backdrop, 'click', () => closeContext('user'));
             listen(documentRef, 'keydown', event => {
                 if (event.key === 'Escape' && activeContext && mode !== 'desktop') {
+                    if (event.defaultPrevented) return;
+                    const foregroundModalOpen = Array.from(
+                        documentRef.querySelectorAll?.('.modal.show') || []
+                    ).some(modal => !modal.classList.contains('primary-workspace-view'));
+                    if (foregroundModalOpen || event.target?.closest?.('[role="dialog"]')) {
+                        return;
+                    }
                     event.preventDefault?.();
                     closeContext('user');
+                    event.stopImmediatePropagation?.();
                 }
             });
             listen(windowRef, 'resize', reconcile);

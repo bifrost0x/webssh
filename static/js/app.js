@@ -406,6 +406,14 @@
         },
 
         open() {
+            if (SessionManager.isConnectionLauncherOpen?.()) {
+                const launcherSearch = document.querySelector(
+                    '.terminal-pane.active .profile-launcher-search'
+                );
+                launcherSearch?.focus();
+                launcherSearch?.select();
+                return;
+            }
             if (!TerminalManager.hasSearchSupport()) {
                 showNotification('Search not available', 'warning');
                 return;
@@ -1152,7 +1160,14 @@
 
     let pendingAuthBannerPrompt = null;
 
-    function closeAuthBannerPrompt() {
+    function closeAuthBannerPrompt(requestId = null) {
+        if (
+            requestId
+            && pendingAuthBannerPrompt
+            && pendingAuthBannerPrompt.requestId !== requestId
+        ) {
+            return false;
+        }
         const hadPrompt = pendingAuthBannerPrompt !== null;
         pendingAuthBannerPrompt = null;
         window.ModalManager.close(document.getElementById('sshAuthBannerModal'));
@@ -1160,6 +1175,7 @@
         if (hadPrompt && connectionModal?.classList.contains('show')) {
             window.ModalManager.activeModal = connectionModal;
         }
+        return hadPrompt;
     }
 
     function answerAuthBannerPrompt(accepted) {
@@ -1180,7 +1196,24 @@
         ) {
             return;
         }
-        pendingAuthBannerPrompt = { promptId: data.prompt_id };
+        const requestId = typeof data.client_request_id === 'string'
+            ? data.client_request_id
+            : null;
+        const isExpectedRequest = requestId && (
+            requestId === currentConnectRequestId
+            || requestId.startsWith('reconnect_')
+        );
+        if (
+            !isExpectedRequest
+            || cancelledConnectRequestIds.has(requestId)
+        ) {
+            socket.emit('ssh_auth_banner_decision', {
+                prompt_id: data.prompt_id,
+                accepted: false,
+            });
+            return;
+        }
+        pendingAuthBannerPrompt = { promptId: data.prompt_id, requestId };
         const contextKey = data.context === 'jump_host'
             ? 'connection.authBannerJumpHost'
             : 'connection.authBannerTarget';
@@ -1241,33 +1274,85 @@
             clearInterval(keepAliveInterval);
             keepAliveInterval = null;
         }
+        pendingRequestPaneMap.forEach((_pane, requestId) => {
+            SessionManager.clearPendingConnection(requestId);
+        });
+        pendingRequestPaneMap.clear();
+        cancelledConnectRequestIds.clear();
+        cancellingConnectRequestIds.clear();
+        completedWhileCancellingRequestIds.clear();
+        cancelledSessionIds.clear();
+        currentConnectRequestId = null;
+        connectionModalRequestId = null;
+        setConnectLoading(false);
+        stopConnectTimer();
         outputFlowReconnect.handleDisconnect(reason);
     });
 
+    function discardLateConnection(data, requestId) {
+        if (!data?.session_id) return;
+        rememberTransientId(cancelledSessionIds, data.session_id);
+        if (requestId) {
+            socket.emit('ssh_discard_late_connection', {
+                session_id: data.session_id,
+                client_request_id: requestId,
+            });
+        } else {
+            socket.emit('ssh_disconnect', { session_id: data.session_id });
+        }
+    }
+
     socket.on('ssh_connected', (data) => {
-        closeAuthBannerPrompt();
-        if (data.client_request_id) {
-            SessionManager.clearPendingConnection(data.client_request_id);
+        const requestId = typeof data?.client_request_id === 'string'
+            ? data.client_request_id
+            : null;
+        if (requestId && cancellingConnectRequestIds.has(requestId)) {
+            // A completed connection and its cancellation ACK share one
+            // ordered socket stream, but the success event can arrive first.
+            // Retain that correlation after the success handler clears the
+            // pending UI so the ACK can explain that cancellation was too late.
+            rememberTransientId(completedWhileCancellingRequestIds, requestId);
+        }
+        if (requestId && cancelledConnectRequestIds.delete(requestId)) {
+            closeAuthBannerPrompt(requestId);
+            pendingRequestPaneMap.delete(requestId);
+            SessionManager.clearPendingConnection(requestId);
+            discardLateConnection(data, requestId);
+            return;
         }
 
-        if (connectTimer) {
-            clearInterval(connectTimer);
-            connectTimer = null;
-            const connectBtn = document.getElementById('connectBtn');
-            if (connectBtn) {
-                connectBtn.textContent = 'Connect';
+        const isCurrentRequest = Boolean(
+            requestId && requestId === currentConnectRequestId
+        );
+        const isReconnectRequest = Boolean(
+            requestId && requestId.startsWith('reconnect_')
+        );
+        if (!isCurrentRequest && !isReconnectRequest) {
+            discardLateConnection(data, requestId);
+            return;
+        }
+
+        closeAuthBannerPrompt(requestId);
+        if (requestId) {
+            SessionManager.clearPendingConnection(requestId);
+        }
+
+        if (isCurrentRequest) {
+            stopConnectTimer();
+            setConnectLoading(false);
+            currentConnectRequestId = null;
+            if (connectionModalRequestId === requestId) {
+                connectionModalRequestId = null;
             }
+            clearPendingPane();
         }
-
-        setConnectLoading(false);
-        currentConnectRequestId = null;
 
         const sessionId = SessionManager.createSession(data);
 
         let targetPane = null;
-        if (data.client_request_id && pendingRequestPaneMap.has(data.client_request_id)) {
-            targetPane = pendingRequestPaneMap.get(data.client_request_id);
-            pendingRequestPaneMap.delete(data.client_request_id);
+        if (requestId && pendingRequestPaneMap.has(requestId)) {
+            targetPane = pendingRequestPaneMap.get(requestId);
+            pendingRequestPaneMap.delete(requestId);
         }
         if (targetPane === null || targetPane === undefined) {
             const emptyIndex = SessionManager.getFirstEmptyPaneIndex();
@@ -1275,7 +1360,9 @@
         }
         SessionManager.assignSessionToPane(sessionId, targetPane);
 
-        window.ModalManager.close(document.getElementById('connectionModal'));
+        if (isCurrentRequest) {
+            window.ModalManager.close(document.getElementById('connectionModal'));
+        }
         const connMsg = data.via_jump
             ? `Connected to ${data.username}@${data.host} via ${data.via_jump}`
             : `Connected to ${data.username}@${data.host}`;
@@ -1290,7 +1377,31 @@
     });
 
     socket.on('ssh_error', (data) => {
-        closeAuthBannerPrompt();
+        const requestId = typeof data?.client_request_id === 'string'
+            ? data.client_request_id
+            : null;
+        if (requestId && cancelledConnectRequestIds.delete(requestId)) {
+            closeAuthBannerPrompt(requestId);
+            pendingRequestPaneMap.delete(requestId);
+            SessionManager.clearPendingConnection(requestId);
+            if (requestId === currentConnectRequestId) {
+                currentConnectRequestId = null;
+                setConnectLoading(false);
+                stopConnectTimer();
+            }
+            return;
+        }
+
+        const isCurrentRequest = Boolean(
+            requestId && requestId === currentConnectRequestId
+        );
+        const isReconnectRequest = Boolean(
+            requestId && requestId.startsWith('reconnect_')
+        );
+        if (requestId && !isCurrentRequest && !isReconnectRequest) {
+            return;
+        }
+
         const presentation = window.SSHErrorUI?.describeSSHError?.(
             data,
             key => window.i18n?.t?.(key),
@@ -1298,29 +1409,26 @@
         ) || { message: `SSH Error: ${data.error}`, type: 'error' };
         showNotification(presentation);
 
-        if (connectTimer) {
-            clearInterval(connectTimer);
-            connectTimer = null;
-            const connectBtn = document.getElementById('connectBtn');
-            if (connectBtn) {
-                connectBtn.textContent = 'Connect';
-            }
+        if (!isCurrentRequest) {
+            if (isReconnectRequest) closeAuthBannerPrompt(requestId);
+            return;
         }
 
+        closeAuthBannerPrompt(requestId);
+        stopConnectTimer();
         setConnectLoading(false);
-        const requestId = data.client_request_id || currentConnectRequestId;
-        if (requestId) {
-            SessionManager.clearPendingConnection(requestId);
-            if (requestId === currentConnectRequestId) {
-                currentConnectRequestId = null;
-            }
-            if (pendingRequestPaneMap.has(requestId)) {
-                pendingRequestPaneMap.delete(requestId);
-            }
+        SessionManager.clearPendingConnection(requestId);
+        currentConnectRequestId = null;
+        if (connectionModalRequestId === requestId) {
+            connectionModalRequestId = null;
         }
+        pendingRequestPaneMap.delete(requestId);
     });
 
     socket.on('ssh_disconnected', (data) => {
+        if (cancelledSessionIds.delete(data.session_id)) {
+            return;
+        }
         showNotification(`Session disconnected: ${data.reason}`, 'warning');
         SessionManager.updateSessionStatus(data.session_id, 'disconnected');
 
@@ -1412,10 +1520,27 @@
     });
 
     let currentConnectRequestId = null;
+    let connectionModalRequestId = null;
     let pendingPaneIndex = null;
     const pendingRequestPaneMap = new Map();
+    const cancelledConnectRequestIds = new Set();
+    const cancellingConnectRequestIds = new Set();
+    const completedWhileCancellingRequestIds = new Set();
+    const cancelledSessionIds = new Set();
     let connectTimer = null;
     let connectSeconds = 0;
+    const CONNECT_CANCEL_ACK_TIMEOUT_MS = 5000;
+    const TRANSIENT_ID_TTL_MS = 120000;
+    const MAX_TRANSIENT_IDS = 128;
+
+    function rememberTransientId(collection, value) {
+        if (!value) return;
+        collection.add(value);
+        while (collection.size > MAX_TRANSIENT_IDS) {
+            collection.delete(collection.values().next().value);
+        }
+        window.setTimeout(() => collection.delete(value), TRANSIENT_ID_TTL_MS);
+    }
 
     function closeProfileManagementModal() {
         if (
@@ -1443,7 +1568,7 @@
             client_request_id: requestId,
         };
         currentConnectRequestId = requestId;
-        pendingPaneIndex = null;
+        pendingPaneIndex = paneIndex;
         SessionManager.createPendingConnection(
             requestId,
             payload.host,
@@ -1452,6 +1577,12 @@
         );
         if (paneIndex !== null && paneIndex !== undefined) {
             pendingRequestPaneMap.set(requestId, paneIndex);
+            const modalOpen = document.getElementById('connectionModal')
+                ?.classList.contains('show');
+            SessionManager.restoreConnectionLauncher?.(
+                paneIndex,
+                { activate: !modalOpen },
+            );
         }
 
         Object.keys(SessionManager.sessions).forEach(sessionId => {
@@ -1469,11 +1600,18 @@
     }
 
     function openConnectionModalForPane(paneIndex) {
-        window.clearConnectionProfileState();
-        pendingPaneIndex = paneIndex;
-        if (paneIndex !== null && paneIndex !== undefined) {
-            SessionManager.setActivePane(paneIndex);
+        if (currentConnectRequestId) {
+            showNotification(
+                window.i18n
+                    ? i18n.t('connection.connectBusy')
+                    : 'A connection attempt is already in progress.',
+                'info',
+            );
+            return false;
         }
+        window.clearConnectionProfileState();
+        connectionModalRequestId = null;
+        pendingPaneIndex = paneIndex;
 
         // Reset the jump host selection so a previous jump never carries into a
         // new connection by accident.
@@ -1492,6 +1630,7 @@
             modal.classList.add('show');
         }
         setConnectLoading(false);
+        return true;
     }
 
     function selectConnectionProfile(profileId) {
@@ -1530,7 +1669,7 @@
 
     function openProfileForReview(profileId, paneIndex, mode) {
         closeProfileManagementModal();
-        openConnectionModalForPane(paneIndex);
+        if (!openConnectionModalForPane(paneIndex)) return;
         const selected = selectConnectionProfile(profileId);
         if (!selected) return;
 
@@ -1547,6 +1686,163 @@
         pendingPaneIndex = null;
     }
 
+    function stopConnectTimer() {
+        if (connectTimer) {
+            clearInterval(connectTimer);
+            connectTimer = null;
+        }
+        const connectLabel = document.querySelector('#connectBtn .btn-label');
+        if (connectLabel) {
+            connectLabel.textContent = window.i18n
+                ? i18n.t('connection.connect')
+                : 'Connect';
+        }
+    }
+
+    function finishConnectionCancellation(requestId) {
+        rememberTransientId(cancelledConnectRequestIds, requestId);
+        closeAuthBannerPrompt(requestId);
+        pendingRequestPaneMap.delete(requestId);
+        SessionManager.clearPendingConnection(requestId);
+        if (requestId === currentConnectRequestId) {
+            currentConnectRequestId = null;
+            setConnectLoading(false);
+            stopConnectTimer();
+        }
+    }
+
+    function setPendingCancellationBusy(requestId, busy) {
+        const button = document.getElementById(`pending-${requestId}`)
+            ?.querySelector('.tab-close');
+        if (!button) return;
+        button.setAttribute('aria-disabled', String(Boolean(busy)));
+        button.setAttribute('aria-busy', String(Boolean(busy)));
+    }
+
+    function cancelConnectionAttempt(
+        requestId = currentConnectRequestId,
+        onSettled = null,
+    ) {
+        if (
+            !requestId
+            || cancellingConnectRequestIds.has(requestId)
+            || (
+                requestId !== currentConnectRequestId
+                && !pendingRequestPaneMap.has(requestId)
+            )
+        ) {
+            return false;
+        }
+        cancellingConnectRequestIds.add(requestId);
+        setPendingCancellationBusy(requestId, true);
+        let settled = false;
+        const settleCancellation = acknowledgement => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(acknowledgementTimer);
+            cancellingConnectRequestIds.delete(requestId);
+            setPendingCancellationBusy(requestId, false);
+            const requestStillPending = (
+                requestId === currentConnectRequestId
+                || pendingRequestPaneMap.has(requestId)
+            );
+            const completedWhileCancelling = (
+                completedWhileCancellingRequestIds.delete(requestId)
+            );
+            let cancelled = acknowledgement?.cancelled === true || (
+                acknowledgement?.success === true
+                && acknowledgement?.cancelled !== false
+            );
+            if (cancelled) {
+                finishConnectionCancellation(requestId);
+            } else if (completedWhileCancelling) {
+                // The commit won and the success event was already handled.
+                // Keep the usable connection and make the rejected
+                // cancellation explicit instead of silently ignoring it.
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelCompleted')
+                        : 'Cancellation was too late. The connection had already opened and remains active.',
+                    'info',
+                );
+            } else if (
+                acknowledgement?.reason === 'not_found'
+                && requestStillPending
+            ) {
+                // The server no longer owns this request. Honour the user's
+                // cancellation locally and discard any success that was
+                // already in flight for the same correlated request.
+                cancelled = true;
+                finishConnectionCancellation(requestId);
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelAlreadyStopped')
+                        : 'The connection attempt is no longer active.',
+                    'info',
+                );
+            } else if (
+                acknowledgement?.reason === 'already_committed'
+                && requestStillPending
+            ) {
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelTooLate')
+                        : 'The connection is already finishing and can no longer be cancelled safely.',
+                    'info',
+                );
+            } else if (requestStillPending) {
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelUnconfirmed')
+                        : 'Cancellation was not confirmed. The attempt is still pending; try cancelling again.',
+                    'warning',
+                    7000,
+                );
+            }
+            if (typeof onSettled === 'function') {
+                onSettled(cancelled, acknowledgement);
+            }
+        };
+        const acknowledgementTimer = window.setTimeout(() => {
+            settleCancellation({
+                success: false,
+                cancelled: false,
+                reason: 'ack_timeout',
+            });
+        }, CONNECT_CANCEL_ACK_TIMEOUT_MS);
+        socket.emit(
+            'ssh_connect_cancel',
+            { client_request_id: requestId },
+            settleCancellation,
+        );
+        return true;
+    }
+
+    function dismissConnectionModal() {
+        const modalRequestId = connectionModalRequestId;
+        const targetPane = pendingPaneIndex;
+        const shouldReactivatePane = Number.isInteger(targetPane)
+            && Boolean(SessionManager.getWorkspaceSession?.())
+            && !SessionManager.getActiveSession();
+        const reactivatePreservedPane = () => {
+            if (!shouldReactivatePane) return;
+            SessionManager.setActivePane(targetPane);
+            window.requestAnimationFrame(() => SessionManager.focusActivePane());
+        };
+        cancelConnectionAttempt(modalRequestId);
+        connectionModalRequestId = null;
+        window.ModalManager.close(document.getElementById('connectionModal'));
+        clearPendingPane();
+        if (!modalRequestId) {
+            setConnectLoading(false);
+            stopConnectTimer();
+        }
+        // The replacement remains staged until ssh_connected, so returning to
+        // the preserved session is safe even while cancellation is pending or
+        // the server has already crossed its commit boundary.
+        reactivatePreservedPane();
+    }
+
     function getDefaultPaneIndex() {
         const activeIndex = SessionManager.getActivePaneIndex();
         const activeSession = SessionManager.getActiveSession();
@@ -1559,6 +1855,11 @@
         }
         return activeIndex !== null && activeIndex !== undefined ? activeIndex : 0;
     }
+
+    function openDefaultConnectionModal() {
+        openConnectionModalForPane(getDefaultPaneIndex());
+    }
+    window.openDefaultConnectionModal = openDefaultConnectionModal;
 
     const savedConnectionLauncher = (
         ConnectionLauncher.createConnectionLauncher({
@@ -1590,11 +1891,9 @@
     function setConnectLoading(isLoading) {
         const connectBtn = document.getElementById('connectBtn');
         const spinner = document.getElementById('connectSpinner');
-        if (!connectBtn || !spinner) {
-            return;
-        }
+        if (!connectBtn) return;
         connectBtn.disabled = isLoading;
-        spinner.classList.toggle('hidden', !isLoading);
+        spinner?.classList.toggle('hidden', !isLoading);
     }
 
     function setFieldState(input, hintEl, message, isValid) {
@@ -1906,7 +2205,8 @@
             e.preventDefault();
             hideOverlay();
 
-            const active = SessionManager.getActiveSession();
+            const active = SessionManager.getWorkspaceSession?.()
+                || SessionManager.getActiveSession();
             if (!active) {
                 showNotification('No active session for upload', 'warning');
                 return;
@@ -1929,7 +2229,8 @@
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            const active = SessionManager.getActiveSession();
+            const active = SessionManager.getWorkspaceSession?.()
+                || SessionManager.getActiveSession();
             if (!active || !pendingFile) {
                 showNotification('No active session for upload', 'warning');
                 return;
@@ -2025,7 +2326,7 @@
         }
 
         const actions = [
-            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: () => openConnectionModalForPane(getDefaultPaneIndex()) },
+            { id: 'quick-connect', labelKey: 'connection.newConnection', hint: 'Ctrl+Shift+N', action: openDefaultConnectionModal },
             { id: 'command-library', labelKey: 'commands.library', hint: 'F1', action: () => CommandLibrary.openLibrary() },
             { id: 'file-transfer', labelKey: 'files.fileTransfer', hint: '', action: () => document.getElementById('fileTransferBtn').click() },
             { id: 'manage-keys', labelKey: 'keys.manageKeys', hint: '', action: () => openConnectionAssetManager('keys') },
@@ -2192,6 +2493,7 @@
                 e.preventDefault();
                 activateItem(filtered[activeIndex]);
             } else if (e.key === 'Escape') {
+                e.preventDefault();
                 closePalette();
             }
         });
@@ -2257,24 +2559,22 @@
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {
             newTabBtn.addEventListener('click', () => {
-                openConnectionModalForPane(getDefaultPaneIndex());
+                SessionManager.showConnectionLauncher(
+                    SessionManager.getActivePaneIndex()
+                );
             });
         }
 
         document.getElementById('closeConnectionModal').addEventListener('click', () => {
-            window.ModalManager.close(document.getElementById('connectionModal'));
-            setConnectLoading(false);
-            currentConnectRequestId = null;
-            clearPendingPane();
-            if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
+            dismissConnectionModal();
         });
 
         document.getElementById('cancelConnectionBtn').addEventListener('click', () => {
-            window.ModalManager.close(document.getElementById('connectionModal'));
-            setConnectLoading(false);
-            currentConnectRequestId = null;
-            clearPendingPane();
-            if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
+            dismissConnectionModal();
+        });
+
+        window.addEventListener('ssh-connection-cancel-requested', event => {
+            cancelConnectionAttempt(event.detail?.requestId);
         });
 
         document.getElementById('connectionForm').addEventListener('submit', (e) => {
@@ -2378,15 +2678,24 @@
 
             const started = startConnection(connectionData, targetPane);
             if (!started) return;
+            connectionModalRequestId = currentConnectRequestId;
 
             SessionManager.pendingReconnectTmux = null;
             SessionManager.pendingDisplayName = null;
-            const connectBtn = document.getElementById('connectBtn');
+            const connectLabel = document.querySelector('#connectBtn .btn-label');
+            const connectingText = seconds => (
+                window.i18n
+                    ? i18n.t('connection.connectingElapsed')
+                        .replace('{seconds}', String(seconds))
+                    : `Connecting... ${seconds}s`
+            );
             connectSeconds = 0;
-            connectBtn.textContent = 'Connecting... 0s';
+            if (connectLabel) connectLabel.textContent = connectingText(connectSeconds);
             connectTimer = setInterval(() => {
                 connectSeconds++;
-                connectBtn.textContent = `Connecting... ${connectSeconds}s`;
+                if (connectLabel) {
+                    connectLabel.textContent = connectingText(connectSeconds);
+                }
             }, 1000);
 
             setConnectLoading(true);
@@ -2588,11 +2897,11 @@
             if (e.target.classList.contains('modal')) {
                 if (e.target.classList.contains('primary-workspace-view')) return;
                 if (e.target.id === 'sshAuthBannerModal') return;
-                window.ModalManager.close(e.target);
                 if (e.target.id === 'connectionModal') {
-                    clearPendingPane();
-                    if (connectTimer) { clearInterval(connectTimer); connectTimer = null; }
+                    dismissConnectionModal();
+                    return;
                 }
+                window.ModalManager.close(e.target);
             }
         });
 
@@ -2655,17 +2964,35 @@
             }
 
             if (e.key === 'Escape') {
+                if (e.defaultPrevented) return;
                 if (TerminalSearch.isOpen) {
                     TerminalSearch.close();
                 } else {
-                    document.querySelectorAll('.modal.show').forEach(modal => {
+                    const openModals = Array.from(document.querySelectorAll('.modal.show'));
+                    let handled = false;
+                    openModals.forEach(modal => {
                         if (
                             modal.id === 'sftpFileManager'
                             || modal.id === 'sshAuthBannerModal'
                             || modal.classList.contains('primary-workspace-view')
                         ) return;
+                        if (modal.id === 'connectionModal') {
+                            dismissConnectionModal();
+                            handled = true;
+                            return;
+                        }
                         window.ModalManager.close(modal);
+                        handled = true;
                     });
+                    if (!openModals.length) {
+                        handled = Boolean(SessionManager.restoreConnectionLauncher?.(
+                            SessionManager.getActivePaneIndex()
+                        ));
+                    }
+                    if (handled) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                    }
                 }
             }
 
