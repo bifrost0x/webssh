@@ -133,6 +133,8 @@ _ENGINEIO_REJECTION_DRAIN_SECONDS = 1.0
 _ENGINEIO_REJECTION_POLL_SECONDS = 0.01
 _smb_attempts_lock = threading.RLock()
 _smb_attempts = {}
+_ssh_connect_attempts_lock = threading.RLock()
+_ssh_connect_attempts = {}
 _ssh_banner_prompts_lock = threading.RLock()
 _ssh_banner_prompts = {}
 SSH_AUTH_BANNER_DECISION_TIMEOUT = 60
@@ -152,6 +154,74 @@ def _cancel_ssh_banner_prompts_for_socket(socket_sid):
         ]
     for prompt in prompts:
         prompt['event'].set()
+
+
+def _ssh_request_id(payload):
+    if not isinstance(payload, dict):
+        return ''
+    request_id = payload.get('client_request_id')
+    if not isinstance(request_id, str) or not _SMB_REQUEST_ID.fullmatch(
+        request_id
+    ):
+        return ''
+    return request_id
+
+
+def _cancel_ssh_banner_prompt_for_request(user_id, socket_sid, request_id):
+    with _ssh_banner_prompts_lock:
+        prompts = [
+            prompt
+            for prompt in _ssh_banner_prompts.values()
+            if prompt['socket_sid'] == socket_sid
+            and prompt['user_id'] == user_id
+            and prompt.get('client_request_id') == request_id
+        ]
+    for prompt in prompts:
+        prompt['accepted'] = False
+        prompt['event'].set()
+
+
+def _try_cancel_ssh_attempt(attempt):
+    """Cancel an attempt unless an irreversible connection step won first."""
+    commit_lock = attempt.get('commit_lock')
+    if commit_lock is None:
+        if attempt.get('state') == 'committed':
+            return False
+        attempt['state'] = 'cancelled'
+        attempt['cancel_event'].set()
+        return True
+    with commit_lock:
+        state = attempt.get('state', 'pending')
+        if state == 'committed' or state == 'finished':
+            return False
+        attempt['state'] = 'cancelled'
+        attempt['cancel_event'].set()
+        return True
+
+
+def _force_cancel_ssh_attempt(attempt):
+    """Cancel runtime work even after the user-visible commit boundary."""
+    commit_lock = attempt.get('commit_lock')
+    if commit_lock is None:
+        attempt['cancel_event'].set()
+        return
+    with commit_lock:
+        attempt['cancel_event'].set()
+
+
+def _cancel_ssh_connect_attempts_for_socket(socket_sid):
+    handles = []
+    with _ssh_connect_attempts_lock:
+        for (_owner_id, owner_sid, _request_id), attempt in tuple(
+            _ssh_connect_attempts.items()
+        ):
+            if owner_sid != socket_sid:
+                continue
+            _force_cancel_ssh_attempt(attempt)
+            if attempt.get('handle') is not None:
+                handles.append(attempt['handle'])
+    for handle in handles:
+        handle.cancel()
 
 
 def _smb_request_id(payload):
@@ -690,9 +760,17 @@ def _audit_file_source_operation(
 class _CombinedCancellation:
     """Expose user and runtime cancellation through one Event-like interface."""
 
-    def __init__(self, user_cancel_event, lifecycle_cancel_event):
+    def __init__(
+        self,
+        user_cancel_event,
+        lifecycle_cancel_event,
+        commit_lock=None,
+        attempt=None,
+    ):
         self._user_cancel_event = user_cancel_event
         self._lifecycle_cancel_event = lifecycle_cancel_event
+        self._commit_lock = commit_lock or threading.Lock()
+        self._attempt = attempt
 
     def is_set(self):
         return (
@@ -715,6 +793,18 @@ class _CombinedCancellation:
                 return False
             self._user_cancel_event.wait(min(remaining, 0.1))
         return True
+
+    def commit_if_active(self):
+        """Linearize an irreversible setup step against user cancellation."""
+        with self._commit_lock:
+            if self.is_set():
+                return False
+            if self._attempt is not None:
+                state = self._attempt.get('state', 'pending')
+                if state == 'cancelled' or state == 'finished':
+                    return False
+                self._attempt['state'] = 'committed'
+            return True
 
 
 def _storage_error_payload(error, *, user_id, include_success=True, **extra):
@@ -1224,6 +1314,7 @@ def handle_disconnect():
     socket_sid = request.sid
     ssh_output_flow.release_socket(socket_sid)
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
+    _cancel_ssh_connect_attempts_for_socket(socket_sid)
     owner_id = socket_capacity.release(socket_sid)
     try:
         user = get_user_from_socket(socket_sid)
@@ -1417,8 +1508,10 @@ def handle_ssh_connect(data, current_user=None):
     bastion_key_content = None
     client_request_id = None
     socket_sid = request.sid
+    client_cancel_event = threading.Event()
     try:
-        client_request_id = data.get('client_request_id')
+        data = data if isinstance(data, dict) else {}
+        client_request_id = _ssh_request_id(data) or None
         if not current_app.extensions[
             'runtime_lifecycle'
         ].accepting_work():
@@ -1439,6 +1532,8 @@ def handle_ssh_connect(data, current_user=None):
             ))
 
         def request_auth_banner_decision(banner, context):
+            if client_cancel_event.is_set():
+                return False
             prompt_id = secrets.token_urlsafe(24)
             decision_event = threading.Event()
             prompt = {
@@ -1446,9 +1541,12 @@ def handle_ssh_connect(data, current_user=None):
                 'accepted': False,
                 'socket_sid': socket_sid,
                 'user_id': current_user.id,
+                'client_request_id': client_request_id,
             }
             with _ssh_banner_prompts_lock:
                 _ssh_banner_prompts[prompt_id] = prompt
+                if client_cancel_event.is_set():
+                    decision_event.set()
             emit('ssh_auth_banner', {
                 'prompt_id': prompt_id,
                 'banner': banner,
@@ -1645,10 +1743,33 @@ def handle_ssh_connect(data, current_user=None):
             'bastion_password': bastion_password,
             'bastion_key_content': bastion_key_content,
         }
+        attempt_key = (
+            (str(current_user.id), socket_sid, client_request_id)
+            if client_request_id else None
+        )
+        attempt = {
+            'cancel_event': client_cancel_event,
+            'commit_lock': threading.Lock(),
+            'handle': None,
+            'state': 'pending',
+        }
+        if attempt_key is not None:
+            with _ssh_connect_attempts_lock:
+                if attempt_key in _ssh_connect_attempts:
+                    credential_box.clear()
+                    emit_error('Connection request already in progress')
+                    return
+                _ssh_connect_attempts[attempt_key] = attempt
 
         @copy_current_request_context
-        def connect_ssh(cancel_event, credentials=credential_box):
+        def connect_ssh(lifecycle_cancel_event, credentials=credential_box):
             """Run blocking SSH setup outside the synchronous socket reader."""
+            cancellation = _CombinedCancellation(
+                client_cancel_event,
+                lifecycle_cancel_event,
+                attempt['commit_lock'],
+                attempt,
+            )
             local_password = credentials.pop('password', None)
             local_key_content = credentials.pop('key_content', None)
             local_bastion_password = credentials.pop(
@@ -1658,7 +1779,7 @@ def handle_ssh_connect(data, current_user=None):
                 'bastion_key_content', None
             )
             try:
-                if cancel_event.is_set():
+                if cancellation.is_set():
                     return
                 session_id, error = ssh_manager.create_ssh_connection(
                     host=host,
@@ -1682,8 +1803,19 @@ def handle_ssh_connect(data, current_user=None):
                     ),
                     auth_banner_decision=request_auth_banner_decision,
                     tailscale_authorization=tailscale_authorization,
+                    cancel_event=cancellation,
+                    client_request_id=client_request_id,
                 )
 
+                if cancellation.is_set():
+                    if session_id:
+                        ssh_manager.close_session(
+                            session_id,
+                            kill_tmux=bool(
+                                use_tmux and not reconnect_tmux_name
+                            ),
+                        )
+                    return
                 if error:
                     emit_error(error)
                     return
@@ -1692,10 +1824,26 @@ def handle_ssh_connect(data, current_user=None):
                     socket_sid=socket_sid,
                     user_id=current_user.id,
                 ).first() is not None
-                if cancel_event.is_set() or not socket_is_live:
+                if cancellation.is_set() or not socket_is_live:
                     ssh_manager.close_session(
                         session_id,
-                        kill_tmux=use_tmux,
+                        kill_tmux=bool(
+                            use_tmux and not reconnect_tmux_name
+                        ),
+                    )
+                    return
+
+                # Without startup commands this is the first irreversible
+                # user-visible step. Whichever side reaches this boundary
+                # first wins: an accepted cancel emits nothing, while a late
+                # cancel is rejected instead of pretending the connection was
+                # stopped.
+                if not cancellation.commit_if_active():
+                    ssh_manager.close_session(
+                        session_id,
+                        kill_tmux=bool(
+                            use_tmux and not reconnect_tmux_name
+                        ),
                     )
                     return
 
@@ -1707,18 +1855,22 @@ def handle_ssh_connect(data, current_user=None):
                     )
                     emit_error("Connection failed")
                     return
+                actual_use_tmux = bool(created_session.get('use_tmux'))
+                tmux_reconnect = bool(created_session.get('tmux_reconnect'))
                 created_tmux_name = (
                     created_session.get('tmux_session_name')
-                    if use_tmux else None
+                    if actual_use_tmux else None
                 )
 
-                display_name = data.get('display_name') if use_tmux else None
+                display_name = (
+                    data.get('display_name') if actual_use_tmux else None
+                )
                 if display_name:
                     display_name = display_name.strip()[:128] or None
                 try:
                     # Clean up the specific old disconnected persistent session
                     # when reconnecting to avoid ghost tabs on refresh.
-                    if use_tmux and reconnect_tmux_name:
+                    if tmux_reconnect:
                         old_session = SSHSession.query.filter_by(
                             user_id=current_user.id,
                             host=host,
@@ -1742,11 +1894,11 @@ def handle_ssh_connect(data, current_user=None):
                         host=host,
                         port=port,
                         username=username,
-                        is_persistent=use_tmux,
-                        key_id=key_id if use_tmux else None,
+                        is_persistent=actual_use_tmux,
+                        key_id=key_id if actual_use_tmux else None,
                         auth_type=auth_type,
                         tmux_session_name=created_tmux_name,
-                        display_name=display_name if use_tmux else None,
+                        display_name=display_name if actual_use_tmux else None,
                     )
                     db.session.add(ssh_session)
                     db.session.commit()
@@ -1765,8 +1917,8 @@ def handle_ssh_connect(data, current_user=None):
                     'username': username,
                     'client_request_id': client_request_id,
                     'via_jump': bastion_host,
-                    'use_tmux': use_tmux,
-                    'key_id': key_id if use_tmux else None,
+                    'use_tmux': actual_use_tmux,
+                    'key_id': key_id if actual_use_tmux else None,
                     'auth_type': auth_type,
                     'tmux_session_name': created_tmux_name,
                     'display_name': display_name,
@@ -1786,34 +1938,49 @@ def handle_ssh_connect(data, current_user=None):
                     request.remote_addr,
                 )
             except StorageCorruptionError as error:
-                emit('ssh_error', _storage_error_payload(
-                    error,
-                    user_id=current_user.id,
-                    include_success=False,
-                    client_request_id=client_request_id,
-                ))
+                if not cancellation.is_set():
+                    emit('ssh_error', _storage_error_payload(
+                        error,
+                        user_id=current_user.id,
+                        include_success=False,
+                        client_request_id=client_request_id,
+                    ))
             except Exception as error:
                 log_error(
                     "SSH connection failed",
                     error=str(error),
                     user=current_user.username,
                 )
-                emit('ssh_error', {'error': 'Connection failed'})
+                if not cancellation.is_set():
+                    emit_error('Connection failed')
             finally:
                 credentials.clear()
                 local_password = None
                 local_key_content = None
                 local_bastion_password = None
                 local_bastion_key_content = None
+                with attempt['commit_lock']:
+                    attempt['state'] = 'finished'
+                if attempt_key is not None:
+                    with _ssh_connect_attempts_lock:
+                        if _ssh_connect_attempts.get(attempt_key) is attempt:
+                            _ssh_connect_attempts.pop(attempt_key, None)
 
         try:
-            lifecycle.start_job(
+            handle = lifecycle.start_job(
                 'ssh_connect',
                 connect_ssh,
                 owner_id=current_user.id,
             )
+            attempt['handle'] = handle
+            if client_cancel_event.is_set():
+                handle.cancel()
         except Exception as error:
             credential_box.clear()
+            if attempt_key is not None:
+                with _ssh_connect_attempts_lock:
+                    if _ssh_connect_attempts.get(attempt_key) is attempt:
+                        _ssh_connect_attempts.pop(attempt_key, None)
             log_warning(
                 'SSH connection job rejected',
                 user=current_user.username,
@@ -1830,12 +1997,102 @@ def handle_ssh_connect(data, current_user=None):
         ))
     except Exception as e:
         log_error("SSH connection failed", error=str(e), user=current_user.username)
-        emit('ssh_error', {'error': 'Connection failed'})
+        emit('ssh_error', connection_error_payload(
+            'Connection failed',
+            client_request_id=client_request_id,
+        ))
     finally:
         password = None
         key_content = None
         bastion_password = None
         bastion_key_content = None
+
+
+@socketio.on('ssh_connect_cancel')
+@socket_login_required
+def handle_ssh_connect_cancel(data, current_user=None):
+    """Cancel one matching SSH connection attempt owned by this socket."""
+    request_id = _ssh_request_id(data)
+    if not request_id:
+        return {'success': False}
+    attempt_key = (str(current_user.id), request.sid, request_id)
+    with _ssh_connect_attempts_lock:
+        attempt = _ssh_connect_attempts.get(attempt_key)
+        if attempt is None:
+            return {
+                'success': False,
+                'cancelled': False,
+                'reason': 'not_found',
+            }
+        cancelled = _try_cancel_ssh_attempt(attempt)
+        if not cancelled:
+            return {
+                'success': False,
+                'cancelled': False,
+                'reason': 'already_committed',
+            }
+        handle = attempt.get('handle')
+    _cancel_ssh_banner_prompt_for_request(
+        current_user.id,
+        request.sid,
+        request_id,
+    )
+    if handle is not None:
+        handle.cancel()
+    return {'success': True, 'cancelled': True}
+
+
+@socketio.on('ssh_discard_late_connection')
+@socket_login_required
+def handle_ssh_discard_late_connection(data, current_user=None):
+    """Discard a cancelled connection without trusting client cleanup policy."""
+    request_id = _ssh_request_id(data)
+    session_id = data.get('session_id') if isinstance(data, dict) else None
+    if not request_id or not isinstance(session_id, str) or not session_id:
+        return {'success': False}
+    if not verify_session_ownership(session_id, current_user.id):
+        return {'success': False}
+
+    runtime_session = ssh_manager.get_session(session_id)
+    if (
+        not runtime_session
+        or runtime_session.get('client_request_id') != request_id
+    ):
+        return {'success': False}
+
+    tmux_reconnect = bool(runtime_session.get('tmux_reconnect'))
+    ssh_session = SSHSession.query.filter_by(
+        session_id=session_id,
+        user_id=current_user.id,
+    ).first()
+    if ssh_session:
+        try:
+            if ssh_session.is_persistent and not tmux_reconnect:
+                db.session.delete(ssh_session)
+            else:
+                ssh_session.connected = False
+            db.session.commit()
+        except Exception as db_err:
+            db.session.rollback()
+            log_error(
+                "Failed to discard late SSH session",
+                error=str(db_err),
+                session_id=session_id,
+            )
+
+    success = ssh_manager.close_session(
+        session_id,
+        kill_tmux=bool(
+            runtime_session.get('use_tmux') and not tmux_reconnect
+        ),
+    )
+    if success:
+        socketio.emit('ssh_disconnected', {
+            'session_id': session_id,
+            'reason': 'Cancelled connection discarded',
+        }, room=f'user_{current_user.id}')
+    return {'success': success}
+
 
 @socketio.on('ssh_input')
 @socket_login_required
@@ -2503,13 +2760,16 @@ def handle_probe_session_sftp(data, current_user=None):
     safe_session_id = session_id if valid_identifiers else ''
     safe_request_id = request_id if valid_identifiers else ''
 
-    def emit_result(*, success, available=False):
-        emit('session_sftp_capability', {
+    def emit_result(*, success, available=False, reason=None):
+        payload = {
             'success': success,
             'session_id': safe_session_id,
             'request_id': safe_request_id,
             'available': available,
-        })
+        }
+        if reason == sftp_handler.CAPABILITY_RESOURCE_SHORTAGE:
+            payload['reason'] = reason
+        emit('session_sftp_capability', payload)
 
     if not valid_identifiers:
         emit_result(success=False)
@@ -2540,6 +2800,12 @@ def handle_probe_session_sftp(data, current_user=None):
         emit_result(success=False)
         return
 
+    if available == sftp_handler.CAPABILITY_RESOURCE_SHORTAGE:
+        emit_result(
+            success=False,
+            reason=sftp_handler.CAPABILITY_RESOURCE_SHORTAGE,
+        )
+        return
     if available is None:
         emit_result(success=False)
         return
@@ -3237,7 +3503,12 @@ def handle_request_session_insights(data, current_user=None):
             'request_id': safe_request_id,
             'error': 'Session insights unavailable',
         }
-        if reason in {'busy', 'transient', 'unsupported'}:
+        if reason in {
+            'busy',
+            'transient',
+            'unsupported',
+            'resource_shortage',
+        }:
             payload['reason'] = reason
         emit('session_insights', payload)
 

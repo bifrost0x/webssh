@@ -147,7 +147,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           use_tmux=False, reconnect_tmux_name=None,
                           auth_type='password', startup_commands='',
                           auth_banner_decision=None,
-                          tailscale_authorization=None):
+                          tailscale_authorization=None,
+                          cancel_event=None, client_request_id=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -165,7 +166,14 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         auth_type: Target authentication method (password, key, or tailscale)
         auth_banner_decision: Callback that must accept a server banner before
             any forwarding channel, shell, tmux probe, or startup command opens
+        cancel_event: Event-like cancellation signal for an in-progress setup
     """
+    def connection_cancelled():
+        return cancel_event is not None and cancel_event.is_set()
+
+    if connection_cancelled():
+        return None, "Connection cancelled"
+
     try:
         host_key_store = HostKeyStore(
             user_id, config.KNOWN_HOSTS_FILE, config.USERS_DIR
@@ -206,6 +214,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
     validated_socket = None
     connection_stored = False
     try:
+        if connection_cancelled():
+            return None, "Connection cancelled"
         # Optional ProxyJump: connect to the bastion first, then tunnel to the target.
         sock = None
         if proxy_jump_host:
@@ -273,6 +283,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     return None, "Jump host authentication method not provided"
 
                 bastion_client.connect(**bastion_auth)
+                if connection_cancelled():
+                    return None, "Connection cancelled"
                 bastion_transport = bastion_client.get_transport()
                 if bastion_transport:
                     bastion_transport.set_keepalive(30)
@@ -285,6 +297,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                         code="auth_banner_declined",
                         context="jump_host",
                     )
+                if connection_cancelled():
+                    return None, "Connection cancelled"
 
                 sock = bastion_transport.open_channel(
                     'direct-tcpip',
@@ -337,6 +351,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
             sock = validated_socket
 
+        if connection_cancelled():
+            return None, "Connection cancelled"
+
         client = paramiko.SSHClient()
         _configure_host_key_trust(client, host_key_store)
 
@@ -363,6 +380,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 return None, "No authentication method provided"
 
         client.connect(**auth_kwargs)
+        if connection_cancelled():
+            return None, "Connection cancelled"
 
         transport = client.get_transport()
         if transport:
@@ -376,6 +395,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 code="auth_banner_declined",
                 context="target",
             )
+        if connection_cancelled():
+            return None, "Connection cancelled"
 
         tmux_session_name = None
         if use_tmux:
@@ -432,6 +453,9 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             finally:
                 probe_channel.close()
 
+            if connection_cancelled():
+                return None, "Connection cancelled"
+
             if not tmux_available:
                 log_warning("tmux not found on target host, falling back to regular shell",
                            host=f"{host}:{port}")
@@ -456,6 +480,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 )
                 channel.settimeout(0.1)
         else:
+            if connection_cancelled():
+                return None, "Connection cancelled"
             channel = paramiko_channels.open_shell_channel(
                 transport,
                 timeout=config.SSH_CONNECT_TIMEOUT,
@@ -484,6 +510,12 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,
                 'tmux_session_name': tmux_session_name,
+                'tmux_reconnect': bool(
+                    use_tmux
+                    and reconnect_tmux_name
+                    and tmux_session_name == reconnect_tmux_name
+                ),
+                'client_request_id': client_request_id,
                 'output_buffer': [],
                 'output_buffer_size': 0,
                 'output_buffer_max': 512000,  # 512KB max buffer
@@ -493,10 +525,20 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
             }
             connection_stored = True
 
+        if connection_cancelled():
+            close_session(
+                session_id,
+                kill_tmux=bool(use_tmux and not reconnect_tmux_name),
+            )
+            return None, "Connection cancelled"
+
         if socketio_instance and app:
             lifecycle = getattr(app, 'extensions', {}).get('runtime_lifecycle')
             if lifecycle is None:
-                close_session(session_id, kill_tmux=use_tmux)
+                close_session(
+                    session_id,
+                    kill_tmux=bool(use_tmux and not reconnect_tmux_name),
+                )
                 return None, "Connection failed"
             try:
                 reader_handle = lifecycle.start_job(
@@ -512,7 +554,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     session_id=session_id,
                     error_type=type(exc).__name__,
                 )
-                close_session(session_id, kill_tmux=use_tmux)
+                close_session(
+                    session_id,
+                    kill_tmux=bool(use_tmux and not reconnect_tmux_name),
+                )
                 return None, "Connection failed"
             with sessions_lock:
                 active_session = sessions.get(session_id)
@@ -521,13 +566,44 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 else:
                     active_session['reader_handle'] = reader_handle
 
+        if connection_cancelled():
+            close_session(
+                session_id,
+                kill_tmux=bool(use_tmux and not reconnect_tmux_name),
+            )
+            return None, "Connection cancelled"
+
         if startup_commands and not reconnect_tmux_name:
             terminal_input = to_terminal_input(startup_commands).rstrip('\r') + '\r'
+            commit_if_active = getattr(cancel_event, 'commit_if_active', None)
+            if (
+                callable(commit_if_active)
+                and not commit_if_active()
+            ) or (
+                not callable(commit_if_active)
+                and connection_cancelled()
+            ):
+                close_session(
+                    session_id,
+                    kill_tmux=bool(use_tmux and not reconnect_tmux_name),
+                )
+                return None, "Connection cancelled"
             delivered, _delivery_error = send_ssh_input(
-                session_id, terminal_input, require_complete=True
+                session_id,
+                terminal_input,
+                require_complete=True,
+                # A successful commit_if_active() makes a user cancellation
+                # lose this race. Finish the bounded startup payload rather
+                # than acknowledge cancellation after a partial command may
+                # already have reached the remote shell.
+                cancel_event=(
+                    None if callable(commit_if_active) else cancel_event
+                ),
             )
             if not delivered:
                 close_session(session_id, kill_tmux=use_tmux)
+                if connection_cancelled():
+                    return None, "Connection cancelled"
                 return None, "Connection failed"
 
         return session_id, None
@@ -731,7 +807,12 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None):
 
         close_session(session_id)
 
-def send_ssh_input(session_id, data, require_complete=False):
+def send_ssh_input(
+    session_id,
+    data,
+    require_complete=False,
+    cancel_event=None,
+):
     """Send user input to SSH channel."""
     try:
         import re as _re
@@ -756,11 +837,15 @@ def send_ssh_input(session_id, data, require_complete=False):
         if require_complete:
             remaining = data.encode('utf-8') if isinstance(data, str) else data
             while remaining:
+                if cancel_event is not None and cancel_event.is_set():
+                    return False, "Connection cancelled"
                 sent = channel.send(remaining)
                 if not isinstance(sent, int) or sent <= 0:
                     return False, "Failed to send SSH input"
                 remaining = remaining[sent:]
         else:
+            if cancel_event is not None and cancel_event.is_set():
+                return False, "Connection cancelled"
             channel.send(data)
 
         with sessions_lock:
@@ -881,7 +966,9 @@ def get_session(session_id):
                 'connected': session['connected'],
                 'via_jump': session.get('proxy_jump_host'),
                 'use_tmux': session.get('use_tmux', False),
-                'tmux_session_name': session.get('tmux_session_name')
+                'tmux_session_name': session.get('tmux_session_name'),
+                'tmux_reconnect': session.get('tmux_reconnect', False),
+                'client_request_id': session.get('client_request_id'),
             }
     return None
 

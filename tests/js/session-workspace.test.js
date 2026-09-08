@@ -5,6 +5,9 @@ const {
     createCoordinator,
     createSftpCapabilityTracker,
 } = require('../../static/js/session-workspace.js');
+const {
+    createController: createFilesPanelController,
+} = require('../../static/js/session-files-panel.js');
 
 function createHarness(options = {}) {
     const calls = [];
@@ -553,7 +556,120 @@ test('SFTP capability tracker retries a busy probe without opening the pane', ()
     }]);
 });
 
-test('SFTP capability tracker cancels retries while the session is ineligible', () => {
+test('SFTP capability tracker keeps remote resource shortage retryable', () => {
+    const handlers = {};
+    const emitted = [];
+    const timers = new Map();
+    let nextTimer = 1;
+    let nextRequest = 1;
+    const { coordinator, calls } = createHarness({
+        isWideDesktop: () => true,
+    });
+    const updateCoordinator = () => coordinator.update({
+        layout: 1,
+        sessionId: 'capacity',
+        session: { host: 'capacity.example', connected: true },
+        sessionCount: 1,
+        sftpCapability: tracker.get('capacity'),
+    });
+    const tracker = createSftpCapabilityTracker({
+        socket: {
+            on(event, handler) { handlers[event] = handler; },
+            emit(event, payload) { emitted.push([event, payload]); },
+        },
+        onChange: updateCoordinator,
+        createRequestId: () => `probe-${nextRequest++}`,
+        setTimeoutFn(callback, delay) {
+            const id = nextTimer++;
+            timers.set(id, { callback, delay });
+            return id;
+        },
+        clearTimeoutFn(id) { timers.delete(id); },
+    });
+
+    updateCoordinator();
+    tracker.probeIfNeeded(coordinator.getState());
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        handlers.session_sftp_capability({
+            success: false,
+            available: false,
+            reason: 'resource_shortage',
+            session_id: 'capacity',
+            request_id: `probe-${attempt}`,
+        });
+        assert.equal(tracker.get('capacity'), 'resource_shortage');
+        assert.equal(coordinator.getState().sftpCapability, 'resource_shortage');
+        assert.equal(coordinator.getState().sftpProbeNeeded, true);
+        assert.equal(coordinator.getState().sftpOpen, false);
+        assert.deepEqual(
+            calls.filter(call => call[0] === 'files.status').at(-1),
+            ['files.status', 'resource_shortage', 'capacity.example']
+        );
+        const retry = [...timers.entries()]
+            .find(([_id, timer]) => timer.delay === 60000);
+        assert.notEqual(retry, undefined);
+        const emittedBeforeDuplicateProbe = emitted.length;
+        tracker.probeIfNeeded(coordinator.getState());
+        assert.equal(emitted.length, emittedBeforeDuplicateProbe);
+        assert.equal(
+            [...timers.values()].filter(timer => timer.delay === 60000).length,
+            1
+        );
+        timers.delete(retry[0]);
+        retry[1].callback();
+        assert.equal(tracker.get('capacity'), 'probing');
+        assert.equal(coordinator.getState().sftpCapability, 'probing');
+    }
+
+    assert.equal(emitted.at(-1)[1].request_id, 'probe-4');
+    handlers.session_sftp_capability({
+        success: true,
+        available: true,
+        session_id: 'capacity',
+        request_id: 'probe-4',
+    });
+    assert.equal(tracker.get('capacity'), 'available');
+    assert.equal(coordinator.getState().sftpEnabled, true);
+    assert.equal(coordinator.getState().sftpOpen, true);
+    assert.deepEqual(
+        calls.filter(call => call[0] === 'files.open'),
+        [['files.open', 'capacity', 'capacity.example']]
+    );
+    assert.equal(timers.size, 0);
+});
+
+test('Files panel explains temporary SFTP channel shortage and automatic retry', () => {
+    const container = { hidden: false };
+    const status = { hidden: true, textContent: '' };
+    const translations = [];
+    const panel = createFilesPanelController({
+        manager: {
+            openEmbedded() {},
+            isEmbeddedOpen() { return false; },
+        },
+        container,
+        status,
+        translate(key, fallback) {
+            translations.push([key, fallback]);
+            return key;
+        },
+    });
+
+    panel.setStatus('resource_shortage', {
+        username: 'ops',
+        host: 'capacity.example',
+    });
+
+    assert.equal(container.hidden, true);
+    assert.equal(status.hidden, false);
+    assert.equal(translations.at(-1)[0], 'workspace.sftpResourceShortage');
+    assert.equal(
+        status.textContent,
+        'The SSH server has no free channel capacity for SFTP on ops@capacity.example. WebSSH will retry automatically in about one minute.'
+    );
+});
+
+test('SFTP capability tracker cancels resource-shortage retry while session is ineligible', () => {
     const handlers = {};
     const emitted = [];
     const timers = new Map();
@@ -577,15 +693,17 @@ test('SFTP capability tracker cancels retries while the session is ineligible', 
     handlers.session_sftp_capability({
         success: false,
         available: false,
+        reason: 'resource_shortage',
         session_id: 's1',
         request_id: 'probe-1',
     });
-    assert.equal([...timers.values()].some(timer => timer.delay === 10000), true);
+    assert.equal(tracker.get('s1'), 'resource_shortage');
+    assert.equal([...timers.values()].some(timer => timer.delay === 60000), true);
 
     tracker.probeIfNeeded({
         sessionId: 's1',
         sftpProbeNeeded: false,
-        sftpCapability: 'probing',
+        sftpCapability: 'resource_shortage',
     });
 
     assert.equal(timers.size, 0);

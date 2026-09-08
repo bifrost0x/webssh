@@ -540,6 +540,46 @@ def test_probe_sftp_capability_hides_remote_failure(monkeypatch):
     assert sftp_handler.probe_sftp_capability('session-a') is False
 
 
+def test_probe_sftp_capability_explains_remote_channel_resource_shortage(
+        monkeypatch):
+    import paramiko
+    import app.sftp_handler as sftp_handler
+
+    transport = type('Transport', (), {'is_active': lambda self: True})()
+    client = type('Client', (), {'get_transport': lambda self: transport})()
+    monkeypatch.setitem(sftp_handler.ssh_manager.sessions, 'session-a', {
+        'connected': True,
+        'client': client,
+    })
+    monkeypatch.setattr(
+        sftp_handler,
+        'open_sftp_client',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            paramiko.ChannelException(4, 'server-controlled text')
+        ),
+    )
+    logged = []
+    monkeypatch.setattr(
+        sftp_handler,
+        'log_info',
+        lambda message, **fields: logged.append((message, fields)),
+    )
+
+    assert (
+        sftp_handler.probe_sftp_capability('session-a')
+        == sftp_handler.CAPABILITY_RESOURCE_SHORTAGE
+    )
+    assert logged == [(
+        'SFTP temporarily unavailable because the remote SSH server reported '
+        'insufficient capacity for an additional channel',
+        {
+            'session_id': 'session-a',
+            'ssh_channel_code': 4,
+            'ssh_channel_reason': 'remote_resource_shortage',
+        },
+    )]
+
+
 def test_probe_sftp_capability_uses_a_fresh_bounded_client(monkeypatch):
     import app.sftp_handler as sftp_handler
 

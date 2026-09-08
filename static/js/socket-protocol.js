@@ -9,7 +9,7 @@
 })(typeof window !== 'undefined' ? window : globalThis, function() {
     'use strict';
 
-    const WIRE_REVISION = 1;
+    const WIRE_REVISION = 2;
     const MISMATCH_EVENT = 'socket_protocol_mismatch';
     const RELOAD_GUARD_KEY = 'webssh:socket-protocol-reload';
 

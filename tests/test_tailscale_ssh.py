@@ -515,7 +515,9 @@ def test_tailscale_tmux_reconnect_survives_webssh_restart(app, monkeypatch):
         return {
             'connected': True,
             'auth_type': 'tailscale',
+            'use_tmux': True,
             'tmux_session_name': 'webssh_tiny_root',
+            'tmux_reconnect': True,
         }
 
     monkeypatch.setattr(ssh_manager, 'create_ssh_connection', fake_create_ssh_connection)

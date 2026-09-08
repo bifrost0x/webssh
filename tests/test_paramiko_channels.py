@@ -1,9 +1,124 @@
+import logging
 import socket
 import threading
 import time
 
 import paramiko
 import pytest
+
+
+def _invoke_channel_open_failure(channel_id, reason_code, description):
+    transport = object.__new__(paramiko.Transport)
+    transport.logger = logging.getLogger('paramiko.transport')
+    transport.lock = threading.Lock()
+    transport.channel_events = {}
+    transport.saved_exception = None
+
+    message = paramiko.Message()
+    message.add_int(channel_id)
+    message.add_int(reason_code)
+    message.add_string(description)
+    message.add_string('en')
+    message.rewind()
+    transport._parse_channel_open_failure(message)
+    return transport.saved_exception
+
+
+@pytest.mark.parametrize(
+    ('reason_code', 'reason_text'),
+    [
+        (1, 'Administratively prohibited'),
+        (2, 'Connect failed'),
+        (3, 'Unknown channel type'),
+        (4, 'Resource shortage'),
+        (99, '(unknown code)'),
+    ],
+)
+def test_paramiko_channel_open_failure_log_omits_remote_description(
+        caplog, reason_code, reason_text):
+    from app import paramiko_channels  # noqa: F401
+
+    caplog.set_level(logging.ERROR, logger='paramiko.transport')
+    remote_description = 'attacker-line\nFORGED\r\x1b[31m\x00'
+
+    error = _invoke_channel_open_failure(27, reason_code, remote_description)
+
+    assert caplog.messages == [
+        'Secsh channel 27 open FAILED: '
+        f'{reason_text} (server description omitted)'
+    ]
+    assert remote_description not in caplog.text
+    assert 'FORGED' not in caplog.text
+    assert '\x1b' not in caplog.text
+    assert '\x00' not in caplog.text
+    assert error.code == reason_code
+    assert error.text == reason_text
+
+
+def test_paramiko_channel_log_filter_preserves_unrelated_records(caplog):
+    from app import paramiko_channels  # noqa: F401
+
+    caplog.set_level(logging.ERROR, logger='paramiko.transport')
+    logger = logging.getLogger('paramiko.transport')
+
+    logger.error('Unrelated Paramiko error: %s', 'connection reset')
+
+    assert caplog.messages == [
+        'Unrelated Paramiko error: connection reset'
+    ]
+
+
+def test_paramiko_channel_log_filter_installation_is_idempotent():
+    from app import paramiko_channels
+
+    logger = logging.getLogger('paramiko.transport')
+    paramiko_channels._install_channel_open_failure_log_filter()
+    paramiko_channels._install_channel_open_failure_log_filter()
+
+    assert sum(
+        bool(getattr(
+            log_filter,
+            paramiko_channels._CHANNEL_OPEN_FAILURE_FILTER_MARKER,
+            False,
+        ))
+        for log_filter in logger.filters
+    ) == 1
+
+
+def test_optional_channel_rejection_fields_accepts_only_remote_resource_shortage():
+    from app import paramiko_channels
+
+    assert paramiko_channels.optional_channel_rejection_fields(
+        paramiko.ChannelException(4, 'server-controlled text')
+    ) == {
+        'ssh_channel_code': 4,
+        'ssh_channel_reason': 'remote_resource_shortage',
+    }
+    assert paramiko_channels.optional_channel_rejection_fields(
+        paramiko.ChannelException(1, 'Administratively prohibited')
+    ) is None
+    assert paramiko_channels.optional_channel_rejection_fields(
+        paramiko.SSHException('transport race')
+    ) is None
+
+
+def test_primary_shell_keeps_remote_resource_shortage_fatal():
+    from app import paramiko_channels
+
+    class RejectingTransport:
+        def open_session(self, timeout=None):
+            raise paramiko.ChannelException(4, 'Resource shortage')
+
+    with pytest.raises(paramiko.ChannelException) as error:
+        paramiko_channels.open_shell_channel(
+            RejectingTransport(),
+            timeout=1,
+            term='xterm-256color',
+            width=80,
+            height=24,
+        )
+
+    assert error.value.code == 4
 
 
 class BlockingTransport:

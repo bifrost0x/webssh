@@ -1,6 +1,7 @@
 """Tests for post-connect command normalization and terminal input."""
 
 from pathlib import Path
+import threading
 
 import paramiko
 import pytest
@@ -243,6 +244,214 @@ def test_create_ssh_connection_delivers_startup_commands_once(
     ssh_manager.close_session(session_id)
 
 
+def test_cancelled_connection_never_delivers_startup_commands(monkeypatch):
+    from app import ssh_manager
+
+    cancel_event = threading.Event()
+
+    class CancelWhenShellIsReady(_StartupCommandChannel):
+        def settimeout(self, _timeout):
+            cancel_event.set()
+
+    channel = CancelWhenShellIsReady()
+    client = _StartupCommandClient(channel)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        user_id=1,
+        startup_commands='touch should-not-run',
+        cancel_event=cancel_event,
+    )
+
+    assert session_id is None
+    assert error == 'Connection cancelled'
+    assert channel.sent == []
+    assert channel.closed
+    assert client.closed
+    assert ssh_manager.sessions == {}
+
+
+def test_cancellation_while_formatting_startup_commands_sends_nothing(monkeypatch):
+    from app import ssh_manager
+
+    cancel_event = threading.Event()
+    channel = _StartupCommandChannel()
+    client = _StartupCommandClient(channel)
+    original_to_terminal_input = ssh_manager.to_terminal_input
+
+    def cancel_during_formatting(commands):
+        cancel_event.set()
+        return original_to_terminal_input(commands)
+
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+    monkeypatch.setattr(
+        ssh_manager,
+        'to_terminal_input',
+        cancel_during_formatting,
+    )
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        user_id=1,
+        startup_commands='touch should-not-run',
+        cancel_event=cancel_event,
+    )
+
+    assert session_id is None
+    assert error == 'Connection cancelled'
+    assert channel.sent == []
+    assert channel.closed
+    assert client.closed
+    assert ssh_manager.sessions == {}
+
+
+def test_cancellation_stops_partial_startup_command_delivery(monkeypatch):
+    from app import ssh_manager
+
+    cancel_event = threading.Event()
+
+    class CancelAfterFirstChunk(_StartupCommandChannel):
+        def send(self, data):
+            sent = super().send(data)
+            cancel_event.set()
+            return sent
+
+    channel = CancelAfterFirstChunk(max_send_size=4)
+    client = _StartupCommandClient(channel)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        user_id=1,
+        startup_commands='touch should-not-run',
+        cancel_event=cancel_event,
+    )
+
+    assert session_id is None
+    assert error == 'Connection cancelled'
+    assert channel.sent == [b'touc']
+    assert channel.closed
+    assert client.closed
+    assert ssh_manager.sessions == {}
+
+
+def test_user_cancel_is_rejected_after_startup_delivery_commits(monkeypatch):
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    send_started = threading.Event()
+    release_send = threading.Event()
+
+    class BlockingFullSend(_StartupCommandChannel):
+        def send(self, data):
+            send_started.set()
+            assert release_send.wait(2)
+            return super().send(data)
+
+    channel = BlockingFullSend()
+    client = _StartupCommandClient(channel)
+    user_cancel = threading.Event()
+    lifecycle_cancel = threading.Event()
+    attempt = {
+        'cancel_event': user_cancel,
+        'commit_lock': threading.Lock(),
+        'state': 'pending',
+    }
+    cancellation = socket_events._CombinedCancellation(
+        user_cancel,
+        lifecycle_cancel,
+        attempt['commit_lock'],
+        attempt,
+    )
+    result = {}
+
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    def connect():
+        result['value'] = ssh_manager.create_ssh_connection(
+            host='target.example',
+            port=22,
+            username='alice',
+            password='secret',
+            user_id=1,
+            startup_commands='touch committed-command',
+            cancel_event=cancellation,
+        )
+
+    worker = threading.Thread(target=connect)
+    worker.start()
+    try:
+        assert send_started.wait(2)
+        assert attempt['state'] == 'committed'
+        assert socket_events._try_cancel_ssh_attempt(attempt) is False
+        assert not user_cancel.is_set()
+    finally:
+        release_send.set()
+        worker.join(2)
+
+    assert not worker.is_alive()
+    session_id, error = result['value']
+    assert error is None
+    assert b''.join(channel.sent) == b'touch committed-command\r'
+    assert session_id in ssh_manager.sessions
+    ssh_manager.close_session(session_id)
+
+
+def test_user_cancel_before_startup_commit_sends_nothing(monkeypatch):
+    from app import ssh_manager
+    import app.socket_events as socket_events
+
+    channel = _StartupCommandChannel()
+    client = _StartupCommandClient(channel)
+    user_cancel = threading.Event()
+    attempt = {
+        'cancel_event': user_cancel,
+        'commit_lock': threading.Lock(),
+        'state': 'pending',
+    }
+    cancellation = socket_events._CombinedCancellation(
+        user_cancel,
+        threading.Event(),
+        attempt['commit_lock'],
+        attempt,
+    )
+    assert socket_events._try_cancel_ssh_attempt(attempt) is True
+
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        user_id=1,
+        startup_commands='touch should-not-run',
+        cancel_event=cancellation,
+    )
+
+    assert session_id is None
+    assert error == 'Connection cancelled'
+    assert channel.sent == []
+    assert channel.closed is False
+    assert client.closed is False
+    assert ssh_manager.sessions == {}
+
+
 def test_create_ssh_connection_delivers_all_startup_commands_after_partial_send(monkeypatch):
     from app import ssh_manager
 
@@ -349,6 +558,43 @@ def test_create_ssh_connection_kills_new_tmux_when_startup_delivery_fails(monkey
     assert tmux_channel.close_calls == 1
     assert kill_channel.close_calls == 1
     assert client.close_calls == 1
+
+
+def test_output_reader_start_failure_detaches_existing_tmux(monkeypatch):
+    from app import ssh_manager
+
+    class RejectingLifecycle:
+        def start_job(self, *_args, **_kwargs):
+            raise RuntimeError('reader unavailable')
+
+    class FakeApp:
+        extensions = {'runtime_lifecycle': RejectingLifecycle()}
+
+    transport = _StartupCommandTransport()
+    client = _StartupCommandClient(_StartupCommandChannel(), transport=transport)
+    monkeypatch.setattr(ssh_manager.paramiko, 'SSHClient', lambda: client)
+    monkeypatch.setattr(ssh_manager.time, 'sleep', lambda _seconds: None)
+
+    session_id, error = ssh_manager.create_ssh_connection(
+        host='target.example',
+        port=22,
+        username='alice',
+        password='secret',
+        user_id=1,
+        use_tmux=True,
+        reconnect_tmux_name='existing_session',
+        socketio_instance=object(),
+        app=FakeApp(),
+    )
+
+    assert session_id is None
+    assert error == 'Connection failed'
+    assert ssh_manager.sessions == {}
+    probe_channel, tmux_channel = transport.session_channels
+    assert probe_channel.command == 'command -v tmux'
+    assert tmux_channel.command == 'tmux new-session -A -s existing_session'
+    assert tmux_channel.closed
+    assert client.closed
 
 
 def test_connection_form_offers_free_text_command_and_named_set_modes():

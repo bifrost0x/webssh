@@ -110,12 +110,17 @@
         }
 
         function syncSessionToolAvailability() {
-            const hasSession = Boolean(sessionManager?.getActiveSession?.());
+            const interactiveSessionId = sessionManager?.getActiveSession?.();
+            const workspaceSessionId = sessionManager?.getWorkspaceSession?.()
+                || interactiveSessionId;
             Object.entries(SESSION_TOOL_TARGETS).forEach(([view, config]) => {
                 const button = elements.dockItems.find(
                     item => item.dataset.mobileView === view,
                 );
                 const tab = byId(config.targetId);
+                const hasSession = view === 'session-commands'
+                    ? Boolean(interactiveSessionId)
+                    : Boolean(workspaceSessionId);
                 const available = Boolean(
                     hasSession
                     && tab
@@ -129,7 +134,9 @@
         }
 
         function updateSessionSummary() {
-            const sessionId = sessionManager?.getActiveSession?.();
+            const interactiveSessionId = sessionManager?.getActiveSession?.();
+            const sessionId = sessionManager?.getWorkspaceSession?.()
+                || interactiveSessionId;
             const session = sessionId ? sessionManager?.getSession?.(sessionId) : null;
             const connected = Boolean(session?.connected);
             const label = session
@@ -155,8 +162,10 @@
                 'disconnected',
                 Boolean(session && !connected),
             );
-            if (elements.commandToggle) elements.commandToggle.disabled = !session;
-            if (!session) setCommandOpen(false);
+            if (elements.commandToggle) {
+                elements.commandToggle.disabled = !interactiveSessionId;
+            }
+            if (!interactiveSessionId) setCommandOpen(false);
             syncSessionToolAvailability();
             renderDockSelection();
         }
@@ -312,7 +321,8 @@
         }
 
         function handleSessionSummary() {
-            const sessionId = sessionManager?.getActiveSession?.();
+            const sessionId = sessionManager?.getWorkspaceSession?.()
+                || sessionManager?.getActiveSession?.();
             const tab = sessionId ? byId(`tab-${sessionId}`) : null;
             tab?.scrollIntoView?.({behavior: 'smooth', block: 'nearest', inline: 'center'});
             tab?.focus?.();

@@ -432,6 +432,31 @@ def test_sftp_capability_probe_reports_busy_as_retryable_generic_failure(monkeyp
     })]
 
 
+def test_sftp_capability_probe_preserves_remote_resource_shortage(monkeypatch):
+    emitted, user = _capture(monkeypatch)
+    monkeypatch.setattr(socket_events, 'check_socket_rate_limit', lambda *_args: False)
+    monkeypatch.setattr(
+        socket_events.sftp_handler,
+        'probe_sftp_capability',
+        lambda _session_id: (
+            socket_events.sftp_handler.CAPABILITY_RESOURCE_SHORTAGE
+        ),
+    )
+
+    socket_events.handle_probe_session_sftp.__wrapped__({
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:capacity',
+    }, current_user=user)
+
+    assert emitted == [('session_sftp_capability', {
+        'success': False,
+        'session_id': 'session-a',
+        'request_id': 'sftp-probe:capacity',
+        'available': False,
+        'reason': 'resource_shortage',
+    })]
+
+
 def test_sftp_capability_probe_rejects_unowned_session_generically(monkeypatch):
     emitted, user = _capture(monkeypatch)
     monkeypatch.setattr(socket_events, 'check_socket_rate_limit', lambda *_args: False)

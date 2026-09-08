@@ -264,6 +264,7 @@ test('Settings presents GitHub as a security method and collapses its admin guid
 
 test('return-to-connection command-set editing still behaves as a nested modal', async ({ page }) => {
     await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await page.evaluate(() => window.CommandSetManager.openBuilder(null, true));
 

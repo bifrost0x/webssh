@@ -141,7 +141,8 @@
         });
 
         function sync() {
-            const activeId = sessionManager.getActiveSession();
+            const activeId = sessionManager.getWorkspaceSession?.()
+                || sessionManager.getActiveSession();
             const activeSession = activeId ? sessionManager.getSession(activeId) : null;
             const connected = Boolean(activeId && activeSession?.connected);
             coordinator.update({
@@ -159,10 +160,12 @@
             }
         }
 
-        documentRef.addEventListener('session-sftp-request-close', () => {
+        documentRef.addEventListener('session-sftp-request-close', event => {
             if (coordinator.getState().sftpOpen) coordinator.toggleSftp();
             if (root.workspaceLayoutController?.getState?.().activeContext === 'files') {
-                root.workspaceLayoutController.closeContext('programmatic');
+                root.workspaceLayoutController.closeContext(
+                    event.detail?.reason === 'user' ? 'user' : 'programmatic'
+                );
             }
         });
 

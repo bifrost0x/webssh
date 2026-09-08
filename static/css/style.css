@@ -865,6 +865,9 @@ body[data-theme="paper"] .terminal-pane {
 }
 
 .tab-close {
+    appearance: none;
+    border: 0;
+    background: transparent;
     font-size: 16px;
     line-height: 1;
     color: var(--text-secondary);
@@ -1946,6 +1949,26 @@ body.broadcast-active .terminal-wrapper:not(.unassigned) {
 .profile-launcher-hint {
     color: var(--text-secondary);
     font-size: 13px;
+}
+
+.profile-launcher-return {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 100%;
+}
+
+.profile-launcher-return .material-icons {
+    flex: 0 0 auto;
+    font-size: 18px;
+}
+
+.profile-launcher-return span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .profile-launcher-search,

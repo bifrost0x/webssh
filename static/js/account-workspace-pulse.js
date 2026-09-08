@@ -12,7 +12,8 @@
     function getWorkspacePulseState(sessionManager) {
         const sessions = sessionManager?.getAllSessions?.()
             || Object.values(sessionManager?.sessions || {});
-        const activeSessionId = sessionManager?.getActiveSession?.()
+        const activeSessionId = sessionManager?.getWorkspaceSession?.()
+            || sessionManager?.getActiveSession?.()
             || sessionManager?.activeSessionId
             || null;
         const activeSession = activeSessionId
