@@ -1571,6 +1571,111 @@ test('a late cancellation keeps and opens the already committed connection', asy
     await assertNoExternalRequests(page);
 });
 
+test('a completed connection explains a cancellation acknowledgement that arrives later', async ({ page }) => {
+    await login(page);
+
+    await page.evaluate(() => {
+        ProfileManager.keys = [{ id: 'completion-race-key', usable: true }];
+        ProfileManager.profilesLoaded = true;
+        ProfileManager.profiles = [{
+            id: 'completion-race-profile',
+            name: 'Completion race host',
+            host: 'completion-race.example',
+            port: 22,
+            username: 'deploy',
+            auth_type: 'key',
+            key_id: 'completion-race-key',
+            startup_mode: 'none',
+        }];
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__completionRaceEvents = [];
+        window.__completionRaceCancelAcknowledgement = null;
+        window.socket.emit = function holdCompletionRace(event, payload, ...rest) {
+            if (
+                event === 'ssh_connect'
+                || event === 'ssh_connect_cancel'
+                || event === 'ssh_discard_late_connection'
+            ) {
+                window.__completionRaceEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                if (event === 'ssh_connect_cancel') {
+                    window.__completionRaceCancelAcknowledgement = rest[0];
+                }
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+        SessionManager.renderPane(SessionManager.getActivePaneIndex());
+    });
+
+    await page.locator('[data-profile-id="completion-race-profile"]').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__completionRaceEvents.find(entry => entry.event === 'ssh_connect')
+            ?.payload.client_request_id
+    ))).toBeTruthy();
+    const requestId = await page.evaluate(() => (
+        window.__completionRaceEvents.find(entry => entry.event === 'ssh_connect')
+            .payload.client_request_id
+    ));
+    const pendingTab = page.locator(`[data-pending-id="${requestId}"]`).first();
+    await pendingTab.getByRole('button', { name: 'Cancel connection' }).click();
+    await expect.poll(() => page.evaluate(activeRequestId => ({
+        cancelRequests: window.__completionRaceEvents.filter(entry => (
+            entry.event === 'ssh_connect_cancel'
+            && entry.payload.client_request_id === activeRequestId
+        )).length,
+        hasAcknowledgement: (
+            typeof window.__completionRaceCancelAcknowledgement === 'function'
+        ),
+    }), requestId)).toEqual({
+        cancelRequests: 1,
+        hasAcknowledgement: true,
+    });
+
+    await page.evaluate(activeRequestId => {
+        window.socket.listeners('ssh_connected').forEach(listener => listener({
+            session_id: 'completion-race-session',
+            host: 'completion-race.example',
+            port: 22,
+            username: 'deploy',
+            client_request_id: activeRequestId,
+        }));
+    }, requestId);
+
+    await expect(pendingTab).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('completion-race-session');
+
+    await page.evaluate(() => {
+        const acknowledge = window.__completionRaceCancelAcknowledgement;
+        window.__completionRaceCancelAcknowledgement = null;
+        acknowledge({
+            success: false,
+            cancelled: false,
+            reason: 'not_found',
+        });
+    });
+
+    await expect(page.getByText(
+        'Cancellation was too late. The connection had already opened and remains active.',
+        { exact: true },
+    )).toBeVisible();
+    expect(await page.evaluate(() => ({
+        active: SessionManager.getActiveSession(),
+        connected: SessionManager.getSession('completion-race-session')?.connected,
+        discards: window.__completionRaceEvents.filter(
+            entry => entry.event === 'ssh_discard_late_connection'
+        ),
+    }))).toEqual({
+        active: 'completion-race-session',
+        connected: true,
+        discards: [],
+    });
+    await assertNoExternalRequests(page);
+});
+
 test('a lost cancellation acknowledgement stays retryable and clears a finished request safely', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);

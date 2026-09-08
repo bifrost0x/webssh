@@ -1280,6 +1280,7 @@
         pendingRequestPaneMap.clear();
         cancelledConnectRequestIds.clear();
         cancellingConnectRequestIds.clear();
+        completedWhileCancellingRequestIds.clear();
         cancelledSessionIds.clear();
         currentConnectRequestId = null;
         connectionModalRequestId = null;
@@ -1305,6 +1306,13 @@
         const requestId = typeof data?.client_request_id === 'string'
             ? data.client_request_id
             : null;
+        if (requestId && cancellingConnectRequestIds.has(requestId)) {
+            // A completed connection and its cancellation ACK share one
+            // ordered socket stream, but the success event can arrive first.
+            // Retain that correlation after the success handler clears the
+            // pending UI so the ACK can explain that cancellation was too late.
+            rememberTransientId(completedWhileCancellingRequestIds, requestId);
+        }
         if (requestId && cancelledConnectRequestIds.delete(requestId)) {
             closeAuthBannerPrompt(requestId);
             pendingRequestPaneMap.delete(requestId);
@@ -1517,6 +1525,7 @@
     const pendingRequestPaneMap = new Map();
     const cancelledConnectRequestIds = new Set();
     const cancellingConnectRequestIds = new Set();
+    const completedWhileCancellingRequestIds = new Set();
     const cancelledSessionIds = new Set();
     let connectTimer = null;
     let connectSeconds = 0;
@@ -1737,12 +1746,25 @@
                 requestId === currentConnectRequestId
                 || pendingRequestPaneMap.has(requestId)
             );
+            const completedWhileCancelling = (
+                completedWhileCancellingRequestIds.delete(requestId)
+            );
             let cancelled = acknowledgement?.cancelled === true || (
                 acknowledgement?.success === true
                 && acknowledgement?.cancelled !== false
             );
             if (cancelled) {
                 finishConnectionCancellation(requestId);
+            } else if (completedWhileCancelling) {
+                // The commit won and the success event was already handled.
+                // Keep the usable connection and make the rejected
+                // cancellation explicit instead of silently ignoring it.
+                showNotification(
+                    window.i18n
+                        ? i18n.t('connection.cancelCompleted')
+                        : 'Cancellation was too late. The connection had already opened and remains active.',
+                    'info',
+                );
             } else if (
                 acknowledgement?.reason === 'not_found'
                 && requestStillPending
