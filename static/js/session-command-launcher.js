@@ -218,8 +218,7 @@
 
         sync() {
             const sessionManager = getSessionManager();
-            const paneIndex = sessionManager?.getActivePaneIndex?.();
-            const sessionId = sessionManager?.paneAssignments?.[paneIndex];
+            const sessionId = sessionManager?.getActiveSession?.();
             const session = sessionId ? sessionManager.getSession(sessionId) : null;
             const connected = Boolean(sessionId && session?.connected);
             this.activeSessionId = connected ? sessionId : null;

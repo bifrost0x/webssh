@@ -8,6 +8,7 @@ const SessionManager = {
     pendingConnections: {},
     layout: 1,
     paneAssignments: [],
+    connectionLauncherSessions: new Map(),
     activePaneIndex: 0,
     confirmSessionClose: document.body?.dataset.confirmSessionClose === 'true',
     disconnectSessionAction: ['retry', 'close'].includes(
@@ -347,6 +348,10 @@ const SessionManager = {
 
         const assignedIndex = this.paneAssignments.findIndex(id => id === sessionId);
         if (assignedIndex !== -1) {
+            if (this.connectionLauncherSessions.has(assignedIndex)) {
+                this.restoreConnectionLauncher(assignedIndex);
+                return;
+            }
             this.setActivePane(assignedIndex);
             return;
         }
@@ -395,6 +400,7 @@ const SessionManager = {
 
         const paneIndex = this.paneAssignments.findIndex(id => id === sessionId);
         if (paneIndex !== -1) {
+            this.connectionLauncherSessions.delete(paneIndex);
             this.paneAssignments[paneIndex] = null;
             this.renderPane(paneIndex);
         }
@@ -600,12 +606,14 @@ const SessionManager = {
         tabLabel.className = 'tab-label';
         tabLabel.textContent = `${username}@${host}`;
 
-        const tabClose = document.createElement('span');
+        const tabClose = document.createElement('button');
+        tabClose.type = 'button';
         tabClose.className = 'tab-close';
         tabClose.dataset.pendingId = requestId;
         tabClose.classList.add('material-icons');
         tabClose.textContent = 'close';
         tabClose.setAttribute('aria-label', 'Cancel connection');
+        tabClose.setAttribute('title', 'Cancel connection');
 
         tab.appendChild(statusDot);
         tab.appendChild(tabLabel);
@@ -613,7 +621,10 @@ const SessionManager = {
 
         tabClose.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.clearPendingConnection(requestId);
+            window.dispatchEvent?.(new CustomEvent(
+                'ssh-connection-cancel-requested',
+                { detail: { requestId } },
+            ));
         });
 
         document.getElementById('sessionTabs').appendChild(tab);
@@ -622,10 +633,27 @@ const SessionManager = {
 
     clearPendingConnection(requestId) {
         const tab = document.getElementById(`pending-${requestId}`);
+        const shouldRestoreFocus = Boolean(
+            tab && tab.contains?.(document.activeElement)
+        );
         if (tab) {
             tab.remove();
         }
         delete this.pendingConnections[requestId];
+        if (shouldRestoreFocus) {
+            const restoreFocus = () => {
+                if (this.getActiveSession()) {
+                    this.focusActivePane();
+                } else {
+                    this.focusConnectionLauncher(this.activePaneIndex);
+                }
+            };
+            if (typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(restoreFocus);
+            } else {
+                restoreFocus();
+            }
+        }
     },
 
     getDisplayLabel(sessionId, username, host) {
@@ -688,7 +716,10 @@ const SessionManager = {
         input.focus();
         input.select();
 
+        let renameFinished = false;
         const finishRename = (save) => {
+            if (renameFinished) return;
+            renameFinished = true;
             const newName = input.value.trim();
             input.remove();
 
@@ -801,7 +832,7 @@ const SessionManager = {
         window.dispatchEvent(new CustomEvent('session-workspace-change', {
             detail: {
                 layout: this.layout,
-                sessionId: this.activeSessionId,
+                sessionId: this.getWorkspaceSession(),
             },
         }));
     },
@@ -817,6 +848,7 @@ const SessionManager = {
         }
 
         const previousAssignments = this.paneAssignments.slice();
+        this.connectionLauncherSessions.clear();
         this.layout = layout;
         this.paneAssignments = new Array(layout).fill(null);
         for (let i = 0; i < layout; i++) {
@@ -858,7 +890,8 @@ const SessionManager = {
 
     refreshEmptyPanes() {
         this.paneAssignments.forEach((sessionId, index) => {
-            if (!this.paneAssignments[index]) {
+            if (!this.paneAssignments[index]
+                    || this.connectionLauncherSessions.has(index)) {
                 this.renderPane(index);
             }
         });
@@ -876,7 +909,8 @@ const SessionManager = {
         pane.innerHTML = '';
 
         const sessionId = this.paneAssignments[paneIndex];
-        if (sessionId) {
+        const launcherSessionId = this.connectionLauncherSessions.get(paneIndex);
+        if (sessionId && !launcherSessionId) {
             const session = this.sessions[sessionId];
             if (!session) {
                 return;
@@ -890,8 +924,27 @@ const SessionManager = {
             return;
         }
 
+        if (sessionId && launcherSessionId) {
+            const session = this.sessions[sessionId];
+            const wrapper = session
+                ? document.getElementById(session.terminalId)
+                : null;
+            const container = document.getElementById('terminalsContainer');
+            if (wrapper && container && wrapper.parentElement !== container) {
+                wrapper.classList.add('unassigned');
+                container.appendChild(wrapper);
+            }
+        }
+
         const empty = typeof ProfileManager !== 'undefined'
-            ? ProfileManager.createEmptyPaneContent(paneIndex)
+            ? ProfileManager.createEmptyPaneContent(paneIndex, launcherSessionId ? {
+                returnLabel: this.getDisplayLabel(
+                    launcherSessionId,
+                    this.sessions[launcherSessionId]?.username,
+                    this.sessions[launcherSessionId]?.host,
+                ),
+                onReturn: () => this.restoreConnectionLauncher(paneIndex),
+            } : {})
             : document.createElement('div');
         if (!empty.className) {
             empty.className = 'pane-empty';
@@ -912,9 +965,11 @@ const SessionManager = {
             return;
         }
 
+        this.connectionLauncherSessions.delete(paneIndex);
         const clearedIndices = [];
         this.paneAssignments = this.paneAssignments.map((existing, index) => {
             if (existing === sessionId) {
+                this.connectionLauncherSessions.delete(index);
                 clearedIndices.push(index);
                 return null;
             }
@@ -954,13 +1009,25 @@ const SessionManager = {
         if (paneIndex < 0 || paneIndex >= this.paneAssignments.length) {
             return;
         }
+        const previousPaneIndex = this.activePaneIndex;
+        if (
+            previousPaneIndex !== paneIndex
+            && this.connectionLauncherSessions.has(previousPaneIndex)
+        ) {
+            this.restoreConnectionLauncher(previousPaneIndex, { activate: false });
+        }
+
         this.activePaneIndex = paneIndex;
         grid.querySelectorAll('.terminal-pane').forEach(pane => {
             pane.classList.toggle('active', pane.dataset.paneIndex === String(paneIndex));
         });
 
-        const sessionId = this.paneAssignments[paneIndex] || null;
-        this.activeSessionId = sessionId;
+        const assignedSessionId = this.paneAssignments[paneIndex] || null;
+        const launcherOpen = this.connectionLauncherSessions.has(paneIndex);
+        const sessionId = assignedSessionId;
+        // Preserve the pane context for Files and diagnostics, but never expose
+        // a hidden terminal as the target for paste, mobile input, or commands.
+        this.activeSessionId = launcherOpen ? null : sessionId;
         this.updateSessionMeta(sessionId);
 
         document.querySelectorAll('.session-tab').forEach(tab => {
@@ -972,9 +1039,13 @@ const SessionManager = {
                 tab.classList.add('active');
             }
         }
-        this.focusActivePane();
+        if (launcherOpen) {
+            this.focusConnectionLauncher(paneIndex);
+        } else {
+            this.focusActivePane();
+        }
 
-        if (sessionId) {
+        if (sessionId && !launcherOpen) {
             setTimeout(() => {
                 TerminalManager.fitAndSyncVisibleTerminals({
                     socket: window.socket,
@@ -990,7 +1061,7 @@ const SessionManager = {
     },
 
     focusActivePane() {
-        const sessionId = this.paneAssignments[this.activePaneIndex];
+        const sessionId = this.getActiveSession();
         if (!sessionId) {
             return;
         }
@@ -1001,7 +1072,7 @@ const SessionManager = {
     },
 
     getActiveTerminal() {
-        const sessionId = this.paneAssignments[this.activePaneIndex];
+        const sessionId = this.getActiveSession();
         if (!sessionId) {
             return null;
         }
@@ -1010,6 +1081,14 @@ const SessionManager = {
 
     getActivePaneIndex() {
         return this.activePaneIndex;
+    },
+
+    isConnectionLauncherOpen(paneIndex = this.activePaneIndex) {
+        return this.connectionLauncherSessions.has(paneIndex);
+    },
+
+    getWorkspaceSession() {
+        return this.paneAssignments[this.activePaneIndex] || null;
     },
 
     getFirstEmptyPaneIndex() {
@@ -1037,15 +1116,47 @@ const SessionManager = {
             ? document.getElementById(session.terminalId)
             : null;
         const container = document.getElementById('terminalsContainer');
+        if (window.TerminalSearch?.isOpen) {
+            window.TerminalSearch.close();
+        }
+        const workspaceState = window.workspaceLayoutController?.getState?.();
+        if (workspaceState?.mode !== 'desktop' && workspaceState?.activeContext) {
+            window.workspaceLayoutController.closeContext?.('connection-launcher');
+        }
         if (wrapper && container) {
             wrapper.classList.add('unassigned');
             container.appendChild(wrapper);
         }
 
-        this.paneAssignments[paneIndex] = null;
+        if (sessionId) {
+            this.connectionLauncherSessions.set(paneIndex, sessionId);
+        }
         this.renderPane(paneIndex);
         this.setActivePane(paneIndex);
         return true;
+    },
+
+    restoreConnectionLauncher(paneIndex, options = {}) {
+        if (!this.connectionLauncherSessions.has(paneIndex)) {
+            return false;
+        }
+        this.connectionLauncherSessions.delete(paneIndex);
+        this.renderPane(paneIndex);
+        if (options.activate !== false) {
+            this.setActivePane(paneIndex);
+        }
+        return true;
+    },
+
+    focusConnectionLauncher(paneIndex = this.activePaneIndex) {
+        const grid = this.ensureTerminalGrid();
+        const pane = grid?.querySelector(
+            `.terminal-pane[data-pane-index="${paneIndex}"]`
+        );
+        pane?.querySelector(
+            '.profile-launcher-return, .profile-launcher-search, '
+            + '.profile-launcher-card, .profile-launcher-new'
+        )?.focus?.();
     },
 
     updateSplitControls() {
@@ -1476,6 +1587,7 @@ const SessionManager = {
             return;
         }
 
+        this.connectionLauncherSessions.clear();
         this.layout = layout;
         this.paneAssignments = new Array(layout).fill(null);
 

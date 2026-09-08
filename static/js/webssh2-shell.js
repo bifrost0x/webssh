@@ -65,7 +65,8 @@
         };
 
         function render() {
-            const activeId = sessionManager.getActiveSession?.();
+            const activeId = sessionManager.getWorkspaceSession?.()
+                || sessionManager.getActiveSession?.();
             const session = activeId
                 ? sessionManager.getSession?.(activeId)
                 : null;

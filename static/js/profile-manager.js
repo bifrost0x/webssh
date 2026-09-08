@@ -303,9 +303,16 @@ const ProfileManager = {
         });
     },
 
-    createEmptyPaneContent(paneIndex) {
+    createEmptyPaneContent(paneIndex, options = {}) {
         const empty = document.createElement('div');
         empty.className = 'pane-empty profile-launcher';
+        const returnLabel = typeof options.returnLabel === 'string'
+            ? options.returnLabel.trim()
+            : '';
+        const canReturn = returnLabel && typeof options.onReturn === 'function';
+        if (canReturn) {
+            empty.classList.add('profile-launcher-replacement');
+        }
 
         const icon = document.createElement('div');
         icon.className = 'pane-empty-icon material-icons';
@@ -316,17 +323,46 @@ const ProfileManager = {
         const profiles = this.profilesLoaded ? this.profiles : [];
         const title = document.createElement('div');
         title.className = 'profile-launcher-title';
-        title.textContent = profiles.length
+        title.textContent = canReturn
+            ? this.t('panes.selectSession', 'Select a session or use Quick Connect')
+            : profiles.length
             ? (window.i18n ? i18n.t('connection.savedProfiles') : 'Hosts')
             : (window.i18n ? i18n.t('panes.emptyPane') : 'Empty pane');
         empty.appendChild(title);
 
         const hint = document.createElement('div');
         hint.className = 'profile-launcher-hint';
-        hint.textContent = profiles.length
+        hint.textContent = canReturn
+            ? this.t(
+                'panes.sessionPreserved',
+                '{label} remains open. This pane changes only after another connection succeeds.',
+            ).replace('{label}', returnLabel)
+            : profiles.length
             ? (window.i18n ? i18n.t('connection.savedProfilesHint') : 'Choose a saved connection to connect')
             : (window.i18n ? i18n.t('panes.selectSession') : 'Select a session or open a connection');
         empty.appendChild(hint);
+
+        if (canReturn) {
+            const returnButton = document.createElement('button');
+            returnButton.type = 'button';
+            returnButton.className = 'btn btn-secondary profile-launcher-return';
+            const returnText = this.t(
+                'panes.returnToSession',
+                'Back to {label}',
+            ).replace('{label}', returnLabel);
+            const returnIcon = document.createElement('span');
+            returnIcon.className = 'material-icons';
+            returnIcon.setAttribute('aria-hidden', 'true');
+            returnIcon.textContent = 'arrow_back';
+            const returnCopy = document.createElement('span');
+            returnCopy.textContent = returnText;
+            returnButton.append(returnIcon, returnCopy);
+            returnButton.addEventListener('click', event => {
+                event.stopPropagation();
+                options.onReturn();
+            });
+            empty.appendChild(returnButton);
+        }
 
         if (profiles.length) {
             const search = document.createElement('input');
@@ -340,6 +376,7 @@ const ProfileManager = {
                 'aria-label',
                 this.t('profiles.search', 'Search saved connections'),
             );
+            search.addEventListener('click', event => event.stopPropagation());
             const sectionContainer = document.createElement('div');
             sectionContainer.className = 'profile-launcher-sections';
 

@@ -740,6 +740,41 @@ test('360px mobile workspace keeps tools available and preserves context across 
     await embeddedFile.click();
     await expect(embeddedFile).toHaveClass(/selected/);
 
+    await page.locator('#mobileMoreBtn').click();
+    await expect(page.locator('#headerButtons')).toHaveClass(/is-open/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#headerButtons')).not.toHaveClass(/is-open/);
+    await expect(page.locator('#sessionFilesPanel')).toBeVisible();
+    await expect(page.locator('#sessionFilesPanel #fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+    await expect(embeddedFile).toHaveClass(/selected/);
+
+    await page.locator('#newTabBtn').click();
+    const mobileLauncher = page.locator('.terminal-pane.active .profile-launcher');
+    await expect(mobileLauncher).toBeVisible();
+    await expect(page.locator('#contextWorkspace')).toBeHidden();
+    await expect(page.locator('#mobileCommandToggle')).toBeDisabled();
+    await expect(commandsDock).toBeDisabled();
+    expect(await page.evaluate(() => ({
+        interactive: SessionManager.getActiveSession(),
+        workspace: SessionManager.getWorkspaceSession(),
+        path: window.sftpFileManager.panes.left.path,
+        selected: Array.from(window.sftpFileManager.panes.left.selected),
+    }))).toEqual({
+        interactive: null,
+        workspace: 'workspace-linux',
+        path: '/srv/webssh/current',
+        selected: [1],
+    });
+    await mobileLauncher.locator('.profile-launcher-return').click();
+    await expect(page.locator('.terminal-pane.active .xterm')).toBeVisible();
+    await sftpDock.click();
+    await expect(page.locator('#sessionFilesPanel #fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+    await expect(embeddedFile).toHaveClass(/selected/);
+
     const embeddedScrollLayout = await page.evaluate(() => {
         const panel = document.getElementById('sessionFilesPanel');
         const mount = document.getElementById('sessionFilesMount');
@@ -1174,6 +1209,669 @@ test('Files context follows session capability and stays mounted while tools swi
     await assertNoExternalRequests(page);
 });
 
+test('connection launcher preserves the live session and Files context until replacement', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    const filesPanel = page.locator('#sessionFilesPanel');
+    const selectedFile = filesPanel.locator('#fmLeftList .fm-file-item[data-index="1"]');
+    await expect(filesPanel).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await expect(filesPanel.locator('#fmLeftList .fm-file-item')).toHaveCount(5);
+    await selectedFile.click();
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    const requestCountsBefore = await page.evaluate(() => ({
+        home: window.__workspaceEvents.filter(
+            entry => entry.event === 'get_home_directory'
+        ).length,
+        list: window.__workspaceEvents.filter(
+            entry => entry.event === 'list_directory'
+        ).length,
+    }));
+
+    await page.evaluate(() => {
+        ProfileManager.profilesLoaded = true;
+        ProfileManager.profiles = [{
+            id: 'saved-replacement',
+            name: 'Staging gateway',
+            host: 'staging.example',
+            port: 22,
+            username: 'deploy',
+            auth_type: 'password',
+        }];
+    });
+
+    await page.locator('#newTabBtn').click();
+
+    const launcher = page.locator('.terminal-pane.active .profile-launcher');
+    const returnButton = launcher.locator('.profile-launcher-return');
+    await expect(launcher).toBeVisible();
+    await expect(returnButton).toContainText('Production Edge');
+    await expect(returnButton).toBeFocused();
+    const launcherSearch = launcher.locator('.profile-launcher-search');
+    await launcherSearch.click();
+    await expect(launcherSearch).toBeFocused();
+    await returnButton.focus();
+    await page.keyboard.press('Control+f');
+    await expect(launcherSearch).toBeFocused();
+    await expect(page.locator('#terminalSearchBar')).toHaveClass(/hidden/);
+    await expect(filesPanel).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    await selectedFile.click({ button: 'right' });
+    await expect(page.locator('.fm-context-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.fm-context-menu')).toHaveCount(0);
+    await expect(launcher).toBeVisible();
+    await expect(filesPanel).toBeVisible();
+
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('#commandPaletteModal')).toHaveClass(/show/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#commandPaletteModal')).not.toHaveClass(/show/);
+    await expect(launcher).toBeVisible();
+    await expect(filesPanel).toBeVisible();
+
+    expect(await page.evaluate(() => ({
+        assignment: SessionManager.paneAssignments[0],
+        activeSession: SessionManager.getActiveSession(),
+        workspaceSession: SessionManager.getWorkspaceSession(),
+        launcherOpen: SessionManager.isConnectionLauncherOpen(0),
+        connected: SessionManager.getSession('workspace-linux')?.connected,
+        filesMode: window.sftpFileManager?.displayMode,
+        disconnects: window.__workspaceEvents.filter(
+            entry => entry.event === 'ssh_disconnect'
+        ).length,
+    }))).toEqual({
+        assignment: 'workspace-linux',
+        activeSession: null,
+        workspaceSession: 'workspace-linux',
+        launcherOpen: true,
+        connected: true,
+        filesMode: 'embedded',
+        disconnects: 0,
+    });
+
+    await launcher.locator('.profile-launcher-new').click();
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect(launcher).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    await page.evaluate(() => {
+        TerminalManager.writeOutput(
+            'workspace-linux',
+            '\r\noutput received while choosing a connection\r\n',
+        );
+    });
+    await page.keyboard.press('Escape');
+
+    await expect(launcher).toHaveCount(0);
+    await expect(page.locator('.terminal-pane.active .xterm')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => {
+        const terminalKey = TerminalManager.sessionTerminals['workspace-linux'][0];
+        const buffer = TerminalManager.terminals[terminalKey].buffer.active;
+        return Array.from({ length: buffer.length }, (_entry, index) => (
+            buffer.getLine(index)?.translateToString(true) || ''
+        )).join('\n');
+    })).toContain('output received while choosing a connection');
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    expect(await page.evaluate(() => ({
+        home: window.__workspaceEvents.filter(
+            entry => entry.event === 'get_home_directory'
+        ).length,
+        list: window.__workspaceEvents.filter(
+            entry => entry.event === 'list_directory'
+        ).length,
+        disconnects: window.__workspaceEvents.filter(
+            entry => entry.event === 'ssh_disconnect'
+        ).length,
+        launcherOpen: SessionManager.isConnectionLauncherOpen(0),
+    }))).toEqual({
+        ...requestCountsBefore,
+        disconnects: 0,
+        launcherOpen: false,
+    });
+    await assertNoExternalRequests(page);
+});
+
+test('pending saved-profile connection can be cancelled from its tab by keyboard', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    await page.evaluate(() => {
+        ProfileManager.keys = [{ id: 'direct-key', usable: true }];
+        ProfileManager.profilesLoaded = true;
+        ProfileManager.profiles = [{
+            id: 'direct-cancel-profile',
+            name: 'Direct staging host',
+            host: 'direct.example',
+            port: 22,
+            username: 'deploy',
+            auth_type: 'key',
+            key_id: 'direct-key',
+            startup_mode: 'none',
+        }];
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__directConnectEvents = [];
+        window.socket.emit = function holdDirectConnection(event, payload, ...rest) {
+            if (event === 'ssh_connect' || event === 'ssh_connect_cancel') {
+                window.__directConnectEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                if (event === 'ssh_connect_cancel') {
+                    queueMicrotask(() => rest[0]?.({
+                        success: true,
+                        cancelled: true,
+                    }));
+                }
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+    });
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('[data-profile-id="direct-cancel-profile"]').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__directConnectEvents.filter(entry => entry.event === 'ssh_connect').length
+    ))).toBe(1);
+
+    const requestId = await page.evaluate(() => (
+        window.__directConnectEvents.find(entry => entry.event === 'ssh_connect')
+            .payload.client_request_id
+    ));
+    const pendingTab = page.locator(`[data-pending-id="${requestId}"]`).first();
+    const cancelButton = pendingTab.getByRole('button', { name: 'Cancel connection' });
+    await expect(cancelButton).toHaveAttribute('type', 'button');
+    await cancelButton.focus();
+    await cancelButton.press('Enter');
+
+    await expect(pendingTab).toHaveCount(0);
+    await expect(
+        page.locator('.terminal-pane.active .xterm-helper-textarea')
+    ).toBeFocused();
+    await expect.poll(() => page.evaluate(() => (
+        window.__directConnectEvents.filter(entry => entry.event === 'ssh_connect_cancel')
+    ))).toEqual([{
+        event: 'ssh_connect_cancel',
+        payload: { client_request_id: requestId },
+    }]);
+    expect(await page.evaluate(() => ({
+        active: SessionManager.getActiveSession(),
+        workspace: SessionManager.getWorkspaceSession(),
+        connected: SessionManager.getSession('workspace-linux')?.connected,
+        disconnects: window.__workspaceEvents.filter(
+            entry => entry.event === 'ssh_disconnect'
+        ).length,
+    }))).toEqual({
+        active: 'workspace-linux',
+        workspace: 'workspace-linux',
+        connected: true,
+        disconnects: 0,
+    });
+    await assertNoExternalRequests(page);
+});
+
+test('pending connection cancellation returns focus to an empty pane launcher', async ({ page }) => {
+    await login(page);
+
+    await page.evaluate(() => {
+        ProfileManager.keys = [{ id: 'empty-pane-key', usable: true }];
+        ProfileManager.profilesLoaded = true;
+        ProfileManager.profiles = [{
+            id: 'empty-pane-profile',
+            name: 'Empty pane host',
+            host: 'empty.example',
+            port: 22,
+            username: 'deploy',
+            auth_type: 'key',
+            key_id: 'empty-pane-key',
+            startup_mode: 'none',
+        }];
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__emptyPaneConnectEvents = [];
+        window.socket.emit = function holdEmptyPaneConnection(event, payload, ...rest) {
+            if (event === 'ssh_connect' || event === 'ssh_connect_cancel') {
+                window.__emptyPaneConnectEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                if (event === 'ssh_connect_cancel') {
+                    queueMicrotask(() => rest[0]?.({
+                        success: true,
+                        cancelled: true,
+                    }));
+                }
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+        SessionManager.renderPane(SessionManager.getActivePaneIndex());
+    });
+
+    await page.locator('[data-profile-id="empty-pane-profile"]').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__emptyPaneConnectEvents.find(entry => entry.event === 'ssh_connect')
+            ?.payload.client_request_id
+    ))).toBeTruthy();
+    const requestId = await page.evaluate(() => (
+        window.__emptyPaneConnectEvents.find(entry => entry.event === 'ssh_connect')
+            .payload.client_request_id
+    ));
+    const cancelButton = page.locator(
+        `[data-pending-id="${requestId}"] [aria-label="Cancel connection"]`
+    );
+    await cancelButton.focus();
+    await cancelButton.press('Enter');
+
+    await expect(page.locator(`[data-pending-id="${requestId}"]`)).toHaveCount(0);
+    await expect(
+        page.locator('.terminal-pane.active .profile-launcher-search')
+    ).toBeFocused();
+    await expect.poll(() => page.evaluate(expectedRequestId => (
+        window.__emptyPaneConnectEvents.some(
+            entry => entry.event === 'ssh_connect_cancel'
+                && entry.payload.client_request_id === expectedRequestId
+        )
+    ), requestId)).toBe(true);
+    await assertNoExternalRequests(page);
+});
+
+test('a late cancellation keeps and opens the already committed connection', async ({ page }) => {
+    await login(page);
+
+    await page.evaluate(() => {
+        ProfileManager.keys = [{ id: 'committed-key', usable: true }];
+        ProfileManager.profilesLoaded = true;
+        ProfileManager.profiles = [{
+            id: 'committed-profile',
+            name: 'Committed host',
+            host: 'committed.example',
+            port: 22,
+            username: 'deploy',
+            auth_type: 'key',
+            key_id: 'committed-key',
+            startup_mode: 'none',
+        }];
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__committedConnectEvents = [];
+        window.socket.emit = function holdCommittedConnection(event, payload, ...rest) {
+            if (event === 'ssh_connect') {
+                window.__committedConnectEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                return window.socket;
+            }
+            if (event === 'ssh_connect_cancel') {
+                window.__committedConnectEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                queueMicrotask(() => rest[0]?.({
+                    success: false,
+                    cancelled: false,
+                    reason: 'already_committed',
+                }));
+                return window.socket;
+            }
+            if (event === 'ssh_discard_late_connection') {
+                window.__committedConnectEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+        SessionManager.renderPane(SessionManager.getActivePaneIndex());
+    });
+
+    await page.locator('[data-profile-id="committed-profile"]').click();
+    await expect.poll(() => page.evaluate(() => (
+        window.__committedConnectEvents.find(entry => entry.event === 'ssh_connect')
+            ?.payload.client_request_id
+    ))).toBeTruthy();
+    const requestId = await page.evaluate(() => (
+        window.__committedConnectEvents.find(entry => entry.event === 'ssh_connect')
+            .payload.client_request_id
+    ));
+    const pendingTab = page.locator(`[data-pending-id="${requestId}"]`).first();
+    await pendingTab.getByRole('button', { name: 'Cancel connection' }).click();
+
+    await expect(pendingTab).toBeVisible();
+    await expect(page.locator('.notification')).toContainText(
+        'can no longer be cancelled safely',
+    );
+
+    await page.evaluate(activeRequestId => {
+        window.socket.listeners('ssh_connected').forEach(listener => listener({
+            session_id: 'committed-session',
+            host: 'committed.example',
+            port: 22,
+            username: 'deploy',
+            client_request_id: activeRequestId,
+        }));
+    }, requestId);
+
+    await expect(pendingTab).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('committed-session');
+    expect(await page.evaluate(() => window.__committedConnectEvents.filter(
+        entry => entry.event === 'ssh_discard_late_connection'
+    ))).toEqual([]);
+    await assertNoExternalRequests(page);
+});
+
+test('failed and cancelled replacements preserve the current session until a successful replacement', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await expect(page.locator('#sessionFilesPanel #fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+
+    await page.evaluate(() => {
+        const previousEmit = window.socket.emit.bind(window.socket);
+        window.__heldConnectAttempts = [];
+        window.socket.emit = function holdReplacementConnections(event, payload, ...rest) {
+            if (event === 'ssh_connect') {
+                window.__heldConnectAttempts.push(structuredClone(payload));
+                return window.socket;
+            }
+            if (event === 'ssh_connect_cancel') {
+                window.__workspaceEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                queueMicrotask(() => rest[0]?.({
+                    success: true,
+                    cancelled: true,
+                }));
+                return window.socket;
+            }
+            if (payload?.session_id === 'replacement-session'
+                    || payload?.source_id === 'sftp-session:replacement-session') {
+                window.__workspaceEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                const deliver = (responseEvent, responsePayload) => queueMicrotask(() => {
+                    window.socket.listeners(responseEvent).forEach(
+                        listener => listener(responsePayload),
+                    );
+                });
+                if (event === 'probe_session_sftp') {
+                    deliver('session_sftp_capability', {
+                        success: true,
+                        available: true,
+                        session_id: payload.session_id,
+                        request_id: payload.request_id,
+                    });
+                } else if (event === 'get_home_directory') {
+                    deliver('home_directory', {
+                        source_id: payload.source_id,
+                        path: '/home/replacement-user',
+                        request_id: payload.request_id,
+                    });
+                } else if (event === 'list_directory') {
+                    deliver('directory_listing', {
+                        source_id: payload.source_id,
+                        path: payload.remote_path,
+                        files: [{
+                            name: 'replacement-ready.txt',
+                            is_dir: false,
+                            size: 24,
+                            permissions: '-rw-r--r--',
+                        }],
+                        request_id: payload.request_id,
+                    });
+                }
+                return window.socket;
+            }
+            if (event === 'ssh_disconnect' && payload?.session_id === 'late-session') {
+                window.__workspaceEvents.push({
+                    event,
+                    payload: structuredClone(payload),
+                });
+                return window.socket;
+            }
+            return previousEmit(event, payload, ...rest);
+        };
+    });
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('replacement.example');
+    await page.locator('#usernameInput').fill('replacement-user');
+    await page.locator('#passwordInput').fill('replacement-password');
+    await page.locator('#connectBtn').click();
+
+    await expect.poll(() => page.evaluate(() => window.__heldConnectAttempts.length))
+        .toBe(1);
+    const failedRequestId = await page.evaluate(
+        () => window.__heldConnectAttempts[0].client_request_id
+    );
+    await page.evaluate(requestId => {
+        window.socket.listeners('ssh_error').forEach(listener => listener({
+            error: 'Replacement connection failed',
+            client_request_id: requestId,
+        }));
+    }, failedRequestId);
+
+    await expect(page.locator('.notification')).toContainText(
+        'Replacement connection failed',
+    );
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+    expect(await page.evaluate(() => ({
+        active: SessionManager.getActiveSession(),
+        workspace: SessionManager.getWorkspaceSession(),
+        assignment: SessionManager.paneAssignments[0],
+        replacementExists: Boolean(SessionManager.getSession('late-session')),
+    }))).toEqual({
+        active: null,
+        workspace: 'workspace-linux',
+        assignment: 'workspace-linux',
+        replacementExists: false,
+    });
+    await expect(page.locator('#sessionFilesPanel #fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+
+    await page.locator('#passwordInput').fill('replacement-password');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => window.__heldConnectAttempts.length))
+        .toBe(2);
+    const cancelledRequestId = await page.evaluate(
+        () => window.__heldConnectAttempts[1].client_request_id
+    );
+    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession()))
+        .toBe('workspace-linux');
+    await expect.poll(() => page.evaluate(requestId => (
+        window.__workspaceEvents
+            .filter(entry => entry.event === 'ssh_connect_cancel')
+            .map(entry => entry.payload?.client_request_id)
+    ), cancelledRequestId)).toEqual([cancelledRequestId]);
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('replacement.example');
+    await page.locator('#usernameInput').fill('replacement-user');
+    await page.locator('#passwordInput').fill('replacement-password');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => window.__heldConnectAttempts.length))
+        .toBe(3);
+    const lateSuccessRequestId = await page.evaluate(
+        () => window.__heldConnectAttempts[2].client_request_id
+    );
+    await page.evaluate(requestId => {
+        window.socket.listeners('ssh_auth_banner').forEach(listener => listener({
+            prompt_id: 'cancelled-banner-prompt',
+            banner: 'This cancelled request must stay hidden',
+            context: 'target',
+            host: 'replacement.example',
+            port: 22,
+            client_request_id: requestId,
+        }));
+    }, cancelledRequestId);
+    await expect(page.locator('#sshAuthBannerModal')).not.toHaveClass(/show/);
+    await page.evaluate(requestId => {
+        window.socket.listeners('ssh_auth_banner').forEach(listener => listener({
+            prompt_id: 'current-banner-prompt',
+            banner: 'Current connection banner',
+            context: 'target',
+            host: 'replacement.example',
+            port: 22,
+            client_request_id: requestId,
+        }));
+    }, lateSuccessRequestId);
+    await expect(page.locator('#sshAuthBannerModal')).toHaveClass(/show/);
+    await page.evaluate(requestId => {
+        window.socket.listeners('ssh_error').forEach(listener => listener({
+            error: 'Cancelled request finished late',
+            client_request_id: requestId,
+        }));
+    }, cancelledRequestId);
+    await expect(page.locator('#sshAuthBannerModal')).toHaveClass(/show/);
+    await page.evaluate(() => {
+        window.socket.listeners('ssh_error').forEach(listener => listener({
+            error: 'Unrelated session input error',
+            session_id: 'workspace-linux',
+        }));
+    });
+    await expect(page.locator('#sshAuthBannerModal')).toHaveClass(/show/);
+    await expect(page.locator('#connectBtn')).toBeDisabled();
+    await page.locator('#sshAuthBannerCancel').click();
+
+    await page.locator('#cancelConnectionBtn').click();
+    await expect(page.locator('#connectBtn')).toHaveText('Connect');
+    await expect(page.locator('#connectBtn')).toBeEnabled();
+    await expect(page.locator('#connectSpinner')).toHaveClass(/hidden/);
+    await page.evaluate(requestId => {
+        window.socket.listeners('ssh_connected').forEach(listener => listener({
+            session_id: 'late-session',
+            host: 'replacement.example',
+            port: 22,
+            username: 'replacement-user',
+            client_request_id: requestId,
+        }));
+    }, lateSuccessRequestId);
+
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(requestId => (
+        window.__workspaceEvents.some(
+            entry => entry.event === 'ssh_discard_late_connection'
+                && entry.payload.session_id === 'late-session'
+                && entry.payload.client_request_id === requestId
+        )
+    ), lateSuccessRequestId)).toBe(true);
+    expect(await page.evaluate(() => ({
+        active: SessionManager.getActiveSession(),
+        assignment: SessionManager.paneAssignments[0],
+        replacementExists: Boolean(SessionManager.getSession('late-session')),
+    }))).toEqual({
+        active: 'workspace-linux',
+        assignment: 'workspace-linux',
+        replacementExists: false,
+    });
+    await expect(page.locator('#sessionFilesPanel #fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('replacement.example');
+    await page.locator('#usernameInput').fill('replacement-user');
+    await page.locator('#passwordInput').fill('replacement-password');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => window.__heldConnectAttempts.length))
+        .toBe(4);
+    const successfulRequestId = await page.evaluate(
+        () => window.__heldConnectAttempts[3].client_request_id
+    );
+
+    expect(await page.evaluate(() => ({
+        active: SessionManager.getActiveSession(),
+        workspace: SessionManager.getWorkspaceSession(),
+        assignment: SessionManager.paneAssignments[0],
+        currentConnected: SessionManager.getSession('workspace-linux')?.connected,
+        replacementExists: Boolean(SessionManager.getSession('replacement-session')),
+    }))).toEqual({
+        active: null,
+        workspace: 'workspace-linux',
+        assignment: 'workspace-linux',
+        currentConnected: true,
+        replacementExists: false,
+    });
+
+    await page.evaluate(requestId => {
+        window.socket.listeners('ssh_connected').forEach(listener => listener({
+            session_id: 'replacement-session',
+            host: 'replacement.example',
+            port: 22,
+            username: 'replacement-user',
+            display_name: 'Replacement host',
+            client_request_id: requestId,
+            file_source: {
+                source_id: 'sftp-session:replacement-session',
+                kind: 'sftp',
+                label: 'Replacement host',
+                endpoint: 'replacement.example:22',
+                protocol: 'SFTP',
+                capabilities: [
+                    'list', 'read', 'write', 'mkdir', 'rename', 'delete',
+                    'preview', 'edit', 'recursive', 'remote-transfer',
+                ],
+                ephemeral: false,
+                security: { host_key_verified: true },
+            },
+        }));
+    }, successfulRequestId);
+
+    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect.poll(() => page.evaluate(() => ({
+        active: SessionManager.getActiveSession(),
+        workspace: SessionManager.getWorkspaceSession(),
+        assignment: SessionManager.paneAssignments[0],
+        currentConnected: SessionManager.getSession('workspace-linux')?.connected,
+        replacementConnected: SessionManager.getSession('replacement-session')?.connected,
+        filesSession: window.sessionWorkspace?.getState?.().sessionId,
+    }))).toEqual({
+        active: 'replacement-session',
+        workspace: 'replacement-session',
+        assignment: 'replacement-session',
+        currentConnected: true,
+        replacementConnected: true,
+        filesSession: 'replacement-session',
+    });
+    await expect(page.locator('#tab-workspace-linux')).toBeVisible();
+    await expect(page.locator('#tab-workspace-linux')).not.toHaveClass(/active/);
+    await expect(page.locator('#tab-replacement-session')).toHaveClass(/active/);
+    await expect(page.locator('#sessionFilesPanel #fmLeftBadge')).toContainText(
+        'replacement-user@replacement.example',
+    );
+    await expect(page.locator('#sessionFilesPanel #fmLeftPath')).toHaveValue(
+        '/home/replacement-user',
+    );
+    await expect(page.locator('#sessionFilesPanel #fmLeftList .fm-file-item', {
+        hasText: 'replacement-ready.txt',
+    })).toHaveCount(1);
+    expect(await page.evaluate(() => window.__workspaceEvents.filter(
+        entry => entry.event === 'ssh_disconnect'
+            && entry.payload?.session_id === 'workspace-linux'
+    ))).toEqual([]);
+    await assertNoExternalRequests(page);
+});
+
 test('closing the full File Manager restores the active embedded Files context', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
@@ -1224,6 +1922,74 @@ test('Escape closes the source launcher but top-level navigation restores embedd
     await expect(page.locator('#sessionFilesPanel')).toBeVisible();
     await expect(page.locator('#sessionFilesPanel #fmLeftBadge')).toHaveText('ops@edge-01.example');
     await expect(page.locator('#sessionFilesPanel #fmLeftList .fm-file-item')).toHaveCount(5);
+    await assertNoExternalRequests(page);
+});
+
+test('compact Escape closes the Files menu before the Files context', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await login(page);
+    await seedLinuxSession(page);
+
+    await expect(page.locator('#contextWorkspaceLauncher')).toBeVisible();
+    await page.locator('#contextWorkspaceLauncher').click();
+    const filesPanel = page.locator('#sessionFilesPanel');
+    const selectedFile = filesPanel.locator(
+        '#fmLeftList .fm-file-item[data-index="1"]'
+    );
+    await expect(filesPanel).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await selectedFile.click();
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    await selectedFile.click({ button: 'right' });
+    await expect(page.locator('.fm-context-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await expect(page.locator('.fm-context-menu')).toHaveCount(0);
+    await expect(filesPanel).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue('/srv/webssh/current');
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#contextWorkspace')).toBeHidden();
+    await expect(filesPanel).toBeHidden();
+    await assertNoExternalRequests(page);
+});
+
+test('Escape respects focused controls outside embedded Files', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+
+    const filesPanel = page.locator('#sessionFilesPanel');
+    const selectedFile = filesPanel.locator(
+        '#fmLeftList .fm-file-item[data-index="1"]'
+    );
+    await selectedFile.click();
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    await page.locator('#broadcastToggleBtn').click();
+    await expect(page.locator('#broadcastBar')).toBeVisible();
+    await expect(page.locator('#broadcastInput')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#broadcastBar')).toBeHidden();
+    await expect(filesPanel).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+    await expect(selectedFile).toHaveClass(/selected/);
+
+    const sessionLabel = page.locator('#tab-workspace-linux .tab-label');
+    await sessionLabel.dblclick();
+    const renameInput = sessionLabel.locator('.tab-rename-input');
+    await renameInput.fill('Discard this rename');
+    await page.keyboard.press('Escape');
+    await expect(renameInput).toHaveCount(0);
+    await expect(sessionLabel).toContainText('Production Edge');
+    await expect(filesPanel).toBeVisible();
+    await expect(filesPanel.locator('#fmLeftPath')).toHaveValue(
+        '/srv/webssh/current',
+    );
+    await expect(selectedFile).toHaveClass(/selected/);
     await assertNoExternalRequests(page);
 });
 

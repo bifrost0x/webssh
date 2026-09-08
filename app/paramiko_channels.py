@@ -1,5 +1,7 @@
 """Bound Paramiko channel handshakes and long-lived channel operations."""
 
+import logging
+import re
 import socket
 import struct
 import time
@@ -12,6 +14,56 @@ import config
 
 
 SSH_OPEN_FAILED_RESOURCE_SHORTAGE = 4
+_PARAMIKO_TRANSPORT_LOGGER = 'paramiko.transport'
+_CHANNEL_OPEN_FAILURE_LOG = re.compile(
+    r'\ASecsh channel (?P<channel_id>[0-9]+) open FAILED: .*: '
+    r'(?P<reason>Administratively prohibited|Connect failed|'
+    r'Unknown channel type|Resource shortage|\(unknown code\))\Z',
+    re.DOTALL,
+)
+_CHANNEL_OPEN_FAILURE_FILTER_MARKER = (
+    '_webssh_paramiko_channel_open_failure_filter'
+)
+
+
+class _ChannelOpenFailureLogFilter(logging.Filter):
+    """Remove the SSH server's description from Paramiko failure records."""
+
+    _webssh_paramiko_channel_open_failure_filter = True
+
+    def filter(self, record):
+        if (
+            record.name != _PARAMIKO_TRANSPORT_LOGGER
+            or record.levelno != logging.ERROR
+            or record.args
+            or not isinstance(record.msg, str)
+        ):
+            return True
+        match = _CHANNEL_OPEN_FAILURE_LOG.fullmatch(record.msg)
+        if match:
+            record.msg = (
+                f"Secsh channel {match.group('channel_id')} open FAILED: "
+                f"{match.group('reason')} (server description omitted)"
+            )
+            record.args = ()
+        return True
+
+
+def _install_channel_open_failure_log_filter():
+    logger = logging.getLogger(_PARAMIKO_TRANSPORT_LOGGER)
+    for existing_filter in logger.filters:
+        if getattr(
+            existing_filter,
+            _CHANNEL_OPEN_FAILURE_FILTER_MARKER,
+            False,
+        ):
+            return existing_filter
+    channel_filter = _ChannelOpenFailureLogFilter()
+    logger.addFilter(channel_filter)
+    return channel_filter
+
+
+_install_channel_open_failure_log_filter()
 
 
 def optional_channel_rejection_fields(error):

@@ -22,12 +22,14 @@
         const pending = new Map();
         const retryTimers = new Map();
         const retryCounts = new Map();
+        const retryStates = new Map();
         let activeProbeSessionId = null;
 
         function clearRetry(sessionId) {
             const timerId = retryTimers.get(sessionId);
             if (timerId !== undefined) clearTimeoutFn(timerId);
             retryTimers.delete(sessionId);
+            retryStates.delete(sessionId);
         }
 
         function cancelProbe(sessionId) {
@@ -75,14 +77,21 @@
             ) return;
             if (resourceShortage) {
                 retryCounts.delete(sessionId);
+                retryStates.set(sessionId, 'resource_shortage');
             } else {
                 retryCounts.set(sessionId, retries + 1);
+                retryStates.delete(sessionId);
             }
             const timerId = setTimeoutFn(() => {
                 retryTimers.delete(sessionId);
-                if (activeProbeSessionId === sessionId) startProbe(sessionId);
+                retryStates.delete(sessionId);
+                if (activeProbeSessionId === sessionId) {
+                    startProbe(sessionId);
+                    if (resourceShortage) onChange(sessionId);
+                }
             }, resourceShortage ? 60000 : 10000);
             retryTimers.set(sessionId, timerId);
+            if (resourceShortage) onChange(sessionId);
         }
 
         socket.on('session_sftp_capability', data => {
@@ -117,7 +126,12 @@
         return {
             get(sessionId) {
                 if (capabilities.has(sessionId)) return capabilities.get(sessionId);
-                if (pending.has(sessionId) || retryTimers.has(sessionId)) return 'probing';
+                if (pending.has(sessionId)) return 'probing';
+                if (
+                    retryTimers.has(sessionId)
+                    && retryStates.get(sessionId) === 'resource_shortage'
+                ) return 'resource_shortage';
+                if (retryTimers.has(sessionId)) return 'probing';
                 return 'unknown';
             },
 
@@ -187,7 +201,7 @@
             const sftpProbeNeeded = Boolean(
                 sessionId
                 && session?.connected
-                && ['unknown', 'probing'].includes(sftpCapability)
+                && ['unknown', 'probing', 'resource_shortage'].includes(sftpCapability)
             );
             return {
                 layout,
@@ -232,6 +246,7 @@
                     'available',
                     'unavailable',
                     'probing',
+                    'resource_shortage',
                     'inconclusive',
                 ].includes(next?.sftpCapability)
                     ? next.sftpCapability

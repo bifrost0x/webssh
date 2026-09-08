@@ -1844,7 +1844,13 @@ class SFTPFileManager {
     }
 
     setupKeyboardShortcuts() {
-        document.addEventListener('keydown', e => this.handleKeyboardShortcut(e));
+        // Capture Escape before the workspace and app-level handlers so the
+        // topmost Files layer always closes first.
+        document.addEventListener(
+            'keydown',
+            e => this.handleKeyboardShortcut(e),
+            true,
+        );
     }
 
     handlesSocketError(data) {
@@ -1940,19 +1946,89 @@ class SFTPFileManager {
         if (!this.isOpen) return;
 
         if (e.key === 'Escape') {
-            this.closeContextMenu();
-            if (this.sourceLauncherPane) {
-                e.preventDefault();
-                this.closeSourceLauncher();
+            if (
+                window.TerminalSearch?.isOpen
+                && e.target?.closest?.('#terminalSearchBar')
+            ) return;
+            const connectionModalOpen = document.getElementById(
+                'connectionModal'
+            )?.classList.contains('show');
+            if (connectionModalOpen) return;
+            const mobileShellState = window.mobileAppShell?.getState?.();
+            if (mobileShellState?.moreOpen || mobileShellState?.commandOpen) {
                 return;
             }
+
+            const consumeEscape = callback => {
+                e.preventDefault();
+                callback();
+                e.stopImmediatePropagation?.();
+            };
+
+            const contextMenuOpen = Boolean(this.contextMenu);
+            if (contextMenuOpen) {
+                consumeEscape(() => this.closeContextMenu());
+                return;
+            }
+            if (this.actionSheet?.classList?.contains('visible')) {
+                consumeEscape(() => this.hideActionSheet());
+                return;
+            }
+            const conflictDialog = document.querySelector('.fm-conflict-dialog');
+            if (conflictDialog) {
+                consumeEscape(() => conflictDialog.querySelector(
+                    '[data-conflict-action="cancel"]'
+                )?.click?.());
+                return;
+            }
+            if (this.movePicker) {
+                consumeEscape(() => this.closeMovePicker());
+                return;
+            }
+            if (this.qcModal?.classList.contains('show')) {
+                consumeEscape(() => this.closeQuickConnect());
+                return;
+            }
+            if (this.sourceLauncherPane) {
+                consumeEscape(() => this.closeSourceLauncher());
+                return;
+            }
+            const targetInsideFiles = Boolean(
+                this.modalBody?.contains?.(e.target)
+                || (
+                    this.displayMode === 'modal'
+                    && this.modal?.contains?.(e.target)
+                )
+            );
+            if (!targetInsideFiles) return;
+            const foregroundModalOpen = Array.from(
+                document.querySelectorAll('.modal.show')
+            ).some(modal => (
+                modal !== this.modal
+                && !modal.classList.contains('primary-workspace-view')
+            ));
+            if (foregroundModalOpen) return;
+            const launcherOpen = typeof SessionManager !== 'undefined'
+                && SessionManager.isConnectionLauncherOpen?.();
+            const focusedLauncher = e.target?.closest?.('.profile-launcher')
+                || document.activeElement?.closest?.('.profile-launcher');
+            if (launcherOpen && focusedLauncher) return;
+            if (
+                this.displayMode === 'embedded'
+                && window.workspaceLayoutController?.getState?.().activeContext !== 'files'
+            ) return;
             if (!this.hasOpenDialogs()) {
                 if (this.displayMode === 'embedded') {
-                    window.dispatchEvent?.(new CustomEvent('session-sftp-request-close'));
+                    document.dispatchEvent?.(new CustomEvent(
+                        'session-sftp-request-close',
+                        { detail: { reason: 'user' } },
+                    ));
                     if (this.displayMode === 'embedded') this.closeEmbedded();
                 } else if (!window.primaryWorkspaceController?.isElementActive(this.modal)) {
                     this.close();
                 }
+                e.preventDefault();
+                e.stopImmediatePropagation?.();
             }
         }
 

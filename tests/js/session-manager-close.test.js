@@ -12,6 +12,7 @@ function createElement(tagName = 'div') {
         children: [],
         parentNode: null,
         dataset: {},
+        attributes: {},
         hidden: false,
         textContent: '',
         className: '',
@@ -38,7 +39,20 @@ function createElement(tagName = 'div') {
         },
         remove() { this.parentNode?.removeChild?.(this); },
         addEventListener(type, handler) { listeners.set(type, handler); },
-        click() { listeners.get('click')?.({ target: this }); },
+        click() {
+            listeners.get('click')?.({
+                target: this,
+                stopPropagation() {},
+            });
+        },
+        pressKey(key) {
+            if (this.tagName === 'BUTTON' && ['Enter', ' '].includes(key)) {
+                this.click();
+            }
+        },
+        setAttribute(name, value) {
+            this.attributes[name] = String(value);
+        },
         querySelector(selector) {
             return this.querySelectorAll(selector)[0] || null;
         },
@@ -89,7 +103,22 @@ function loadSessionManager(
         document: {
             body,
             createElement,
-            getElementById(id) { return elements.get(id) || null; },
+            getElementById(id) {
+                if (elements.has(id)) return elements.get(id);
+                const findById = node => {
+                    if (node.id === id) return node;
+                    for (const child of node.children || []) {
+                        const match = findById(child);
+                        if (match) return match;
+                    }
+                    return null;
+                };
+                for (const root of elements.values()) {
+                    const match = findById(root);
+                    if (match) return match;
+                }
+                return null;
+            },
         },
         TerminalManager: {
             destroyTerminal() {},
@@ -115,6 +144,7 @@ function loadSessionManager(
         },
     };
     context.window.window = context.window;
+    context.window.CustomEvent = context.CustomEvent;
     vm.createContext(context);
     vm.runInContext(`${source}\n;globalThis.__SessionManager = SessionManager;`, context);
     return {
@@ -195,9 +225,9 @@ test('explicit logout retains namespaced convenience data', () => {
     );
 });
 
-test('connection launcher unassigns the active session without disconnecting it', () => {
+test('connection launcher stages replacement without unassigning the live session', () => {
     const {
-        manager, createElement, registerElement,
+        manager, context, createElement, registerElement,
     } = loadSessionManager(false, 'retry');
     const terminalsContainer = registerElement('terminalsContainer', createElement());
     const pane = createElement();
@@ -212,17 +242,30 @@ test('connection launcher unassigns the active session without disconnecting it'
     manager.paneAssignments = ['session-a'];
     const rendered = [];
     const activated = [];
+    let searchClosed = 0;
+    context.window.TerminalSearch = {
+        isOpen: true,
+        close() { searchClosed += 1; },
+    };
     manager.renderPane = paneIndex => rendered.push(paneIndex);
     manager.setActivePane = paneIndex => activated.push(paneIndex);
 
     assert.equal(manager.showConnectionLauncher(0), true);
 
-    assert.deepEqual(manager.paneAssignments, [null]);
+    assert.deepEqual(manager.paneAssignments, ['session-a']);
+    assert.equal(manager.connectionLauncherSessions.get(0), 'session-a');
     assert.equal(terminal.parentNode, terminalsContainer);
     assert.equal(terminal.classList.contains('unassigned'), true);
     assert.equal(manager.sessions['session-a'].id, 'session-a');
+    assert.equal(searchClosed, 1);
     assert.deepEqual(rendered, [0]);
     assert.deepEqual(activated, [0]);
+
+    assert.equal(manager.restoreConnectionLauncher(0), true);
+    assert.equal(manager.connectionLauncherSessions.has(0), false);
+    assert.deepEqual(manager.paneAssignments, ['session-a']);
+    assert.deepEqual(rendered, [0, 0]);
+    assert.deepEqual(activated, [0, 0]);
 });
 
 test('connection launcher rejects a pane outside the current layout', () => {
@@ -231,6 +274,147 @@ test('connection launcher rejects a pane outside the current layout', () => {
 
     assert.equal(manager.showConnectionLauncher(1), false);
     assert.deepEqual(manager.paneAssignments, [null]);
+});
+
+test('pending close requests cancellation and waits for acknowledgement', () => {
+    const {
+        manager, context, registerElement,
+    } = loadSessionManager(false, 'retry');
+    const sessionTabs = registerElement('sessionTabs', createElement());
+    const cancellationRequests = [];
+    context.window.addEventListener('ssh-connection-cancel-requested', event => {
+        cancellationRequests.push(event.detail.requestId);
+    });
+
+    manager.createPendingConnection('request-a', 'a.example', 'alice', 22);
+    manager.createPendingConnection('request-b', 'b.example', 'bob', 2222);
+
+    const requestATab = sessionTabs.children.find(
+        child => child.dataset.pendingId === 'request-a'
+    );
+    const requestAClose = requestATab.querySelector('.tab-close');
+    assert.equal(requestAClose.tagName, 'BUTTON');
+    assert.equal(requestAClose.type, 'button');
+
+    requestAClose.click();
+
+    assert.deepEqual(cancellationRequests, ['request-a']);
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(manager.pendingConnections['request-a'])),
+        {
+            host: 'a.example',
+            username: 'alice',
+            port: 22,
+        },
+    );
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(manager.pendingConnections['request-b'])),
+        {
+            host: 'b.example',
+            username: 'bob',
+            port: 2222,
+        },
+    );
+    assert.equal(
+        sessionTabs.children.some(child => child.dataset.pendingId === 'request-a'),
+        true,
+    );
+    assert.equal(
+        sessionTabs.children.some(child => child.dataset.pendingId === 'request-b'),
+        true,
+    );
+
+    manager.clearPendingConnection('request-a');
+    assert.equal(manager.pendingConnections['request-a'], undefined);
+    assert.equal(
+        sessionTabs.children.some(child => child.dataset.pendingId === 'request-a'),
+        false,
+    );
+});
+
+test('pending connection close supports native keyboard activation', () => {
+    const {
+        manager, context, registerElement,
+    } = loadSessionManager(false, 'retry');
+    const sessionTabs = registerElement('sessionTabs', createElement());
+    const cancellationRequests = [];
+    context.window.addEventListener('ssh-connection-cancel-requested', event => {
+        cancellationRequests.push(event.detail.requestId);
+    });
+
+    manager.createPendingConnection('request-enter', 'enter.example', 'alice', 22);
+    manager.createPendingConnection('request-space', 'space.example', 'bob', 22);
+    manager.createPendingConnection('request-other', 'other.example', 'carol', 22);
+
+    const closeFor = requestId => sessionTabs.children.find(
+        child => child.dataset.pendingId === requestId
+    ).querySelector('.tab-close');
+    closeFor('request-enter').pressKey('Enter');
+    closeFor('request-space').pressKey(' ');
+
+    assert.deepEqual(cancellationRequests, ['request-enter', 'request-space']);
+    assert.notEqual(manager.pendingConnections['request-enter'], undefined);
+    assert.notEqual(manager.pendingConnections['request-space'], undefined);
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(manager.pendingConnections['request-other'])),
+        {
+            host: 'other.example',
+            username: 'carol',
+            port: 22,
+        },
+    );
+    assert.equal(
+        sessionTabs.children.some(
+            child => child.dataset.pendingId === 'request-other'
+        ),
+        true,
+    );
+
+    manager.clearPendingConnection('request-enter');
+    manager.clearPendingConnection('request-space');
+    assert.equal(manager.pendingConnections['request-enter'], undefined);
+    assert.equal(manager.pendingConnections['request-space'], undefined);
+});
+
+test('workspace notifications retain the staged session as the active context', () => {
+    const {manager, context} = loadSessionManager(false, 'retry');
+    manager.sessions = {'session-a': {id: 'session-a'}};
+    manager.paneAssignments = ['session-a'];
+    manager.activePaneIndex = 0;
+    manager.activeSessionId = 'session-a';
+    manager.connectionLauncherSessions.set(0, 'session-a');
+    let detail = null;
+    context.window.addEventListener('session-workspace-change', event => {
+        detail = event.detail;
+    });
+
+    manager.notifyWorkspaceChange();
+
+    assert.deepEqual(JSON.parse(JSON.stringify(detail)), {
+        layout: 1,
+        sessionId: 'session-a',
+    });
+});
+
+test('successful assignment commits a staged pane replacement', () => {
+    const {manager} = loadSessionManager(false, 'retry');
+    manager.sessions = {
+        'session-a': {id: 'session-a', terminalId: 'terminal-session-a'},
+        'session-b': {id: 'session-b', terminalId: 'terminal-session-b'},
+    };
+    manager.paneAssignments = ['session-a'];
+    manager.connectionLauncherSessions.set(0, 'session-a');
+    const rendered = [];
+    const activated = [];
+    manager.renderPane = paneIndex => rendered.push(paneIndex);
+    manager.setActivePane = paneIndex => activated.push(paneIndex);
+
+    manager.assignSessionToPane('session-b', 0);
+
+    assert.deepEqual(manager.paneAssignments, ['session-b']);
+    assert.equal(manager.connectionLauncherSessions.has(0), false);
+    assert.deepEqual(rendered, [0]);
+    assert.deepEqual(activated, [0]);
 });
 
 function prepareSession(manager) {
