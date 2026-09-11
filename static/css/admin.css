@@ -346,6 +346,7 @@
 
 .admin-tabs {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 2px;
     margin: 0;
     overflow: visible;
@@ -1212,4 +1213,13 @@
         margin-top: 6px;
         box-shadow: none;
     }
+}
+
+/* Navigation labels must fit the sidebar in every language. */
+.settings-center-navigation .admin-tab > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.settings-center-navigation .admin-nav-group {
+    flex-wrap: wrap;
 }

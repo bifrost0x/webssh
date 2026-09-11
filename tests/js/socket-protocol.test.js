@@ -397,3 +397,14 @@ test('restricted session storage degrades to the manual reload action', () => {
     assert.equal(controller.handleMismatch({ required_revision: 2 }), 'manual');
     assert.equal(manualReloads, 1);
 });
+
+test('unsaved notes warn before leaving even with no connected SSH session', () => {
+    const harness = loadAppSocketHarness();
+    harness.browserGlobal.notepadController = {hasUnsaved: () => true};
+    const beforeUnload = harness.windowHandlers.get('beforeunload')?.at(-1);
+    let prevented = false;
+    const event = {preventDefault() {prevented = true;}};
+    beforeUnload(event);
+    assert.equal(prevented, true);
+    assert.ok(event.returnValue);
+});

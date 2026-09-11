@@ -34,13 +34,15 @@
     window.addEventListener('beforeunload', (event) => {
         if (socketProtocolReloadPending) {
             socketProtocolReloadPending = false;
-            return;
+            if (!window.notepadController?.hasUnsaved()) return;
         }
         const activeSessions = Object.values(SessionManager.sessions).filter(
             session => session.connected
         );
-        if (activeSessions.length > 0) {
-            const message = window.i18n
+        if (activeSessions.length > 0 || window.notepadController?.hasUnsaved()) {
+            const message = window.notepadController?.hasUnsaved()
+                ? window.i18n?.t('notes.unsaved') || 'Your notes have not been saved.'
+                : window.i18n
                 ? window.i18n.t(
                     'session.closeWarning',
                     'You have active SSH sessions. They will be closed.',
@@ -1251,6 +1253,7 @@
             }
             socketProtocolMismatch.markCompatible();
             window.socket.emit('get_notepad');
+            window.notepadController?.reconnect();
         }
     });
 
@@ -1516,7 +1519,11 @@
         if (!notepad) {
             return;
         }
-        notepad.value = (data && data.notepad) ? data.notepad : '';
+        if (window.notepadController) {
+            window.notepadController.receive(data?.notepad || '');
+        } else {
+            notepad.value = data?.notepad || '';
+        }
     });
 
     let currentConnectRequestId = null;
@@ -1927,57 +1934,54 @@
         const keyHint = document.getElementById('keyHint');
         const profileHint = document.getElementById('profileHint');
 
-        const hostnamePattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-        const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-        const usernamePattern = /^[a-zA-Z0-9_-]{1,32}$/;
-
-        hostInput.addEventListener('input', () => {
-            const value = hostInput.value.trim();
-            const isValid = value && (hostnamePattern.test(value) || ipPattern.test(value));
-            setFieldState(hostInput, hostHint, isValid ? 'Valid host' : 'Hostname or IP required', isValid);
-        });
-
-        portInput.addEventListener('input', () => {
-            const value = parseInt(portInput.value, 10);
-            const isValid = value >= 1 && value <= 65535;
-            setFieldState(portInput, portHint, isValid ? 'Valid port' : 'Port 1-65535', isValid);
-        });
-
-        userInput.addEventListener('input', () => {
-            const value = userInput.value.trim();
-            const isValid = usernamePattern.test(value);
-            setFieldState(userInput, userHint, isValid ? 'Valid username' : '1-32 chars, a-z 0-9 _ -', isValid);
+        const validation = window.ConnectionValidation;
+        const hint = (input, element, valid, key) => {
+            setFieldState(input, element, valid ? '' : i18n.t(key), valid);
+        };
+        const validateHost = () => hint(hostInput, hostHint,
+            validation.isValidHost(hostInput.value), 'validation.host');
+        const validatePort = () => hint(portInput, portHint,
+            validation.isValidPort(portInput.value), 'validation.port');
+        const validateUser = () => hint(userInput, userHint,
+            validation.isValidUsername(userInput.value), 'validation.username');
+        hostInput.addEventListener('input', validateHost);
+        portInput.addEventListener('input', validatePort);
+        userInput.addEventListener('input', validateUser);
+        window.addEventListener('languageChanged', () => {
+            if (hostHint.textContent) validateHost();
+            if (portHint.textContent) validatePort();
+            if (userHint.textContent) validateUser();
         });
 
         if (passwordInput) {
             passwordInput.addEventListener('input', () => {
                 const value = passwordInput.value;
                 const isValid = value.length > 0;
-                setFieldState(passwordInput, passHint, isValid ? 'Ready' : 'Password required', isValid);
+                setFieldState(passwordInput, passHint, isValid ? '' : i18n.t('connection.passwordRequired'), isValid);
             });
         }
 
         if (keySelect) {
             keySelect.addEventListener('change', () => {
                 const value = keySelect.value;
-                setFieldState(keySelect, keyHint, value ? 'Key selected' : 'Select a key', Boolean(value));
+                setFieldState(keySelect, keyHint, value ? '' : i18n.t('connection.selectSSHKey'), Boolean(value));
             });
         }
 
         if (profileNameInput) {
             profileNameInput.addEventListener('input', () => {
                 const value = profileNameInput.value.trim();
-                setFieldState(profileNameInput, profileHint, value ? 'Saved name' : '', value ? true : null);
+                setFieldState(profileNameInput, profileHint, '', value ? true : null);
             });
         }
 
         if (authTypeSelect) {
             authTypeSelect.addEventListener('change', () => {
                 if (authTypeSelect.value === 'password' && passwordInput) {
-                    setFieldState(passwordInput, passHint, passwordInput.value ? 'Ready' : 'Password required', Boolean(passwordInput.value));
+                    setFieldState(passwordInput, passHint, passwordInput.value ? '' : i18n.t('connection.passwordRequired'), Boolean(passwordInput.value));
                 }
                 if (authTypeSelect.value === 'key' && keySelect) {
-                    setFieldState(keySelect, keyHint, keySelect.value ? 'Key selected' : 'Select a key', Boolean(keySelect.value));
+                    setFieldState(keySelect, keyHint, keySelect.value ? '' : i18n.t('connection.selectSSHKey'), Boolean(keySelect.value));
                 }
             });
         }
@@ -2126,146 +2130,27 @@
 
     function setupNotepad() {
         const notepad = document.getElementById('sessionNotepad');
-        const saveStatus = document.getElementById('notepadSaveStatus');
-        if (!notepad) {
-            return;
-        }
-
-        const updateSaveStatus = (status) => {
-            if (!saveStatus) return;
-            if (status === 'saving') {
-                saveStatus.textContent = 'Saving...';
-                saveStatus.className = 'notepad-save-status saving';
-            } else if (status === 'saved') {
-                saveStatus.textContent = 'Saved';
-                saveStatus.className = 'notepad-save-status saved';
-                setTimeout(() => {
-                    saveStatus.className = 'notepad-save-status';
-                    saveStatus.textContent = '';
-                }, 2000);
-            }
-        };
-
+        const status = document.getElementById('notepadSaveStatus');
+        if (!notepad || !window.NotepadController) return;
+        window.notepadController = window.NotepadController.create({
+            socket: window.socket,
+            read: () => notepad.value,
+            write: value => { notepad.value = value; },
+            status: state => {
+                if (!status) return;
+                status.textContent = window.i18n.t(`notes.${state}`);
+                status.className = `notepad-save-status ${state}`;
+                status.setAttribute('role', state === 'failed' ? 'alert' : 'status');
+            },
+        });
+        notepad.addEventListener('input', () => window.notepadController.changed());
         notepad.addEventListener('focus', () => {
             if (document.body.classList.contains('keyboard-open')) {
                 document.body.classList.add('notepad-focused');
             }
         });
-        notepad.addEventListener('blur', () => {
-            document.body.classList.remove('notepad-focused');
-        });
-
-        let timer;
-        notepad.addEventListener('input', () => {
-            clearTimeout(timer);
-            const value = notepad.value;
-            updateSaveStatus('saving');
-            timer = setTimeout(() => {
-                if (window.socket) {
-                    window.socket.emit('save_notepad', { text: value });
-                    updateSaveStatus('saved');
-                }
-            }, 300);
-        });
-    }
-
-    function setupDropUpload() {
-        const overlay = document.getElementById('dropOverlay');
-        const form = document.getElementById('dropUploadForm');
-        const fileNameInput = document.getElementById('dropUploadFileName');
-        const pathInput = document.getElementById('dropUploadPath');
-        const modal = document.getElementById('dropUploadModal');
-        let pendingFile = null;
-
-        if (!overlay || !form || !modal) {
-            return;
-        }
-
-        const showOverlay = () => overlay.classList.remove('hidden');
-        const hideOverlay = () => overlay.classList.add('hidden');
-
-        document.addEventListener('dragover', (e) => {
-            if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
-                e.preventDefault();
-                showOverlay();
-            }
-        });
-
-        document.addEventListener('dragleave', (e) => {
-            if (e.target === document.documentElement) {
-                hideOverlay();
-            }
-        });
-
-        document.addEventListener('dragend', () => {
-            hideOverlay();
-        });
-
-        document.addEventListener('drop', (e) => {
-            e.preventDefault();
-            hideOverlay();
-
-            const active = SessionManager.getWorkspaceSession?.()
-                || SessionManager.getActiveSession();
-            if (!active) {
-                showNotification('No active session for upload', 'warning');
-                return;
-            }
-
-            const file = e.dataTransfer.files && e.dataTransfer.files[0];
-            if (!file) {
-                return;
-            }
-            pendingFile = file;
-            fileNameInput.value = file.name;
-            pathInput.value = `./${file.name}`;
-
-            if (window.ModalManager) {
-                window.ModalManager.open(modal);
-            } else {
-                modal.classList.add('show');
-            }
-        });
-
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const active = SessionManager.getWorkspaceSession?.()
-                || SessionManager.getActiveSession();
-            if (!active || !pendingFile) {
-                showNotification('No active session for upload', 'warning');
-                return;
-            }
-            const remotePath = pathInput.value.trim();
-            if (!remotePath) {
-                showNotification('Remote path required', 'error');
-                return;
-            }
-            FileTransferManager.uploadFile(active.id, pendingFile, remotePath);
-            pendingFile = null;
-            if (window.ModalManager) {
-                window.ModalManager.close(modal);
-            } else {
-                modal.classList.remove('show');
-            }
-        });
-
-        document.getElementById('cancelDropUploadBtn').addEventListener('click', () => {
-            pendingFile = null;
-            if (window.ModalManager) {
-                window.ModalManager.close(modal);
-            } else {
-                modal.classList.remove('show');
-            }
-        });
-
-        document.getElementById('closeDropUploadModal').addEventListener('click', () => {
-            pendingFile = null;
-            if (window.ModalManager) {
-                window.ModalManager.close(modal);
-            } else {
-                modal.classList.remove('show');
-            }
-        });
+        notepad.addEventListener('blur', () => document.body.classList.remove('notepad-focused'));
+        window.addEventListener('languageChanged', () => window.notepadController.render());
     }
 
     function setupShortcutsModal() {
@@ -3040,7 +2925,6 @@
         setupConnectionValidation();
         setupPasswordToggles();
         setupClipboardActions();
-        setupDropUpload();
         setupSplitControls();
         setupNotepad();
         TerminalSearch.init();

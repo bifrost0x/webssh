@@ -758,6 +758,7 @@ test('FileTransferManager and DragDropManager use the shared socket coordinator'
     const dragDropManager = new DragDropManager();
     dragDropManager.createOverlay = () => {};
     dragDropManager.attachGlobalListeners = () => {};
+    dragDropManager.setupUploadDialog = () => {};
     dragDropManager.init();
 
     assert.equal(FileTransferManager.getTransferClient(), shared);
@@ -787,4 +788,20 @@ test('FileTransferManager and DragDropManager use the shared socket coordinator'
         'Transfer failed: report.txt — No write permission for the destination.',
         'error',
     ]);
+});
+
+test('terminal uploads report preflight failures without leaking ownership', async () => {
+    const transport = controlledSocket();
+    const notifications = [];
+    global.window = {socket: transport.socket, BinaryTransferClient,
+        WEBSSH_TRANSFER_LIMITS: {uploadBytes: 10},
+        showNotification: (...args) => notifications.push(args)};
+    delete require.cache[require.resolve('../../static/js/file-transfer.js')];
+    const manager = require('../../static/js/file-transfer.js');
+    manager.uploadFile('sftp-session:active', {name: 'large.txt', size: 11}, './large.txt');
+    await flushTasks();
+    assert.equal(transport.preparations.length, 0);
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0][1], 'error');
+    assert.equal(manager.ownedTransfers.size, 0);
 });

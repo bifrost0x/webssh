@@ -3067,27 +3067,26 @@ def handle_get_notepad(current_user=None):
 @socketio.on('save_notepad')
 @socket_login_required
 def handle_save_notepad(data, current_user=None):
-    """Persist the notepad text for the current user."""
+    """Acknowledge notepad writes only after persistence succeeds."""
+    def failed(message):
+        payload = {'success': False, 'error': message}
+        emit('error', payload)
+        return payload
+
     try:
-        text = data.get('text', '')
+        text = data.get('text') if isinstance(data, dict) else None
         if not isinstance(text, str):
-            payload = {
-                'success': False,
-                'error': 'Invalid notepad content',
-            }
-            emit('error', payload)
-            return payload
+            return failed('Invalid notepad content')
         if len(text) > 100000:
-            emit('error', {'error': 'Notepad content too large (max 100KB)'})
-            return
-        success = save_user_settings(current_user.id, {'notepad': text})
-        if not success:
-            emit('error', {'error': 'Failed to save notepad'})
+            return failed('Notepad content too large (max 100000 characters)')
+        if not save_user_settings(current_user.id, {'notepad': text}):
+            return failed('Failed to save notepad')
+        return {'success': True}
     except StorageCorruptionError as error:
         return _emit_storage_error(error, current_user)
     except Exception as e:
         log_error("Failed to save notepad", error=str(e))
-        emit('error', {'error': 'Failed to save notepad'})
+        return failed('Failed to save notepad')
 
 @socketio.on('list_commands')
 @socket_login_required

@@ -1,6 +1,19 @@
 
 const translations = {
     en: {
+        'notes.unsaved': "Your notes have not been saved.",
+        'notes.saving': "Saving…",
+        'notes.saved': "Saved",
+        'notes.failed': "Not saved. Edit to retry.",
+        'notes.offline': "Offline — not saved",
+        'notes.tooLarge': "Not saved: maximum 100,000 characters.",
+        'validation.host': "Enter a hostname or IPv4/IPv6 address.",
+        'validation.port': "Enter a whole port number from 1 to 65535.",
+        'validation.username': "Use 1–32 letters, digits, underscores, hyphens or dots.",
+        'dropUpload.folder': "Destination folder",
+        'dropUpload.folderHint': "Relative paths start in the SFTP home directory, not the terminal working directory.",
+        'dropUpload.timeout': "Creating the destination folder timed out.",
+        'dropUpload.chooseFolder': "Choose a destination folder after dropping.",
         'app.title': 'Web SSH Terminal',
         'app.subtitle': 'Modern Terminal Access',
 
@@ -1296,6 +1309,19 @@ const translations = {
 
 
     vi: {
+        'notes.unsaved': "Ghi chú của bạn chưa được lưu.",
+        'notes.saving': "Đang lưu…",
+        'notes.saved': "Đã lưu",
+        'notes.failed': "Chưa lưu. Chỉnh sửa để thử lại.",
+        'notes.offline': "Ngoại tuyến — chưa lưu",
+        'notes.tooLarge': "Chưa lưu: tối đa 100.000 ký tự.",
+        'validation.host': "Nhập tên máy chủ hoặc địa chỉ IPv4/IPv6.",
+        'validation.port': "Nhập số cổng nguyên từ 1 đến 65535.",
+        'validation.username': "Dùng 1–32 chữ cái, chữ số, dấu gạch dưới, gạch nối hoặc dấu chấm.",
+        'dropUpload.folder': "Thư mục đích",
+        'dropUpload.folderHint': "Đường dẫn tương đối bắt đầu tại thư mục nhà SFTP, không phải thư mục làm việc của terminal.",
+        'dropUpload.timeout': "Hết thời gian tạo thư mục đích.",
+        'dropUpload.chooseFolder': "Chọn thư mục đích sau khi thả.",
         'app.title': 'Web SSH Terminal',
         'app.subtitle': 'Truy cập terminal hiện đại',
 
@@ -2590,6 +2616,19 @@ const translations = {
     },
 
     de: {
+        'notes.unsaved': "Deine Notizen wurden noch nicht gespeichert.",
+        'notes.saving': "Wird gespeichert…",
+        'notes.saved': "Gespeichert",
+        'notes.failed': "Nicht gespeichert. Zum Wiederholen bearbeiten.",
+        'notes.offline': "Offline — nicht gespeichert",
+        'notes.tooLarge': "Nicht gespeichert: maximal 100.000 Zeichen.",
+        'validation.host': "Hostname oder IPv4-/IPv6-Adresse eingeben.",
+        'validation.port': "Eine ganze Portnummer zwischen 1 und 65535 eingeben.",
+        'validation.username': "1–32 Buchstaben, Ziffern, Unterstriche, Bindestriche oder Punkte verwenden.",
+        'dropUpload.folder': "Zielordner",
+        'dropUpload.folderHint': "Relative Pfade beginnen im SFTP-Heimatverzeichnis, nicht im Arbeitsverzeichnis des Terminals.",
+        'dropUpload.timeout': "Zeitüberschreitung beim Erstellen des Zielordners.",
+        'dropUpload.chooseFolder': "Nach dem Ablegen einen Zielordner auswählen.",
         'app.title': 'Web SSH Terminal',
         'app.subtitle': 'Moderner Terminal-Zugang',
 
@@ -3883,6 +3922,19 @@ const translations = {
     },
 
     fr: {
+        'notes.unsaved': "Vos notes n’ont pas été enregistrées.",
+        'notes.saving': "Enregistrement…",
+        'notes.saved': "Enregistré",
+        'notes.failed': "Non enregistré. Modifiez pour réessayer.",
+        'notes.offline': "Hors ligne — non enregistré",
+        'notes.tooLarge': "Non enregistré : 100 000 caractères maximum.",
+        'validation.host': "Saisissez un nom d’hôte ou une adresse IPv4/IPv6.",
+        'validation.port': "Saisissez un numéro de port entier de 1 à 65535.",
+        'validation.username': "Utilisez 1 à 32 lettres, chiffres, traits de soulignement, tirets ou points.",
+        'dropUpload.folder': "Dossier de destination",
+        'dropUpload.folderHint': "Les chemins relatifs partent du dossier personnel SFTP, pas du répertoire de travail du terminal.",
+        'dropUpload.timeout': "Délai dépassé pour la création du dossier de destination.",
+        'dropUpload.chooseFolder': "Choisissez un dossier de destination après le dépôt.",
         'app.title': 'Terminal SSH Web',
         'app.subtitle': 'Accès Terminal Moderne',
 
@@ -5176,6 +5228,19 @@ const translations = {
     },
 
     es: {
+        'notes.unsaved': "Sus notas no se han guardado.",
+        'notes.saving': "Guardando…",
+        'notes.saved': "Guardado",
+        'notes.failed': "No guardado. Edite para reintentar.",
+        'notes.offline': "Sin conexión — no guardado",
+        'notes.tooLarge': "No guardado: máximo 100.000 caracteres.",
+        'validation.host': "Introduzca un nombre de host o una dirección IPv4/IPv6.",
+        'validation.port': "Introduzca un número de puerto entero entre 1 y 65535.",
+        'validation.username': "Use entre 1 y 32 letras, dígitos, guiones bajos, guiones o puntos.",
+        'dropUpload.folder': "Carpeta de destino",
+        'dropUpload.folderHint': "Las rutas relativas parten del directorio personal SFTP, no del directorio de trabajo del terminal.",
+        'dropUpload.timeout': "Se agotó el tiempo para crear la carpeta de destino.",
+        'dropUpload.chooseFolder': "Elija una carpeta de destino después de soltar.",
         'app.title': 'Terminal SSH Web',
         'app.subtitle': 'Acceso Terminal Moderno',
 
@@ -6469,6 +6534,19 @@ const translations = {
     },
 
     zh: {
+        'notes.unsaved': "你的笔记尚未保存。",
+        'notes.saving': "正在保存…",
+        'notes.saved': "已保存",
+        'notes.failed': "未保存。编辑以重试。",
+        'notes.offline': "离线 — 未保存",
+        'notes.tooLarge': "未保存：最多 100,000 个字符。",
+        'validation.host': "请输入主机名或 IPv4/IPv6 地址。",
+        'validation.port': "请输入 1 到 65535 之间的整数端口号。",
+        'validation.username': "使用 1–32 个字母、数字、下划线、连字符或点。",
+        'dropUpload.folder': "目标文件夹",
+        'dropUpload.folderHint': "相对路径从 SFTP 主目录开始，而不是终端的工作目录。",
+        'dropUpload.timeout': "创建目标文件夹超时。",
+        'dropUpload.chooseFolder': "拖放后选择目标文件夹。",
         'app.title': 'Web SSH 终端',
         'app.subtitle': '现代化终端访问',
 
