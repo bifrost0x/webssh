@@ -2966,3 +2966,43 @@ def test_convert_legacy_profile_reports_safe_corrupt_profile_store(
         'code': 'storage_error',
     }
     assert emitted == [('error', result)]
+
+
+def test_notepad_acknowledges_only_successful_persistence(app, monkeypatch):
+    from app import user_settings
+    import app.socket_events as socket_events
+
+    user_id, sid = create_socket_user(app, 'notepad_ack')
+    result, emitted = call_socket_handler(
+        app, monkeypatch, socket_events.handle_save_notepad, sid,
+        {'text': 'Persisted note'},
+    )
+    assert result == {'success': True}
+    assert emitted == []
+    with app.app_context():
+        assert user_settings.get_user_settings(user_id)['notepad'] == 'Persisted note'
+
+    monkeypatch.setattr(socket_events, 'save_user_settings', lambda *_args: False)
+    result, emitted = call_socket_handler(
+        app, monkeypatch, socket_events.handle_save_notepad, sid,
+        {'text': 'Unsaved note'},
+    )
+    assert result == {'success': False, 'error': 'Failed to save notepad'}
+    assert emitted == [('error', result)]
+    with app.app_context():
+        assert user_settings.get_user_settings(user_id)['notepad'] == 'Persisted note'
+
+
+def test_notepad_rejects_oversized_text_before_writing(app, monkeypatch):
+    import app.socket_events as socket_events
+
+    _user_id, sid = create_socket_user(app, 'notepad_limit')
+    writes = []
+    monkeypatch.setattr(socket_events, 'save_user_settings', lambda *args: writes.append(args))
+    result, emitted = call_socket_handler(
+        app, monkeypatch, socket_events.handle_save_notepad, sid,
+        {'text': 'x' * 100001},
+    )
+    assert result['success'] is False
+    assert emitted == [('error', result)]
+    assert writes == []

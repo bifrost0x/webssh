@@ -1,12 +1,14 @@
 
 class DragDropManager {
-  constructor() {
+  constructor({sessionManager} = {}) {
+    this.sessionManager = sessionManager;
     this.overlay = null;
     this.dropZones = new Set();
     this.isDragging = false;
     this.dragCounter = 0;
     this.transferClient = null;
-    this.defaultSessionId = null;
+    this.pendingDrop = null;
+    this.directoryRequestSequence = 0;
 
     this.handleDragEnter = this.handleDragEnter.bind(this);
     this.handleDragOver = this.handleDragOver.bind(this);
@@ -17,6 +19,7 @@ class DragDropManager {
   init() {
     this.createOverlay();
     this.attachGlobalListeners();
+    this.setupUploadDialog();
 
     if (window.socket && window.BinaryTransferClient) {
       this.transferClient = window.BinaryTransferClient.forSocket(window.socket);
@@ -99,14 +102,6 @@ class DragDropManager {
   }
 
   attachGlobalListeners() {
-    document.addEventListener('dragover', (e) => {
-      e.preventDefault();
-    });
-
-    document.addEventListener('drop', (e) => {
-      e.preventDefault();
-    });
-
     document.addEventListener('dragenter', this.handleDragEnter);
     document.addEventListener('dragleave', this.handleDragLeave);
     document.addEventListener('dragover', this.handleDragOver);
@@ -163,137 +158,136 @@ class DragDropManager {
     }
   }
 
-  async handleDrop(e) {
-    if (!this.isFileDrag(e)) return;
+  t(key, fallback) {
+    return window.i18n?.t(key, fallback) || fallback;
+  }
 
+  setupUploadDialog() {
+    const modal = document.getElementById('dropUploadModal');
+    const close = () => {
+      this.pendingDrop = null;
+      window.ModalManager.close(modal);
+    };
+    document.getElementById('cancelDropUploadBtn')?.addEventListener('click', close);
+    document.getElementById('closeDropUploadModal')?.addEventListener('click', close);
+    document.getElementById('dropUploadForm')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const pending = this.pendingDrop;
+      const path = document.getElementById('dropUploadPath').value.trim();
+      if (!pending || !path) return;
+      close();
+      try {
+        this.assertConnected(pending.session);
+        await this.processEntries(pending.entries, pending.session, path);
+      } catch (error) {
+        window.showNotification?.(error.message, 'error');
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && modal?.classList.contains('show')) this.pendingDrop = null;
+    });
+    modal?.addEventListener('click', event => {
+      if (event.target === modal) this.pendingDrop = null;
+    });
+  }
+
+  handleDrop(e) {
+    if (!this.isFileDrag(e)) return;
     e.preventDefault();
     e.stopPropagation();
-
-    this.dragCounter = 0;
     this.hideOverlay();
-
-    const items = e.dataTransfer?.items;
-    const files = e.dataTransfer?.files;
-
     const session = this.getActiveSession();
+    if (!session) return this.showQuickConnectDialog();
 
-    if (!session) {
-      this.showQuickConnectDialog();
-      return;
-    }
+    // Read DataTransfer while the drop event is active; browsers protect it later.
+    const items = Array.from(e.dataTransfer?.items || []).filter(item => item.kind === 'file');
+    const entries = items.length ? items.map(item => {
+      const entry = item.webkitGetAsEntry?.();
+      return entry ? {entry} : {file: item.getAsFile?.()};
+    }).filter(item => item.entry || item.file)
+      : Array.from(e.dataTransfer?.files || [], file => ({file}));
+    if (!entries.length) return;
+    this.pendingDrop = {session: {...session}, entries};
+    document.getElementById('dropUploadFileName').value = entries
+      .map(item => (item.entry || item.file).name).join(', ');
+    document.getElementById('dropUploadPath').value = '.';
+    document.getElementById('dropUploadTarget').textContent =
+      `${session.username}@${session.host}:${session.port || 22}`;
+    window.ModalManager.open(document.getElementById('dropUploadModal'));
+  }
 
-    if (items) {
-      await this.processDataTransferItems(items, session);
-    } else if (files) {
-      this.processFiles(Array.from(files), session);
+  assertConnected(session) {
+    if (!window.socket?.connected || !(this.sessionManager || window.SessionManager)?.getSession(session.id)?.connected) {
+      throw new Error(this.t('fm.noActiveSession', 'No active SSH session'));
     }
   }
 
-  async processDataTransferItems(items, session) {
-    const entries = Array.from(items)
-      .filter(item => item.kind === 'file')
-      .map(item => item.webkitGetAsEntry());
+  joinPath(base, name) {
+    return `${base.replace(/\/+$/, '')}/${name}`;
+  }
 
-    for (const entry of entries) {
-      if (entry.isFile) {
-        entry.file(file => this.uploadFile(file, session));
-      } else if (entry.isDirectory) {
-        await this.uploadDirectory(entry, session);
+  async processEntries(entries, session, basePath) {
+    for (const {entry, file} of entries) {
+      if (entry?.isDirectory) {
+        await this.uploadDirectory(entry, session, basePath);
+      } else {
+        const upload = file || await new Promise((resolve, reject) => entry.file(resolve, reject));
+        this.uploadFileToPath(upload, this.joinPath(basePath, upload.name), session);
       }
     }
   }
 
-  processFiles(files, session) {
-    files.forEach(file => this.uploadFile(file, session));
-  }
-
-  async uploadDirectory(directoryEntry, session, basePath = null) {
-    if (!this.transferClient) return;
-
-    const currentPath = basePath || this.getCurrentPath() || '/';
-    const dirPath = `${currentPath}/${directoryEntry.name}`;
-
-    if (window.socket) {
-      const sourceId = session.fileSource?.sourceId || `sftp-session:${session.id}`;
-      window.socket.emit('create_directory', {
-        source_id: sourceId,
-        remote_path: dirPath,
-        request_id: `terminal-drop:create-directory:${Date.now()}:${this.dragCounter}`
-      });
-    }
-
-    const reader = directoryEntry.createReader();
-    const entries = await new Promise((resolve, reject) => {
-      reader.readEntries(resolve, reject);
+  createDirectory(path, session) {
+    this.assertConnected(session);
+    const socket = window.socket;
+    const sourceId = session.fileSource?.sourceId || `sftp-session:${session.id}`;
+    const requestId = `terminal-drop:mkdir:${Date.now()}:${++this.directoryRequestSequence}`;
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timer);
+        socket.off('directory_created', created);
+        socket.off('error', failed);
+        socket.off('disconnect', disconnected);
+      };
+      const finish = error => {
+        cleanup();
+        if (error) reject(error); else resolve();
+      };
+      const matches = data => data?.request_id === requestId && data?.source_id === sourceId;
+      const created = data => { if (matches(data)) finish(); };
+      const failed = data => { if (matches(data)) finish(new Error(data.error)); };
+      const disconnected = () => finish(new Error(this.t('fm.noActiveSession', 'No active SSH session')));
+      const timer = setTimeout(() => finish(new Error(this.t('dropUpload.timeout', 'Creating the destination folder timed out.'))), 15000);
+      socket.on('directory_created', created);
+      socket.on('error', failed);
+      socket.on('disconnect', disconnected);
+      socket.emit('create_directory', {source_id: sourceId, remote_path: path, request_id: requestId});
     });
-
-    for (const entry of entries) {
-      if (entry.isFile) {
-        entry.file(file => {
-          const filePath = `${dirPath}/${file.name}`;
-          this.uploadFileToPath(file, filePath, session);
-        });
-      } else if (entry.isDirectory) {
-        await this.uploadDirectory(entry, session, dirPath);
-      }
-    }
   }
 
-  maxFileSize = 100 * 1024 * 1024;
-
-  validateFile(file) {
-    if (file.size > this.maxFileSize) {
-      return `File "${file.name}" too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Max size: ${this.maxFileSize / 1024 / 1024}MB`;
+  async uploadDirectory(directoryEntry, session, basePath) {
+    const dirPath = this.joinPath(basePath, directoryEntry.name);
+    await this.createDirectory(dirPath, session);
+    const reader = directoryEntry.createReader();
+    while (true) {
+      const entries = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      if (!entries.length) break;
+      await this.processEntries(entries.map(entry => ({entry})), session, dirPath);
     }
-    if (file.size === 0) {
-      return `File "${file.name}" is empty and cannot be uploaded.`;
-    }
-    return null;
-  }
-
-  uploadFile(file, session) {
-    const error = this.validateFile(file);
-    if (error) {
-      if (window.showNotification) {
-        window.showNotification(error, 'error');
-      }
-      return;
-    }
-
-    const currentPath = this.getCurrentPath() || '/';
-    const remotePath = `${currentPath}/${file.name}`;
-    this.uploadFileToPath(file, remotePath, session);
   }
 
   uploadFileToPath(file, remotePath, session) {
-    if (!this.transferClient) {
-      console.error('Transfer client not initialized');
-      return;
-    }
-
+    this.assertConnected(session);
     const sourceId = session.fileSource?.sourceId || `sftp-session:${session.id}`;
-    this.transferClient.uploadFile(file, remotePath, sourceId);
-
-    if (window.showNotification) {
-      window.showNotification(`Uploading ${file.name}...`, 'info');
-    }
+    FileTransferManager.uploadFile(sourceId, file, remotePath);
   }
 
   getActiveSession() {
-    if (window.SessionManager) {
-      const sessions = window.SessionManager.getAllSessions();
-      const connected = sessions.filter(s => s.connected);
-
-      if (connected.length > 0) {
-        return connected[0];
-      }
-    }
-
-    return null;
-  }
-
-  getCurrentPath() {
-    return '/';
+    const manager = this.sessionManager || window.SessionManager;
+    const id = typeof manager?.getWorkspaceSession === 'function'
+      ? manager.getWorkspaceSession() : manager?.getActiveSession();
+    const session = id ? manager.getSession(id) : null;
+    return session?.connected ? session : null;
   }
 
   showQuickConnectDialog() {
@@ -331,8 +325,7 @@ class DragDropManager {
 
     if (hint) {
       if (session) {
-        const path = this.getCurrentPath() || '/';
-        hint.textContent = `Uploading to ${session.username}@${session.host}:${path}`;
+        hint.textContent = `${session.username}@${session.host} — ${this.t('dropUpload.chooseFolder', 'Choose a destination folder after dropping.')}`;
       } else {
         hint.textContent = 'Connect to a server first';
       }
@@ -370,7 +363,7 @@ class DragDropManager {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => {
-    window.dragDropManager = new DragDropManager();
+    window.dragDropManager = new DragDropManager({sessionManager: SessionManager});
     window.dragDropManager.init();
   });
 }

@@ -1229,13 +1229,15 @@
             </div>
             <div class="modal-body">
                 <form id="dropUploadForm">
+                    <p id="dropUploadTarget"></p>
                     <div class="form-group">
                         <label for="dropUploadFileName" data-i18n="files.localFile">File</label>
                         <input type="text" id="dropUploadFileName" class="form-control" readonly>
                     </div>
                     <div class="form-group">
-                        <label for="dropUploadPath" data-i18n="files.remotePath">Remote Path</label>
-                        <input type="text" id="dropUploadPath" class="form-control" placeholder="./file.txt" required>
+                        <label for="dropUploadPath" data-i18n="dropUpload.folder">Destination folder</label>
+                        <input type="text" id="dropUploadPath" class="form-control" value="." required aria-describedby="dropUploadPathHint">
+                        <p id="dropUploadPathHint" data-i18n="dropUpload.folderHint">Relative paths start in the SFTP home directory, not the terminal working directory.</p>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelDropUploadBtn" data-i18n="common.cancel">Cancel</button>
@@ -1458,6 +1460,8 @@
     <script src="{{ static_asset_url(filename='js/connection-history.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/primary-workspace-controller.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/socket-reconnect-policy.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/notepad-controller.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/connection-validation.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
