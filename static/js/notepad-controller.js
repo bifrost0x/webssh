@@ -33,14 +33,15 @@
             attempt.timer = schedule(() => {
                 if (pending !== attempt) return;
                 pending = null;
+                if (revision !== attempt.revision) return save();
                 show('failed');
             }, 10000);
             socket.emit('save_notepad', {text}, result => {
                 if (pending !== attempt) return;
                 cancel(attempt.timer);
                 pending = null;
-                if (result?.success !== true) return show('failed');
                 if (revision !== attempt.revision) return save();
+                if (result?.success !== true) return show('failed');
                 dirty = false;
                 show('saved');
             });

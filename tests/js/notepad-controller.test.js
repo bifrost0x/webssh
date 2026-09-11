@@ -29,6 +29,8 @@ test('waits for successful persistence acknowledgement before saying saved', () 
     h.requests[0].ack({success: false});
     assert.equal(h.state.status, 'failed');
     assert.equal(h.controller.hasUnsaved(), true);
+    h.tick(300); h.tick(10000);
+    assert.equal(h.requests.length, 1);
     h.edit('retry'); h.tick(300); h.requests[1].ack({success: true});
     assert.equal(h.state.status, 'saved');
     assert.equal(h.controller.hasUnsaved(), false);
@@ -71,6 +73,38 @@ test('timeout leaves the note dirty and late acknowledgement cannot clear newer 
     h.edit('two'); h.tick(300); h.requests[0].ack({success: true});
     assert.equal(h.controller.hasUnsaved(), true);
     assert.equal(h.state.status, 'saving');
+});
+
+for (const outcome of ['failure', 'timeout']) {
+    test(`saves queued edits after ${outcome} without retrying an unchanged revision`, () => {
+        const h = harness();
+        h.edit('one'); h.tick(300);
+        h.edit('two'); h.tick(300);
+        h.edit('latest'); h.tick(300);
+        assert.equal(h.requests.length, 1);
+        if (outcome === 'failure') h.requests[0].ack({success: false});
+        else h.tick(10000);
+        assert.equal(h.requests.length, 2);
+        assert.equal(h.requests[1].payload.text, 'latest');
+        assert.equal(h.state.status, 'saving');
+        assert.equal(h.controller.hasUnsaved(), true);
+        h.requests[0].ack({success: true});
+        assert.equal(h.controller.hasUnsaved(), true);
+        h.requests[1].ack({success: true});
+        assert.equal(h.state.status, 'saved');
+        assert.equal(h.controller.hasUnsaved(), false);
+        h.tick(300); h.tick(10000);
+        assert.equal(h.requests.length, 2);
+    });
+}
+
+test('does not automatically retry a timed out unchanged revision', () => {
+    const h = harness();
+    h.edit('one'); h.tick(300); h.tick(10000);
+    h.tick(300); h.tick(10000);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state.status, 'failed');
+    assert.equal(h.controller.hasUnsaved(), true);
 });
 
 test('checks the server character limit without rejecting valid non-BMP text', () => {
