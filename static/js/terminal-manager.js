@@ -903,6 +903,9 @@ const TerminalManager = {
                 continue;
             }
             if (ch === '\r') {
+                if (text[i + 1] === '\n') {
+                    continue;
+                }
                 output.splice(lineStart);
                 continue;
             }
