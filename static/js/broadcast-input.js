@@ -60,9 +60,9 @@
             sessions.forEach(s => {
                 const data = text + '\r';
                 if (window.SSHInput) {
-                    window.SSHInput.send(s.id, data);
+                    window.SSHInput.sendText(s.id, data);
                 } else {
-                    window.socket.emit('ssh_input', { session_id: s.id, data });
+                    window.socket.emit('ssh_input', { session_id: s.id, data: data.replace(/\r\n|\n/g, '\r') });
                 }
             });
             return sessions.length;

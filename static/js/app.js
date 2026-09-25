@@ -2204,10 +2204,13 @@
         Promise.resolve(clipboardText)
             .then(text => {
                 if (window.socket && text) {
-                    if (window.SSHInput) {
-                        window.SSHInput.send(active, text);
+                    const terminal = TerminalManager.terminals[active];
+                    if (terminal?.paste) {
+                        terminal.paste(text);
+                    } else if (window.SSHInput) {
+                        window.SSHInput.sendText(active, text);
                     } else {
-                        window.socket.emit('ssh_input', { session_id: active, data: text });
+                        window.socket.emit('ssh_input', { session_id: active, data: text.replace(/\r\n|\n/g, '\r') });
                     }
                 }
             })
@@ -2256,9 +2259,9 @@
                 if (window.socket?.connected === true) {
                     const data = submitted + '\r';
                     if (window.SSHInput) {
-                        sent = await window.SSHInput.send(active, data);
+                        sent = await window.SSHInput.sendText(active, data);
                     } else {
-                        window.socket.emit('ssh_input', { session_id: active, data });
+                        window.socket.emit('ssh_input', { session_id: active, data: data.replace(/\r\n|\n/g, '\r') });
                         sent = true;
                     }
                 }

@@ -28,6 +28,8 @@
         return chunks;
     }
 
+    function normalizeNewlines(value) { return String(value).replace(/\r\n|\n/g, '\r'); }
+
     function notifyFailure(message) {
         root.showNotification?.(message || 'SSH input could not be sent', 'error');
     }
@@ -168,9 +170,14 @@
         return queued;
     }
 
+    function sendText(sessionId, value) {
+        return send(sessionId, typeof value === 'string' ? normalizeNewlines(value) : value);
+    }
+
     root.SSHInput = Object.freeze({
         byteChunks,
         send,
+        sendText,
         cancelSession,
         hasPending: sessionId => sessionQueues.has(sessionId),
         CHUNK_BYTES,
