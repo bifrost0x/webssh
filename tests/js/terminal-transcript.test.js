@@ -24,3 +24,9 @@ test('transcript export still handles a lone carriage return as an overwrite', (
 
     assert.equal(TerminalManager.getCleanTranscript('session'), 'Downloading 90%\n');
 });
+
+test('ANSI erase between CR and LF does not turn a cleared line into a saved line', () => {
+    TerminalManager.transcripts = {session: ['text\r', '\x1b[2K\n']};
+
+    assert.equal(TerminalManager.getCleanTranscript('session'), '\n');
+});
