@@ -9,7 +9,7 @@ function setup(send, connected = true) {
     const declaration = source.indexOf('let mobileSendPending =');
     const start = declaration < 0 ? source.indexOf('const sendMobileInput =') : declaration;
     const end = source.indexOf('\n        if (mobileInput)', start);
-    const context = {mobileInput: {value: 'original'}, SessionManager: {getActiveSession: () => 's'}, window: {socket: {connected}, SSHInput: {send}}};
+    const context = {mobileInput: {value: 'original'}, SessionManager: {getActiveSession: () => 's'}, window: {socket: {connected}, SSHInput: {sendText: send}}};
     vm.runInNewContext(source.slice(start, end) + '\nglobalThis.send = sendMobileInput;', context);
     return context;
 }
@@ -31,7 +31,7 @@ test('repeated mobile submit cannot duplicate an in-flight command and failures 
     assert.equal(calls, 1);
     finish(false);
     await Promise.all([pending, repeated]);
-    context.window.SSHInput.send = async () => { calls++; return true; };
+    context.window.SSHInput.sendText = async () => { calls++; return true; };
     await context.send();
     assert.equal(calls, 2);
     assert.equal(context.mobileInput.value, '');
@@ -45,7 +45,15 @@ test('successful mobile delivery clears only the submitted text', async () => {
     acknowledge(true);
     await pending;
     assert.equal(context.mobileInput.value, 'new text');
-    context.window.SSHInput.send = async () => true;
+    context.window.SSHInput.sendText = async () => true;
     await context.send();
     assert.equal(context.mobileInput.value, '');
+});
+
+test('mobile submit sends multiline text through the text input path', async () => {
+    const delivered = [];
+    const context = setup(async (id, value) => { delivered.push([id, value]); return true; });
+    context.mobileInput.value = 'first\nsecond';
+    await context.send();
+    assert.deepEqual(delivered, [['s', 'first\nsecond\r']]);
 });

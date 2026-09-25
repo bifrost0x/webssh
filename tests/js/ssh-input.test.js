@@ -249,3 +249,163 @@ test('ending one session cancels its paste without cancelling another session', 
     assert.equal(await second, true);
     assert.deepEqual(delivered, [['session-1', 'abcd'], ['session-2', 'abcd'], ['session-2', 'efgh']]);
 });
+
+test('LF control input passes through send byte-identical', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.send('s', '\n'), true);
+    assert.equal(emitted.join(''), '\n');
+});
+
+test('LF newlines normalize to CR on explicit text input', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.sendText('s', 'echo a\necho b\n'), true);
+    assert.equal(emitted.join(''), 'echo a\recho b\r');
+});
+
+test('CRLF newlines normalize to CR on explicit text input', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.sendText('s', 'line1\r\nline2\r\n'), true);
+    assert.equal(emitted.join(''), 'line1\rline2\r');
+});
+
+test('lone CR passes through byte-identical on explicit text input', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.sendText('s', 'ls\r'), true);
+    assert.equal(emitted.join(''), 'ls\r');
+});
+
+test('mixed newline styles normalize to CR on explicit text input', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.sendText('s', 'a\r\nb\nc\rd'), true);
+    assert.equal(emitted.join(''), 'a\rb\rc\rd');
+});
+
+test('chunked multiline paste round-trips with CR normalization', async () => {
+    const delivered = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            delivered.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    }, 4);
+
+    assert.equal(await transport.sendText('s', 'ab\ncd\nef'), true);
+    assert.equal(delivered.join(''), 'ab\rcd\ref');
+});
+
+test('bracketed paste payload passes through send byte-identical', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.send('s', '\x1b[200~a\nb\x1b[201~'), true);
+    assert.equal(emitted.join(''), '\x1b[200~a\nb\x1b[201~');
+});
+
+test('tiny-limit multibyte paste rejoins normalized with no lone surrogate', async () => {
+    const delivered = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            delivered.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    }, 4);
+    const encoder = new TextEncoder();
+
+    assert.equal(await transport.sendText('s', '😀é\r\nx'), true);
+    assert.equal(delivered.join(''), '😀é\rx');
+    assert.ok(!delivered.join('').includes('�'));
+    assert.ok(delivered.every(chunk => encoder.encode(chunk).length <= 4));
+});
+
+test('noteInput spy sees normalized value preserving submitted semantics', async () => {
+    const seen = [];
+    const socket = {connected: true, emit() {}};
+    const window = {
+        socket,
+        setTimeout,
+        clearTimeout,
+        TextDecoder,
+        TextEncoder,
+        WEBSSH_SSH_INPUT_LIMITS: {maxEventBytes: 64 * 1024},
+        SessionDirectorySync: {noteInput: (id, v) => seen.push([id, v])},
+    };
+    const context = vm.createContext({window, TextDecoder, TextEncoder});
+    vm.runInContext(fs.readFileSync('static/js/ssh-input.js', 'utf8'), context);
+    const transport = window.SSHInput;
+
+    assert.equal(await transport.sendText('s', 'a\nb'), true);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0][0], 's');
+    assert.equal(seen[0][1], 'a\rb');
+    assert.ok(seen[0][1].includes('\r'));
+    assert.ok(!seen[0][1].includes('\n'));
+});
+
+test('DA-style reply passes through send byte-identical', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.send('s', '\x1b[?25c'), true);
+    assert.equal(emitted.join(''), '\x1b[?25c');
+});
+
+test('degenerate text newlines preserve CR semantics and empty early-returns', async () => {
+    const emitted = [];
+    const transport = loadSSHInput({
+        emit(_event, payload, acknowledgement) {
+            emitted.push(payload.data);
+            acknowledgement?.({success: true});
+        },
+    });
+
+    assert.equal(await transport.sendText('s', '\r\r'), true);
+    assert.equal(await transport.sendText('s', 'x\n'), true);
+    assert.equal(await transport.sendText('s', ''), false);
+    assert.equal(await transport.sendText('s', '\n'), true);
+    assert.deepEqual(emitted, ['\r\r', 'x\r', '\r']);
+});
