@@ -303,11 +303,18 @@
     let selectedConnectionProfileState = null;
     const pendingReconnectSessionMap = new Map();
 
+    function hasUsableConnectionKey(keyId) {
+        return Boolean(keyId) && ProfileManager.keys.some(
+            key => key.id === keyId && key.usable === true
+        );
+    }
+
     function refreshConnectionProfileKeyResolution() {
+        const keyId = document.getElementById('keySelect')?.value;
         const needsKey = selectedConnectionProfileState?.requiresKey === true
             && ProfileManager.keysLoaded === true
             && document.getElementById('authTypeSelect')?.value === 'key'
-            && !document.getElementById('keySelect')?.value;
+            && !hasUsableConnectionKey(keyId);
         document.getElementById('connectionProfileKeyResolution')
             ?.classList.toggle('hidden', !needsKey);
     }
@@ -2676,6 +2683,17 @@
 
             if (authType === 'key' && !keyId) {
                 showNotification('SSH key is required', 'error');
+                return;
+            }
+
+            if (authType === 'key' && ProfileManager.keysLoaded
+                && !hasUsableConnectionKey(keyId)) {
+                showNotification(
+                    window.i18n?.t('connection.readinessKey', 'Key missing or unavailable')
+                        || 'Key missing or unavailable',
+                    'error',
+                );
+                document.getElementById('keySelect').focus();
                 return;
             }
 

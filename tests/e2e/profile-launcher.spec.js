@@ -64,6 +64,31 @@ test('missing saved SSH key is explained before connecting and clears after repl
     await expect(page.locator('#connectionProfileKeyResolution')).toBeHidden();
 });
 
+test('unusable saved SSH key is explained and cannot be submitted', async ({ page }) => {
+    await expect.poll(() => page.evaluate(() => window.ProfileManager.keysLoaded)).toBe(true);
+    await page.evaluate(() => {
+        const profile = window.ProfileManager.profiles.find(item => item.name === 'Usable key');
+        const key = window.ProfileManager.keys.find(item => item.id === profile.key_id);
+        window.ProfileManager.setKeys([
+            {...key, usable: false},
+            {...key, id: 'replacement-key', name: 'Replacement key', usable: true},
+        ]);
+    });
+
+    await launchProfile(page, 'Usable key');
+    await expect(page.locator('#keySelect')).not.toHaveValue('');
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeVisible();
+
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeVisible();
+
+    await page.locator('#keySelect').selectOption('replacement-key');
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeHidden();
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(1);
+});
+
 test('legacy key profile clears a previously selected SSH key', async ({ page }) => {
     await page.evaluate(() => {
         const usable = window.ProfileManager.profiles.find(profile => profile.name === 'Usable key');
