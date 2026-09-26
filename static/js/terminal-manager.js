@@ -878,7 +878,7 @@ const TerminalManager = {
         if (!raw) {
             return '';
         }
-        const stripped = this.stripAnsiSequences(raw);
+        const stripped = this.stripAnsiSequences(raw.replace(/\r\n/g, '\n'));
         return this.normalizeControlChars(stripped);
     },
 
