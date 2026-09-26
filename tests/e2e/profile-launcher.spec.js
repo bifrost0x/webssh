@@ -51,6 +51,85 @@ test.afterEach(async ({ page }) => {
     await assertNoExternalRequests(page);
 });
 
+test('missing saved SSH key is explained before connecting and clears after replacement', async ({ page }) => {
+    await launchProfile(page, 'Missing key');
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeVisible();
+    await expect(page.locator('#connectionProfileKeyResolution')).toContainText(
+        'This saved connection has no available SSH key. Select a key before connecting.'
+    );
+    await expect(page.locator('#keySelect')).toHaveValue('');
+    await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+
+    await page.locator('#keySelect').selectOption({ label: 'E2E usable key (Ed25519)' });
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeHidden();
+});
+
+test('unusable saved SSH key is explained and cannot be submitted', async ({ page }) => {
+    await expect.poll(() => page.evaluate(() => window.ProfileManager.keysLoaded)).toBe(true);
+    await page.evaluate(() => {
+        const profile = window.ProfileManager.profiles.find(item => item.name === 'Usable key');
+        const key = window.ProfileManager.keys.find(item => item.id === profile.key_id);
+        window.ProfileManager.setKeys([
+            {...key, usable: false},
+            {...key, id: 'replacement-key', name: 'Replacement key', usable: true},
+        ]);
+    });
+
+    await launchProfile(page, 'Usable key');
+    await expect(page.locator('#keySelect')).not.toHaveValue('');
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeVisible();
+
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeVisible();
+
+    await page.locator('#keySelect').selectOption('replacement-key');
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeHidden();
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(1);
+});
+
+test('legacy key profile clears a previously selected SSH key', async ({ page }) => {
+    await page.evaluate(() => {
+        const usable = window.ProfileManager.profiles.find(profile => profile.name === 'Usable key');
+        window.ProfileManager.setProfiles([
+            ...window.ProfileManager.profiles,
+            { ...usable, id: 'legacy-keyless', name: 'Legacy keyless', key_id: null },
+        ]);
+    });
+
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#authTypeSelect').selectOption('key');
+    await page.locator('#keySelect').selectOption({ label: 'E2E usable key (Ed25519)' });
+    await page.locator('#cancelConnectionBtn').click();
+
+    await launchProfile(page, 'Legacy keyless');
+    await expect(page.locator('#keySelect')).toHaveValue('');
+    await expect(page.locator('#connectionProfileKeyResolution')).toBeVisible();
+    await expect.poll(() => sshAttempts(page)).toHaveLength(0);
+});
+
+test('saved host and command set controls include their names', async ({ page }) => {
+    await openProfileManagement(page);
+    const host = page.locator('.profile-management-item').filter({ hasText: 'Usable key' });
+    await expect(host.locator('[data-profile-action="connect"]')).toHaveAccessibleName(
+        'Connect Usable key'
+    );
+    await expect(host.locator('.profile-action-menu > summary')).toHaveAccessibleName(
+        'Actions Usable key'
+    );
+
+    await page.locator('#commandLibraryBtn').click();
+    await page.locator('#commandSetsTab').click();
+    const commandSet = page.locator('.command-set-management-item').filter({
+        hasText: 'Guarded profile set',
+    });
+    await expect(commandSet.locator('.command-set-action-menu > summary')).toHaveAccessibleName(
+        'Actions Guarded profile set'
+    );
+});
+
 test('command palette launches a safe key host through the central launcher', async ({ page }) => {
     await page.keyboard.press('Control+k');
     await expect(page.locator('#commandPaletteModal')).toHaveClass(/show/);

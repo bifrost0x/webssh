@@ -2296,6 +2296,25 @@
     font-size: 17px;
 }
 
+@media (min-width: 768px) {
+    #sftpFileManager.fm-workspace-split .fm-pane-toolbar button:nth-child(n + 3) {
+        min-width: 34px;
+        justify-content: center;
+        padding: 0 6px;
+    }
+
+    #sftpFileManager.fm-workspace-split .fm-pane-toolbar button:nth-child(n + 3) span:not(.material-icons) {
+        display: none;
+    }
+}
+
+@media (any-pointer: coarse) {
+    #sftpFileManager.fm-workspace-split .fm-pane-toolbar button:nth-child(n + 3) {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
 .fm-file-list-header,
 #sftpFileManager.fm-workspace-mode .fm-file-item {
     display: grid;

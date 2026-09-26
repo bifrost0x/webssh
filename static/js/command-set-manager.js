@@ -328,7 +328,8 @@ window.CommandSetManager = {
             menu.className = 'command-set-action-menu';
             const summary = document.createElement('summary');
             summary.className = 'btn btn-secondary btn-sm material-icons';
-            summary.setAttribute('aria-label', this.t('common.actions', 'Actions'));
+            summary.setAttribute('aria-label',
+                `${this.t('common.actions', 'Actions')} ${commandSet.name}`);
             summary.textContent = 'more_horiz';
             const menuItems = document.createElement('div');
             menuItems.className = 'command-set-action-menu-items';
