@@ -20,6 +20,13 @@ async function openQuickConnect(page) {
     await page.locator('.terminal-pane.active .profile-launcher-new').click();
 }
 
+test('empty recent history leaves advanced settings in the compact secondary column', async ({ page }) => {
+    await openQuickConnect(page);
+    await expect(page.locator('#recentConnectionsCard')).toBeHidden();
+    await expect(page.locator('#connectionAdvancedSettings')).toBeVisible();
+    await expect(page.locator('#connectBtn')).toBeVisible();
+});
+
 test('keeps Quick Connect in the workspace without a duplicate header action', async ({ page }) => {
     await expect(page.locator('#newConnectionBtn')).toHaveCount(0);
 

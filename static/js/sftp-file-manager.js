@@ -1208,13 +1208,13 @@ class SFTPFileManager {
                                 </button>
                             </div>
                             <div class="fm-pane-toolbar" data-pane-toolbar="left">
-                                <button type="button" data-pane-action="newfolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
-                                <button type="button" data-pane-action="upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button>
-                                <button type="button" data-pane-action="download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button>
-                                <button type="button" data-pane-action="preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button>
-                                <button type="button" data-pane-action="rename"><span class="material-icons" aria-hidden="true">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
+                                <button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
+                                <button type="button" data-pane-action="upload" aria-label="Upload" title="Upload" data-i18n-aria-label="fm.upload" data-i18n-title="fm.upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button>
+                                <button type="button" data-pane-action="download" aria-label="Download" title="Download" data-i18n-aria-label="fm.download" data-i18n-title="fm.download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button>
+                                <button type="button" data-pane-action="preview" aria-label="Preview" title="Preview" data-i18n-aria-label="fm.preview" data-i18n-title="fm.preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button>
+                                <button type="button" data-pane-action="rename" aria-label="Rename" title="Rename" data-i18n-aria-label="fm.rename" data-i18n-title="fm.rename"><span class="material-icons" aria-hidden="true">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
                                 <button type="button" data-pane-action="move" aria-label="Move…" title="Move…" data-i18n-aria-label="fm.moveAction" data-i18n-title="fm.moveAction"><span class="material-icons" aria-hidden="true">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
-                                <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons" aria-hidden="true">delete</span><span data-i18n="fm.delete">Delete</span></button>
+                                <button type="button" class="is-danger" data-pane-action="delete" aria-label="Delete" title="Delete" data-i18n-aria-label="fm.delete" data-i18n-title="fm.delete"><span class="material-icons" aria-hidden="true">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
                                 <input type="checkbox" data-pane-select-all="left" aria-label="Select all files" data-i18n-aria-label="fm.workspace.selectAll">
@@ -1275,13 +1275,13 @@ class SFTPFileManager {
                                 </button>
                             </div>
                             <div class="fm-pane-toolbar" data-pane-toolbar="right">
-                                <button type="button" data-pane-action="newfolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
-                                <button type="button" data-pane-action="upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button>
-                                <button type="button" data-pane-action="download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button>
-                                <button type="button" data-pane-action="preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button>
-                                <button type="button" data-pane-action="rename"><span class="material-icons" aria-hidden="true">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
+                                <button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
+                                <button type="button" data-pane-action="upload" aria-label="Upload" title="Upload" data-i18n-aria-label="fm.upload" data-i18n-title="fm.upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button>
+                                <button type="button" data-pane-action="download" aria-label="Download" title="Download" data-i18n-aria-label="fm.download" data-i18n-title="fm.download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button>
+                                <button type="button" data-pane-action="preview" aria-label="Preview" title="Preview" data-i18n-aria-label="fm.preview" data-i18n-title="fm.preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button>
+                                <button type="button" data-pane-action="rename" aria-label="Rename" title="Rename" data-i18n-aria-label="fm.rename" data-i18n-title="fm.rename"><span class="material-icons" aria-hidden="true">drive_file_rename_outline</span><span data-i18n="fm.rename">Rename</span></button>
                                 <button type="button" data-pane-action="move" aria-label="Move…" title="Move…" data-i18n-aria-label="fm.moveAction" data-i18n-title="fm.moveAction"><span class="material-icons" aria-hidden="true">drive_file_move</span><span data-i18n="fm.moveAction">Move…</span></button>
-                                <button type="button" class="is-danger" data-pane-action="delete"><span class="material-icons" aria-hidden="true">delete</span><span data-i18n="fm.delete">Delete</span></button>
+                                <button type="button" class="is-danger" data-pane-action="delete" aria-label="Delete" title="Delete" data-i18n-aria-label="fm.delete" data-i18n-title="fm.delete"><span class="material-icons" aria-hidden="true">delete</span><span data-i18n="fm.delete">Delete</span></button>
                             </div>
                             <div class="fm-file-list-header">
                                 <input type="checkbox" data-pane-select-all="right" aria-label="Select all files" data-i18n-aria-label="fm.workspace.selectAll">

@@ -5077,6 +5077,7 @@ body.keyboard-open.notepad-focused .notepad-panel {
     line-height: 1.4;
 }
 
+.connection-profile-key-resolution,
 .connection-profile-jump-resolution {
     display: grid;
     gap: 8px;

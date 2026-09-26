@@ -596,8 +596,8 @@ test('captures the current Quick Connect surface at Full HD scale without outbou
         process.env.WEBSSH_CAPTURE_EXPECT_QUICK_CONNECT || 'Quick Connect',
     );
     await expect(page.locator('#connectionDetailsCard')).toBeVisible();
-    await expect(page.locator('#recentConnectionsCard')).toBeVisible();
-    await expect(page.locator('#recentConnectionsEmpty')).toBeVisible();
+    await expect(page.locator('#recentConnectionsCard')).toBeHidden();
+    await expect(page.locator('#recentConnectionsEmpty')).toBeHidden();
     await expect(page.locator('#profileSelect')).toHaveCount(0);
     await expect(page.getByText('New Connection', { exact: true })).toHaveCount(0);
     await expect(page.getByText('New SSH Connection', { exact: true })).toHaveCount(0);

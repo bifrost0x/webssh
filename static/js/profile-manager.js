@@ -755,9 +755,8 @@ const ProfileManager = {
 
         this.handleAuthTypeChange(profile.auth_type);
 
-        if (profile.auth_type === 'key' && profile.key_id) {
-            document.getElementById('keySelect').value = profile.key_id;
-        }
+        document.getElementById('keySelect').value =
+            profile.auth_type === 'key' ? profile.key_id || '' : '';
 
         // Jump host (bastion) reference — the password is entered at connect time.
         const jumpHostSelect = document.getElementById('jumpHostSelect');
@@ -1119,13 +1118,15 @@ const ProfileManager = {
                 connect.dataset.profileAction = 'connect';
                 connect.dataset.profileId = profile.id;
                 connect.textContent = this.t('connection.connect', 'Connect');
+                connect.setAttribute('aria-label', `${connect.textContent} ${profile.name || profile.host}`);
                 actions.appendChild(connect);
 
                 const actionMenu = document.createElement('details');
                 actionMenu.className = 'profile-action-menu';
                 const actionSummary = document.createElement('summary');
                 actionSummary.className = 'btn btn-secondary btn-sm material-icons';
-                actionSummary.setAttribute('aria-label', this.t('common.actions', 'Actions'));
+                actionSummary.setAttribute('aria-label',
+                    `${this.t('common.actions', 'Actions')} ${profile.name || profile.host}`);
                 actionSummary.textContent = 'more_horiz';
                 const actionMenuItems = document.createElement('div');
                 actionMenuItems.className = 'profile-action-menu-items';

@@ -303,6 +303,15 @@
     let selectedConnectionProfileState = null;
     const pendingReconnectSessionMap = new Map();
 
+    function refreshConnectionProfileKeyResolution() {
+        const needsKey = selectedConnectionProfileState?.requiresKey === true
+            && ProfileManager.keysLoaded === true
+            && document.getElementById('authTypeSelect')?.value === 'key'
+            && !document.getElementById('keySelect')?.value;
+        document.getElementById('connectionProfileKeyResolution')
+            ?.classList.toggle('hidden', !needsKey);
+    }
+
     function refreshConnectionProfileJumpResolution() {
         const resolution = document.getElementById('connectionProfileJumpResolution');
         const directConfirm = document.getElementById('connectionProfileDirectConfirm');
@@ -337,6 +346,7 @@
         const directConfirm = document.getElementById('connectionProfileDirectConfirm');
         if (directConfirm) directConfirm.checked = false;
         document.getElementById('connectionProfileJumpResolution')?.classList.add('hidden');
+        document.getElementById('connectionProfileKeyResolution')?.classList.add('hidden');
     };
 
     window.prepareSessionReconnectJump = (session, {applyToForm = false} = {}) => {
@@ -381,6 +391,8 @@
             if (!container) return;
 
             const history = this.getHistory();
+            document.getElementById('recentConnectionsCard')
+                ?.classList.toggle('hidden', history.length === 0);
             container.replaceChildren();
             container.classList.toggle('hidden', history.length === 0);
             document.getElementById('recentConnectionsEmpty')
@@ -1597,6 +1609,7 @@
             keySelect.value = pendingKeyId;
             selectedConnectionProfileState.pendingKeyId = null;
         }
+        refreshConnectionProfileKeyResolution();
     });
 
     socket.on('key_uploaded', (data) => {
@@ -1792,6 +1805,7 @@
         const requiredJumpHostId = profile.jump_host_id || '';
         selectedConnectionProfileState = {
             profileId,
+            requiresKey: profile.auth_type === 'key',
             pendingKeyId: profile.auth_type === 'key' ? profile.key_id || null : null,
             missingJumpHost: Boolean(
                 requiredJumpHostId
@@ -1806,6 +1820,7 @@
         profileContext?.classList.remove('hidden');
         const profileContextName = document.getElementById('connectionProfileContextName');
         if (profileContextName) profileContextName.textContent = profile.name || profile.host;
+        refreshConnectionProfileKeyResolution();
         refreshConnectionProfileJumpResolution();
         return profile;
     }
@@ -2127,6 +2142,7 @@
             keySelect.addEventListener('change', () => {
                 const value = keySelect.value;
                 setFieldState(keySelect, keyHint, value ? '' : i18n.t('connection.selectSSHKey'), Boolean(value));
+                refreshConnectionProfileKeyResolution();
             });
         }
 
@@ -2144,6 +2160,7 @@
                 if (authTypeSelect.value === 'key' && keySelect) {
                     setFieldState(keySelect, keyHint, keySelect.value ? '' : i18n.t('connection.selectSSHKey'), Boolean(keySelect.value));
                 }
+                refreshConnectionProfileKeyResolution();
             });
         }
     }

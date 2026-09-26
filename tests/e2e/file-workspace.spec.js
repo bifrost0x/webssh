@@ -75,6 +75,61 @@ async function openWorkspaceWithSources(page) {
     });
 }
 
+test('compact file toolbar actions retain accessible names', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page);
+    await page.evaluate(() => openFileManager());
+
+    const toolbar = page.locator('#fmLeftPane .fm-pane-toolbar');
+    for (const [action, name] of Object.entries({
+        newfolder: 'New Folder', upload: 'Upload', download: 'Download',
+        preview: 'Preview', rename: 'Rename', move: 'Move…', delete: 'Delete',
+    })) {
+        await expect(toolbar.locator(`[data-pane-action="${action}"]`))
+            .toHaveAttribute('aria-label', name);
+    }
+});
+
+test('split file toolbars expose every action without horizontal scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await login(page);
+    await page.evaluate(() => openFileManager());
+    await page.locator('#fmLayoutSplit').click();
+
+    for (const side of ['Left', 'Right']) {
+        const toolbar = page.locator(`#fm${side}Pane .fm-pane-toolbar`);
+        await expect(toolbar.locator('[data-pane-action]')).toHaveCount(7);
+        expect(await toolbar.evaluate(element => element.scrollWidth <= element.clientWidth + 1))
+            .toBe(true);
+        await expect(toolbar.locator('[data-pane-action="delete"]')).toBeInViewport();
+    }
+});
+
+test.describe('touch file workspace', () => {
+    test.use({ hasTouch: true });
+
+    test('split file toolbar actions retain mobile touch targets', async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 720 });
+        await login(page);
+        await page.evaluate(() => openFileManager());
+        await page.locator('#fmLayoutSplit').click();
+        for (const [viewportWidth, sides] of [
+            [390, ['Left']],
+            [900, ['Left', 'Right']],
+        ]) {
+            await page.setViewportSize({ width: viewportWidth, height: 844 });
+            for (const side of sides) {
+                const widths = await page.locator(
+                    `#fm${side}Pane .fm-pane-toolbar button:nth-child(n + 3)`,
+                ).evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width));
+                expect(widths).toHaveLength(5);
+                expect(Math.min(...widths), `${viewportWidth}px ${side}: ${widths.join(', ')}`)
+                    .toBeGreaterThanOrEqual(44);
+            }
+        }
+    });
+});
+
 for (const kind of ['sftp', 'smb']) {
     test(`${kind} filenames preserve text, checkbox attributes and sorted selection`, async ({ page }) => {
         await openWorkspaceWithSources(page);
