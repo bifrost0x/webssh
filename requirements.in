@@ -32,6 +32,8 @@ qrcode>=8.2,<9
 Authlib>=1.8.0,<2
 # Compatibility: Authlib's Flask client uses the reviewed Requests 2.x transport API.
 requests>=2.34,<3
+# Compatibility: Requests 2.x supports urllib3 2.x; 2.8.0 fixes proxy TLS and chunk parsing vulnerabilities.
+urllib3>=2.8.0,<3
 # Compatibility: Bonsai 1.5.5 supports Python 3.10-3.14 and exposes the
 # reviewed OpenLDAP StartTLS, certificate-policy, timeout, and referral APIs.
 bonsai==1.5.5
