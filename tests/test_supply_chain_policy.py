@@ -20,7 +20,7 @@ PINNED_ACTIONS = {
         'v8.0.1',
     ),
     'actions/deploy-pages': (
-        'cd2ce8fcbc39b97be8ca5fce6e763baed58fa128',
+        '368f82528645a54fb793d4d04e342629a3f51346',
         'v5',
     ),
     'actions/setup-node': (
@@ -48,11 +48,11 @@ PINNED_ACTIONS = {
         'v0.36.0',
     ),
     'astral-sh/setup-uv': (
-        '20cfd1bf945f4377ade1205e4dbc17946fc9a30d',
-        'v10.0.1',
+        'c18668ad3cf93ea998bef934396af7bb5c839dc7',
+        'v10.2.0',
     ),
     'docker/build-push-action': (
-        '53b7df96c91f9c12dcc8a07bcb9ccacbed38856a',
+        'c3c9e263c25d99ce0380d002d59b67737d91b0dc',
         'v7',
     ),
     'docker/login-action': (
@@ -64,7 +64,7 @@ PINNED_ACTIONS = {
         'v6',
     ),
     'docker/setup-buildx-action': (
-        '37fe631027851001ddb9b187196cc803df7f5f0e',
+        'f87e5991a6d7451dcb8d9637bfbc97413f497069',
         'v4',
     ),
     'docker/setup-qemu-action': (

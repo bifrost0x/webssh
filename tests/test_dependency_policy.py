@@ -198,6 +198,12 @@ def test_runtime_locks_exclude_vulnerable_cryptography_versions(path):
 
 
 @pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
+def test_runtime_locks_exclude_vulnerable_urllib3_versions(path):
+    """CVE-2026-97687 and CVE-2026-97689 affect urllib3 before 2.8.0."""
+    assert locked_version(path, "urllib3") >= Version("2.8.0")
+
+
+@pytest.mark.parametrize("path", ["requirements.txt", "requirements-test.txt"])
 def test_runtime_locks_include_reviewed_mfa_libraries(path):
     """TOTP verification and local SVG provisioning require reviewed APIs."""
     pyotp_version = locked_version(path, "pyotp")
