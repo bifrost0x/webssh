@@ -94,7 +94,7 @@ CI/security gates cannot be silently waived. No automation or automatic merge is
 
 The initial [release-history manifest](release-history.json) is a dated, reviewable
 snapshot of ten published releases and the proposed next scope. It includes prepared
-native milestone descriptions, 160 merged PR mappings and 24 verified issue links.
+native milestone descriptions, 161 merged PR mappings and 24 verified issue links.
 The candidate entry has no tag or publication date because it is not a release.
 
 For historical backfill:

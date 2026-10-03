@@ -5,7 +5,7 @@
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
   "native_milestone_backfill": "prepared_not_applied",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
-  "expected_merged_pr_count": 160,
+  "expected_merged_pr_count": 161,
   "expected_implementation_linked_issue_count": 24,
   "historical": [
     {
@@ -137,13 +137,14 @@
       "previous_release": "v1.2.0",
       "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v1.3.0",
       "compare_url": "https://github.com/bifrost0x/webssh/compare/v1.2.0...v1.3.0",
-      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Faster recurring administration.\nRationale summary (from linked release/PRs): Make command insertion, saved-host ordering and stored-key replacement predictable without silently executing commands.\n\nPublished: 2026-08-12. [Release](https://github.com/bifrost0x/webssh/releases/tag/v1.3.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v1.2.0...v1.3.0).\nTag commit: 7f5c68f3653ae0f910f5993b14dc6ae31285a767.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 5 verified merged PRs. Key evidence: [#94](https://github.com/bifrost0x/webssh/pull/94), [#96](https://github.com/bifrost0x/webssh/pull/96), [#97](https://github.com/bifrost0x/webssh/pull/97).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Faster recurring administration.\nRationale summary (from linked release/PRs): Make command insertion, saved-host ordering and stored-key replacement predictable without silently executing commands.\n\nPublished: 2026-08-12. [Release](https://github.com/bifrost0x/webssh/releases/tag/v1.3.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v1.2.0...v1.3.0).\nTag commit: 7f5c68f3653ae0f910f5993b14dc6ae31285a767.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 6 verified merged PRs. Key evidence: [#94](https://github.com/bifrost0x/webssh/pull/94), [#96](https://github.com/bifrost0x/webssh/pull/96), [#97](https://github.com/bifrost0x/webssh/pull/97), [#98](https://github.com/bifrost0x/webssh/pull/98).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
       "pull_requests": [
         91,
         94,
         95,
         96,
-        97
+        97,
+        98
       ],
       "issues": []
     },
