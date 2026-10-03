@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://bifrost0x.github.io/webssh/">Product site</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
+  <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
   <a href="https://github.com/bifrost0x/webssh/discussions">Discussions</a>
 </p>
@@ -272,6 +273,9 @@ requests and published automatically after changes reach `main`.
 
 Additional project views:
 
+- [Roadmap and current release focus](ROADMAP.md)
+- [Project history and documented decisions](docs/project-history.md)
+- [Planning, milestones and release workflow](docs/project-planning.md)
 - [Product site](https://bifrost0x.github.io/webssh/)
 - [Interactive code graph](https://bifrost0x.github.io/webssh/code-graph/)
 - [Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)

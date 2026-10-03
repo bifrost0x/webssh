@@ -7,6 +7,7 @@ Thanks for your interest in contributing! This project is open to contributions 
 - [Report a Bug](https://github.com/bifrost0x/webssh/issues/new?template=bug_report.md)
 - [Request a Feature](https://github.com/bifrost0x/webssh/issues/new?template=feature_request.md)
 - [Security Issues](SECURITY.md) - Please don't open public issues for vulnerabilities
+- [Roadmap](ROADMAP.md) and [planning workflow](docs/project-planning.md)
 
 ## Getting Started
 
@@ -99,6 +100,12 @@ Feature requests are welcome! Please include:
 2. **Open an issue first** for larger changes - Let's discuss the approach
 3. **Small PRs are better** - Easier to review and merge
 
+For substantial work, state the user problem, expected outcome and acceptance criteria
+in the linked issue/proposal. Include the reason for the chosen approach, validation,
+compatibility/security impact and remaining rollout checks in the PR. Maintainers assign
+accepted work to a release milestone; merging does not itself publish a release.
+See the [planning and release workflow](docs/project-planning.md) for the lightweight cycle.
+
 #### Development Workflow
 
 1. Fork the repository
@@ -165,10 +172,10 @@ If your change touches authentication, encryption, or session handling, please n
 
 #### Public Repository Hygiene
 
-Everything committed here is published. Do not commit local agent instructions,
-AI-tool configuration, private review notes, development captures, temporary
-test output, workstation paths, credentials, or unreferenced media. Keep reusable
-product and operator documentation in the existing public documentation areas.
+Everything committed here is published. Do not commit local development
+instructions, tool configuration, private notes, development captures,
+temporary test output, workstation paths, credentials, or unreferenced media.
+Keep reusable product and operator documentation in the public documentation areas.
 
 Run the same repository guard used by CI before submitting:
 
