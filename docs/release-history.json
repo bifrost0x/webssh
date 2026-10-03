@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "repository": "bifrost0x/webssh",
+  "reconstructed_on": "2026-10-03",
+  "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
+  "native_milestone_backfill": "prepared_not_applied",
+  "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
+  "expected_merged_pr_count": 160,
+  "expected_implementation_linked_issue_count": 24,
+  "historical": [
+    {
+      "title": "v1.0.0",
+      "state": "closed",
+      "goal": "First official self-hosted terminal and SFTP release",
+      "rationale_summary": "Package the existing multi-user terminal, tmux, SFTP and Docker capabilities as an official versioned baseline.",
+      "published_at": "2026-07-23T07:26:03Z",
+      "tag_commit": "9e73b60afd2573016652a8365ae5a7cd6d1f692b",
+      "previous_release": null,
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v1.0.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/commits/v1.0.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: First official self-hosted terminal and SFTP release.\nRationale summary (from linked release/PRs): Package the existing multi-user terminal, tmux, SFTP and Docker capabilities as an official versioned baseline.\n\nPublished: 2026-07-23. [Release](https://github.com/bifrost0x/webssh/releases/tag/v1.0.0) · [Git history](https://github.com/bifrost0x/webssh/commits/v1.0.0).\nTag commit: 9e73b60afd2573016652a8365ae5a7cd6d1f692b.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 35 verified merged PRs. Key evidence: [#36](https://github.com/bifrost0x/webssh/pull/36), [#47](https://github.com/bifrost0x/webssh/pull/47), [#49](https://github.com/bifrost0x/webssh/pull/49), [#56](https://github.com/bifrost0x/webssh/pull/56).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        1,
+        3,
+        4,
+        5,
+        7,
+        9,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        20,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        49,
+        51,
+        52,
+        53,
+        55,
+        56
+      ],
+      "issues": []
+    },
+    {
+      "title": "v1.1.0",
+      "state": "closed",
+      "goal": "Modern runtime, identity and recoverable administration",
+      "rationale_summary": "The old runtime/dependency set constrained security updates; storage, host trust, transfers and recovery needed stronger failure boundaries.",
+      "published_at": "2026-08-03T14:44:42Z",
+      "tag_commit": "17d6ab8ff36e38b12cd615f4e5490d0d2ea87af3",
+      "previous_release": "v1.0.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v1.1.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v1.0.0...v1.1.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Modern runtime, identity and recoverable administration.\nRationale summary (from linked release/PRs): The old runtime/dependency set constrained security updates; storage, host trust, transfers and recovery needed stronger failure boundaries.\n\nPublished: 2026-08-03. [Release](https://github.com/bifrost0x/webssh/releases/tag/v1.1.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v1.0.0...v1.1.0).\nTag commit: 17d6ab8ff36e38b12cd615f4e5490d0d2ea87af3.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 10 verified merged PRs. Key evidence: [#60](https://github.com/bifrost0x/webssh/pull/60), [#71](https://github.com/bifrost0x/webssh/pull/71).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        58,
+        60,
+        63,
+        64,
+        65,
+        66,
+        67,
+        69,
+        70,
+        71
+      ],
+      "issues": []
+    },
+    {
+      "title": "v1.2.0",
+      "state": "closed",
+      "goal": "Active-session server workspace",
+      "rationale_summary": "Put terminal, SFTP, diagnostics and navigation in the active server context rather than separate tools.",
+      "published_at": "2026-08-11T06:16:50Z",
+      "tag_commit": "055646858356274e9124d88fc42ee1c2a10256b1",
+      "previous_release": "v1.1.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v1.2.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v1.1.0...v1.2.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Active-session server workspace.\nRationale summary (from linked release/PRs): Put terminal, SFTP, diagnostics and navigation in the active server context rather than separate tools.\n\nPublished: 2026-08-11. [Release](https://github.com/bifrost0x/webssh/releases/tag/v1.2.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v1.1.0...v1.2.0).\nTag commit: 055646858356274e9124d88fc42ee1c2a10256b1.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 13 verified merged PRs. Key evidence: [#72](https://github.com/bifrost0x/webssh/pull/72), [#81](https://github.com/bifrost0x/webssh/pull/81), [#89](https://github.com/bifrost0x/webssh/pull/89), [#90](https://github.com/bifrost0x/webssh/pull/90).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        72,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        88,
+        89,
+        90
+      ],
+      "issues": [
+        {
+          "number": 75,
+          "implemented_by": 81,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 76,
+          "implemented_by": 81,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 77,
+          "implemented_by": 81,
+          "evidence": "explicit closing reference in pull request body"
+        }
+      ]
+    },
+    {
+      "title": "v1.3.0",
+      "state": "closed",
+      "goal": "Faster recurring administration",
+      "rationale_summary": "Make command insertion, saved-host ordering and stored-key replacement predictable without silently executing commands.",
+      "published_at": "2026-08-12T12:45:04Z",
+      "tag_commit": "7f5c68f3653ae0f910f5993b14dc6ae31285a767",
+      "previous_release": "v1.2.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v1.3.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v1.2.0...v1.3.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Faster recurring administration.\nRationale summary (from linked release/PRs): Make command insertion, saved-host ordering and stored-key replacement predictable without silently executing commands.\n\nPublished: 2026-08-12. [Release](https://github.com/bifrost0x/webssh/releases/tag/v1.3.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v1.2.0...v1.3.0).\nTag commit: 7f5c68f3653ae0f910f5993b14dc6ae31285a767.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 5 verified merged PRs. Key evidence: [#94](https://github.com/bifrost0x/webssh/pull/94), [#96](https://github.com/bifrost0x/webssh/pull/96), [#97](https://github.com/bifrost0x/webssh/pull/97).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        91,
+        94,
+        95,
+        96,
+        97
+      ],
+      "issues": []
+    },
+    {
+      "title": "v2.0.0",
+      "state": "closed",
+      "goal": "Authentication assurance and responsive workspace redesign",
+      "rationale_summary": "Protect sensitive operations with action/session/target-bound assurance while keeping contextual tools tied to the active SSH session.",
+      "published_at": "2026-08-21T18:06:45Z",
+      "tag_commit": "7c62c29a66c4755b166eb3949776c0d44a2b32d0",
+      "previous_release": "v1.3.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.0.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v1.3.0...v2.0.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Authentication assurance and responsive workspace redesign.\nRationale summary (from linked release/PRs): Protect sensitive operations with action/session/target-bound assurance while keeping contextual tools tied to the active SSH session.\n\nPublished: 2026-08-21. [Release](https://github.com/bifrost0x/webssh/releases/tag/v2.0.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v1.3.0...v2.0.0).\nTag commit: 7c62c29a66c4755b166eb3949776c0d44a2b32d0.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 16 verified merged PRs. Key evidence: [#106](https://github.com/bifrost0x/webssh/pull/106), [#124](https://github.com/bifrost0x/webssh/pull/124).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        111,
+        114,
+        117,
+        118,
+        120,
+        122,
+        124
+      ],
+      "issues": []
+    },
+    {
+      "title": "v2.1.0",
+      "state": "closed",
+      "goal": "Opt-in secure SMB file sources",
+      "rationale_summary": "Extend the file workspace beyond SFTP with explicit SMB security boundaries while fixing early 2.0 workflow regressions.",
+      "published_at": "2026-08-24T17:58:47Z",
+      "tag_commit": "81ecfedc3c550eb3970ef43238bacceb06cc2851",
+      "previous_release": "v2.0.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.1.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.0.0...v2.1.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Opt-in secure SMB file sources.\nRationale summary (from linked release/PRs): Extend the file workspace beyond SFTP with explicit SMB security boundaries while fixing early 2.0 workflow regressions.\n\nPublished: 2026-08-24. [Release](https://github.com/bifrost0x/webssh/releases/tag/v2.1.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v2.0.0...v2.1.0).\nTag commit: 81ecfedc3c550eb3970ef43238bacceb06cc2851.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 9 verified merged PRs. Key evidence: [#132](https://github.com/bifrost0x/webssh/pull/132), [#136](https://github.com/bifrost0x/webssh/pull/136), [#140](https://github.com/bifrost0x/webssh/pull/140).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        126,
+        127,
+        128,
+        129,
+        132,
+        136,
+        137,
+        139,
+        140
+      ],
+      "issues": [
+        {
+          "number": 130,
+          "implemented_by": 132,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 131,
+          "implemented_by": 132,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 135,
+          "implemented_by": 136,
+          "evidence": "explicit closing reference in pull request body"
+        }
+      ]
+    },
+    {
+      "title": "v2.2.0",
+      "state": "closed",
+      "goal": "Terminal-first mobile experience and managed identity",
+      "rationale_summary": "Respond to touch-device usability and management-workspace feedback while refining GitHub authentication and file/MFA safety.",
+      "published_at": "2026-08-30T12:14:56Z",
+      "tag_commit": "c9a2fd88fb4b203cdf19122c8f65c6418edf5ed6",
+      "previous_release": "v2.1.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.2.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.1.0...v2.2.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Terminal-first mobile experience and managed identity.\nRationale summary (from linked release/PRs): Respond to touch-device usability and management-workspace feedback while refining GitHub authentication and file/MFA safety.\n\nPublished: 2026-08-30. [Release](https://github.com/bifrost0x/webssh/releases/tag/v2.2.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v2.1.0...v2.2.0).\nTag commit: c9a2fd88fb4b203cdf19122c8f65c6418edf5ed6.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 15 verified merged PRs. Key evidence: [#147](https://github.com/bifrost0x/webssh/pull/147), [#158](https://github.com/bifrost0x/webssh/pull/158), [#161](https://github.com/bifrost0x/webssh/pull/161), [#164](https://github.com/bifrost0x/webssh/pull/164).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        141,
+        142,
+        147,
+        149,
+        151,
+        152,
+        153,
+        155,
+        156,
+        158,
+        159,
+        160,
+        161,
+        162,
+        164
+      ],
+      "issues": [
+        {
+          "number": 143,
+          "implemented_by": 147,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 144,
+          "implemented_by": 147,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 145,
+          "implemented_by": 147,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 163,
+          "implemented_by": 164,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 146,
+          "implemented_by": 152,
+          "evidence": "maintainer comment in issue #146"
+        },
+        {
+          "number": 154,
+          "implemented_by": 158,
+          "evidence": "connected pull request in issue #154 timeline"
+        }
+      ]
+    },
+    {
+      "title": "v2.2.1",
+      "state": "closed",
+      "goal": "Focused mobile scrolling and session-tools correction",
+      "rationale_summary": "Synthetic wheel events did not move normal browser scrollback; verify actual viewport movement and expose session tools directly.",
+      "published_at": "2026-08-30T13:33:10Z",
+      "tag_commit": "d58ab2801c1ea1c18214fbf3908c8592559b6289",
+      "previous_release": "v2.2.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.2.1",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.2.0...v2.2.1",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Focused mobile scrolling and session-tools correction.\nRationale summary (from linked release/PRs): Synthetic wheel events did not move normal browser scrollback; verify actual viewport movement and expose session tools directly.\n\nPublished: 2026-08-30. [Release](https://github.com/bifrost0x/webssh/releases/tag/v2.2.1) · [Git history](https://github.com/bifrost0x/webssh/compare/v2.2.0...v2.2.1).\nTag commit: d58ab2801c1ea1c18214fbf3908c8592559b6289.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 1 verified merged PRs. Key evidence: [#165](https://github.com/bifrost0x/webssh/pull/165).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        165
+      ],
+      "issues": []
+    },
+    {
+      "title": "v2.3.0",
+      "state": "closed",
+      "goal": "Everyday workflow reliability and stronger boundaries",
+      "rationale_summary": "Address mobile input, copying, transfers, notes and linking feedback while remediating validated security findings.",
+      "published_at": "2026-09-11T17:36:54Z",
+      "tag_commit": "2db70fad76223f75d62a15f596c271066d9623af",
+      "previous_release": "v2.2.1",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.3.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.2.1...v2.3.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Everyday workflow reliability and stronger boundaries.\nRationale summary (from linked release/PRs): Address mobile input, copying, transfers, notes and linking feedback while remediating validated security findings.\n\nPublished: 2026-09-11. [Release](https://github.com/bifrost0x/webssh/releases/tag/v2.3.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v2.2.1...v2.3.0).\nTag commit: 2db70fad76223f75d62a15f596c271066d9623af.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 27 verified merged PRs. Key evidence: [#185](https://github.com/bifrost0x/webssh/pull/185), [#198](https://github.com/bifrost0x/webssh/pull/198), [#202](https://github.com/bifrost0x/webssh/pull/202), [#209](https://github.com/bifrost0x/webssh/pull/209), [#211](https://github.com/bifrost0x/webssh/pull/211), [#212](https://github.com/bifrost0x/webssh/pull/212).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        170,
+        171,
+        172,
+        173,
+        175,
+        176,
+        177,
+        178,
+        179,
+        181,
+        182,
+        183,
+        185,
+        189,
+        190,
+        191,
+        194,
+        198,
+        199,
+        200,
+        202,
+        203,
+        204,
+        207,
+        209,
+        211,
+        212
+      ],
+      "issues": [
+        {
+          "number": 180,
+          "implemented_by": 181,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 184,
+          "implemented_by": 185,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 187,
+          "implemented_by": 189,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 188,
+          "implemented_by": 189,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 192,
+          "implemented_by": 191,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 193,
+          "implemented_by": 194,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 196,
+          "implemented_by": 198,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 197,
+          "implemented_by": 198,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 208,
+          "implemented_by": 209,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 210,
+          "implemented_by": 211,
+          "evidence": "explicit closing reference in pull request body"
+        }
+      ]
+    },
+    {
+      "title": "v2.4.0",
+      "state": "closed",
+      "goal": "Responsive multi-session recovery and verified releases",
+      "rationale_summary": "Prevent hidden-pane rendering from causing ACK evictions, synchronize files/terminal directories, and validate exact native images before promotion.",
+      "published_at": "2026-09-21T17:10:26Z",
+      "tag_commit": "570599896cf14411c82931d6e78f56eff8f5fa24",
+      "previous_release": "v2.3.0",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.4.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.3.0...v2.4.0",
+      "description": "Retrospective milestone reconstructed on 2026-10-03; not an original dated plan.\n\nGoal: Responsive multi-session recovery and verified releases.\nRationale summary (from linked release/PRs): Prevent hidden-pane rendering from causing ACK evictions, synchronize files/terminal directories, and validate exact native images before promotion.\n\nPublished: 2026-09-21. [Release](https://github.com/bifrost0x/webssh/releases/tag/v2.4.0) · [Git history](https://github.com/bifrost0x/webssh/compare/v2.3.0...v2.4.0).\nTag commit: 570599896cf14411c82931d6e78f56eff8f5fa24.\n\nAssign PRs by their first released merge commit, not merge/closure dates. 16 verified merged PRs. Key evidence: [#221](https://github.com/bifrost0x/webssh/pull/221), [#223](https://github.com/bifrost0x/webssh/pull/223), [#225](https://github.com/bifrost0x/webssh/pull/225), [#226](https://github.com/bifrost0x/webssh/pull/226), [#230](https://github.com/bifrost0x/webssh/pull/230).\n\nCreated/closed metadata reflects this backfill, not the original release date. Remaining deployment validation must not be inferred complete from historical closure.",
+      "pull_requests": [
+        215,
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        228,
+        229,
+        230
+      ],
+      "issues": []
+    }
+  ],
+  "candidate": {
+    "title": "v2.5.0",
+    "state": "open",
+    "status": "proposed_not_released",
+    "goal": "Consolidate gateway support and workspace/terminal fixes into a verified release",
+    "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
+    "previous_release": "v2.4.0",
+    "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.4.0...dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
+    "description": "Proposed next release, no date commitment. Code after v2.4.0 is merged but not yet released under this version.\n\nGoal: consolidate optional Warpgate support, workspace/tmux continuity, paste/transcript correctness and reviewed dependency updates into a verified versioned release.\n\nRelease gate: [#248](https://github.com/bifrost0x/webssh/issues/248). Keep this issue open until exact-candidate validation, publication and versioned image/attestation verification are recorded.\n\nBaseline: dc3d9bf26f57cbeb440227afe13f9635c4d9f258 (2026-10-03), 13 merged PRs since v2.4.0. Native CI passed: https://github.com/bifrost0x/webssh/actions/runs/37064319620 . Scope/version remains adjustable by the maintainer.\n\nNo new features, release date or automatic merge commitment.",
+    "pull_requests": [
+      231,
+      232,
+      233,
+      234,
+      235,
+      236,
+      238,
+      239,
+      241,
+      242,
+      243,
+      246,
+      247
+    ],
+    "issues": [
+      {
+        "number": 240,
+        "implemented_by": 241,
+        "evidence": "explicit closing reference in pull request body"
+      },
+      {
+        "number": 237,
+        "implemented_by": 238,
+        "evidence": "maintainer implementation comment in issue #237 and PR #238"
+      },
+      {
+        "number": 248,
+        "evidence": "open release acceptance checklist"
+      }
+    ]
+  },
+  "excluded_issues": [
+    {
+      "number": 62,
+      "reason": "Converted to a discussion about optional PostgreSQL; not evidence of a shipped backend."
+    },
+    {
+      "number": 245,
+      "reason": "Reporter resolved Warpgate PROXY-protocol configuration; no WebSSH code fix or release attribution."
+    }
+  ]
+}
