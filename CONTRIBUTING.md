@@ -172,10 +172,10 @@ If your change touches authentication, encryption, or session handling, please n
 
 #### Public Repository Hygiene
 
-Everything committed here is published. Do not commit local agent instructions,
-AI-tool configuration, private review notes, development captures, temporary
-test output, workstation paths, credentials, or unreferenced media. Keep reusable
-product and operator documentation in the existing public documentation areas.
+Everything committed here is published. Do not commit local development
+instructions, tool configuration, private notes, development captures,
+temporary test output, workstation paths, credentials, or unreferenced media.
+Keep reusable product and operator documentation in the public documentation areas.
 
 Run the same repository guard used by CI before submitting:
 
