@@ -2,6 +2,7 @@
 
 import gzip
 import hashlib
+import mimetypes
 import re
 from functools import lru_cache, wraps
 from pathlib import Path
@@ -166,6 +167,9 @@ def init_static_delivery(app) -> None:
     Dynamic HTML and API responses are deliberately excluded so secrets, CSRF
     tokens, and user-specific data never share a compression context.
     """
+    # Keep the image type deterministic on hosts without a WebP MIME mapping.
+    mimetypes.add_type("image/webp", ".webp")
+
     if not isinstance(app.session_interface, SecureCookieSessionInterface):
         raise RuntimeError(
             "static delivery requires Flask's secure-cookie session interface"
