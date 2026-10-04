@@ -208,3 +208,43 @@ def test_static_response_with_an_auth_cookie_mutation_is_never_public(client):
     assert response.status_code == 200
     assert response.headers['Cache-Control'] == 'private, no-store'
     assert response.headers.getlist('Set-Cookie')
+
+
+def test_webp_backgrounds_keep_image_headers_and_cache_validators(client):
+    from pathlib import Path
+
+    assets = sorted(Path('static/images/theme-backgrounds').glob('*.webp'))
+    assert len(assets) == 10
+    for asset in assets:
+        target = _asset_url(client, f'images/theme-backgrounds/{asset.name}')
+        response = client.get(target, headers={'Accept-Encoding': 'gzip'})
+        assert response.status_code == 200
+        assert response.mimetype == 'image/webp'
+        assert response.data == asset.read_bytes()
+        assert 'Content-Encoding' not in response.headers
+        assert response.headers['Cache-Control'] == 'public, max-age=31536000, immutable'
+        assert response.headers['X-Content-Type-Options'] == 'nosniff'
+        assert 'Set-Cookie' not in response.headers
+        assert 'Cookie' not in response.headers.get('Vary', '')
+        cached = client.get(target, headers={'If-None-Match': response.headers['ETag']})
+        assert cached.status_code == 304
+        assert cached.data == b''
+        head = client.head(target)
+        assert head.status_code == 200
+        assert head.content_length == len(response.data)
+        assert head.data == b''
+
+
+def test_webp_mime_registration_overrides_an_incorrect_host_mapping(monkeypatch, tmp_path):
+    import mimetypes
+    from flask import Flask
+    from app.static_delivery import init_static_delivery
+
+    mimetypes.init()
+    monkeypatch.setitem(mimetypes.types_map, '.webp', 'application/octet-stream')
+    (tmp_path / 'background.webp').write_bytes(b'RIFF\x00\x00\x00\x00WEBP')
+    app = Flask('webp_mime_test', static_folder=str(tmp_path), static_url_path='/static')
+    init_static_delivery(app)
+    response = app.test_client().get('/static/background.webp')
+    assert response.status_code == 200
+    assert response.mimetype == 'image/webp'

@@ -15,19 +15,19 @@ const THEME_IDS = [
 ];
 
 const PROFESSIONAL_THEME_BACKGROUNDS = {
-    glass: 'carbon-glass.png',
-    solar: 'navy-topography.png',
-    paper: 'paper-blueprint.png',
-    noir: 'noir-architecture.png',
-    'arctic-ice': 'arctic-frost.png',
-    'rose-gold': 'rose-brushed-metal.png',
-    obsidian: 'obsidian-glass.png',
+    glass: 'carbon-glass.webp',
+    solar: 'navy-topography.webp',
+    paper: 'paper-blueprint.webp',
+    noir: 'noir-architecture.webp',
+    'arctic-ice': 'arctic-frost.webp',
+    'rose-gold': 'rose-brushed-metal.webp',
+    obsidian: 'obsidian-glass.webp',
 };
 
 const FUN_THEME_BACKGROUNDS = {
-    retro: 'retro-amber.png',
-    'cyberpunk-neon': 'neon-circuit.png',
-    'emerald-matrix': 'matrix-signal.png',
+    retro: 'retro-amber.webp',
+    'cyberpunk-neon': 'neon-circuit.webp',
+    'emerald-matrix': 'matrix-signal.webp',
 };
 
 async function openThemeSettings(page) {
@@ -283,14 +283,13 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
     await page.goto('/login');
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator('body')).toHaveAttribute('data-theme', 'paper');
-    await expect(page.locator('body')).toHaveAttribute('data-theme-background-ready', '');
 
     const authTheme = await page.evaluate(() => ({
         backdropImage: getComputedStyle(document.body, '::before').backgroundImage,
         cardImage: getComputedStyle(document.querySelector('.auth-card')).backgroundImage,
     }));
-    expect(authTheme.backdropImage).toContain('paper-blueprint.png');
-    expect(authTheme.cardImage).toContain('paper-blueprint.png');
+    expect(authTheme.backdropImage).toContain('paper-blueprint.webp');
+    expect(authTheme.cardImage).toContain('paper-blueprint.webp');
 
     for (const path of ['/login', '/register']) {
         await page.goto(path);

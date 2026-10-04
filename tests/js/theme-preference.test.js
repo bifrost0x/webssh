@@ -14,40 +14,19 @@ function createBody(attributes) {
     };
 }
 
-test('a deferred theme background starts only after load and an idle turn', () => {
+test('the preferred background is available while the document is still loading', () => {
     const body = createBody({
         'data-theme': 'glass',
         'data-use-theme-preference': '',
         'data-defer-theme-background': '',
     });
-    const listeners = new Map();
-    let idleCallback;
     const window = {
-        addEventListener(name, callback, options) {
-            listeners.set(name, { callback, options });
-        },
-        localStorage: {
-            getItem() { return 'paper'; },
-            setItem() {},
-        },
-        requestIdleCallback(callback, options) {
-            idleCallback = { callback, options };
-        },
-        setTimeout() { throw new Error('idle callback should be preferred'); },
+        addEventListener() { throw new Error('background must not wait for load'); },
+        requestIdleCallback() { throw new Error('background must not wait for idle'); },
+        localStorage: { getItem() { return 'paper'; }, setItem() {} },
     };
-    const document = { body, readyState: 'loading' };
-
-    vm.runInContext(source, vm.createContext({ document, window }));
-
+    vm.runInContext(source, vm.createContext({document: {body, readyState: 'loading'}, window}));
     assert.equal(body.getAttribute('data-theme'), 'paper');
-    assert.equal(body.hasAttribute('data-theme-background-ready'), false);
-    assert.equal(listeners.get('load').options.once, true);
-
-    listeners.get('load').callback();
-    assert.equal(body.hasAttribute('data-theme-background-ready'), false);
-    assert.equal(idleCallback.options.timeout, 1000);
-
-    idleCallback.callback();
     assert.equal(body.hasAttribute('data-theme-background-ready'), true);
 });
 
@@ -73,4 +52,39 @@ test('ordinary pages keep their theme background behavior unchanged', () => {
     assert.equal(body.getAttribute('data-theme'), 'noir');
     assert.equal(loadListenerAdded, false);
     assert.equal(body.hasAttribute('data-theme-background-ready'), false);
+});
+
+for (const stored of [null, 'not-a-theme', '<script>alert(1)</script>']) {
+    test(`invalid or missing preference keeps the server theme (${stored})`, () => {
+        const body = createBody({'data-theme': 'glass', 'data-use-theme-preference': '', 'data-defer-theme-background': ''});
+        const window = {localStorage: {getItem() { return stored; }, setItem() {}}};
+        vm.runInContext(source, vm.createContext({document: {body}, window}));
+        assert.equal(body.getAttribute('data-theme'), 'glass');
+        assert.equal(body.hasAttribute('data-theme-background-ready'), true);
+    });
+}
+
+test('blocked browser storage does not prevent the background or preference API', () => {
+    const body = createBody({'data-theme': 'glass', 'data-use-theme-preference': '', 'data-defer-theme-background': ''});
+    const window = {get localStorage() { throw new Error('Storage blocked'); }};
+    vm.runInContext(source, vm.createContext({document: {body}, window}));
+    assert.equal(body.getAttribute('data-theme'), 'glass');
+    assert.equal(body.hasAttribute('data-theme-background-ready'), true);
+    assert.equal(window.ThemePreference.store('paper'), false);
+    assert.equal(window.ThemePreference.read(), null);
+});
+
+test('server-selected password-change theme wins over a stored preference', () => {
+    const body = createBody({'data-theme': 'retro', 'data-defer-theme-background': ''});
+    const window = {localStorage: {getItem() { return 'paper'; }}};
+    vm.runInContext(source, vm.createContext({document: {body}, window}));
+    assert.equal(body.getAttribute('data-theme'), 'retro');
+    assert.equal(body.hasAttribute('data-theme-background-ready'), true);
+});
+
+test('loading the helper without a body still exposes its validation API', () => {
+    const window = {};
+    vm.runInContext(source, vm.createContext({document: {body: null}, window}));
+    assert.equal(window.ThemePreference.isValid('paper'), true);
+    assert.equal(window.ThemePreference.isValid('invalid'), false);
 });
