@@ -97,6 +97,13 @@ snapshot of ten published releases and the proposed next scope. It includes prep
 native milestone descriptions, 161 merged PR mappings and 24 verified issue links.
 The candidate entry has no tag or publication date because it is not a release.
 
+Applied on **2026-10-04**: ten historical milestones are closed and the proposed
+[v2.5.0 milestone](https://github.com/bifrost0x/webssh/milestone/11) is open.
+The backfill assigned and verified 160 PRs, 24 implementation-linked issues and the
+open release gate #248 (185 items). PR #98 returned HTTP 404 through the API and
+signed-in browser and could not be assigned. The original 161-PR reconstruction
+is preserved; the manifest records the exception and native milestone numbers.
+
 For historical backfill:
 
 1. Read all existing native milestones before creating anything; reuse matching versions

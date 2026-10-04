@@ -3,7 +3,7 @@
   "repository": "bifrost0x/webssh",
   "reconstructed_on": "2026-10-03",
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
-  "native_milestone_backfill": "prepared_not_applied",
+  "native_milestone_backfill": "applied_with_exceptions",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
   "expected_merged_pr_count": 161,
   "expected_implementation_linked_issue_count": 24,
@@ -471,5 +471,99 @@
       "number": 245,
       "reason": "Reporter resolved Warpgate PROXY-protocol configuration; no WebSSH code fix or release attribution."
     }
-  ]
+  ],
+  "native_milestone_backfill_result": {
+    "applied_on": "2026-10-04",
+    "assigned_pull_request_count": 160,
+    "assigned_implementation_linked_issue_count": 24,
+    "assigned_release_gate_issue_count": 1,
+    "assigned_total": 185,
+    "milestones": [
+      {
+        "number": 1,
+        "title": "v1.0.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/1",
+        "assigned_items": 35
+      },
+      {
+        "number": 2,
+        "title": "v1.1.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/2",
+        "assigned_items": 10
+      },
+      {
+        "number": 3,
+        "title": "v1.2.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/3",
+        "assigned_items": 16
+      },
+      {
+        "number": 4,
+        "title": "v1.3.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/4",
+        "assigned_items": 5
+      },
+      {
+        "number": 5,
+        "title": "v2.0.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/5",
+        "assigned_items": 16
+      },
+      {
+        "number": 6,
+        "title": "v2.1.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/6",
+        "assigned_items": 12
+      },
+      {
+        "number": 7,
+        "title": "v2.2.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/7",
+        "assigned_items": 21
+      },
+      {
+        "number": 8,
+        "title": "v2.2.1",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/8",
+        "assigned_items": 1
+      },
+      {
+        "number": 9,
+        "title": "v2.3.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/9",
+        "assigned_items": 37
+      },
+      {
+        "number": 10,
+        "title": "v2.4.0",
+        "state": "closed",
+        "url": "https://github.com/bifrost0x/webssh/milestone/10",
+        "assigned_items": 16
+      },
+      {
+        "number": 11,
+        "title": "v2.5.0",
+        "state": "open",
+        "url": "https://github.com/bifrost0x/webssh/milestone/11",
+        "assigned_items": 16
+      }
+    ],
+    "exceptions": [
+      {
+        "number": 98,
+        "intended_milestone": "v1.3.0",
+        "reason": "HTTP 404 from GitHub issue/PR APIs and signed-in browser on 2026-10-04; not assigned. Reason for unavailability unknown. Original reconstruction retained."
+      }
+    ],
+    "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
+  }
 }

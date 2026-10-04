@@ -78,8 +78,12 @@ deployment supported. Do not promote an idea into a promised release by listing 
 
 - [Project history](docs/project-history.md): what shipped, documented reasons and lessons.
 - [Planning and release workflow](docs/project-planning.md): how issues, PRs and milestones fit together.
-- [Milestones](https://github.com/bifrost0x/webssh/milestones): native release grouping, when configured.
-- [Retrospective mapping](docs/release-history.json): verified release/PR/issue membership and prepared milestone descriptions.
+- [Milestones](https://github.com/bifrost0x/webssh/milestones): native release grouping, with ten historical milestones closed and v2.5.0 open.
+- [Retrospective mapping](docs/release-history.json): release/PR/issue membership, milestone numbers and backfill verification.
+
+The native milestone backfill was applied on 2026-10-04: 185 items assigned and
+verified. PR #98 was unavailable (HTTP 404) and is recorded as an exception in the
+manifest. The release-readiness issue #248 remains open in v2.5.0.
 
 The historical mapping was reconstructed on 2026-10-03. It does not imply that these
 milestones or this roadmap existed at the time. Actual GitHub milestone creation and
