@@ -5,7 +5,7 @@
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
   "native_milestone_backfill": "applied_with_exceptions",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
-  "expected_merged_pr_count": 161,
+  "expected_merged_pr_count": 165,
   "expected_implementation_linked_issue_count": 24,
   "historical": [
     {
@@ -419,49 +419,59 @@
         230
       ],
       "issues": []
+    },
+    {
+      "title": "v2.5.0",
+      "state": "closed",
+      "goal": "Consolidate gateway support and workspace/terminal fixes into a verified release",
+      "previous_release": "v2.4.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.4.0...v2.5.0",
+      "description": "Published v2.5.0 on 2026-10-05. Workspace continuity, optional Warpgate, host/command/mobile usability, tmux/paste/transcript fixes, faster backgrounds and dependency updates.\n\nRelease: https://github.com/bifrost0x/webssh/releases/tag/v2.5.0\nTag commit: 07f472691e61eab6554dd6f75cf56fb8333964ba\nTag CI: https://github.com/bifrost0x/webssh/actions/runs/37276528581\n\n17 merged PRs, assigned by first tagged inclusion. Superseded #253 is included through #252 and is not counted as a merged PR.\n\nThe maintainer authorized publication with explicitly reported deployment acceptance still unverified; follow-up: https://github.com/bifrost0x/webssh/issues/254. Required CI/security gates passed. Deferred checks are not marked passed.",
+      "pull_requests": [
+        231,
+        232,
+        233,
+        234,
+        235,
+        236,
+        238,
+        239,
+        241,
+        242,
+        243,
+        246,
+        247,
+        249,
+        250,
+        251,
+        252
+      ],
+      "issues": [
+        {
+          "number": 240,
+          "implemented_by": 241,
+          "evidence": "explicit closing reference in pull request body"
+        },
+        {
+          "number": 237,
+          "implemented_by": 238,
+          "evidence": "maintainer implementation comment in issue #237 and PR #238"
+        },
+        {
+          "number": 248,
+          "evidence": "release publication and image verification record; deferred operational acceptance tracked in #254"
+        }
+      ],
+      "published_at": "2026-10-05T07:23:00Z",
+      "tag_commit": "07f472691e61eab6554dd6f75cf56fb8333964ba",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.5.0",
+      "rationale_summary": "Improve everyday workspace and connection workflows, add optional Warpgate support, and deliver terminal correctness and dependency updates.",
+      "milestone_number": 11,
+      "validation_followup": 254,
+      "image_digest": "sha256:5cd320c7e48ab805dcb5a78950ed1ac41015e7f9ac0c97dd880e84308021312a",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/37276528581"
     }
   ],
-  "candidate": {
-    "title": "v2.5.0",
-    "state": "open",
-    "status": "proposed_not_released",
-    "goal": "Consolidate gateway support and workspace/terminal fixes into a verified release",
-    "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
-    "previous_release": "v2.4.0",
-    "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.4.0...dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
-    "description": "Proposed next release, no date commitment. Code after v2.4.0 is merged but not yet released under this version.\n\nGoal: consolidate optional Warpgate support, workspace/tmux continuity, paste/transcript correctness and reviewed dependency updates into a verified versioned release.\n\nRelease gate: [#248](https://github.com/bifrost0x/webssh/issues/248). Keep this issue open until exact-candidate validation, publication and versioned image/attestation verification are recorded.\n\nBaseline: dc3d9bf26f57cbeb440227afe13f9635c4d9f258 (2026-10-03), 13 merged PRs since v2.4.0. Native CI passed: https://github.com/bifrost0x/webssh/actions/runs/37064319620 . Scope/version remains adjustable by the maintainer.\n\nNo new features, release date or automatic merge commitment.",
-    "pull_requests": [
-      231,
-      232,
-      233,
-      234,
-      235,
-      236,
-      238,
-      239,
-      241,
-      242,
-      243,
-      246,
-      247
-    ],
-    "issues": [
-      {
-        "number": 240,
-        "implemented_by": 241,
-        "evidence": "explicit closing reference in pull request body"
-      },
-      {
-        "number": 237,
-        "implemented_by": 238,
-        "evidence": "maintainer implementation comment in issue #237 and PR #238"
-      },
-      {
-        "number": 248,
-        "evidence": "open release acceptance checklist"
-      }
-    ]
-  },
   "excluded_issues": [
     {
       "number": 62,
@@ -565,5 +575,25 @@
       }
     ],
     "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
-  }
+  },
+  "candidate": null,
+  "updated_on": "2026-10-05",
+  "release_updates": [
+    {
+      "version": "v2.5.0",
+      "published_at": "2026-10-05T07:23:00Z",
+      "tag_commit": "07f472691e61eab6554dd6f75cf56fb8333964ba",
+      "milestone_number": 11,
+      "milestone_state": "closed",
+      "assigned_additional_pull_requests": [
+        249,
+        250,
+        251,
+        252
+      ],
+      "closed_release_gate": 248,
+      "open_validation_followup": 254,
+      "note": "The native_milestone_backfill_result block remains the original dated 2026-10-04 snapshot."
+    }
+  ]
 }

@@ -51,11 +51,12 @@ interpret their combined count as distinct features delivered.
 interactive authentication and a default-off administration gate. The request is closed
 and the PR merged, but neither belongs to v2.4.0 because the tag predates their merge.
 
-The proposed v2.5.0 scope groups that implementation with the related workspace fixes.
-[#248](https://github.com/bifrost0x/webssh/issues/248) remains open for exact-candidate
-protocol checks, canary, upgrade/recovery, publication and image verification. This makes
-the distinction between **implemented** and **shipped** visible without reopening the
-resolved feature request or making a PR that repeats code already in `main`.
+The published [v2.5.0 release](https://github.com/bifrost0x/webssh/releases/tag/v2.5.0) includes that implementation and the
+related workspace fixes. [#248](https://github.com/bifrost0x/webssh/issues/248) records
+the exact candidate, publication and image verification. The maintainer authorized
+publication with the reported deployment acceptance still unverified; those checks
+remain open in [#254](https://github.com/bifrost0x/webssh/issues/254). Publication and operational acceptance are
+recorded separately, without repeating implementation PRs or marking unrun checks passed.
 
 ## Record decisions and blockers
 
@@ -95,14 +96,20 @@ CI/security gates cannot be silently waived. No automation or automatic merge is
 The initial [release-history manifest](release-history.json) is a dated, reviewable
 snapshot of ten published releases and the proposed next scope. It includes prepared
 native milestone descriptions, 161 merged PR mappings and 24 verified issue links.
-The candidate entry has no tag or publication date because it is not a release.
+The original backfill result is retained in the manifest. Later releases extend the
+history; `candidate` is null when no next version has been selected.
 
 Applied on **2026-10-04**: ten historical milestones are closed and the proposed
-[v2.5.0 milestone](https://github.com/bifrost0x/webssh/milestone/11) is open.
+[v2.5.0 milestone](https://github.com/bifrost0x/webssh/milestone/11) was open at that time.
 The backfill assigned and verified 160 PRs, 24 implementation-linked issues and the
 open release gate #248 (185 items). PR #98 returned HTTP 404 through the API and
 signed-in browser and could not be assigned. The original 161-PR reconstruction
 is preserved; the manifest records the exception and native milestone numbers.
+
+Published on **2026-10-05**: v2.5.0 adds PRs #249-#252 to the original scope.
+The release milestone and #248 are closed after tag/image verification. The current
+manifest contains eleven releases and 165 merged PR mappings; deferred deployment
+acceptance remains open in #254. The original backfill counts above are not rewritten.
 
 For historical backfill:
 
