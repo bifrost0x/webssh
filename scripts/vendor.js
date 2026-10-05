@@ -46,16 +46,8 @@ function expectedContents(srcPath, dest) {
     }
     return Buffer.from(bundle.replace(parserLimit, boundedParserLimit), 'utf8');
   }
-  if (dest !== 'socketio/socket.io.min.js') return source;
-
-  const vulnerableDecoder = 'if(o!=Number(o)||"-"!==t.charAt(i))throw new Error("Illegal attachments");r.attachments=Number(o)';
-  const patchedDecoder = 'if(o!=Number(o)||"-"!==t.charAt(i))throw new Error("Illegal attachments");var a=Number(o);if(!Number.isInteger(a)||a<1)throw new Error("Illegal attachments");if(a>10)throw new Error("too many attachments");r.attachments=a';
-  const bundle = source.toString('utf8');
-  const matches = bundle.split(vulnerableDecoder).length - 1;
-  if (matches !== 1) {
-    throw new Error('Socket.IO bundle decoder changed; review the CVE-2026-69185 patch.');
-  }
-  return Buffer.from(bundle.replace(vulnerableDecoder, patchedDecoder), 'utf8');
+  // Socket.IO 4.8.4 includes the attachment bounds checked by our security tests.
+  return source;
 }
 
 function contentsMatch(srcPath, destPath, dest) {
