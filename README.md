@@ -33,10 +33,6 @@ WebSSH keeps terminal work, files, commands, diagnostics, and notes in one
 responsive browser workspace. It is self-hosted, multi-user, and built without
 a hosted control plane or runtime CDN dependencies.
 
-After an administrator enables the optional gateway integration in Settings → Integrations,
-connect through an existing SSH gateway with a user:target username. Disabled by default. See the
-[Warpgate integration guide](docs/warpgate.md) for authentication and target requirements.
-
 ## Why WebSSH
 
 - **One workspace, not a terminal tab.** Keep SSH sessions, SFTP sources,
