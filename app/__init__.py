@@ -623,16 +623,6 @@ def create_app(
                     }), 403
                 abort(403)
 
-    trusted_proxies = config.TRUSTED_PROXIES
-    if trusted_proxies > 0:
-        app.wsgi_app = ProxyFix(
-            app.wsgi_app,
-            x_for=trusted_proxies,
-            x_proto=trusted_proxies,
-            x_host=trusted_proxies,
-            x_prefix=trusted_proxies
-        )
-        log_info("ProxyFix enabled")
 
     if not config.DEBUG:
         if not os.environ.get('SECRET_KEY'):
@@ -752,6 +742,18 @@ def create_app(
         engineio_logger=False
     )
     _install_engineio_admission(app)
+
+    trusted_proxies = config.TRUSTED_PROXIES
+    if trusted_proxies > 0:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=trusted_proxies,
+            x_proto=trusted_proxies,
+            x_host=trusted_proxies,
+            x_prefix=trusted_proxies
+        )
+        log_info("ProxyFix enabled")
+
 
     @app.after_request
     def add_security_headers(response):
