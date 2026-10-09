@@ -201,7 +201,7 @@ def _engineio_admission_is_current(app, environ, expected_user_id):
 
 def _install_engineio_admission(app):
     """Bound transports before they can retain Engine.IO state or threads."""
-    from threading import Event
+    from threading import Event, Lock
 
     from .socket_capacity import SocketCapacityRegistry
 
@@ -216,6 +216,22 @@ def _install_engineio_admission(app):
 
     capacity = SocketCapacityRegistry()
     app.extensions['engineio_socket_capacity'] = capacity
+
+    diagnostic_lock = Lock()
+    last_rejection = {}
+
+    def report_rejection(reason):
+        # At most one message per fixed reason per minute, across all clients.
+        now = time.monotonic()
+        with diagnostic_lock:
+            if now - last_rejection.get(reason, float('-inf')) < 60:
+                return
+            last_rejection[reason] = now
+        try:
+            log_warning('Engine.IO transport admission rejected', reason=reason)
+        except Exception:
+            pass
+
     # Bind admission state to this exact Engine.IO server. Delayed cleanup
     # workers must never consult a newer app/server created by a test or reload.
     engineio_server._webssh_socket_capacity = capacity
@@ -316,12 +332,16 @@ def _install_engineio_admission(app):
         )
         try:
             user_id = _engineio_admission_user(app, environ)
-            if user_id is None or not capacity.reserve(
+            if user_id is None:
+                report_rejection('authentication')
+                return False
+            if not capacity.reserve(
                 user_id,
                 engineio_sid,
                 config.MAX_SOCKET_CONNECTIONS,
                 config.MAX_SOCKET_CONNECTIONS_PER_USER,
             ):
+                report_rejection('capacity')
                 return False
             if (
                 not _engineio_admission_is_current(app, environ, user_id)
@@ -329,6 +349,7 @@ def _install_engineio_admission(app):
                 or capacity.is_terminal(engineio_sid)
             ):
                 capacity.release(engineio_sid)
+                report_rejection('authentication_changed')
                 return False
             result = original_connect(engineio_sid, environ)
         except Exception as error:
@@ -340,7 +361,6 @@ def _install_engineio_admission(app):
                 log_error(
                     'Engine.IO transport admission failed closed',
                     error_type=type(error).__name__,
-                    sid=engineio_sid,
                 )
             except Exception:
                 # Logging must never turn a controlled rejection into a
