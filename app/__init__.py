@@ -1,3 +1,4 @@
+from .auth_redirects import public_continuation
 from flask import (Flask, abort, current_app, flash, jsonify, redirect,
                    render_template, request, session, url_for)
 from flask_socketio import SocketIO
@@ -953,7 +954,7 @@ def create_app(
                     )
                 pending = consume_pending(token, binding)
                 finalize_login(pending, methods=['password'])
-                return redirect(pending.continuation)
+                return redirect(public_continuation(pending.continuation))
             else:
                 log_login_attempt(username, False, client_ip, request.user_agent.string)
                 flash(error, 'error')

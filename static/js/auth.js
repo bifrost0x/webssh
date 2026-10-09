@@ -407,7 +407,7 @@
                         'The code could not be verified.'
                     ));
                 }
-                window.location.assign(root + (data.continuation || '/'));
+                window.location.assign(data.continuation || root + '/');
             } catch (requestError) {
                 error.textContent = requestError.message;
                 error.classList.remove('hidden');
@@ -534,7 +534,7 @@
                         'Recovery authentication failed.'
                     ));
                 }
-                window.location.assign(root + (data.continuation || '/security'));
+                window.location.assign(data.continuation || root + '/security');
             } catch (requestError) {
                 error.textContent = requestError.message;
                 error.classList.remove('hidden');

@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from authlib.integrations.flask_client import OAuth
+from .auth_redirects import public_continuation
 from flask import (
     Blueprint,
     abort,
@@ -232,7 +233,7 @@ def _complete_oidc_self_link(intent, issuer, subject):
                     issuer=issuer,
                     identity_id=existing.id,
                 )
-                return redirect(intent.continuation)
+                return redirect(public_continuation(intent.continuation))
             log_security_event(
                 "OIDC_IDENTITY_LINK_COLLISION",
                 level=logging.WARNING,
@@ -308,7 +309,7 @@ def _complete_oidc_self_link(intent, issuer, subject):
         issuer=issuer,
         source="self_service",
     )
-    return redirect(intent.continuation)
+    return redirect(public_continuation(intent.continuation))
 
 
 def begin_oidc_step_up(
@@ -609,7 +610,7 @@ def oidc_callback():
                 assurance=assurance.level.value,
                 result="approved",
             )
-            return redirect(intent.continuation)
+            return redirect(public_continuation(intent.continuation))
         if (
             not current_user.is_admin
             or assurance.level is AssuranceLevel.BASIC
@@ -636,7 +637,7 @@ def oidc_callback():
             action=intent.step_up_action,
             assurance=assurance.level.value,
         )
-        return redirect(intent.continuation)
+        return redirect(public_continuation(intent.continuation))
 
     local_mfa_methods = None
     if user.mfa_enabled and assurance.level is AssuranceLevel.BASIC:
@@ -702,7 +703,7 @@ def oidc_callback():
         issuer=issuer,
         assurance=assurance.level.value,
     )
-    return redirect(pending.continuation)
+    return redirect(public_continuation(pending.continuation))
 
 
 @oidc_blueprint.post("/admin/api/users/<int:user_id>/oidc-link")

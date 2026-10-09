@@ -7,6 +7,7 @@ import hashlib
 from datetime import datetime, timezone
 from threading import Lock
 
+from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
 from webauthn import (
@@ -512,5 +513,5 @@ def verify_authentication():
         return jsonify({"error": "Passkey authentication failed"}), 401
     response = {"ok": True}
     if pending is not None:
-        response["continuation"] = continuation
+        response["continuation"] = public_continuation(continuation)
     return jsonify(response)
