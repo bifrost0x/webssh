@@ -248,3 +248,25 @@ def test_unstripped_prefix_is_not_a_backend_socketio_route(proxy_app):
     response = client.get(prefix + '/socket.io/?EIO=4&transport=polling', headers=headers(prefix),
                           base_url='http://backend.local')
     assert response.status_code == 404
+
+@pytest.mark.parametrize('prefix', ['', '/webssh', '/tools/webssh'])
+@pytest.mark.parametrize('segment', ['.', '..', '%2e', '%2E', '.%2e', '%2E.', '%2e%2E'])
+@pytest.mark.parametrize('suffix', ['', '/admin?tab=users'])
+def test_public_continuation_rejects_dot_segments(prefix, segment, suffix):
+    from flask import Flask
+    from app.auth_redirects import public_continuation
+    app = Flask(__name__)
+    with app.test_request_context('/', environ_overrides={'SCRIPT_NAME': prefix}):
+        for path in (f'/{segment}{suffix}', f'{prefix}/{segment}{suffix}'):
+            assert public_continuation(path) == prefix + '/'
+
+
+@pytest.mark.parametrize('prefix', ['', '/webssh', '/tools/webssh'])
+@pytest.mark.parametrize('path', ['/admin?next=../notes&name=%2e%2e', '/file.txt', '/.well-known', '/notes...'])
+def test_public_continuation_preserves_non_segment_dots(prefix, path):
+    from flask import Flask
+    from app.auth_redirects import public_continuation
+    app = Flask(__name__)
+    with app.test_request_context('/', environ_overrides={'SCRIPT_NAME': prefix}):
+        assert public_continuation(path) == prefix + path
+        assert public_continuation(prefix + path) == prefix + path
