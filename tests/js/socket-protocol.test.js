@@ -346,7 +346,7 @@ test('authenticated page sends the revision and loads protocol before app', () =
     ));
     assert.ok(appSource.includes("socket.on('connect_error'"));
     assert.ok(appSource.includes(
-        "error?.data?.code !== 'socket_protocol_mismatch'",
+        "error?.data?.code === 'socket_protocol_mismatch'",
     ));
     assert.ok(
         template.indexOf("filename='js/socket-protocol.js'")

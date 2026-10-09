@@ -4,6 +4,7 @@ import logging
 import secrets
 
 import config
+from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
 
@@ -262,7 +263,7 @@ def verify_totp_login():
         )
     except PendingAuthenticationError:
         return jsonify({"error": "Pending authentication is invalid"}), 401
-    return jsonify({"ok": True, "continuation": continuation})
+    return jsonify({"ok": True, "continuation": public_continuation(continuation)})
 
 
 @totp_blueprint.post("/api/totp/disable")

@@ -169,8 +169,7 @@ def test_engineio_admission_exception_fails_closed_without_retention(
     message, details = logged_errors[0]
     assert message == 'Engine.IO transport admission failed closed'
     assert details['error_type'] == 'RuntimeError'
-    assert isinstance(details['sid'], str)
-    assert details['sid']
+    assert 'sid' not in details
 
 
 def test_engineio_rejects_browser_session_after_epoch_rotation(app):

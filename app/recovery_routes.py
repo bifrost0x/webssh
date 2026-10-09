@@ -3,6 +3,7 @@
 import logging
 
 import config
+from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, request, session
 from flask_login import current_user, login_required
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -159,7 +160,7 @@ def complete_pending_with_recovery():
     return jsonify({
         "ok": True,
         "recovery_required": True,
-        "continuation": "/security",
+        "continuation": public_continuation("/security"),
     })
 
 

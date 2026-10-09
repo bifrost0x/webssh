@@ -132,22 +132,90 @@ server.example.com {
 
 ### Apache subfolder
 
-Enable `mod_alias` in addition to the modules used above. Redirect the missing
-trailing slash and forward the public prefix explicitly:
+Use Apache httpd 2.4.47+ with `mod_alias`, `mod_proxy`, `mod_proxy_http`,
+`mod_headers`, and `mod_ssl`. This is a complete TLS virtual host; replace the
+hostname and certificate paths for your installation:
 
 ```apache
-RedirectMatch permanent "^/webssh$" "/webssh/"
+<VirtualHost *:443>
+    ServerName server.example.com
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/server.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/server.example.com/privkey.pem
 
-<Location "/webssh/">
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyAddHeaders On
+    ProxyTimeout 3600
+    RequestHeader unset X-Forwarded-For
+    RequestHeader set X-Forwarded-Host "server.example.com"
+    RequestHeader set X-Forwarded-Proto "https"
     RequestHeader set X-Forwarded-Prefix "/webssh"
-</Location>
 
-ProxyPass "/webssh/" "http://127.0.0.1:5000/" upgrade=websocket
-ProxyPassReverse "/webssh/" "http://127.0.0.1:5000/"
+    RedirectMatch permanent "^/webssh$" "/webssh/"
+    ProxyPass "/webssh/" "http://127.0.0.1:5000/" upgrade=websocket timeout=3600
+    ProxyPassReverse "/webssh/" "http://127.0.0.1:5000/"
+</VirtualHost>
 ```
 
-Keep the trailing slash on both proxy paths. Set `APPLICATION_ROOT=/webssh` in
-WebSSH as shown above.
+Apache adds the directly connected client address after removing untrusted
+incoming forwarding values. This example assumes one proxy layer. Do not add
+another catch-all `ProxyPass "/"` from the root example to this virtual host.
+
+### HAProxy subfolder
+
+This example terminates TLS at HAProxy and forwards to one WebSSH instance.
+Use the application settings above and a PEM containing the certificate chain
+and private key at the configured path. HTTP/1.1 supports both Socket.IO polling
+and its WebSocket upgrade through the same backend:
+
+```haproxy
+global
+    maxconn 1024
+
+defaults
+    mode http
+    timeout connect 5s
+    timeout client 60s
+    timeout server 60s
+    timeout tunnel 1h
+
+frontend webssh_https
+    bind :443 ssl crt /etc/haproxy/certs/server.example.com.pem alpn http/1.1
+    acl webssh_bare path /webssh
+    acl webssh_path path_beg /webssh/
+    acl has_query query -m len gt 0
+    http-request redirect code 308 location /webssh/?%[query] if webssh_bare has_query
+    http-request redirect code 308 location /webssh/ if webssh_bare !has_query
+    http-request deny deny_status 404 unless webssh_path
+    default_backend webssh
+
+backend webssh
+    http-request set-header X-Forwarded-For %[src]
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Forwarded-Prefix /webssh
+    http-request set-path %[path,regsub(^/webssh/,/)]
+    server webssh 127.0.0.1:5000
+```
+
+`set-path` changes only the path; Socket.IO query parameters such as `EIO`,
+`transport`, and `sid` remain intact. Do not replace the complete URI or route
+WebSocket upgrades through a different prefix mapping. Forwarding headers are
+overwritten because this example has exactly one trusted proxy layer.
+
+For `/tools/webssh`, replace every `/webssh` prefix in the selected example
+and set `APPLICATION_ROOT=/tools/webssh`. `CORS_ORIGINS` remains the public
+origin without a path. `/webssh-other` is not part of `/webssh/`.
+
+Start validation with exactly one Gunicorn `gthread` worker, as in the
+Dockerfile. Keep the existing cookie and authentication settings. A working
+health check alone does not establish that authenticated Socket.IO works.
+
+These configurations must be syntax-checked against the installed proxy version
+and verified with the authenticated checks below before deployment. References:
+[Apache ProxyPass](https://httpd.apache.org/docs/2.4/mod/mod_proxy.html#proxypass)
+and [HAProxy configuration manual](https://www.haproxy.com/documentation/haproxy-configuration-manual/latest/).
 
 ## Containerized proxy
 
@@ -198,3 +266,23 @@ curl -fsS https://server.example.com/webssh/ready
 
 Complete the check in a browser by logging in, opening a terminal, resizing it,
 and transferring a small file.
+
+### Authenticated transport diagnostics
+
+Log in normally, then inspect the browser Network panel for the public path
+`/webssh/socket.io/?EIO=4&transport=polling` (or your configured prefix). A
+successful initial polling response starts with an Engine.IO open packet (`0`).
+When upgrading, the WebSocket request should receive `101 Switching Protocols`.
+An anonymous `curl` request can legitimately be rejected: WebSSH requires an
+authenticated session before admitting an Engine.IO transport.
+
+For a failed request, record the status, sanitized response text, transport,
+timestamp, and matching server/proxy log event. A 404 can indicate a prefix
+mapping error; a 400 can indicate an origin or protocol error; a 401 can indicate
+an admission rejection. None of these codes alone proves the cause. Do not share
+cookies, authorization headers, credentials, session IDs, or unredacted HAR files.
+
+Check password, configured second factors and identity providers, session expiry
+and return to the original page, terminal input/resize, upload/download, idle
+connections and reconnect. Compare HTTP and Socket.IO scheme, host, prefix, and
+client address. Record the WebSSH revision and proxy configuration with results.

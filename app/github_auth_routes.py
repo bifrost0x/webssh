@@ -7,6 +7,7 @@ import logging
 import re
 import secrets
 
+from .auth_redirects import public_continuation
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, session
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
@@ -223,7 +224,7 @@ def _complete_link(intent, profile):
         'GITHUB_IDENTITY_LINKED', user=current_user.username,
         github_user_id=profile.user_id,
     )
-    return redirect(intent.continuation)
+    return redirect(public_continuation(intent.continuation))
 
 
 def _complete_step_up(intent, profile):
@@ -306,7 +307,7 @@ def _complete_login(intent, profile, settings):
         'GITHUB_LOGIN_SUCCESS', user=user.username,
         github_user_id=profile.user_id,
     )
-    return redirect(pending.continuation)
+    return redirect(public_continuation(pending.continuation))
 
 
 @github_auth_blueprint.get('/auth/github/callback')

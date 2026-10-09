@@ -186,9 +186,26 @@
     socket.on(socketProtocol.MISMATCH_EVENT, data => {
         socketProtocolMismatch.handleMismatch(data);
     });
+    let connectionErrorNotice = null;
+    let connectionErrorReported = false;
     socket.on('connect_error', error => {
-        if (error?.data?.code !== 'socket_protocol_mismatch') return;
-        socketProtocolMismatch.handleMismatch(error.data);
+        if (error?.data?.code === 'socket_protocol_mismatch') {
+            socketProtocolMismatch.handleMismatch(error.data);
+            return;
+        }
+        if (connectionErrorReported) return;
+        connectionErrorReported = true;
+        connectionErrorNotice = showNotification({
+            message: 'Cannot connect to WebSSH. Check your network and sign-in session. '
+                + 'If this continues, check the proxy path, public origin and WebSocket settings.',
+            type: 'error',
+            persistent: true,
+        });
+    });
+    socket.on('connect', () => {
+        connectionErrorNotice?.();
+        connectionErrorNotice = null;
+        connectionErrorReported = false;
     });
 
     window.ModalManager = {

@@ -878,7 +878,7 @@
                     method: 'POST',
                     body: { credential: serializeCredential(credential) }
                 });
-                window.location.assign(root + (result.continuation || '/'));
+                window.location.assign(result.continuation || root + '/');
                 return true;
             };
             const configuredOrigin = document.querySelector(
