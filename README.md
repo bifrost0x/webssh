@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://bifrost0x.github.io/webssh/">Product site</a> ·
+  <a href="https://getwebssh.com/">Product site</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
@@ -20,7 +20,7 @@
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh"><img src="https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white" alt="GitHub Container Registry"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11 or newer">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT License"></a>
-  <a href="https://bifrost0x.github.io/webssh/code-graph/"><img src="https://img.shields.io/badge/Interaktive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
+  <a href="https://getwebssh.com/code-graph/"><img src="https://img.shields.io/badge/Interactive%20Code--Map-open-6f42c1" alt="Interactive code map"></a>
 </p>
 
 ## Product tour
@@ -272,8 +272,8 @@ Additional project views:
 - [Roadmap and current release focus](ROADMAP.md)
 - [Project history and documented decisions](docs/project-history.md)
 - [Planning, milestones and release workflow](docs/project-planning.md)
-- [Product site](https://bifrost0x.github.io/webssh/)
-- [Interactive code graph](https://bifrost0x.github.io/webssh/code-graph/)
+- [Product site](https://getwebssh.com/)
+- [Interactive code graph](https://getwebssh.com/code-graph/)
 - [Container image](https://github.com/bifrost0x/webssh/pkgs/container/webssh)
 
 ## Contributing and Support

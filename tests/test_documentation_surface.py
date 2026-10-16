@@ -542,8 +542,8 @@ def test_readme_exposes_the_public_product_entry_points():
     readme = README.read_text(encoding="utf-8")
     for public_url in (
         "https://github.com/bifrost0x/webssh/pkgs/container/webssh",
-        "https://bifrost0x.github.io/webssh/",
-        "https://bifrost0x.github.io/webssh/code-graph/",
+        "https://getwebssh.com/",
+        "https://getwebssh.com/code-graph/",
     ):
         assert public_url in readme
 
@@ -551,12 +551,12 @@ def test_readme_exposes_the_public_product_entry_points():
 def test_readme_code_map_badge_targets_graph_subpath():
     """The project-structure badge opens Graphify, not the product landing page."""
     readme = README.read_text(encoding="utf-8")
-    badge = "Interaktive%20Code--Map"
+    badge = "Interactive%20Code--Map"
     badge_position = readme.index(badge)
     link_position = readme.rfind("<a href=", 0, badge_position)
 
     assert (
-        'href="https://bifrost0x.github.io/webssh/code-graph/"'
+        'href="https://getwebssh.com/code-graph/"'
         in readme[link_position:badge_position]
     )
 

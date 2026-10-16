@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Your shell. Your rules. WebSSH brings SSH terminals, SFTP files and saved connections into one self-hosted workspace.">
+  <meta name="description" content="A free, open-source SSH and SFTP workspace. Manage terminals, files, saved hosts and diagnostics in your browser, on infrastructure you control.">
   <meta name="theme-color" content="#0b0d10">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; font-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -11,7 +11,7 @@
   <link rel="icon" href="assets/webssh-logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
-  <title>WebSSH - Your shell. Your rules.</title>
+  <title>WebSSH - Self-hosted SSH &amp; SFTP browser workspace</title>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
@@ -19,9 +19,7 @@
     <div class="shell header-inner">
       <a class="brand" href="./" aria-label="WebSSH home"><img src="assets/webssh-logo.svg" width="112" height="34" alt="WebSSH"><span class="brand-tagline">Your shell. Your rules.</span></a>
       <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-navigation" data-nav-toggle><span class="icon" aria-hidden="true">menu</span><span class="sr-only">Toggle navigation</span></button>
-      <nav class="site-nav" id="site-navigation" aria-label="Main navigation" data-navigation>
-        <a class="nav-current" href="#workspace">Workspace</a><a href="#why-webssh">Why WebSSH</a><a href="#quick-start">Quick start</a><a class="nav-source" href="https://github.com/bifrost0x/webssh"><span class="icon" aria-hidden="true">code</span> GitHub</a>
-      </nav>
+      <nav class="site-nav" id="site-navigation" aria-label="Main navigation" data-navigation><a href="features.html">Features</a><a href="self-hosting.html">Self-hosting</a><a href="security.html">Security</a><a href="./#quick-start">Quick start</a><a class="nav-source" href="https://github.com/bifrost0x/webssh"><span class="icon" aria-hidden="true">code</span> GitHub</a></nav>
     </div>
   </header>
   <main id="main-content">
@@ -29,6 +27,7 @@
       <p class="eyebrow">Self-hosted SSH + SFTP</p>
       <h1 id="hero-title">Your shell. <span>Your rules.</span></h1>
       <p class="hero-lead">Your servers, terminals and files.<br>One workspace you control.</p>
+      <p class="hero-definition">WebSSH is a free, open-source SSH and SFTP client you host yourself. Open terminals, move files and manage remote servers from your browser.</p>
       <div class="hero-actions"><a class="button button-primary" href="#quick-start">Get started <span class="icon" aria-hidden="true">arrow_forward</span></a><a class="text-link" href="https://github.com/bifrost0x/webssh">View on GitHub <span class="icon" aria-hidden="true">open_in_new</span></a></div>
     </section>
     <section class="workspace shell" id="workspace" aria-labelledby="workspace-title">
@@ -53,7 +52,7 @@
         <h2>Your first session starts here.</h2>
         <p class="section-lead">Start locally with Docker.</p>
         <div class="code-card">
-          <div class="code-card-header"><span>Docker</span><button type="button" data-copy-command aria-describedby="copy-status"><span class="icon" aria-hidden="true">content_copy</span><span data-copy-label>Copy</span></button></div>
+          <div class="code-card-header"><span>Docker · Bash / Zsh</span><button type="button" data-copy-command aria-describedby="copy-status"><span class="icon" aria-hidden="true">content_copy</span><span data-copy-label>Copy</span></button></div>
           <pre tabindex="0" aria-label="Docker quickstart command"><code data-command>docker run -d \
   --name webssh \
   -p 127.0.0.1:5000:5000 \
@@ -63,14 +62,51 @@
   ghcr.io/bifrost0x/webssh:latest</code></pre>
         </div>
         <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
-        <p class="start-instruction">Open <code>http://localhost:5000</code> and create your admin account.</p>
-        <a class="deployment-link text-link" href="https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Production-Deployment.md">Remote or public deployment? Read the deployment guide. <span class="icon" aria-hidden="true">arrow_forward</span></a>
+        <p class="start-instruction">On the Docker host, open <code>http://localhost:5000</code> and create your admin account. This command keeps the port on loopback; it is a local evaluation setup.</p>
+        <a class="deployment-link text-link" href="self-hosting.html">Choose the right setup for your network. <span class="icon" aria-hidden="true">arrow_forward</span></a>
       </div>
     </section>
+
+    <section class="content-section shell" id="features" aria-labelledby="features-title">
+      <div class="section-heading"><p class="eyebrow">One connected workspace</p><h2 id="features-title">Keep your servers in view.</h2><p>Move from a shell to its files, commands and diagnostics without losing the context of the server you are working on.</p></div>
+      <div class="capability-grid">
+        <article class="capability"><span class="icon" aria-hidden="true">terminal</span><h3>SSH terminals, side by side</h3><p>Open multiple sessions in tabs or split the workspace into two or four panes. Search terminal output, download transcripts and reconnect to remote tmux sessions.</p><a class="text-link" href="features.html#terminals">Explore the terminal workspace <span aria-hidden="true">→</span></a></article>
+        <article class="capability"><span class="icon" aria-hidden="true">folder_open</span><h3>Files where you need them</h3><p>Browse SFTP sources in one or two panes. Upload, download, preview and edit files, or transfer between servers with a visible queue and explicit conflict choices.</p><a class="text-link" href="features.html#files">Explore files and transfers <span aria-hidden="true">→</span></a></article>
+        <article class="capability"><span class="icon" aria-hidden="true">tune</span><h3>Your everyday tools, together</h3><p>Reuse saved hosts, jump hosts, commands and command sets. Keep session notes nearby and inspect supported Linux resource, service and container information.</p><a class="text-link" href="features.html#workflow">Explore the daily workflow <span aria-hidden="true">→</span></a></article>
+      </div>
+    </section>
+    <section class="content-section shell product-tour" aria-labelledby="tour-title">
+      <div class="tour-copy"><p class="eyebrow">From a quick check to a longer session</p><h2 id="tour-title">A workspace that follows your work.</h2><p>Compare two hosts on a desktop. Revisit a persistent remote shell. Check a server from your phone. The interface adapts while your saved connections stay on your instance.</p><p>Persistence uses tmux on the remote target. Your WebSSH sign-in, network access and the target's own permissions still apply.</p><a class="text-link" href="features.html">Take the full feature tour <span aria-hidden="true">→</span></a></div>
+      <figure class="workspace-preview"><a href="assets/multi-session.png" aria-label="Open the full-size multi-session screenshot"><img src="assets/multi-session.png" width="2560" height="1440" loading="lazy" decoding="async" alt="WebSSH with two SSH terminal panes and four session tabs"></a><figcaption>Two live terminals, one view. Screenshots use example data.</figcaption></figure>
+    </section>
+    <section class="content-section shell" aria-labelledby="use-cases-title">
+      <div class="section-heading"><p class="eyebrow">Built for hands-on administration</p><h2 id="use-cases-title">Make it part of your setup.</h2></div>
+      <div class="use-case-grid">
+        <article><span class="section-number">01 / Homelabs</span><h3>A home for your hosts</h3><p>Keep your lab connections, reusable commands and notes in one place. Use a trusted network or VPN and choose a deployment profile that fits your target network.</p></article>
+        <article><span class="section-number">02 / Server operations</span><h3>Follow the task through</h3><p>Inspect a service, read a configuration file, edit it and return to the shell. Session-aware tools help keep each action tied to the selected server.</p></article>
+        <article><span class="section-number">03 / Multiple users</span><h3>Separate accounts and access</h3><p>Give users individual accounts with their own connections, keys and host trust. Administrators control registration and optional sign-in methods.</p></article>
+      </div>
+    </section>
+    <section class="content-section shell control-section" aria-labelledby="control-title">
+      <div><p class="eyebrow">Control starts with clear boundaries</p><h2 id="control-title">Your infrastructure.<br>Your responsibility.</h2><p>WebSSH runs on your host and connects to the targets you allow. No hosted WebSSH account or external control plane is required. Browser dependencies ship locally, and the application has no built-in telemetry.</p><a class="text-link" href="security.html">Understand the security model <span aria-hidden="true">→</span></a></div>
+      <dl class="fact-list"><div><dt>License</dt><dd>MIT. Free to use, modify and self-host.</dd></div><div><dt>Deployment</dt><dd>Docker, Docker Compose or a source installation.</dd></div><div><dt>Identity</dt><dd>Local accounts, with optional Passkeys, TOTP, OIDC, GitHub App and LDAP / Active Directory.</dd></div><div><dt>Trust boundary</dt><dd>The WebSSH server handles credentials and session data. Run it on a trusted host and use HTTPS for remote browser access.</dd></div></dl>
+    </section>
+    <section class="content-section shell faq-section" aria-labelledby="faq-title">
+      <div class="section-heading"><p class="eyebrow">Before your first connection</p><h2 id="faq-title">A few useful answers.</h2></div>
+      <div class="faq-list">
+        <details><summary>What is WebSSH?</summary><p>WebSSH is the MIT-licensed project maintained at <a href="https://github.com/bifrost0x/webssh">bifrost0x/webssh</a>: a self-hosted browser workspace for SSH terminals, SFTP files, saved connections and server administration. You install it on your own infrastructure and access that instance in a browser.</p></details>
+        <details><summary>Is WebSSH free? Do I need a cloud account?</summary><p>The software is free under the MIT license. You provide the infrastructure and pay any hosting costs. A hosted WebSSH subscription or account is not required. This website does not host SSH sessions.</p></details>
+        <details><summary>Can I use it from a phone or another computer?</summary><p>Yes. The responsive browser interface includes a mobile terminal workspace. Your device must be able to reach your WebSSH instance. Use a trusted network or VPN, or a properly configured HTTPS deployment for remote access.</p></details>
+        <details><summary>Will my shell survive closing the browser?</summary><p>Persistent shells use tmux on the remote server. With tmux available and persistence enabled for the session, you can return to the remote shell after reconnecting. Ordinary SSH sessions do not provide that guarantee, and browser sign-in still expires independently.</p></details>
+        <details><summary>Can I expose the quickstart directly to the Internet?</summary><p>The local quickstart is for evaluation. Internet-facing deployments require the production overlay, HTTPS, an exact browser origin, a restricted backend and an administrator created from the trusted host. See the <a href="self-hosting.html#production">production deployment path</a>.</p></details>
+        <details><summary>Where can I find documentation or get in touch?</summary><p>Start with the <a href="https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Home.md">documentation</a>, check <a href="https://github.com/bifrost0x/webssh/releases">releases</a>, or discuss ideas on <a href="https://github.com/bifrost0x/webssh/discussions">GitHub Discussions</a>. For project questions, email <a href="mailto:hi@getwebssh.com">hi@getwebssh.com</a>. For suspected vulnerabilities, follow the <a href="https://github.com/bifrost0x/webssh/blob/main/SECURITY.md">private reporting policy</a>.</p></details>
+      </div>
+    </section>
+    <section class="closing-section shell" aria-labelledby="closing-title"><div><p class="eyebrow">Ready when you are</p><h2 id="closing-title">Bring your own servers.</h2><p>Start locally, explore the workspace and choose the deployment that fits.</p></div><a class="button button-primary" href="#quick-start">Start with Docker <span class="icon" aria-hidden="true">arrow_forward</span></a></section>
   </main>
   <footer class="site-footer">
-    <div class="shell footer-main"><a class="brand" href="./" aria-label="WebSSH home"><img src="assets/webssh-logo.svg" width="112" height="34" alt="WebSSH"><span class="brand-tagline">Your shell. Your rules.</span></a><nav class="footer-links" aria-label="Project links"><a href="https://github.com/bifrost0x/webssh">GitHub</a><a href="https://github.com/bifrost0x/webssh#readme">Documentation</a><a href="code-graph/">Code graph</a></nav><a class="contact-link" href="mailto:hi@getwebssh.com"><span class="icon" aria-hidden="true">mail_outline</span>hi@getwebssh.com</a></div>
-    <div class="shell footer-legal"><span>A private, open-source project by Marcel Graewer.</span><nav aria-label="Legal information"><a href="impressum.html" lang="de">Impressum</a><a href="privacy.html">Privacy / Datenschutz</a></nav></div>
+    <div class="shell footer-main"><a class="brand" href="./" aria-label="WebSSH home"><img src="assets/webssh-logo.svg" width="112" height="34" alt="WebSSH"><span class="brand-tagline">Your shell. Your rules.</span></a><nav class="footer-links" aria-label="Project links"><a href="https://github.com/bifrost0x/webssh">GitHub</a><a href="https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Home.md">Documentation</a><a href="https://github.com/bifrost0x/webssh/releases">Releases</a><a href="code-graph/">Code graph</a></nav><a class="contact-link" href="mailto:hi@getwebssh.com"><span class="icon" aria-hidden="true">mail_outline</span>hi@getwebssh.com</a></div>
+    <div class="shell footer-legal"><span>A private, open-source project by Marcel Graewer.</span><nav aria-label="Legal information"><a href="impressum.html">Legal notice</a><a href="privacy.html">Privacy notice</a></nav></div>
   </footer>
 </body>
 </html>

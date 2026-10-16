@@ -168,3 +168,95 @@ code { font-family: var(--font-mono); }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; }
 }
+
+/* Product content and documentation overview pages. */
+.hero-definition { max-width: 43rem; margin: 1.2rem auto 0; color: var(--text-secondary); font-size: 1rem; }
+.content-section { padding-block: 4rem; border-top: 1px solid var(--border-color); }
+.content-section h2, .closing-section h2, .guide-page h2 { font-size: clamp(1.7rem, 3vw, 2.5rem); line-height: 1.2; letter-spacing: -.04em; font-weight: 650; }
+.section-heading { max-width: 48rem; margin-bottom: 2rem; }
+.section-heading h2, .tour-copy h2, .control-section h2, .closing-section h2 { margin-top: .7rem; }
+.section-heading > p:last-child, .tour-copy p:not(.eyebrow), .control-section p:not(.eyebrow), .closing-section p:not(.eyebrow) { color: var(--text-secondary); margin-top: 1rem; }
+.capability-grid, .use-case-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.capability { padding: 1.5rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); }
+.capability > .icon { color: var(--accent-primary); font-size: 1.8rem; margin-bottom: 1.2rem; }
+.capability h3, .use-case-grid h3, .detail-grid h3, .note-panel h3 { font-size: 1.1rem; line-height: 1.4; font-weight: 600; }
+.capability p, .use-case-grid p { margin-top: .75rem; color: var(--text-secondary); font-size: .92rem; }
+.capability .text-link { margin-top: 1.25rem; font-size: .85rem; }
+.product-tour { display: grid; grid-template-columns: .8fr 1.2fr; align-items: center; gap: 2.5rem; }
+.tour-copy .text-link, .control-section .text-link { margin-top: 1.4rem; }
+.use-case-grid article { padding: .5rem 1.5rem .5rem 0; }
+.section-number { display: block; color: #8dbcfb; font: .75rem/1.5 var(--font-mono); margin-bottom: 1rem; }
+.control-section { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; }
+.fact-list { margin: 0; }
+.fact-list > div { padding-block: 1rem; border-bottom: 1px solid var(--border-color); }
+.fact-list > div:first-child { padding-top: 0; }
+.fact-list dt { font-weight: 600; font-size: .9rem; }
+.fact-list dd { margin: .35rem 0 0; color: var(--text-secondary); font-size: .9rem; }
+.faq-section { display: grid; grid-template-columns: .65fr 1fr; gap: 4rem; }
+.faq-list { border-top: 1px solid var(--border-hover); }
+.faq-list details { border-bottom: 1px solid var(--border-hover); }
+.faq-list summary { padding: 1.2rem .25rem; cursor: pointer; font-weight: 550; }
+.faq-list summary::marker { color: var(--accent-primary); }
+.faq-list p { padding: 0 .25rem 1.3rem; color: var(--text-secondary); font-size: .93rem; }
+.faq-list a, .guide-page p a, .guide-page li a { color: #9bc6ff; }
+.closing-section { border-top: 1px solid var(--border-color); padding-block: 3.5rem; display: flex; justify-content: space-between; align-items: center; gap: 2rem; }
+.closing-section .button { flex-shrink: 0; }
+.breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; font-size: .85rem; color: var(--text-secondary); margin-bottom: 2.5rem; }
+.breadcrumbs a { color: #9bc6ff; }
+.guide-page { max-width: 68rem; padding-block: 2rem 4rem; }
+.guide-heading { max-width: 55rem; padding-bottom: 2rem; }
+.guide-heading h1 { font-size: clamp(2.3rem, 5vw, 4rem); line-height: 1.12; letter-spacing: -.045em; margin-block: 1rem 1.4rem; }
+.guide-lead { font-size: 1.15rem; color: var(--text-secondary); }
+.page-toc { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; border-block: 1px solid var(--border-color); padding-block: .8rem; }
+.page-toc a { color: #9bc6ff; padding-block: .4rem; font-size: .88rem; text-decoration: none; }
+.page-toc a:hover { text-decoration: underline; }
+.guide-section { padding-block: 3rem; border-bottom: 1px solid var(--border-color); scroll-margin-top: 2rem; }
+.guide-section-heading { max-width: 52rem; margin-bottom: 1.6rem; }
+.guide-section h2 { margin-block: .65rem 1.1rem; }
+.guide-section p { margin-top: 1rem; color: var(--text-secondary); }
+.guide-section code { font-size: .9em; color: #9bc6ff; overflow-wrap: anywhere; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem 2.5rem; margin-top: 2rem; }
+.detail-grid p { font-size: .95rem; margin-top: .5rem; }
+.guide-section .source-link { font-size: .85rem; line-height: 2; margin-top: 1.5rem; }
+.source-link a { display: inline; }
+.note-panel { margin-top: 1.75rem; padding: 1.25rem 1.5rem; background: var(--bg-secondary); border-left: 2px solid var(--accent-primary); border-radius: 0 6px 6px 0; }
+.note-panel p { font-size: .95rem; margin-top: .5rem; }
+.mobile-tour { display: grid; grid-template-columns: 1fr .65fr; align-items: center; gap: 4rem; }
+.mobile-shot { width: min(100%, 18rem); justify-self: center; }
+.connection-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; padding: 0; margin-block: 1.5rem; gap: 1rem; }
+.connection-flow li { padding: 1.25rem; border: 1px solid var(--border-hover); border-radius: 6px; background: var(--bg-secondary); }
+.connection-flow strong, .connection-flow span { display: block; }
+.connection-flow strong { color: #9bc6ff; }
+.connection-flow span { font-size: .85rem; color: var(--text-secondary); margin-top: .5rem; }
+.steps { padding-left: 1.5rem; color: var(--text-secondary); }
+.steps li { padding: .5rem 0 .5rem .25rem; }
+.steps strong { color: var(--text-primary); }
+.guide-next { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1.5rem; padding-top: 3rem; }
+.guide-next p { margin-top: .75rem; color: var(--text-secondary); }
+.guide-next .button { font-size: .85rem; }
+@media (max-width: 1200px) { .header-inner .brand-tagline { display: none; } }
+@media (max-width: 1000px) {
+  .site-nav { gap: 1.2rem; }
+  .product-tour, .faq-section { grid-template-columns: 1fr; gap: 2rem; }
+  .capability-grid { grid-template-columns: 1fr; }
+  .capability { padding: 1.5rem; }
+  .control-section { gap: 2rem; }
+}
+@media (max-width: 800px) {
+  .content-section { padding-block: 2.5rem; }
+  .use-case-grid, .control-section, .detail-grid, .connection-flow, .mobile-tour { grid-template-columns: 1fr; }
+  .use-case-grid { gap: 1.5rem; }
+  .use-case-grid article { padding-right: 0; }
+  .mobile-tour { gap: 2rem; }
+  .closing-section { align-items: flex-start; flex-direction: column; }
+  .guide-section { padding-block: 2rem; }
+  .guide-lead { font-size: 1.05rem; }
+  .guide-page { padding-top: 1.5rem; }
+}
+
+/* Keep enlarged text within narrow layouts, including grid min-content sizing. */
+.control-section > *, .mobile-tour > *, .guide-next > *, .closing-section > * { min-width: 0; max-width: 100%; }
+.hero h1, .content-section h2, .closing-section h2, .start-section h2, .guide-page h1, .guide-page h2, .guide-page h3 { overflow-wrap: anywhere; }
+.guide-next .button { display: inline-block; text-align: center; overflow-wrap: anywhere; }
+.guide-page a { overflow-wrap: anywhere; }
+.site-nav { min-width: 0; flex-wrap: wrap; }

@@ -3,8 +3,12 @@
 import base64
 import hashlib
 import importlib.util
+import json
 from html.parser import HTMLParser
 from pathlib import Path
+import shutil
+from urllib.parse import unquote, urlsplit
+from xml.etree import ElementTree
 
 import pytest
 
@@ -65,7 +69,7 @@ def test_product_landing_page_uses_current_connection_terminology():
         assert obsolete_label not in text
 
 
-@pytest.mark.parametrize('page_name', ['index.html', 'impressum.html', 'privacy.html', 'code-graph/index.html'])
+@pytest.mark.parametrize('page_name', ['index.html', 'features.html', 'self-hosting.html', 'security.html', 'impressum.html', 'privacy.html', 'code-graph/index.html'])
 def test_packaged_pages_have_reachable_legal_links_and_local_assets(built_site, page_name):
     path = built_site / page_name
     page = Page(path.read_text(encoding='utf-8'))
@@ -147,6 +151,104 @@ def test_local_quickstart_binds_only_loopback():
 
 def test_privacy_notice_distinguishes_hosting_from_self_hosted_product():
     text = (ROOT / 'site/privacy.html').read_text(encoding='utf-8')
-    for required in ('GitHub Pages', 'IP-Adresse', 'Infomaniak', 'Art. 6', 'Art. 21', 'Datenschutzaufsichtsbehörde', 'WebSSH-Instanzen'):
+    for required in ('GitHub Pages', 'IP address', 'Infomaniak', 'Article 6', 'Article 21', 'supervisory authority', 'independently hosted WebSSH instances'):
         assert required in text
     assert 'Google Analytics' not in text
+
+
+def test_all_product_pages_are_english_and_have_one_main_heading(built_site):
+    for filename in packager().PUBLIC_PAGES:
+        text = (built_site / filename).read_text(encoding='utf-8')
+        page = Page(text)
+        assert ('html', {'lang': 'en'}) in page.tags
+        assert sum(tag == 'h1' for tag, _ in page.tags) == 1
+        for german in ('Datenschutz', '>Impressum<', 'Zum Inhalt', 'lang="de"'):
+            assert german not in text
+
+
+def test_search_metadata_matches_canonical_content_and_csp(built_site):
+    module = packager()
+    for filename in module.PUBLIC_PAGES:
+        text = (built_site / filename).read_text(encoding='utf-8')
+        metadata = module.SearchMetadata(text)
+        page = Page(text)
+        meta = {attrs.get('property', attrs.get('name')): attrs.get('content')
+                for tag, attrs in page.tags if tag == 'meta'}
+        assert meta['og:title'] == meta['twitter:title'] == metadata.titles[0]
+        assert meta['og:description'] == meta['twitter:description'] == metadata.descriptions[0]
+        assert meta['og:url'] == metadata.canonicals[0]
+        assert meta['og:image'] == meta['twitter:image']
+        assert (built_site / urlsplit(meta['og:image']).path.lstrip('/')).is_file()
+        assert meta['robots'] == 'index, follow, max-image-preview:large'
+        assets = module.RuntimeAssets()
+        assets.feed(text)
+        assets.close()
+        assert len(assets.inline_scripts) == 1
+        body = assets.inline_scripts[0]
+        schema = json.loads(body)
+        assert schema['@context'] == 'https://schema.org'
+        webpage = next(node for node in schema['@graph'] if node['@type'] == 'WebPage')
+        assert webpage['name'] == metadata.titles[0]
+        assert webpage['description'] == metadata.descriptions[0]
+        assert webpage['url'] == metadata.canonicals[0]
+        assert webpage['inLanguage'] == 'en'
+        digest = base64.b64encode(hashlib.sha256(body.encode()).digest()).decode('ascii')
+        assert "'sha256-" + digest + "'" in metadata.policies[0]
+        assert 'unsafe-inline' not in metadata.policies[0]
+        assert "connect-src 'none'" in metadata.policies[0]
+        if filename != 'index.html':
+            breadcrumb = next(node for node in schema['@graph'] if node['@type'] == 'BreadcrumbList')
+            assert [item['item'] for item in breadcrumb['itemListElement']] == [module.SITE_URL, webpage['url']]
+        else:
+            software = next(node for node in schema['@graph'] if node['@type'] == 'SoftwareSourceCode')
+            assert software['codeRepository'] == 'https://github.com/bifrost0x/webssh'
+            assert software['license'].endswith('/LICENSE')
+            assert 'aggregateRating' not in body and 'ratingValue' not in body
+
+
+def test_sitemap_and_robots_include_only_canonical_authored_pages(built_site):
+    module = packager()
+    sitemap = ElementTree.parse(built_site / 'sitemap.xml')
+    urls = [element.text for element in sitemap.findall('.//{http://www.sitemaps.org/schemas/sitemap/0.9}loc')]
+    assert set(urls) == {module.SITE_URL + ('' if name == 'index.html' else name) for name in module.PUBLIC_PAGES}
+    assert len(urls) == len(set(urls))
+    robots = (built_site / 'robots.txt').read_text(encoding='utf-8')
+    assert 'Sitemap: https://getwebssh.com/sitemap.xml' in robots
+    assert 'User-agent: *\nAllow: /' in robots
+    assert 'Disallow:' not in robots
+    graph = Page((built_site / 'code-graph/index.html').read_text(encoding='utf-8'))
+    assert any(attrs.get('name') == 'robots' and attrs.get('content') == 'noindex, follow'
+               for tag, attrs in graph.tags if tag == 'meta')
+
+
+def test_internal_links_and_fragments_resolve_and_doc_links_exist(built_site):
+    for filename in packager().PUBLIC_PAGES:
+        path = built_site / filename
+        for href in Page(path.read_text(encoding='utf-8')).links():
+            parts = urlsplit(href)
+            if href.startswith('https://github.com/bifrost0x/webssh/blob/main/'):
+                source = href.split('/blob/main/', 1)[1].split('#')[0]
+                assert (ROOT / unquote(source)).is_file(), href
+            if parts.scheme or parts.netloc:
+                continue
+            target = path.parent / unquote(parts.path) if parts.path else path
+            if target.is_dir():
+                target /= 'index.html'
+            assert target.is_file(), (filename, href)
+            if parts.fragment and target.suffix == '.html':
+                ids = {attrs.get('id') for _, attrs in Page(target.read_text(encoding='utf-8')).tags}
+                assert unquote(parts.fragment) in ids, (filename, href)
+
+
+@pytest.mark.parametrize('replacement', [
+    ('https://getwebssh.com/features.html', 'https://example.org/features.html'),
+    ('<title>', '<title></title><title>'),
+    ("script-src 'self';", "script-src 'self' 'unsafe-inline';"),
+])
+def test_metadata_build_rejects_drifted_page_contracts(tmp_path, replacement):
+    output = tmp_path / 'site'
+    shutil.copytree(ROOT / 'site', output)
+    page = output / 'features.html'
+    page.write_text(page.read_text(encoding='utf-8').replace(*replacement), encoding='utf-8')
+    with pytest.raises(ValueError, match='metadata|policy'):
+        packager().add_search_metadata(output)
