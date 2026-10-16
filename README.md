@@ -34,8 +34,11 @@
 
 <p align="center">
   <strong><a href="https://getwebssh.com/demo.html">Watch the 60-second demo</a></strong> ·
-  <a href="https://getwebssh.com/assets/webssh-demo.mp4">Download MP4 (2.6 MB)</a><br>
-  Full HD · English titles · No audio · Example data
+  <a href="https://getwebssh.com/assets/webssh-demo.mp4">Download MP4 (3.8 MB)</a><br>
+  Full HD · English titles · Background music · Example data<br>
+  Music: <a href="https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600048">"Chill Wave" by Kevin MacLeod</a> ·
+  <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> ·
+  <a href="site/assets/webssh-demo-LICENSE.txt">Music credits</a>
 </p>
 
 WebSSH keeps terminal work, files, commands, diagnostics, and notes in one
