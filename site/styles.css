@@ -85,7 +85,7 @@ h1, h2, h3, p, figure { margin: 0; }
 .benefits p { margin-top: .15rem; font-size: .87rem; color: var(--text-secondary); }
 .quick-start { min-width: 0; scroll-margin-top: 2rem; }
 .code-card { border: 1px solid var(--border-hover); border-radius: 6px; overflow: hidden; margin-top: 1.1rem; background: var(--bg-primary); }
-.code-card-header { min-height: 2.8rem; padding: 0 .85rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); font-size: .83rem; }
+.code-card-header { min-height: 2.8rem; padding: 0 .85rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); font-size: .83rem; }
 .code-card-header button { display: none; align-items: center; justify-content: center; gap: .4rem; min-height: 36px; margin-block: .2rem; padding: .3rem .5rem; border: 1px solid var(--border-hover); border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: .78rem; cursor: pointer; }
 .js .code-card-header button { display: inline-flex; }
 .code-card-header button:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -102,10 +102,10 @@ code { font-family: var(--font-mono); }
 
 .site-footer { border-top: 1px solid var(--border-color); background: rgba(11, 13, 16, .65); }
 .footer-main { min-height: 6rem; padding-block: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; }
-.footer-links, .footer-legal nav { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.footer-links, .footer-legal nav { display: flex; gap: 1.5rem; flex-wrap: wrap; max-width: 100%; }
 .footer-links a, .footer-legal a { font-size: .8rem; color: var(--text-secondary); text-decoration: none; display: inline-flex; align-items: center; min-height: 36px; }
 .footer-links a:hover, .footer-legal a:hover { color: var(--text-primary); text-decoration: underline; }
-.contact-link { display: inline-flex; align-items: center; gap: .7rem; min-height: 44px; color: #8dbcfb; font-size: .85rem; text-decoration: none; }
+.contact-link { display: inline-flex; align-items: center; gap: .7rem; min-height: 44px; max-width: 100%; overflow-wrap: anywhere; color: #8dbcfb; font-size: .85rem; text-decoration: none; }
 .contact-link:hover { text-decoration: underline; }
 .contact-link .icon { color: var(--text-secondary); }
 .footer-legal { padding-block: .65rem 1rem; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--text-secondary); font-size: .75rem; }
