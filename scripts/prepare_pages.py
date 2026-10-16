@@ -5,7 +5,6 @@ import base64
 import hashlib
 from html.parser import HTMLParser
 from pathlib import Path
-import re
 import shutil
 
 
@@ -14,6 +13,11 @@ GRAPH_VENDOR = 'vendor/vis-network-9.1.6/vis-network.min.js'
 
 
 class RuntimeAssets(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.inline_scripts = []
+        self._script_parts = None
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if any(name.startswith('on') for name in attrs):
@@ -23,6 +27,22 @@ class RuntimeAssets(HTMLParser):
             resource = attrs.get('href')
         if resource and resource.startswith(('https:', 'http:', '//')):
             raise ValueError(f'External runtime asset remains: {resource}')
+        if tag == 'script' and 'src' not in attrs:
+            self._script_parts = []
+
+    def handle_data(self, data):
+        if self._script_parts is not None:
+            self._script_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'script' and self._script_parts is not None:
+            self.inline_scripts.append(''.join(self._script_parts))
+            self._script_parts = None
+
+    def close(self):
+        super().close()
+        if self._script_parts is not None:
+            raise ValueError('Unclosed inline script in Graphify output')
 
 
 def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
@@ -35,12 +55,13 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
         raise ValueError('Unexpected Graphify document structure')
     graph_html = graph_html.replace(GRAPH_CDN, '../' + GRAPH_VENDOR)
     graph_html = graph_html.replace(' onchange="toggleAllCommunities(!this.checked)"', '')
-    RuntimeAssets().feed(graph_html)
+    assets = RuntimeAssets()
+    assets.feed(graph_html)
+    assets.close()
     script_hashes = []
-    for attrs, body in re.findall(r'<script\b([^>]*)>(.*?)</script\s*>', graph_html, re.I | re.S):
-        if not re.search(r'\bsrc\s*=', attrs, re.I):
-            digest = base64.b64encode(hashlib.sha256(body.encode('utf-8')).digest()).decode('ascii')
-            script_hashes.append(f"'sha256-{digest}'")
+    for body in assets.inline_scripts:
+        digest = base64.b64encode(hashlib.sha256(body.encode('utf-8')).digest()).decode('ascii')
+        script_hashes.append(f"'sha256-{digest}'")
     policy = (
         "default-src 'none'; script-src 'self' " + ' '.join(script_hashes)
         + "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; "

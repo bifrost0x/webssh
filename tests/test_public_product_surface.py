@@ -110,6 +110,19 @@ def test_packaged_vendor_bytes_match_graph_integrity_on_windows(built_site):
     assert script['integrity'] == 'sha384-' + digest
 
 
+def test_graph_script_hash_uses_html_parser_end_tag_rules(tmp_path):
+    body = 'window.graphReady = true;'
+    graph = tmp_path / 'graph.html'
+    graph.write_text('''<html><head>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+</head><body><script>''' + body + '</script\t\n bar></body></html>', encoding='utf-8')
+    output = tmp_path / 'public'
+    packager().prepare_pages(ROOT, graph, output)
+    html = (output / 'code-graph/index.html').read_text(encoding='utf-8')
+    digest = base64.b64encode(hashlib.sha256(body.encode()).digest()).decode('ascii')
+    assert "'sha256-" + digest + "'" in html
+
+
 def test_packaged_graph_preserves_select_all_and_mobile_style_override(built_site):
     graph = (built_site / 'code-graph/index.html').read_text(encoding='utf-8')
     assert 'onchange=' not in graph
