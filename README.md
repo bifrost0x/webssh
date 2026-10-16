@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://getwebssh.com/">Product site</a> ·
+  <a href="https://getwebssh.com/demo.html">Watch the demo</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·

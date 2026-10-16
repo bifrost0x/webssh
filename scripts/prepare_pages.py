@@ -16,6 +16,7 @@ SITE_URL = 'https://getwebssh.com/'
 PUBLIC_PAGES = {
     'index.html': 'Home',
     'features.html': 'Features',
+    'demo.html': 'Demo',
     'self-hosting.html': 'Self-hosting',
     'security.html': 'Security',
     'impressum.html': 'Legal notice',
@@ -111,6 +112,20 @@ def add_search_metadata(output: Path) -> None:
                     {'@type': 'ListItem', 'position': 2, 'name': label, 'item': url},
                 ],
             })
+        if filename == 'demo.html':
+            video_id = url + '#video'
+            nodes[0]['mainEntity'] = {'@id': video_id}
+            nodes.append({
+                '@type': 'VideoObject', '@id': video_id,
+                'name': 'WebSSH - a one-minute product walkthrough',
+                'description': description,
+                'thumbnailUrl': [SITE_URL + 'assets/webssh-demo-poster.jpg'],
+                'contentUrl': SITE_URL + 'assets/webssh-demo.mp4',
+                'uploadDate': '2026-10-16T19:22:00+00:00',
+                'duration': 'PT1M', 'inLanguage': 'en',
+                'width': 1920, 'height': 1080,
+                'about': {'@id': SITE_URL + '#software'},
+            })
         structured = json.dumps({'@context': 'https://schema.org', '@graph': nodes},
                                 ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
         digest = base64.b64encode(hashlib.sha256(structured.encode('utf-8')).digest()).decode('ascii')
@@ -120,11 +135,15 @@ def add_search_metadata(output: Path) -> None:
         html = html.replace(policy, policy.replace("script-src 'self';", f"script-src 'self' 'sha256-{digest}';"), 1)
         image = SITE_URL + 'assets/session-workspace.png'
         image_alt = 'WebSSH browser workspace with an SSH terminal and SFTP files side by side'
+        if filename == 'demo.html':
+            image = SITE_URL + 'assets/webssh-demo-poster.jpg'
+            image_alt = 'WebSSH product walkthrough with terminals, SFTP files and command sets'
         tags = {
             'og:type': 'website', 'og:site_name': 'WebSSH', 'og:locale': 'en_US',
             'og:title': title, 'og:description': description, 'og:url': url,
-            'og:image': image, 'og:image:type': 'image/png',
-            'og:image:width': '2560', 'og:image:height': '1440', 'og:image:alt': image_alt,
+            'og:image': image, 'og:image:type': 'image/jpeg' if filename == 'demo.html' else 'image/png',
+            'og:image:width': '1920' if filename == 'demo.html' else '2560',
+            'og:image:height': '1080' if filename == 'demo.html' else '1440', 'og:image:alt': image_alt,
         }
         social = ''.join(f'  <meta property="{key}" content="{escape(value, quote=True)}">\n'
                          for key, value in tags.items())

@@ -260,3 +260,23 @@ code { font-family: var(--font-mono); }
 .guide-next .button { display: inline-block; text-align: center; overflow-wrap: anywhere; }
 .guide-page a { overflow-wrap: anywhere; }
 .site-nav { min-width: 0; flex-wrap: wrap; }
+
+
+/* Locally hosted product walkthrough. */
+.hero-actions { flex-wrap: wrap; }
+.demo-page { padding-block: 2rem 4rem; }
+.demo-page .breadcrumbs { margin-bottom: 1.25rem; }
+.demo-heading { margin-bottom: 1.5rem; }
+.demo-heading h1 { margin-block: .7rem; font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1.15; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.demo-heading > p:last-child { color: var(--text-secondary); }
+.demo-player { border: 1px solid var(--border-hover); border-radius: 10px; overflow: hidden; background: var(--bg-secondary); }
+.demo-player video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--bg-primary); }
+.demo-player figcaption { padding: .8rem 1.2rem; font-size: .85rem; color: var(--text-secondary); }
+.demo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.25rem 2rem; margin-top: 1.5rem; }
+.demo-actions a { max-width: 100%; overflow-wrap: anywhere; }
+.demo-transcript { list-style: none; margin: 0; padding: 0; }
+.demo-transcript li { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 1rem; padding-block: 1.1rem; border-bottom: 1px solid var(--border-color); }
+.demo-transcript time { color: #9bc6ff; font-family: var(--font-mono); }
+.demo-transcript h3 { font-size: 1.05rem; }
+.demo-transcript p { margin-top: .4rem; }
+@media (max-width: 800px) { .demo-page { padding-top: 1.5rem; } .demo-transcript li { grid-template-columns: 1fr; gap: .35rem; } }
