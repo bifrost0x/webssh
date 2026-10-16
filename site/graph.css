@@ -1,0 +1,6 @@
+body { padding-bottom: 3.5rem; }
+.graph-site-nav { position: fixed; bottom: 0; inset-inline: 0; min-height: 3.5rem; padding: .4rem 1rem; display: flex; align-items: center; gap: 1.5rem; background: #12151a; color: #aeb8c5; border-top: 1px solid rgba(190, 205, 220, .12); font: 14px/1.4 system-ui, sans-serif; z-index: 10; }
+.graph-site-nav a { color: inherit; display: inline-flex; align-items: center; min-height: 40px; text-decoration: none; }
+.graph-site-nav a:hover { color: #eef2f6; text-decoration: underline; }
+.graph-site-nav a:focus-visible { outline: 2px solid #5b9cf6; outline-offset: 3px; }
+@media (max-width: 480px) { .graph-site-nav { gap: 1rem; font-size: 12px; } #sidebar { width: min(250px, 60vw); } }

@@ -15,32 +15,35 @@ if (navToggle && navigation) {
     navToggle.setAttribute('aria-expanded', String(!isOpen));
     navigation.dataset.open = String(!isOpen);
   });
-
   navigation.addEventListener('click', (event) => {
     if (event.target.closest('a')) closeNavigation();
   });
-
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && navToggle.getAttribute('aria-expanded') === 'true') {
       closeNavigation();
       navToggle.focus();
     }
   });
+  window.matchMedia('(min-width: 801px)').addEventListener('change', closeNavigation);
 }
 
 const copyButton = document.querySelector('[data-copy-command]');
+const copyLabel = document.querySelector('[data-copy-label]');
 const command = document.querySelector('[data-command]');
 const copyStatus = document.querySelector('#copy-status');
 
 async function copyQuickStart() {
-  if (!copyButton || !command || !copyStatus) return;
-
+  if (!copyButton || !copyLabel || !command || !copyStatus) return;
+  copyButton.disabled = true;
   try {
     await navigator.clipboard.writeText(command.textContent.trim());
-    copyButton.textContent = 'Copied';
+    copyLabel.textContent = 'Copied';
     copyStatus.textContent = 'Docker command copied to the clipboard.';
   } catch {
-    copyStatus.textContent = 'Copy failed. Select the command and copy it manually.';
+    copyLabel.textContent = 'Copy';
+    copyStatus.textContent = 'Copy unavailable. Select the command and copy it manually.';
+  } finally {
+    copyButton.disabled = false;
   }
 }
 
