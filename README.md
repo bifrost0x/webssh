@@ -27,12 +27,28 @@
 ## Product tour
 
 <p align="center">
-  <img src="assets/webssh-demo.gif" alt="WebSSH tour showing a focused terminal, split sessions, the SFTP workspace, and account security" width="1100">
+  <a href="https://getwebssh.com/demo.html">
+    <img src="site/assets/webssh-demo-poster.jpg" alt="Watch the 60-second WebSSH demo: terminals, split panes, SFTP file editing, command sets, and notes" width="1100">
+  </a>
+</p>
+
+<p align="center">
+  <strong><a href="https://getwebssh.com/demo.html">Watch the 60-second demo</a></strong> ·
+  <a href="https://getwebssh.com/assets/webssh-demo.mp4">Download MP4 (2.6 MB)</a><br>
+  Full HD · English titles · No audio · Example data
 </p>
 
 WebSSH keeps terminal work, files, commands, diagnostics, and notes in one
 responsive browser workspace. It is self-hosted, multi-user, and built without
 a hosted control plane or runtime CDN dependencies.
+
+<details>
+  <summary>Preview the animated product tour</summary>
+
+  <p align="center">
+    <img src="assets/webssh-demo.gif" alt="WebSSH tour showing a focused terminal, split sessions, the SFTP workspace, and account security" width="1100">
+  </p>
+</details>
 
 ## Why WebSSH
 
