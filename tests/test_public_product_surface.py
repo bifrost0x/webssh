@@ -296,7 +296,9 @@ def test_demo_video_metadata_matches_the_published_media(built_site):
 
 
 def test_demo_links_bypass_previously_cached_page_and_media(built_site):
-    revision = hashlib.sha256((built_site / 'assets/webssh-demo.mp4').read_bytes()).hexdigest()[:12]
+    media = (built_site / 'assets/webssh-demo.mp4').read_bytes()
+    captions = (built_site / 'assets/webssh-demo.en.vtt').read_text(encoding='utf-8').encode('utf-8')
+    revision = hashlib.sha256(media + captions).hexdigest()[:12]
     for text in [(ROOT / 'README.md').read_text(encoding='utf-8'),
                  *((built_site / name).read_text(encoding='utf-8') for name in packager().PUBLIC_PAGES)]:
         links = [urlsplit(link) for link in Page(text).links() if link]
