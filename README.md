@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://getwebssh.com/">Product site</a> ·
-  <a href="https://getwebssh.com/demo.html">Watch the demo</a> ·
+  <a href="https://getwebssh.com/demo.html?v=84346a2576ca">Watch the demo</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
@@ -27,18 +27,9 @@
 ## Product tour
 
 <p align="center">
-  <a href="https://getwebssh.com/demo.html">
+  <a href="https://getwebssh.com/demo.html?v=84346a2576ca">
     <img src="site/assets/webssh-demo-poster.jpg" alt="Watch the 60-second WebSSH demo: terminals, split panes, SFTP file editing, command sets, and notes" width="1100">
   </a>
-</p>
-
-<p align="center">
-  <strong><a href="https://getwebssh.com/demo.html">Watch the 60-second demo</a></strong> ·
-  <a href="https://getwebssh.com/assets/webssh-demo.mp4">Download MP4 (3.8 MB)</a><br>
-  Full HD · English titles · Background music · Example data<br>
-  Music: <a href="https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600048">"Chill Wave" by Kevin MacLeod</a> ·
-  <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> ·
-  <a href="site/assets/webssh-demo-LICENSE.txt">Music credits</a>
 </p>
 
 WebSSH keeps terminal work, files, commands, diagnostics, and notes in one

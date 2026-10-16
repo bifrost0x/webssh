@@ -120,7 +120,7 @@ def add_search_metadata(output: Path) -> None:
                 'name': 'WebSSH - a one-minute product walkthrough',
                 'description': description,
                 'thumbnailUrl': [SITE_URL + 'assets/webssh-demo-poster.jpg'],
-                'contentUrl': SITE_URL + 'assets/webssh-demo.mp4',
+                'contentUrl': SITE_URL + 'assets/webssh-demo.mp4?v=84346a2576ca',
                 'uploadDate': '2026-10-16T19:22:00+00:00',
                 'duration': 'PT1M', 'inLanguage': 'en',
                 'width': 1920, 'height': 1080,
