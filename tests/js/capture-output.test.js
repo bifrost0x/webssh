@@ -20,7 +20,6 @@ test('public product captures are the only captures written to assets', () => {
     assert.deepEqual(
         [...PUBLISHED_CAPTURE_ASSETS].sort(),
         [
-            'keys.png',
             'mobile-workspace.png',
             'multi-session.png',
             'security-center.png',
@@ -35,4 +34,14 @@ test('capture filenames cannot escape their output directory', () => {
     assert.throws(() => captureOutputPath('../outside.png'), TypeError);
     assert.throws(() => captureOutputPath('nested/outside.png'), TypeError);
     assert.throws(() => captureOutputPath('capture.jpg'), TypeError);
+});
+
+test('retired product screenshots remain transient captures', () => {
+    const root = path.resolve(__dirname, '..', '..');
+    for (const filename of ['keys.png', 'filemanager.png']) {
+        assert.equal(
+            captureOutputPath(filename),
+            path.join(root, '.test-run.tmp', 'captures', filename),
+        );
+    }
 });
