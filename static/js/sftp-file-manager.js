@@ -5654,6 +5654,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
     }
 
     renderTransferQueue() {
+        window.dispatchEvent?.(new CustomEvent('file-transfer-queue-change'));
         const container = document.getElementById('fmQueueList');
         const badge = document.getElementById('fmQueueBadge');
         const queue = document.getElementById('fmQueue');

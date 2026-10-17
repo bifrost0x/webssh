@@ -1,0 +1,270 @@
+/* Approved Midnight Homelab / Route Atlas / Precision Workspace presentation.
+ * No terminal preference variables or controller-owned geometry are changed. */
+body.webssh-ui[data-theme="glass"] {
+    --ws2-canvas: #030f1c;
+    --ws2-surface: #071a2d;
+    --ws2-panel: #0a223a;
+    --ws2-raised: #102e4b;
+    --ws2-row-hover: #112d49;
+    --ws2-border: #19364f;
+    --ws2-border-strong: #365878;
+    --ws2-accent: #48b3ff;
+    --ws2-text: #edf5ff;
+    --ws2-text-secondary: #b5c7df;
+    --ws2-text-muted: #93abc5;
+    --ws2-shadow: 0 14px 40px #0005;
+}
+.webssh-ui { --group-accent: var(--ws2-accent); }
+.webssh-ui [data-tone="0"] { --group-accent: #5bc8d9; }
+.webssh-ui [data-tone="1"] { --group-accent: #f0bc69; }
+.webssh-ui [data-tone="2"] { --group-accent: #a48bfa; }
+.webssh-ui [data-tone="3"] { --group-accent: #6da6fa; }
+.webssh-ui [data-tone="4"] { --group-accent: #d391d0; }
+/* Paper needs darker group colors, while retaining distinct group accents. */
+.webssh-ui[data-theme="paper"] [data-tone="0"] { --group-accent: #14606d; }
+.webssh-ui[data-theme="paper"] [data-tone="1"] { --group-accent: #76500c; }
+.webssh-ui[data-theme="paper"] [data-tone="2"] { --group-accent: #65458c; }
+.webssh-ui[data-theme="paper"] [data-tone="3"] { --group-accent: #23578c; }
+.webssh-ui[data-theme="paper"] [data-tone="4"] { --group-accent: #803c73; }
+.webssh-ui[data-theme="paper"] { --ws2-accent-strong: color-mix(in srgb, var(--ws2-accent) 85%, black); }
+/* These theme accents are light; white button labels fail normal-text contrast. */
+.webssh-ui:not([data-theme="glass"]):not([data-theme="paper"]) .btn-primary { color: #08111c; }
+.webssh-ui :is(.app-brand, .settings-brand, .auth-product-brand) { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.webssh-ui :is(.app-brand-logo, .auth-product-logo) { width: 38px; height: 38px; object-fit: contain; padding: 0; background: transparent; border: 0; border-radius: 0; }
+.webssh-ui .brand-wordmark { color: var(--ws2-text); font-size: 22px; font-weight: 650; letter-spacing: -.045em; line-height: 1; }
+.webssh-ui .btn { border-radius: 7px; }
+.webssh-ui[data-theme="glass"] .btn-primary { color: #fff; background: #096fbd; border-color: #288ddb; box-shadow: inset 0 1px #ffffff1f, 0 4px 14px #0076ca24; }
+.webssh-ui[data-theme="glass"] .btn-primary:hover { background: #087dcf; }
+.webssh-ui :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--ws2-accent); outline-offset: 3px; }
+.webssh-ui :is(.modal-content, .dropdown-menu, .account-dropdown, .lang-dropdown, .context-menu, .fm-context-menu) { box-shadow: var(--ws2-shadow); }
+.webssh-ui .modal-header { padding-block: 20px; }
+.webssh-ui :is(.manager-card, .quick-connect-card, .security-card, .admin-section) { border-radius: 12px; }
+.webssh-ui :is(.manager-card-header, .quick-connect-card-header) .material-icons { color: var(--ws2-accent); }
+.webssh-ui :is(.profile-card, .jump-host-item, .key-item, .command-set-management-item) { border-radius: 9px; }
+.webssh-ui :is(.profile-card, .jump-host-item, .key-item, .command-set-management-item):hover { border-color: var(--ws2-border-strong); }
+.webssh-ui :is(.connection-asset-tab, .commands-manager-nav-button).active { box-shadow: inset 0 -2px var(--ws2-accent); }
+.webssh-ui .primary-workspace-surface .manager-card-header h3 { font-size: 20px; letter-spacing: -.025em; }
+.webssh-ui :is(.admin-page-title, .security-page-title) { letter-spacing: -.035em; }
+.webssh-ui :is(.admin-nav-item, .security-nav-item).active { background: var(--ui-selected); border-color: var(--ws2-accent); }
+.webssh-ui .auth-product-brand { justify-content: center; }
+.webssh-ui .auth-product-logo { width: 48px; height: 48px; }
+.webssh-ui .auth-product-brand .brand-wordmark { font-size: 30px; }
+.webssh-ui[data-theme="glass"].webssh-auth {
+    --theme-background-image-source: url('../images/redesign/midnight-lodge.webp?v=84c83aff64089b75');
+    background: #030f1c var(--theme-background-image) center / cover fixed no-repeat;
+}
+.webssh-ui[data-theme="glass"] .auth-access-dock { background: #051525f5; box-shadow: 0 24px 100px #0009; border-color: #294560; border-radius: 18px; }
+.webssh-ui[data-theme="glass"] .auth-context-panel { background: transparent; }
+/* Navigation shared by the overview and the active workspace. */
+@media (min-width: 768px) {
+    .webssh-shell .header-title-row { height: 68px; padding-inline: 18px; }
+    .webssh-shell .global-nav-item { min-height: 44px; font-size: 13px; border-radius: 8px; }
+    .webssh-shell .global-nav-item .material-icons { font-size: 21px; }
+    .webssh-shell .global-nav-item.active { color: var(--ws2-text); border-color: color-mix(in srgb, var(--ws2-accent) 45%, var(--ws2-border)); background: var(--ws2-panel); box-shadow: inset 3px 0 var(--ws2-accent), inset 0 1px #ffffff08; }
+    .webssh-shell .shell-group { font-size: 13px; }
+    .webssh-shell .shell-host { min-height: 38px; font-size: 12px; }
+    .webssh-shell .shell-host-group :is(.shell-group, .shell-host) > .material-icons { color: var(--group-accent); }
+}
+/* Overview: the photograph is an illustration. All visible records are real state. */
+.overview-inner { gap: 20px; }
+.connection-overview .overview-heading { position: relative; isolation: isolate; min-height: 286px; align-items: flex-end; padding: 32px; border: 1px solid #23455f; border-radius: 14px; background: #051727 url('../images/redesign/midnight-lodge.webp?v=84c83aff64089b75') center / cover no-repeat; box-shadow: 0 12px 32px #0002; color: #f2f7ff; overflow: hidden; }
+.overview-heading::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #041323e8, #04132365 56%, #04132300 80%); }
+.overview-heading-copy { max-width: 560px; min-width: 0; align-self: center; }
+.overview-eyebrow { margin: 0 0 16px; color: #afc9e4; font-size: 11px; font-weight: 600; letter-spacing: .15em; text-transform: uppercase; }
+.connection-overview .overview-heading h1 { display: block; white-space: pre-line; margin: 0; font-size: clamp(32px, 3.4vw, 48px); line-height: 1.12; font-weight: 650; letter-spacing: -.04em; }
+.overview-intro { max-width: 370px; margin: 18px 0 0; color: #c4d4e6; font-size: 13px; line-height: 1.65; }
+.overview-heading .btn { min-height: 44px; padding-inline: 20px; }
+.connection-overview:not(.overview-graph) .overview-hosts-card { grid-row: 2; }
+.overview-card h2 { font-size: 14px; font-weight: 600; }
+.overview-count { border: 0; background: var(--ws2-panel); font-size: 11px; }
+.overview-view-switch { background: var(--ws2-surface); border-radius: 7px; }
+.overview-view-switch button { font-size: 12px; padding-inline: 12px; border-radius: 5px; }
+.overview-view-switch button[aria-pressed="true"] { background: var(--ws2-raised); color: var(--ws2-text); box-shadow: inset 0 0 0 1px var(--ws2-border-strong); }
+.overview-view-switch button[aria-pressed="true"] .material-icons { color: var(--ws2-accent); }
+.overview-filter, .overview-group-select select { border-radius: 7px; background: var(--ws2-surface); }
+.connection-overview:not(.overview-graph) .overview-search-row { padding-bottom: 16px; }
+.connection-overview:not(.overview-graph) .overview-hosts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-height: 560px; padding: 0 4px 4px 0; }
+.overview-host-group { min-width: 0; padding: 14px; border: 1px solid color-mix(in srgb, var(--group-accent) 32%, var(--ws2-border)); border-radius: 10px; background: color-mix(in srgb, var(--group-accent) 4%, var(--ws2-surface)); }
+.connection-overview:not(.overview-graph) .overview-hosts > .overview-host-group:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.overview-group-heading { margin-bottom: 14px; font-size: 12px; font-weight: 600; color: var(--group-accent); }
+.overview-group-heading .material-icons { font-size: 18px; }
+.overview-group-heading small { color: var(--ws2-text-muted); }
+.connection-overview:not(.overview-graph) .overview-host-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row,
+.overview-graph .overview-host-entry .overview-row { display: flex; gap: 10px; min-height: 78px; padding: 12px; border: 1px solid color-mix(in srgb, var(--group-accent) 22%, var(--ws2-border)); border-radius: 8px; background: var(--ws2-panel); box-shadow: inset 0 1px #ffffff06, 0 5px 12px #0002; }
+.connection-overview .overview-host-entry .overview-row > .material-icons:first-child { display: grid; place-items: center; flex-shrink: 0; width: 38px; height: 42px; border: 1px solid color-mix(in srgb, var(--group-accent) 50%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--group-accent) 16%, var(--ws2-surface)); color: var(--group-accent); font-size: 25px; box-shadow: inset 0 1px #ffffff15; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row-title,
+.overview-graph .overview-host-entry .overview-row-title { font-size: 13px; font-weight: 600; }
+.connection-overview .overview-host-entry .overview-row:hover { border-color: var(--group-accent); background: var(--ws2-raised); }
+.connection-overview .overview-host-entry .overview-row .overview-favorite { color: var(--ws2-warning); font-size: 13px; }
+.overview-route-card { grid-column: 1; grid-row: 3; padding: 18px; border: 1px solid var(--ws2-border); border-radius: 12px; background: var(--ws2-surface); }
+.overview-route-preview { max-height: 300px; overflow: auto; padding: 4px; }
+.overview-route-preview .overview-jump { min-width: 150px; margin-bottom: 48px; padding: 10px 16px; }
+.overview-route-preview .overview-host-group { padding: 10px; }
+.overview-route-preview .overview-group-heading { margin-bottom: 8px; }
+.overview-route-preview .overview-host-entry .overview-row { min-height: 62px; }
+.overview-sessions-card { grid-row: 3; }
+.overview-recents-card .overview-row > .material-icons:first-child,
+.overview-sessions-card .overview-row > .material-icons:first-child { color: var(--ws2-accent); }
+.overview-history .overview-row, .overview-sessions .overview-row { min-height: 64px; }
+.overview-row-copy strong { font-size: 13px; font-weight: 550; }
+.overview-inner:has(.overview-notice:not([hidden])) .overview-route-card { grid-row: 4; }
+/* Configured route atlas. Arrows are drawn from the authorized exact-ID model. */
+.connection-overview.overview-graph .overview-heading { min-height: 132px; padding: 10px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ws2-text); align-items: center; }
+.overview-graph .overview-heading::before { display: none; }
+.overview-graph .overview-eyebrow { color: var(--ws2-text-muted); margin-bottom: 10px; }
+.connection-overview.overview-graph .overview-heading h1 { font-size: 38px; }
+.overview-graph .overview-intro { max-width: none; margin-top: 12px; color: var(--ws2-text-secondary); }
+.overview-graph .overview-heading-copy { max-width: 680px; }
+.overview-graph .overview-hosts-card { border-radius: 12px; }
+.overview-graph .overview-hosts { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); min-height: 520px; gap: 36px; padding: 36px; background: var(--ws2-canvas); }
+.webssh-ui[data-theme="glass"] .overview-graph .overview-hosts,
+.webssh-ui[data-theme="glass"] .overview-route-preview { background: #031322 url('../images/redesign/route-canvas.webp?v=6502a37e9a86791d') center / cover; }
+.overview-graph .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 48%, var(--ws2-border)); background: color-mix(in srgb, var(--group-accent) 5%, var(--ws2-surface)); padding: 20px; box-shadow: 0 10px 30px #0002; }
+.overview-graph .overview-host-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 14px; }
+.overview-jump { margin-bottom: 80px; padding: 18px 24px; border-color: var(--ws2-accent); border-radius: 10px; background: var(--ws2-panel); box-shadow: 0 0 26px color-mix(in srgb, var(--ws2-accent) 10%, transparent), inset 0 1px #ffffff12; }
+.overview-jump .material-icons { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: var(--ws2-raised); }
+.overview-edges path { stroke-width: 1.6; stroke-dasharray: none; stroke-linecap: round; stroke-linejoin: round; }
+.overview-graph .overview-group-heading { font-size: 13px; }
+.overview-graph .overview-route-unlinked { margin: 0 0 8px; }
+.overview-graph .overview-graph-branch.overview-graph-groups { padding-top: 0; border-top: 0; }
+.overview-graph-branch :is(.overview-jump, .overview-row, .overview-group-heading) { position: relative; z-index: 2; }
+/* Precision workspace: preserve split dimensions and the user's xterm colors. */
+.webssh-shell .session-tab { min-height: 38px; font-size: 13px; }
+.webssh-shell .session-tab.active { color: var(--ws2-accent); border-color: var(--ws2-border-strong); box-shadow: inset 0 2px var(--ws2-accent); }
+.webssh-shell .terminal-pane.active { border-color: var(--ws2-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ws2-accent) 14%, transparent); }
+.webssh-shell .context-workspace { border-color: var(--ws2-border-strong); }
+.webssh-shell .context-workspace-tab { font-size: 12px; }
+.webssh-shell .context-workspace-tab.active { box-shadow: inset 0 -2px var(--ws2-accent); }
+.webssh-shell :is(.fm-toolbar, .fm-pane-header, .fm-status-bar) { background: var(--ws2-surface); }
+.webssh-shell .fm-file-icon.folder { color: var(--ws2-accent); }
+.webssh-shell .pane-launcher { border-radius: 12px; }
+@media (max-width: 1100px) and (min-width: 768px) {
+    .webssh-shell .brand-wordmark { display: none; }
+    .webssh-shell .app-brand-logo { width: 38px; }
+    .webssh-shell .header-title-row { justify-content: center; padding-inline: 8px; }
+    .connection-overview .overview-heading { padding: 24px; }
+    .overview-heading-copy { max-width: 460px; }
+    .connection-overview:not(.overview-graph) .overview-hosts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 1101px) {
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .brand-wordmark { display: none; }
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 38px; }
+}
+@media (max-width: 900px) { .overview-route-card { order: 2; } .overview-recents-card { order: 3; } .overview-sessions-card { order: 4; } }
+@media (max-width: 767px) {
+    .webssh-shell .brand-wordmark { font-size: 19px; }
+    .webssh-shell .app-brand-logo { width: 30px; height: 30px; }
+    .connection-overview .overview-heading { min-height: 280px; padding: 24px 20px; background-position: 58% center; }
+    .overview-heading::before { background: #0413239e; }
+    .connection-overview .overview-heading h1 { font-size: 32px; }
+    .overview-heading-copy { max-width: 100%; }
+    .overview-intro { font-size: 12px; }
+    .overview-eyebrow { font-size: 10px; }
+    .connection-overview:not(.overview-graph) .overview-hosts { grid-template-columns: minmax(0, 1fr); max-height: none; }
+    .connection-overview:not(.overview-graph) .overview-host-list { grid-template-columns: minmax(0, 1fr); }
+    .overview-card-heading { align-items: flex-start; }
+    .overview-view-switch button { min-height: 44px; }
+    .connection-overview.overview-graph .overview-heading h1 { font-size: 30px; }
+    .overview-graph .overview-hosts { padding: 16px; min-height: 360px; }
+    .overview-graph .overview-host-group { padding: 12px; }
+    .overview-graph .overview-host-list { grid-template-columns: minmax(0, 1fr); }
+    .overview-route-card { padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .webssh-ui * { scroll-behavior: auto !important; } }
+@media (max-width: 480px) {
+    /* Long translated provider names need a full row on narrow auth forms. */
+    .webssh-auth .auth-method-switcher { grid-template-columns: minmax(0, 1fr); }
+    .webssh-auth .auth-method-option { grid-template-columns: 24px minmax(0, 1fr); justify-items: start; gap: 12px; text-align: left; }
+    .webssh-auth .auth-method-option > span:last-child { justify-items: start; text-align: left; }
+}
+/* Fidelity refinement: equal group columns and a compact horizontal route preview. */
+.webssh-ui .header { background: var(--ws2-canvas); background-image: none; }
+.webssh-shell .shell-location { font-size: 19px; font-weight: 600; color: var(--ws2-text); }
+.webssh-shell .global-nav-item { font-size: 14px; }
+.overview-intro { max-width: 600px; font-size: 15px; }
+.overview-card h2 { font-size: 17px; }
+.overview-card-heading { min-height: 42px; }
+.connection-overview:not(.overview-graph) .overview-hosts { grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.connection-overview:not(.overview-graph) .overview-hosts > .overview-host-group:last-child:nth-child(odd) { grid-column: auto; }
+.connection-overview:not(.overview-graph) .overview-hosts .overview-host-list { grid-template-columns: minmax(0, 1fr); }
+.overview-group-heading { font-size: 14px; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row { min-height: 90px; }
+.connection-overview .overview-host-entry .overview-row > .material-icons:first-child { width: 44px; height: 48px; font-size: 28px; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row-title,
+.overview-graph .overview-host-entry .overview-row-title { font-size: 14px; }
+.overview-history, .overview-sessions { max-height: 410px; }
+.overview-history .overview-row, .overview-sessions .overview-row { min-height: 72px; gap: 12px; }
+.overview-history .overview-row > .material-icons:first-child,
+.overview-sessions .overview-row > .material-icons:first-child { display: grid; place-items: center; width: 36px; height: 40px; border-radius: 8px; background: var(--ws2-panel); font-size: 22px; }
+.overview-row-copy strong { font-size: 14px; }
+.overview-route-card .overview-card-heading { padding-bottom: 14px; }
+.overview-route-preview { border: 1px solid var(--ws2-border); border-radius: 8px; padding: 16px; }
+.overview-route-preview .overview-host-group { border: 0; background: transparent; padding: 0; }
+.overview-route-preview .overview-group-heading { display: none; }
+.overview-route-preview .overview-host-list { grid-template-columns: minmax(0, 1fr) !important; }
+.overview-route-preview .overview-host-entry .overview-row { min-height: 70px !important; }
+.overview-graph .overview-hosts-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; border: 0; background: transparent; overflow: visible; }
+.overview-graph .overview-hosts-card .overview-card-heading { padding: 0; }
+.overview-graph #overviewHostsTitle { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.overview-graph .overview-view-switch button { min-height: 42px; padding-inline: 16px; font-size: 14px; }
+.overview-graph .overview-search-row { padding: 0; }
+.overview-graph .overview-hosts { grid-column: 1 / -1; min-height: 600px; border: 1px solid var(--ws2-border); border-radius: 12px; }
+.overview-graph .overview-legend { grid-column: 1 / -1; border: 0; margin: 0; padding-top: 0; }
+.overview-graph .overview-legend strong { font-size: 12px; }
+.overview-graph .overview-legend p { max-width: none; }
+.overview-graph .overview-jump { font-size: 16px; font-weight: 600; border-color: var(--ws2-accent); box-shadow: 0 0 24px color-mix(in srgb, var(--ws2-accent) 17%, transparent), inset 0 1px #ffffff1a; }
+.overview-graph .overview-host-entry .overview-row { min-height: 88px; }
+.overview-graph .overview-group-heading { font-size: 15px; }
+.webssh-ui .primary-workspace-surface .profile-management-section-toggle { color: var(--group-accent); }
+.webssh-ui .primary-workspace-surface .profile-management-item,
+.webssh-ui .profile-launcher-card { border-color: color-mix(in srgb, var(--group-accent) 32%, var(--ws2-border)); box-shadow: inset 3px 0 color-mix(in srgb, var(--group-accent) 75%, transparent); }
+.webssh-ui .profile-launcher-card:hover { border-color: var(--group-accent); }
+.webssh-shell .context-workspace-tab .material-icons { font-size: 23px; }
+.webssh-shell .context-workspace-tab { min-height: 52px; font-size: 13px; }
+.webssh-shell .context-workspace-tab[aria-selected="true"] { border-color: var(--ws2-border-strong); box-shadow: inset 0 -2px var(--ws2-accent); background: var(--ws2-panel); }
+.webssh-shell .session-tab { font-size: 14px; }
+.webssh-shell .terminal-grid.split-1 .terminal-pane:has(.xterm),
+.webssh-shell .terminal-pane.active { border-color: var(--ws2-accent); box-shadow: 0 0 0 1px var(--ws2-accent); border-radius: 8px; }
+.webssh-shell .fm-embedded-mode .fm-file-item { min-height: 46px; font-size: 14px; }
+@media (min-width: 768px) {
+    .connection-overview:not(.overview-graph) .overview-heading { margin: calc(-1 * var(--overview-space)) calc(-1 * var(--overview-space)) 0; border: 0; border-radius: 0; min-height: 290px; padding: 32px 44px; }
+    .overview-route-preview .overview-graph-branch { display: grid; grid-template-columns: minmax(140px, .8fr) minmax(0, 1fr); gap: 64px; align-items: center; }
+    .overview-route-preview .overview-jump { margin: 0; min-width: 0; width: 100%; box-sizing: border-box; }
+    .overview-route-preview .overview-graph-groups { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1100px) and (min-width: 768px) {
+    .overview-card h2 { font-size: 15px; }
+    .connection-overview:not(.overview-graph) .overview-hosts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+    .overview-card h2 { font-size: 15px; }
+    .overview-intro { font-size: 13px; }
+    .overview-graph .overview-hosts-card { grid-template-columns: minmax(0, 1fr); }
+    .overview-graph .overview-search-row { grid-column: 1; }
+    .overview-graph .overview-hosts { min-height: 0; }
+    .overview-graph .overview-view-switch { width: 100%; }
+    .overview-graph .overview-view-switch button { flex: 1; }
+    .webssh-shell .terminal-grid.split-1 .terminal-pane:has(.xterm), .webssh-shell .terminal-pane.active { box-shadow: none; border-radius: 0; }
+}
+
+/* Independent columns keep the route preview directly beneath the host groups. */
+.overview-primary, .overview-activity { min-width: 0; display: grid; align-content: start; gap: 20px; }
+.overview-primary { grid-column: 1; }
+.overview-activity { grid-column: 2; }
+.overview-primary > .overview-card, .overview-activity > .overview-card { grid-column: auto !important; grid-row: auto !important; }
+.overview-graph .overview-primary { grid-column: 1 / -1; }
+.overview-graph .overview-activity { display: none; }
+@media (min-width: 768px) {
+    .webssh-shell .terminal-pane.active, .webssh-shell .terminal-grid.split-1 .terminal-pane:has(.xterm) { outline: 2px solid var(--ws2-accent); outline-offset: -2px; }
+}
+@media (max-width: 900px) {
+    .overview-primary, .overview-activity { grid-column: 1; }
+    .overview-primary { order: 1; }
+    .overview-activity { order: 2; }
+}
+
+.overview-graph .overview-hosts[data-route-branches="1"] > .overview-graph-branch[data-jump-id] { grid-column: 1 / -1; width: 100%; max-width: 900px; justify-self: center; }
+.webssh-ui[data-theme="glass"] .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 48%, var(--ws2-border)); }
+.webssh-ui[data-theme="glass"] .overview-host-entry .overview-row { background: linear-gradient(135deg, color-mix(in srgb, var(--group-accent) 10%, var(--ws2-panel)), var(--ws2-surface)); }
+.webssh-ui[data-theme="glass"] .overview-graph .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 70%, var(--ws2-border)); box-shadow: 0 8px 24px color-mix(in srgb, var(--group-accent) 7%, transparent); }

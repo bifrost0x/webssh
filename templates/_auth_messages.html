@@ -1,0 +1,22 @@
+{# Translate only known application messages; preserve unknown/provider details. #}
+{% set flash_message_keys = {
+    'Please log in to access this page.': 'auth.loginRequired',
+    'Invalid username or password': 'auth.invalidCredentials',
+    'Too many login attempts. Please try again later.': 'auth.tooManyAttempts',
+    'Too many registration attempts. Please try again later.': 'auth.tooManyAttempts',
+    'Too many attempts. Please try again later.': 'auth.tooManyAttempts',
+    'Registration is currently disabled.': 'auth.registrationDisabled',
+    'This account is locked. Please contact an administrator.': 'auth.accountLocked',
+    'Account created successfully!': 'auth.accountCreated',
+    'Passwords do not match': 'auth.passwordsNoMatch',
+    'New passwords do not match': 'auth.passwordsNoMatch',
+    'Current password is incorrect': 'auth.currentPasswordIncorrect',
+    'New password must be different from current password': 'auth.passwordMustDiffer',
+    'Password updated successfully': 'auth.passwordUpdated'
+} %}
+{% macro render_auth_messages() %}
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+        {% set key = flash_message_keys.get(message) %}
+        <div class="alert alert-{{ category }}"{% if key %} data-i18n="{{ key }}"{% endif %}>{{ message }}</div>
+    {% endfor %}
+{% endmacro %}

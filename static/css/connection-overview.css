@@ -1,0 +1,196 @@
+/* Presentation only. Existing workspace controllers and terminal geometry remain authoritative. */
+body.webssh-shell {
+    --shell-rail: 192px;
+    --overview-line: var(--ws2-border);
+    --overview-tint: color-mix(in srgb, var(--ws2-accent) 7%, var(--ws2-surface));
+    --overview-space: clamp(16px, 2vw, 28px);
+}
+.shell-location, .shell-groups { display: none; }
+.shell-groups[hidden] { display: none !important; }
+@media (min-width: 768px) {
+    body.webssh-shell { padding-left: var(--shell-rail); }
+    .webssh-shell::after { content: ''; position: fixed; inset: 0 auto 0 0; width: var(--shell-rail); background: var(--ws2-canvas); border-right: 1px solid var(--ws2-border); z-index: 90; pointer-events: none; }
+    .webssh-shell .header { position: relative; z-index: 100; }
+    .webssh-shell .header-content { min-height: 58px; padding: 0 24px; gap: 16px; }
+    .webssh-shell .header-title-row { position: fixed; left: 0; top: 0; width: var(--shell-rail); height: 64px; padding: 0 18px; z-index: 101; }
+    .webssh-shell .app-brand-logo { width: 126px; height: 36px; border: 0; background: #0b1220; border-radius: 6px; padding: 2px 6px; }
+    .webssh-shell .app-brand > span, .webssh-shell .header-divider { display: none; }
+    .shell-location { display: block; flex: 1; min-width: 0; color: var(--ws2-text-secondary); font-size: 13px; }
+    .webssh-shell .header-buttons { flex: 0 0 auto; display: flex; }
+    .webssh-shell .global-navigation { position: fixed; left: 10px; top: 76px; width: calc(var(--shell-rail) - 20px); display: flex; flex-direction: column; gap: 6px; z-index: 101; margin: 0; }
+    .webssh-shell .global-nav-item { width: 100%; min-height: 40px; padding: 10px 12px; border: 1px solid transparent; border-radius: 6px; font-size: 12px; font-weight: 500; gap: 12px; }
+    .webssh-shell .global-nav-item span:not(.material-icons) { display: inline; }
+    .webssh-shell .global-nav-item::after { display: none; }
+    .webssh-shell .global-nav-item.active { background: var(--overview-tint); border-color: var(--ws2-border); color: var(--ws2-accent); }
+    .webssh-shell .global-nav-item .material-icons { font-size: 19px; }
+    #overviewNavBtn { order: -1; }
+    #manageProfilesBtn { order: 1; }
+    .webssh-shell[data-primary-workspace="workspaces"] .shell-groups { display: flex; flex-direction: column; position: fixed; top: 328px; bottom: 18px; left: 10px; width: calc(var(--shell-rail) - 20px); z-index: 101; gap: 12px; border-top: 1px solid var(--ws2-border); padding-top: 20px; }
+    .shell-groups-heading { padding: 0 12px; color: var(--ws2-text-muted); font-size: 11px; }
+    #shellGroups { min-height: 0; overflow: auto; scrollbar-width: thin; }
+    .shell-group { display: flex; align-items: center; gap: 7px; width: 100%; padding: 9px 8px; border: 0; background: transparent; color: var(--ws2-text-secondary); cursor: pointer; text-align: left; font-size: 12px; }
+    .shell-group > span:not(.material-icons) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .shell-group .material-icons { font-size: 16px; }
+    .webssh-shell .account-btn-header { min-height: 38px; }
+}
+.shell-host-group summary { list-style: none; }
+.shell-host-group summary::-webkit-details-marker { display: none; }
+.shell-host-group:not([open]) summary > .material-icons:first-child { transform: rotate(-90deg); }
+.shell-host { display: flex; align-items: center; gap: 8px; width: calc(100% - 16px); min-height: 34px; margin-left: 16px; padding: 8px 10px; border: 0; border-left: 1px solid var(--ws2-border); background: transparent; color: var(--ws2-text-secondary); font-size: 11px; text-align: left; cursor: pointer; }
+.shell-host > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shell-host .material-icons { flex-shrink: 0; font-size: 14px; color: var(--ws2-text-muted); }
+.shell-host:hover { background: var(--overview-tint); color: var(--ws2-text); }
+#primaryWorkspaceSurface .connection-overview { display: block; width: 100%; height: 100%; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--overview-space); color: var(--ws2-text); background: var(--ws2-canvas); box-sizing: border-box; }
+.connection-overview[hidden], .connection-overview [hidden] { display: none !important; }
+.overview-inner { max-width: 1520px; margin-inline: auto; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.overview-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 0 0; }
+.overview-heading h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0; min-width: 0; font-size: 26px; font-weight: 600; letter-spacing: -.025em; line-height: 1.3; overflow-wrap: anywhere; }
+.overview-heading .btn { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 40px; }
+.overview-card { min-width: 0; }
+.overview-hosts-card { grid-column: 1; grid-row: 2 / span 3; background: var(--ws2-surface); border: 1px solid var(--ws2-border); border-radius: 8px; overflow: hidden; }
+.overview-recents-card { grid-column: 2; grid-row: 2; }
+.overview-sessions-card { grid-column: 2; grid-row: 3; border-top: 1px solid var(--ws2-border); padding-top: 20px; }
+.overview-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 12px; flex-wrap: wrap; }
+.overview-hosts-card .overview-card-heading { padding: 16px 16px 12px; }
+.overview-card h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 600; }
+.overview-card-heading > .material-icons { display: none; }
+.overview-count { display: inline-grid; place-items: center; min-width: 20px; padding: 2px 5px; border: 1px solid var(--ws2-border); border-radius: 4px; color: var(--ws2-text-muted); font-size: 11px; font-weight: 500; }
+.overview-view-switch { display: inline-flex; border: 1px solid var(--ws2-border); border-radius: 5px; padding: 2px; gap: 2px; }
+.overview-view-switch button { display: flex; gap: 6px; align-items: center; min-height: 32px; padding: 5px 9px; border: 0; border-radius: 3px; color: var(--ws2-text-secondary); background: transparent; font-size: 11px; cursor: pointer; }
+.overview-view-switch button[aria-pressed="true"] { background: var(--ws2-raised); color: var(--ws2-text); }
+.overview-view-switch .material-icons { font-size: 16px; }
+.overview-search-row { display: flex; align-items: stretch; gap: 10px; padding: 0 16px 16px; }
+.overview-filter { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 0 10px; background: var(--ws2-canvas); border: 1px solid var(--ws2-border); border-radius: 5px; color: var(--ws2-text-muted); }
+.overview-filter input { width: 100%; min-width: 0; min-height: 38px; padding: 8px 0; border: 0; border-radius: 0; background: transparent; color: var(--ws2-text); font-size: 12px; }
+.overview-filter:focus-within { border-color: var(--ws2-accent); }
+.overview-group-select { min-width: 0; max-width: 40%; }
+.overview-group-select select { width: 100%; height: 100%; min-height: 38px; padding: 8px 28px 8px 10px; border: 1px solid var(--ws2-border); border-radius: 5px; background: var(--ws2-canvas); color: var(--ws2-text-secondary); font-size: 12px; text-overflow: ellipsis; }
+.overview-hosts { padding: 0 16px 16px; max-height: min(65vh, 720px); overflow: auto; scrollbar-width: thin; }
+.overview-host-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.overview-row { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 48px; padding: 12px 8px; text-align: left; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; background: transparent; color: var(--ws2-text); cursor: pointer; }
+.overview-row:hover { background: var(--ws2-row-hover); }
+.overview-row > .material-icons:first-child { color: var(--ws2-text-muted); font-size: 18px; flex-shrink: 0; }
+.overview-row > .material-icons:last-child { color: var(--ws2-text-muted); font-size: 16px; flex-shrink: 0; }
+.overview-row-title, .overview-row-copy { flex: 1; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.overview-row-copy { display: grid; gap: 5px; }
+.overview-row-copy strong { font-weight: 500; }
+.overview-row-copy small { color: var(--ws2-text-muted); font-size: 11px; }
+.overview-row .overview-favorite { color: var(--ws2-text-secondary); font-size: 16px; }
+.overview-group-badge { max-width: 35%; padding: 3px 6px; border-radius: 3px; background: var(--ws2-panel); color: var(--ws2-text-secondary); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-sessions, .overview-history { max-height: 300px; overflow: auto; scrollbar-width: thin; }
+.overview-history .overview-row, .overview-sessions .overview-row { padding-inline: 0; border-bottom-color: color-mix(in srgb, var(--ws2-border) 60%, transparent); }
+.overview-empty { display: flex; align-items: center; gap: 10px; min-height: 72px; margin: 0; padding: 12px 0; color: var(--ws2-text-muted); font-size: 12px; line-height: 1.6; }
+.overview-hosts .overview-empty { min-height: 160px; justify-content: center; }
+.overview-empty .material-icons { font-size: 20px; }
+.overview-link { display: inline-flex; align-items: center; gap: 6px; padding: 5px 0; border: 0; background: transparent; color: var(--ws2-accent); cursor: pointer; font-size: 11px; text-align: left; }
+.overview-link .material-icons { font-size: 16px; }
+.overview-card-note { margin: 12px 0 0; color: var(--ws2-text-muted); font-size: 11px; line-height: 1.6; }
+.overview-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--ws2-border); padding: 10px 16px; }
+.overview-notice { grid-column: 1 / -1; margin: 0; padding: 12px 16px; border: 1px solid var(--ws2-border); border-radius: 6px; color: var(--ws2-text-secondary); font-size: 12px; }
+.overview-inner:has(.overview-notice:not([hidden])) .overview-hosts-card { grid-row: 3 / span 3; }
+.overview-inner:has(.overview-notice:not([hidden])) .overview-recents-card { grid-row: 3; }
+.overview-inner:has(.overview-notice:not([hidden])) .overview-sessions-card { grid-row: 4; }
+.overview-graph :is(.overview-recents-card, .overview-sessions-card) { display: none; }
+.overview-graph .overview-hosts-card { grid-column: 1 / -1; }
+.overview-graph .overview-hosts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; max-height: none; overflow: visible; padding: 24px; }
+.overview-legend { margin: 0 16px; padding: 12px 0; border-bottom: 1px solid var(--ws2-border); font-size: 11px; line-height: 1.6; color: var(--ws2-text-secondary); }
+.overview-legend strong { display: inline-flex; align-items: center; gap: 7px; margin-right: 20px; color: var(--ws2-text); font-weight: 500; }
+.overview-legend strong .material-icons { color: var(--ws2-accent); }
+.overview-legend p { margin: 6px 0 0; max-width: 80ch; }
+.overview-graph-branch { position: relative; isolation: isolate; padding: 8px 0 24px; }
+.overview-graph-branch + .overview-graph-branch { border-top: 1px solid var(--ws2-border); margin-top: 24px; padding-top: 24px; }
+.overview-jump { position: relative; display: flex; align-items: center; gap: 12px; width: fit-content; max-width: 100%; min-width: 180px; margin: 0 auto 64px; padding: 14px 20px; border: 1px solid var(--ws2-accent); border-radius: 7px; background: var(--ws2-panel); font-size: 13px; color: var(--ws2-text); }
+.overview-jump .material-icons { color: var(--ws2-accent); }
+.overview-jump span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.overview-graph-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); align-items: start; gap: 28px; }
+.overview-graph .overview-host-group { position: relative; padding: 14px; border: 1px solid var(--ws2-border-strong); border-radius: 8px; background: color-mix(in srgb, var(--ws2-panel) 55%, var(--ws2-canvas)); margin: 0; min-width: 0; }
+.overview-graph .overview-host-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
+.overview-graph .overview-row { min-height: 56px; background: var(--ws2-surface); }
+.overview-route-unlinked { display: block; color: var(--ws2-text-muted); font-size: 10px; margin: 8px 0 4px; line-height: 1.5; }
+.overview-edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: -1; }
+.overview-edges path { fill: none; stroke: var(--ws2-accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+
+.overview-edges { z-index: 1; }
+.overview-graph :is(.overview-jump, .overview-row, .overview-group-heading) { position: relative; z-index: 2; }
+.overview-group-heading { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; color: var(--ws2-text-secondary); font-size: 11px; font-weight: 500; }
+.overview-group-heading > span:not(.material-icons) { min-width: 0; overflow-wrap: anywhere; }
+.overview-group-heading small { margin-left: auto; font-size: 10px; }
+.overview-group-heading .material-icons { font-size: 15px; }
+.overview-graph-branch { padding: 8px 0 0; }
+.overview-graph-branch + .overview-graph-branch { border: 0; margin: 0; padding-top: 8px; }
+.overview-graph-branch.overview-graph-groups { grid-column: 1 / -1; padding-top: 24px; border-top: 1px solid var(--ws2-border); }
+.overview-graph .overview-row { border: 1px solid var(--ws2-border); border-radius: 5px; padding: 10px; }
+/* Session and file chrome share the same surfaces; xterm and split geometry stay intact. */
+.webssh-shell .session-tabs-row { background: var(--ws2-canvas); border-color: var(--ws2-border); }
+.webssh-shell .session-tab { border-radius: 6px 6px 0 0; font-size: 12px; }
+.webssh-shell .session-tab.active { background: var(--ws2-panel); border-color: var(--overview-line); color: var(--ws2-text); }
+.webssh-shell .terminal-pane { border-color: var(--ws2-border); }
+.webssh-shell .terminal-pane.active { border-color: var(--ws2-accent); box-shadow: none; }
+.webssh-shell :is(.terminal-pane-header, .pane-header, .context-workspace-header, .fm-header, .fm-toolbar, .fm-pane-header) { background: var(--ws2-surface); border-color: var(--ws2-border); }
+.webssh-shell .context-workspace { background: var(--ws2-canvas); border-color: var(--ws2-border); }
+.webssh-shell .context-workspace-tab { font-size: 11px; }
+.webssh-shell .context-workspace-tab.active { background: var(--overview-tint); color: var(--ws2-accent); }
+.webssh-shell :is(.fm-sidebar, .fm-pane, .fm-table-header, .fm-status-bar, .workspace-status-bar) { background-color: var(--ws2-surface); border-color: var(--ws2-border); }
+.webssh-shell :is(.fm-file-list, .fm-content, .fm-body) { background-color: var(--ws2-canvas); }
+.webssh-shell .fm-row:hover { background-color: var(--ws2-row-hover); }
+.webssh-shell .context-workspace-launcher { border-color: var(--overview-line); color: var(--ws2-accent); }
+
+@media (max-width: 1100px) and (min-width: 768px) {
+    body.webssh-shell { --shell-rail: 72px; }
+    .webssh-shell .header-title-row { padding: 0 6px; }
+    .webssh-shell .app-brand-logo { width: 60px; }
+    .webssh-shell .global-nav-item { justify-content: center; padding: 11px; }
+    .webssh-shell .global-nav-item span:not(.material-icons) { display: none; }
+    .webssh-shell .shell-groups { display: none !important; }
+    .overview-inner { grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; }
+}
+@media (max-width: 900px) {
+    .overview-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+    .overview-inner > * { grid-column: 1 !important; grid-row: auto !important; }
+    .overview-hosts-card { order: 1; }
+    .overview-recents-card { order: 2; }
+    .overview-sessions-card { order: 3; }
+    .overview-graph .overview-hosts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+    /* The existing mobile header already offers Quick Connect without a selected session. */
+    .connection-overview[data-session-selected="false"] #overviewQuickConnect { display: none; }
+    .overview-heading { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+    .overview-heading h1 { font-size: 24px; }
+    .overview-heading .btn, .overview-view-switch button, .overview-link, .overview-group-select select, .overview-filter input { min-height: 44px; }
+    .overview-search-row { flex-direction: column; }
+    .overview-group-select { max-width: none; }
+    .overview-graph .overview-hosts { padding: 14px; }
+    .overview-graph-groups { gap: 18px; }
+    .overview-card-heading { gap: 8px; }
+}
+@media (min-width: 768px) and (max-height: 650px) { .webssh-shell .shell-groups { display: none !important; } }
+/* Compact navigation preserves the existing two/four-pane working widths. */
+@media (min-width: 1101px) {
+    body.webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) { --shell-rail: 72px; }
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .header-title-row { padding: 0 6px; }
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 60px; }
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .global-nav-item { justify-content: center; padding: 11px; }
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .global-nav-item span:not(.material-icons),
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .shell-groups { display: none; }
+}
+
+/* Connection launch board: visible records become compact launch tiles; history
+ * and existing browser sessions stay in a distinct secondary activity column. */
+.connection-overview:not(.overview-graph) .overview-hosts-card { background: transparent; border: 0; overflow: visible; }
+.connection-overview:not(.overview-graph) .overview-hosts-card .overview-card-heading { padding: 0 0 16px; }
+.connection-overview:not(.overview-graph) .overview-search-row { padding: 0 0 20px; }
+.connection-overview:not(.overview-graph) .overview-hosts { padding: 0 4px 16px 0; }
+.connection-overview:not(.overview-graph) .overview-host-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 14px; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 10px; min-height: 100px; padding: 20px; border: 1px solid var(--ws2-border-strong); border-radius: 12px; background: var(--ws2-surface); }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row-title { font-size: 15px; font-weight: 600; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-group-badge { grid-column: 2; grid-row: 2; justify-self: start; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-row > .material-icons:last-child { grid-column: 3; grid-row: 2; }
+.connection-overview:not(.overview-graph) .overview-host-entry .overview-favorite { grid-column: 3; grid-row: 1; }
+.connection-overview:not(.overview-graph) :is(.overview-recents-card, .overview-sessions-card) { padding: 20px; background: var(--ws2-surface); border: 1px solid var(--ws2-border); border-radius: 12px; }
+.connection-overview .overview-heading { padding-block: 12px 20px; }
+.connection-overview .overview-heading h1 { font-size: 34px; letter-spacing: -.035em; }
+@media (max-width: 767px) {
+    .connection-overview .overview-heading h1 { font-size: 27px; }
+    .connection-overview:not(.overview-graph) .overview-host-entry .overview-row { min-height: 88px; padding: 16px; }
+}

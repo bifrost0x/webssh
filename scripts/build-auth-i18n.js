@@ -8,6 +8,7 @@ const projectRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(projectRoot, 'static/js/i18n.js');
 const outputPath = path.join(projectRoot, 'static/js/i18n-auth.js');
 const surfacePaths = [
+    'templates/_auth_messages.html',
     'templates/login.html',
     'templates/register.html',
     'templates/change_password.html',

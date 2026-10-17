@@ -1,10 +1,14 @@
 const {test, expect} = require('playwright/test');
-const {assertNoExternalRequests} = require('./helpers');
+const {assertNoExternalRequests, installExternalRequestGuard} = require('./helpers');
 
 const themes = ['glass', 'retro', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'cyberpunk-neon', 'emerald-matrix', 'obsidian'];
 
-test('every theme background decodes at the original resolution', async ({page}) => {
-    assertNoExternalRequests(page);
+test.afterEach(async ({page}) => {
+    await assertNoExternalRequests(page);
+});
+
+test('every theme background decodes at its expected resolution', async ({page}) => {
+    installExternalRequestGuard(page);
     await page.goto('/login');
     for (const theme of themes) {
         const dimensions = await page.evaluate(async value => {
@@ -16,16 +20,17 @@ test('every theme background decodes at the original resolution', async ({page})
             await image.decode();
             return [image.naturalWidth, image.naturalHeight];
         }, theme);
-        expect(dimensions, theme).toEqual([1672, 941]);
+        expect(dimensions, theme).toEqual(theme === 'glass' ? [1536, 512] : [1672, 941]);
     }
 });
 
 test('login remains usable when storage and the background are unavailable', async ({page}) => {
-    assertNoExternalRequests(page);
+    installExternalRequestGuard(page);
     await page.addInitScript(() => {
         Object.defineProperty(window, 'localStorage', {get() { throw new DOMException('Blocked', 'SecurityError'); }});
     });
     await page.route('**/theme-backgrounds/**', route => route.abort());
+    await page.route('**/redesign/midnight-lodge.webp*', route => route.abort());
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('/login');

@@ -253,6 +253,14 @@ def test_all_popup_translation_references_exist_in_every_locale():
             from jinja2 import Template
 
             source = Template(source).render()
+        elif source_path.name == '_auth_messages.html':
+            from jinja2 import Template
+
+            module = Template(source).make_module({
+                'get_flashed_messages': lambda **kwargs: [],
+            })
+            referenced_keys.update(module.flash_message_keys.values())
+            source = str(module.render_auth_messages())
         referenced_keys.update(
             re.findall(
                 r'data-i18n(?:-placeholder|-title|-label|-aria-label|-alt)?="([^"]+)"',

@@ -1723,7 +1723,7 @@
     function closeProfileManagementModal() {
         if (
             window.primaryWorkspaceController
-            && window.primaryWorkspaceController.getActiveView() === 'hosts'
+            && ['hosts', 'overview'].includes(window.primaryWorkspaceController.getActiveView())
         ) {
             window.primaryWorkspaceController.showWorkspaces();
             return;
@@ -2050,7 +2050,7 @@
     }
 
     function openDefaultConnectionModal() {
-        openConnectionModalForPane(getDefaultPaneIndex());
+        return openConnectionModalForPane(getDefaultPaneIndex());
     }
     window.openDefaultConnectionModal = openDefaultConnectionModal;
 
@@ -2650,6 +2650,11 @@
         window.ConnectionCommandManager?.init();
         window.SessionCommandLauncher?.init();
         ProfileManager.init();
+
+        window.connectionOverview = window.ConnectionOverview?.createController({
+            window, document, sessionManager: SessionManager,
+        });
+        window.connectionOverview?.init();
 
         ProfileManager.loadProfiles();
         ProfileManager.loadKeys();
