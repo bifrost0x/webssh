@@ -38,6 +38,43 @@ test('warns before web authentication expiry and distinguishes it from SSH idle'
     assert.equal(timers[0].delay, 3 * 60 * 1000);
 });
 
+test('acknowledging warnings does not repeat or postpone authentication expiry', () => {
+    let currentTime = 1000;
+    const notices = [];
+    const timers = [];
+    const redirects = [];
+    const browserWindow = {
+        document: {body: {dataset: {}}, getElementById() { return null; }},
+        sessionStorage: storage(),
+        location: {pathname: '/', search: '', hash: '', assign: value => redirects.push(value)},
+        i18n: {t: key => key === 'common.close' ? 'Schließen' : key},
+        showNotification(value) { notices.push(value); return () => {}; },
+        setTimeout(callback, delay) { timers.push({callback, delay}); return timers.length; },
+    };
+    const guard = guardModule.create({
+        window: browserWindow, expiresAt: 301000, serverNow: 1000,
+        now: () => currentTime,
+    });
+    guard.schedule();
+    assert.equal(notices[0].action.label, 'Schließen');
+    notices[0].action.onClick();
+    assert.equal(timers[0].delay, 240000);
+    guard.schedule();
+    assert.equal(notices.length, 1);
+
+    currentTime += 240000;
+    timers[0].callback();
+    assert.equal(notices.length, 2);
+    assert.equal(notices[1].type, 'warning');
+    notices[1].action.onClick();
+    assert.equal(timers.at(-1).delay, 60000);
+    assert.deepEqual(redirects, []);
+    currentTime += 60000;
+    timers.at(-1).callback();
+    assert.deepEqual(redirects, ['/login?next=%2F']);
+    assert.equal(browserWindow.authSessionRedirectPending, true);
+});
+
 test('expiry stores workspace context before returning to login', () => {
     const assigned = [];
     const sessionStorage = storage();
