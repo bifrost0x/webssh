@@ -403,6 +403,7 @@ const ProfileManager = {
                 button.type = 'button';
                 button.className = 'profile-launcher-card';
                 button.dataset.profileId = profile.id;
+                button.dataset.tone = window.ConnectionOverview?.groupTone(profile.group || '') || '3';
 
                 const name = document.createElement('span');
                 name.className = 'profile-launcher-name';
@@ -955,6 +956,7 @@ const ProfileManager = {
         sections.forEach(section => {
             const sectionElement = document.createElement('section');
             sectionElement.className = 'profile-management-section';
+            sectionElement.dataset.tone = window.ConnectionOverview?.groupTone(section.label || '') || '3';
             const targetGroup = section.key === 'ungrouped' ? '' : section.label;
             const acceptsDrop = (
                 section.key !== 'favorites'
@@ -999,6 +1001,7 @@ const ProfileManager = {
                 appendDropSlot(profileIndex);
                 const card = document.createElement('article');
                 card.className = 'profile-management-item';
+                card.dataset.tone = window.ConnectionOverview?.groupTone(profile.group || '') || '3';
                 if (this.organizationPending.has(profile.id)) {
                     card.classList.add('is-pending');
                 }

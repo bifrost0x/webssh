@@ -4461,7 +4461,7 @@ body[data-theme="paper"]:has(.auth-access-dock) {
     display: none;
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) and (not ((max-height: 520px) and (pointer: coarse))) {
     .header {
         padding: 0;
     }
@@ -4556,7 +4556,7 @@ body[data-theme="paper"]:has(.auth-access-dock) {
     }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) and (not ((max-height: 520px) and (pointer: coarse))) {
     .workspace.layout-tablet.context-open {
         grid-template-columns: minmax(0, 1fr) min(420px, 44vw) !important;
         grid-template-rows: minmax(0, 1fr) !important;

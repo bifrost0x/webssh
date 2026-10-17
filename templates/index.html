@@ -24,15 +24,18 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/session-workspace.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-appearance.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/connection-overview.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
 </head>
-<body data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
+<body class="webssh-shell webssh-ui" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
 
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
                 <a class="app-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.websshWorkspaces">
-                    <img class="app-brand-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="" aria-hidden="true">
+                    <img class="app-brand-logo" src="{{ static_asset_url(filename='images/redesign/webssh-mark.png') }}" alt="" aria-hidden="true"><b class="brand-wordmark" aria-hidden="true">WebSSH</b>
                     <span><small data-i18n="brand.tagline">Your shell. Your rules.</small></span>
                 </a>
                 <button id="mobileSessionSummary" class="mobile-session-summary" type="button">
@@ -42,12 +45,14 @@
                 </button>
                 <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu" data-i18n-aria-label="navigation.toggleMenu" aria-expanded="false" aria-controls="headerButtons"><span class="material-icons" aria-hidden="true">more_vert</span></button>
             </div>
+            <div class="shell-location" id="shellLocation" data-i18n="navigation.workspaces">Workspaces</div>
             <div class="header-buttons" id="headerButtons">
                 <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
-                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
-                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
+                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces" title="Workspaces" data-i18n-title="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
+                    <button id="overviewNavBtn" class="global-nav-item" type="button" aria-label="Overview" data-i18n-aria-label="overview.title" title="Overview" data-i18n-title="overview.title"><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="overview.title">Overview</span></button>
+                    <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager" title="File Manager" data-i18n-title="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
                     <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
-                    <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
+                    <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace" title="Commands" data-i18n-title="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
                 </nav>
 
                 <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
@@ -126,7 +131,65 @@
         </div>
     </header>
 
+    <aside class="shell-groups" aria-labelledby="shellGroupsTitle">
+        <div class="shell-groups-heading"><span id="shellGroupsTitle" data-i18n="profiles.savedConnections">Saved Connections</span></div>
+        <div id="shellGroups"></div>
+    </aside>
+
     <section id="primaryWorkspaceSurface" class="primary-workspace-surface" aria-label="Application workspace" data-i18n-aria-label="workspace.application" hidden></section>
+
+    <section id="connectionOverview" class="connection-overview" aria-labelledby="overviewTitle" hidden>
+        <div class="overview-inner">
+            <div class="overview-heading">
+                <div class="overview-heading-copy">
+                    <p class="overview-eyebrow" data-i18n="overview.eyebrow">WebSSH</p>
+                    <h1 id="overviewTitle" tabindex="-1" data-i18n="overview.heading">SSH workspaces</h1>
+                    <p class="overview-intro" data-i18n="overview.intro">Open a saved connection or start a new SSH session.</p>
+                </div>
+                <button id="overviewQuickConnect" class="btn btn-primary" type="button"><span class="material-icons" aria-hidden="true">add</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
+            </div>
+            <p id="overviewConnectionNotice" class="overview-notice" role="status" data-i18n="overview.stale" hidden>Connection to WebSSH interrupted. Displayed data may be out of date.</p>
+            <div class="overview-primary">
+            <section class="overview-card overview-hosts-card" aria-labelledby="overviewHostsTitle">
+                <div class="overview-card-heading">
+                    <h2 id="overviewHostsTitle"><span data-i18n="profiles.savedConnections">Saved Connections</span><span id="overviewHostCount" class="overview-count">—</span></h2>
+                    <div class="overview-view-switch" role="group" data-i18n-aria-label="connectionAssets.hosts" aria-label="Hosts">
+                        <button id="overviewListBtn" type="button" aria-pressed="true" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">view_list</span><span data-i18n="overview.list">List</span></button>
+                        <button id="overviewGraphBtn" type="button" aria-pressed="false" aria-controls="overviewHosts"><span class="material-icons" aria-hidden="true">account_tree</span><span data-i18n="overview.graph">SSH routes</span></button>
+                    </div>
+                </div>
+                <div class="overview-search-row">
+                <label class="overview-filter"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="overview.search">Search names and groups…</span><input id="overviewHostSearch" type="search" placeholder="Search names and groups…" data-i18n-placeholder="overview.search" autocomplete="off"></label>
+                <label class="overview-group-select"><span class="sr-only" data-i18n="profiles.group">Group</span><select id="overviewGroupFilter"><option value="" data-i18n="overview.allGroups">All groups</option></select></label>
+                </div>
+                <div id="overviewHosts" class="overview-hosts"></div>
+                <div id="overviewGraphLegend" class="overview-legend" hidden>
+                    <strong><span class="material-icons" aria-hidden="true">arrow_right_alt</span><span data-i18n="overview.configuredRoute">Configured SSH route</span></strong><strong><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="overview.grouping">Grouping</span></strong>
+                    <p data-i18n="overview.graphHint">Arrows show saved jump-host assignments, not host availability. Groups organize saved connections.</p>
+                </div>
+                <div class="overview-footer">
+                    <button id="overviewAllTransfers" title="Current file-workspace transfers" data-i18n-title="overview.transfersHint" class="overview-link" type="button" hidden><span class="material-icons" aria-hidden="true">swap_horiz</span><span data-i18n="fm.transfers">Transfers</span><span id="overviewTransferCount" class="overview-count">0</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
+                </div>
+            </section>
+            <section id="overviewRouteCard" class="overview-card overview-route-card" aria-labelledby="overviewRoutesTitle" hidden>
+                <div class="overview-card-heading"><h2 id="overviewRoutesTitle" data-i18n="overview.configuredRoute">Configured SSH route</h2><button id="overviewExpandRoutes" class="overview-link" type="button"><span data-i18n="overview.graph">SSH routes</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button></div>
+                <div id="overviewRoutePreview" class="overview-route-preview"></div>
+            </section>
+            </div>
+            <div class="overview-activity">
+            <section class="overview-card overview-recents-card" aria-labelledby="overviewRecentsTitle">
+                <div class="overview-card-heading"><h2 id="overviewRecentsTitle" data-i18n="connection.recentConnections">Recent Connections</h2></div>
+                <div id="overviewHistory" class="overview-history"></div>
+                <p class="overview-card-note" data-i18n="connection.recentConnectionsHint">Stored only in this browser for your account.</p>
+            </section>
+            <section class="overview-card overview-sessions-card" aria-labelledby="overviewSessionsTitle">
+                <div class="overview-card-heading"><h2 id="overviewSessionsTitle"><span data-i18n="overview.browserSessions">Sessions in this browser</span><span id="overviewSessionCount" class="overview-count">0</span></h2><span class="material-icons" aria-hidden="true">terminal</span></div>
+                <div id="overviewSessions" class="overview-sessions"></div>
+            </section>
+            </div>
+
+        </div>
+    </section>
 
     <main class="main-content">
         <!-- session-meta kept hidden for JS references; visible session-bar only on mobile -->
@@ -1484,6 +1547,7 @@
     <script src="{{ static_asset_url(filename='js/sftp-file-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-history.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/primary-workspace-controller.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/connection-overview.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/socket-reconnect-policy.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/notepad-controller.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/auth-session-guard.js') }}"></script>
@@ -1492,13 +1556,16 @@
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
     <script>
+        {% from '_auth_messages.html' import flash_message_keys %}
+        const flashedMessageKeys = {{ flash_message_keys | tojson }};
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
         flashedMessages.forEach(([category, message]) => {
             if (!window.showNotification) {
                 return;
             }
             const type = category === 'error' ? 'error' : (category === 'success' ? 'success' : 'info');
-            showNotification(message, type);
+            const key = Object.hasOwn(flashedMessageKeys, message) ? flashedMessageKeys[message] : null;
+            showNotification(key ? window.i18n.t(key) : message, type);
         });
     </script>
 

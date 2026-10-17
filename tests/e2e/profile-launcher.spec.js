@@ -716,7 +716,8 @@ test('the Hosts workspace contains scroll and exits only through top-level navig
         const toolbar = element.querySelector('.profile-management-toolbar');
         const toolbarTopBeforeScroll = toolbar.getBoundingClientRect().top;
         scrollRegion.scrollTop = scrollRegion.scrollHeight;
-        const header = element.querySelector('.modal-header');
+        // The resource navigation replaces the redundant full-page modal header.
+        const header = element.querySelector('.connection-asset-nav');
         return {
             contentOverflow: getComputedStyle(content).overflow,
             bodyOverflowY: getComputedStyle(body).overflowY,

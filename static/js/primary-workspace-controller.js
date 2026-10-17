@@ -7,6 +7,7 @@
     'use strict';
 
     const VIEW_NAV_IDS = Object.freeze({
+        overview: 'overviewNavBtn',
         workspaces: 'workspaceNavBtn',
         files: 'fileTransferBtn',
         hosts: 'manageProfilesBtn',
@@ -125,7 +126,7 @@
         }
 
         function open(view, element) {
-            if (!['files', 'hosts', 'commands'].includes(view) || !element) return false;
+            if (!['overview', 'files', 'hosts', 'commands'].includes(view) || !element) return false;
             const surface = getSurface();
             if (!surface) return false;
 
@@ -164,6 +165,7 @@
             const origin = origins.get(element) || {};
             element.classList.remove(
                 'primary-workspace-view',
+                'primary-workspace-view-overview',
                 'primary-workspace-view-files',
                 'primary-workspace-view-hosts',
                 'primary-workspace-view-commands',

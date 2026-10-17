@@ -93,20 +93,19 @@ test('authentication family fits a 1280x720 viewport without page scrolling', as
     await expectAuthContained(page);
 });
 
-test('auth workbench uses seventy percent of desktop width and keeps two clear columns', async ({ page }) => {
+test('auth workbench keeps a concentrated form below branding on ultrawide screens', async ({ page }) => {
     await page.setViewportSize({ width: 3440, height: 1440 });
     await page.goto('/login');
 
     const layout = await expectAuthContained(page);
-    expect(layout.dock.width / layout.viewportWidth).toBeGreaterThanOrEqual(0.69);
-    expect(layout.dock.width / layout.viewportWidth).toBeLessThanOrEqual(0.71);
-    expect(layout.dock.height / layout.viewportHeight).toBeGreaterThanOrEqual(0.69);
-    expect(layout.dock.height / layout.viewportHeight).toBeLessThanOrEqual(0.71);
+    expect(layout.dock.width).toBeGreaterThanOrEqual(500);
+    expect(layout.dock.width).toBeLessThanOrEqual(540);
+    expect(layout.dock.height).toBeLessThanOrEqual(800);
     expect(layout.context).not.toBeNull();
     expect(layout.form).not.toBeNull();
-    expect(layout.context.right).toBeLessThanOrEqual(layout.form.left + 1);
-    expect(layout.context.width).toBeGreaterThanOrEqual(layout.dock.width * 0.34);
-    expect(layout.form.width).toBeGreaterThanOrEqual(layout.dock.width * 0.5);
+    expect(layout.context.bottom).toBeLessThanOrEqual(layout.form.top + 1);
+    expect(layout.context.width).toBeGreaterThanOrEqual(layout.dock.width * 0.95);
+    expect(layout.form.width).toBeGreaterThanOrEqual(layout.dock.width * 0.95);
     await expect(page.locator('.auth-product-logo')).toBeVisible();
     await expect(page.locator('.auth-product-version')).toHaveCount(0);
     await expect(page.locator('[data-auth-mode="password"]')).toBeVisible();
@@ -230,4 +229,16 @@ test('new login, security, and admin controls honor the stored locale', async ({
     await expect(page.locator('#globalHostKeyList')).toContainText(
         'Keine globalen Host-Schlüssel gespeichert.'
     );
+});
+
+
+test('German sign-in methods remain readable on a short desktop', async ({page}) => {
+    await page.setViewportSize({width: 1280, height: 720});
+    await page.addInitScript(() => localStorage.setItem('language', 'de'));
+    await page.goto('/login');
+    await expectAuthContained(page);
+    const labels = await page.locator('.auth-method-option strong').evaluateAll(elements =>
+        elements.map(element => ({width: element.clientWidth, scroll: element.scrollWidth})),
+    );
+    for (const label of labels) expect(label.scroll).toBeLessThanOrEqual(label.width + 1);
 });

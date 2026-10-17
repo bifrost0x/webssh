@@ -15,12 +15,14 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/admin.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
 </head>
-<body data-theme="{{ theme|default('glass') }}">
+<body class="webssh-ui webssh-account" data-theme="{{ theme|default('glass') }}">
     <header class="header">
         <div class="header-content">
             <div class="header-title-row">
-                <h1 class="app-title"><span class="material-icons" aria-hidden="true">terminal</span><span>WebSSH</span></h1>
+                <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces"><img class="app-brand-logo" src="{{ static_asset_url(filename='images/redesign/webssh-mark.png') }}" alt="WebSSH"><b class="brand-wordmark" aria-hidden="true">WebSSH</b></a>
             </div>
             <div class="header-buttons">
                 <a class="btn btn-secondary" href="{{ url_for('index') }}"><span class="material-icons" aria-hidden="true">arrow_back</span><span data-i18n="admin.backToApp">Back to Workspaces</span></a>
