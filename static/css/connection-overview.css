@@ -7,7 +7,8 @@ body.webssh-shell {
 }
 .shell-location, .shell-groups { display: none; }
 .shell-groups[hidden] { display: none !important; }
-@media (min-width: 768px) {
+/* Match the existing mobile shell on short, coarse-pointer viewports. */
+@media (min-width: 768px) and (not ((max-height: 520px) and (pointer: coarse))) {
     body.webssh-shell { padding-left: var(--shell-rail); }
     .webssh-shell::after { content: ''; position: fixed; inset: 0 auto 0 0; width: var(--shell-rail); background: var(--ws2-canvas); border-right: 1px solid var(--ws2-border); z-index: 90; pointer-events: none; }
     .webssh-shell .header { position: relative; z-index: 100; }
@@ -135,7 +136,7 @@ body.webssh-shell {
 .webssh-shell .fm-row:hover { background-color: var(--ws2-row-hover); }
 .webssh-shell .context-workspace-launcher { border-color: var(--overview-line); color: var(--ws2-accent); }
 
-@media (max-width: 1100px) and (min-width: 768px) {
+@media (max-width: 1100px) and (min-width: 768px) and (not ((max-height: 520px) and (pointer: coarse))) {
     body.webssh-shell { --shell-rail: 72px; }
     .webssh-shell .header-title-row { padding: 0 6px; }
     .webssh-shell .app-brand-logo { width: 60px; }
@@ -152,7 +153,7 @@ body.webssh-shell {
     .overview-sessions-card { order: 3; }
     .overview-graph .overview-hosts { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 520px) and (pointer: coarse) {
     /* The existing mobile header already offers Quick Connect without a selected session. */
     .connection-overview[data-session-selected="false"] #overviewQuickConnect { display: none; }
     .overview-heading { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
@@ -166,7 +167,7 @@ body.webssh-shell {
 }
 @media (min-width: 768px) and (max-height: 650px) { .webssh-shell .shell-groups { display: none !important; } }
 /* Compact navigation preserves the existing two/four-pane working widths. */
-@media (min-width: 1101px) {
+@media (min-width: 1101px) and (not ((max-height: 520px) and (pointer: coarse))) {
     body.webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) { --shell-rail: 72px; }
     .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .header-title-row { padding: 0 6px; }
     .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 60px; }
@@ -190,7 +191,7 @@ body.webssh-shell {
 .connection-overview:not(.overview-graph) :is(.overview-recents-card, .overview-sessions-card) { padding: 20px; background: var(--ws2-surface); border: 1px solid var(--ws2-border); border-radius: 12px; }
 .connection-overview .overview-heading { padding-block: 12px 20px; }
 .connection-overview .overview-heading h1 { font-size: 34px; letter-spacing: -.035em; }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 520px) and (pointer: coarse) {
     .connection-overview .overview-heading h1 { font-size: 27px; }
     .connection-overview:not(.overview-graph) .overview-host-entry .overview-row { min-height: 88px; padding: 16px; }
 }

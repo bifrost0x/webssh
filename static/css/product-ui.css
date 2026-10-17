@@ -389,7 +389,7 @@ body.webssh-auth:has(.auth-access-dock) { background-color: var(--ws2-canvas); b
 .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-sections { flex: 1 1 auto; max-height: none; width: 100%; padding: 12px 4px; }
 .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-new { align-self: flex-end; min-height: 40px; }
 .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-section-title { margin-bottom: 12px; }
-@media (min-width: 768px) {
+@media (min-width: 768px) and (not ((max-height: 520px) and (pointer: coarse))) {
     .webssh-ui .context-workspace-tab { flex-direction: column; gap: 3px; padding: 5px 3px; font-size: 10px; }
     .webssh-ui .context-workspace-tab .material-icons { font-size: 16px; }
     .webssh-ui .context-workspace-tab > span:not(.material-icons) { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
