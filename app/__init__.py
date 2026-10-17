@@ -508,7 +508,11 @@ def create_app(
                 config.HOST_KEY_MANAGEMENT_ENABLED
             ),
             'audit_export_enabled': config.AUDIT_EXPORT_ENABLED,
-            'tailscale_ssh_allowed': user_can_use_tailscale_ssh(current_user)
+            'tailscale_ssh_allowed': user_can_use_tailscale_ssh(current_user),
+            'terminal_share_enabled': bool(
+                config.TERMINAL_SHARE_ENABLED
+                and config.TERMINAL_SHARE_MAX_VIEWERS > 0
+            ),
         }
 
     @app.before_request
@@ -706,6 +710,10 @@ def create_app(
     app.register_blueprint(totp_blueprint)
     app.register_blueprint(transfer_blueprint)
     app.register_blueprint(webauthn_blueprint)
+    from .terminal_share_routes import init_terminal_share
+    init_terminal_share(app, csrf)
+    from .metrics import metrics_blueprint
+    app.register_blueprint(metrics_blueprint)
     ldap_ready = not config.LDAP_ENABLED
     if config.LDAP_ENABLED:
         from .ldap_routes import ldap_blueprint
@@ -797,7 +805,11 @@ def create_app(
 
         response.headers['X-XSS-Protection'] = '1; mode=block'
 
-        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        # Routes that carry secrets (downloads, share links) set a stricter
+        # policy themselves; never weaken it here.
+        response.headers.setdefault(
+            'Referrer-Policy', 'strict-origin-when-cross-origin'
+        )
 
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 

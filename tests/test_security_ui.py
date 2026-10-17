@@ -82,7 +82,7 @@ def test_settings_center_combines_preferences_security_and_admin_navigation(
     assert b'id="tab-users"' in response.data
     assert b'id="securityFeatureList"' in response.data
     assert b'class="settings-context-rail"' in response.data
-    assert b'static/images/webssh-logo.svg' in response.data
+    assert b'static/images/pixshell-logo.svg' in response.data
     assert b'settings-back-link' in response.data
     assert b'id="settingsMobileSection"' in response.data
     assert b'id="adminUserFilterStatus"' in response.data

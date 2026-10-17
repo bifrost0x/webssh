@@ -11,7 +11,7 @@ for (const theme of ['glass', 'paper']) {
         page.on('request', request => {
             if (request.url().includes('/theme-backgrounds/')) backgrounds.push(request.url());
         });
-        await page.route('**/webssh-logo.svg*', async route => {
+        await page.route('**/pixshell-logo.svg*', async route => {
             await logoGate;
             await route.continue();
         });

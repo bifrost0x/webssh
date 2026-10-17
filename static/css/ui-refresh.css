@@ -1,0 +1,616 @@
+/*
+ * WebSSH interface refresh: motion, depth and calmer surfaces.
+ *
+ * Loaded after every page stylesheet. It only uses theme tokens, so all ten
+ * themes keep their palettes and geometry; it changes how surfaces feel and
+ * move, not where they are.
+ */
+:root {
+    --ui-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ui-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --ui-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ui-dur-fast: 140ms;
+    --ui-dur: 220ms;
+    --ui-dur-slow: 380ms;
+    --ui-radius: 10px;
+    --ui-radius-lg: 14px;
+    --ui-ring: 0 0 0 3px color-mix(in srgb, var(--ws2-accent, #5b9cf6) 22%, transparent);
+    --ui-elevation-1: 0 1px 2px rgb(0 0 0 / 18%), 0 1px 0 rgb(255 255 255 / 3%) inset;
+    --ui-elevation-2: 0 8px 24px rgb(0 0 0 / 26%), 0 1px 0 rgb(255 255 255 / 4%) inset;
+    --ui-elevation-3: 0 24px 64px rgb(0 0 0 / 42%), 0 0 0 1px rgb(255 255 255 / 3%) inset;
+}
+
+/* ------------------------------------------------------------------ */
+/* Foundations                                                         */
+/* ------------------------------------------------------------------ */
+html {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+    background: color-mix(in srgb, var(--ws2-accent) 32%, transparent);
+}
+
+* {
+    scrollbar-color: color-mix(in srgb, var(--ws2-text-muted) 38%, transparent) transparent;
+    scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: color-mix(in srgb, var(--ws2-text-muted) 34%, transparent);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--ws2-text-muted) 55%, transparent);
+}
+
+/* Shared interactive feel: every control eases instead of snapping. */
+:where(
+    .btn,
+    button,
+    .global-nav-item,
+    .session-tab,
+    .tab-row-icon-btn,
+    .split-btn,
+    .btn-new-tab,
+    .account-item,
+    .profile-launcher-card,
+    .context-workspace-tab,
+    .admin-tab,
+    .mobile-more-action,
+    input,
+    select,
+    textarea
+) {
+    transition:
+        background-color var(--ui-dur-fast) ease,
+        border-color var(--ui-dur-fast) ease,
+        color var(--ui-dur-fast) ease,
+        box-shadow var(--ui-dur) ease,
+        opacity var(--ui-dur) ease,
+        transform var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+:where(.btn, .tab-row-icon-btn, .split-btn, .btn-new-tab, .global-nav-item):not(:disabled):active {
+    transform: scale(0.97);
+}
+
+:where(input, select, textarea):focus-visible {
+    box-shadow: var(--ui-ring);
+}
+
+.btn-primary {
+    box-shadow: 0 1px 0 rgb(255 255 255 / 12%) inset, 0 6px 16px color-mix(in srgb, var(--ws2-accent) 22%, transparent);
+}
+
+.btn-primary:hover:not(:disabled) {
+    box-shadow: 0 1px 0 rgb(255 255 255 / 14%) inset, 0 10px 24px color-mix(in srgb, var(--ws2-accent) 30%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Global header                                                       */
+/* ------------------------------------------------------------------ */
+/*
+ * No backdrop-filter or transform on the header or other containers: either
+ * makes them the containing block for fixed descendants such as the mobile
+ * navigation and "More" sheets, which would then render off-screen.
+ */
+
+.app-brand-logo {
+    border-color: transparent;
+    background: transparent;
+    transition: opacity var(--ui-dur) ease, transform var(--ui-dur) var(--ui-ease-out);
+}
+
+.app-brand:hover .app-brand-logo {
+    transform: translateY(-1px);
+}
+
+.app-brand small {
+    color: color-mix(in srgb, var(--ws2-text-muted) 82%, transparent);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+}
+
+.global-navigation {
+    gap: 4px;
+}
+
+.global-nav-item {
+    border-radius: var(--ui-radius);
+    font-weight: 600;
+}
+
+.global-nav-item .material-icons {
+    transition: transform var(--ui-dur) var(--ui-ease-spring), color var(--ui-dur-fast) ease;
+}
+
+.global-nav-item:hover .material-icons {
+    transform: translateY(-1px);
+}
+
+.global-nav-item.active .material-icons {
+    color: var(--ws2-accent);
+}
+
+.global-nav-item::after {
+    border-radius: 2px 2px 0 0;
+    transform: scaleX(0.4);
+    transform-origin: center;
+    transition: transform var(--ui-dur) var(--ui-ease-out), background-color var(--ui-dur) ease;
+}
+
+.global-nav-item.active::after {
+    transform: scaleX(1);
+}
+
+.account-btn-header .account-caret {
+    transition: transform var(--ui-dur) var(--ui-ease-out);
+}
+
+.account-btn-header[aria-expanded="true"] .account-caret {
+    transform: rotate(180deg);
+}
+
+.account-dropdown-header.show {
+    box-shadow: var(--ui-elevation-3);
+    transform-origin: top right;
+    animation: ui-pop-in var(--ui-dur) var(--ui-ease-out) backwards;
+}
+
+/* ------------------------------------------------------------------ */
+/* Session tab rail                                                    */
+/* ------------------------------------------------------------------ */
+.session-tab {
+    border-radius: 9px 9px 0 0;
+    animation: ui-tab-in var(--ui-dur-slow) var(--ui-ease-out) backwards;
+}
+
+.session-tab::before {
+    right: 10px;
+    left: 10px;
+    border-radius: 2px 2px 0 0;
+    background: var(--ws2-accent);
+    transform: scaleX(0.3);
+    transition: opacity var(--ui-dur) ease, transform var(--ui-dur) var(--ui-ease-out);
+}
+
+.session-tab.active::before {
+    transform: scaleX(1);
+}
+
+.session-tab .status-dot.connected {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws2-success) 18%, transparent);
+}
+
+.btn-new-tab {
+    border-radius: 9px;
+}
+
+.btn-new-tab:hover {
+    color: var(--ws2-accent);
+    transform: rotate(90deg);
+}
+
+.tab-row-actions .split-btn.active {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ws2-accent) 50%, transparent) inset;
+}
+
+/* ------------------------------------------------------------------ */
+/* Workspace surfaces                                                  */
+/* ------------------------------------------------------------------ */
+.terminal-grid {
+    box-shadow: var(--ui-elevation-1);
+}
+
+.terminal-pane {
+    transition: border-color var(--ui-dur) ease, box-shadow var(--ui-dur) ease;
+}
+
+.profile-launcher-card {
+    border-radius: 12px;
+    box-shadow: var(--ui-elevation-1);
+}
+
+.profile-launcher-card:hover {
+    border-color: color-mix(in srgb, var(--ws2-accent) 70%, var(--ws2-border));
+    box-shadow: var(--ui-elevation-2);
+}
+
+.profile-launcher-card:active {
+    transform: translateY(0) scale(0.995);
+}
+
+.profile-launcher-action {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    font-weight: 600;
+}
+
+.context-workspace-tab::after {
+    transition: background-color var(--ui-dur) ease, transform var(--ui-dur) var(--ui-ease-out);
+}
+
+.context-workspace-tab .material-icons {
+    transition: transform var(--ui-dur) var(--ui-ease-spring), color var(--ui-dur-fast) ease;
+}
+
+.context-workspace-tab:hover:not(:disabled) .material-icons {
+    transform: translateY(-1px);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialogs                                                             */
+/* ------------------------------------------------------------------ */
+.modal:not(.primary-workspace-view) {
+    background: rgb(3 5 9 / 58%);
+    backdrop-filter: blur(8px) saturate(120%);
+}
+
+.modal:not(.primary-workspace-view) .modal-content {
+    border-radius: 16px;
+    box-shadow: var(--ui-elevation-3);
+}
+
+/* Backwards fill: the dialog returns to `transform: none` once settled. */
+.modal.show:not(.primary-workspace-view, #sftpFileManager) > .modal-content {
+    animation: ui-dialog-in var(--ui-dur-slow) var(--ui-ease-out) backwards;
+}
+
+.modal-header .close {
+    border-radius: 8px;
+    transition: background-color var(--ui-dur-fast) ease, color var(--ui-dur-fast) ease, transform var(--ui-dur) var(--ui-ease-out);
+}
+
+.modal-header .close:hover {
+    transform: rotate(90deg);
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications                                                       */
+/* ------------------------------------------------------------------ */
+.notification-container .notification {
+    --ui-toast-accent: var(--ws2-accent);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px 12px 14px;
+    border: 1px solid var(--ws2-border-strong);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ws2-surface) 94%, transparent);
+    box-shadow: var(--ui-elevation-3);
+    color: var(--ws2-text);
+    font-size: 13.5px;
+    text-shadow: none;
+    backdrop-filter: saturate(150%) blur(14px);
+    animation: ui-toast-in 420ms var(--ui-ease-spring) backwards;
+}
+
+.notification-container .notification::before {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: 3px;
+    min-height: 18px;
+    border-radius: 3px;
+    background: var(--ui-toast-accent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--ui-toast-accent) 55%, transparent);
+    content: "";
+}
+
+.notification-container .notification-success { --ui-toast-accent: var(--ws2-success); }
+.notification-container .notification-warning { --ui-toast-accent: var(--ws2-warning); }
+.notification-container .notification-error { --ui-toast-accent: var(--ws2-danger); }
+
+.notification-container .notification-action {
+    margin-left: auto;
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ui-toast-accent) 16%, transparent);
+    color: var(--ws2-text);
+    text-decoration: none;
+}
+
+.notification-container .notification-action:hover {
+    background: color-mix(in srgb, var(--ui-toast-accent) 26%, transparent);
+}
+
+.notification-container .notification.fade-out {
+    animation: ui-toast-out 260ms var(--ui-ease-in-out) forwards;
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings and administration                                         */
+/* ------------------------------------------------------------------ */
+.admin-content {
+    animation: ui-fade-in var(--ui-dur-slow) var(--ui-ease-out) backwards;
+}
+
+.admin-tab {
+    border-radius: var(--ui-radius);
+}
+
+.admin-tab .material-icons {
+    transition: transform var(--ui-dur) var(--ui-ease-spring);
+}
+
+.admin-tab:hover .material-icons {
+    transform: scale(1.08);
+}
+
+.admin-settings-intro .admin-muted,
+.admin-settings-row .admin-muted {
+    margin-top: 3px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.settings-back-link {
+    gap: 6px;
+    text-decoration: none;
+}
+
+.settings-back-link .material-icons {
+    transition: transform var(--ui-dur) var(--ui-ease-out);
+}
+
+.settings-back-link:hover .material-icons {
+    transform: translateX(-3px);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sign-in                                                             */
+/* ------------------------------------------------------------------ */
+/* Product areas read as a compact row of chips, never as broken tiles. */
+.auth-product-pillars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.auth-product-pillars li {
+    display: inline-flex;
+    min-height: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px 8px 11px;
+    border-radius: 999px;
+    transition: border-color var(--ui-dur) ease, transform var(--ui-dur) var(--ui-ease-out), background-color var(--ui-dur) ease;
+    animation: ui-fade-up 520ms var(--ui-ease-out) backwards;
+}
+
+.auth-product-pillars li:nth-child(2) { animation-delay: 60ms; }
+.auth-product-pillars li:nth-child(3) { animation-delay: 120ms; }
+.auth-product-pillars li:nth-child(4) { animation-delay: 180ms; }
+
+.auth-product-pillars li:hover {
+    border-color: color-mix(in srgb, var(--ws2-accent) 60%, transparent);
+    transform: translateY(-2px);
+}
+
+.auth-product-pillars .material-icons {
+    font-size: 17px;
+}
+
+/* Labels are short product names: never break them mid-word. */
+.auth-access-dock .auth-product-pillars strong {
+    overflow-wrap: normal;
+    word-break: normal;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.auth-method-option {
+    transition: background-color var(--ui-dur) ease, border-color var(--ui-dur) ease, color var(--ui-dur) ease, box-shadow var(--ui-dur) ease;
+}
+
+/* ------------------------------------------------------------------ */
+/* Graphite: the default theme as a deeper, neutral dark               */
+/* ------------------------------------------------------------------ */
+body[data-theme="glass"] {
+    --bg-primary: #08090c;
+    --bg-secondary: #0e1014;
+    --bg-tertiary: #14171c;
+    --bg-hover: #1b1f26;
+    --bg-modal: rgba(14, 16, 20, 0.97);
+    --bg-gradient: linear-gradient(160deg, #08090c 0%, #0b0e13 100%);
+    --bg-active: rgba(91, 156, 246, 0.13);
+    --text-secondary: #aab3c0;
+    --border-color: rgba(214, 226, 242, 0.08);
+    --border-hover: rgba(214, 226, 242, 0.16);
+    --term-background: #0b0d11;
+    --theme-background-opacity: 0.045;
+}
+
+:root {
+    color-scheme: dark;
+}
+
+body[data-theme="paper"] {
+    color-scheme: light;
+}
+
+/* The PixShell wordmark is drawn edge to edge, so the header box follows
+   its aspect ratio. Compact layouts keep their own sizing. */
+@media (min-width: 768px) and (min-height: 521px), (min-width: 768px) and (pointer: fine) {
+    .header .app-brand-logo {
+        width: 100px;
+        height: 32px;
+        padding: 0;
+        border-width: 0;
+    }
+
+    .header .app-brand {
+        gap: 22px;
+    }
+}
+
+/* Sign-in pages scale the wordmark by width at the same breakpoints as the
+   shell; the artwork has no inner margin, so each step is narrower. */
+.auth-product-logo {
+    width: min(250px, 80%);
+}
+
+@media (max-height: 820px) and (min-width: 600px) {
+    .auth-product-logo {
+        width: min(160px, 80%);
+    }
+}
+
+@media (max-width: 959px) {
+    .auth-product-logo {
+        width: min(110px, 100%);
+    }
+}
+
+@media (max-width: 599px) {
+    .auth-product-logo {
+        width: min(96px, 100%);
+    }
+}
+
+@media (max-width: 1279px) {
+    .header .app-brand small {
+        display: none;
+    }
+}
+
+/* Tab actions surface on hover or focus so idle tabs stay calm. Touch
+   screens without hover keep every control visible. */
+@media (hover: hover) and (pointer: fine) {
+    .session-tab:not(.active, .disconnected) :is(.tab-edit, .tab-reconnect) {
+        display: none;
+    }
+
+    .session-tab.active:not(.disconnected) :is(.tab-edit, .tab-reconnect) {
+        opacity: 0.4;
+    }
+
+    .session-tab:not(.active) .tab-close {
+        opacity: 0;
+    }
+
+    .session-tab:is(:hover, :focus-within) :is(.tab-edit, .tab-reconnect, .tab-close) {
+        opacity: 0.85;
+    }
+
+    .session-tab :is(.tab-edit, .tab-reconnect, .tab-close):is(:hover, :focus-visible) {
+        opacity: 1;
+    }
+}
+
+.session-tab.disconnected .tab-reconnect {
+    color: var(--ws2-warning);
+    opacity: 1;
+}
+
+/* The Settings Center scrolls inside its own column; a matching bottom
+   inset keeps Preferences on one screen at 1080p. */
+@media (min-width: 1024px) {
+    .settings-center-content {
+        padding-bottom: 28px;
+    }
+}
+
+/* Layout switcher reads as one segmented control. */
+.tab-row-actions .split-controls {
+    padding: 2px;
+    border: 1px solid var(--ws2-border);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--ws2-canvas) 70%, transparent);
+}
+
+.tab-row-actions .split-controls .split-btn {
+    width: 30px;
+    min-width: 0;
+    height: 28px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 7px;
+}
+
+.tab-row-actions .split-controls .split-btn.active {
+    background: var(--ws2-panel);
+    color: var(--ws2-text);
+    box-shadow:
+        0 1px 2px rgb(0 0 0 / 35%),
+        0 0 0 1px color-mix(in srgb, var(--ws2-accent) 42%, transparent) inset;
+}
+
+/* ------------------------------------------------------------------ */
+/* Keyframes                                                           */
+/* ------------------------------------------------------------------ */
+@keyframes ui-fade-in {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes ui-fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+
+@keyframes ui-pop-in {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.97);
+    }
+}
+
+@keyframes ui-dialog-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.975);
+    }
+}
+
+@keyframes ui-tab-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+
+@keyframes ui-toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(24px) scale(0.96);
+    }
+}
+
+@keyframes ui-toast-out {
+    to {
+        opacity: 0;
+        transform: translateX(16px) scale(0.97);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
+}

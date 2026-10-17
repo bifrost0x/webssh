@@ -24,6 +24,10 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/session-workspace.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-appearance.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/share-collab.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-share.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/ui-refresh.css') }}">
 </head>
 <body data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
@@ -32,7 +36,7 @@
         <div class="header-content">
             <div class="header-title-row">
                 <a class="app-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.websshWorkspaces">
-                    <img class="app-brand-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="" aria-hidden="true">
+                    <img class="app-brand-logo" src="{{ static_asset_url(filename='images/pixshell-logo.svg') }}" alt="" aria-hidden="true">
                     <span><small data-i18n="brand.tagline">Your shell. Your rules.</small></span>
                 </a>
                 <button id="mobileSessionSummary" class="mobile-session-summary" type="button">
@@ -52,6 +56,9 @@
 
                 <div class="mobile-more-actions" aria-label="Session actions" data-i18n-aria-label="workspace.sessionActions">
                     <button class="mobile-more-action" type="button" data-open-terminal-appearance><span class="material-icons" aria-hidden="true">palette</span><span data-i18n="terminalAppearance.title">Terminal appearance</span></button>
+                    {% if terminal_share_enabled %}
+                    <button id="mobileShareAction" class="mobile-more-action" type="button"><span class="material-icons" aria-hidden="true">podcasts</span><span data-i18n="share.title">Share terminal</span></button>
+                    {% endif %}
                     <button id="mobileQuickConnectAction" class="mobile-more-action" type="button" onclick="window.openDefaultConnectionModal?.(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">add_link</span><span data-i18n="connection.newConnection">Quick Connect</span></button>
                     <button id="mobileToolsAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.workspaceLayoutController?.setNotesOpen(true, 'user'); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">edit_note</span><span data-i18n="workspaceContext.notes">Notes</span></button>
                     <button id="mobileBroadcastAction" class="mobile-more-action" type="button" onclick="window.primaryWorkspaceController?.showWorkspaces(); window.BroadcastInput?.toggle(); window.mobileAppShell?.closeMoreMenu()"><span class="material-icons" aria-hidden="true">cell_tower</span><span data-i18n="broadcast.toggle">Broadcast to all open sessions</span></button>
@@ -109,11 +116,23 @@
             <button class="btn-new-tab material-icons" id="newTabBtn" title="Select a session or use Quick Connect" data-i18n-title="panes.selectSession" aria-label="Select a session or use Quick Connect" data-i18n-aria-label="panes.selectSession">add</button>
             <button class="context-workspace-launcher" id="contextWorkspaceLauncher" type="button" aria-expanded="false" aria-controls="contextWorkspace" aria-label="Open session tools" title="Open session tools" data-i18n-aria-label="workspace.openTools" data-i18n-title="workspace.openTools"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="workspace.tools">Tools</span></button>
             <div class="tab-row-actions">
+                {% if terminal_share_enabled %}
+                <button class="tab-row-share-btn" id="shareTerminalBtn" type="button" title="Share terminal" aria-label="Share terminal" data-i18n-title="share.title" data-i18n-aria-label="share.title" aria-haspopup="dialog" aria-controls="terminalShareModal">
+                    <span class="material-icons" aria-hidden="true">podcasts</span>
+                    <span class="tab-row-share-label" data-i18n="share.button">Share</span>
+                    <span class="tab-row-share-count" id="shareTerminalCount" hidden></span>
+                </button>
+                {% endif %}
                 <button class="tab-row-icon-btn" id="terminalAppearanceBtn" type="button" data-open-terminal-appearance title="Terminal appearance" aria-label="Terminal appearance" data-i18n-title="terminalAppearance.title" data-i18n-aria-label="terminalAppearance.title"><span class="material-icons" aria-hidden="true">palette</span></button>
                 <div class="split-controls" aria-label="Split layout" data-i18n-aria-label="panes.layout">
                     <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single">1</button>
                     <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane" data-i18n-title="panes.split" data-i18n-aria-label="panes.split">2</button>
                     <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane" data-i18n-title="panes.quad" data-i18n-aria-label="panes.quad">4</button>
+                    <button class="split-btn split-btn-windows" data-layout="windows" type="button" title="Floating windows" aria-label="Floating windows" data-i18n-title="windows.mode" data-i18n-aria-label="windows.mode"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.75" y="5.25" width="9" height="7.5" rx="1.5"></rect><path d="M5.25 5.25V4.5A1.5 1.5 0 0 1 6.75 3h6A1.5 1.5 0 0 1 14.25 4.5v4.75a1.5 1.5 0 0 1-1.5 1.5h-2"></path></svg></button>
+                </div>
+                <div class="window-arrange-controls" id="windowArrangeControls" role="group" aria-label="Arrange windows" data-i18n-aria-label="windows.arrange" hidden>
+                    <button class="tab-row-icon-btn" type="button" data-window-arrange="tile" title="Tile windows" aria-label="Tile windows" data-i18n-title="windows.tile" data-i18n-aria-label="windows.tile"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="5" rx="1"></rect><rect x="9" y="2.5" width="5" height="5" rx="1"></rect><rect x="2" y="9.5" width="5" height="4" rx="1"></rect><rect x="9" y="9.5" width="5" height="4" rx="1"></rect></svg></button>
+                    <button class="tab-row-icon-btn" type="button" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="2" width="8" height="6" rx="1"></rect><path d="M4.5 8v2.5a1 1 0 0 0 1 1H6"></path><rect x="6" y="8" width="8" height="6" rx="1"></rect></svg></button>
                 </div>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
@@ -1229,6 +1248,117 @@
         </div>
     </div>
 
+    {% if terminal_share_enabled %}
+    <div class="modal share-modal" id="terminalShareModal" role="dialog" aria-modal="true" aria-labelledby="terminalShareTitle" aria-hidden="true">
+        <div class="modal-content share-modal-content">
+            <div class="modal-header share-modal-header">
+                <div class="share-modal-heading">
+                    <span class="share-modal-icon" aria-hidden="true"><span class="material-icons">podcasts</span></span>
+                    <div>
+                        <h2 id="terminalShareTitle" data-i18n="share.title">Share terminal</h2>
+                        <p class="share-modal-session" id="terminalShareSession"></p>
+                    </div>
+                </div>
+                <button type="button" class="close material-icons" id="closeTerminalShareModal" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body share-modal-body">
+                <p class="share-lead" data-i18n="share.subtitle">Invite someone to watch or help in this session. They never see your host, account, password, or keys.</p>
+                <form class="share-form" id="terminalShareForm" autocomplete="off">
+                    <label class="share-field">
+                        <span data-i18n="share.linkTitle">Link name</span>
+                        <input type="text" id="terminalShareLinkTitle" maxlength="80" data-i18n-placeholder="share.linkTitlePlaceholder" placeholder="e.g. Debugging the deploy">
+                    </label>
+                    <fieldset class="share-segment">
+                        <legend data-i18n="share.access">Access</legend>
+                        <label class="share-option">
+                            <input type="radio" name="terminalShareMode" value="view" checked>
+                            <span class="share-option-body">
+                                <span class="material-icons" aria-hidden="true">visibility</span>
+                                <strong data-i18n="share.modeView">View only</strong>
+                                <small data-i18n="share.modeViewHint">Guests watch the terminal live.</small>
+                            </span>
+                        </label>
+                        <label class="share-option" id="terminalShareControlOption">
+                            <input type="radio" name="terminalShareMode" value="control">
+                            <span class="share-option-body">
+                                <span class="material-icons" aria-hidden="true">keyboard</span>
+                                <strong data-i18n="share.modeControl">Can type</strong>
+                                <small data-i18n="share.modeControlHint">Guests can type into this session.</small>
+                            </span>
+                        </label>
+                    </fieldset>
+                    <div class="share-row">
+                        <label class="share-field">
+                            <span data-i18n="share.expires">Expires after</span>
+                            <select id="terminalShareTtl">
+                                <option value="15" data-i18n="share.ttl15m">15 minutes</option>
+                                <option value="60" selected data-i18n="share.ttl1h">1 hour</option>
+                                <option value="480" data-i18n="share.ttl8h">8 hours</option>
+                                <option value="1440" data-i18n="share.ttl24h">24 hours</option>
+                            </select>
+                        </label>
+                        <label class="share-field">
+                            <span data-i18n="share.maxViewers">Viewers</span>
+                            <select id="terminalShareMaxViewers"></select>
+                        </label>
+                    </div>
+                    <label class="share-switch">
+                        <input type="checkbox" id="terminalShareApproval">
+                        <span class="share-switch-track" aria-hidden="true"></span>
+                        <span class="share-switch-copy">
+                            <strong data-i18n="share.requireApproval">Ask me before anyone joins</strong>
+                            <small data-i18n="share.requireApprovalHint">New guests wait until you admit them.</small>
+                        </span>
+                    </label>
+                    <p class="share-privacy">
+                        <span class="material-icons" aria-hidden="true">verified_user</span>
+                        <span data-i18n="share.privacyNote">Guests see only the terminal, the link name, and your WebSSH username.</span>
+                    </p>
+                    <button type="submit" class="btn btn-primary share-create" id="terminalShareCreate">
+                        <span class="material-icons" aria-hidden="true">add_link</span>
+                        <span data-i18n="share.create">Create link</span>
+                    </button>
+                </form>
+                <section class="share-links" aria-labelledby="terminalShareLinksTitle">
+                    <h3 id="terminalShareLinksTitle" data-i18n="share.activeLinks">Active links</h3>
+                    <div class="share-link-list" id="terminalShareLinks" aria-live="polite"></div>
+                    <p class="share-footnote" data-i18n="share.securityNote">Anyone with the link can join until it expires or you stop sharing.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if terminal_share_enabled %}
+    <div class="share-collab" id="shareCollab" hidden>
+        <section class="share-collab-panel" id="shareCollabPanel" aria-labelledby="shareCollabTitle" hidden>
+            <div class="share-collab-header">
+                <div class="share-collab-heading">
+                    <h2 id="shareCollabTitle" data-i18n="share.chatTitle">Session chat</h2>
+                    <p id="shareCollabSession"></p>
+                </div>
+                <button class="share-collab-icon" id="shareCollabPoint" type="button" aria-pressed="false" title="Point at the terminal" aria-label="Point at the terminal" data-i18n-title="share.pointerToggle" data-i18n-aria-label="share.pointerToggle"><span class="material-icons" aria-hidden="true">ads_click</span></button>
+                <button class="share-collab-icon" id="shareCollabClose" type="button" title="Close chat" aria-label="Close chat" data-i18n-title="share.chatClose" data-i18n-aria-label="share.chatClose"><span class="material-icons" aria-hidden="true">close</span></button>
+            </div>
+            <p class="share-collab-hint" id="shareCollabPointerHint" hidden>
+                <span class="material-icons" aria-hidden="true">ads_click</span>
+                <span data-i18n="share.pointerHint">Click the terminal to point. Press Esc to stop.</span>
+            </p>
+            <ol class="cv-messages" id="shareCollabList" aria-live="polite"></ol>
+            <p class="cv-empty" id="shareCollabEmpty" data-i18n="share.chatEmpty">Chat with everyone watching this session. Messages disappear when sharing ends.</p>
+            <form class="cv-compose" id="shareCollabForm" autocomplete="off">
+                <input id="shareCollabInput" type="text" maxlength="500" placeholder="Message your guests…" data-i18n-placeholder="share.chatPlaceholder" aria-labelledby="shareCollabTitle">
+                <button type="submit" title="Send" aria-label="Send" data-i18n-title="share.chatSend" data-i18n-aria-label="share.chatSend"><span class="material-icons" aria-hidden="true">send</span></button>
+            </form>
+        </section>
+        <button class="share-collab-toggle" id="shareCollabToggle" type="button" aria-expanded="false" aria-controls="shareCollabPanel">
+            <span class="material-icons" aria-hidden="true">forum</span>
+            <span data-i18n="share.chatOpen">Chat</span>
+            <span class="share-collab-badge" id="shareCollabBadge" hidden></span>
+        </button>
+    </div>
+    {% endif %}
+
     <div class="modal modal-small" id="shortcutsModal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
@@ -1465,6 +1595,7 @@
     <script src="{{ static_asset_url(filename='js/terminal-appearance.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-input.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/terminal-windows.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/workspace-layout-controller.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/mobile-app-shell.js') }}"></script>
@@ -1490,6 +1621,11 @@
     <script src="{{ static_asset_url(filename='js/connection-validation.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-gateway-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
+    {% if terminal_share_enabled %}
+    <script src="{{ static_asset_url(filename='js/qr-code.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/share-collab.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/terminal-share.js') }}"></script>
+    {% endif %}
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
     <script>
         const flashedMessages = {{ get_flashed_messages(with_categories=true) | tojson }};

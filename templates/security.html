@@ -15,12 +15,13 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/admin.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/ui-refresh.css') }}">
 </head>
 <body data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-ldap-managed="{{ 'true' if ldap_managed else 'false' }}" data-recovery-mode="{{ 'true' if recovery_mode else 'false' }}" data-account-mfa-enabled="{{ 'true' if account_mfa_enabled else 'false' }}" data-recovery-enabled="{{ 'true' if recovery_codes_enabled else 'false' }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-authentication-session-duration-minutes="{{ authentication_session_duration_minutes }}">
     <header class="header">
         <div class="header-content">
             <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">
-                <img class="app-brand-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH">
+                <img class="app-brand-logo" src="{{ static_asset_url(filename='images/pixshell-logo.svg') }}" alt="PixShell">
             </a>
             {% if recovery_mode %}
             <form action="{{ url_for('logout') }}" method="post">

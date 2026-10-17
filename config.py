@@ -697,6 +697,91 @@ SSH_OUTPUT_ACK_TIMEOUT_SECONDS = _bounded_int_env(
     'SSH_OUTPUT_ACK_TIMEOUT_SECONDS', 10, 1, 120,
 )
 
+# Prometheus-compatible runtime metrics. Disabled by default. With a token,
+# scrapers send `Authorization: Bearer <token>`; without one, only loopback
+# clients (for example a sidecar or `docker exec`) may read the endpoint.
+METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'false').lower() == 'true'
+_metrics_token_file = os.environ.get('METRICS_TOKEN_FILE', '').strip()
+if _metrics_token_file:
+    try:
+        METRICS_TOKEN = Path(_metrics_token_file).read_text(
+            encoding='utf-8'
+        ).strip()
+    except OSError as exc:
+        raise RuntimeError(
+            'CONFIGURATION ERROR: METRICS_TOKEN_FILE is not readable'
+        ) from exc
+else:
+    METRICS_TOKEN = os.environ.get('METRICS_TOKEN', '').strip()
+if METRICS_TOKEN and len(METRICS_TOKEN) < 16:
+    raise RuntimeError(
+        'CONFIGURATION ERROR: METRICS_TOKEN must be at least 16 characters'
+    )
+
+# Link-based terminal sharing. A share exposes one live terminal stream (and,
+# when the owner allows it, keyboard input) without host, credential, or key
+# details. Viewer streams are long-lived HTTP responses, so the global viewer
+# budget shares the Gunicorn thread pool with Socket.IO transports.
+TERMINAL_SHARE_ENABLED = (
+    os.environ.get('TERMINAL_SHARE_ENABLED', 'true').lower() == 'true'
+)
+TERMINAL_SHARE_ALLOW_CONTROL = (
+    os.environ.get('TERMINAL_SHARE_ALLOW_CONTROL', 'true').lower() == 'true'
+)
+# Extra stream slots that let a reconnecting viewer replace its previous
+# stream before the server has noticed the old transport closing.
+TERMINAL_SHARE_STREAM_SLACK = 2
+TERMINAL_SHARE_MAX_VIEWERS = _bounded_int_env(
+    'TERMINAL_SHARE_MAX_VIEWERS', 8, 0, 64,
+)
+_share_thread_budget = (
+    GUNICORN_THREADS - MAX_SOCKET_CONNECTIONS - 4 - TERMINAL_SHARE_STREAM_SLACK
+)
+if TERMINAL_SHARE_MAX_VIEWERS > _share_thread_budget:
+    print(
+        'ℹ️  TERMINAL_SHARE_MAX_VIEWERS lowered to '
+        f'{max(0, _share_thread_budget)} to stay within GUNICORN_THREADS.'
+    )
+    TERMINAL_SHARE_MAX_VIEWERS = max(0, _share_thread_budget)
+TERMINAL_SHARE_MAX_VIEWERS_PER_LINK = _bounded_int_env(
+    'TERMINAL_SHARE_MAX_VIEWERS_PER_LINK', 5, 1, 64,
+)
+TERMINAL_SHARE_MAX_LINKS_PER_USER = _bounded_int_env(
+    'TERMINAL_SHARE_MAX_LINKS_PER_USER', 10, 1, 100,
+)
+TERMINAL_SHARE_DEFAULT_TTL_MINUTES = _bounded_int_env(
+    'TERMINAL_SHARE_DEFAULT_TTL_MINUTES', 60, 5, 10080,
+)
+TERMINAL_SHARE_MAX_TTL_MINUTES = _bounded_int_env(
+    'TERMINAL_SHARE_MAX_TTL_MINUTES', 1440, 5, 10080,
+)
+if TERMINAL_SHARE_DEFAULT_TTL_MINUTES > TERMINAL_SHARE_MAX_TTL_MINUTES:
+    raise RuntimeError(
+        'CONFIGURATION ERROR: TERMINAL_SHARE_DEFAULT_TTL_MINUTES cannot '
+        'exceed TERMINAL_SHARE_MAX_TTL_MINUTES'
+    )
+# Per-viewer undelivered output. A viewer that falls further behind is
+# resynchronised from the session replay buffer instead of slowing the owner.
+TERMINAL_SHARE_VIEWER_QUEUE_BYTES = _bounded_int_env(
+    'TERMINAL_SHARE_VIEWER_QUEUE_BYTES', 1024 * 1024, 64 * 1024,
+    16 * 1024 * 1024,
+)
+# How long a disconnected viewer keeps its seat for a transparent reconnect.
+TERMINAL_SHARE_VIEWER_GRACE_SECONDS = _bounded_int_env(
+    'TERMINAL_SHARE_VIEWER_GRACE_SECONDS', 45, 5, 600,
+)
+TERMINAL_SHARE_HEARTBEAT_SECONDS = _bounded_int_env(
+    'TERMINAL_SHARE_HEARTBEAT_SECONDS', 15, 2, 60,
+)
+# Session chat and shared pointers between an owner and admitted guests.
+# Messages live in memory only and disappear with the session's last link.
+TERMINAL_SHARE_CHAT_ENABLED = (
+    os.environ.get('TERMINAL_SHARE_CHAT_ENABLED', 'true').lower() == 'true'
+)
+TERMINAL_SHARE_CHAT_HISTORY = _bounded_int_env(
+    'TERMINAL_SHARE_CHAT_HISTORY', 50, 0, 500,
+)
+
 ALLOW_CORS_WILDCARD = (
     os.environ.get('ALLOW_CORS_WILDCARD', 'false').lower() == 'true'
 )
@@ -751,6 +836,13 @@ RATELIMIT_BACKUP_RESTORE = os.environ.get(
 # unthrottled SSH brute-force / port-scan proxy against third-party hosts.
 # Generous default so normal use and reconnects never hit it.
 RATELIMIT_SSH_CONNECT = os.environ.get('SSH_CONNECT_RATELIMIT', '10 per minute')
+# Public share-link joins are keyed by client IP; link creation by user.
+RATELIMIT_TERMINAL_SHARE_JOIN = os.environ.get(
+    'TERMINAL_SHARE_JOIN_RATELIMIT', '30 per minute'
+)
+RATELIMIT_TERMINAL_SHARE_CREATE = os.environ.get(
+    'TERMINAL_SHARE_CREATE_RATELIMIT', '20 per minute'
+)
 RATELIMIT_SSH_KEY_WRITE = os.environ.get(
     'SSH_KEY_WRITE_RATELIMIT', '30 per minute'
 )

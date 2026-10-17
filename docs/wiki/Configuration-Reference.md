@@ -199,6 +199,57 @@ and jump-host key references remain ownership checked.
 | `AUDIT_EXPORT_ENABLED` | `true` |
 | `MAX_RECOVERY_JSON_SIZE` | `4096` bytes |
 
+## Terminal sharing
+
+| Variable | Default | Contract |
+|---|---:|---|
+| `TERMINAL_SHARE_ENABLED` | `true` | Shows **Share** and accepts share links |
+| `TERMINAL_SHARE_ALLOW_CONTROL` | `true` | Allows *Can type* links; `false` also blocks input on existing links |
+| `TERMINAL_SHARE_MAX_VIEWERS` | `8` | Concurrent guests across the instance; `0` disables sharing |
+| `TERMINAL_SHARE_MAX_VIEWERS_PER_LINK` | `5` | Upper bound offered per link |
+| `TERMINAL_SHARE_MAX_LINKS_PER_USER` | `10` | Active links per account |
+| `TERMINAL_SHARE_DEFAULT_TTL_MINUTES` | `60` | Supported range `5` to `10080` |
+| `TERMINAL_SHARE_MAX_TTL_MINUTES` | `1440` | Supported range `5` to `10080` |
+| `TERMINAL_SHARE_VIEWER_QUEUE_BYTES` | `1048576` | Undelivered output held per guest before a resynchronisation |
+| `TERMINAL_SHARE_VIEWER_GRACE_SECONDS` | `45` | Seat kept for a disconnected guest |
+| `TERMINAL_SHARE_HEARTBEAT_SECONDS` | `15` | Keep-alive interval on guest streams |
+| `TERMINAL_SHARE_CHAT_ENABLED` | `true` | Session chat and shared pointers for owners and admitted guests |
+| `TERMINAL_SHARE_CHAT_HISTORY` | `50` | Recent messages kept per shared session for late joiners; `0` keeps none |
+| `TERMINAL_SHARE_JOIN_RATELIMIT` | `30 per minute` | Join attempts per client IP |
+| `TERMINAL_SHARE_CREATE_RATELIMIT` | `20 per minute` | Link creation per account |
+
+Every guest stream holds one Gunicorn thread while it is open. WebSSH lowers
+`TERMINAL_SHARE_MAX_VIEWERS` automatically when the thread pool cannot hold it:
+
+```text
+GUNICORN_THREADS - MAX_SOCKET_CONNECTIONS - 4 - 2 >= TERMINAL_SHARE_MAX_VIEWERS
+```
+
+## Metrics
+
+| Variable | Default | Contract |
+|---|---:|---|
+| `METRICS_ENABLED` | `false` | Serves Prometheus text at `GET /metrics` |
+| `METRICS_TOKEN` | Unset | Bearer token, at least 16 characters |
+| `METRICS_TOKEN_FILE` | Unset | Reads the token from a file; wins over `METRICS_TOKEN` |
+
+Without a token, only loopback clients can read `/metrics`.
+
+## Gunicorn tuning
+
+`gunicorn.conf.py` in the application directory is loaded automatically. The
+container command keeps the reviewed one-worker contract; these variables only
+tune what the command line does not set.
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `GUNICORN_KEEPALIVE` | `5` seconds | Idle keep-alive for reverse-proxy connection reuse |
+| `GUNICORN_GRACEFUL_TIMEOUT` | `30` seconds | Worker shutdown window |
+| `GUNICORN_ACCESS_LOG` | Unset | Set to `-` for stdout access logs (paths without query strings) |
+
+The worker is never recycled (`max_requests = 0`), because recycling would drop
+every live terminal.
+
 ## Passkey settings
 
 | Variable | Purpose |

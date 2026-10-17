@@ -13,6 +13,7 @@ function setup() {
         createSession(data) { this.sessions[data.session_id] = {}; return data.session_id; },
         removeSessionUI(id) { removed.push(id); delete this.sessions[id]; },
         getFirstEmptyPaneIndex: () => 0, assignSessionToPane() {},
+        resolvePaneForNewSession: pane => pane ?? 0,
     };
     let tick = 0;
     const fields = new Map();

@@ -83,15 +83,15 @@ def test_workspace_exposes_one_context_tab_system_below_connection_tabs(
     assert int(expiry.group(1)) > int(server_now.group(1))
 
 
-def test_workspace_header_uses_the_shipped_webssh_logo(app, client):
+def test_workspace_header_uses_the_shipped_pixshell_logo(app, client):
     _create_login(app, client)
 
     response = client.get('/')
-    logo = client.get('/static/images/webssh-logo.svg')
+    logo = client.get('/static/images/pixshell-logo.svg')
 
     assert response.status_code == 200
     assert b'class="app-brand-logo"' in response.data
-    assert b'static/images/webssh-logo.svg' in response.data
+    assert b'static/images/pixshell-logo.svg' in response.data
     assert logo.status_code == 200
     assert logo.mimetype == 'image/svg+xml'
 

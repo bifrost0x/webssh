@@ -28,6 +28,18 @@ def revoke_user_access(user_id, socketio_instance=None):
     }
 
     try:
+        from .terminal_share import share_hub
+
+        share_hub.end_owner(user_id, 'owner_signed_out')
+    except Exception as exc:
+        result['errors'].append(f'terminal_shares:{exc}')
+        log_warning(
+            "Failed to end revoked user terminal shares",
+            user_id=user_id,
+            error=str(exc),
+        )
+
+    try:
         from .transfer_routes import transfer_manager
 
         result['transfers'] = transfer_manager.cancel_all_for_user(user_id)

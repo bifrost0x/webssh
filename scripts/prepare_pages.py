@@ -245,6 +245,7 @@ def prepare_pages(root: Path, graph_source: Path, output: Path) -> None:
     shutil.copytree(root / 'assets', output / 'assets', dirs_exist_ok=True)
     resources = {
         'static/images/webssh-logo.svg': 'webssh-logo.svg',
+        'static/images/pixshell-logo.svg': 'pixshell-logo.svg',
         'static/images/theme-backgrounds/carbon-glass.webp': 'carbon-glass.webp',
         'static/vendor/material-icons/material-icons.woff2': 'material-icons.woff2',
     }

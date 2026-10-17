@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0a0c10">
+    <meta name="app-root" content="{{ url_prefix }}">
+    <title>Shared terminal · WebSSH</title>
+    <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/xterm/xterm.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='vendor/material-icons/material-icons.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/share-collab.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/share-view.css') }}">
+</head>
+<body class="sv" data-state="joining">
+    <div class="sv-aurora" aria-hidden="true"></div>
+
+    <header class="sv-bar" id="svBar">
+        <div class="sv-identity">
+            <span class="sv-logo" aria-hidden="true">
+                <span class="material-icons">terminal</span>
+            </span>
+            <div class="sv-heading">
+                <h1 id="svTitle">Shared terminal</h1>
+                <p id="svOwner" hidden></p>
+            </div>
+        </div>
+
+        <div class="sv-meta" aria-live="polite">
+            <span class="sv-live" id="svLive">
+                <span class="sv-live-dot" aria-hidden="true"></span>
+                <span id="svLiveLabel" data-i18n="share.viewer.connecting">Connecting…</span>
+            </span>
+            <span class="sv-chip" id="svMode" hidden>
+                <span class="material-icons" aria-hidden="true">visibility</span>
+                <span id="svModeLabel" data-i18n="share.viewer.viewOnly">View only</span>
+            </span>
+            <span class="sv-chip" id="svViewers" hidden>
+                <span class="material-icons" aria-hidden="true">group</span>
+                <span id="svViewersLabel"></span>
+            </span>
+            <span class="sv-chip sv-chip-muted" id="svExpires" hidden>
+                <span class="material-icons" aria-hidden="true">schedule</span>
+                <span id="svExpiresLabel"></span>
+            </span>
+        </div>
+
+        <div class="sv-actions">
+            <button class="sv-icon-btn sv-collab-btn" id="svPoint" type="button" aria-pressed="false" data-i18n-title="share.viewer.point" data-i18n-aria-label="share.viewer.point" title="Point" aria-label="Point" hidden><span class="material-icons" aria-hidden="true">ads_click</span></button>
+            <button class="sv-icon-btn sv-collab-btn" id="svChatToggle" type="button" aria-expanded="false" aria-controls="svChat" data-i18n-title="share.viewer.chat" data-i18n-aria-label="share.viewer.chat" title="Chat" aria-label="Chat" hidden>
+                <span class="material-icons" aria-hidden="true">forum</span>
+                <span class="sv-badge" id="svChatBadge" hidden></span>
+            </button>
+            <span class="sv-divider" aria-hidden="true"></span>
+            <button class="sv-icon-btn" id="svZoomOut" type="button" data-i18n-title="share.viewer.zoomOut" data-i18n-aria-label="share.viewer.zoomOut" title="Smaller text" aria-label="Smaller text"><span class="material-icons" aria-hidden="true">text_decrease</span></button>
+            <button class="sv-icon-btn" id="svFit" type="button" aria-pressed="true" data-i18n-title="share.viewer.fit" data-i18n-aria-label="share.viewer.fit" title="Fit to window" aria-label="Fit to window"><span class="material-icons" aria-hidden="true">fit_screen</span></button>
+            <button class="sv-icon-btn" id="svZoomIn" type="button" data-i18n-title="share.viewer.zoomIn" data-i18n-aria-label="share.viewer.zoomIn" title="Larger text" aria-label="Larger text"><span class="material-icons" aria-hidden="true">text_increase</span></button>
+            <button class="sv-icon-btn" id="svFullscreen" type="button" data-i18n-title="share.viewer.fullscreen" data-i18n-aria-label="share.viewer.fullscreen" title="Full screen" aria-label="Full screen"><span class="material-icons" aria-hidden="true">fullscreen</span></button>
+            <button class="sv-btn sv-btn-ghost" id="svLeave" type="button"><span class="material-icons" aria-hidden="true">logout</span><span data-i18n="share.viewer.leave">Leave</span></button>
+        </div>
+    </header>
+
+    <main class="sv-stage">
+        <div class="sv-workspace">
+            <div class="sv-frame" id="svFrame">
+                <div class="sv-frame-chrome" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="sv-terminal" id="svTerminal"></div>
+                <div class="cv-pointer-layer" id="svPointerLayer"></div>
+                <div class="sv-skeleton" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+            </div>
+            <aside class="sv-chat" id="svChat" aria-labelledby="svChatTitle" hidden>
+                <header class="sv-chat-header">
+                    <h2 id="svChatTitle" data-i18n="share.viewer.chat">Chat</h2>
+                    <button class="sv-icon-btn" id="svChatClose" type="button" data-i18n-title="share.viewer.chatClose" data-i18n-aria-label="share.viewer.chatClose" title="Close chat" aria-label="Close chat"><span class="material-icons" aria-hidden="true">close</span></button>
+                </header>
+                <ol class="cv-messages" id="svChatList" aria-live="polite"></ol>
+                <p class="cv-empty" id="svChatEmpty" data-i18n="share.viewer.chatEmpty">Say hello. Everyone in this session can read the chat.</p>
+                <form class="cv-compose" id="svChatForm" autocomplete="off">
+                    <input id="svChatInput" type="text" maxlength="500" data-i18n-placeholder="share.viewer.chatPlaceholder" placeholder="Message everyone…" aria-labelledby="svChatTitle">
+                    <button type="submit" data-i18n-title="share.viewer.chatSend" data-i18n-aria-label="share.viewer.chatSend" title="Send" aria-label="Send"><span class="material-icons" aria-hidden="true">send</span></button>
+                </form>
+            </aside>
+        </div>
+        <p class="sv-hint sv-pointer-hint" id="svPointerHint" hidden>
+            <span class="material-icons" aria-hidden="true">ads_click</span>
+            <span data-i18n="share.viewer.pointHint">Click the terminal to point. Press Esc to stop.</span>
+        </p>
+        <p class="sv-typing-notice" id="svTypingNotice" hidden>
+            <span class="material-icons" aria-hidden="true">keyboard</span>
+            <span data-i18n="share.viewer.typingNotice">You can type. Your keystrokes go to a live server.</span>
+        </p>
+    </main>
+
+    <button class="sv-peek" id="svChatPeek" type="button" hidden>
+        <span class="material-icons" aria-hidden="true">forum</span>
+        <span class="sv-peek-copy"><strong id="svChatPeekName"></strong><span id="svChatPeekText"></span></span>
+    </button>
+
+    <div class="sv-toast" id="svBanner" role="status" hidden>
+        <span class="sv-spinner" aria-hidden="true"></span>
+        <span data-i18n="share.viewer.reconnecting">Connection lost. Reconnecting…</span>
+    </div>
+
+    <section class="sv-overlay" id="svJoin" aria-labelledby="svJoinTitle" hidden>
+        <form class="sv-card" id="svJoinForm" autocomplete="off">
+            <span class="sv-card-icon" aria-hidden="true"><span class="material-icons">podcasts</span></span>
+            <h2 id="svJoinTitle" data-i18n="share.viewer.joinTitle">You are invited to a live terminal</h2>
+            <p data-i18n="share.viewer.joinBody">Follow a terminal session in real time. No account or credentials needed.</p>
+            <label class="sv-field">
+                <span data-i18n="share.viewer.nameLabel">Your name</span>
+                <input id="svName" type="text" maxlength="32" autocomplete="nickname" data-i18n-placeholder="share.viewer.namePlaceholder" placeholder="Shown to the session owner">
+            </label>
+            <button class="sv-btn sv-btn-primary" id="svJoinBtn" type="submit">
+                <span class="sv-btn-label" data-i18n="share.viewer.join">Join session</span>
+                <span class="material-icons" aria-hidden="true">arrow_forward</span>
+            </button>
+            <p class="sv-card-foot">
+                <span class="material-icons" aria-hidden="true">lock</span>
+                <span data-i18n="share.viewer.poweredBy">Shared securely with WebSSH</span>
+            </p>
+        </form>
+    </section>
+
+    <section class="sv-overlay" id="svWaiting" aria-labelledby="svWaitingTitle" hidden>
+        <div class="sv-card">
+            <span class="sv-card-icon sv-card-icon-pulse" aria-hidden="true"><span class="material-icons">hourglass_top</span></span>
+            <h2 id="svWaitingTitle" data-i18n="share.viewer.waitingTitle">Waiting to be admitted</h2>
+            <p data-i18n="share.viewer.waitingBody">The session owner will let you in shortly.</p>
+            <div class="sv-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        </div>
+    </section>
+
+    <section class="sv-overlay" id="svEnded" aria-labelledby="svEndedTitle" hidden>
+        <div class="sv-card">
+            <span class="sv-card-icon sv-card-icon-muted" aria-hidden="true"><span class="material-icons" id="svEndedIcon">link_off</span></span>
+            <h2 id="svEndedTitle" data-i18n="share.viewer.endedTitle">This session has ended</h2>
+            <p id="svEndedMessage"></p>
+            <button class="sv-btn sv-btn-secondary" id="svRejoin" type="button" hidden>
+                <span class="material-icons" aria-hidden="true">refresh</span>
+                <span data-i18n="share.viewer.rejoin">Join again</span>
+            </button>
+        </div>
+    </section>
+
+    <script src="{{ static_asset_url(filename='vendor/xterm/xterm.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/i18n-share.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/share-collab.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/share-viewer.js') }}"></script>
+</body>
+</html>

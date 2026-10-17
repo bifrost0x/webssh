@@ -60,11 +60,20 @@ a hosted control plane or runtime CDN dependencies.
 ### Terminal workspace
 
 - Multiple SSH sessions with tabs and 1-, 2-, or 4-pane layouts.
+- **Floating windows**: run every session in its own window that you can drag,
+  resize, snap to halves or quarters, minimize to the tab bar, maximize, tile,
+  or cascade.
 - Persistent remote shells through tmux when tmux is available on the target.
 - Saved connections, jump hosts, key, password, and optional Tailscale SSH
   authentication paths.
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.
+- **Terminal share links**: invite anyone to watch, or optionally type into, a
+  live session with an expiring link. Guests need no account and never see the
+  host, account, password, or keys; owners can require approval, withdraw
+  typing, remove guests, and stop sharing at any time. Invite by QR code or a
+  ready-to-send message, and talk it through with session chat and shared
+  pointers.
 - Session-aware Files, Commands, Diagnostics, and Notes contexts.
 - **Active Session Monitoring** for supported Linux resource and runtime data.
 - **Expanded Diagnostics** for resource history, processes, systemd services,
@@ -142,6 +151,7 @@ run it only on a trusted host and allowlist only trusted shares.
 - Native backup and restore with maintenance mode, staging isolation, quotas,
   explicit confirmation, and bounded execution.
 - Optional Redis-backed rate-limit counters.
+- Opt-in, token-protected Prometheus metrics with aggregate capacity gauges.
 - Vendored browser dependencies, restrictive CSP, and no built-in telemetry.
 
 ## Screenshots

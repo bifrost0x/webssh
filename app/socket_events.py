@@ -111,6 +111,11 @@ SSH_AUTH_BANNER_DECISION_TIMEOUT = 60
 _ssh_input_budget = budget_from_config(config)
 
 
+def ssh_input_budget():
+    """Return the process-wide interactive SSH input budget."""
+    return _ssh_input_budget
+
+
 def _new_smb_diagnostic_id():
     return f'SMB-{secrets.token_hex(6).upper()}'
 

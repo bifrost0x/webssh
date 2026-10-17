@@ -114,7 +114,9 @@
             if (state.layout && browserWindow.SessionManager?.setSplitLayout) {
                 browserWindow.SessionManager.setSplitLayout(state.layout);
             }
-            if (Array.isArray(state.paneAssignments)) {
+            // Floating windows remember their own placement per session, so
+            // only split layouts need their pane slots replayed.
+            if (Array.isArray(state.paneAssignments) && state.layout !== 'windows') {
                 state.paneAssignments.forEach((sessionId, paneIndex) => {
                     if (sessionId && browserWindow.SessionManager?.getSession?.(sessionId)) {
                         browserWindow.SessionManager.assignSessionToPane?.(sessionId, paneIndex);

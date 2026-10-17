@@ -1,0 +1,229 @@
+/*
+ * Chat messages, composer and pointer markers shared by the owner workspace
+ * and the share viewer. Each page maps the --cv-* tokens onto its theme.
+ */
+.cv-messages {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    margin: 0;
+    padding: 14px;
+    overflow-y: auto;
+    list-style: none;
+    overscroll-behavior: contain;
+}
+
+.cv-message {
+    display: grid;
+    gap: 3px;
+    max-width: 88%;
+    animation: cv-message-in 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.cv-message.is-self {
+    align-self: flex-end;
+    justify-items: end;
+}
+
+.cv-message-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--cv-text-3);
+    font-size: 11px;
+}
+
+.cv-message-meta strong {
+    overflow: hidden;
+    max-width: 160px;
+    color: var(--cv-text-2);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cv-role {
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--cv-owner) 18%, transparent);
+    color: var(--cv-owner);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.cv-message-text {
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--cv-border);
+    border-radius: 4px 14px 14px 14px;
+    background: var(--cv-raised);
+    color: var(--cv-text);
+    font-size: 13.5px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.cv-message.is-owner .cv-message-text {
+    border-color: color-mix(in srgb, var(--cv-owner) 35%, var(--cv-border));
+}
+
+.cv-message.is-self .cv-message-text {
+    border-color: transparent;
+    border-radius: 14px 4px 14px 14px;
+    background: color-mix(in srgb, var(--cv-accent) 22%, var(--cv-raised));
+}
+
+.cv-empty {
+    margin: auto 0;
+    padding: 18px 22px;
+    color: var(--cv-text-3);
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.cv-compose {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--cv-border);
+}
+
+.cv-compose input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--cv-border);
+    border-radius: 10px;
+    outline: none;
+    background: var(--cv-surface);
+    color: var(--cv-text);
+    font: inherit;
+    font-size: 13.5px;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.cv-compose input:focus {
+    border-color: var(--cv-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--cv-accent) 18%, transparent);
+}
+
+.cv-compose.is-error input {
+    border-color: var(--cv-danger);
+    animation: cv-shake 320ms ease;
+}
+
+.cv-compose button {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--cv-accent);
+    color: var(--cv-on-accent);
+    cursor: pointer;
+    transition: transform 140ms ease, filter 140ms ease;
+}
+
+.cv-compose button:hover {
+    filter: brightness(1.08);
+}
+
+.cv-compose button:active {
+    transform: scale(0.94);
+}
+
+.cv-compose button .material-icons {
+    font-size: 18px;
+}
+
+/* Pointer markers */
+.cv-pointer-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.cv-pointer {
+    --cv-pointer: var(--cv-accent);
+    position: absolute;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--cv-pointer) 30%, transparent);
+    box-shadow: 0 0 0 2px var(--cv-pointer);
+    pointer-events: auto;
+    animation: cv-pointer-in 300ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+    transition: opacity 380ms ease;
+}
+
+.cv-pointer.is-owner {
+    --cv-pointer: var(--cv-owner);
+}
+
+.cv-pointer::after {
+    position: absolute;
+    inset: -6px;
+    border: 2px solid var(--cv-pointer);
+    border-radius: 6px;
+    content: "";
+    animation: cv-pointer-ring 1.2s ease-out infinite;
+}
+
+.cv-pointer.is-leaving {
+    opacity: 0;
+}
+
+.cv-pointer.label-below .cv-pointer-label {
+    top: calc(100% + 8px);
+    bottom: auto;
+}
+
+.cv-pointer-label {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--cv-pointer);
+    color: var(--cv-on-accent);
+    font: 600 11px/1.6 var(--cv-font, inherit);
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+@keyframes cv-message-in {
+    from { opacity: 0; transform: translateY(6px); }
+}
+
+@keyframes cv-pointer-in {
+    from { opacity: 0; transform: scale(2.4); }
+}
+
+@keyframes cv-pointer-ring {
+    from { opacity: 0.9; transform: scale(0.8); }
+    to { opacity: 0; transform: scale(1.8); }
+}
+
+@keyframes cv-shake {
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cv-message,
+    .cv-pointer,
+    .cv-pointer::after,
+    .cv-compose.is-error input {
+        animation: none;
+    }
+}

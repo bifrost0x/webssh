@@ -52,6 +52,28 @@ Exactly one worker is supported. Live Paramiko objects, session coordination, an
 
 Redis-backed rate limiting externalizes counters only. It does not externalize SSH channels or turn the application into a multi-worker architecture.
 
+### Scaling an instance
+
+Because live SSH channels belong to one process, WebSSH scales **up**, not
+out. Each admitted browser transport and each terminal-share guest stream
+holds one Gunicorn thread; everything else is short-lived HTTP. Size an
+instance with:
+
+```text
+GUNICORN_THREADS >= MAX_SOCKET_CONNECTIONS + TERMINAL_SHARE_MAX_VIEWERS + 2 + 4
+```
+
+then raise the SSH-session quota and `BACKGROUND_WORKERS` together, since each
+terminal reader is a background job. Terminal output is delivered with bounded,
+acknowledged budgets, and share guests use separate bounded queues, so a slow
+browser or guest is resynchronised instead of growing memory or stalling other
+sessions. Watch the [Prometheus metrics](Administration-Audit-and-Diagnostics)
+against their limits before raising them.
+
+For more users than one host should carry, run separate instances (for example
+per team) behind a reverse proxy. Each instance is independent: accounts,
+saved connections, and live sessions are not shared between them.
+
 ## Socket admission and HTTP reserve
 
 `app/socket_capacity.py` limits admitted sockets globally and per user. Capacity must leave at least four Gunicorn threads for ordinary HTTP work:

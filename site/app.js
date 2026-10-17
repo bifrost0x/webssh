@@ -1,31 +1,102 @@
-document.documentElement.classList.add('js');
+const root = document.documentElement;
+root.classList.add('js');
 
-const navToggle = document.querySelector('[data-nav-toggle]');
-const navigation = document.querySelector('[data-navigation]');
+// Mobile menu sheet.
+const sheet = document.querySelector('[data-sheet]');
+const sheetToggle = document.querySelector('[data-sheet-toggle]');
+const sheetPanel = sheet?.querySelector('.nav-sheet-panel');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let sheetTimer = null;
 
-function closeNavigation() {
-  if (!navToggle || !navigation) return;
-  navToggle.setAttribute('aria-expanded', 'false');
-  navigation.dataset.open = 'false';
+function sheetFocusables() {
+  return [...sheetPanel.querySelectorAll('a[href], button:not([disabled])')];
 }
 
-if (navToggle && navigation) {
-  navToggle.addEventListener('click', () => {
-    const isOpen = navToggle.getAttribute('aria-expanded') === 'true';
-    navToggle.setAttribute('aria-expanded', String(!isOpen));
-    navigation.dataset.open = String(!isOpen);
+function openSheet() {
+  if (!sheet || !sheetPanel || !sheet.hidden) return;
+  clearTimeout(sheetTimer);
+  sheet.hidden = false;
+  root.classList.add('sheet-open');
+  sheetToggle.setAttribute('aria-expanded', 'true');
+  // Start from the closed position so the panel slides in.
+  void sheetPanel.offsetWidth;
+  sheet.classList.add('is-open');
+  sheetFocusables()[0]?.focus();
+}
+
+function closeSheet({ restoreFocus = true } = {}) {
+  if (!sheet || sheet.hidden) return;
+  sheet.classList.remove('is-open');
+  root.classList.remove('sheet-open');
+  sheetToggle.setAttribute('aria-expanded', 'false');
+  clearTimeout(sheetTimer);
+  sheetTimer = setTimeout(() => { sheet.hidden = true; }, reducedMotion.matches ? 0 : 250);
+  if (restoreFocus) sheetToggle.focus();
+}
+
+if (sheet && sheetToggle && sheetPanel) {
+  sheetToggle.addEventListener('click', openSheet);
+  sheet.addEventListener('click', (event) => {
+    if (event.target.closest('[data-sheet-close]')) closeSheet();
+    else if (event.target.closest('a[href]')) closeSheet({ restoreFocus: false });
   });
-  navigation.addEventListener('click', (event) => {
-    if (event.target.closest('a')) closeNavigation();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && navToggle.getAttribute('aria-expanded') === 'true') {
-      closeNavigation();
-      navToggle.focus();
+  sheet.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSheet();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = sheetFocusables();
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
     }
   });
-  window.matchMedia('(min-width: 801px)').addEventListener('change', closeNavigation);
+  window.matchMedia('(min-width: 768px)').addEventListener('change', (event) => {
+    if (event.matches) closeSheet({ restoreFocus: false });
+  });
 }
+
+// Light and dark follow the device setting. The toggle overrides it for the
+// page being viewed only; no choice is stored in the browser.
+const themeToggles = document.querySelectorAll('[data-theme-toggle]');
+const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
+const themeColors = { light: '#f6f7f9', dark: '#0b0d10' };
+
+function activeTheme() {
+  return root.dataset.theme || (prefersLight.matches ? 'light' : 'dark');
+}
+
+function syncThemeControls() {
+  const theme = activeTheme();
+  const label = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
+  themeToggles.forEach((toggle) => {
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+    const icon = toggle.querySelector('.icon');
+    if (icon) icon.textContent = theme === 'light' ? 'dark_mode' : 'light_mode';
+  });
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    meta.setAttribute('content', themeColors[theme]);
+  });
+}
+
+themeToggles.forEach((toggle) => {
+  toggle.addEventListener('click', () => {
+    root.dataset.theme = activeTheme() === 'light' ? 'dark' : 'light';
+    syncThemeControls();
+  });
+});
+prefersLight.addEventListener('change', () => {
+  if (!root.dataset.theme) syncThemeControls();
+});
+syncThemeControls();
 
 const copyButton = document.querySelector('[data-copy-command]');
 const copyLabel = document.querySelector('[data-copy-label]');

@@ -9,6 +9,7 @@ The terminal supports:
 
 - multiple session tabs;
 - one-, two-, and four-pane layouts;
+- floating terminal windows that move, resize, snap, minimize, and maximize;
 - broadcast input across open sessions;
 - a command palette with `Ctrl+K`;
 - terminal search with `Ctrl+F`;
@@ -77,6 +78,38 @@ These settings belong in the remote account's tmux configuration, or can be
 applied to a running server without killing sessions. See the
 [tmux clipboard guide](https://github.com/tmux/tmux/wiki/Clipboard) for terminal
 capability checks and application-specific setup.
+
+## Floating windows
+
+Select the window button next to the **1**, **2**, and **4** layout buttons to
+place each session in its own window on a desktop, the way a desktop operating
+system arranges applications.
+
+- Drag a window by its title bar. Drop it on the left or right edge to fill
+  that half, on a corner to fill a quarter, or on the top edge to maximize it.
+  A preview shows where the window will land.
+- Resize from any edge or corner. The terminal refits while you drag and the
+  remote shell learns the final size once you release.
+- Use the title-bar buttons to minimize, maximize or restore, and close.
+  Double-clicking the title bar also maximizes or restores the window.
+- With the title bar focused, arrow keys move the window, `Alt`+arrow keys
+  resize it, and `Enter` maximizes or restores it.
+- The session tabs act as a taskbar: minimized sessions appear dimmed, and
+  selecting a tab restores and focuses its window.
+- **+** opens a new window with the connection launcher, and a new connection
+  always opens in a window of its own instead of replacing the focused one.
+- The tile and cascade buttons arrange every open window.
+
+Closing a window ends its SSH session, exactly like closing its tab, including
+the confirmation when **Ask before closing a session** is enabled. A
+minimized session keeps running in the background.
+
+Window placement is kept per session for the browser tab, so windows return to
+the same place after a page reload or after switching to a split layout and
+back. The browser remembers the window layout as a preference. Phones and
+other narrow screens always use the single-pane layout and return to windows
+when there is room again. At most 16 windows are open at once; further
+sessions stay available from their tabs.
 
 ## Broadcast input
 
@@ -189,6 +222,64 @@ browsers.
 Disconnecting the WebSSH transport is different from killing the remote tmux
 session. Use the deliberate kill action only when the remote workload should
 end.
+
+## Sharing a terminal
+
+Select **Share** in the session tab bar to invite someone into the active
+session with a link. Guests open the link in any browser; they need no WebSSH
+account, and they never receive the target host, account name, password,
+private keys, file sources, or any other workspace resource. They see the
+terminal, the link name you choose, and your WebSSH username.
+
+Each link has:
+
+- **Access**: *View only* streams the terminal live. *Can type* also forwards
+  the guest's keystrokes into the session. Use **Allow typing** on an active
+  link to grant or withdraw input at any time.
+- **Expiry**: 15 minutes to 24 hours (capped by
+  `TERMINAL_SHARE_MAX_TTL_MINUTES`).
+- **Viewers**: a per-link seat limit.
+- **Ask me before anyone joins**: guests wait in a lobby, without seeing any
+  output, until you select **Admit**.
+
+The share dialog lists every guest with their connection state. You can remove
+a guest or select **Stop sharing** at any time. A link also ends when it
+expires, when the SSH session closes, and when you sign out or your access is
+revoked. Links live only in server memory, so they never survive a restart.
+
+The link token is kept in the URL fragment (after `#`), which browsers never
+send to a server, so it does not appear in proxy or access logs. The server
+stores only a hash for lookups. Guest keystrokes draw from the owner's SSH
+input budget, and every link creation, join, approval, removal, and first use
+of guest input is written to the security audit log.
+
+### Inviting guests
+
+Each active link offers **QR code**, which renders a scannable code in the
+browser (no external service sees the link), and **Copy invite**, which copies
+a ready-to-send message with the link name, the link, the access level, and
+the time left. Browsers with a system share sheet also offer **Share…**.
+
+### Chat and pointers
+
+While a session is shared, **Chat** appears in the corner of the workspace.
+Everyone admitted to any link of that session shares one conversation;
+guests waiting for approval see neither past nor new messages. Late joiners
+receive the most recent `TERMINAL_SHARE_CHAT_HISTORY` messages. Messages are
+plain text, limited to 500 characters, rate limited per sender, never written
+to disk or the audit log, and disappear when the session's last link ends.
+
+Select the pointer button (in the chat panel for owners, or **Point** in the
+guest toolbar), then click the terminal to highlight a character for everyone
+else with your name. Pointers fade after a few seconds and address the live
+screen, so they line up for every participant even when someone has scrolled.
+Press `Esc` to leave pointer mode.
+
+A guest that falls behind never slows your terminal: each guest has its own
+bounded queue and is resynchronised from the session's replay buffer instead.
+A guest that briefly loses its connection keeps its seat for
+`TERMINAL_SHARE_VIEWER_GRACE_SECONDS` and resumes without a full redraw when
+nothing was lost.
 
 ## Idle timeout
 

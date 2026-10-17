@@ -26,6 +26,7 @@ from .quota_manager import (
     release_reservation,
 )
 from .ssh_output_flow import emit_ssh_output
+from .terminal_share import share_hub
 
 sessions = {}
 sessions_lock = Lock()
@@ -559,6 +560,8 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'output_buffer_size': 0,
                 'output_buffer_max': 512000,  # 512KB max buffer
                 'output_sequence': 0,
+                'cols': 80,
+                'rows': 24,
                 'quota_reservation': reservation,
                 'reader_handle': None,
                 'disconnect_notice': disconnect_notice,
@@ -794,6 +797,9 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
                         )
                         if sequence is None:
                             break
+                        # Share viewers have bounded queues of their own and
+                        # must not wait behind the owner's acknowledgements.
+                        share_hub.publish(session_id, sequence, decoded_data)
                         emit_ssh_output(socketio_instance, cached_room, cached_user_id, session_id, {
                             'session_id': session_id,
                             'data': decoded_data,
@@ -918,6 +924,11 @@ def resize_terminal(session_id, rows, cols):
             channel = session['channel']
 
         channel.resize_pty(width=cols, height=rows)
+        with sessions_lock:
+            if session_id in sessions:
+                sessions[session_id]['cols'] = cols
+                sessions[session_id]['rows'] = rows
+        share_hub.resize(session_id, cols, rows)
         return True, None
     except Exception as e:
         return False, str(e)
@@ -948,6 +959,12 @@ def close_session(session_id, kill_tmux=False, on_disconnect=None):
         reader_handle = session.get('reader_handle')
         if reader_handle is not None:
             reader_handle.cancel()
+
+        # A share never outlives the terminal it exposes.
+        try:
+            share_hub.end_session(session_id)
+        except Exception as e:
+            log_debug("Error ending terminal shares", session_id=session_id, error=str(e))
 
         # All network I/O happens after removing the session from the shared
         # registry, so a slow or half-open SSH transport cannot block unrelated
@@ -1058,6 +1075,34 @@ def get_session(session_id):
                 'client_request_id': session.get('client_request_id'),
             }
     return None
+
+def get_share_probe(session_id):
+    """Return owner and terminal geometry for a live, connected session."""
+    with sessions_lock:
+        session = sessions.get(session_id)
+        if not session or not session.get('connected'):
+            return None
+        return {
+            'owner_id': session.get('user_id'),
+            'cols': session.get('cols', 80),
+            'rows': session.get('rows', 24),
+        }
+
+
+def get_share_snapshot(session_id):
+    """Return ``(replay, sequence, cols, rows)`` atomically, or ``None``."""
+    import re as _re
+    with sessions_lock:
+        session = sessions.get(session_id)
+        if not session or not session.get('connected'):
+            return None
+        output = ''.join(session.get('output_buffer') or ())
+        sequence = session.get('output_sequence', 0)
+        cols = session.get('cols', 80)
+        rows = session.get('rows', 24)
+    output = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', output)
+    return output, sequence, cols, rows
+
 
 def get_output_buffer(session_id):
     """Get buffered output for a session (for replay on reconnect)."""

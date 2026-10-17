@@ -159,6 +159,24 @@ Host-key trust is stored per user. First-use trust, changed-key rejection, and e
 
 Readiness fails during maintenance, shutdown admission closure, database failure, or a failed data-directory probe. Details are in [Health Checks and Troubleshooting](Health-Checks-and-Troubleshooting).
 
+## Prometheus metrics
+
+Set `METRICS_ENABLED=true` to expose `GET /metrics` in the Prometheus text
+format. Protect it with `METRICS_TOKEN` or `METRICS_TOKEN_FILE` and scrape with
+`Authorization: Bearer <token>`; without a token only loopback clients are
+answered.
+
+The endpoint exports aggregate counts only: SSH sessions and their owners,
+admitted browser transports and capacity rejections, unacknowledged terminal
+output, share links, guests, guest streams and resynchronisations, background
+jobs, transfers by state, maintenance mode, threads, resident memory, and open
+file descriptors. It never exports usernames, hosts, session IDs, or share
+tokens.
+
+Useful alerts compare a gauge with its configured limit, for example
+`webssh_socket_connections / webssh_socket_connections_limit > 0.8` or
+`webssh_terminal_share_streams >= webssh_terminal_share_viewers_limit`.
+
 ## Administration checklist
 
 1. Keep at least one tested local administrator and recovery path.

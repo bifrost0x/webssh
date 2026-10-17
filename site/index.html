@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="A free, open-source SSH and SFTP workspace. Manage terminals, files, saved hosts and diagnostics in your browser, on infrastructure you control.">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0b0d10">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; font-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="canonical" href="https://getwebssh.com/">
-  <link rel="icon" href="assets/webssh-logo.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/pixshell-logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
   <title>WebSSH - Self-hosted SSH &amp; SFTP browser workspace</title>
@@ -16,10 +17,45 @@
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="site-header">
-    <div class="shell header-inner">
-      <a class="brand" href="./" aria-label="WebSSH home"><img src="assets/webssh-logo.svg" width="112" height="34" alt="WebSSH"><span class="brand-tagline">Your shell. Your rules.</span></a>
-      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-navigation" data-nav-toggle><span class="icon" aria-hidden="true">menu</span><span class="sr-only">Toggle navigation</span></button>
-      <nav class="site-nav" id="site-navigation" aria-label="Main navigation" data-navigation><a href="features.html">Features</a><a href="demo.html?v=4a5bdb14506d">Demo</a><a href="self-hosting.html">Self-hosting</a><a href="security.html">Security</a><a href="./#quick-start">Quick start</a><a class="nav-source" href="https://github.com/bifrost0x/webssh"><span class="icon" aria-hidden="true">code</span> GitHub</a></nav>
+    <nav class="navbar" aria-label="Main navigation">
+      <div class="navbar-inner">
+        <div class="navbar-start">
+          <a class="brand" href="./" aria-label="PixShell home"><img src="assets/pixshell-logo.svg" width="100" height="32" alt="PixShell"></a>
+          <ul class="nav-menu">
+            <li><a class="nav-link" href="./" aria-current="page">Home</a></li>
+            <li><a class="nav-link" href="features.html">Features</a></li>
+            <li><a class="nav-link" href="demo.html?v=4a5bdb14506d">Demo</a></li>
+            <li><a class="nav-link" href="self-hosting.html">Self-hosting</a></li>
+            <li><a class="nav-link" href="security.html">Security</a></li>
+          </ul>
+        </div>
+        <div class="navbar-end">
+          <a class="btn btn-outline navbar-sign-in" href="https://pixshell.example/login">Sign In</a>
+          <a class="btn btn-solid" href="https://pixshell.example/register">Sign Up</a>
+          <button class="btn btn-outline btn-icon theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" data-theme-toggle><span class="icon" aria-hidden="true">light_mode</span></button>
+          <button class="btn btn-outline btn-icon nav-sheet-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="site-menu" data-sheet-toggle><span class="icon" aria-hidden="true">menu</span></button>
+        </div>
+      </div>
+    </nav>
+    <div class="nav-sheet" id="site-menu" role="dialog" aria-modal="true" aria-label="Menu" hidden data-sheet>
+      <div class="nav-sheet-backdrop" data-sheet-close></div>
+      <div class="nav-sheet-panel">
+        <div class="nav-sheet-header">
+          <a class="brand" href="./" aria-label="PixShell home"><img src="assets/pixshell-logo.svg" width="100" height="32" alt="PixShell"></a>
+          <button class="btn btn-ghost btn-icon" type="button" aria-label="Close menu" data-sheet-close><span class="icon" aria-hidden="true">close</span></button>
+        </div>
+        <ul class="nav-menu nav-menu-vertical">
+          <li><a class="nav-link" href="./" aria-current="page">Home</a></li>
+          <li><a class="nav-link" href="features.html">Features</a></li>
+          <li><a class="nav-link" href="demo.html?v=4a5bdb14506d">Demo</a></li>
+          <li><a class="nav-link" href="self-hosting.html">Self-hosting</a></li>
+          <li><a class="nav-link" href="security.html">Security</a></li>
+        </ul>
+        <div class="nav-sheet-actions">
+          <a class="btn btn-outline" href="https://pixshell.example/login">Sign In</a>
+          <a class="btn btn-solid" href="https://pixshell.example/register">Sign Up</a>
+        </div>
+      </div>
     </div>
   </header>
   <main id="main-content">
@@ -105,7 +141,7 @@
     <section class="closing-section shell" aria-labelledby="closing-title"><div><p class="eyebrow">Ready when you are</p><h2 id="closing-title">Bring your own servers.</h2><p>Start locally, explore the workspace and choose the deployment that fits.</p></div><a class="button button-primary" href="#quick-start">Start with Docker <span class="icon" aria-hidden="true">arrow_forward</span></a></section>
   </main>
   <footer class="site-footer">
-    <div class="shell footer-main"><a class="brand" href="./" aria-label="WebSSH home"><img src="assets/webssh-logo.svg" width="112" height="34" alt="WebSSH"><span class="brand-tagline">Your shell. Your rules.</span></a><nav class="footer-links" aria-label="Project links"><a href="https://github.com/bifrost0x/webssh">GitHub</a><a href="https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Home.md">Documentation</a><a href="https://github.com/bifrost0x/webssh/releases">Releases</a><a href="code-graph/">Code graph</a></nav><a class="contact-link" href="mailto:hi@getwebssh.com"><span class="icon" aria-hidden="true">mail_outline</span>hi@getwebssh.com</a></div>
+    <div class="shell footer-main"><a class="brand" href="./" aria-label="PixShell home"><img src="assets/pixshell-logo.svg" width="100" height="32" alt="PixShell"><span class="brand-tagline">Your shell. Your rules.</span></a><nav class="footer-links" aria-label="Project links"><a href="https://github.com/bifrost0x/webssh">GitHub</a><a href="https://github.com/bifrost0x/webssh/blob/main/docs/wiki/Home.md">Documentation</a><a href="https://github.com/bifrost0x/webssh/releases">Releases</a><a href="code-graph/">Code graph</a></nav><a class="contact-link" href="mailto:hi@getwebssh.com"><span class="icon" aria-hidden="true">mail_outline</span>hi@getwebssh.com</a></div>
     <div class="shell footer-legal"><span>A private, open-source project by Marcel Graewer.</span><nav aria-label="Legal information"><a href="impressum.html">Legal notice</a><a href="privacy.html">Privacy notice</a></nav></div>
   </footer>
 </body>

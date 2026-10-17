@@ -41,6 +41,16 @@ labels:
   - "traefik.http.services.webssh.loadbalancer.server.port=5000"
 ```
 
+### Terminal share streams
+
+Guests of a shared terminal receive output over a long-lived
+`text/event-stream` response from `POST /api/share-view/stream`. WebSSH sends
+`X-Accel-Buffering: no` and a keep-alive comment every
+`TERMINAL_SHARE_HEARTBEAT_SECONDS`, so the nginx configuration above streams
+it without changes as long as `proxy_read_timeout` (60 seconds by default) is
+longer than the heartbeat. Caddy and HAProxy stream it as-is. On Apache, add
+`flushpackets=on` to the `ProxyPass` line if guests see output in bursts.
+
 ## Caddy at the domain root
 
 ```caddyfile

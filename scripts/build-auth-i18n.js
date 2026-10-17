@@ -6,14 +6,28 @@ const vm = require('node:vm');
 
 const projectRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(projectRoot, 'static/js/i18n.js');
-const outputPath = path.join(projectRoot, 'static/js/i18n-auth.js');
-const surfacePaths = [
-    'templates/login.html',
-    'templates/register.html',
-    'templates/change_password.html',
-    'static/js/auth.js',
-    'static/js/webauthn.js',
-    'static/js/security-ui.js',
+// Public pages load only the translations their own surfaces reference.
+const bundles = [
+    {
+        name: 'authentication',
+        output: 'static/js/i18n-auth.js',
+        surfaces: [
+            'templates/login.html',
+            'templates/register.html',
+            'templates/change_password.html',
+            'static/js/auth.js',
+            'static/js/webauthn.js',
+            'static/js/security-ui.js',
+        ],
+    },
+    {
+        name: 'share viewer',
+        output: 'static/js/i18n-share.js',
+        surfaces: [
+            'templates/share_view.html',
+            'static/js/share-viewer.js',
+        ],
+    },
 ];
 
 function read(relativePath) {
@@ -39,7 +53,7 @@ function parseTranslations(source) {
     };
 }
 
-function referencedTranslationKeys(translations) {
+function referencedTranslationKeys(translations, surfacePaths) {
     const availableKeys = new Set(Object.keys(translations.en || {}));
     const keys = new Set();
     const keyPattern = /["']([a-z][a-zA-Z0-9_-]*\.[a-zA-Z0-9_.-]+)["']/g;
@@ -56,20 +70,18 @@ function referencedTranslationKeys(translations) {
     return [...keys].sort();
 }
 
-function build() {
-    const fullSource = fs.readFileSync(sourcePath, 'utf8');
-    const { translations, runtime } = parseTranslations(fullSource);
+function build(bundle, translations, runtime) {
     const locales = Object.keys(translations);
-    const keys = referencedTranslationKeys(translations);
+    const keys = referencedTranslationKeys(translations, bundle.surfaces);
     if (locales.length === 0 || keys.length === 0) {
-        throw new Error('Refusing to generate an empty authentication bundle.');
+        throw new Error(`Refusing to generate an empty ${bundle.name} bundle.`);
     }
 
     const selected = Object.fromEntries(locales.map(locale => {
         const localeTranslations = translations[locale];
         const missing = keys.filter(key => !(key in localeTranslations));
         if (missing.length > 0) {
-            throw new Error(`${locale} is missing authentication keys: ${missing.join(', ')}`);
+            throw new Error(`${locale} is missing ${bundle.name} keys: ${missing.join(', ')}`);
         }
         return [locale, Object.fromEntries(keys.map(key => [key, localeTranslations[key]]))];
     }));
@@ -83,15 +95,21 @@ function build() {
     ].join('\n');
 }
 
-const generated = build();
-if (process.argv.includes('--check')) {
-    const committed = fs.existsSync(outputPath)
-        ? fs.readFileSync(outputPath, 'utf8')
-        : '';
-    if (committed !== generated) {
-        console.error('static/js/i18n-auth.js is stale; run npm run i18n:auth.');
-        process.exitCode = 1;
+const { translations, runtime } = parseTranslations(
+    fs.readFileSync(sourcePath, 'utf8'),
+);
+for (const bundle of bundles) {
+    const outputPath = path.join(projectRoot, bundle.output);
+    const generated = build(bundle, translations, runtime);
+    if (process.argv.includes('--check')) {
+        const committed = fs.existsSync(outputPath)
+            ? fs.readFileSync(outputPath, 'utf8')
+            : '';
+        if (committed !== generated) {
+            console.error(`${bundle.output} is stale; run npm run i18n:auth.`);
+            process.exitCode = 1;
+        }
+    } else {
+        fs.writeFileSync(outputPath, generated, 'utf8');
     }
-} else {
-    fs.writeFileSync(outputPath, generated, 'utf8');
 }
