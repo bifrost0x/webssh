@@ -1517,7 +1517,8 @@
                 session_id: replacedSessionId, preserve_tmux: true,
                 replacement_session_id: sessionId,
             });
-            SessionManager.removeSessionUI(replacedSessionId);
+            // The replacement takes over the old session's window in place.
+            SessionManager.removeSessionUI(replacedSessionId, {keepWindow: true});
         }
 
         let targetPane = null;
@@ -1525,11 +1526,10 @@
             targetPane = pendingRequestPaneMap.get(requestId);
             pendingRequestPaneMap.delete(requestId);
         }
-        if (targetPane === null || targetPane === undefined) {
-            const emptyIndex = SessionManager.getFirstEmptyPaneIndex();
-            targetPane = emptyIndex !== -1 ? emptyIndex : SessionManager.getActivePaneIndex();
-        }
-        SessionManager.assignSessionToPane(sessionId, targetPane);
+        SessionManager.assignSessionToPane(
+            sessionId,
+            SessionManager.resolvePaneForNewSession(targetPane),
+        );
 
         if (isCurrentRequest) {
             window.ModalManager.close(document.getElementById('connectionModal'));
@@ -2037,6 +2037,10 @@
     }
 
     function getDefaultPaneIndex() {
+        if (SessionManager.windowMode) {
+            // Without an empty window to fill, the connection opens a new one.
+            return SessionManager.getLauncherPaneIndex();
+        }
         const activeIndex = SessionManager.getActivePaneIndex();
         const activeSession = SessionManager.getActiveSession();
         if (!activeSession && activeIndex !== null && activeIndex !== undefined) {
@@ -2332,14 +2336,28 @@
     function setupSplitControls() {
         document.querySelectorAll('.split-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                if (btn.dataset.layout === 'windows') {
+                    SessionManager.setWindowMode(true);
+                    return;
+                }
                 const layout = parseInt(btn.dataset.layout, 10);
                 const currentLayout = SessionManager.layout;
+                // A user's split choice overrides a remembered window mode,
+                // including while compact-screen fallback is active.
+                SessionManager.setWindowModePreference(false);
 
-                if (layout !== currentLayout && SessionManager.hasAnySessions()) {
+                // Leaving windows keeps the front-most sessions in the panes.
+                if (!SessionManager.windowMode
+                        && layout !== currentLayout && SessionManager.hasAnySessions()) {
                     SessionManager.showPaneAssignmentModal(layout);
                 } else {
                     SessionManager.setSplitLayout(layout);
                 }
+            });
+        });
+        document.querySelectorAll('[data-window-arrange]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                SessionManager.arrangeWindows(btn.dataset.windowArrange);
             });
         });
     }
@@ -2665,6 +2683,13 @@
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {
             newTabBtn.addEventListener('click', () => {
+                const launcher = document.querySelector(
+                    `.terminal-pane.active[data-pane-index="${SessionManager.getActivePaneIndex()}"] .profile-launcher-new`,
+                );
+                if (!SessionManager.windowMode && launcher) {
+                    launcher.click();
+                    return;
+                }
                 SessionManager.showConnectionLauncher(
                     SessionManager.getActivePaneIndex()
                 );

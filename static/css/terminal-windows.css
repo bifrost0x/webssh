@@ -1,0 +1,552 @@
+/*
+ * Floating terminal windows. The desktop replaces the split grid when the
+ * workspace is in window mode; panes keep their usual classes inside frames.
+ */
+.terminal-grid.window-mode {
+    --ws-window-radius: 10px;
+    --ws-window-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --ws-window-surface: color-mix(
+        in srgb,
+        var(--terminal-surface-color, var(--term-background)) var(--terminal-surface-opacity, 100%),
+        transparent
+    );
+    position: relative;
+    display: block;
+    height: 100%;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    /* Window stacking stays below the drop and search overlays. */
+    isolation: isolate;
+    border: 1px solid var(--ws2-border);
+    border-radius: 8px;
+    background-color: var(--ws2-canvas);
+    background-image: radial-gradient(
+        circle at 1px 1px,
+        color-mix(in srgb, var(--ws2-text) 9%, transparent) 1px,
+        transparent 0
+    );
+    background-size: 22px 22px;
+    box-shadow: none;
+}
+
+.terminal-grid.window-mode:is(.ws-is-dragging, .ws-is-resizing) {
+    user-select: none;
+}
+
+.terminal-grid.window-mode:is(.ws-is-dragging, .ws-is-resizing) .ws-window-body {
+    pointer-events: none;
+}
+
+.terminal-grid.window-mode.ws-is-dragging,
+.terminal-grid.window-mode.ws-is-dragging * {
+    cursor: grabbing !important;
+}
+
+.terminal-grid.window-mode.ws-is-resizing:is([data-resize-edge="n"], [data-resize-edge="s"]) * {
+    cursor: ns-resize !important;
+}
+
+.terminal-grid.window-mode.ws-is-resizing:is([data-resize-edge="e"], [data-resize-edge="w"]) * {
+    cursor: ew-resize !important;
+}
+
+.terminal-grid.window-mode.ws-is-resizing:is([data-resize-edge="ne"], [data-resize-edge="sw"]) * {
+    cursor: nesw-resize !important;
+}
+
+.terminal-grid.window-mode.ws-is-resizing:is([data-resize-edge="nw"], [data-resize-edge="se"]) * {
+    cursor: nwse-resize !important;
+}
+
+/* Window frame */
+.ws-window {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--ws2-text) 10%, var(--ws2-border));
+    border-radius: var(--ws-window-radius);
+    background: var(--ws-window-surface);
+    box-shadow:
+        0 1px 0 color-mix(in srgb, white 4%, transparent) inset,
+        0 14px 40px -14px rgb(0 0 0 / 60%),
+        0 2px 6px rgb(0 0 0 / 28%);
+    transition:
+        border-color 160ms ease,
+        box-shadow 220ms ease;
+}
+
+.ws-window[hidden] {
+    display: none !important;
+}
+
+.ws-window.is-focused {
+    border-color: color-mix(in srgb, var(--ws2-accent) 42%, var(--ws2-border));
+    box-shadow:
+        0 1px 0 color-mix(in srgb, white 5%, transparent) inset,
+        0 0 0 1px color-mix(in srgb, var(--ws2-accent) 16%, transparent),
+        0 26px 60px -18px rgb(0 0 0 / 72%),
+        0 4px 14px rgb(0 0 0 / 30%);
+}
+
+.ws-window.is-interacting {
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--ws2-accent) 26%, transparent),
+        0 34px 80px -20px rgb(0 0 0 / 78%),
+        0 6px 18px rgb(0 0 0 / 34%);
+}
+
+.ws-window.is-maximized {
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.ws-window.is-gliding {
+    transition:
+        left 200ms var(--ws-window-ease),
+        top 200ms var(--ws-window-ease),
+        width 200ms var(--ws-window-ease),
+        height 200ms var(--ws-window-ease),
+        border-radius 200ms ease,
+        border-color 160ms ease,
+        box-shadow 220ms ease;
+}
+
+.ws-window.is-closing,
+.ws-window.is-minimizing {
+    pointer-events: none;
+}
+
+/* Title bar */
+.ws-window-titlebar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 9px;
+    height: 36px;
+    padding: 0 5px 0 12px;
+    border-bottom: 1px solid var(--ws2-border);
+    background: color-mix(in srgb, var(--ws2-surface) 94%, transparent);
+    color: var(--ws2-text-secondary);
+    cursor: default;
+    touch-action: none;
+    user-select: none;
+    transition: background-color 160ms ease;
+}
+
+.ws-window.is-focused .ws-window-titlebar {
+    background: color-mix(in srgb, var(--ws2-accent) 4%, var(--ws2-surface));
+}
+
+.ws-window-titlebar:focus-visible {
+    outline: 2px solid var(--ws2-focus);
+    outline-offset: -2px;
+}
+
+.ws-window-status {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ws2-text-muted);
+    transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.ws-window[data-status="connected"] .ws-window-status {
+    background: var(--ws2-success);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws2-success) 18%, transparent);
+}
+
+.ws-window[data-status="disconnected"] .ws-window-status {
+    background: var(--ws2-danger);
+}
+
+.ws-window[data-status="connecting"] .ws-window-status {
+    background: var(--ws2-warning);
+    animation: ws-status-pulse 1.1s ease-in-out infinite;
+}
+
+.ws-window[data-status="idle"] .ws-window-status {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--ws2-accent);
+}
+
+.ws-window-heading {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: baseline;
+    gap: 9px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.ws-window-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ws2-text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-window.is-focused .ws-window-title {
+    color: var(--ws2-text);
+}
+
+.ws-window-subtitle {
+    flex: 0 100 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ws2-text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ws-window[data-status="idle"] .ws-window-subtitle {
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.ws-window-subtitle[hidden],
+.ws-window.is-compact .ws-window-subtitle {
+    display: none;
+}
+
+.ws-window-badges {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 4px;
+    color: var(--ws2-text-muted);
+}
+
+.ws-window-badge.material-icons {
+    font-size: 14px;
+}
+
+.ws-window-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.ws-window-btn {
+    display: grid;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ws2-text-muted);
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.ws-window-btn[hidden] {
+    display: none;
+}
+
+.ws-window-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.4;
+}
+
+.ws-window-btn:hover {
+    background: color-mix(in srgb, var(--ws2-text) 9%, transparent);
+    color: var(--ws2-text);
+}
+
+.ws-window-btn:active {
+    transform: scale(0.92);
+}
+
+.ws-window-close:hover {
+    background: #e5484d;
+    color: #ffffff;
+}
+
+/* Body */
+.ws-window-body {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+body[data-theme] .ws-window .terminal-pane {
+    flex: 1 1 auto;
+    width: auto;
+    height: auto;
+    padding: 6px 6px 6px 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    background-image: none;
+    box-shadow: none;
+}
+
+body[data-theme] .ws-window .terminal-pane.active {
+    border: 0;
+    box-shadow: none;
+}
+
+.ws-window .terminal-pane:not(:has(.terminal-wrapper)) {
+    overflow-y: auto;
+    background: var(--ws2-canvas);
+}
+
+.ws-window .terminal-wrapper {
+    border-radius: 0;
+}
+
+/* The full-page launcher spacing otherwise leaves almost no host list in a
+   normal-sized window. Very short tiled windows scroll the launcher as a whole. */
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher {
+    padding: 12px;
+    gap: 8px;
+    min-height: 270px;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-title {
+    font-size: 18px;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-search {
+    margin-top: 0;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-sections {
+    min-height: 100px;
+    padding: 4px;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-section-title {
+    margin-bottom: 7px;
+}
+
+/* Resize handles sit just inside the frame so the rounded clip keeps them. */
+.ws-window-resize {
+    position: absolute;
+    z-index: 4;
+    touch-action: none;
+}
+
+.ws-resize-n,
+.ws-resize-s {
+    right: 12px;
+    left: 12px;
+    height: 6px;
+    cursor: ns-resize;
+}
+
+.ws-resize-n { top: 0; }
+.ws-resize-s { bottom: 0; }
+
+.ws-resize-e,
+.ws-resize-w {
+    top: 12px;
+    bottom: 12px;
+    width: 6px;
+    cursor: ew-resize;
+}
+
+.ws-resize-e { right: 0; }
+.ws-resize-w { left: 0; }
+
+.ws-resize-ne,
+.ws-resize-nw,
+.ws-resize-se,
+.ws-resize-sw {
+    width: 14px;
+    height: 14px;
+}
+
+.ws-resize-ne { top: 0; right: 0; cursor: nesw-resize; }
+.ws-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
+.ws-resize-se { right: 0; bottom: 0; cursor: nwse-resize; }
+.ws-resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+.ws-resize-se::after {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--ws2-text-muted);
+    border-bottom: 1.5px solid var(--ws2-text-muted);
+    border-radius: 0 0 2px 0;
+    content: "";
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.ws-window.is-focused:hover .ws-resize-se::after {
+    opacity: 0.7;
+}
+
+.ws-window.is-maximized .ws-window-resize {
+    display: none;
+}
+
+/* Snap preview */
+.ws-snap-preview {
+    position: absolute;
+    border: 1px solid color-mix(in srgb, var(--ws2-accent) 55%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ws2-accent) 12%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ws2-accent) 6%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.97);
+    transition:
+        opacity 140ms ease,
+        transform 180ms var(--ws-window-ease),
+        left 160ms var(--ws-window-ease),
+        top 160ms var(--ws-window-ease),
+        width 160ms var(--ws-window-ease),
+        height 160ms var(--ws-window-ease);
+}
+
+.ws-snap-preview.is-visible {
+    opacity: 1;
+    transform: none;
+}
+
+.ws-snap-preview[hidden] {
+    display: none;
+}
+
+/* Empty desktop */
+.ws-desktop-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--ws2-text-secondary);
+    text-align: center;
+    animation: ws-empty-in 320ms var(--ws-window-ease) backwards;
+}
+
+.ws-desktop-empty[hidden] {
+    display: none;
+}
+
+.ws-desktop-empty-icon.material-icons {
+    display: grid;
+    width: 56px;
+    height: 56px;
+    margin-bottom: 6px;
+    place-items: center;
+    border: 1px solid var(--ws2-border);
+    border-radius: 16px;
+    background: var(--ws2-surface);
+    color: var(--ws2-accent);
+    font-size: 28px;
+    box-shadow: 0 12px 30px -14px rgb(0 0 0 / 60%);
+}
+
+.ws-desktop-empty h2 {
+    margin: 0;
+    color: var(--ws2-text);
+    font-size: 16px;
+    font-weight: 650;
+}
+
+.ws-desktop-empty p {
+    max-width: 360px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.ws-desktop-empty-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.ws-desktop-empty-action .material-icons {
+    font-size: 18px;
+}
+
+/* Toolbar */
+.split-btn-windows svg,
+.window-arrange-controls svg {
+    display: block;
+    width: 15px;
+    height: 15px;
+    margin: auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.35;
+}
+
+.window-arrange-controls {
+    display: flex;
+    gap: 2px;
+}
+
+.window-arrange-controls[hidden] {
+    display: none;
+}
+
+/* The tab rail doubles as the taskbar. */
+body.terminal-window-mode .session-tab.is-minimized {
+    opacity: 0.5;
+}
+
+body.terminal-window-mode .session-tab.is-minimized .status-dot {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+body.terminal-window-mode .session-tab.is-minimized:hover {
+    opacity: 0.85;
+}
+
+@keyframes ws-status-pulse {
+    50% { opacity: 0.35; }
+}
+
+@keyframes ws-empty-in {
+    from { opacity: 0; transform: translateY(6px); }
+}
+
+@media (max-width: 767px), (max-height: 520px) {
+    .window-arrange-controls,
+    .split-btn-windows {
+        display: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ws-window,
+    .ws-window.is-gliding,
+    .ws-snap-preview {
+        transition: none;
+    }
+
+    .ws-desktop-empty,
+    .ws-window[data-status="connecting"] .ws-window-status {
+        animation: none;
+    }
+}

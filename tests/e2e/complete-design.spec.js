@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login: baseLogin, openProfileManagement, assertNoExternalRequests, installExternalRequestGuard} = require('./helpers');
+const {login: baseLogin, openWorkspace, openProfileManagement, assertNoExternalRequests, installExternalRequestGuard} = require('./helpers');
 
 async function login(page) {
     await baseLogin(page);
@@ -11,6 +11,7 @@ async function login(page) {
         await expect(page.locator('body')).toHaveAttribute('data-theme', 'glass');
         await page.goto('/');
         await expect.poll(() => page.evaluate(() => window.ProfileManager?.profilesLoaded)).toBe(true);
+        await openWorkspace(page);
     }
 }
 
@@ -65,7 +66,10 @@ for (const width of [1440, 1024, 390]) {
         const nav = await page.locator('#profileManagementModal .connection-asset-nav').boundingBox();
         const heading = await page.locator('#profileManagementView .management-panel-heading').boundingBox();
         expect(nav.y + nav.height).toBeLessThanOrEqual(heading.y);
-        const favorite = page.locator('.profile-management-item.is-derived-favorite').first();
+        const favorite = page.locator('.profile-management-section').filter({
+            has: page.locator('[data-profile-group-toggle="favorites"]'),
+        }).locator('.profile-management-item').first();
+        await expect(favorite.locator('[data-profile-drag-handle]')).toBeEnabled();
         const card = await favorite.boundingBox();
         const actions = await favorite.locator('.profile-management-actions').boundingBox();
         expect(actions.x).toBeGreaterThanOrEqual(card.x);

@@ -198,6 +198,7 @@
             browserDocument.body.dataset.primaryWorkspace = 'workspaces';
             showWorkspaceChrome(true);
             setNavigation('workspaces');
+            open('overview', browserDocument.getElementById('connectionOverview'));
             return controller;
         }
 

@@ -399,3 +399,16 @@ body.webssh-auth:has(.auth-access-dock) { background-color: var(--ws2-canvas); b
     .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher { padding: 20px 14px; }
     .webssh-ui .terminal-grid:not(.split-2):not(.split-4) .profile-launcher-title { font-size: 24px; }
 }
+
+/* Instance identity and transfer state come from the current page/session. */
+.webssh-auth .auth-instance-state { min-width: 0; }
+.webssh-auth .auth-instance-state .material-icons { font-size: 17px; color: var(--ws2-text-muted); }
+.webssh-auth #authInstanceAddress { overflow-wrap: anywhere; }
+.workspace-status-transfers {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 0; background: transparent; color: inherit; font: inherit;
+    cursor: pointer; padding: 3px 6px;
+}
+.workspace-status-transfers:hover { color: var(--ws2-text); }
+.workspace-status-transfers:focus-visible { outline: 2px solid var(--ws2-focus); outline-offset: 2px; }
+.workspace-status-bar [hidden] { display: none !important; }

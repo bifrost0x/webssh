@@ -13,6 +13,13 @@
     let started = false;
     let dismissWarning = null;
 
+    function getSessionManager(browserWindow) {
+        // Classic scripts expose this const as a global lexical binding, not
+        // a window property. Alternate windows/tests can supply their own manager.
+        return browserWindow.SessionManager
+            || (browserWindow === root && typeof SessionManager !== 'undefined' ? SessionManager : null);
+    }
+
     function accountScope(browserDocument) {
         return String(browserDocument?.body?.dataset?.connectionHistoryScope || '').trim();
     }
@@ -60,17 +67,25 @@
         const key = storageKey(scope);
         pruneRestoreStorage(storage, key);
         const note = browserDocument.getElementById('sessionNotepad');
+        const sessionManager = getSessionManager(browserWindow);
+        const layout = sessionManager?.layout;
+        const windowMode = layout === 'windows';
+        const sessionId = sessionManager?.getActiveSession?.() || null;
+        const assignments = sessionManager?.paneAssignments;
         const state = {
             accountScope: scope,
             savedAt: now,
             path: `${browserWindow.location.pathname}${browserWindow.location.search}${browserWindow.location.hash}`,
-            sessionId: browserWindow.SessionManager?.getActiveSession?.() || null,
+            sessionId,
             primaryView: browserDocument.body?.dataset?.primaryWorkspace || 'workspaces',
             activeContext: browserWindow.workspaceLayoutController?.getState?.().activeContext || null,
             noteDraft: browserWindow.notepadController?.hasUnsaved?.() ? note?.value : null,
-            layout: browserWindow.SessionManager?.layout || null,
-            paneAssignments: Array.isArray(browserWindow.SessionManager?.paneAssignments)
-                ? browserWindow.SessionManager.paneAssignments.slice(0, 4)
+            // Older clients read these fields on rollback. Keep a usable split
+            // fallback; window geometry is already stored separately per session.
+            layout: windowMode ? 1 : layout || null,
+            ...(windowMode ? {windowMode: true} : {}),
+            paneAssignments: Array.isArray(assignments)
+                ? windowMode ? [sessionId || assignments.find(Boolean) || null] : assignments.slice(0, 4)
                 : [],
             commandDrafts: Array.from(
                 browserWindow.SessionCommandLauncher?.parameterDrafts?.entries?.() || [],
@@ -90,6 +105,7 @@
         const key = storageKey(scope);
         const state = readRestore(storage, Date.now(), scope);
         if (!state) return false;
+        const sessionManager = getSessionManager(browserWindow);
         try { storage?.removeItem(key); } catch { /* optional storage */ }
         if (typeof state.noteDraft === 'string') {
             const note = browserDocument.getElementById('sessionNotepad');
@@ -109,34 +125,57 @@
         }
         let attempts = 0;
         let uiRestored = false;
+        let applying = false;
+        // Also accept records written before the split-compatible format.
+        const windowMode = state.windowMode === true || state.layout === 'windows';
+        const layout = windowMode ? 'windows' : state.layout;
         const apply = () => {
-            attempts += 1;
-            if (state.layout && browserWindow.SessionManager?.setSplitLayout) {
-                browserWindow.SessionManager.setSplitLayout(state.layout);
-            }
-            if (Array.isArray(state.paneAssignments)) {
-                state.paneAssignments.forEach((sessionId, paneIndex) => {
-                    if (sessionId && browserWindow.SessionManager?.getSession?.(sessionId)) {
-                        browserWindow.SessionManager.assignSessionToPane?.(sessionId, paneIndex);
-                    }
-                });
-            }
-            if (state.sessionId && browserWindow.SessionManager?.getSession?.(state.sessionId)) {
-                browserWindow.SessionManager.switchSession(state.sessionId);
-            }
-            if (!uiRestored) {
-                if (state.primaryView === 'files') browserDocument.getElementById('fileTransferBtn')?.click();
-                else if (state.primaryView === 'hosts') browserDocument.getElementById('manageProfilesBtn')?.click();
-                else if (state.primaryView === 'commands') browserDocument.getElementById('commandLibraryBtn')?.click();
-                else browserWindow.primaryWorkspaceController?.showWorkspaces?.();
-                if (state.activeContext) {
-                    browserWindow.workspaceLayoutController?.openContext?.(state.activeContext, 'restore');
+            if (applying) return false;
+            applying = true;
+            try {
+                attempts += 1;
+                if ([1, 2, 4, 'windows'].includes(layout) && sessionManager?.setSplitLayout) {
+                    sessionManager.setSplitLayout(layout);
                 }
-                uiRestored = true;
+                if (!windowMode && Array.isArray(state.paneAssignments)) {
+                    state.paneAssignments.forEach((sessionId, paneIndex) => {
+                        if (sessionId && sessionManager?.getSession?.(sessionId)) {
+                            sessionManager.assignSessionToPane?.(sessionId, paneIndex);
+                        }
+                    });
+                }
+                if (state.sessionId && sessionManager?.getSession?.(state.sessionId)) {
+                    sessionManager.switchSession(state.sessionId);
+                }
+                if (!uiRestored) {
+                    if (state.primaryView === 'overview') browserDocument.getElementById('overviewNavBtn')?.click();
+                    else if (state.primaryView === 'files') browserDocument.getElementById('fileTransferBtn')?.click();
+                    else if (state.primaryView === 'hosts') browserDocument.getElementById('manageProfilesBtn')?.click();
+                    else if (state.primaryView === 'commands') browserDocument.getElementById('commandLibraryBtn')?.click();
+                    else browserWindow.primaryWorkspaceController?.showWorkspaces?.();
+                    if (state.activeContext) {
+                        browserWindow.workspaceLayoutController?.openContext?.(state.activeContext, 'restore');
+                    }
+                    uiRestored = true;
+                }
+                return !state.sessionId || Boolean(sessionManager?.getSession?.(state.sessionId));
+            } finally {
+                applying = false;
             }
-            return !state.sessionId || Boolean(browserWindow.SessionManager?.getSession?.(state.sessionId));
         };
-        if (!apply()) {
+        const restored = apply();
+        const socket = browserWindow.socket;
+        if (socket?.on && socket.connected !== true) {
+            // The server emits connected/success after all restoration events.
+            // Select the saved session after the batch, so later arrivals cannot
+            // replace its focus or split assignment. No SSH protocol change.
+            const onConnected = data => {
+                if (data?.status !== 'success') return;
+                socket.off?.('connected', onConnected);
+                apply();
+            };
+            socket.on('connected', onConnected);
+        } else if (!restored) {
             const listener = () => {
                 if (apply() || attempts >= 20) {
                     browserWindow.removeEventListener('session-workspace-change', listener);

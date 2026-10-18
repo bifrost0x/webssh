@@ -148,7 +148,8 @@ test('graph has one jump source and exactly the configured directed edges, inclu
     await expect(page.locator('#overviewHosts .overview-edges')).toHaveCount(0);
     await expect(page.locator('#overviewRoutePreview .overview-edges path')).toHaveCount(2);
     await page.locator('#overviewHostSearch').fill('Direct');
-    await expect(page.locator('#overviewRouteCard')).toBeHidden();
+    await expect(page.locator('#overviewRouteCard')).toBeVisible();
+    await expect(page.locator('#overviewRoutePreview')).toBeHidden();
     await expect(page.locator('.overview-edges')).toHaveCount(0);
     expect(await sshAttempts(page)).toEqual([]);
 });

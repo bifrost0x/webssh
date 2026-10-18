@@ -269,8 +269,15 @@ def test_hosts_are_prominent_and_connection_assets_share_navigation():
     assert 'manageProfilesBtn' not in account_menu.group('body')
     assert 'manageKeysBtn' not in account_menu.group('body')
     assert 'manageJumpHostsBtn' not in account_menu.group('body')
-    for asset in ('hosts', 'jump-hosts', 'keys'):
-        assert template.count(f'data-connection-asset="{asset}"') == 3
+    asset_menus = re.findall(
+        r'<nav class="connection-asset-nav"[^>]*>(.*?)</nav>',
+        template,
+        re.DOTALL,
+    )
+    assert len(asset_menus) == 3
+    for menu in asset_menus:
+        for asset in ('hosts', 'jump-hosts', 'keys'):
+            assert menu.count(f'data-connection-asset="{asset}"') == 1
     assert 'function openConnectionAssetManager(asset)' in app_source
     assert "openConnectionAssetManager('keys')" in app_source
 

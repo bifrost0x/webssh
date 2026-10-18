@@ -11,9 +11,8 @@ test('session context is explicit and never invents connection data', () => {
         title: 'No active session',
         host: '—',
         user: '—',
-        trust: 'No connected host',
         persistence: 'Not active',
-        transport: 'SSH'
+        transport: ''
     });
     assert.deepEqual(buildSessionContext({
         displayName: 'Production Edge',
@@ -30,7 +29,6 @@ test('session context is explicit and never invents connection data', () => {
         title: 'Production Edge',
         host: 'edge.example:2222',
         user: 'ops',
-        trust: 'Host key verified',
         persistence: 'tmux · ops-main',
         transport: 'SSH via bastion.example'
     });
@@ -60,7 +58,6 @@ test('session context accepts localized product copy', () => {
             title: 'ops@edge.example',
             host: 'edge.example:22',
             user: 'ops',
-            trust: 'Host-Schlüssel überprüft',
             persistence: 'Standardsitzung',
             transport: 'SSH',
         },

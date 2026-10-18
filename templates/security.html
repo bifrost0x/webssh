@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="background-scope" content="{{ background_scope }}">
+    <script defer src="{{ static_asset_url(filename='js/theme-background.js') }}"></script>
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="current-user" content="{{ username }}">
     <meta name="current-user-id" content="{{ current_user.id }}">
@@ -22,7 +24,7 @@
     <header class="header">
         <div class="header-content">
             <a class="settings-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.workspaces">
-                <img class="app-brand-logo" src="{{ static_asset_url(filename='images/redesign/webssh-mark.png') }}" alt="WebSSH"><b class="brand-wordmark" aria-hidden="true">WebSSH</b>
+                <img class="app-brand-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH">
             </a>
             {% if recovery_mode %}
             <form action="{{ url_for('logout') }}" method="post">
@@ -93,6 +95,15 @@
                             <option value="retro">Retro Future</option><option value="cyberpunk-neon">Cyberpunk Neon</option><option value="emerald-matrix">Emerald Matrix</option>
                         </optgroup>
                     </select>
+                </div>
+                <div class="admin-settings-row theme-background-settings">
+                    <div><label for="themeBackgroundFile"><strong data-i18n="background.title">Custom theme background</strong></label><p id="themeBackgroundHint" class="admin-muted" data-i18n="background.hint">JPEG or static PNG, exactly 1920 × 1080 pixels, up to 5 MiB. Saved for this account and theme in this browser only. Not shown on the public login page.</p></div>
+                    <div class="theme-background-controls">
+                        <input type="file" id="themeBackgroundFile" accept="image/jpeg,image/png" aria-describedby="themeBackgroundHint" class="form-control">
+                        <img id="themeBackgroundPreview" alt="" hidden>
+                        <button type="button" id="themeBackgroundRemove" class="btn btn-secondary" disabled data-i18n="background.remove">Restore theme background</button>
+                        <p id="themeBackgroundStatus" role="status" aria-live="polite"></p>
+                    </div>
                 </div>
                 <div class="admin-settings-row">
                     <div><label for="settingsLanguageSelect"><strong data-i18n="account.language">Language</strong></label><p class="admin-muted" data-i18n="settings.languageHint">Change interface labels without reloading the page.</p></div>

@@ -18,9 +18,9 @@
     <div class="auth-shell">
         <header class="auth-utility-bar">
             <div class="auth-instance-state">
-                <span class="auth-status-dot" aria-hidden="true"></span>
-                <span data-i18n="auth.localRegistration">Local registration</span>
-                <strong data-i18n="auth.registrationAvailable">Available on this instance</strong>
+                <span class="material-icons" aria-hidden="true">dns</span>
+                <span data-i18n="auth.instanceStatus">WebSSH instance</span>
+                <strong id="authInstanceAddress"></strong>
             </div>
             <div class="language-selector">
                 <button class="lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langDropdown">
@@ -38,7 +38,7 @@
                 <div class="auth-context-panel">
                     <div class="auth-brand-lockup">
                         <a class="auth-product-brand" href="{{ url_for('login') }}" aria-label="WebSSH sign in" data-i18n-aria-label="auth.websshSignIn">
-                            <img class="auth-product-logo" src="{{ static_asset_url(filename='images/redesign/webssh-mark.png') }}" alt="WebSSH"><b class="brand-wordmark" aria-hidden="true">WebSSH</b>
+                            <img class="auth-product-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH">
                         </a>
                         <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
                     </div>

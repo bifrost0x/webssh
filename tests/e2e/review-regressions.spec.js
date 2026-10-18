@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, assertNoExternalRequests} = require('./helpers');
+const {login, openWorkspace, assertNoExternalRequests} = require('./helpers');
 const {captureOutputPath} = require('./capture-output');
 
 test.afterEach(async ({page}) => assertNoExternalRequests(page));
@@ -48,6 +48,7 @@ test('notes confirm real persistence and remain unsaved while offline', async ({
     await page.locator('#sessionNotepad').fill('Review note persisted');
     await expect(page.locator('#notepadSaveStatus')).toHaveText('Saved');
     await page.reload();
+    await openWorkspace(page);
     await expect(page.locator('#sessionNotepad')).toHaveValue('Review note persisted');
     await page.evaluate(() => window.socket.disconnect());
     await page.locator('#sessionNotepad').fill('Offline review edit');
@@ -55,6 +56,7 @@ test('notes confirm real persistence and remain unsaved while offline', async ({
     await page.evaluate(() => window.socket.connect());
     await expect(page.locator('#notepadSaveStatus')).toHaveText('Saved');
     await page.reload();
+    await openWorkspace(page);
     await expect(page.locator('#sessionNotepad')).toHaveValue('Offline review edit');
 });
 

@@ -199,6 +199,12 @@ body.webssh-ui[data-theme="glass"] {
 .overview-sessions .overview-row > .material-icons:first-child { display: grid; place-items: center; width: 36px; height: 40px; border-radius: 8px; background: var(--ws2-panel); font-size: 22px; }
 .overview-row-copy strong { font-size: 14px; }
 .overview-route-card .overview-card-heading { padding-bottom: 14px; }
+.overview-route-help { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; color: var(--ws2-text-secondary); font-size: 12px; line-height: 1.6; }
+.overview-route-help p { flex: 1 1 280px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.overview-route-help .overview-link { flex: 0 1 auto; min-height: 36px; white-space: normal; text-align: left; }
+.overview-route-preview:not([hidden]) + .overview-route-help { margin-top: 12px; }
+.overview-legend .overview-route-help { margin-top: 10px; }
+.overview-legend .overview-route-help p { margin: 0; }
 .overview-route-preview { border: 1px solid var(--ws2-border); border-radius: 8px; padding: 16px; }
 .overview-route-preview .overview-host-group { border: 0; background: transparent; padding: 0; }
 .overview-route-preview .overview-group-heading { display: none; }
@@ -268,3 +274,72 @@ body.webssh-ui[data-theme="glass"] {
 .webssh-ui[data-theme="glass"] .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 48%, var(--ws2-border)); }
 .webssh-ui[data-theme="glass"] .overview-host-entry .overview-row { background: linear-gradient(135deg, color-mix(in srgb, var(--group-accent) 10%, var(--ws2-panel)), var(--ws2-surface)); }
 .webssh-ui[data-theme="glass"] .overview-graph .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 70%, var(--ws2-border)); box-shadow: 0 8px 24px color-mix(in srgb, var(--group-accent) 7%, transparent); }
+
+/* Original, unmodified WebSSH artwork includes the wordmark. Keep its full
+   proportions; a dark backing preserves its white lettering in light themes. */
+.webssh-ui :is(.app-brand-logo, .auth-product-logo) {
+    width: 156px; height: 47px; max-width: 100%; object-fit: contain;
+    background: #0f172a; border-radius: 7px; flex-shrink: 0;
+}
+.webssh-ui .auth-product-logo { width: 220px; height: 66px; }
+.webssh-shell .app-brand { min-width: 0; max-width: 100%; }
+@media (min-width: 768px) and (max-width: 1100px) {
+    .webssh-shell .app-brand-logo { width: 68px; height: 32px; }
+}
+@media (min-width: 1101px) {
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 68px; height: 32px; }
+}
+@media (max-width: 767px) {
+    .webssh-shell .app-brand-logo { width: 120px; height: 36px; }
+}
+/* Shrink content inside its allocated grid/flex track, including long names. */
+.webssh-ui :is(.overview-card, .overview-host-entry, .overview-host-list, .overview-row, .overview-row-title,
+    .profile-management-section, .profile-management-item, .theme-background-controls) { min-width: 0; max-width: 100%; }
+.overview-host-entry { position: relative; }
+.connection-overview .overview-host-entry .overview-row { width: 100%; padding-right: 38px; }
+.overview-host-move { position: absolute; right: 4px; top: 4px; z-index: 3; }
+.overview-host-move summary { display: grid; place-items: center; width: 30px; height: 30px; cursor: pointer; border-radius: 5px; color: var(--ws2-text-secondary); }
+.overview-host-move summary:hover { background: var(--ws2-raised); }
+.overview-host-move summary::marker { content: ''; }
+.overview-host-move select { position: absolute; right: 0; top: 32px; max-width: min(220px, 65vw); padding: 10px; color: var(--ws2-text); background: var(--ws2-panel); border: 1px solid var(--ws2-border-strong); border-radius: 6px; }
+.host-drop-active, .profile-management-section-title.is-active { outline: 2px solid var(--ws2-accent); outline-offset: -2px; background: var(--ws2-raised); }
+.theme-background-controls { display: grid; gap: 10px; width: min(100%, 360px); }
+.theme-background-controls input { max-width: 100%; width: 100%; }
+#themeBackgroundPreview { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; }
+#themeBackgroundPreview[hidden] { display: none; }
+body[data-custom-background] .connection-overview:not(.overview-graph) .overview-heading { background-image: var(--theme-background-image); }
+body[data-custom-background] .terminal-grid.window-mode { background-image: var(--theme-background-image); background-size: cover; background-position: center; }
+@media (max-width: 767px), (max-height: 520px) {
+    .webssh-ui .auth-product-logo { width: 156px; height: 47px; }
+}
+.overview-group-heading > span:not(.material-icons),
+.overview-host-entry .overview-row-title {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    min-width: 0; overflow: hidden; overflow-wrap: anywhere;
+}
+.profile-launcher-section-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px), (pointer: coarse) {
+    .overview-host-move summary { width: 44px; height: 44px; }
+    .overview-host-move select { top: 44px; }
+    .connection-overview .overview-host-entry .overview-row { padding-right: 52px; }
+}
+
+/* Compact cards keep DOM/keyboard order while filling gaps below short groups. */
+.connection-overview .overview-hosts.overview-group-layout, .connection-overview .overview-graph-groups.overview-group-layout { grid-auto-rows: 8px; row-gap: 0; align-content: start; }
+.connection-overview .overview-group-layout > .overview-host-group { align-self: start; }
+.overview-arrange-bar { grid-column: 1 / -1; min-width: 0; margin: -6px 0 12px; }
+.overview-arrange-bar p { margin: 6px 0; color: var(--ws2-text-secondary); font-size: 12px; line-height: 1.6; }
+.overview-arrange-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+#overviewArrangeStatus { color: var(--ws2-text-secondary); font-size: 12px; }
+.overview-arrange-bar .overview-link { min-height: 36px; }
+.overview-arrange-bar [aria-expanded="true"] { color: var(--ws2-text); }
+.overview-group-controls { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ws2-text-secondary); }
+.overview-group-controls label { display: flex; align-items: center; gap: 8px; font-size: 12px; min-width: 0; }
+.overview-group-controls input { width: 66px; max-width: 100%; min-height: 36px; border: 1px solid var(--ws2-border-strong); border-radius: 5px; background: var(--ws2-surface); color: var(--ws2-text); padding: 4px 6px; }
+.overview-group-drag { display: grid; place-items: center; min-width: 36px; min-height: 36px; padding: 4px; border: 1px solid var(--ws2-border); border-radius: 5px; color: var(--ws2-text-secondary); background: var(--ws2-surface); cursor: grab; }
+.overview-group-drag:active { cursor: grabbing; }
+.overview-group-drop { outline: 2px dashed var(--ws2-accent); outline-offset: -2px; }
+@media (max-width: 767px), (pointer: coarse) {
+    .overview-arrange-bar .overview-link, .overview-group-controls input, .overview-group-drag { min-height: 44px; }
+    .overview-group-drag { min-width: 44px; }
+}

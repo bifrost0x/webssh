@@ -12,7 +12,7 @@ function setup() {
         createPendingConnection() {}, clearPendingConnection() {},
         createSession(data) { this.sessions[data.session_id] = {}; return data.session_id; },
         removeSessionUI(id) { removed.push(id); delete this.sessions[id]; },
-        getFirstEmptyPaneIndex: () => 0, assignSessionToPane() {},
+        getFirstEmptyPaneIndex: () => 0, resolvePaneForNewSession: pane => pane ?? 0, assignSessionToPane() {},
     };
     let tick = 0;
     const fields = new Map();

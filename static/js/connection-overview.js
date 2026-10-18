@@ -1,4 +1,4 @@
-/* Read-only presentation of existing, account-scoped connection state. */
+/* Account-scoped connection overview; mutations use the existing profile manager. */
 (function(root, factory) {
     const api = factory();
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -40,6 +40,35 @@
         return String(hash % 5);
     }
 
+    // Saved presentation order never changes group membership or SSH routes.
+    function orderedGroups(groups, saved = []) {
+        const available = new Set(groups);
+        const result = [];
+        for (const group of saved) {
+            if (available.delete(group)) result.push(group);
+        }
+        return result.concat([...available].sort((a, b) => a.localeCompare(b)));
+    }
+
+    function moveGroupOrder(groups, group, position) {
+        if (!groups.includes(group) || !Number.isInteger(position) || position < 0 || position >= groups.length) return groups;
+        const result = groups.filter(value => value !== group);
+        result.splice(position, 0, group);
+        return result;
+    }
+
+    function readGroupOrder(storage, key) {
+        try {
+            if (!key) return [];
+            const raw = storage?.getItem(key);
+            if (!raw || raw.length > 1024 * 1024) return [];
+            const values = JSON.parse(raw);
+            if (!Array.isArray(values) || values.length > 5000
+                || values.some(value => typeof value !== 'string' || value.length > 512)) return [];
+            return [...new Set(values)];
+        } catch { return []; }
+    }
+
     function createController({window: win, document: doc, sessionManager}) {
         const view = doc.getElementById('connectionOverview');
         const byId = id => doc.getElementById(id);
@@ -50,6 +79,17 @@
         let scheduled = false;
         let transfersScheduled = false;
         let loadError = false;
+        let draggedHost = null;
+        let draggedGroup = null;
+        let arranging = false;
+        let groupObserver = null;
+        let storage = null;
+        const scope = doc.querySelector('meta[name="background-scope"]')?.content;
+        const orderKey = /^[a-f0-9]{64}$/.test(scope || '') ? `webssh:overview-group-order:${scope}` : null;
+        try { storage = win.localStorage; } catch { /* Optional browser preference. */ }
+        let groupOrder = readGroupOrder(storage, orderKey);
+        let displayGroupOrder = [];
+        let displayGroupRanks = new Map();
         const visible = () => win.primaryWorkspaceController?.getActiveView() === 'overview';
         const t = key => win.i18n?.t(key) || key;
         const node = (tag, className, text) => {
@@ -101,10 +141,181 @@
                 (next || (container.id === 'shellGroups' ? byId('overviewNavBtn') : byId('overviewHostSearch'))).focus({preventScroll: true});
             }
         }
+        function currentGroupOrder() {
+            return orderedGroups((win.ProfileManager?.profiles || []).map(profile => String(profile.group || '')), groupOrder);
+        }
+        function orderedModel(profiles, jumps, loaded) {
+            displayGroupOrder = currentGroupOrder();
+            displayGroupRanks = new Map(displayGroupOrder.map((group, index) => [group, index]));
+            return buildAccessModel(profiles, jumps, loaded).sort((a, b) => displayGroupRanks.get(a.group) - displayGroupRanks.get(b.group));
+        }
+        function saveGroupOrder(next) {
+            if (!win.ProfileManager?.profilesLoaded) return;
+            groupOrder = next;
+            let saved = false;
+            try {
+                if (orderKey && storage) { storage.setItem(orderKey, JSON.stringify(next)); saved = true; }
+            } catch { /* Keep the working arrangement usable without storage. */ }
+            const status = byId('overviewArrangeStatus');
+            status.dataset.i18n = saved ? 'overview.arrangeSaved' : 'overview.arrangeUnsaved';
+            status.textContent = t(status.dataset.i18n);
+            renderSidebar();
+            renderHosts();
+        }
+        function repositionGroup(group, position) {
+            const current = currentGroupOrder();
+            if (!Number.isInteger(position) || position < 0 || position >= current.length || !current.includes(group)) return;
+            saveGroupOrder(moveGroupOrder(current, group, position));
+        }
+        function groupControls(section, group, order, ranks, context) {
+            section.dataset.overviewGroup = group;
+            const controls = node('div', 'overview-group-controls');
+            const name = group || t('profiles.ungrouped');
+            const handle = button(t('overview.moveGroup').replace('{name}', name), () => position.focus(), 'overview-group-drag');
+            handle.title = t('overview.moveGroup').replace('{name}', name);
+            handle.dataset.overviewKey = `group-drag:${JSON.stringify([context, group])}`;
+            handle.draggable = true;
+            handle.append(icon('drag_indicator'));
+            handle.addEventListener('dragstart', event => {
+                if (!arranging) { event.preventDefault(); return; }
+                draggedGroup = group;
+                event.dataTransfer.setData('application/x-webssh-overview-group', group);
+                event.dataTransfer.effectAllowed = 'move';
+            });
+            const clearDrag = () => {
+                draggedGroup = null;
+                view.querySelectorAll('.overview-group-drop').forEach(item => item.classList.remove('overview-group-drop'));
+            };
+            handle.addEventListener('dragend', clearDrag);
+            section.addEventListener('dragover', event => {
+                if (!arranging || draggedGroup === null || draggedGroup === group) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = 'move';
+                section.classList.add('overview-group-drop');
+            });
+            section.addEventListener('dragleave', event => {
+                if (!section.contains(event.relatedTarget)) section.classList.remove('overview-group-drop');
+            });
+            section.addEventListener('drop', event => {
+                if (!arranging || draggedGroup === null) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const source = draggedGroup;
+                clearDrag();
+                if (source !== group) repositionGroup(source, currentGroupOrder().indexOf(group));
+            });
+            const label = node('label', '', t('overview.groupPosition'));
+            const position = node('input');
+            position.type = 'number';
+            position.min = '1';
+            position.max = String(order.length);
+            position.value = String(ranks.get(group) + 1);
+            position.setAttribute('aria-label', t('overview.groupPositionLabel').replace('{name}', name));
+            position.dataset.overviewKey = `group-position:${JSON.stringify([context, group])}`;
+            position.addEventListener('change', () => {
+                const value = position.valueAsNumber;
+                if (position.validity.valid && Number.isInteger(value)) repositionGroup(group, value - 1);
+                else position.value = String(currentGroupOrder().indexOf(group) + 1);
+            });
+            position.addEventListener('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); position.dispatchEvent(new win.Event('change')); }
+            });
+            label.append(position);
+            controls.append(handle, label);
+            section.prepend(controls);
+        }
+        function layoutGroups() {
+            if (!visible()) return;
+            // Read all natural card heights first, then update grid spans in one batch.
+            // Small rows allow the next card to occupy the space below a shorter card.
+            const sizes = [];
+            byId('overviewHosts').querySelectorAll('.overview-host-group').forEach(card => {
+                if (card.parentElement.classList.contains('overview-group-layout')) {
+                    sizes.push([card, Math.ceil((card.getBoundingClientRect().height + 16) / 8)]);
+                }
+            });
+            sizes.forEach(([card, span]) => {
+                const value = `span ${span}`;
+                if (card.style.gridRowEnd !== value) card.style.gridRowEnd = value;
+            });
+        }
+        function moveHost(id, group) {
+            const manager = win.ProfileManager;
+            const profiles = manager?.profiles || [];
+            const source = profiles.find(profile => profile.id === id);
+            if (!source || String(source.group || '').trim().toLocaleLowerCase() === group.trim().toLocaleLowerCase()) return;
+            const count = profiles.filter(profile => profile.favorite !== true
+                && String(profile.group || '').trim().toLocaleLowerCase() === group.trim().toLocaleLowerCase()).length;
+            const move = win.ProfileLauncherUtils?.resolveProfileDrop(profiles, id, group, count);
+            if (move) manager.requestProfileMove(move);
+        }
+        function dropGroup(element, group) {
+            element.dataset.hostDropGroup = group;
+            element.addEventListener('dragover', event => {
+                if (!draggedHost) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                element.classList.add('host-drop-active');
+            });
+            element.addEventListener('dragleave', event => {
+                if (!element.contains(event.relatedTarget)) element.classList.remove('host-drop-active');
+            });
+            element.addEventListener('drop', event => {
+                if (!draggedHost) return;
+                event.preventDefault();
+                const id = draggedHost;
+                draggedHost = null;
+                doc.querySelectorAll('.host-drop-active').forEach(item => item.classList.remove('host-drop-active'));
+                moveHost(id, group);
+            });
+        }
+        function moveControl(host) {
+            const menu = node('details', 'overview-host-move');
+            const toggle = node('summary');
+            const label = t('profiles.moveToGroup').replace('{name}', host.name);
+            toggle.setAttribute('aria-label', label);
+            toggle.dataset.overviewKey = `move:${host.id}`;
+            toggle.title = label;
+            toggle.append(icon('drive_file_move'));
+            const select = node('select');
+            select.setAttribute('aria-label', label);
+            select.dataset.overviewKey = `move:${host.id}`;
+            // Build options only for an open menu, not N group lists for N hosts.
+            menu.addEventListener('toggle', () => {
+                if (!menu.open) { select.replaceChildren(); return; }
+                const groups = new Set(['', ...(win.ProfileManager?.profiles || []).map(profile => String(profile.group || '').trim())]);
+                select.replaceChildren();
+                groups.forEach(group => select.add(new win.Option(group || t('profiles.ungrouped'), group)));
+                select.value = host.group.trim();
+            });
+            const close = () => { menu.open = false; toggle.focus({preventScroll: true}); };
+            select.addEventListener('change', () => {
+                const group = select.value;
+                close();
+                moveHost(host.id, group);
+            });
+            menu.addEventListener('keydown', event => {
+                if (event.key === 'Escape') { event.preventDefault(); close(); }
+            });
+            menu.append(toggle, select);
+            return menu;
+        }
         function hostButton(host) {
             const target = button(`${t('overview.openHost')}: ${host.name}`, () => launch(host.id));
             target.dataset.overviewKey = `host:${host.id}`;
             target.dataset.hostId = host.id;
+            target.draggable = true;
+            target.addEventListener('dragstart', event => {
+                if (win.ProfileManager?.organizationPending?.has(host.id)) { event.preventDefault(); return; }
+                draggedHost = host.id;
+                event.dataTransfer.setData('application/x-webssh-profile-id', host.id);
+                event.dataTransfer.effectAllowed = 'move';
+            });
+            target.addEventListener('dragend', () => {
+                draggedHost = null;
+                doc.querySelectorAll('.host-drop-active').forEach(item => item.classList.remove('host-drop-active'));
+            });
             target.dataset.tone = groupTone(host.group);
             target.append(icon('dns'), node('span', 'overview-row-title', host.name));
             if (host.favorite) {
@@ -116,7 +327,9 @@
             target.append(icon('chevron_right'));
             return target;
         }
-        function hostGroups(hosts, showUnlinked = false) {
+        function hostGroups(hosts, showUnlinked = false, editable = true, context = 'direct') {
+            const order = displayGroupOrder;
+            const ranks = displayGroupRanks;
             const groups = new Map();
             hosts.forEach(host => {
                 if (!groups.has(host.group)) groups.set(host.group, []);
@@ -125,8 +338,10 @@
             const fragment = doc.createDocumentFragment();
             groups.forEach((items, group) => {
                 const section = node('section', 'overview-host-group');
+                dropGroup(section, group);
                 section.dataset.tone = groupTone(group);
                 const heading = node('h3', 'overview-group-heading');
+                heading.title = group || t('profiles.ungrouped');
                 heading.append(icon('folder_open'), node('span', '', group || t('profiles.ungrouped')), node('small', '', String(items.length)));
                 section.append(heading);
                 const list = node('ul', 'overview-host-list');
@@ -137,10 +352,11 @@
                             : host.route === 'unavailable' ? 'overview.missingJump' : 'overview.noJump';
                         row.append(node('span', 'overview-route-unlinked', t(key)));
                     }
-                    row.append(hostButton(host));
+                    row.append(hostButton(host), moveControl(host));
                     list.append(row);
                 });
                 section.append(list);
+                if (editable && arranging) groupControls(section, group, order, ranks, context);
                 fragment.append(section);
             });
             return fragment;
@@ -175,7 +391,7 @@
         function scheduleEdges() {
             if (!visible() || edgesScheduled) return;
             edgesScheduled = true;
-            win.requestAnimationFrame(() => { edgesScheduled = false; drawEdges(); });
+            win.requestAnimationFrame(() => { edgesScheduled = false; layoutGroups(); drawEdges(); });
         }
         function renderGraph(hosts, container) {
             const branches = new Map();
@@ -195,13 +411,14 @@
                 const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 svg.classList.add('overview-edges');
                 svg.setAttribute('aria-hidden', 'true');
-                const groups = node('div', 'overview-graph-groups');
-                groups.append(hostGroups(targets));
+                const editable = container === byId('overviewHosts');
+                const groups = node('div', `overview-graph-groups${editable ? ' overview-group-layout' : ''}`);
+                groups.append(hostGroups(targets, false, editable, jump.id));
                 branch.append(svg, source, groups);
                 container.append(branch);
             });
             if (unlinked.length) {
-                const section = node('section', 'overview-graph-branch overview-graph-groups');
+                const section = node('section', 'overview-graph-branch overview-graph-groups overview-group-layout');
                 section.append(hostGroups(unlinked, true));
                 container.append(section);
             }
@@ -216,8 +433,12 @@
             const intro = view.querySelector('.overview-intro');
             intro.dataset.i18n = graph ? 'overview.routesIntro' : 'overview.intro';
             intro.textContent = t(intro.dataset.i18n);
+            groupObserver?.disconnect();
+            draggedGroup = null;
+            container.classList.remove('overview-group-layout');
             retainFocus(view, () => {
                 preview.replaceChildren();
+                preview.hidden = true;
                 byId('overviewRouteCard').hidden = true;
                 container.replaceChildren();
                 const manager = win.ProfileManager;
@@ -228,7 +449,9 @@
                     message(container, loadError || !win.socket?.connected ? 'overview.unavailable' : 'overview.loading');
                     return;
                 }
-                const model = buildAccessModel(manager.profiles, win.JumpHostManager?.jumpHosts, win.JumpHostManager?.loaded);
+                const model = orderedModel(manager.profiles, win.JumpHostManager?.jumpHosts, win.JumpHostManager?.loaded);
+                // Keep the setup entry point available before the first route exists.
+                byId('overviewRouteCard').hidden = graph;
                 const query = byId('overviewHostSearch').value.trim().toLocaleLowerCase();
                 const hosts = model.filter(host => (selectedGroup === null || host.group === selectedGroup)
                     && `${host.name} ${host.group}`.toLocaleLowerCase().includes(query));
@@ -238,6 +461,7 @@
                 }
                 if (graph) renderGraph(hosts, container);
                 else {
+                    container.classList.add('overview-group-layout');
                     container.append(hostGroups(hosts));
                     const configured = hosts.filter(host => host.jump);
                     if (configured.length) {
@@ -246,6 +470,7 @@
                         configured.forEach(host => counts.set(host.jump.id, (counts.get(host.jump.id) || 0) + 1));
                         const previewJump = [...counts].sort((a, b) => b[1] - a[1])[0][0];
                         renderGraph(configured.filter(host => host.jump.id === previewJump), preview);
+                        preview.hidden = false;
                         preview.querySelectorAll('[data-overview-key]').forEach(item => {
                             item.dataset.overviewKey = `preview:${item.dataset.hostId}`;
                         });
@@ -253,9 +478,11 @@
                     }
                 }
             });
+            container.querySelectorAll('.overview-host-group').forEach(card => groupObserver?.observe(card));
+            scheduleEdges();
         }
         function renderSidebar() {
-            const hosts = buildAccessModel(win.ProfileManager?.profiles || []);
+            const hosts = orderedModel(win.ProfileManager?.profiles || []);
             const groups = new Map();
             hosts.forEach(host => {
                 if (!groups.has(host.group)) groups.set(host.group, []);
@@ -275,6 +502,7 @@
                 if (!showTree) return;
                 groups.forEach((items, group) => {
                     const section = node('details', 'shell-host-group');
+                    dropGroup(section, group);
                     section.dataset.tone = groupTone(group);
                     section.open = !collapsedGroups.has(group);
                     const summary = node('summary', 'shell-group');
@@ -413,6 +641,21 @@
                 selectedGroup = value === '' ? null : value.slice('group:'.length);
                 renderHosts();
             });
+            byId('overviewArrangeGroups').addEventListener('click', () => {
+                arranging = !arranging;
+                draggedGroup = null;
+                byId('overviewArrangeGroups').setAttribute('aria-expanded', String(arranging));
+                byId('overviewArrangePanel').hidden = !arranging;
+                renderHosts();
+            });
+            byId('overviewSortGroupsAsc').addEventListener('click', () => saveGroupOrder(orderedGroups(currentGroupOrder())));
+            byId('overviewSortGroupsDesc').addEventListener('click', () => saveGroupOrder(orderedGroups(currentGroupOrder()).reverse()));
+            win.addEventListener('storage', event => {
+                if (!orderKey || (event.key !== orderKey && event.key !== null)) return;
+                groupOrder = readGroupOrder(storage, orderKey);
+                renderSidebar();
+                schedule();
+            });
             byId('overviewQuickConnect').addEventListener('click', quickConnect);
             byId('overviewAllTransfers').addEventListener('click', openTransfers);
             byId('overviewHostSearch').addEventListener('input', renderHosts);
@@ -426,11 +669,14 @@
             win.addEventListener('languageChanged', updateNavigation);
             win.addEventListener('resize', scheduleEdges);
             if (win.ResizeObserver) {
+                groupObserver = new win.ResizeObserver(scheduleEdges);
                 const observer = new win.ResizeObserver(scheduleEdges);
                 observer.observe(byId('overviewHosts'));
                 observer.observe(byId('overviewRoutePreview'));
             }
             renderSidebar();
+            updateNavigation();
+            render();
             // Queue progress must not rebuild focusable host/session buttons.
             win.addEventListener('file-transfer-queue-change', () => {
                 if (!visible() || transfersScheduled) return;
@@ -449,5 +695,5 @@
         }
         return {init};
     }
-    return {buildAccessModel, groupTone, createController};
+    return {buildAccessModel, groupTone, orderedGroups, moveGroupOrder, readGroupOrder, createController};
 });

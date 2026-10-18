@@ -11,7 +11,7 @@ for (const theme of ['glass', 'paper']) {
         page.on('request', request => {
             if (/\/(?:theme-backgrounds\/|redesign\/midnight-lodge\.)/.test(request.url())) backgrounds.push(request.url());
         });
-        await page.route('**/redesign/webssh-mark.png*', async route => {
+        await page.route('**/images/webssh-logo.svg*', async route => {
             await logoGate;
             await route.continue();
         });

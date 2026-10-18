@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('playwright/test');
-const { login, assertNoExternalRequests } = require('./helpers');
+const { openWorkspace, login, assertNoExternalRequests } = require('./helpers');
 const { captureOutputPath } = require('./capture-output');
 
 test.use({
@@ -1382,6 +1382,7 @@ test('desktop context width survives a page reload without affecting mobile layo
         localStorage.setItem('webssh.workspace.contextWidth', '512');
     });
     await page.reload();
+    await openWorkspace(page);
 
     await expect(page.locator('#contextWorkspace')).toBeVisible();
     await expect.poll(() => page.locator('#contextWorkspace').evaluate(
@@ -1404,6 +1405,7 @@ test('automatic context width follows live desktop resizes without a reload', as
         localStorage.removeItem('webssh.workspace.contextWidthMode');
     });
     await page.reload();
+    await openWorkspace(page);
 
     const contextWidth = () => page.locator('#contextWorkspace').evaluate(
         element => Math.round(element.getBoundingClientRect().width),
@@ -1429,6 +1431,7 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
     await login(page);
     await page.evaluate(() => localStorage.setItem('language', 'de'));
     await page.reload();
+    await openWorkspace(page);
     await seedLinuxSession(page);
 
     await page.locator('#contextWorkspaceResizer').focus();
