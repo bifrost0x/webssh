@@ -9,7 +9,7 @@ for (const theme of ['glass', 'paper']) {
         const logoGate = new Promise(resolve => { releaseLogo = resolve; });
         const backgrounds = [];
         page.on('request', request => {
-            if (/\/(?:theme-backgrounds\/|redesign\/midnight-lodge\.)/.test(request.url())) backgrounds.push(request.url());
+            if (/\/(?:theme-backgrounds\/|theme-scenes\/|redesign\/midnight-lodge\.)/.test(request.url())) backgrounds.push(request.url());
         });
         await page.route('**/images/webssh-logo.svg*', async route => {
             await logoGate;
@@ -18,7 +18,7 @@ for (const theme of ['glass', 'paper']) {
         try {
             await page.goto('/login', { waitUntil: 'domcontentloaded' });
             await expect.poll(() => backgrounds.length, { timeout: 1500 }).toBe(1);
-            expect(backgrounds[0]).toContain(theme === 'paper' ? 'paper-blueprint.' : 'midnight-lodge.');
+            expect(backgrounds[0]).toContain(theme === 'paper' ? 'theme-scenes/paper-pavilion.' : 'redesign/midnight-lodge.');
             await expect(page.locator('body')).toHaveAttribute('data-theme', theme);
         } finally {
             releaseLogo();

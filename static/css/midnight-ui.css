@@ -343,3 +343,77 @@ body[data-custom-background] .terminal-grid.window-mode { background-image: var(
     .overview-arrange-bar .overview-link, .overview-group-controls input, .overview-group-drag { min-height: 44px; }
     .overview-group-drag { min-width: 44px; }
 }
+
+/* Theme scenes belong on spacious surfaces; data panels retain their quiet
+   textures. Account-local uploads keep priority over these bundled defaults. */
+body.webssh-ui[data-theme="solar"] {
+    --theme-scene-image-source: url('../images/theme-scenes/solar-observatory.webp?v=4103e7e44d6ab15d');
+}
+body.webssh-ui[data-theme="paper"] {
+    --theme-scene-image-source: url('../images/theme-scenes/paper-pavilion.webp?v=39b6e4914bfef518');
+}
+body.webssh-ui[data-theme="noir"] {
+    --theme-scene-image-source: url('../images/theme-scenes/noir-retreat.webp?v=bd06268375aa0cdd');
+}
+body.webssh-ui[data-theme="arctic-ice"] {
+    --theme-scene-image-source: url('../images/theme-scenes/arctic-fjord.webp?v=63cb99f11d5651a4');
+}
+body.webssh-ui[data-theme="rose-gold"] {
+    --theme-scene-image-source: url('../images/theme-scenes/rose-desert.webp?v=57608152afa484d5');
+}
+body.webssh-ui[data-theme="obsidian"] {
+    --theme-scene-image-source: url('../images/theme-scenes/obsidian-coast.webp?v=3a0d71a60df49fbb');
+}
+body.webssh-ui[data-theme="retro"] {
+    --theme-scene-image-source: url('../images/theme-scenes/retro-lounge.webp?v=f524fb968ef73c08');
+}
+body.webssh-ui[data-theme="cyberpunk-neon"] {
+    --theme-scene-image-source: url('../images/theme-scenes/cyberpunk-city.webp?v=bd4748d9b028c1b3');
+}
+body.webssh-ui[data-theme="emerald-matrix"] {
+    --theme-scene-image-source: url('../images/theme-scenes/emerald-forest.webp?v=6eac8e786e7aadbf');
+}
+body.webssh-ui:not([data-theme="glass"]) {
+    --theme-scene-image: var(--theme-scene-image-source);
+}
+body.webssh-ui:not([data-theme="glass"])[data-defer-theme-background]:not([data-theme-background-ready]) {
+    --theme-scene-image: none;
+}
+body.webssh-ui:not([data-theme="glass"])[data-custom-background] {
+    --theme-scene-image: var(--theme-background-image);
+}
+body.webssh-ui.webssh-auth:not([data-theme="glass"]) {
+    --theme-background-image-source: var(--theme-scene-image-source);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+body.webssh-ui:not([data-theme="glass"]) .connection-overview:not(.overview-graph) .overview-heading {
+    background-color: var(--ws2-canvas);
+    background-image: var(--theme-scene-image);
+    border-color: var(--ws2-border);
+    color: var(--ws2-text);
+}
+body.webssh-ui:not([data-theme="glass"]) .connection-overview:not(.overview-graph) .overview-heading::before {
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--ws2-canvas) 96%, transparent),
+        color-mix(in srgb, var(--ws2-canvas) 90%, transparent) 48%,
+        color-mix(in srgb, var(--ws2-canvas) 25%, transparent) 75%);
+}
+body.webssh-ui:not([data-theme="glass"]) .connection-overview:not(.overview-graph) .overview-heading h1 {
+    color: var(--ws2-text);
+}
+body.webssh-ui:not([data-theme="glass"]) .connection-overview:not(.overview-graph) :is(.overview-eyebrow, .overview-intro) {
+    color: var(--ws2-text-secondary);
+}
+body.webssh-ui:not([data-theme="glass"]) .terminal-grid.window-mode {
+    background-image: var(--theme-scene-image);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+}
+@media (max-width: 767px) {
+    body.webssh-ui:not([data-theme="glass"]) .connection-overview:not(.overview-graph) .overview-heading::before {
+        background: color-mix(in srgb, var(--ws2-canvas) 92%, transparent);
+    }
+}

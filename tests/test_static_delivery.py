@@ -215,8 +215,11 @@ def test_webp_backgrounds_keep_image_headers_and_cache_validators(client):
 
     assets = sorted(Path('static/images/theme-backgrounds').glob('*.webp'))
     assert len(assets) == 10
+    scenes = sorted(Path('static/images/theme-scenes').glob('*.webp'))
+    assert len(scenes) == 9
+    assets.extend(scenes)
     for asset in assets:
-        target = _asset_url(client, f'images/theme-backgrounds/{asset.name}')
+        target = _asset_url(client, asset.relative_to('static').as_posix())
         response = client.get(target, headers={'Accept-Encoding': 'gzip'})
         assert response.status_code == 200
         assert response.mimetype == 'image/webp'

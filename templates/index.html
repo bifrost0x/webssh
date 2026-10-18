@@ -323,19 +323,15 @@
                             <div class="workspace-drawer-header">
                                 <div>
                                     <span class="session-panel-eyebrow" data-i18n="workspaceContext.personalWorkspace">Personal workspace</span>
-                                    <h2 id="notepadTitle" data-i18n="workspaceContext.notes">Notes</h2>
+                                    <div class="notepad-title-row">
+                                        <h2 id="notepadTitle" data-i18n="workspaceContext.notes">Notes</h2>
+                                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
+                                    </div>
                                     <p data-i18n="workspaceContext.notesHint">Your private notes, shared across all your sessions.</p>
                                 </div>
                             </div>
                             <div class="notepad-section">
-                                <div class="notepad-header">
-                                    <div class="notepad-title-row">
-                                        <div class="notepad-title" data-i18n="workspaceContext.notepad">Notepad</div>
-                                        <span class="notepad-save-status" id="notepadSaveStatus"></span>
-                                    </div>
-                                    <div class="notepad-meta" data-i18n="workspaceContext.scratchpad">Personal scratchpad</div>
-                                </div>
-                                <textarea id="sessionNotepad" class="notepad-input" aria-label="Notepad" data-i18n-aria-label="workspaceContext.notepad" data-i18n-placeholder="workspaceContext.notesPlaceholder" placeholder="Write notes, commands, or snippets here..."></textarea>
+                                <textarea id="sessionNotepad" class="notepad-input" aria-labelledby="notepadTitle" data-i18n-placeholder="workspaceContext.notesPlaceholder" placeholder="Write notes, commands, or snippets here..."></textarea>
                             </div>
                         </div>
                     </section>

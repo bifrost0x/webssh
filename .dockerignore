@@ -44,6 +44,37 @@ Thumbs.db
 .env
 .env.local
 .env.production
+# Match at every depth; gitignore does not protect Docker build contexts.
+**/.env
+**/.env.*
+**/secrets
+**/.ssh
+**/secret_key
+**/known_hosts
+**/id_rsa
+**/id_dsa
+**/id_ecdsa
+**/id_ed25519
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.log
+**/*.bak
+**/*.backup
+**/*.orig
+**/*.tmp
+**/__pycache__
+**/*.py[cod]
+**/.git
+**/data
+**/instance
 
 # User data directory - contains sensitive data
 data/
@@ -108,6 +139,8 @@ requirements-test.*
 requirements-graph.*
 scripts/
 .trivyignore.yaml
+.gitleaks.toml
+.graphifyignore
 .env.example
 docker-compose*.yml
 
@@ -119,6 +152,11 @@ dist/
 # Documentation (not needed in container)
 README.md
 docs/
+site/
+assets/
+**/*.md
+# Retain editable image sources in Git, but ship only the WebP derivatives.
+static/images/theme-backgrounds/*.png
 
 # Test files
 tests/

@@ -48,6 +48,19 @@ jobs:
           fetch-depth: 0
       - name: Reject private development artifacts
         run: python scripts/check_repository_hygiene.py
+      - name: Install checksum-pinned secret scanner
+        shell: bash
+        run: |
+          set -eu
+          tool_dir="$RUNNER_TEMP/webssh-gitleaks"
+          mkdir -p "$tool_dir"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            --output "$tool_dir/gitleaks.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $tool_dir/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$tool_dir/gitleaks.tar.gz" -C "$tool_dir" gitleaks
+      - name: Scan tracked source and verify secret-detection canaries
+        run: python scripts/check_repository_secrets.py --gitleaks "$RUNNER_TEMP/webssh-gitleaks/gitleaks"
       - name: Classify changes
         id: scope
         env:
@@ -375,6 +388,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Verify Docker context exclusions and runtime inputs
+        run: python scripts/check_container_context.py
+
       - name: Build and start this checkout
         shell: bash
         run: |
@@ -446,6 +462,9 @@ jobs:
             echo "WEBSSH_CI_RECOVERY_VOLUME_CREATED=1"
           } >> "$GITHUB_ENV"
           trap - EXIT
+
+      - name: Verify packaged runtime files
+        run: python scripts/check_container_context.py --container "$WEBSSH_CI_CONTAINER"
 
       - name: Verify recovery volume, gthread worker and readiness
         shell: bash

@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+# Invalid PEM fixtures split their header across literals to avoid secret-scan
+# false positives. Python concatenates them unchanged; valid keys are generated.
+
 from app.storage_errors import StorageCorruptionError
 
 
@@ -449,12 +452,12 @@ def test_dsa_is_not_reported_as_supported(dsa_private_key_pem):
         '',
         '   ',
         (
-            '-----BEGIN RSA PRIVATE KEY-----\n'
+            '-----BEGIN ' 'RSA PRIVATE KEY-----\n'
             'invalid\n'
             '-----END RSA PRIVATE KEY-----'
         ),
         (
-            '-----BEGIN OPENSSH PRIVATE KEY-----\n'
+            '-----BEGIN ' 'OPENSSH PRIVATE KEY-----\n'
             'invalid\n'
             '-----END OPENSSH PRIVATE KEY-----'
         ),
@@ -688,7 +691,7 @@ def test_save_key_rejects_malformed_pem_without_writing(app):
 
     user_id = create_user(app, username='malformed-key-user')
     key_content = (
-        '-----BEGIN RSA PRIVATE KEY-----\n'
+        '-----BEGIN ' 'RSA PRIVATE KEY-----\n'
         'private-material-marker\n'
         '-----END RSA PRIVATE KEY-----'
     )

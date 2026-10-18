@@ -53,7 +53,13 @@ RUN apt-get update \
     && python -m pip uninstall --yes pip \
     && rm -rf /usr/local/lib/python*/ensurepip
 
-COPY . /app
+# Copy only runtime inputs, even when building from a developer's checkout.
+# .dockerignore also filters secrets and authoring files inside these trees.
+COPY app/ /app/app/
+COPY templates/ /app/templates/
+COPY static/ /app/static/
+COPY deployment/ldap_secret_cli.py /app/deployment/ldap_secret_cli.py
+COPY config.py start.py LICENSE /app/
 
 RUN chown -R appuser:appuser /app && \
     mkdir -p /app/data/logs /app/data/keys /app/recovery /run/webssh-auth && \
