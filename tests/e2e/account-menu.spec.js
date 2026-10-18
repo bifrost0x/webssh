@@ -1,6 +1,30 @@
 const { test, expect } = require('playwright/test');
 const { login, openProfileManagement } = require('./helpers');
 
+test('logout confirmation cancels safely and submits the existing protected logout', async ({ page }) => {
+    await login(page);
+    const logoutRequests = [];
+    page.on('request', request => {
+        if (new URL(request.url()).pathname === '/logout') logoutRequests.push(request);
+    });
+    await page.locator('#accountBtnHeader').click();
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('#logoutBtn').click();
+    await expect(page).toHaveURL(/\/$/);
+    expect(logoutRequests).toHaveLength(0);
+
+    if (!(await page.locator('#logoutBtn').isVisible())) {
+        await page.locator('#accountBtnHeader').click();
+    }
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#logoutBtn').click();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.locator('#username')).toBeVisible();
+    expect(logoutRequests).toHaveLength(1);
+    expect(logoutRequests[0].method()).toBe('POST');
+    expect(new URLSearchParams(logoutRequests[0].postData()).get('csrf_token')).toBeTruthy();
+});
+
 test('account menu opens the Settings Center and persists close confirmation', async ({ page }) => {
     await login(page);
 

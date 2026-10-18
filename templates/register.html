@@ -9,8 +9,10 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/auth.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/webssh-2.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
 </head>
-<body data-theme="glass" data-use-theme-preference data-defer-theme-background>
+<body class="webssh-ui webssh-auth" data-theme="glass" data-use-theme-preference data-defer-theme-background>
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
 
     <div class="auth-shell">
@@ -36,7 +38,7 @@
                 <div class="auth-context-panel">
                     <div class="auth-brand-lockup">
                         <a class="auth-product-brand" href="{{ url_for('login') }}" aria-label="WebSSH sign in" data-i18n-aria-label="auth.websshSignIn">
-                            <img class="auth-product-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="WebSSH">
+                            <img class="auth-product-logo" src="{{ static_asset_url(filename='images/redesign/webssh-mark.png') }}" alt="WebSSH"><b class="brand-wordmark" aria-hidden="true">WebSSH</b>
                         </a>
                         <p class="auth-context-footer" data-i18n="brand.tagline">Your shell. Your rules.</p>
                     </div>
@@ -72,15 +74,8 @@
                 <p data-i18n="auth.registrationHint">Choose credentials for this instance. You can add stronger factors after sign-in.</p>
             </div>
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
+            {% from '_auth_messages.html' import render_auth_messages %}
+            {{ render_auth_messages() }}
 
             <div class="auth-credentials-zone">
             <form method="POST" action="{{ url_for('register') }}" id="registerForm">

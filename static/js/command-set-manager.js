@@ -236,7 +236,7 @@ window.CommandSetManager = {
         this.renderLibraryResults();
         this.renderSteps();
         this.openModal();
-        setTimeout(() => document.getElementById('commandSetNameInput')?.focus(), 50);
+        document.getElementById('commandSetNameInput')?.focus();
     },
 
     openLegacyConversion(profile) {

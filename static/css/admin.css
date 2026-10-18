@@ -1307,3 +1307,8 @@ p.operations-metric-note { margin: 8px 0 0; }
     .operations-row-actions .btn { min-height: 40px; }
     .operations-views .btn { flex: 1; }
 }
+
+#stepUpModal {
+    /* Reauthentication must remain above the restore confirmation requesting it. */
+    z-index: 9010;
+}

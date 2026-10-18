@@ -19,6 +19,7 @@ window.JumpHostManager = {
         this.renderSelect();
         this.renderList();
         window.ProfileManager?.renderEditorSelects();
+        window.dispatchEvent?.(new CustomEvent('jump-host-list-change'));
         if (typeof SessionManager !== 'undefined') {
             SessionManager.refreshEmptyPanes();
         }

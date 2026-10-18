@@ -165,16 +165,18 @@ async function readPaperAuthState(page) {
             return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
                 / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
         };
-        const darkContextSurface = 'rgb(7, 12, 21)';
+        const contextSurface = getComputedStyle(document.querySelector('.auth-context-panel')).backgroundColor;
         const contrastFor = selector => contrast(
             getComputedStyle(document.querySelector(selector)).color,
-            darkContextSurface,
+            selector.includes('.auth-form-panel')
+                ? getComputedStyle(document.querySelector('.auth-form-panel')).backgroundColor
+                : contextSurface,
         );
 
         return {
             bodyBackground: getComputedStyle(document.body).backgroundColor,
-            titleContrast: contrastFor('.auth-context-copy h1'),
-            itemContrast: contrastFor('.auth-context-panel :is(.auth-product-pillars, .auth-path-list) strong'),
+            titleContrast: contrastFor('.auth-form-panel h1'),
+            itemContrast: contrastFor('.auth-form-panel label'),
             footerContrast: contrastFor('.auth-context-footer'),
         };
     });
@@ -289,7 +291,8 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
         cardImage: getComputedStyle(document.querySelector('.auth-card')).backgroundImage,
     }));
     expect(authTheme.backdropImage).toContain('paper-blueprint.webp');
-    expect(authTheme.cardImage).toContain('paper-blueprint.webp');
+    // Form content uses an opaque theme surface for legibility; artwork stays behind it.
+    expect(authTheme.cardImage).toBe('none');
 
     for (const path of ['/login', '/register']) {
         await page.goto(path);

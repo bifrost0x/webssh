@@ -183,10 +183,17 @@
             if (warningLevel >= level) return;
             warningLevel = level;
             dismissWarning?.();
+            const closeLabel = browserWindow.i18n?.t?.('common.close');
             dismissWarning = browserWindow.showNotification?.({
                 message: message(level),
                 type: level === 2 ? 'warning' : 'info',
                 persistent: true,
+                action: {
+                    label: closeLabel && closeLabel !== 'common.close' ? closeLabel : 'Close',
+                    onClick() {
+                        // The notification dismisses itself; the expiry timer keeps running.
+                    },
+                },
             }) || null;
         }
 
