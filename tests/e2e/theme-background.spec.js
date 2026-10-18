@@ -15,6 +15,8 @@ async function settings(page) {
 test('custom backgrounds persist per theme and account in this browser, never on login', async ({page}) => {
     await login(page);
     await settings(page);
+    await page.locator('#settingsThemeSelect').selectOption('paper');
+    await expect(page.locator('#settingsThemeSelect')).toBeEnabled();
     await page.locator('#themeBackgroundFile').setInputFiles(await image(page));
     await expect(page.locator('#themeBackgroundStatus')).toHaveText('Background saved in this browser.');
     await expect(page.locator('body')).toHaveAttribute('data-custom-background', '');
@@ -31,11 +33,17 @@ test('custom backgrounds persist per theme and account in this browser, never on
     await page.goto('/');
     await expect(page.locator('body')).toHaveAttribute('data-custom-background', '');
     await expect(page.locator('#overviewHosts')).toContainText('Usable key');
+    await page.locator('#overviewListBtn').click();
+    await expect(page.locator('.overview-heading')).toHaveCSS('background-image', /data:image\/jpeg;base64,/);
+    await page.locator('#workspaceNavBtn').click();
+    await page.locator('.split-btn[data-layout="windows"]').click();
+    await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', /data:image\/jpeg;base64,/);
     await page.screenshot({path: test.info().outputPath('custom-background.png')});
     // A different authenticated namespace must not inherit this image.
     await page.evaluate(() => document.querySelector('meta[name="background-scope"]').content = 'a'.repeat(64));
     await page.addScriptTag({url: '/static/js/theme-background.js'});
     await expect(page.locator('body')).not.toHaveAttribute('data-custom-background');
+    await expect(page.locator('body')).toHaveCSS('--theme-scene-image', /paper-pavilion.webp/);
     await settings(page);
     await page.locator('#themeBackgroundRemove').click();
     await expect(page.locator('#themeBackgroundStatus')).toHaveText('Default theme background restored.');

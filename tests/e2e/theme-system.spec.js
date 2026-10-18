@@ -290,7 +290,7 @@ test('the last selected theme styles the next login screen', async ({ page }) =>
         backdropImage: getComputedStyle(document.body, '::before').backgroundImage,
         cardImage: getComputedStyle(document.querySelector('.auth-card')).backgroundImage,
     }));
-    expect(authTheme.backdropImage).toContain('paper-blueprint.webp');
+    expect(authTheme.backdropImage).toContain('paper-pavilion.webp');
     // Form content uses an opaque theme surface for legibility; artwork stays behind it.
     expect(authTheme.cardImage).toBe('none');
 
