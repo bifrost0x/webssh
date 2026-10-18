@@ -117,12 +117,13 @@ def add_search_metadata(output: Path) -> None:
             nodes[0]['mainEntity'] = {'@id': video_id}
             nodes.append({
                 '@type': 'VideoObject', '@id': video_id,
-                'name': 'WebSSH - a one-minute product walkthrough',
+                'name': 'WebSSH: Self-Hosted SSH & SFTP in Your Browser',
                 'description': description,
-                'thumbnailUrl': [SITE_URL + 'assets/webssh-demo-poster.jpg'],
-                'contentUrl': SITE_URL + 'assets/webssh-demo.mp4?v=4a5bdb14506d',
-                'uploadDate': '2026-10-16T19:22:00+00:00',
-                'duration': 'PT1M', 'inLanguage': 'en',
+                'thumbnailUrl': [SITE_URL + 'assets/webssh-youtube-tour.jpg'],
+                'url': 'https://www.youtube.com/watch?v=mw_qXUnYYVs',
+                'embedUrl': 'https://www.youtube-nocookie.com/embed/mw_qXUnYYVs',
+                'uploadDate': '2026-10-18T13:27:58+02:00',
+                'duration': 'PT4M33S', 'inLanguage': 'en',
                 'width': 1920, 'height': 1080,
                 'about': {'@id': SITE_URL + '#software'},
             })
@@ -136,14 +137,14 @@ def add_search_metadata(output: Path) -> None:
         image = SITE_URL + 'assets/session-workspace.png'
         image_alt = 'WebSSH browser workspace with an SSH terminal and SFTP files side by side'
         if filename == 'demo.html':
-            image = SITE_URL + 'assets/webssh-demo-poster.jpg'
+            image = SITE_URL + 'assets/webssh-youtube-tour.jpg'
             image_alt = 'WebSSH product walkthrough with terminals, SFTP files and command sets'
         tags = {
             'og:type': 'website', 'og:site_name': 'WebSSH', 'og:locale': 'en_US',
             'og:title': title, 'og:description': description, 'og:url': url,
             'og:image': image, 'og:image:type': 'image/jpeg' if filename == 'demo.html' else 'image/png',
-            'og:image:width': '1920' if filename == 'demo.html' else '2560',
-            'og:image:height': '1080' if filename == 'demo.html' else '1440', 'og:image:alt': image_alt,
+            'og:image:width': '1280' if filename == 'demo.html' else '2560',
+            'og:image:height': '720' if filename == 'demo.html' else '1440', 'og:image:alt': image_alt,
         }
         social = ''.join(f'  <meta property="{key}" content="{escape(value, quote=True)}">\n'
                          for key, value in tags.items())
