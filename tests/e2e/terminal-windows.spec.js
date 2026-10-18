@@ -440,3 +440,68 @@ test('dragging beyond an edge and resizing the workspace keep complete windows v
     })).toBe(true);
     await page.screenshot({path: test.info().outputPath('contained-windows.png')});
 });
+
+for (const zones of [['left', 'right'], ['top-left', 'top-right', 'bottom-left', 'bottom-right']]) {
+    test(`snapped ${zones.length} cells retain their preview geometry on a narrow desktop`, async ({page}) => {
+        await page.setViewportSize({width:1280,height:800});
+        await enterWindowMode(page);
+        await page.locator('#contextWorkspaceResizer').press('End');
+        const desktop = page.locator('#terminalGrid');
+        await expect.poll(async () => (await box(desktop)).width).toBeLessThan(664);
+        for (const [index, zone] of zones.entries()) {
+            const id = `win-snap-${index}`;
+            await connect(page, id, `${zone}.example`);
+            const frame = windowFor(page, id);
+            await expect(frame).not.toHaveClass(/is-gliding/);
+            const heading = await frame.locator('.ws-window-heading').boundingBox();
+            const bounds = await desktop.boundingBox();
+            const x = zone.endsWith('right') ? bounds.x + bounds.width - 3 : bounds.x + 3;
+            const y = zone.startsWith('top') ? bounds.y + 3
+                : zone.startsWith('bottom') ? bounds.y + bounds.height - 3 : bounds.y + bounds.height / 2;
+            await page.mouse.move(heading.x + 20, heading.y + heading.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(x,y,{steps:12});
+            await expect(page.locator('.ws-snap-preview')).toHaveClass(/is-visible/);
+            // Compare the settled preview, not an intermediate scale/size transition.
+            await page.locator('.ws-snap-preview').evaluate(async el => {
+                await Promise.all(el.getAnimations().map(animation => animation.finished));
+            });
+            const preview = await box(page.locator('.ws-snap-preview'));
+            await page.mouse.up();
+            await expect(frame).not.toHaveClass(/is-gliding/);
+            await expect.poll(async () => {
+                const actual = await box(frame);
+                return ['x','y','width','height'].every(key => Math.abs(actual[key] - preview[key]) <= 2);
+            }).toBe(true);
+        }
+        async function assertGeometry() {
+            const bounds = await desktop.boundingBox();
+            const rects = await page.locator('.ws-window:not(.is-minimized)').evaluateAll(frames => frames.map(frame => {
+                const r = frame.getBoundingClientRect();
+                return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};
+            }));
+            expect(rects).toHaveLength(zones.length);
+            for (const [i,r] of rects.entries()) {
+                expect(r.left).toBeGreaterThanOrEqual(bounds.x);
+                expect(r.right).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+                expect(r.top).toBeGreaterThanOrEqual(bounds.y);
+                expect(r.bottom).toBeLessThanOrEqual(bounds.y + bounds.height + 1);
+                for (const other of rects.slice(i + 1)) {
+                    expect(r.right <= other.left || other.right <= r.left || r.bottom <= other.top || other.bottom <= r.top).toBe(true);
+                }
+            }
+        }
+        await assertGeometry();
+        // Drawer resizing must preserve reduced snap widths through reflow too.
+        await page.locator('#contextWorkspaceResizer').press('Home');
+        await expect.poll(async () => (await box(desktop)).width).toBeGreaterThan(664);
+        await assertGeometry();
+        await page.locator('#contextWorkspaceResizer').press('End');
+        await expect.poll(async () => (await box(desktop)).width).toBeLessThan(664);
+        await expect(page.locator('.ws-window.is-gliding')).toHaveCount(0);
+        await assertGeometry();
+        expect(await page.evaluate(() => window.__windowEvents.filter(e => e.event === 'ssh_disconnect'))).toEqual([]);
+        for (const index of zones.keys()) await expect(page.locator(`#terminal-win-snap-${index} .xterm`)).toHaveCount(1);
+        await assertNoExternalRequests(page);
+    });
+}

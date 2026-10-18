@@ -861,7 +861,8 @@
                     glide(state);
                     layoutWindow(state);
                 } else {
-                    setRect(state, snapRect(current.zone, bounds), {animated: true});
+                    // Snap cells share the tiled minimum, including after reflow and restore.
+                    setRect(state, snapRect(current.zone, bounds), {animated: true, tiled: true});
                     state.restoreFraction = before;
                 }
             } else {
