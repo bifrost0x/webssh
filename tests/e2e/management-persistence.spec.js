@@ -119,3 +119,20 @@ for (const width of [1536, 390]) {
         await assertNoExternalRequests(page);
     });
 }
+
+test('command-set editor does not steal focus after the user chooses another field', async ({page}) => {
+    await login(page);
+    await openCommands(page);
+    await page.locator('#commandSetsTab').click();
+    // Control the opening delay so fast input cannot make this regression intermittent.
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    await page.locator('#newCommandSetBtn').dispatchEvent('click');
+    const description = page.locator('#commandSetDescriptionInput');
+    await description.focus();
+    await page.clock.runFor(100);
+    await expect(description).toBeFocused();
+    await description.fill('Keep input in the selected field');
+    await expect(page.locator('#commandSetNameInput')).toHaveValue('');
+    await assertNoExternalRequests(page);
+});
