@@ -174,14 +174,22 @@
                 <div id="overviewGraphLegend" class="overview-legend" hidden>
                     <strong><span class="material-icons" aria-hidden="true">arrow_right_alt</span><span data-i18n="overview.configuredRoute">Configured SSH route</span></strong><strong><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="overview.grouping">Grouping</span></strong>
                     <p data-i18n="overview.graphHint">Arrows show saved jump-host assignments, not host availability. Groups organize saved connections.</p>
+                    <div class="overview-route-help">
+                        <p data-i18n="overview.routeSetupHint">Add a jump host, then select it in a saved host's advanced settings. This view will show the route through that jump host to the destination.</p>
+                        <button class="overview-link" type="button" data-connection-asset="jump-hosts"><span data-i18n="jumphosts.addNew">Add Jump Host</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
+                    </div>
                 </div>
                 <div class="overview-footer">
                     <button id="overviewAllTransfers" title="Current file-workspace transfers" data-i18n-title="overview.transfersHint" class="overview-link" type="button" hidden><span class="material-icons" aria-hidden="true">swap_horiz</span><span data-i18n="fm.transfers">Transfers</span><span id="overviewTransferCount" class="overview-count">0</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
                 </div>
             </section>
             <section id="overviewRouteCard" class="overview-card overview-route-card" aria-labelledby="overviewRoutesTitle" hidden>
-                <div class="overview-card-heading"><h2 id="overviewRoutesTitle" data-i18n="overview.configuredRoute">Configured SSH route</h2><button id="overviewExpandRoutes" class="overview-link" type="button"><span data-i18n="overview.graph">SSH routes</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button></div>
+                <div class="overview-card-heading"><h2 id="overviewRoutesTitle" data-i18n="overview.graph">SSH routes</h2><button id="overviewExpandRoutes" class="overview-link" type="button"><span data-i18n="overview.graph">SSH routes</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button></div>
                 <div id="overviewRoutePreview" class="overview-route-preview"></div>
+                <div class="overview-route-help">
+                    <p data-i18n="overview.routeSetupHint">Add a jump host, then select it in a saved host's advanced settings. This view will show the route through that jump host to the destination.</p>
+                    <button class="overview-link" type="button" data-connection-asset="jump-hosts"><span data-i18n="jumphosts.addNew">Add Jump Host</span><span class="material-icons" aria-hidden="true">arrow_forward</span></button>
+                </div>
             </section>
             </div>
             <div class="overview-activity">

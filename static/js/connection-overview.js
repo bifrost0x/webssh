@@ -293,6 +293,7 @@
             intro.textContent = t(intro.dataset.i18n);
             retainFocus(view, () => {
                 preview.replaceChildren();
+                preview.hidden = true;
                 byId('overviewRouteCard').hidden = true;
                 container.replaceChildren();
                 const manager = win.ProfileManager;
@@ -304,6 +305,8 @@
                     return;
                 }
                 const model = buildAccessModel(manager.profiles, win.JumpHostManager?.jumpHosts, win.JumpHostManager?.loaded);
+                // Keep the setup entry point available before the first route exists.
+                byId('overviewRouteCard').hidden = graph;
                 const query = byId('overviewHostSearch').value.trim().toLocaleLowerCase();
                 const hosts = model.filter(host => (selectedGroup === null || host.group === selectedGroup)
                     && `${host.name} ${host.group}`.toLocaleLowerCase().includes(query));
@@ -321,6 +324,7 @@
                         configured.forEach(host => counts.set(host.jump.id, (counts.get(host.jump.id) || 0) + 1));
                         const previewJump = [...counts].sort((a, b) => b[1] - a[1])[0][0];
                         renderGraph(configured.filter(host => host.jump.id === previewJump), preview);
+                        preview.hidden = false;
                         preview.querySelectorAll('[data-overview-key]').forEach(item => {
                             item.dataset.overviewKey = `preview:${item.dataset.hostId}`;
                         });

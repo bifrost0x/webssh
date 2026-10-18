@@ -199,6 +199,12 @@ body.webssh-ui[data-theme="glass"] {
 .overview-sessions .overview-row > .material-icons:first-child { display: grid; place-items: center; width: 36px; height: 40px; border-radius: 8px; background: var(--ws2-panel); font-size: 22px; }
 .overview-row-copy strong { font-size: 14px; }
 .overview-route-card .overview-card-heading { padding-bottom: 14px; }
+.overview-route-help { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; color: var(--ws2-text-secondary); font-size: 12px; line-height: 1.6; }
+.overview-route-help p { flex: 1 1 280px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.overview-route-help .overview-link { flex: 0 1 auto; min-height: 36px; white-space: normal; text-align: left; }
+.overview-route-preview:not([hidden]) + .overview-route-help { margin-top: 12px; }
+.overview-legend .overview-route-help { margin-top: 10px; }
+.overview-legend .overview-route-help p { margin: 0; }
 .overview-route-preview { border: 1px solid var(--ws2-border); border-radius: 8px; padding: 16px; }
 .overview-route-preview .overview-host-group { border: 0; background: transparent; padding: 0; }
 .overview-route-preview .overview-group-heading { display: none; }
