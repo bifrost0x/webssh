@@ -431,6 +431,8 @@
                 observer.observe(byId('overviewRoutePreview'));
             }
             renderSidebar();
+            updateNavigation();
+            render();
             // Queue progress must not rebuild focusable host/session buttons.
             win.addEventListener('file-transfer-queue-change', () => {
                 if (!visible() || transfersScheduled) return;

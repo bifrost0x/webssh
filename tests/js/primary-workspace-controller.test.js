@@ -188,3 +188,18 @@ test('a primary view can be released back to modal semantics for nested workflow
     assert.equal(commands.classList.contains('primary-workspace-view'), false);
     assert.equal(state.controller.getActiveView(), 'workspaces');
 });
+
+test('initial navigation selects Overview and preserves the terminal surface for later use', () => {
+    const state = harness();
+    state.elements.connectionOverview = element('connectionOverview');
+    state.elements.overviewNavBtn = element('overviewNavBtn');
+    state.body.appendChild(state.elements.connectionOverview);
+    state.controller.init();
+    assert.equal(state.controller.getActiveView(), 'overview');
+    assert.equal(state.body.dataset.primaryWorkspace, 'overview');
+    assert.equal(state.elements.overviewNavBtn.getAttribute('aria-current'), 'page');
+    assert.equal(state.workspace.hidden, true);
+    state.elements.workspaceNavBtn.dispatch('click');
+    assert.equal(state.controller.getActiveView(), 'workspaces');
+    assert.equal(state.workspace.hidden, false);
+});

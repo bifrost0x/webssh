@@ -27,8 +27,9 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/connection-overview.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
 </head>
-<body class="webssh-shell webssh-ui" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
+<body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
 
     <header class="header">
@@ -45,11 +46,11 @@
                 </button>
                 <button id="mobileMenuBtn" class="btn btn-secondary mobile-menu-btn" aria-label="Toggle menu" data-i18n-aria-label="navigation.toggleMenu" aria-expanded="false" aria-controls="headerButtons"><span class="material-icons" aria-hidden="true">more_vert</span></button>
             </div>
-            <div class="shell-location" id="shellLocation" data-i18n="navigation.workspaces">Workspaces</div>
+            <div class="shell-location" id="shellLocation" data-i18n="overview.title">Overview</div>
             <div class="header-buttons" id="headerButtons">
                 <nav class="global-navigation" id="globalNavigation" aria-label="Primary navigation" data-i18n-aria-label="navigation.primary">
-                    <button id="workspaceNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces" title="Workspaces" data-i18n-title="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
-                    <button id="overviewNavBtn" class="global-nav-item" type="button" aria-label="Overview" data-i18n-aria-label="overview.title" title="Overview" data-i18n-title="overview.title"><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="overview.title">Overview</span></button>
+                    <button id="workspaceNavBtn" class="global-nav-item" type="button" aria-label="Workspaces" data-i18n-aria-label="navigation.workspaces" title="Workspaces" data-i18n-title="navigation.workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.workspaces">Workspaces</span></button>
+                    <button id="overviewNavBtn" class="global-nav-item active" type="button" aria-current="page" aria-label="Overview" data-i18n-aria-label="overview.title" title="Overview" data-i18n-title="overview.title"><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="overview.title">Overview</span></button>
                     <button id="fileTransferBtn" class="global-nav-item" type="button" onclick="openFileManager()" aria-label="File Manager" data-i18n-aria-label="files.fileManager" title="File Manager" data-i18n-title="files.fileManager"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="files.fileManager">Files</span></button>
                     <button id="manageProfilesBtn" class="global-nav-item" type="button" title="Hosts" data-i18n-title="connectionAssets.hosts" aria-label="Hosts" data-i18n-aria-label="connectionAssets.hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
                     <button id="commandLibraryBtn" class="global-nav-item" type="button" aria-label="Commands" data-i18n-aria-label="commands.workspace" title="Commands" data-i18n-title="commands.workspace"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
@@ -109,7 +110,7 @@
             </div>
         </div>
 
-        <div class="session-tabs-row">
+        <div class="session-tabs-row" hidden>
             <div class="session-tabs" id="sessionTabs"></div>
             <button class="btn-new-tab material-icons" id="newTabBtn" title="Select a session or use Quick Connect" data-i18n-title="panes.selectSession" aria-label="Select a session or use Quick Connect" data-i18n-aria-label="panes.selectSession">add</button>
             <button class="context-workspace-launcher" id="contextWorkspaceLauncher" type="button" aria-expanded="false" aria-controls="contextWorkspace" aria-label="Open session tools" title="Open session tools" data-i18n-aria-label="workspace.openTools" data-i18n-title="workspace.openTools"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="workspace.tools">Tools</span></button>
@@ -119,6 +120,11 @@
                     <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single">1</button>
                     <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane" data-i18n-title="panes.split" data-i18n-aria-label="panes.split">2</button>
                     <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane" data-i18n-title="panes.quad" data-i18n-aria-label="panes.quad">4</button>
+                    <button class="split-btn split-btn-windows" data-layout="windows" title="Floating windows" aria-label="Floating windows" data-i18n-title="windows.mode" data-i18n-aria-label="windows.mode"><span class="material-icons" aria-hidden="true">filter_none</span></button>
+                </div>
+                <div id="windowArrangeControls" class="window-arrange-controls" hidden>
+                    <button type="button" class="tab-row-icon-btn" data-window-arrange="tile" title="Tile windows" aria-label="Tile windows" data-i18n-title="windows.tile" data-i18n-aria-label="windows.tile"><span class="material-icons" aria-hidden="true">grid_view</span></button>
+                    <button type="button" class="tab-row-icon-btn" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><span class="material-icons" aria-hidden="true">filter_none</span></button>
                 </div>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
@@ -191,7 +197,7 @@
         </div>
     </section>
 
-    <main class="main-content">
+    <main class="main-content" hidden>
         <!-- session-meta kept hidden for JS references; visible session-bar only on mobile -->
         <div aria-hidden="true" style="display:none">
             <div id="sessionMeta"><div id="sessionMetaTitle"></div><div id="sessionMetaNotes"></div></div>
@@ -316,14 +322,14 @@
             </aside>
         </div>
     </main>
-    <footer class="workspace-status-bar" id="workspaceStatusBar" aria-label="Workspace status" data-i18n-aria-label="workspace.status">
+    <footer class="workspace-status-bar" id="workspaceStatusBar" hidden aria-label="Workspace status" data-i18n-aria-label="workspace.status">
         <span class="workspace-status-state" id="workspaceStatusState" data-i18n="workspace.noActiveSession">No active session</span>
-        <span><strong data-i18n="workspace.target">Target</strong> <span id="workspaceStatusTarget">—</span></span>
-        <span id="workspaceStatusTransport">SSH</span>
-        <span id="workspaceStatusTrust" data-i18n="workspace.noConnectedHost">No connected host</span>
-        <span id="workspaceStatusPersistence" data-i18n="workspace.notActive">Not active</span>
+        <span hidden><strong data-i18n="workspace.target">Target</strong> <span id="workspaceStatusTarget">—</span></span>
+        <span id="workspaceStatusTransport" hidden></span>
+        <span id="workspaceStatusUserField" hidden><strong data-i18n="auth.username">Username</strong> <span id="workspaceStatusUser"></span></span>
+        <span id="workspaceStatusPersistence" hidden></span>
         <span class="workspace-status-spacer"></span>
-        <span><span class="material-icons" aria-hidden="true">sync_alt</span> <span data-i18n="workspace.transfers">Transfers</span></span>
+        <button type="button" id="workspaceStatusTransfers" class="workspace-status-transfers"><span class="material-icons" aria-hidden="true">sync_alt</span> <span data-i18n="workspace.transfers">Transfers</span> <span id="workspaceStatusTransferCount">0</span></button>
     </footer>
 
     <button id="mobileMenuBackdrop" class="mobile-menu-backdrop" type="button" tabindex="-1" aria-hidden="true" hidden></button>
@@ -331,7 +337,7 @@
         <span class="material-icons" aria-hidden="true">keyboard</span>
     </button>
     <nav class="mobile-app-dock" id="mobileAppDock" aria-label="Mobile navigation" data-i18n-aria-label="navigation.mobile">
-        <button class="mobile-dock-item active" type="button" data-mobile-view="workspaces" aria-current="page"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.terminal">Terminal</span></button>
+        <button class="mobile-dock-item" type="button" data-mobile-view="workspaces"><span class="material-icons" aria-hidden="true">terminal</span><span data-i18n="navigation.terminal">Terminal</span></button>
         <button class="mobile-dock-item" type="button" data-mobile-view="files"><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="workspaceContext.files">Files</span></button>
         <button class="mobile-dock-item" type="button" data-mobile-view="commands"><span class="material-icons" aria-hidden="true">code</span><span data-i18n="commands.workspace">Commands</span></button>
         <button class="mobile-dock-item" type="button" data-mobile-view="hosts"><span class="material-icons" aria-hidden="true">dns</span><span data-i18n="connectionAssets.hosts">Hosts</span></button>
@@ -1528,6 +1534,7 @@
     <script src="{{ static_asset_url(filename='js/terminal-appearance.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-input.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/terminal-windows.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/workspace-layout-controller.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/mobile-app-shell.js') }}"></script>

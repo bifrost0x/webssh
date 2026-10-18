@@ -18,7 +18,7 @@ function installExternalRequestGuard(page) {
     page.__externalRequests = externalRequests;
 }
 
-async function login(page, username = 'e2e_admin') {
+async function login(page, username = 'e2e_admin', {workspace = true} = {}) {
     installExternalRequestGuard(page);
 
     await page.goto('/login');
@@ -30,6 +30,13 @@ async function login(page, username = 'e2e_admin') {
         window.ProfileManager?.profilesLoaded === true
         && Array.isArray(window.JumpHostManager?.jumpHosts)
     ))).toBe(true);
+    if (workspace) await openWorkspace(page);
+}
+
+async function openWorkspace(page) {
+    const desktopNav = page.locator('#workspaceNavBtn');
+    const mobileNav = page.locator('.mobile-dock-item[data-mobile-view="workspaces"]');
+    await (await desktopNav.isVisible() ? desktopNav : mobileNav).click();
 }
 
 async function installSshConnectTrap(page) {
@@ -172,6 +179,7 @@ async function assertNoExternalRequests(page) {
 }
 
 module.exports = {
+    openWorkspace,
     assertNoExternalRequests,
     installExternalRequestGuard,
     installKeyUploadTrap,

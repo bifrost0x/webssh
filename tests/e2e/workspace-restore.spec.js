@@ -1,5 +1,5 @@
 const { test, expect } = require('playwright/test');
-const { login } = require('./helpers');
+const { openWorkspace, login } = require('./helpers');
 
 test.use({ viewport: { width: 1920, height: 1080 } });
 
@@ -41,6 +41,7 @@ for (const transport of ['polling', 'websocket']) {
                 await page.setViewportSize({ width, height: 920 });
                 packets.length = 0;
                 await page.reload();
+                await openWorkspace(page);
                 await expect(page.locator('.session-tab')).toHaveCount(count);
                 if (width < 768) await page.locator('#contextWorkspaceLauncher').click();
                 await page.locator('#contextCommandsTab').click();

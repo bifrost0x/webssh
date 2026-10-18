@@ -70,7 +70,7 @@
             noteDraft: browserWindow.notepadController?.hasUnsaved?.() ? note?.value : null,
             layout: browserWindow.SessionManager?.layout || null,
             paneAssignments: Array.isArray(browserWindow.SessionManager?.paneAssignments)
-                ? browserWindow.SessionManager.paneAssignments.slice(0, 4)
+                ? browserWindow.SessionManager.paneAssignments.slice(0, 16)
                 : [],
             commandDrafts: Array.from(
                 browserWindow.SessionCommandLauncher?.parameterDrafts?.entries?.() || [],
@@ -109,32 +109,40 @@
         }
         let attempts = 0;
         let uiRestored = false;
+        let applying = false;
         const apply = () => {
-            attempts += 1;
-            if (state.layout && browserWindow.SessionManager?.setSplitLayout) {
-                browserWindow.SessionManager.setSplitLayout(state.layout);
-            }
-            if (Array.isArray(state.paneAssignments)) {
-                state.paneAssignments.forEach((sessionId, paneIndex) => {
-                    if (sessionId && browserWindow.SessionManager?.getSession?.(sessionId)) {
-                        browserWindow.SessionManager.assignSessionToPane?.(sessionId, paneIndex);
-                    }
-                });
-            }
-            if (state.sessionId && browserWindow.SessionManager?.getSession?.(state.sessionId)) {
-                browserWindow.SessionManager.switchSession(state.sessionId);
-            }
-            if (!uiRestored) {
-                if (state.primaryView === 'files') browserDocument.getElementById('fileTransferBtn')?.click();
-                else if (state.primaryView === 'hosts') browserDocument.getElementById('manageProfilesBtn')?.click();
-                else if (state.primaryView === 'commands') browserDocument.getElementById('commandLibraryBtn')?.click();
-                else browserWindow.primaryWorkspaceController?.showWorkspaces?.();
-                if (state.activeContext) {
-                    browserWindow.workspaceLayoutController?.openContext?.(state.activeContext, 'restore');
+            if (applying) return false;
+            applying = true;
+            try {
+                attempts += 1;
+                if ([1, 2, 4, 'windows'].includes(state.layout) && browserWindow.SessionManager?.setSplitLayout) {
+                    browserWindow.SessionManager.setSplitLayout(state.layout);
                 }
-                uiRestored = true;
+                if (state.layout !== 'windows' && Array.isArray(state.paneAssignments)) {
+                    state.paneAssignments.forEach((sessionId, paneIndex) => {
+                        if (sessionId && browserWindow.SessionManager?.getSession?.(sessionId)) {
+                            browserWindow.SessionManager.assignSessionToPane?.(sessionId, paneIndex);
+                        }
+                    });
+                }
+                if (state.sessionId && browserWindow.SessionManager?.getSession?.(state.sessionId)) {
+                    browserWindow.SessionManager.switchSession(state.sessionId);
+                }
+                if (!uiRestored) {
+                    if (state.primaryView === 'overview') browserDocument.getElementById('overviewNavBtn')?.click();
+                    else if (state.primaryView === 'files') browserDocument.getElementById('fileTransferBtn')?.click();
+                    else if (state.primaryView === 'hosts') browserDocument.getElementById('manageProfilesBtn')?.click();
+                    else if (state.primaryView === 'commands') browserDocument.getElementById('commandLibraryBtn')?.click();
+                    else browserWindow.primaryWorkspaceController?.showWorkspaces?.();
+                    if (state.activeContext) {
+                        browserWindow.workspaceLayoutController?.openContext?.(state.activeContext, 'restore');
+                    }
+                    uiRestored = true;
+                }
+                return !state.sessionId || Boolean(browserWindow.SessionManager?.getSession?.(state.sessionId));
+            } finally {
+                applying = false;
             }
-            return !state.sessionId || Boolean(browserWindow.SessionManager?.getSession?.(state.sessionId));
         };
         if (!apply()) {
             const listener = () => {

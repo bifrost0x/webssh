@@ -19,6 +19,14 @@ const SessionManager = {
     disconnectSessionAction: ['retry', 'close'].includes(
         document.body?.dataset.disconnectSessionAction
     ) ? document.body.dataset.disconnectSessionAction : 'retry',
+    windowMode: false,
+    windowModePreferred: false,
+    windowDesktop: null,
+    windowCompactMedia: null,
+    windowSyncTimer: null,
+    maxWindows: 16,
+    windowModeStorageKey: 'webssh.workspace.windowMode',
+    windowLayoutStoragePrefix: 'webssh.workspace.windows:',
 
     init() {
         this.initializeDisplayNameStorage();
@@ -32,6 +40,7 @@ const SessionManager = {
         }
         this.ensureTerminalGrid();
         this.setSplitLayout(1);
+        this.initWindowMode();
         this.initTabScrollAffordances();
         window.addEventListener('languageChanged', () => {
             this.refreshEmptyPanes();
@@ -134,9 +143,7 @@ const SessionManager = {
 
         const restoredId = this.createSession(sessionData);
 
-        const emptyIndex = this.getFirstEmptyPaneIndex();
-        const targetPane = emptyIndex !== -1 ? emptyIndex : this.activePaneIndex;
-        this.assignSessionToPane(restoredId, targetPane);
+        this.assignSessionToPane(restoredId, this.resolvePaneForNewSession(null));
 
     },
 
@@ -191,9 +198,7 @@ const SessionManager = {
         this.createSessionTab(session_id);
         this.updateSessionStatus(session_id, 'disconnected');
 
-        const emptyIndex = this.getFirstEmptyPaneIndex();
-        const targetPane = emptyIndex !== -1 ? emptyIndex : this.activePaneIndex;
-        this.assignSessionToPane(session_id, targetPane);
+        this.assignSessionToPane(session_id, this.resolvePaneForNewSession(null));
 
     },
 
@@ -249,7 +254,6 @@ const SessionManager = {
             port,
             username,
             connected: true,
-            hostKeyVerified: true,
             terminalId,
             os: 'all',
             displayName: storedName || null,
@@ -373,6 +377,11 @@ const SessionManager = {
             return;
         }
 
+        if (this.windowMode) {
+            this.assignSessionToPane(sessionId, this.resolvePaneForNewSession(null));
+            return;
+        }
+
         let targetIndex = this.activePaneIndex;
         if (targetIndex === null || targetIndex === undefined) {
             targetIndex = 0;
@@ -398,7 +407,7 @@ const SessionManager = {
         this.removeSessionUI(sessionId);
     },
 
-    removeSessionUI(sessionId) {
+    removeSessionUI(sessionId, {keepWindow = false} = {}) {
         window.SSHInput?.cancelSession?.(sessionId);
         if (!this.sessions[sessionId]) {
             return;
@@ -420,7 +429,13 @@ const SessionManager = {
         if (paneIndex !== -1) {
             this.connectionLauncherSessions.delete(paneIndex);
             this.paneAssignments[paneIndex] = null;
-            this.renderPane(paneIndex);
+            if (this.windowMode && !keepWindow) {
+                this.forgetWindowLayout(sessionId);
+                this.closeWindowSlot(paneIndex, {activate: false});
+            } else {
+                this.renderPane(paneIndex);
+                this.updateWindowChrome(paneIndex);
+            }
         }
 
         window.dispatchEvent(new CustomEvent('session-removed', {
@@ -429,7 +444,9 @@ const SessionManager = {
         delete this.sessions[sessionId];
 
         const remainingSessions = Object.keys(this.sessions);
-        if (remainingSessions.length > 0) {
+        if (this.windowMode) {
+            this.activateTopWindow();
+        } else if (remainingSessions.length > 0) {
             const assignedIndex = this.paneAssignments.findIndex(id => id);
             if (assignedIndex !== -1) {
                 this.setActivePane(assignedIndex);
@@ -617,6 +634,7 @@ const SessionManager = {
         } else if (status === 'connected') {
             this.hideReconnectOverlay(sessionId);
         }
+        this.refreshWindowChrome(sessionId);
         this.notifyWorkspaceChange();
     },
 
@@ -726,6 +744,7 @@ const SessionManager = {
         if (label) {
             this.renderTabLabelContent(label, sessionId);
         }
+        this.refreshWindowChrome(sessionId);
     },
 
     startRenameSession(sessionId, labelElement) {
@@ -760,6 +779,7 @@ const SessionManager = {
             }
             this.renderTabLabelContent(labelElement, sessionId);
             this.updateSessionMeta(sessionId);
+            this.refreshWindowChrome(sessionId);
         };
 
         input.addEventListener('keydown', (e) => {
@@ -880,7 +900,7 @@ const SessionManager = {
         if (!row || !button || !actions) return;
 
         const mobile = window.matchMedia?.(
-            '(max-width: 767px), (max-height: 520px) and (pointer: coarse)'
+            '(max-width: 767px), (max-height: 520px)'
         );
         const update = () => {
             if (row.hidden || !row.clientWidth) return;
@@ -1040,6 +1060,19 @@ const SessionManager = {
     },
 
     setSplitLayout(layout) {
+        if (layout === 'windows') {
+            this.setWindowMode(true);
+            return;
+        }
+        if (this.windowMode) {
+            this.setWindowModePreference(false);
+            this.leaveWindowMode(layout);
+            return;
+        }
+        this.buildSplitLayout(layout);
+    },
+
+    buildSplitLayout(layout) {
         const grid = this.ensureTerminalGrid();
         if (!grid) {
             return;
@@ -1057,16 +1090,7 @@ const SessionManager = {
             this.paneAssignments[i] = previousAssignments[i] || null;
         }
 
-        const container = document.getElementById('terminalsContainer');
-        if (container) {
-            Object.values(this.sessions).forEach(session => {
-                const wrapper = document.getElementById(session.terminalId);
-                if (wrapper && wrapper.parentElement !== container) {
-                    wrapper.classList.add('unassigned');
-                    container.appendChild(wrapper);
-                }
-            });
-        }
+        this.parkTerminalWrappers();
 
         grid.className = `terminal-grid split-${layout}`;
         grid.innerHTML = '';
@@ -1097,6 +1121,10 @@ const SessionManager = {
                 this.renderPane(index, {preserveLauncherSearch: true});
             }
         });
+        if (this.windowMode) {
+            this.windowDesktop?.relabel();
+            this.paneAssignments.forEach((sessionId, index) => this.updateWindowChrome(index));
+        }
     },
 
     renderPane(paneIndex, {preserveLauncherSearch = false} = {}) {
@@ -1115,10 +1143,23 @@ const SessionManager = {
         const searchSelection = restoreSearchFocus
             ? [previousSearch.selectionStart, previousSearch.selectionEnd, previousSearch.selectionDirection]
             : null;
+        // Clearing the pane must never detach a live terminal from the page.
+        const container = document.getElementById('terminalsContainer');
+        Array.from(pane.children || []).forEach(child => {
+            if (container && child.classList?.contains('terminal-wrapper')) {
+                child.classList.add('unassigned');
+                container.appendChild(child);
+            }
+        });
         pane.innerHTML = '';
 
         const sessionId = this.paneAssignments[paneIndex];
         const launcherSessionId = this.connectionLauncherSessions.get(paneIndex);
+        if (this.windowMode && this.windowDesktop?.isMinimized(paneIndex)) {
+            // Minimized windows keep their slot; the terminal runs in the
+            // background exactly like an unassigned tab.
+            return;
+        }
         if (sessionId && !launcherSessionId) {
             const session = this.sessions[sessionId];
             if (!session) {
@@ -1183,6 +1224,7 @@ const SessionManager = {
         if (!session) {
             return;
         }
+        const slotWasEmpty = !this.paneAssignments[paneIndex];
 
         this.connectionLauncherSessions.delete(paneIndex);
         const clearedIndices = [];
@@ -1211,12 +1253,30 @@ const SessionManager = {
         }
 
         this.paneAssignments[paneIndex] = sessionId;
+        if (this.windowMode) {
+            this.openWindowForSlot(paneIndex, sessionId, {slotWasEmpty});
+        }
         this.renderPane(paneIndex);
         clearedIndices.forEach(index => {
-            if (index !== paneIndex) {
+            if (index === paneIndex) {
+                return;
+            }
+            if (this.windowMode) {
+                this.closeWindowSlot(index, {activate: false});
+            } else {
                 this.renderPane(index);
             }
         });
+        if (this.windowMode) {
+            this.updateWindowChrome(paneIndex);
+            this.saveWindowLayouts();
+            if (this.windowDesktop?.isMinimized(paneIndex)) {
+                // A restored session reopens minimized when it was left that way.
+                this.updateWindowTabState();
+                this.notifyWorkspaceChange();
+                return;
+            }
+        }
         this.setActivePane(paneIndex);
     },
 
@@ -1227,6 +1287,15 @@ const SessionManager = {
         }
         if (paneIndex < 0 || paneIndex >= this.paneAssignments.length) {
             return;
+        }
+        if (this.windowMode) {
+            if (!this.windowDesktop?.isOpen(paneIndex)) {
+                return;
+            }
+            if (this.windowDesktop.isMinimized(paneIndex)) {
+                this.windowDesktop.restore(paneIndex);
+            }
+            this.windowDesktop.focus(paneIndex);
         }
         const previousPaneIndex = this.activePaneIndex;
         if (
@@ -1259,7 +1328,7 @@ const SessionManager = {
                 this.scrollTabIntoView(sessionId);
             }
         }
-        if (launcherOpen) {
+        if (launcherOpen || (this.windowMode && !sessionId)) {
             this.focusConnectionLauncher(paneIndex);
         } else {
             this.focusActivePane();
@@ -1273,6 +1342,10 @@ const SessionManager = {
                     && Boolean(this.sessions[sessionId]?.connected)
                 ),
             });
+        }
+        if (this.windowMode) {
+            this.updateWindowTabState();
+            this.saveWindowLayouts();
         }
         this.notifyWorkspaceChange();
     },
@@ -1309,16 +1382,66 @@ const SessionManager = {
     },
 
     getFirstEmptyPaneIndex() {
-        return this.paneAssignments.findIndex(sessionId => !sessionId);
+        return this.paneAssignments.findIndex(
+            (sessionId, index) => !sessionId && this.isPaneSlotOpen(index)
+        );
     },
 
     getEmptyPaneIndices() {
         return this.paneAssignments
-            .map((sessionId, index) => (sessionId ? null : index))
+            .map((sessionId, index) => (
+                sessionId || !this.isPaneSlotOpen(index) ? null : index
+            ))
             .filter(index => index !== null);
     },
 
+    isPaneSlotOpen(index) {
+        return !this.windowMode || Boolean(this.windowDesktop?.isOpen(index));
+    },
+
+    // New sessions fill an empty pane. In window mode they open a window of
+    // their own instead of replacing the session in the focused one.
+    resolvePaneForNewSession(preferredIndex) {
+        if (!this.windowMode) {
+            if (Number.isInteger(preferredIndex)
+                    && preferredIndex >= 0 && preferredIndex < this.paneAssignments.length) {
+                return preferredIndex;
+            }
+            const emptyIndex = this.getFirstEmptyPaneIndex();
+            return emptyIndex !== -1 ? emptyIndex : this.activePaneIndex;
+        }
+        const isOpenEmptyWindow = index => (
+            Number.isInteger(index)
+            && index >= 0
+            && index < this.paneAssignments.length
+            && !this.paneAssignments[index]
+            && this.isPaneSlotOpen(index)
+        );
+        if (isOpenEmptyWindow(preferredIndex)) return preferredIndex;
+        if (isOpenEmptyWindow(this.activePaneIndex)) return this.activePaneIndex;
+        const emptyIndex = this.getFirstEmptyPaneIndex();
+        if (emptyIndex !== -1) return emptyIndex;
+        const created = this.allocateWindowSlot({render: false});
+        return created !== -1 ? created : this.activePaneIndex;
+    },
+
+    // The pane a connection started from a global control should land in:
+    // in window mode only an empty window qualifies, otherwise a new one opens.
+    getLauncherPaneIndex() {
+        if (!this.windowMode) return null;
+        const active = this.activePaneIndex;
+        if (!this.paneAssignments[active] && this.isPaneSlotOpen(active)
+                && active < this.paneAssignments.length) {
+            return active;
+        }
+        const emptyIndex = this.getFirstEmptyPaneIndex();
+        return emptyIndex !== -1 ? emptyIndex : null;
+    },
+
     showConnectionLauncher(paneIndex) {
+        if (this.windowMode) {
+            return this.openNewWindow() !== -1;
+        }
         if (
             !Number.isInteger(paneIndex)
             || paneIndex < 0
@@ -1378,9 +1501,17 @@ const SessionManager = {
 
     updateSplitControls() {
         document.querySelectorAll('.split-btn').forEach(btn => {
-            const layout = parseInt(btn.dataset.layout, 10);
-            btn.classList.toggle('active', layout === this.layout);
+            const active = btn.dataset.layout === 'windows'
+                ? this.windowMode
+                : !this.windowMode && parseInt(btn.dataset.layout, 10) === this.layout;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-pressed', String(active));
         });
+        const arrange = document.getElementById('windowArrangeControls');
+        if (arrange) {
+            arrange.hidden = !this.windowMode;
+        }
+        document.body?.classList.toggle('terminal-window-mode', this.windowMode);
     },
 
     showReconnectOverlay(sessionId) {
@@ -1823,20 +1954,15 @@ const SessionManager = {
             return;
         }
 
+        if (this.windowMode) {
+            this.setWindowModePreference(false);
+            this.teardownWindowMode();
+        }
         this.connectionLauncherSessions.clear();
         this.layout = layout;
         this.paneAssignments = new Array(layout).fill(null);
 
-        const container = document.getElementById('terminalsContainer');
-        if (container) {
-            Object.values(this.sessions).forEach(session => {
-                const wrapper = document.getElementById(session.terminalId);
-                if (wrapper && wrapper.parentElement !== container) {
-                    wrapper.classList.add('unassigned');
-                    container.appendChild(wrapper);
-                }
-            });
-        }
+        this.parkTerminalWrappers();
 
         grid.className = `terminal-grid split-${layout}`;
         grid.innerHTML = '';
@@ -1863,5 +1989,579 @@ const SessionManager = {
         }
         this.setActivePane(this.activePaneIndex);
         this.updateSplitControls();
+    },
+
+    // Floating windows -----------------------------------------------------
+    // Each pane slot becomes a window on a desktop. Slots keep their index
+    // while a window is open so in-flight connections still find their pane.
+
+    initWindowMode() {
+        try {
+            this.windowCompactMedia = window.matchMedia?.(
+                '(max-width: 767px), (max-height: 520px)'
+            ) || null;
+        } catch {
+            this.windowCompactMedia = null;
+        }
+        this.windowCompactMedia?.addEventListener?.(
+            'change', () => this.applyWindowModePreference()
+        );
+        this.windowModePreferred = this.readWindowModePreference();
+        this.applyWindowModePreference();
+    },
+
+    isWindowModeAvailable() {
+        return typeof TerminalWindows !== 'undefined'
+            && Boolean(this.ensureTerminalGrid())
+            && !this.windowCompactMedia?.matches;
+    },
+
+    readWindowModePreference() {
+        try {
+            return localStorage.getItem(this.windowModeStorageKey) === 'on';
+        } catch {
+            return false;
+        }
+    },
+
+    setWindowModePreference(enabled) {
+        this.windowModePreferred = Boolean(enabled);
+        try {
+            localStorage.setItem(this.windowModeStorageKey, enabled ? 'on' : 'off');
+        } catch {
+            // The layout still applies to this page without storage.
+        }
+    },
+
+    setWindowMode(enabled) {
+        this.setWindowModePreference(enabled);
+        this.applyWindowModePreference();
+    },
+
+    // Narrow screens fall back to a single pane and return to windows when
+    // there is room again, without forgetting the preference.
+    applyWindowModePreference() {
+        const wanted = this.windowModePreferred && this.isWindowModeAvailable();
+        if (wanted && !this.windowMode) {
+            this.enterWindowMode();
+        } else if (!wanted && this.windowMode) {
+            this.leaveWindowMode(1);
+        } else {
+            this.updateSplitControls();
+        }
+    },
+
+    windowText(key, fallback) {
+        const value = window.i18n ? i18n.t(key) : null;
+        return value && value !== key ? value : fallback;
+    },
+
+    getTabOrderedSessionIds() {
+        const tabs = this.getSessionTabsElement();
+        const ordered = Array.from(tabs?.children || [])
+            .map(tab => (String(tab.id || '').startsWith('tab-') ? tab.id.slice(4) : null))
+            .filter(sessionId => sessionId && this.sessions[sessionId]);
+        Object.keys(this.sessions).forEach(sessionId => {
+            if (!ordered.includes(sessionId)) ordered.push(sessionId);
+        });
+        return ordered;
+    },
+
+    parkTerminalWrappers() {
+        const container = document.getElementById('terminalsContainer');
+        if (!container) {
+            return;
+        }
+        Object.values(this.sessions).forEach(session => {
+            const wrapper = document.getElementById(session.terminalId);
+            if (wrapper && wrapper.parentElement !== container) {
+                wrapper.classList.add('unassigned');
+                container.appendChild(wrapper);
+            }
+        });
+    },
+
+    windowDesktopCallbacks() {
+        return {
+            label: key => (window.i18n ? i18n.t(key) : null),
+            minSize: {width: TerminalWindows.MIN_WIDTH, height: TerminalWindows.MIN_HEIGHT},
+            onActivate: index => this.setActivePane(index),
+            onInteractionEnd: index => {
+                if (index === this.activePaneIndex) this.focusWindowContent(index);
+            },
+            onMinimizeRequest: index => this.minimizeWindow(index),
+            onCloseRequest: index => this.closeWindow(index),
+            onMinimizeStart: index => {
+                this.updateWindowTabState();
+                if (index === this.activePaneIndex) this.activateTopWindow();
+            },
+            onMinimized: index => {
+                this.renderPane(index);
+                this.saveWindowLayouts();
+            },
+            onRestored: index => {
+                this.renderPane(index);
+                this.updateWindowTabState();
+            },
+            onLayout: (index, {final}) => this.syncWindowTerminal(index, final),
+            onChange: () => this.saveWindowLayouts(),
+            onReflow: () => this.scheduleWindowTerminalSync(),
+            minimizeTarget: index => {
+                const sessionId = this.paneAssignments[index];
+                const tab = sessionId ? document.getElementById(`tab-${sessionId}`) : null;
+                return tab?.getBoundingClientRect?.() || null;
+            },
+            renderEmpty: container => this.renderWindowDesktopEmpty(container),
+        };
+    },
+
+    enterWindowMode() {
+        const grid = this.ensureTerminalGrid();
+        if (!grid || this.windowMode || typeof TerminalWindows === 'undefined') {
+            return;
+        }
+        const focusedSessionId = this.getWorkspaceSession();
+        const sessionIds = this.getTabOrderedSessionIds().slice(0, this.maxWindows);
+        const saved = this.readWindowLayouts();
+
+        this.parkTerminalWrappers();
+        this.connectionLauncherSessions.clear();
+        this.windowMode = true;
+        this.layout = 'windows';
+        this.paneAssignments = sessionIds.length ? sessionIds.slice() : [null];
+        grid.className = 'terminal-grid window-mode';
+        grid.innerHTML = '';
+        this.windowDesktop = TerminalWindows.createDesktop(grid, this.windowDesktopCallbacks());
+
+        const fresh = [];
+        this.paneAssignments.forEach((sessionId, index) => {
+            const layout = sessionId ? saved[sessionId] : null;
+            this.windowDesktop.open(index, {
+                ...(sessionId ? this.windowOpenConfig(layout) : {fraction: this.centeredWindowFraction()}),
+                animate: false,
+            });
+            if (!layout) fresh.push(index);
+        });
+        if (sessionIds.length && fresh.length) {
+            this.windowDesktop.arrange('tile', fresh, {animated: false});
+        }
+        sessionIds
+            .map((sessionId, index) => ({index, z: Number(saved[sessionId]?.z ?? -1)}))
+            .sort((a, b) => a.z - b.z)
+            .forEach(item => this.windowDesktop.focus(item.index));
+
+        this.paneAssignments.forEach((sessionId, index) => {
+            this.renderPane(index);
+            this.updateWindowChrome(index);
+        });
+
+        const focusedIndex = focusedSessionId ? this.paneAssignments.indexOf(focusedSessionId) : -1;
+        this.updateSplitControls();
+        if (focusedIndex !== -1 && !this.windowDesktop.isMinimized(focusedIndex)) {
+            this.setActivePane(focusedIndex);
+        } else {
+            this.activateTopWindow();
+        }
+        this.scheduleWindowTerminalSync();
+    },
+
+    leaveWindowMode(layout = 1) {
+        if (!this.windowMode) {
+            return;
+        }
+        this.teardownWindowMode();
+        this.buildSplitLayout(layout);
+    },
+
+    teardownWindowMode() {
+        if (!this.windowMode) {
+            return;
+        }
+        const ordered = this.getWindowStackOrder();
+        this.saveWindowLayouts();
+        clearTimeout(this.windowSyncTimer);
+        this.windowSyncTimer = null;
+        this.parkTerminalWrappers();
+        this.windowDesktop?.destroy();
+        this.windowDesktop = null;
+        this.windowMode = false;
+        this.connectionLauncherSessions.clear();
+        this.paneAssignments = ordered;
+        this.layout = null;
+        this.activePaneIndex = 0;
+        const grid = this.ensureTerminalGrid();
+        if (grid) {
+            grid.innerHTML = '';
+            grid.className = 'terminal-grid';
+        }
+        this.updateWindowTabState();
+        this.updateSplitControls();
+    },
+
+    // Front-most windows first, then minimized ones, so a split layout picks
+    // up the sessions the user was looking at.
+    getWindowStackOrder() {
+        const desktop = this.windowDesktop;
+        if (!desktop) {
+            return this.paneAssignments.filter(Boolean);
+        }
+        const visible = desktop.visibleOrder().reverse();
+        const hidden = desktop.order().reverse().filter(index => !visible.includes(index));
+        return [...visible, ...hidden]
+            .map(index => this.paneAssignments[index])
+            .filter(sessionId => sessionId && this.sessions[sessionId]);
+    },
+
+    centeredWindowFraction() {
+        const bounds = this.windowDesktop.bounds();
+        const size = TerminalWindows.defaultSize(bounds);
+        return TerminalWindows.toFraction({
+            x: Math.round((bounds.width - size.width) / 2),
+            y: Math.max(16, Math.round((bounds.height - size.height) / 2) - 16),
+            width: size.width,
+            height: size.height,
+        }, bounds);
+    },
+
+    windowOpenConfig(layout) {
+        if (!layout || typeof layout !== 'object') {
+            return {};
+        }
+        return {
+            fraction: layout.fraction,
+            restoreFraction: layout.restoreFraction,
+            maximized: layout.maximized === true,
+            tiled: layout.tiled === true,
+            minimized: layout.minimized === true,
+        };
+    },
+
+    openWindowForSlot(index, sessionId, {slotWasEmpty = false} = {}) {
+        const desktop = this.windowDesktop;
+        if (!desktop) {
+            return;
+        }
+        const layout = this.readWindowLayouts()[sessionId];
+        // A restored session reclaims its own placement, even when it lands
+        // in the launcher window that was waiting for it.
+        if (!desktop.isOpen(index) || (layout && slotWasEmpty)) {
+            desktop.open(index, this.windowOpenConfig(layout));
+        }
+    },
+
+    allocateWindowSlot({render = true} = {}) {
+        const desktop = this.windowDesktop;
+        if (!desktop) {
+            return -1;
+        }
+        const openCount = this.paneAssignments.filter((_, index) => desktop.isOpen(index)).length;
+        if (openCount >= this.maxWindows) {
+            return -1;
+        }
+        let index = this.paneAssignments.findIndex(
+            (sessionId, slot) => !sessionId && !desktop.isOpen(slot)
+        );
+        if (index === -1) {
+            index = this.paneAssignments.length;
+            this.paneAssignments.push(null);
+        }
+        desktop.open(index, desktop.visibleOrder().length ? {} : {
+            fraction: this.centeredWindowFraction(),
+        });
+        if (render) {
+            this.renderPane(index);
+            this.updateWindowChrome(index);
+        }
+        return index;
+    },
+
+    openNewWindow() {
+        if (!this.windowMode) {
+            return -1;
+        }
+        const emptyIndex = this.getFirstEmptyPaneIndex();
+        if (emptyIndex !== -1) {
+            this.setActivePane(emptyIndex);
+            return emptyIndex;
+        }
+        const index = this.allocateWindowSlot();
+        if (index === -1) {
+            window.showNotification?.(
+                this.windowText('windows.limitReached', 'Close a window to open another one.'),
+                'info',
+            );
+            return -1;
+        }
+        this.setActivePane(index);
+        return index;
+    },
+
+    minimizeWindow(index) {
+        if (!this.windowMode || !this.paneAssignments[index]) {
+            return false;
+        }
+        return Boolean(this.windowDesktop?.minimize(index));
+    },
+
+    closeWindow(index) {
+        if (!this.windowMode || !this.windowDesktop?.isOpen(index)) {
+            return;
+        }
+        if (this.connectionLauncherSessions.has(index)) {
+            this.restoreConnectionLauncher(index);
+            return;
+        }
+        const sessionId = this.paneAssignments[index];
+        if (sessionId && this.sessions[sessionId]) {
+            this.requestCloseSession(sessionId);
+            return;
+        }
+        this.closeWindowSlot(index);
+    },
+
+    closeWindowSlot(index, {activate = true} = {}) {
+        const desktop = this.windowDesktop;
+        if (!desktop) {
+            return;
+        }
+        this.connectionLauncherSessions.delete(index);
+        if (index < this.paneAssignments.length) {
+            this.paneAssignments[index] = null;
+        }
+        desktop.close(index);
+        while (this.paneAssignments.length
+                && !this.paneAssignments[this.paneAssignments.length - 1]
+                && !desktop.isOpen(this.paneAssignments.length - 1)) {
+            this.paneAssignments.pop();
+        }
+        if (activate) {
+            this.activateTopWindow();
+        }
+        this.updateWindowTabState();
+    },
+
+    activateTopWindow() {
+        const top = this.windowDesktop?.topMost();
+        if (top !== null && top !== undefined) {
+            this.setActivePane(top);
+            return;
+        }
+        this.activeSessionId = null;
+        this.updateSessionMeta(null);
+        document.querySelectorAll('.session-tab.active').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        this.windowDesktop?.refreshEmpty({rerender: true});
+        this.updateWindowTabState();
+        this.notifyWorkspaceChange();
+    },
+
+    focusWindowContent(index) {
+        if (this.connectionLauncherSessions.has(index) || !this.paneAssignments[index]) {
+            this.focusConnectionLauncher(index);
+        } else {
+            this.focusActivePane();
+        }
+    },
+
+    arrangeWindows(mode) {
+        const desktop = this.windowDesktop;
+        if (!this.windowMode || !desktop) {
+            return;
+        }
+        // Arrange in tab order; a cascade keeps the focused window on top.
+        const visible = desktop.visibleOrder();
+        const ordered = [
+            ...this.getTabOrderedSessionIds().map(sessionId => this.paneAssignments.indexOf(sessionId)),
+            ...this.paneAssignments.map((sessionId, index) => (sessionId ? -1 : index)),
+        ].filter((index, position, list) => (
+            visible.includes(index) && list.indexOf(index) === position
+        ));
+        if (mode === 'cascade' && ordered.includes(this.activePaneIndex)) {
+            ordered.splice(ordered.indexOf(this.activePaneIndex), 1);
+            ordered.push(this.activePaneIndex);
+        }
+        desktop.arrange(mode === 'cascade' ? 'cascade' : 'tile', ordered);
+        const top = this.windowDesktop.topMost();
+        if (top !== null && top !== this.activePaneIndex) {
+            this.setActivePane(top);
+        }
+        this.saveWindowLayouts();
+    },
+
+    updateWindowTabState() {
+        Object.keys(this.sessions).forEach(sessionId => {
+            const tab = document.getElementById(`tab-${sessionId}`);
+            if (!tab) return;
+            const index = this.windowMode ? this.paneAssignments.indexOf(sessionId) : -1;
+            tab.classList.toggle(
+                'is-minimized',
+                index !== -1 && Boolean(this.windowDesktop?.isMinimized(index)),
+            );
+        });
+    },
+
+    refreshWindowChrome(sessionId) {
+        if (!this.windowMode) {
+            return;
+        }
+        const index = this.paneAssignments.indexOf(sessionId);
+        if (index !== -1) {
+            this.updateWindowChrome(index);
+        }
+    },
+
+    updateWindowChrome(index) {
+        if (!this.windowMode || !this.windowDesktop?.isOpen(index)) {
+            return;
+        }
+        const sessionId = this.paneAssignments[index];
+        const session = sessionId ? this.sessions[sessionId] : null;
+        if (!session || this.connectionLauncherSessions.has(index)) {
+            this.windowDesktop.setChrome(index, {
+                title: this.windowText('windows.newConnection', 'New connection'),
+                subtitle: this.windowText(
+                    'windows.newConnectionHint', 'Pick a saved host or use Quick Connect'
+                ),
+                status: 'idle',
+                minimizable: false,
+            });
+            return;
+        }
+        const dot = document.getElementById(`tab-${sessionId}`)?.querySelector('.status-dot');
+        const status = dot?.classList.contains('connecting')
+            ? 'connecting'
+            : (session.connected ? 'connected' : 'disconnected');
+        const parts = [session.displayName
+            ? `${session.username}@${session.host}:${session.port}`
+            : `SSH · ${session.port}`];
+        if (session.viaJump) {
+            parts.push(`${this.windowText('connection.via', 'via')} ${session.viaJump}`);
+        }
+        const badges = [];
+        if (session.useTmux) {
+            badges.push({
+                icon: 'push_pin',
+                title: session.tmuxSessionName ? `tmux: ${session.tmuxSessionName}` : 'tmux',
+            });
+        }
+        this.windowDesktop.setChrome(index, {
+            title: this.getDisplayLabel(sessionId, session.username, session.host),
+            subtitle: parts.join('  ·  '),
+            status,
+            badges,
+            closeLabel: this.windowText('session.close', 'Close session'),
+        });
+    },
+
+    renderWindowDesktopEmpty(container) {
+        const hasSessions = Object.keys(this.sessions).length > 0;
+        const icon = document.createElement('span');
+        icon.className = 'ws-desktop-empty-icon material-icons';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = hasSessions ? 'web_asset_off' : 'web_asset';
+        const title = document.createElement('h2');
+        title.textContent = this.windowText('windows.emptyTitle', 'No open windows');
+        const text = document.createElement('p');
+        text.textContent = hasSessions
+            ? this.windowText(
+                'windows.emptyMinimized',
+                'Your sessions are minimized. Pick one from the tabs above to bring it back.',
+            )
+            : this.windowText('windows.emptyHint', 'Open a connection to start a terminal window.');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-primary ws-desktop-empty-action';
+        const buttonIcon = document.createElement('span');
+        buttonIcon.className = 'material-icons';
+        buttonIcon.setAttribute('aria-hidden', 'true');
+        buttonIcon.textContent = 'add';
+        const buttonLabel = document.createElement('span');
+        buttonLabel.textContent = this.windowText('windows.newWindow', 'New window');
+        button.append(buttonIcon, buttonLabel);
+        button.addEventListener('click', () => this.openNewWindow());
+        container.append(icon, title, text, button);
+    },
+
+    // Live resizes refit locally; the remote PTY learns the size once the
+    // gesture settles so full-screen programs redraw once, not per frame.
+    syncWindowTerminal(index, final) {
+        const sessionId = this.paneAssignments[index];
+        if (!sessionId || this.connectionLauncherSessions.has(index)
+                || this.windowDesktop?.isMinimized(index)) {
+            return;
+        }
+        if (!final) {
+            TerminalManager.fitTerminal?.(sessionId);
+            this.scheduleWindowTerminalSync(400);
+            return;
+        }
+        TerminalManager.fitAndSyncVisibleTerminals?.({
+            socket: window.socket,
+            isConnected: candidateId => (
+                candidateId === sessionId && Boolean(this.sessions[sessionId]?.connected)
+            ),
+        });
+    },
+
+    scheduleWindowTerminalSync(delay = 120) {
+        clearTimeout(this.windowSyncTimer);
+        this.windowSyncTimer = setTimeout(() => {
+            this.windowSyncTimer = null;
+            if (!this.windowMode) return;
+            TerminalManager.fitAndSyncVisibleTerminals?.({
+                socket: window.socket,
+                isConnected: sessionId => Boolean(this.sessions[sessionId]?.connected),
+            });
+        }, delay);
+    },
+
+    windowLayoutStorageKey() {
+        const scope = this.displayNameScope();
+        return scope ? `${this.windowLayoutStoragePrefix}${scope}` : null;
+    },
+
+    readWindowLayouts() {
+        const key = this.windowLayoutStorageKey();
+        if (!key) return {};
+        try {
+            const value = JSON.parse(window.sessionStorage?.getItem(key) || '{}');
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        } catch {
+            return {};
+        }
+    },
+
+    writeWindowLayouts(layouts) {
+        const key = this.windowLayoutStorageKey();
+        if (!key) return;
+        try {
+            const entries = Object.entries(layouts).slice(-32);
+            window.sessionStorage?.setItem(key, JSON.stringify(Object.fromEntries(entries)));
+        } catch {
+            // Window placement is a convenience; the workspace works without it.
+        }
+    },
+
+    saveWindowLayouts() {
+        if (!this.windowMode || !this.windowDesktop) {
+            return;
+        }
+        const layouts = this.readWindowLayouts();
+        this.paneAssignments.forEach((sessionId, index) => {
+            const snapshot = sessionId ? this.windowDesktop.snapshot(index) : null;
+            if (snapshot) {
+                delete layouts[sessionId];
+                layouts[sessionId] = snapshot;
+            }
+        });
+        this.writeWindowLayouts(layouts);
+    },
+
+    forgetWindowLayout(sessionId) {
+        const layouts = this.readWindowLayouts();
+        if (!Object.prototype.hasOwnProperty.call(layouts, sessionId)) return;
+        delete layouts[sessionId];
+        this.writeWindowLayouts(layouts);
     }
 };

@@ -553,6 +553,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const instanceAddress = document.getElementById('authInstanceAddress');
+        if (instanceAddress) instanceAddress.textContent = window.location.host;
         setupLanguageSelector();
         setupAuthMethodSwitcher();
         setupAuthenticationSources();

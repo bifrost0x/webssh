@@ -312,3 +312,39 @@ test('saving a new account prunes prior restore state before writing', () => {
         null,
     );
 });
+
+for (const view of ['overview', 'workspaces']) {
+    test(`reauthentication restores ${view} with asynchronously arriving window sessions without recursion`, () => {
+        const sessionStorage = storage();
+        const accountScope = 'window-account';
+        const document = {
+            body: {dataset: {primaryWorkspace: view, connectionHistoryScope: accountScope}},
+            getElementById: id => id === 'overviewNavBtn' ? {click() { selected = 'overview'; }} : null,
+        };
+        guardModule.saveRestore({
+            location: {pathname: '/', search: '', hash: ''},
+            SessionManager: {getActiveSession: () => 'later', layout: 'windows', paneAssignments: ['later']},
+        }, document, sessionStorage);
+        let selected = null;
+        let listener = null;
+        let session = null;
+        let switches = 0;
+        const browser = {
+            primaryWorkspaceController: {showWorkspaces() { selected = 'workspaces'; }},
+            SessionManager: {
+                setSplitLayout(layout) { assert.equal(layout, 'windows'); listener?.(); },
+                getSession: () => session,
+                switchSession(id) { assert.equal(id, 'later'); switches++; listener?.(); },
+                assignSessionToPane() { assert.fail('window placement is owned by the desktop'); },
+            },
+            addEventListener(_name, fn) { listener = fn; },
+            removeEventListener() { listener = null; },
+        };
+        assert.equal(guardModule.restore(browser, document, sessionStorage), true);
+        assert.equal(selected, view);
+        session = {id: 'later'};
+        listener();
+        assert.equal(switches, 1);
+        assert.equal(listener, null);
+    });
+}
