@@ -54,3 +54,26 @@ test('group accents are stable for arbitrary Unicode labels and independent of s
         assert.match(groupTone(group), /^[0-4]$/);
     }
 });
+
+const {orderedGroups, moveGroupOrder, readGroupOrder} = require('../../static/js/connection-overview');
+test('manual group order handles new, missing, duplicate and hostile labels without changing membership', () => {
+    const current = ['Beta', '', 'Alpha', 'Beta', '__proto__', '<img>'];
+    const saved = ['Beta', 'deleted', 'Beta', 'Alpha'];
+    assert.deepEqual(orderedGroups(current, saved), ['Beta', 'Alpha', ...['', '__proto__', '<img>'].sort((a,b) => a.localeCompare(b))]);
+    assert.deepEqual(saved, ['Beta', 'deleted', 'Beta', 'Alpha']);
+    assert.deepEqual(moveGroupOrder(['A','B','C'], 'A', 2), ['B','C','A']);
+    assert.deepEqual(moveGroupOrder(['A','B','C'], 'C', 0), ['C','A','B']);
+    for (const index of [-1, 3, NaN, 1.5]) assert.deepEqual(moveGroupOrder(['A','B','C'], 'B', index), ['A','B','C']);
+    assert.deepEqual(moveGroupOrder(['A'], 'missing', 0), ['A']);
+});
+test('optional group ordering rejects malformed storage and reads only the account key', () => {
+    const calls = [];
+    const store = {getItem(key) { calls.push(key); return '["B","A","B"]'; }};
+    assert.deepEqual(readGroupOrder(store, 'account-one'), ['B','A']);
+    assert.deepEqual(readGroupOrder(store, null), []);
+    assert.deepEqual(calls, ['account-one']);
+    for (const raw of ['{}','null','[3]','broken', JSON.stringify(['a'.repeat(513)]), JSON.stringify(Array(5001).fill('A'))]) {
+        assert.deepEqual(readGroupOrder({getItem: () => raw}, 'key'), []);
+    }
+    assert.deepEqual(readGroupOrder({getItem() { throw Error('blocked'); }}, 'key'), []);
+});

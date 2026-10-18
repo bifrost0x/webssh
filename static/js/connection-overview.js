@@ -40,6 +40,35 @@
         return String(hash % 5);
     }
 
+    // Saved presentation order never changes group membership or SSH routes.
+    function orderedGroups(groups, saved = []) {
+        const available = new Set(groups);
+        const result = [];
+        for (const group of saved) {
+            if (available.delete(group)) result.push(group);
+        }
+        return result.concat([...available].sort((a, b) => a.localeCompare(b)));
+    }
+
+    function moveGroupOrder(groups, group, position) {
+        if (!groups.includes(group) || !Number.isInteger(position) || position < 0 || position >= groups.length) return groups;
+        const result = groups.filter(value => value !== group);
+        result.splice(position, 0, group);
+        return result;
+    }
+
+    function readGroupOrder(storage, key) {
+        try {
+            if (!key) return [];
+            const raw = storage?.getItem(key);
+            if (!raw || raw.length > 1024 * 1024) return [];
+            const values = JSON.parse(raw);
+            if (!Array.isArray(values) || values.length > 5000
+                || values.some(value => typeof value !== 'string' || value.length > 512)) return [];
+            return [...new Set(values)];
+        } catch { return []; }
+    }
+
     function createController({window: win, document: doc, sessionManager}) {
         const view = doc.getElementById('connectionOverview');
         const byId = id => doc.getElementById(id);
@@ -51,6 +80,16 @@
         let transfersScheduled = false;
         let loadError = false;
         let draggedHost = null;
+        let draggedGroup = null;
+        let arranging = false;
+        let groupObserver = null;
+        let storage = null;
+        const scope = doc.querySelector('meta[name="background-scope"]')?.content;
+        const orderKey = /^[a-f0-9]{64}$/.test(scope || '') ? `webssh:overview-group-order:${scope}` : null;
+        try { storage = win.localStorage; } catch { /* Optional browser preference. */ }
+        let groupOrder = readGroupOrder(storage, orderKey);
+        let displayGroupOrder = [];
+        let displayGroupRanks = new Map();
         const visible = () => win.primaryWorkspaceController?.getActiveView() === 'overview';
         const t = key => win.i18n?.t(key) || key;
         const node = (tag, className, text) => {
@@ -101,6 +140,105 @@
                     .find(item => item.dataset.overviewKey === key);
                 (next || (container.id === 'shellGroups' ? byId('overviewNavBtn') : byId('overviewHostSearch'))).focus({preventScroll: true});
             }
+        }
+        function currentGroupOrder() {
+            return orderedGroups((win.ProfileManager?.profiles || []).map(profile => String(profile.group || '')), groupOrder);
+        }
+        function orderedModel(profiles, jumps, loaded) {
+            displayGroupOrder = currentGroupOrder();
+            displayGroupRanks = new Map(displayGroupOrder.map((group, index) => [group, index]));
+            return buildAccessModel(profiles, jumps, loaded).sort((a, b) => displayGroupRanks.get(a.group) - displayGroupRanks.get(b.group));
+        }
+        function saveGroupOrder(next) {
+            if (!win.ProfileManager?.profilesLoaded) return;
+            groupOrder = next;
+            let saved = false;
+            try {
+                if (orderKey && storage) { storage.setItem(orderKey, JSON.stringify(next)); saved = true; }
+            } catch { /* Keep the working arrangement usable without storage. */ }
+            const status = byId('overviewArrangeStatus');
+            status.dataset.i18n = saved ? 'overview.arrangeSaved' : 'overview.arrangeUnsaved';
+            status.textContent = t(status.dataset.i18n);
+            renderSidebar();
+            renderHosts();
+        }
+        function repositionGroup(group, position) {
+            const current = currentGroupOrder();
+            if (!Number.isInteger(position) || position < 0 || position >= current.length || !current.includes(group)) return;
+            saveGroupOrder(moveGroupOrder(current, group, position));
+        }
+        function groupControls(section, group, order, ranks, context) {
+            section.dataset.overviewGroup = group;
+            const controls = node('div', 'overview-group-controls');
+            const name = group || t('profiles.ungrouped');
+            const handle = button(t('overview.moveGroup').replace('{name}', name), () => position.focus(), 'overview-group-drag');
+            handle.title = t('overview.moveGroup').replace('{name}', name);
+            handle.dataset.overviewKey = `group-drag:${JSON.stringify([context, group])}`;
+            handle.draggable = true;
+            handle.append(icon('drag_indicator'));
+            handle.addEventListener('dragstart', event => {
+                if (!arranging) { event.preventDefault(); return; }
+                draggedGroup = group;
+                event.dataTransfer.setData('application/x-webssh-overview-group', group);
+                event.dataTransfer.effectAllowed = 'move';
+            });
+            const clearDrag = () => {
+                draggedGroup = null;
+                view.querySelectorAll('.overview-group-drop').forEach(item => item.classList.remove('overview-group-drop'));
+            };
+            handle.addEventListener('dragend', clearDrag);
+            section.addEventListener('dragover', event => {
+                if (!arranging || draggedGroup === null || draggedGroup === group) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = 'move';
+                section.classList.add('overview-group-drop');
+            });
+            section.addEventListener('dragleave', event => {
+                if (!section.contains(event.relatedTarget)) section.classList.remove('overview-group-drop');
+            });
+            section.addEventListener('drop', event => {
+                if (!arranging || draggedGroup === null) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const source = draggedGroup;
+                clearDrag();
+                if (source !== group) repositionGroup(source, currentGroupOrder().indexOf(group));
+            });
+            const label = node('label', '', t('overview.groupPosition'));
+            const position = node('input');
+            position.type = 'number';
+            position.min = '1';
+            position.max = String(order.length);
+            position.value = String(ranks.get(group) + 1);
+            position.setAttribute('aria-label', t('overview.groupPositionLabel').replace('{name}', name));
+            position.dataset.overviewKey = `group-position:${JSON.stringify([context, group])}`;
+            position.addEventListener('change', () => {
+                const value = position.valueAsNumber;
+                if (position.validity.valid && Number.isInteger(value)) repositionGroup(group, value - 1);
+                else position.value = String(currentGroupOrder().indexOf(group) + 1);
+            });
+            position.addEventListener('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); position.dispatchEvent(new win.Event('change')); }
+            });
+            label.append(position);
+            controls.append(handle, label);
+            section.prepend(controls);
+        }
+        function layoutGroups() {
+            if (!visible()) return;
+            // Read all natural card heights first, then update grid spans in one batch.
+            // Small rows allow the next card to occupy the space below a shorter card.
+            const sizes = [];
+            byId('overviewHosts').querySelectorAll('.overview-host-group').forEach(card => {
+                if (card.parentElement.classList.contains('overview-group-layout')) {
+                    sizes.push([card, Math.ceil((card.getBoundingClientRect().height + 16) / 8)]);
+                }
+            });
+            sizes.forEach(([card, span]) => {
+                const value = `span ${span}`;
+                if (card.style.gridRowEnd !== value) card.style.gridRowEnd = value;
+            });
         }
         function moveHost(id, group) {
             const manager = win.ProfileManager;
@@ -189,7 +327,9 @@
             target.append(icon('chevron_right'));
             return target;
         }
-        function hostGroups(hosts, showUnlinked = false) {
+        function hostGroups(hosts, showUnlinked = false, editable = true, context = 'direct') {
+            const order = displayGroupOrder;
+            const ranks = displayGroupRanks;
             const groups = new Map();
             hosts.forEach(host => {
                 if (!groups.has(host.group)) groups.set(host.group, []);
@@ -216,6 +356,7 @@
                     list.append(row);
                 });
                 section.append(list);
+                if (editable && arranging) groupControls(section, group, order, ranks, context);
                 fragment.append(section);
             });
             return fragment;
@@ -250,7 +391,7 @@
         function scheduleEdges() {
             if (!visible() || edgesScheduled) return;
             edgesScheduled = true;
-            win.requestAnimationFrame(() => { edgesScheduled = false; drawEdges(); });
+            win.requestAnimationFrame(() => { edgesScheduled = false; layoutGroups(); drawEdges(); });
         }
         function renderGraph(hosts, container) {
             const branches = new Map();
@@ -270,13 +411,14 @@
                 const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
                 svg.classList.add('overview-edges');
                 svg.setAttribute('aria-hidden', 'true');
-                const groups = node('div', 'overview-graph-groups');
-                groups.append(hostGroups(targets));
+                const editable = container === byId('overviewHosts');
+                const groups = node('div', `overview-graph-groups${editable ? ' overview-group-layout' : ''}`);
+                groups.append(hostGroups(targets, false, editable, jump.id));
                 branch.append(svg, source, groups);
                 container.append(branch);
             });
             if (unlinked.length) {
-                const section = node('section', 'overview-graph-branch overview-graph-groups');
+                const section = node('section', 'overview-graph-branch overview-graph-groups overview-group-layout');
                 section.append(hostGroups(unlinked, true));
                 container.append(section);
             }
@@ -291,6 +433,9 @@
             const intro = view.querySelector('.overview-intro');
             intro.dataset.i18n = graph ? 'overview.routesIntro' : 'overview.intro';
             intro.textContent = t(intro.dataset.i18n);
+            groupObserver?.disconnect();
+            draggedGroup = null;
+            container.classList.remove('overview-group-layout');
             retainFocus(view, () => {
                 preview.replaceChildren();
                 preview.hidden = true;
@@ -304,7 +449,7 @@
                     message(container, loadError || !win.socket?.connected ? 'overview.unavailable' : 'overview.loading');
                     return;
                 }
-                const model = buildAccessModel(manager.profiles, win.JumpHostManager?.jumpHosts, win.JumpHostManager?.loaded);
+                const model = orderedModel(manager.profiles, win.JumpHostManager?.jumpHosts, win.JumpHostManager?.loaded);
                 // Keep the setup entry point available before the first route exists.
                 byId('overviewRouteCard').hidden = graph;
                 const query = byId('overviewHostSearch').value.trim().toLocaleLowerCase();
@@ -316,6 +461,7 @@
                 }
                 if (graph) renderGraph(hosts, container);
                 else {
+                    container.classList.add('overview-group-layout');
                     container.append(hostGroups(hosts));
                     const configured = hosts.filter(host => host.jump);
                     if (configured.length) {
@@ -332,9 +478,11 @@
                     }
                 }
             });
+            container.querySelectorAll('.overview-host-group').forEach(card => groupObserver?.observe(card));
+            scheduleEdges();
         }
         function renderSidebar() {
-            const hosts = buildAccessModel(win.ProfileManager?.profiles || []);
+            const hosts = orderedModel(win.ProfileManager?.profiles || []);
             const groups = new Map();
             hosts.forEach(host => {
                 if (!groups.has(host.group)) groups.set(host.group, []);
@@ -493,6 +641,21 @@
                 selectedGroup = value === '' ? null : value.slice('group:'.length);
                 renderHosts();
             });
+            byId('overviewArrangeGroups').addEventListener('click', () => {
+                arranging = !arranging;
+                draggedGroup = null;
+                byId('overviewArrangeGroups').setAttribute('aria-expanded', String(arranging));
+                byId('overviewArrangePanel').hidden = !arranging;
+                renderHosts();
+            });
+            byId('overviewSortGroupsAsc').addEventListener('click', () => saveGroupOrder(orderedGroups(currentGroupOrder())));
+            byId('overviewSortGroupsDesc').addEventListener('click', () => saveGroupOrder(orderedGroups(currentGroupOrder()).reverse()));
+            win.addEventListener('storage', event => {
+                if (!orderKey || (event.key !== orderKey && event.key !== null)) return;
+                groupOrder = readGroupOrder(storage, orderKey);
+                renderSidebar();
+                schedule();
+            });
             byId('overviewQuickConnect').addEventListener('click', quickConnect);
             byId('overviewAllTransfers').addEventListener('click', openTransfers);
             byId('overviewHostSearch').addEventListener('input', renderHosts);
@@ -506,6 +669,7 @@
             win.addEventListener('languageChanged', updateNavigation);
             win.addEventListener('resize', scheduleEdges);
             if (win.ResizeObserver) {
+                groupObserver = new win.ResizeObserver(scheduleEdges);
                 const observer = new win.ResizeObserver(scheduleEdges);
                 observer.observe(byId('overviewHosts'));
                 observer.observe(byId('overviewRoutePreview'));
@@ -531,5 +695,5 @@
         }
         return {init};
     }
-    return {buildAccessModel, groupTone, createController};
+    return {buildAccessModel, groupTone, orderedGroups, moveGroupOrder, readGroupOrder, createController};
 });

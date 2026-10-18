@@ -170,6 +170,17 @@
                 <label class="overview-filter"><span class="material-icons" aria-hidden="true">search</span><span class="sr-only" data-i18n="overview.search">Search names and groups…</span><input id="overviewHostSearch" type="search" placeholder="Search names and groups…" data-i18n-placeholder="overview.search" autocomplete="off"></label>
                 <label class="overview-group-select"><span class="sr-only" data-i18n="profiles.group">Group</span><select id="overviewGroupFilter"><option value="" data-i18n="overview.allGroups">All groups</option></select></label>
                 </div>
+                <div class="overview-arrange-bar">
+                    <button id="overviewArrangeGroups" class="overview-link" type="button" aria-expanded="false" aria-controls="overviewArrangePanel"><span class="material-icons" aria-hidden="true">dashboard_customize</span><span data-i18n="overview.arrangeGroups">Arrange groups</span></button>
+                    <div id="overviewArrangePanel" hidden>
+                        <p data-i18n="overview.arrangeHint">Drag groups or enter a position. The order applies to Overview lists and routes in this browser, for your account.</p>
+                        <div class="overview-arrange-actions">
+                            <button id="overviewSortGroupsAsc" class="overview-link" type="button" data-i18n="overview.sortGroupsAsc">Name A–Z</button>
+                            <button id="overviewSortGroupsDesc" class="overview-link" type="button" data-i18n="overview.sortGroupsDesc">Name Z–A</button>
+                            <span id="overviewArrangeStatus" role="status" aria-live="polite"></span>
+                        </div>
+                    </div>
+                </div>
                 <div id="overviewHosts" class="overview-hosts"></div>
                 <div id="overviewGraphLegend" class="overview-legend" hidden>
                     <strong><span class="material-icons" aria-hidden="true">arrow_right_alt</span><span data-i18n="overview.configuredRoute">Configured SSH route</span></strong><strong><span class="material-icons" aria-hidden="true">folder_open</span><span data-i18n="overview.grouping">Grouping</span></strong>
