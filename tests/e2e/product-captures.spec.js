@@ -571,7 +571,7 @@ test('captures the focused session workspace and operational context', async ({ 
     expect(page.viewportSize()).toEqual(DESKTOP_VIEWPORT);
     await expect(page.locator('#sessionTabs')).toContainText('Production Edge');
     await expect(page.locator('#terminalGrid')).toContainText('OpenSSH server');
-    await expect(page.locator('#notepadPanel')).toContainText('Notepad');
+    await expect(page.locator('#notepadTitle')).toHaveText('Notes');
     await expect(page.locator('header.header')).not.toContainText('E2E');
     await expect(page.locator('main')).not.toContainText('.local');
     await expectCurrentCaptureTerminology(page);
@@ -972,7 +972,7 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await expect(page.locator('#sessionTabs')).toContainText('Build Runner');
     await expect(page.locator('#sessionTabs')).toContainText('Audit Node');
     await expect(page.locator('#sessionTabs')).toContainText('Database Bastion');
-    await expect(page.locator('#notepadPanel')).toContainText('Notepad');
+    await expect(page.locator('#notepadTitle')).toHaveText('Notes');
     await expect(page.locator('#sessionNotepad')).toHaveValue(/edge-01\.example/);
     await expect(page.locator('header.header')).not.toContainText('E2E');
     await expect(page.locator('main')).not.toContainText('E2E');
