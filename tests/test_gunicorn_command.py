@@ -27,7 +27,9 @@ def test_native_runtime_keeps_the_reviewed_gunicorn_and_worker_contract():
 
 def test_image_prepares_private_recovery_mountpoint_before_dropping_root():
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
-    setup = dockerfile.split("COPY . /app", 1)[1].split("USER appuser", 1)[0]
+    runtime_stage = dockerfile.rsplit("\nFROM ", 1)[1]
+    assert "\nUSER appuser\n" in runtime_stage
+    setup = runtime_stage.split("\nUSER appuser\n", 1)[0]
 
     assert "mkdir -p /app/data/logs /app/data/keys /app/recovery" in setup
     assert "chown appuser:appuser /app/recovery" in setup
