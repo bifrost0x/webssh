@@ -280,3 +280,14 @@ code { font-family: var(--font-mono); }
 .demo-transcript h3 { font-size: 1.05rem; }
 .demo-transcript p { margin-top: .4rem; }
 @media (max-width: 800px) { .demo-page { padding-top: 1.5rem; } .demo-transcript li { grid-template-columns: 1fr; gap: .35rem; } }
+
+.youtube-poster { display: block; width: 100%; height: auto; }
+.youtube-stage iframe { display: block; width: 100%; height: auto; min-height: 200px; aspect-ratio: 16 / 9; border: 0; }
+.youtube-stage [hidden], .youtube-controls [hidden] { display: none; }
+.youtube-consent { padding: 1.2rem; border-top: 1px solid var(--border-color); }
+.youtube-consent p { max-width: 80ch; margin-top: .8rem; color: var(--text-secondary); font-size: .9rem; }
+.youtube-consent .button, .youtube-controls button { cursor: pointer; font: inherit; }
+.youtube-status { color: var(--text-secondary); font-size: .9rem; margin-top: .8rem; }
+.demo-music { margin: 1.5rem 0; color: var(--text-secondary); font-size: .85rem; }
+.demo-music summary { cursor: pointer; }
+.demo-music p { margin-top: .7rem; }
