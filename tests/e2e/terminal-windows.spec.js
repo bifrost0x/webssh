@@ -364,3 +364,29 @@ test('dense tiling never overlaps windows even when cells are smaller than manua
     await expect(page.locator('#terminalGrid')).toHaveClass(/split-1/);
     expect(await page.evaluate(() => Object.keys(SessionManager.sessions).length)).toBe(12);
 });
+
+test('plus creates another window even while an empty host launcher is open', async ({page}) => {
+    await login(page);
+    await page.locator('[data-layout="windows"]').click();
+    await expect(page.locator('#terminalGrid > .ws-window')).toHaveCount(1);
+    await page.locator('#newTabBtn').click();
+    await expect(page.locator('#terminalGrid > .ws-window')).toHaveCount(2);
+});
+
+test('dragging beyond an edge and resizing the workspace keep complete windows visible', async ({page}) => {
+    await enterWindowMode(page);
+    await connect(page, 'win-boundary', 'boundary.example');
+    const frame = windowFor(page, 'win-boundary');
+    await dragBy(page, frame.locator('.ws-window-titlebar'), -1300, 200);
+    await page.setViewportSize({width: 980, height: 700});
+    await expect.poll(() => page.evaluate(() => {
+        const grid = document.getElementById('terminalGrid');
+        const bounds = grid.getBoundingClientRect();
+        return [...grid.querySelectorAll(':scope > .ws-window:not([hidden])')].every(node => {
+            const r = node.getBoundingClientRect();
+            return r.left >= bounds.left && r.top >= bounds.top
+                && r.right <= bounds.right + 1 && r.bottom <= bounds.bottom + 1;
+        });
+    })).toBe(true);
+    await page.screenshot({path: test.info().outputPath('contained-windows.png')});
+});

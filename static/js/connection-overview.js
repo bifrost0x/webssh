@@ -50,6 +50,7 @@
         let scheduled = false;
         let transfersScheduled = false;
         let loadError = false;
+        let draggedHost = null;
         const visible = () => win.primaryWorkspaceController?.getActiveView() === 'overview';
         const t = key => win.i18n?.t(key) || key;
         const node = (tag, className, text) => {
@@ -101,10 +102,67 @@
                 (next || (container.id === 'shellGroups' ? byId('overviewNavBtn') : byId('overviewHostSearch'))).focus({preventScroll: true});
             }
         }
+        function moveHost(id, group) {
+            const manager = win.ProfileManager;
+            const profiles = manager?.profiles || [];
+            const source = profiles.find(profile => profile.id === id);
+            if (!source || String(source.group || '').trim().toLocaleLowerCase() === group.trim().toLocaleLowerCase()) return;
+            const count = profiles.filter(profile => profile.favorite !== true
+                && String(profile.group || '').trim().toLocaleLowerCase() === group.trim().toLocaleLowerCase()).length;
+            const move = win.ProfileLauncherUtils?.resolveProfileDrop(profiles, id, group, count);
+            if (move) manager.requestProfileMove(move);
+        }
+        function dropGroup(element, group) {
+            element.dataset.hostDropGroup = group;
+            element.addEventListener('dragover', event => {
+                if (!draggedHost) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                element.classList.add('host-drop-active');
+            });
+            element.addEventListener('dragleave', event => {
+                if (!element.contains(event.relatedTarget)) element.classList.remove('host-drop-active');
+            });
+            element.addEventListener('drop', event => {
+                if (!draggedHost) return;
+                event.preventDefault();
+                const id = draggedHost;
+                draggedHost = null;
+                doc.querySelectorAll('.host-drop-active').forEach(item => item.classList.remove('host-drop-active'));
+                moveHost(id, group);
+            });
+        }
+        function moveControl(host) {
+            const menu = node('details', 'overview-host-move');
+            const toggle = node('summary');
+            const label = t('profiles.moveToGroup').replace('{name}', host.name);
+            toggle.setAttribute('aria-label', label);
+            toggle.title = label;
+            toggle.append(icon('drive_file_move'));
+            const select = node('select');
+            select.setAttribute('aria-label', label);
+            const groups = new Set(['', ...(win.ProfileManager?.profiles || []).map(profile => String(profile.group || '').trim())]);
+            groups.forEach(group => select.add(new win.Option(group || t('profiles.ungrouped'), group)));
+            select.value = host.group;
+            select.addEventListener('change', () => { menu.open = false; moveHost(host.id, select.value); select.value = host.group; });
+            menu.append(toggle, select);
+            return menu;
+        }
         function hostButton(host) {
             const target = button(`${t('overview.openHost')}: ${host.name}`, () => launch(host.id));
             target.dataset.overviewKey = `host:${host.id}`;
             target.dataset.hostId = host.id;
+            target.draggable = true;
+            target.addEventListener('dragstart', event => {
+                if (win.ProfileManager?.organizationPending?.has(host.id)) { event.preventDefault(); return; }
+                draggedHost = host.id;
+                event.dataTransfer.setData('application/x-webssh-profile-id', host.id);
+                event.dataTransfer.effectAllowed = 'move';
+            });
+            target.addEventListener('dragend', () => {
+                draggedHost = null;
+                doc.querySelectorAll('.host-drop-active').forEach(item => item.classList.remove('host-drop-active'));
+            });
             target.dataset.tone = groupTone(host.group);
             target.append(icon('dns'), node('span', 'overview-row-title', host.name));
             if (host.favorite) {
@@ -125,8 +183,10 @@
             const fragment = doc.createDocumentFragment();
             groups.forEach((items, group) => {
                 const section = node('section', 'overview-host-group');
+                dropGroup(section, group);
                 section.dataset.tone = groupTone(group);
                 const heading = node('h3', 'overview-group-heading');
+                heading.title = group || t('profiles.ungrouped');
                 heading.append(icon('folder_open'), node('span', '', group || t('profiles.ungrouped')), node('small', '', String(items.length)));
                 section.append(heading);
                 const list = node('ul', 'overview-host-list');
@@ -137,7 +197,7 @@
                             : host.route === 'unavailable' ? 'overview.missingJump' : 'overview.noJump';
                         row.append(node('span', 'overview-route-unlinked', t(key)));
                     }
-                    row.append(hostButton(host));
+                    row.append(hostButton(host), moveControl(host));
                     list.append(row);
                 });
                 section.append(list);
@@ -275,6 +335,7 @@
                 if (!showTree) return;
                 groups.forEach((items, group) => {
                     const section = node('details', 'shell-host-group');
+                    dropGroup(section, group);
                     section.dataset.tone = groupTone(group);
                     section.open = !collapsedGroups.has(group);
                     const summary = node('summary', 'shell-group');

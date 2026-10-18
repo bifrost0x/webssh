@@ -16,17 +16,17 @@ function inside(rect, bounds) {
         && rect.y + rect.height <= bounds.height;
 }
 
-test('clamping keeps a minimum size and the title bar reachable', () => {
+test('clamping keeps the entire window and its controls inside the desktop', () => {
     const tiny = windows.clampRect({x: 10, y: 10, width: 40, height: 20}, DESKTOP);
     assert.equal(tiny.width, windows.MIN_WIDTH);
     assert.equal(tiny.height, windows.MIN_HEIGHT);
 
     const lost = windows.clampRect({x: 5000, y: 5000, width: 400, height: 300}, DESKTOP);
-    assert.equal(lost.x, DESKTOP.width - 96);
-    assert.equal(lost.y, DESKTOP.height - windows.TITLE_HEIGHT);
+    assert.equal(lost.x, DESKTOP.width - lost.width);
+    assert.equal(lost.y, DESKTOP.height - lost.height);
 
     const left = windows.clampRect({x: -5000, y: -40, width: 400, height: 300}, DESKTOP);
-    assert.equal(left.x, 96 - 400);
+    assert.equal(left.x, 0);
     assert.equal(left.y, 0);
 
     const huge = windows.clampRect({x: 0, y: 0, width: 9000, height: 9000}, DESKTOP);

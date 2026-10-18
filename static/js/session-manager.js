@@ -2279,11 +2279,6 @@ const SessionManager = {
         if (!this.windowMode) {
             return -1;
         }
-        const emptyIndex = this.getFirstEmptyPaneIndex();
-        if (emptyIndex !== -1) {
-            this.setActivePane(emptyIndex);
-            return emptyIndex;
-        }
         const index = this.allocateWindowSlot();
         if (index === -1) {
             window.showNotification?.(
@@ -2461,12 +2456,12 @@ const SessionManager = {
         icon.setAttribute('aria-hidden', 'true');
         icon.textContent = hasSessions ? 'web_asset_off' : 'web_asset';
         const title = document.createElement('h2');
-        title.textContent = this.windowText('windows.emptyTitle', 'No open windows');
+        title.textContent = this.windowText('windows.emptyTitle', 'No visible windows');
         const text = document.createElement('p');
         text.textContent = hasSessions
             ? this.windowText(
                 'windows.emptyMinimized',
-                'Your sessions are minimized. Pick one from the tabs above to bring it back.',
+                'Select a session tab above to show its terminal.',
             )
             : this.windowText('windows.emptyHint', 'Open a connection to start a terminal window.');
         const button = document.createElement('button');

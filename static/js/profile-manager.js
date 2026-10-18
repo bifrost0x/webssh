@@ -477,6 +477,7 @@ const ProfileManager = {
                     const heading = document.createElement('h3');
                     heading.className = 'profile-launcher-section-title';
                     heading.textContent = section.label;
+                    heading.title = section.label;
                     const list = document.createElement('div');
                     list.className = 'profile-launcher-list';
                     section.profiles.forEach(profile => {
@@ -904,7 +905,7 @@ const ProfileManager = {
     },
 
     clearProfileDragState(container) {
-        container?.querySelectorAll('.is-dragging, .profile-drop-slot.is-active').forEach(element => {
+        container?.querySelectorAll('.is-dragging, [data-profile-drop-index].is-active').forEach(element => {
             element.classList.remove('is-dragging', 'is-active');
         });
         this.activeProfileDragId = null;
@@ -965,6 +966,10 @@ const ProfileManager = {
             const collapsed = this.isGroupCollapsed(section.key);
             const heading = document.createElement('h3');
             heading.className = 'profile-management-section-title';
+            if (acceptsDrop) {
+                heading.dataset.profileDropGroup = targetGroup;
+                heading.dataset.profileDropIndex = String(section.profiles.length);
+            }
             const toggle = document.createElement('button');
             toggle.type = 'button';
             toggle.className = 'profile-management-section-toggle';
@@ -1006,13 +1011,11 @@ const ProfileManager = {
                     card.classList.add('is-pending');
                 }
                 const canDrag = (
-                    section.key !== 'favorites'
-                    && profile.favorite !== true
-                    && this.isProfileSortingEnabled()
+                    this.isProfileSortingEnabled()
                     && !this.organizationPending.has(profile.id)
                 );
+                card.dataset.profileCardId = profile.id;
                 if (section.key !== 'favorites') {
-                    card.dataset.profileCardId = profile.id;
                     card.dataset.profilePosition = String(profileIndex);
                 }
                 const dragHandle = document.createElement('button');
@@ -1022,15 +1025,12 @@ const ProfileManager = {
                 dragHandle.draggable = canDrag;
                 dragHandle.disabled = !canDrag;
                 const dragLabel = canDrag
-                    ? this.t('profiles.reorder', 'Reorder {name}')
+                    ? profile.favorite === true
+                        ? this.t('profiles.moveToGroup', 'Move {name} to group')
+                        : this.t('profiles.reorder', 'Reorder {name}')
                     : this.organizationPending.has(profile.id)
                         ? this.t('profiles.updatePending', 'Update in progress')
-                    : profile.favorite === true
-                        ? this.t(
-                            'profiles.favoriteReorderHint',
-                            'Remove from favorites to reorder {name}',
-                        )
-                        : this.t(
+                    : this.t(
                             'profiles.sortSearchDisabled',
                             'Clear the search to reorder connections.',
                         );
@@ -1516,6 +1516,7 @@ const ProfileManager = {
             this.organizationPending.delete(profile.id);
             if (Array.isArray(acknowledgement?.organization)) {
                 this.applyOrganizationPatch(acknowledgement.organization);
+                this.setProfiles(this.profiles);
             }
             if (acknowledgement?.requires_confirmation === true) {
                 this.pendingProfileMove = {
@@ -1540,9 +1541,6 @@ const ProfileManager = {
                 this.renderManagementList();
                 return;
             }
-            this.renderProfileSelect();
-            this.renderManagementList();
-            this.refreshEmptyPanes();
         });
         return true;
     },

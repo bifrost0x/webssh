@@ -7,6 +7,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="background-scope" content="{{ background_scope }}">
+    <script defer src="{{ static_asset_url(filename='js/theme-background.js') }}"></script>
     <meta name="app-root" content="{{ url_prefix }}">
     <meta name="ssh-gateway-enabled" content="{{ 'true' if ssh_gateway_enabled else 'false' }}">
     <meta name="max-editor-file-size" content="{{ max_editor_file_size|default(5242880) }}">
@@ -36,7 +38,7 @@
         <div class="header-content">
             <div class="header-title-row">
                 <a class="app-brand" href="{{ url_for('index') }}" aria-label="WebSSH workspaces" data-i18n-aria-label="navigation.websshWorkspaces">
-                    <img class="app-brand-logo" src="{{ static_asset_url(filename='images/redesign/webssh-mark.png') }}" alt="" aria-hidden="true"><b class="brand-wordmark" aria-hidden="true">WebSSH</b>
+                    <img class="app-brand-logo" src="{{ static_asset_url(filename='images/webssh-logo.svg') }}" alt="" aria-hidden="true">
                     <span><small data-i18n="brand.tagline">Your shell. Your rules.</small></span>
                 </a>
                 <button id="mobileSessionSummary" class="mobile-session-summary" type="button">

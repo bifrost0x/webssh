@@ -87,13 +87,13 @@ def test_workspace_header_uses_the_shipped_webssh_logo(app, client):
     _create_login(app, client)
 
     response = client.get('/')
-    logo = client.get('/static/images/redesign/webssh-mark.png')
+    logo = client.get('/static/images/webssh-logo.svg')
 
     assert response.status_code == 200
     assert b'class="app-brand-logo"' in response.data
-    assert b'static/images/redesign/webssh-mark.png' in response.data
+    assert b'static/images/webssh-logo.svg' in response.data
     assert logo.status_code == 200
-    assert logo.mimetype == 'image/png'
+    assert logo.mimetype == 'image/svg+xml'
 
 
 def test_workspace_renders_the_disconnect_behavior_preference(app, client):
@@ -449,3 +449,20 @@ def test_admin_settings_use_grouped_professional_navigation():
         'data-settings-panel="host-trust"',
     ):
         assert marker in contents
+
+
+def test_custom_wallpapers_use_the_existing_opaque_account_namespace(app, client):
+    for path in ('/login', '/register'):
+        response = client.get(path)
+        assert b'name="background-scope"' not in response.data
+        assert b'js/theme-background.js' not in response.data
+    _create_login(app, client)
+    scopes = []
+    for path in ('/', '/security', '/settings'):
+        response = client.get(path, follow_redirects=True)
+        scope = re.search(rb'name="background-scope" content="([a-f0-9]{64})"', response.data)
+        assert scope is not None
+        scopes.append(scope.group(1))
+        assert b'js/theme-background.js' in response.data
+    assert len(set(scopes)) == 1
+    assert re.search(rb'data-connection-history-scope="([a-f0-9]{64})"', client.get('/').data).group(1) == scopes[0]

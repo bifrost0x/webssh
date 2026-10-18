@@ -2680,6 +2680,13 @@
         const newTabBtn = document.getElementById('newTabBtn');
         if (newTabBtn) {
             newTabBtn.addEventListener('click', () => {
+                const launcher = document.querySelector(
+                    `.terminal-pane.active[data-pane-index="${SessionManager.getActivePaneIndex()}"] .profile-launcher-new`,
+                );
+                if (!SessionManager.windowMode && launcher) {
+                    launcher.click();
+                    return;
+                }
                 SessionManager.showConnectionLauncher(
                     SessionManager.getActivePaneIndex()
                 );

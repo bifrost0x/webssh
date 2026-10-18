@@ -15,7 +15,6 @@
     const MIN_WIDTH = 320;
     const MIN_HEIGHT = 180;
     const TITLE_HEIGHT = 36;
-    const KEEP_VISIBLE = 96;
     const SNAP_THRESHOLD = 14;
     const CASCADE_STEP = 30;
     const GAP = 8;
@@ -39,16 +38,14 @@
         };
     }
 
-    // Keep at least the title bar reachable, the way desktop window managers
-    // let windows hang off an edge without ever losing them.
+    // Keep the entire terminal and its controls inside the available workspace.
     function clampRect(rect, bounds, min) {
         const size = minimumSize(bounds, min);
         const width = clamp(Math.round(finite(rect.width, size.width)), size.width, bounds.width);
         const height = clamp(Math.round(finite(rect.height, size.height)), size.height, bounds.height);
-        const visible = Math.min(KEEP_VISIBLE, width);
         return {
-            x: clamp(Math.round(finite(rect.x)), visible - width, bounds.width - visible),
-            y: clamp(Math.round(finite(rect.y)), 0, bounds.height - Math.min(TITLE_HEIGHT, height)),
+            x: clamp(Math.round(finite(rect.x)), 0, bounds.width - width),
+            y: clamp(Math.round(finite(rect.y)), 0, bounds.height - height),
             width,
             height,
         };

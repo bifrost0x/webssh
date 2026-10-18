@@ -268,3 +268,52 @@ body.webssh-ui[data-theme="glass"] {
 .webssh-ui[data-theme="glass"] .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 48%, var(--ws2-border)); }
 .webssh-ui[data-theme="glass"] .overview-host-entry .overview-row { background: linear-gradient(135deg, color-mix(in srgb, var(--group-accent) 10%, var(--ws2-panel)), var(--ws2-surface)); }
 .webssh-ui[data-theme="glass"] .overview-graph .overview-host-group { border-color: color-mix(in srgb, var(--group-accent) 70%, var(--ws2-border)); box-shadow: 0 8px 24px color-mix(in srgb, var(--group-accent) 7%, transparent); }
+
+/* Original, unmodified WebSSH artwork includes the wordmark. Keep its full
+   proportions; a dark backing preserves its white lettering in light themes. */
+.webssh-ui :is(.app-brand-logo, .auth-product-logo) {
+    width: 156px; height: 47px; max-width: 100%; object-fit: contain;
+    background: #0f172a; border-radius: 7px; flex-shrink: 0;
+}
+.webssh-ui .auth-product-logo { width: 220px; height: 66px; }
+.webssh-shell .app-brand { min-width: 0; max-width: 100%; }
+@media (min-width: 768px) and (max-width: 1100px) {
+    .webssh-shell .app-brand-logo { width: 68px; height: 32px; }
+}
+@media (min-width: 1101px) {
+    .webssh-shell[data-primary-workspace="workspaces"]:has(.terminal-grid:is(.split-2, .split-4)) .app-brand-logo { width: 68px; height: 32px; }
+}
+@media (max-width: 767px) {
+    .webssh-shell .app-brand-logo { width: 120px; height: 36px; }
+}
+/* Shrink content inside its allocated grid/flex track, including long names. */
+.webssh-ui :is(.overview-card, .overview-host-entry, .overview-host-list, .overview-row, .overview-row-title,
+    .profile-management-section, .profile-management-item, .theme-background-controls) { min-width: 0; max-width: 100%; }
+.overview-host-entry { position: relative; }
+.connection-overview .overview-host-entry .overview-row { width: 100%; padding-right: 38px; }
+.overview-host-move { position: absolute; right: 4px; top: 4px; z-index: 3; }
+.overview-host-move summary { display: grid; place-items: center; width: 30px; height: 30px; cursor: pointer; border-radius: 5px; color: var(--ws2-text-secondary); }
+.overview-host-move summary:hover { background: var(--ws2-raised); }
+.overview-host-move summary::marker { content: ''; }
+.overview-host-move select { position: absolute; right: 0; top: 32px; max-width: min(220px, 65vw); padding: 10px; color: var(--ws2-text); background: var(--ws2-panel); border: 1px solid var(--ws2-border-strong); border-radius: 6px; }
+.host-drop-active, .profile-management-section-title.is-active { outline: 2px solid var(--ws2-accent); outline-offset: -2px; background: var(--ws2-raised); }
+.theme-background-controls { display: grid; gap: 10px; width: min(100%, 360px); }
+.theme-background-controls input { max-width: 100%; width: 100%; }
+#themeBackgroundPreview { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; }
+#themeBackgroundPreview[hidden] { display: none; }
+body[data-custom-background] .connection-overview:not(.overview-graph) .overview-heading { background-image: var(--theme-background-image); }
+body[data-custom-background] .terminal-grid.window-mode { background-image: var(--theme-background-image); background-size: cover; background-position: center; }
+@media (max-width: 767px), (max-height: 520px) {
+    .webssh-ui .auth-product-logo { width: 156px; height: 47px; }
+}
+.overview-group-heading > span:not(.material-icons),
+.overview-host-entry .overview-row-title {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    min-width: 0; overflow: hidden; overflow-wrap: anywhere;
+}
+.profile-launcher-section-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px), (pointer: coarse) {
+    .overview-host-move summary { width: 44px; height: 44px; }
+    .overview-host-move select { top: 44px; }
+    .connection-overview .overview-host-entry .overview-row { padding-right: 52px; }
+}

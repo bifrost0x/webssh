@@ -486,6 +486,10 @@ def create_app(
         )
         return {
             'url_prefix': url_prefix,
+            'background_scope': (
+                connection_history_scope(current_user, app.secret_key)
+                if current_user.is_authenticated else ''
+            ),
             'registration_enabled': registration_available,
             'ssh_gateway_enabled': is_ssh_gateway_enabled(),
             'tmux_enabled': config.TMUX_ENABLED,

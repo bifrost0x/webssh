@@ -17,7 +17,6 @@ test.afterEach(async ({ page }) => {
 
 async function openQuickConnect(page) {
     await page.locator('#newTabBtn').click();
-    await page.locator('.terminal-pane.active .profile-launcher-new').click();
 }
 
 test('empty recent history leaves advanced settings in the compact secondary column', async ({ page }) => {
@@ -47,7 +46,8 @@ test('keeps Quick Connect in the workspace without a duplicate header action', a
     await page.evaluate(profiles => window.ProfileManager.setProfiles(profiles), savedProfiles);
 
     await newTab.click();
-    await expect(page.locator('#connectionModal')).not.toHaveClass(/show/);
+    await expect(page.locator('#connectionModal')).toHaveClass(/show/);
+    await page.locator('#cancelConnectionBtn').click();
     await expect(page.locator('.terminal-pane.active .profile-launcher')).toBeVisible();
     await expect(newTab).toHaveAttribute(
         'aria-label',

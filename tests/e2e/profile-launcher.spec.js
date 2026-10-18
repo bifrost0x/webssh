@@ -99,7 +99,6 @@ test('legacy key profile clears a previously selected SSH key', async ({ page })
     });
 
     await page.locator('#newTabBtn').click();
-    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await page.locator('#authTypeSelect').selectOption('key');
     await page.locator('#keySelect').selectOption({ label: 'E2E usable key (Ed25519)' });
     await page.locator('#cancelConnectionBtn').click();
