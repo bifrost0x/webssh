@@ -36,7 +36,8 @@ def check_canaries(binary, config, directory):
     for name in paths:
         target = directory / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('token = "' + 'ghp_' + secrets.token_hex(18) + '"\n')
+        target.write_text('token = "' + 'ghp_' + secrets.token_hex(18) + '"\n'
+                          + 'api_key = "' + secrets.token_hex(32) + '"\n')
     # PEM-shaped blocks must also be detected inside both synthetic-key tests.
     key_paths = ['tests/test_key_encryption.py', 'tests/test_key_manager.py']
     for name in key_paths:
@@ -51,7 +52,9 @@ def check_canaries(binary, config, directory):
     detected = {Path(item['File']).relative_to(directory).as_posix() for item in findings}
     private_keys = {Path(item['File']).relative_to(directory).as_posix()
                     for item in findings if item['RuleID'] == 'private-key'}
-    if not set(paths) <= detected or not set(key_paths) <= private_keys:
+    generic_keys = {Path(item['File']).relative_to(directory).as_posix()
+                    for item in findings if item['RuleID'] == 'generic-api-key'}
+    if not set(paths) <= detected or not set(paths) <= generic_keys or not set(key_paths) <= private_keys:
         raise RuntimeError('Secret scanner exceptions hide one or more canaries.')
 
 
