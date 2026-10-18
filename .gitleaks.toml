@@ -1,0 +1,29 @@
+title = "WebSSH tracked-source secret scan"
+
+[extend]
+useDefault = true
+
+# Keep provider and private-key rules enabled. These exact expressions are
+# source-code identifiers, not credentials; never exempt whole tests/vendor trees.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)app/step_up\.py$''']
+regexes = ['''^populate_existing=True$''']
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)static/js/app\.js$''']
+regexes = ['''^Ctrl\+Shift\+Tab$''']
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)static/vendor/xterm/xterm(?:-addon-search)?\.js$''']
+regexes = ['''^t\.(?:TwoKeyMap=void|Sequencer=t\.Throttler=void)$''']
+
+[[rules.allowlists]]
+condition = "AND"
+paths = ['''(^|/)site/vendor/vis-network-9\.1\.6/vis-network\.min\.js$''']
+regexes = ['''^_getDistanceToBezierEdge2$''']

@@ -310,7 +310,20 @@ def test_runtime_image_excludes_repository_only_tooling():
         'requirements-test.*',
         'requirements.in',
         'scripts/',
+        'site/',
+        'assets/',
+        '**/.env.*',
+        '**/*.pem',
+        '**/*.key',
+        '**/*.sqlite3',
+        'static/images/theme-backgrounds/*.png',
     } <= ignored
+
+    dockerfile = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
+    assert not re.search(r'^COPY\s+\.\s', dockerfile, re.MULTILINE)
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    assert 'python scripts/check_container_context.py' in workflow
+    assert 'python scripts/check_container_context.py --container' in workflow
 
 
 def test_runtime_image_removes_python_packaging_tooling():

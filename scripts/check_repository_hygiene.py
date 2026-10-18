@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,12 @@ FORBIDDEN_NAMES = frozenset({
     'gemini.md',
     'jules.md',
     'qwen.md',
+    'secret_key',
+    'known_hosts',
+    'id_rsa',
+    'id_dsa',
+    'id_ecdsa',
+    'id_ed25519',
 })
 
 FORBIDDEN_DIRECTORIES = frozenset({
@@ -54,14 +61,22 @@ FORBIDDEN_DIRECTORIES = frozenset({
     'review-artifacts',
     'reviews',
     'test-results',
+    'data',
+    'instance',
+    'secrets',
+    '.ssh',
 })
 
 DISPOSABLE_SUFFIXES = (
     '.bak', '.db', '.log', '.orig', '.pyc', '.pyo', '.rej', '.sqlite',
-    '.sqlite3', '.swp', '.swo',
+    '.sqlite3', '.swp', '.swo', '.backup', '.pem', '.key', '.p12', '.pfx',
 )
 
 PUBLIC_REFERENCE_SUFFIXES = frozenset({'.css', '.html', '.js', '.md'})
+MEDIA_SUFFIXES = frozenset({
+    '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.mp4', '.webm',
+    '.mp3', '.ogg', '.wav', '.vtt', '.woff', '.woff2',
+})
 TEXT_AUDIT_SUFFIXES = frozenset({'.adoc', '.html', '.md', '.rst', '.txt'})
 
 AGENT_INSTRUCTION_MARKERS = (
@@ -147,6 +162,8 @@ def forbidden_path_reason(value: str) -> str | None:
         return 'repository-local AI instruction directory'
     if name == '.env' or (name.startswith('.env.') and name != '.env.example'):
         return 'environment or secret file'
+    if re.search(r'\.(?:db|sqlite3?)-(?:wal|shm|journal)$', name):
+        return 'database sidecar file'
     if name in {'.ds_store', 'thumbs.db'} or name.endswith(DISPOSABLE_SUFFIXES):
         return 'disposable workstation or runtime artifact'
     if path.suffix.casefold() == '.md' and re.search(
@@ -185,6 +202,7 @@ def content_violations(root: Path, paths: list[str]) -> list[Violation]:
 
 def asset_violations(root: Path, paths: list[str]) -> list[Violation]:
     public_sources = []
+    runtime_sources = []
     for value in paths:
         path = PurePosixPath(value)
         if path.suffix.casefold() not in PUBLIC_REFERENCE_SUFFIXES:
@@ -193,14 +211,38 @@ def asset_violations(root: Path, paths: list[str]) -> list[Violation]:
             text = _read_text(root / value)
             if text is not None:
                 public_sources.append(text)
+        if path.parts[0] in {'templates', 'static'} and path.suffix in {'.css', '.html', '.js'}:
+            text = _read_text(root / value)
+            if text is not None:
+                runtime_sources.append(text)
     public_text = '\n'.join(public_sources)
+    runtime_text = '\n'.join(runtime_sources)
     violations = []
+    seen_media: dict[str, str] = {}
     for value in paths:
         path = PurePosixPath(value)
-        if not path.parts or path.parts[0] != 'assets':
+        if not (value.startswith(('assets/', 'site/assets/', 'static/images/'))
+                and path.suffix.casefold() in MEDIA_SUFFIXES):
             continue
-        if path.name not in public_text and value not in public_text:
+        # PNG originals are deliberate authoring inputs, not orphaned UI assets.
+        # Only allow an original with a tracked, actually used WebP derivative.
+        if (path.parent == PurePosixPath('static/images/theme-backgrounds')
+                and path.suffix == '.png'
+                and str(path.with_suffix('.webp')) in paths
+                and path.with_suffix('.webp').name in runtime_text):
+            continue
+        references = runtime_text + '\n' + public_text if value.startswith('static/') else public_text
+        # A license/caption mentioning its own asset is not a consumer. Sources
+        # above include pages, docs and runtime code, never media or test fixtures.
+        if path.name not in references and value not in references:
             violations.append(Violation(value, 'asset has no public documentation or site reference'))
+        asset = root / value
+        if asset.is_file():
+            digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+            if digest in seen_media:
+                violations.append(Violation(value, f'identical media already tracked at {seen_media[digest]}'))
+            else:
+                seen_media[digest] = value
     return violations
 
 
@@ -223,7 +265,7 @@ def main() -> int:
         for violation in violations:
             print(f'- {violation.path}: {violation.reason}')
         return 1
-    print('Repository hygiene check passed: tracked files are public-safe.')
+    print('Repository hygiene check passed: no forbidden paths, internal notes or orphaned media found.')
     return 0
 
 
