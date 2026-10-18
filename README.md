@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://getwebssh.com/">Product site</a> ·
-  <a href="https://getwebssh.com/demo.html?v=4a5bdb14506d">Watch the demo</a> ·
+  <a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">Watch the full tour</a> ·
   <a href="https://github.com/bifrost0x/webssh/wiki">Documentation</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="https://github.com/bifrost0x/webssh/pkgs/container/webssh">Container image</a> ·
@@ -27,8 +27,8 @@
 ## Product tour
 
 <p align="center">
-  <a href="https://getwebssh.com/demo.html?v=4a5bdb14506d">
-    <img src="site/assets/webssh-demo-poster.jpg" alt="Watch the 60-second WebSSH demo: terminals, split panes, SFTP file editing, command sets, and notes" width="1100">
+  <a href="https://www.youtube.com/watch?v=mw_qXUnYYVs">
+    <img src="site/assets/webssh-youtube-tour.jpg" alt="Watch the WebSSH tour on YouTube: SSH connections, split terminals, SFTP files, command sets and Docker setup" width="1100">
   </a>
 </p>
 

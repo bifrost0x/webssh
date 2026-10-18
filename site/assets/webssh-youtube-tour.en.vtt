@@ -1,0 +1,294 @@
+WEBVTT
+
+00:00:00.070 --> 00:00:02.840
+Ever find yourself switching
+between a terminal,
+
+00:00:03.050 --> 00:00:05.660
+a file browser, and a page of notes?
+
+00:00:06.254 --> 00:00:08.524
+That's where WebSSH comes in.
+
+00:00:08.714 --> 00:00:13.604
+It brings those everyday tools into one
+workspace, running on your own server.
+
+00:00:14.285 --> 00:00:16.775
+You install it on a machine you control.
+
+00:00:17.185 --> 00:00:21.535
+Your browser talks to that instance, and
+that instance connects to your servers.
+
+00:00:22.303 --> 00:00:23.953
+Let's start with Overview.
+
+00:00:24.691 --> 00:00:27.061
+Give a saved connection a useful name,
+
+00:00:27.211 --> 00:00:30.181
+and you don't have to remember
+its address every time.
+
+00:00:30.707 --> 00:00:31.837
+Looking for production?
+
+00:00:32.367 --> 00:00:34.637
+Type it into search, or pick a group.
+
+00:00:35.167 --> 00:00:37.097
+Recent connections also make it easy
+
+00:00:37.107 --> 00:00:39.777
+to get back to a machine
+you were just using.
+
+00:00:40.269 --> 00:00:44.839
+Switch to the route view, and you can see
+how your saved connections fit together.
+
+00:00:45.249 --> 00:00:48.619
+Here, a few destinations
+go through a jump host.
+
+00:00:49.337 --> 00:00:52.867
+Need a connection you haven't
+saved yet? Open Quick Connect.
+
+00:00:53.490 --> 00:00:57.860
+Enter the host, port, and remote
+username. Nothing surprising here.
+
+00:00:58.282 --> 00:01:00.852
+You can use a password or a saved key.
+
+00:01:01.182 --> 00:01:03.732
+We'll pick the operations
+key for this example.
+
+00:01:04.385 --> 00:01:07.135
+If the destination sits
+behind a jump host,
+
+00:01:07.425 --> 00:01:09.355
+choose that in the advanced settings.
+
+00:01:09.745 --> 00:01:12.375
+The extra options are
+there when you need them.
+
+00:01:12.803 --> 00:01:16.833
+Before you connect, compare the host's
+fingerprint with a trusted source.
+
+00:01:17.303 --> 00:01:19.473
+Check that you're reaching
+the right machine.
+
+00:01:20.203 --> 00:01:23.713
+Now for the part you'll probably
+spend most of your time in:
+
+00:01:23.763 --> 00:01:25.213
+the terminal workspace.
+
+00:01:25.837 --> 00:01:30.247
+Each connection gets a tab.
+Let's put two sessions side by side,
+
+00:01:30.257 --> 00:01:34.007
+with the edge server on the left
+and the build runner on the right.
+
+00:01:34.370 --> 00:01:36.160
+Looking for a particular line?
+
+00:01:36.630 --> 00:01:39.460
+Open terminal search and
+type what you're looking for.
+
+00:01:39.770 --> 00:01:42.000
+Here, we're finding the web container.
+
+00:01:42.437 --> 00:01:45.767
+And if you need more room,
+switch to four panes.
+
+00:01:46.037 --> 00:01:48.407
+Now all four sessions
+are visible together.
+
+00:01:49.137 --> 00:01:52.947
+Let's open Files. You get
+secure remote file access,
+
+00:01:52.957 --> 00:01:55.527
+right alongside the terminal workflow.
+
+00:01:56.107 --> 00:01:59.057
+The two panes have
+separate sources and paths.
+
+00:01:59.407 --> 00:02:02.877
+That makes it easy to keep an eye
+on where something is going.
+
+00:02:03.401 --> 00:02:06.171
+Pick a text file, like
+these deployment notes.
+
+00:02:06.670 --> 00:02:09.980
+You can preview it here,
+then switch into edit mode.
+
+00:02:10.290 --> 00:02:13.100
+No need to download it
+just to change a line.
+
+00:02:13.561 --> 00:02:15.331
+We'll add one item to the checklist.
+
+00:02:15.341 --> 00:02:20.191
+Notice the unsaved marker:
+the edit hasn't been written back yet.
+
+00:02:20.622 --> 00:02:22.052
+Back in the file workspace,
+
+00:02:22.342 --> 00:02:25.352
+the transfer queue keeps
+progress and status visible
+
+00:02:25.362 --> 00:02:27.392
+when you're moving several files.
+
+00:02:28.103 --> 00:02:30.973
+We all have commands we run over and over.
+
+00:02:31.303 --> 00:02:33.593
+This is where the command library helps.
+
+00:02:34.409 --> 00:02:36.379
+Command sets take that one step further:
+
+00:02:36.689 --> 00:02:40.299
+several commands, arranged
+into a reusable sequence.
+
+00:02:40.799 --> 00:02:44.489
+This baseline check already
+includes uptime and service status.
+
+00:02:44.879 --> 00:02:46.689
+Let's open it and have a look.
+
+00:02:47.269 --> 00:02:50.639
+We'll find the disk-usage command
+and add it as the third step.
+
+00:02:50.649 --> 00:02:52.759
+There's the updated order.
+
+00:02:53.425 --> 00:02:56.995
+Before running a set, check
+the commands and the target session.
+
+00:02:58.055 --> 00:03:00.565
+Use the notes as a private scratchpad.
+
+00:03:00.815 --> 00:03:02.905
+A release checklist, a reminder,
+
+00:03:03.215 --> 00:03:05.485
+whatever helps you pick
+up where you left off.
+
+00:03:05.755 --> 00:03:07.725
+They're shared across your own sessions.
+
+00:03:08.270 --> 00:03:11.240
+Open diagnostics to check resource usage
+
+00:03:11.430 --> 00:03:14.380
+and inspect services on
+a compatible Linux host.
+
+00:03:14.890 --> 00:03:16.520
+These are sample measurements.
+
+00:03:17.078 --> 00:03:20.088
+The details you can see
+depend on the remote system
+
+00:03:20.098 --> 00:03:22.028
+and your account's permissions.
+
+00:03:22.936 --> 00:03:26.026
+Depending on your setup,
+you can enable passkeys,
+
+00:03:26.156 --> 00:03:29.906
+an authenticator app,
+or an external identity provider.
+
+00:03:30.469 --> 00:03:32.939
+Set up recovery while
+you can still sign in.
+
+00:03:32.949 --> 00:03:36.679
+It's much nicer to have that
+ready before you need it.
+
+00:03:37.170 --> 00:03:38.800
+Ready to have a look yourself?
+
+00:03:39.330 --> 00:03:43.280
+Head to getwebssh dot com and
+open the Docker quickstart.
+
+00:03:43.861 --> 00:03:48.711
+It uses the published container image
+and a persistent volume for your data.
+
+00:03:49.377 --> 00:03:52.547
+The example keeps the web
+port on your own computer.
+
+00:03:53.017 --> 00:03:56.947
+That's a useful way to explore without
+opening it to the whole network.
+
+00:03:57.574 --> 00:04:01.424
+Start the container, open
+localhost on port five thousand,
+
+00:04:01.894 --> 00:04:05.124
+and create the first
+administrator on a fresh instance.
+
+00:04:05.697 --> 00:04:08.587
+For internet access,
+follow the production guide.
+
+00:04:08.977 --> 00:04:12.587
+It covers encrypted web
+access, allowed origins,
+
+00:04:12.757 --> 00:04:15.647
+secure cookies, and the proxy
+and network settings.
+
+00:04:16.370 --> 00:04:21.457
+Found something useful, or something you'd
+like to improve? Come share it on GitHub.
+
+00:04:22.329 --> 00:04:24.099
+And if you enjoyed the walkthrough,
+
+00:04:24.249 --> 00:04:27.599
+subscribe for more practical
+tools for your own infrastructure.
+
+00:04:28.229 --> 00:04:29.439
+Thanks for watching.
