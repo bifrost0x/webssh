@@ -2342,6 +2342,9 @@
                 }
                 const layout = parseInt(btn.dataset.layout, 10);
                 const currentLayout = SessionManager.layout;
+                // A user's split choice overrides a remembered window mode,
+                // including while compact-screen fallback is active.
+                SessionManager.setWindowModePreference(false);
 
                 // Leaving windows keeps the front-most sessions in the panes.
                 if (!SessionManager.windowMode

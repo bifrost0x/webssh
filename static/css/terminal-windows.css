@@ -316,6 +316,27 @@ body[data-theme] .ws-window .terminal-pane.active {
     border-radius: 0;
 }
 
+/* The full-page launcher spacing otherwise leaves almost no host list in a
+   normal-sized window. Very short tiled windows scroll the launcher as a whole. */
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher {
+    padding: 12px;
+    gap: 8px;
+    min-height: 270px;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-title {
+    font-size: 18px;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-search {
+    margin-top: 0;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-sections {
+    min-height: 100px;
+    padding: 4px;
+}
+.webssh-ui .terminal-grid.window-mode:not(.split-2):not(.split-4) .profile-launcher-section-title {
+    margin-bottom: 7px;
+}
+
 /* Resize handles sit just inside the frame so the rounded clip keeps them. */
 .ws-window-resize {
     position: absolute;

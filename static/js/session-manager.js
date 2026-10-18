@@ -378,7 +378,12 @@ const SessionManager = {
         }
 
         if (this.windowMode) {
-            this.assignSessionToPane(sessionId, this.resolvePaneForNewSession(null));
+            const paneIndex = this.resolvePaneForNewSession(null);
+            this.assignSessionToPane(sessionId, paneIndex);
+            // An explicit tab selection must reveal its terminal even when a
+            // reused slot or saved placement was minimized. Automatic restore
+            // still preserves minimized state in assignSessionToPane.
+            this.setActivePane(paneIndex);
             return;
         }
 

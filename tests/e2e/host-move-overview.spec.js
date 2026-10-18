@@ -34,6 +34,12 @@ for (const graph of [false, true]) {
         await row.locator('select').selectOption('');
         await expect.poll(() => page.evaluate(() => window.__moves.length)).toBe(2);
         await expect(page.locator('#overviewHosts [data-host-drop-group=""] [data-host-id="move-a"]')).toBeVisible();
+        await expect(row.locator('summary')).toBeFocused();
+        await row.locator('summary').press('Enter');
+        await expect(row.locator('select')).toBeVisible();
+        await row.locator('select').press('Escape');
+        await expect(row.locator('select')).toBeHidden();
+        await expect(row.locator('summary')).toBeFocused();
         if (!graph) {
             // A favorite can be moved onto a collapsed Hosts group too.
             await page.evaluate(() => window.ProfileManager.setProfiles(
@@ -52,3 +58,22 @@ for (const graph of [false, true]) {
         await assertNoExternalRequests(page);
     });
 }
+
+test('large host stores populate only the open move menu', async ({page}) => {
+    await login(page, 'e2e_admin', {workspace:false});
+    await page.evaluate(() => {
+        const template = window.ProfileManager.profiles[0];
+        window.ProfileManager.setProfiles(Array.from({length:500}, (_, i) => ({
+            ...template, id:`large-${i}`, name:`Host ${i}`, group:`Group ${i}`, favorite:false,
+        })));
+    });
+    const rows = page.locator('#overviewHosts .overview-host-entry');
+    await expect(rows).toHaveCount(500);
+    await expect(page.locator('.overview-host-move option')).toHaveCount(0);
+    await rows.first().locator('summary').click();
+    await expect(rows.first().locator('option')).toHaveCount(501);
+    await expect(page.locator('.overview-host-move option')).toHaveCount(501);
+    await rows.first().locator('select').press('Escape');
+    await expect(page.locator('.overview-host-move option')).toHaveCount(0);
+    await assertNoExternalRequests(page);
+});

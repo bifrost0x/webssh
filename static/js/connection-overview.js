@@ -1,4 +1,4 @@
-/* Read-only presentation of existing, account-scoped connection state. */
+/* Account-scoped connection overview; mutations use the existing profile manager. */
 (function(root, factory) {
     const api = factory();
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -137,14 +137,29 @@
             const toggle = node('summary');
             const label = t('profiles.moveToGroup').replace('{name}', host.name);
             toggle.setAttribute('aria-label', label);
+            toggle.dataset.overviewKey = `move:${host.id}`;
             toggle.title = label;
             toggle.append(icon('drive_file_move'));
             const select = node('select');
             select.setAttribute('aria-label', label);
-            const groups = new Set(['', ...(win.ProfileManager?.profiles || []).map(profile => String(profile.group || '').trim())]);
-            groups.forEach(group => select.add(new win.Option(group || t('profiles.ungrouped'), group)));
-            select.value = host.group;
-            select.addEventListener('change', () => { menu.open = false; moveHost(host.id, select.value); select.value = host.group; });
+            select.dataset.overviewKey = `move:${host.id}`;
+            // Build options only for an open menu, not N group lists for N hosts.
+            menu.addEventListener('toggle', () => {
+                if (!menu.open) { select.replaceChildren(); return; }
+                const groups = new Set(['', ...(win.ProfileManager?.profiles || []).map(profile => String(profile.group || '').trim())]);
+                select.replaceChildren();
+                groups.forEach(group => select.add(new win.Option(group || t('profiles.ungrouped'), group)));
+                select.value = host.group.trim();
+            });
+            const close = () => { menu.open = false; toggle.focus({preventScroll: true}); };
+            select.addEventListener('change', () => {
+                const group = select.value;
+                close();
+                moveHost(host.id, group);
+            });
+            menu.addEventListener('keydown', event => {
+                if (event.key === 'Escape') { event.preventDefault(); close(); }
+            });
             menu.append(toggle, select);
             return menu;
         }

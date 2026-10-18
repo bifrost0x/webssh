@@ -68,6 +68,56 @@ async function enterWindowMode(page) {
     await expect(page.locator('#terminalGrid')).toHaveClass(/window-mode/);
 }
 
+test('selecting an overflow session restores a minimized window at the window limit', async ({page}) => {
+    await enterWindowMode(page);
+    for (let index = 0; index < 17; index++) await connect(page, `win-limit-${index}`, `host-${index}.example`);
+    await page.evaluate(() => {
+        for (const index of SessionManager.windowDesktop.visibleOrder()) SessionManager.minimizeWindow(index);
+    });
+    await page.locator('#tab-win-limit-15 .tab-label').click();
+    await expect(windowFor(page, 'win-limit-15')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession())).toBe('win-limit-15');
+    expect(await page.evaluate(() => window.__windowEvents.filter(e => e.event === 'ssh_disconnect'))).toEqual([]);
+});
+
+test('all sixteen tiled windows keep their actions inside narrow frames', async ({page}) => {
+    await page.setViewportSize({width:1280, height:800});
+    await enterWindowMode(page);
+    for (let index = 0; index < 16; index++) await connect(page, `win-tile-${index}`, `host-${index}.example`);
+    await page.locator('#contextWorkspaceResizer').press('End');
+    await page.locator('[data-window-arrange="tile"]').click();
+    await expect(page.locator('.ws-window.is-gliding')).toHaveCount(0);
+    const clipped = await page.locator('.ws-window').evaluateAll(frames => frames.flatMap(frame => {
+        const bounds = frame.getBoundingClientRect();
+        return [...frame.querySelectorAll('.ws-window-btn')].filter(button => {
+            const r = button.getBoundingClientRect();
+            return !button.hidden && (r.left < bounds.left || r.right > bounds.right || r.bottom > bounds.bottom);
+        }).map(button => button.className);
+    }));
+    expect(clipped).toEqual([]);
+});
+
+test('an explicit split selection during compact fallback replaces the window preference', async ({page}) => {
+    await enterWindowMode(page);
+    await page.setViewportSize({width:1280, height:500});
+    await expect(page.locator('#terminalGrid')).toHaveClass(/split-1/);
+    await page.locator('[data-layout="2"]').click();
+    await page.setViewportSize({width:1600, height:960});
+    await expect(page.locator('#terminalGrid')).toHaveClass(/split-2/);
+    expect(await page.evaluate(() => localStorage.getItem('webssh.workspace.windowMode'))).toBe('off');
+});
+
+test('a normal window keeps saved hosts usable alongside session tools', async ({page}) => {
+    await page.setViewportSize({width:1280, height:720});
+    await enterWindowMode(page);
+    const launcher = page.locator('.ws-window .profile-launcher');
+    const sections = launcher.locator('.profile-launcher-sections');
+    expect((await sections.boundingBox()).height).toBeGreaterThanOrEqual(100);
+    await expect(launcher.locator('.profile-launcher-card').first()).toBeInViewport();
+    await launcher.locator('.profile-launcher-new').click();
+    await expect(page.locator('#connectionModal')).toBeVisible();
+});
+
 test('window mode opens one window per session from the tab rail', async ({ page }) => {
     await enterWindowMode(page);
     await expect(page.locator('.split-btn[data-layout="windows"]')).toHaveClass(/active/);
