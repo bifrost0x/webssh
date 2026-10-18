@@ -1031,9 +1031,9 @@ const ProfileManager = {
                     : this.organizationPending.has(profile.id)
                         ? this.t('profiles.updatePending', 'Update in progress')
                     : this.t(
-                            'profiles.sortSearchDisabled',
-                            'Clear the search to reorder connections.',
-                        );
+                        'profiles.sortSearchDisabled',
+                        'Clear the search to reorder connections.',
+                    );
                 dragHandle.setAttribute(
                     'aria-label',
                     dragLabel.replace('{name}', profile.name || ''),
@@ -1148,12 +1148,7 @@ const ProfileManager = {
                 });
                 actionMenu.append(actionSummary, actionMenuItems);
                 actions.appendChild(actionMenu);
-                if (section.key === 'favorites') {
-                    card.classList.add('is-derived-favorite');
-                    card.append(info, actions);
-                } else {
-                    card.append(dragHandle, info, actions);
-                }
+                card.append(dragHandle, info, actions);
                 items.appendChild(card);
             });
             appendDropSlot(section.profiles.length);

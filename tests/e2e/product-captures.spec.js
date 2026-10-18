@@ -590,7 +590,6 @@ test('captures the current Quick Connect surface at Full HD scale without outbou
         process.env.WEBSSH_CAPTURE_EXPECT_SAVED_CONNECTIONS || 'Hosts',
     );
     await page.locator('#newTabBtn').click();
-    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await expect(page.locator('#connectionModal')).toHaveClass(/show/);
     await expect(page.locator('#connectionModalTitle')).toHaveText(
         process.env.WEBSSH_CAPTURE_EXPECT_QUICK_CONNECT || 'Quick Connect',
@@ -625,7 +624,6 @@ test('captures seeded command and connection option surfaces at Full HD scale', 
 
     await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
-    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
     await expect(page.locator('#connectionModalTitle')).toHaveText('Quick Connect');
@@ -945,7 +943,6 @@ test('captures six current Command Sets animation frames without remote actions'
 
     await page.locator('#workspaceNavBtn').click();
     await page.locator('#newTabBtn').click();
-    await page.locator('.terminal-pane.active .profile-launcher-new').click();
     await page.evaluate(() => window.selectConnectionProfile('post-command-set'));
     await sanitizeSeededCatalog(page);
     await expect(page.locator('#connectionModalTitle')).toHaveText('Quick Connect');
@@ -991,12 +988,17 @@ test('captures a contained multi-session workspace and the current theme menu', 
     await expect(page.locator('#settingsThemeSelect option')).toHaveCount(10);
     await expect(page.locator('#settingsThemeSelect')).toContainText('Glass Ops');
     await expect(page.locator('#settingsThemeSelect')).toContainText('Obsidian');
-    const themeBounds = await page.locator('.settings-center-content').boundingBox();
+    const themeBounds = await page.locator('.settings-center-main').boundingBox();
     expect(themeBounds).not.toBeNull();
     expect(themeBounds.x).toBeGreaterThanOrEqual(0);
     expect(themeBounds.y).toBeGreaterThanOrEqual(0);
     expect(themeBounds.x + themeBounds.width).toBeLessThanOrEqual(DESKTOP_VIEWPORT.width);
     expect(themeBounds.y + themeBounds.height).toBeLessThanOrEqual(DESKTOP_VIEWPORT.height);
+    // Preferences may be taller than the viewport; the bounded main surface
+    // must scroll to its final control without clipping it.
+    await page.locator('#disconnectSessionActionSelect').scrollIntoViewIfNeeded();
+    await expect(page.locator('#disconnectSessionActionSelect')).toBeInViewport();
+    await page.locator('#settingsThemeSelect').scrollIntoViewIfNeeded();
     await captureDesktopStill(page, 'themes.png', testInfo);
 
     await assertCaptureNetworkClean(page);

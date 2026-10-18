@@ -332,7 +332,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
     await dragProfileTo(
         page,
         firstOperationsHandle,
-        operations.locator('[data-profile-drop-index="2"]'),
+        operations.locator('.profile-drop-slot[data-profile-drop-index="2"]'),
     );
     await expect(operationNames).toHaveText(['Ops second', 'Ops first']);
 
@@ -373,7 +373,7 @@ test('reorders hosts precisely, persists launcher order, and confirms group remo
         hasText: 'Solo database',
     }).locator('[data-profile-drag-handle]');
     const dragSoloAfterApplication = async () => {
-        const targetSlot = applications.locator('[data-profile-drop-index="1"]');
+        const targetSlot = applications.locator('.profile-drop-slot[data-profile-drop-index="1"]');
         await dragProfileTo(page, soloHandle, targetSlot);
     };
 

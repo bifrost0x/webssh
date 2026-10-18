@@ -11,9 +11,14 @@ for (const graph of [false, true]) {
             ]);
             const original = window.socket.emit.bind(window.socket);
             window.__moves = []; window.__ssh = [];
-            window.socket.emit = (event, payload, ack) => {
+            window.socket.emit = (event, ...args) => {
+                const [payload, ack] = args;
+                if (event === 'list_profiles') {
+                    queueMicrotask(() => window.socket.listeners('profiles_list').forEach(listener => listener({profiles: window.ProfileManager.profiles})));
+                    return window.socket;
+                }
                 if (event === 'ssh_connect') { window.__ssh.push(payload); return; }
-                if (event !== 'move_profile') return original(event, payload, ack);
+                if (event !== 'move_profile') return original(event, ...args);
                 window.__moves.push(payload);
                 ack({success:true, organization:[{id:payload.profile_id, group:payload.target_group, sort_order:payload.target_index}]});
             };
@@ -29,6 +34,20 @@ for (const graph of [false, true]) {
         await row.locator('select').selectOption('');
         await expect.poll(() => page.evaluate(() => window.__moves.length)).toBe(2);
         await expect(page.locator('#overviewHosts [data-host-drop-group=""] [data-host-id="move-a"]')).toBeVisible();
+        if (!graph) {
+            // A favorite can be moved onto a collapsed Hosts group too.
+            await page.evaluate(() => window.ProfileManager.setProfiles(
+                window.ProfileManager.profiles.map(profile => profile.id === 'move-a'
+                    ? {...profile, favorite:true} : profile),
+            ));
+            await page.locator('#manageProfilesBtn').click();
+            await page.locator('[data-profile-group-toggle="group:target"]').click();
+            const favorite = page.locator('[data-profile-card-id="move-a"] [data-profile-drag-handle]');
+            await expect(favorite).toBeEnabled();
+            await favorite.dragTo(page.locator('.profile-management-section-title[data-profile-drop-group="Target"]'));
+            await expect.poll(() => page.evaluate(() => window.__moves.length)).toBe(3);
+            expect(await page.evaluate(() => window.ProfileManager.profiles.find(p => p.id === 'move-a').group)).toBe('Target');
+        }
         expect(await page.evaluate(() => window.__ssh)).toEqual([]);
         await assertNoExternalRequests(page);
     });
