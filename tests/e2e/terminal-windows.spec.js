@@ -340,13 +340,44 @@ test('window layout retains each restored session and its placement after reload
         const frame = windowFor(page, id);
         await frame.locator('.ws-window-maximize').click();
         await expect(frame).toHaveClass(/is-maximized/);
-        await page.evaluate(() => AuthSessionGuard.saveRestore(window, document, sessionStorage));
+        const saved = await page.evaluate(() => AuthSessionGuard.saveRestore(window, document, sessionStorage));
+        expect(saved.layout).toBe(1);
+        expect(saved.windowMode).toBe(true);
+        expect(saved.sessionId).toBe(id);
+        expect(saved.paneAssignments).toEqual([id]);
         await page.reload();
         await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', 'workspaces');
         await expect(page.locator('.session-tab')).toHaveCount(3);
         await expect(windowFor(page, id)).toHaveClass(/is-maximized/);
+        await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession())).toBe(id);
         await page.locator('#contextCommandsTab').click();
         await expect(page.locator('.session-command-results')).toContainText('E2E command');
+    } finally {
+        await page.evaluate(() => new Promise(resolve => window.socket.emit('e2e_workspace_restore', {count: 0}, resolve)));
+    }
+});
+
+test('reauthentication restores split assignments and the selected session', async ({page}) => {
+    await login(page);
+    const seeded = await page.evaluate(() => new Promise(resolve => window.socket.emit('e2e_workspace_restore', {count: 3}, resolve)));
+    expect(seeded.ok).toBe(true);
+    try {
+        await page.reload();
+        await page.locator('#workspaceNavBtn').click();
+        await expect(page.locator('.session-tab')).toHaveCount(3);
+        const assignments = await page.evaluate(() => {
+            const ids = SessionManager.getAllSessions().map(session => session.id);
+            const selected = [ids[1], ids[0]];
+            SessionManager.applyPaneAssignments(2, selected);
+            SessionManager.setActivePane(0);
+            AuthSessionGuard.saveRestore(window, document, sessionStorage);
+            return selected;
+        });
+        await page.reload();
+        await expect(page.locator('body')).toHaveAttribute('data-primary-workspace', 'workspaces');
+        await expect(page.locator('#terminalGrid')).toHaveClass(/split-2/);
+        await expect.poll(() => page.evaluate(() => SessionManager.paneAssignments)).toEqual(assignments);
+        await expect.poll(() => page.evaluate(() => SessionManager.getActiveSession())).toBe(assignments[0]);
     } finally {
         await page.evaluate(() => new Promise(resolve => window.socket.emit('e2e_workspace_restore', {count: 0}, resolve)));
     }

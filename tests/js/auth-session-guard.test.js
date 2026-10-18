@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const fs = require('node:fs');
+const vm = require('node:vm');
 const guardModule = require('../../static/js/auth-session-guard.js');
 const notepadModule = require('../../static/js/notepad-controller.js');
 
@@ -313,8 +315,117 @@ test('saving a new account prunes prior restore state before writing', () => {
     );
 });
 
-for (const view of ['overview', 'workspaces']) {
-    test(`reauthentication restores ${view} with asynchronously arriving window sessions without recursion`, () => {
+test('the real browser global lexical SessionManager is used without a window property', () => {
+    const context = vm.createContext({
+        document: {
+            body: {dataset: {connectionHistoryScope: 'lexical-account'}},
+            getElementById: () => null,
+        },
+        location: {pathname: '/', search: '', hash: ''},
+        sessionStorage: storage(),
+    });
+    vm.runInContext(`const SessionManager = {
+        layout: 2, paneAssignments: ['a', 'b'], getActiveSession: () => 'b',
+        setSplitLayout(layout) { this.restoredLayout = layout; },
+        getSession: id => ({id}), assignSessionToPane() {},
+        switchSession(id) { this.selected = id; },
+    };`, context);
+    vm.runInContext(fs.readFileSync(require.resolve('../../static/js/auth-session-guard.js'), 'utf8'), context);
+    assert.equal(context.SessionManager, undefined);
+    const saved = vm.runInContext('AuthSessionGuard.saveRestore(globalThis, document, sessionStorage)', context);
+    assert.equal(saved.layout, 2);
+    assert.equal(saved.sessionId, 'b');
+    assert.equal(vm.runInContext('AuthSessionGuard.restore(globalThis, document, sessionStorage)', context), true);
+    assert.equal(vm.runInContext('SessionManager.restoredLayout', context), 2);
+    assert.equal(vm.runInContext('SessionManager.selected', context), 'b');
+});
+
+test('window restore records retain the previous main split-layout contract on rollback', () => {
+    const sessionStorage = storage();
+    const accountScope = 'rollback-account';
+    const document = {
+        body: {dataset: {connectionHistoryScope: accountScope}},
+        getElementById: () => null,
+    };
+    const sessions = Array.from({length: 16}, (_, index) => `session-${index}`);
+    guardModule.saveRestore({
+        location: {pathname: '/', search: '', hash: ''},
+        SessionManager: {
+            layout: 'windows', paneAssignments: sessions,
+            getActiveSession: () => sessions[15],
+        },
+    }, document, sessionStorage);
+    const saved = guardModule.readRestore(sessionStorage, Date.now(), accountScope);
+    // Previous main consumes layout and paneAssignments directly, ignoring new fields.
+    assert.equal(saved.layout, 1);
+    assert.deepEqual(saved.paneAssignments, [sessions[15]]);
+    assert.equal(saved.sessionId, sessions[15]);
+    assert.equal(saved.windowMode, true);
+});
+
+test('restoration waits for the complete server batch before restoring the selected session', () => {
+    const sessionStorage = storage();
+    const document = {
+        body: {dataset: {connectionHistoryScope: 'batch-account'}},
+        getElementById: () => null,
+    };
+    const manager = {
+        layout: 'windows', paneAssignments: ['first'], getActiveSession: () => 'first',
+        setSplitLayout() {}, getSession: id => ({id}),
+        switchSession(id) { this.selected = id; },
+    };
+    guardModule.saveRestore({
+        location: {pathname: '/', search: '', hash: ''}, SessionManager: manager,
+    }, document, sessionStorage);
+    let listener;
+    const browser = {
+        SessionManager: manager,
+        socket: {
+            connected: false,
+            on(event, callback) { assert.equal(event, 'connected'); listener = callback; },
+            off(event, callback) { assert.equal(event, 'connected'); assert.equal(callback, listener); listener = null; },
+        },
+        addEventListener() { assert.fail('intermediate workspace changes must not finish restoration'); },
+    };
+    guardModule.restore(browser, document, sessionStorage);
+    // More than 20 intermediate workspace notifications can occur in large batches.
+    for (let index = 0; index < 32; index++) manager.selected = `later-${index}`;
+    listener({status: 'unavailable'});
+    assert.equal(manager.selected, 'later-31');
+    listener({status: 'success'});
+    assert.equal(manager.selected, 'first');
+    assert.equal(listener, null);
+});
+
+for (const layout of [1, 2, 4]) {
+    test(`saving and restoring ${layout} split panes preserves their assignments`, () => {
+        const sessionStorage = storage();
+        const document = {
+            body: {dataset: {connectionHistoryScope: 'split-account'}},
+            getElementById: () => null,
+        };
+        const assignments = Array.from({length: layout}, (_, index) => `session-${index}`);
+        guardModule.saveRestore({
+            location: {pathname: '/', search: '', hash: ''},
+            SessionManager: {layout, paneAssignments: assignments, getActiveSession: () => assignments[0]},
+        }, document, sessionStorage);
+        const assigned = [];
+        const browser = {
+            SessionManager: {
+                setSplitLayout(value) { assert.equal(value, layout); },
+                getSession: id => assignments.includes(id) ? {id} : null,
+                assignSessionToPane(id, index) { assigned.push([id, index]); },
+                switchSession(id) { assert.equal(id, assignments[0]); },
+            },
+        };
+        assert.equal(guardModule.restore(browser, document, sessionStorage), true);
+        assert.deepEqual(assigned, assignments.map((id, index) => [id, index]));
+    });
+}
+
+for (const [view, format] of ['overview', 'workspaces'].flatMap(view =>
+    ['current', 'legacy'].map(format => [view, format]))) {
+    test(`reauthentication restores ${view} from ${format} window records with asynchronous sessions without recursion`, () => {
         const sessionStorage = storage();
         const accountScope = 'window-account';
         const document = {
@@ -325,6 +436,13 @@ for (const view of ['overview', 'workspaces']) {
             location: {pathname: '/', search: '', hash: ''},
             SessionManager: {getActiveSession: () => 'later', layout: 'windows', paneAssignments: ['later']},
         }, document, sessionStorage);
+        if (format === 'legacy') {
+            const key = `webssh:auth-session-return:${accountScope}`;
+            const state = JSON.parse(sessionStorage.getItem(key));
+            delete state.windowMode;
+            state.layout = 'windows';
+            sessionStorage.setItem(key, JSON.stringify(state));
+        }
         let selected = null;
         let listener = null;
         let session = null;
