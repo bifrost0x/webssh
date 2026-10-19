@@ -29,7 +29,7 @@ PyOTP>=2.10,<3
 # Compatibility: qrcode 8.2 provides local SVG QR generation without Pillow.
 qrcode>=8.2,<9
 # Compatibility: Authlib 1.8 is qualified for OIDC discovery, PKCE, state, nonce, and token validation.
-Authlib>=1.8.0,<2
+Authlib>=1.9.1,<2
 # Compatibility: Authlib's Flask client uses the reviewed Requests 2.x transport API.
 requests>=2.34,<3
 # Compatibility: Requests 2.x supports urllib3 2.x; 2.8.0 fixes proxy TLS and chunk parsing vulnerabilities.
