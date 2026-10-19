@@ -155,6 +155,9 @@ docs/
 site/
 assets/
 **/*.md
+# Font redistribution notices are runtime assets, including Markdown licenses.
+!static/vendor/terminal-fonts/README.md
+!static/vendor/terminal-fonts/licenses/**/*.md
 # Retain editable image sources in Git, but ship only the WebP derivatives.
 static/images/theme-backgrounds/*.png
 

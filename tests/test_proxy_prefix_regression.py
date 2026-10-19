@@ -270,3 +270,30 @@ def test_public_continuation_preserves_non_segment_dots(prefix, path):
     with app.test_request_context('/', environ_overrides={'SCRIPT_NAME': prefix}):
         assert public_continuation(path) == prefix + path
         assert public_continuation(prefix + path) == prefix + path
+
+
+def test_terminal_fonts_stay_on_the_public_origin_and_prefix(proxy_app):
+    import re
+    from urllib.parse import urljoin, urlsplit
+
+    app, prefix = proxy_app
+    client, _ = login(app, prefix)
+    response = client.get('/', headers=headers(prefix), base_url='http://backend.local')
+    html = response.get_data(as_text=True)
+    css_url = re.search(r'href="([^"]+/vendor/terminal-fonts/fonts\.css\?v=[a-f0-9]+)"', html).group(1)
+    assert css_url.startswith(prefix + '/static/')
+    css = client.get(css_url[len(prefix):], headers=headers(prefix), base_url='http://backend.local')
+    assert css.status_code == 200
+    font_urls = re.findall(r'url\("([^"]+)"\)', css.get_data(as_text=True))
+    assert len(font_urls) == 9
+    for relative_url in font_urls:
+        public_url = urljoin('https://public.example' + css_url, relative_url)
+        parsed = urlsplit(public_url)
+        assert parsed.netloc == 'public.example'
+        assert parsed.path.startswith(prefix + '/static/vendor/terminal-fonts/')
+        font = client.get(parsed.path[len(prefix):], headers=headers(prefix), base_url='http://backend.local')
+        assert font.status_code == 200
+        assert font.mimetype == 'font/woff2'
+        assert font.data.startswith(b'wOF2')
+        assert 'Content-Encoding' not in font.headers
+        assert "font-src 'self' data:" in font.headers['Content-Security-Policy']

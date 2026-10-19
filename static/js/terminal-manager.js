@@ -1455,10 +1455,16 @@ const TerminalManager = {
             Object.keys(this.sessionTerminals).forEach(sessionId => {
                 this.applyThemeToTerminal(sessionId);
             });
-            this.fitAndSyncVisibleTerminals({
-                socket: window.socket,
-                isConnected: sessionId => Boolean(window.SessionManager?.getSession(sessionId)?.connected),
-                force: true,
+            // xterm updates measured cell dimensions on its next render frame.
+            // Fitting immediately after font/spacing changes uses stale metrics
+            // and leaves full-screen applications with the old server PTY size.
+            requestAnimationFrame(() => {
+                this.fitAndSyncVisibleTerminals({
+                    socket: window.socket,
+                    isConnected: sessionId => typeof SessionManager !== 'undefined'
+                        && Boolean(SessionManager.getSession(sessionId)?.connected),
+                    force: true,
+                });
             });
         });
     },

@@ -1,0 +1,74 @@
+@font-face {
+    font-family: "WebSSH JetBrains Mono";
+    src: url("JetBrainsMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH JetBrains Mono";
+    src: url("JetBrainsMono-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH Hack";
+    src: url("Hack-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH Hack";
+    src: url("Hack-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH Fira Mono";
+    src: url("FiraMono-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH Fira Mono";
+    src: url("FiraMono-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH Source Code Pro";
+    src: url("SourceCodePro-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "WebSSH Source Code Pro";
+    src: url("SourceCodePro-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Icon coverage independent of the selected text font. Restrict to private-use
+   codepoints so this face never supplies text or changes ASCII cell metrics. */
+@font-face {
+  font-family: 'WebSSH Nerd Symbols';
+  src: url("./NerdSymbols-Regular.woff2") format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+E000-F8FF, U+F0000-FFFFD, U+100000-10FFFD;
+}

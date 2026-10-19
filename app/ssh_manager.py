@@ -4,6 +4,7 @@ import shlex
 import time
 import uuid
 import socket
+import codecs
 from threading import Lock, Timer
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
@@ -741,6 +742,9 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
     cached_user_id = None
     last_db_update = 0
     persistent_tmux_available = None
+    # SSH packets do not align with UTF-8 characters (notably Nerd Font icons).
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+    import re as _re
 
     try:
         with app.app_context():
@@ -777,17 +781,21 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
                     channel = session['channel']
 
                 try:
-                    data = channel.recv(32768)
-                    if data:
-                        import re as _re
-                        decoded_data = data.decode('utf-8', errors='replace')
-                        # Filter Device Attributes responses (ESC[c sequences only).
-                        # Bare-pattern regexes were removed because they corrupt
-                        # legitimate output like "padding:0;color:red".
-                        decoded_data = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', decoded_data)
-                        if not decoded_data:
-                            # Nothing to emit; skip
+                    try:
+                        data = channel.recv(32768)
+                    except EOFError:
+                        data = b''
+                    except socket.timeout:
+                        if not (channel.closed or channel.exit_status_ready()):
                             continue
+                        data = b''
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
+                    decoded_data = decoder.decode(data, final=not data)
+                    # Preserve the established device-attributes filter. Font
+                    # support does not change terminal capability negotiation.
+                    decoded_data = _re.sub(r'\x1b\[[?>]?[0-9;]*c', '', decoded_data)
+                    if decoded_data:
                         now = time.time()
                         sequence = record_output(
                             session_id, decoded_data, now=now
@@ -809,18 +817,14 @@ def read_ssh_output(session_id, socketio_instance, app, cancel_event=None, disco
                                     db.session.commit()
                             except Exception:
                                 db.session.rollback()
-                    else:
+                    if not data:
                         break
-                except socket.timeout:
-                    pass
-                except EOFError:
-                    break
                 except Exception as e:
                     log_error("Error reading from channel", error=str(e), exc_info=True)
                     break
 
-                if channel.closed or channel.exit_status_ready():
-                    break
+                # An exit status can arrive while recv still has buffered data.
+                # Drain until EOF rather than truncating the final screen.
 
     except Exception as e:
         log_error("Error in output reader thread", error=str(e), exc_info=True)

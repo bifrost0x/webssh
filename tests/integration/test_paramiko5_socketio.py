@@ -192,6 +192,20 @@ def test_socket_password_terminal_resize_and_disconnect(app, monkeypatch):
         app,
         'socket_password_user',
     )
+    # Flask-SocketIO's in-memory client drops server ACK ids. A real browser
+    # acknowledges accepted output; emulate that at the packet boundary so
+    # deliberately fragmented writes exercise the normal bounded send window.
+    from app import socketio
+    from socketio import packet
+    send_packet = socketio.server._send_packet
+
+    def receive_and_ack(eio_sid, pkt):
+        send_packet(eio_sid, pkt)
+        if (eio_sid == socket_client.eio_sid and pkt.packet_type == packet.EVENT
+                and pkt.data[0] == 'ssh_output' and pkt.id is not None):
+            socketio.server._handle_ack(eio_sid, pkt.namespace or '/', pkt.id, [])
+
+    monkeypatch.setattr(socketio.server, '_send_packet', receive_and_ack)
     try:
         session_id = emit_ssh_connect(
             socket_client,
@@ -209,6 +223,18 @@ def test_socket_password_terminal_resize_and_disconnect(app, monkeypatch):
         })
         output = wait_for_output(socket_client, marker)
         assert '40 120' in output
+
+        # Remote writes may split both BMP and supplementary Nerd Font icons.
+        # Octal escapes keep the complete marker out of the terminal's echo.
+        icon_marker = 'FONT_\uf07b\U000f0004\ue0b0_ä_END'
+        writes = [f"printf '\\{byte:03o}'; sleep 0.02" for byte in icon_marker.encode('utf-8')]
+        socket_client.emit('ssh_input', {
+            'session_id': session_id,
+            'data': '; '.join(writes) + "; printf '\\n'\n",
+        })
+        icon_output = wait_for_output(socket_client, icon_marker)
+        assert icon_marker in icon_output
+        assert '\ufffd' not in icon_output
 
         socket_client.emit('ssh_disconnect', {'session_id': session_id})
         disconnected = wait_for_event(
