@@ -192,6 +192,20 @@ def test_socket_password_terminal_resize_and_disconnect(app, monkeypatch):
         app,
         'socket_password_user',
     )
+    # Flask-SocketIO's in-memory client drops server ACK ids. A real browser
+    # acknowledges accepted output; emulate that at the packet boundary so
+    # deliberately fragmented writes exercise the normal bounded send window.
+    from app import socketio
+    from socketio import packet
+    send_packet = socketio.server._send_packet
+
+    def receive_and_ack(eio_sid, pkt):
+        send_packet(eio_sid, pkt)
+        if (eio_sid == socket_client.eio_sid and pkt.packet_type == packet.EVENT
+                and pkt.data[0] == 'ssh_output' and pkt.id is not None):
+            socketio.server._handle_ack(eio_sid, pkt.namespace or '/', pkt.id, [])
+
+    monkeypatch.setattr(socketio.server, '_send_packet', receive_and_ack)
     try:
         session_id = emit_ssh_connect(
             socket_client,
