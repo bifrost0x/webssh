@@ -120,8 +120,9 @@
         }
         function paintSample() {
             if (!preview) return;
-            preview.reset();
-            preview.write(samples[sample.value] || samples.shell);
+            // Queue the reset with the sample: earlier asynchronous writes must
+            // finish before clearing, or rapid sample changes leave stale text.
+            preview.write('\x1bc' + (samples[sample.value] || samples.shell));
         }
         async function updatePreview() {
             const resolved = resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize());
