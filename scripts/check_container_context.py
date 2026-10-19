@@ -24,7 +24,7 @@ def main():
     paths = [name.decode('utf-8') for name in paths.split(b'\0') if name]
     required = [name for name in paths if (
         name.startswith(('app/', 'templates/', 'static/', 'deployment/'))
-        and not name.endswith('.md')
+        and (not name.endswith('.md') or name.startswith('static/vendor/terminal-fonts/'))
         and not (name.startswith('static/images/theme-backgrounds/') and name.endswith('.png'))
     )] + ['requirements.txt', 'config.py', 'start.py', 'entrypoint.sh', 'LICENSE']
     if args.container:
