@@ -3,9 +3,9 @@ async-timeout==5.0.1 ; python_full_version < '3.11.3' \
     --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
     --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
     # via redis
-authlib==1.8.0 \
-    --hash=sha256:88aebbd9af6757e14e912d5dc007ae1dc1f3e27e3b2152ce7c552ee2c3b3c121 \
-    --hash=sha256:f3ecd5f1da737262fb53bf1a4d95c4ea1ad9dd509316587a255c99ab1838a4f0
+authlib==1.9.1 \
+    --hash=sha256:5c7d9848f47cac340f060f76ae0bc09b59f5c8e89cc1bb032d4370a0c55b5974 \
+    --hash=sha256:8b9be8b1e5174dcbf5520e984f1a22dc2edae5b6e40a61d4cedbf86b97e9e69b
     # via -r requirements.in
 bcrypt==5.0.0 \
     --hash=sha256:046ad6db88edb3c5ece4369af997938fb1c19d6a699b9c1b27b0db432faae4c4 \
