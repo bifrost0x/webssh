@@ -266,6 +266,9 @@ def main():
             'DATA_DIR': data_dir,
             'SECRET_KEY': 'e2e-only-secret-key',
             'DEBUG': 'False',
+            # This fixture binds plain HTTP on loopback. WebKit correctly omits
+            # Secure cookies there; production cookie defaults remain intact.
+            'SESSION_COOKIE_SECURE': 'False',
             'HOST': '127.0.0.1',
             'PORT': os.environ.get('WEBSSH_E2E_PORT', '4173'),
             'REGISTRATION_ENABLED': 'True',

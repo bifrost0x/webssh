@@ -182,3 +182,18 @@ test('hidden resync retires old transport callbacks and rebuilds before showing'
         manager.destroyTerminalKey('k', 's');
     }
 });
+
+test('screen restoration continues to forward user input while xterm rebuilds history', async () => {
+    const peer = setup();
+    const sent = [];
+    manager.setupInputHandler('s', data => sent.push(data));
+    try {
+        manager.resyncRestoredOutput('s', 'retained screen', 0);
+        peer.terminal.input('echo retained\r', true);
+        assert.deepEqual(sent, ['echo retained\r']);
+        await flushParser(peer.terminal);
+        assert.equal(peer.terminal.buffer.active.getLine(0).translateToString(true), 'retained screen');
+    } finally {
+        manager.destroyTerminal('s');
+    }
+});

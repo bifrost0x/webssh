@@ -7,15 +7,33 @@
         <form id="terminalAppearanceForm">
             <div class="modal-body">
                 <p class="appearance-intro" data-i18n="terminalAppearance.description">Your terminal, independent of the app theme. Saved for your account and applied to all sessions.</p>
-                <div class="appearance-preview-label" data-i18n="terminalAppearance.preview">Live preview · no commands are executed</div>
+                <fieldset class="appearance-font-library">
+                    <legend data-i18n="terminalAppearance.fontLibrary">Choose your terminal font</legend>
+                    <p class="appearance-hint" data-i18n="terminalAppearance.fontHint">Four fonts with Nerd Font icons, served by your WebSSH instance. No external font services.</p>
+                    <div class="appearance-font-grid" id="terminalFontPresets">
+                        {% for value, label, hint in [('theme', 'Theme default', 'themeFont'), ('WebSSH JetBrains Mono', 'JetBrains Mono', 'jetbrainsFont'), ('WebSSH Hack', 'Hack', 'hackFont'), ('WebSSH Fira Mono', 'Fira Mono', 'firaFont'), ('WebSSH Source Code Pro', 'Source Code Pro', 'sourceFont'), ('custom', 'Local font', 'localFont')] %}
+                        <label class="appearance-font-card">
+                            <input type="radio" name="terminalFontPreset" value="{{ value }}">
+                            <span><strong{% if value == 'theme' %} data-i18n="terminalAppearance.themeDefault"{% elif value == 'custom' %} data-i18n="terminalAppearance.localFontTitle"{% endif %}>{{ label }}</strong><small data-i18n="terminalAppearance.{{ hint }}"></small></span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div id="terminalLocalFont" class="appearance-local-font" hidden>
+                        <label for="terminalFontFamily" data-i18n="terminalAppearance.font">Font family</label>
+                        <input id="terminalFontFamily" data-appearance="font_family" list="terminalFontOptions" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9 _\-]{0,63}" required spellcheck="false" autocomplete="off" aria-describedby="terminalLocalFontHint">
+                        <datalist id="terminalFontOptions"><option value="monospace"></option><option value="Consolas"></option><option value="Cascadia Mono"></option><option value="DejaVu Sans Mono"></option><option value="Liberation Mono"></option><option value="JetBrainsMono Nerd Font Mono"></option><option value="MesloLGS NF"></option></datalist>
+                        <small id="terminalLocalFontHint" data-i18n="terminalAppearance.localHint">Enter a font installed on this browser's device. Missing fonts fall back to monospace.</small>
+                    </div>
+                </fieldset>
+                <div class="appearance-preview-toolbar">
+                    <div><strong id="terminalFontName"></strong><span id="terminalFontStatus" role="status" aria-live="polite"></span></div>
+                    <label><span class="sr-only" data-i18n="terminalAppearance.previewSample">Preview sample</span><select id="terminalPreviewSample"><option value="shell" data-i18n="terminalAppearance.sampleShell">Shell &amp; icons</option><option value="code" data-i18n="terminalAppearance.sampleCode">Code</option><option value="characters" data-i18n="terminalAppearance.sampleCharacters">Character check</option></select></label>
+                </div>
                 <div id="terminalAppearancePreview" class="appearance-preview" aria-label="Terminal preview" data-i18n-aria-label="terminalAppearance.preview"></div>
+                <p class="appearance-preview-label" data-i18n="terminalAppearance.preview">Live preview · no commands are executed</p>
                 <div class="appearance-fields">
                     <fieldset>
                         <legend data-i18n="terminalAppearance.typography">Typography</legend>
-                        <label for="terminalFontFamily" data-i18n="terminalAppearance.font">Font family</label>
-                        <input id="terminalFontFamily" data-appearance="font_family" list="terminalFontOptions" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9 _\-]{0,63}" required spellcheck="false">
-                        <datalist id="terminalFontOptions"><option value="theme" label="Theme default" data-i18n-label="terminalAppearance.themeDefault"></option><option value="monospace"></option><option value="Consolas"></option><option value="Cascadia Mono"></option><option value="DejaVu Sans Mono"></option><option value="Liberation Mono"></option><option value="JetBrains Mono"></option><option value="Courier New"></option></datalist>
-                        <small data-i18n="terminalAppearance.fontHint">Use “theme” or an installed monospace font. Missing fonts fall back to monospace; no fonts are downloaded.</small>
                         <div class="appearance-field-pair">
                             <div><label for="terminalFontSize" data-i18n="terminalAppearance.size">Font size (px)</label><input id="terminalFontSize" type="number" min="8" max="32" step="1" data-appearance="font_size" placeholder="Auto" data-i18n-placeholder="terminalAppearance.auto"></div>
                             <div><label for="terminalFontWeight" data-i18n="terminalAppearance.weight">Weight</label><select id="terminalFontWeight" data-appearance="font_weight"><option value="normal" data-i18n="terminalAppearance.normal">Normal</option><option value="bold" data-i18n="terminalAppearance.bold">Bold</option></select></div>

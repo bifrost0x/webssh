@@ -587,3 +587,61 @@ def test_close_session_bounds_paramiko_tmux_exec_handshake(monkeypatch):
     assert interactive_channel.closed is True
     assert client.closed is True
     assert bastion_client.closed is True
+
+
+@pytest.mark.parametrize('ending', [b'', EOFError()])
+def test_reader_preserves_split_utf8_and_drains_after_exit(app, monkeypatch, ending):
+    from app.auth import register_user
+    from app.models import SSHSession, db
+    import socket
+
+    session_id = 'unicode-reader'
+    with app.app_context():
+        user, error = register_user('unicode_reader', 'password-123')
+        assert error is None
+        user_id = user.id
+        db.session.add(SSHSession(session_id=session_id, user_id=user_id,
+                                  host='target.example', port=22, username='alice'))
+        db.session.commit()
+
+    # One byte per packet, including gaps inside 3/4-byte characters. exit_status_ready is already true while output remains buffered.
+    expected = '\uf07b src  \U000f0004 git  🐍 中 e\u0301\r\n'
+    chunks = []
+    for byte in expected.encode():
+        chunks.extend([bytes([byte]), socket.timeout()])
+    # A real timeout while the remote is running must not flush the decoder.
+    chunks.extend([b'\xf0\x9f', ending])
+
+    class Channel(FakeChannel):
+        def recv(self, _size):
+            item = chunks.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        def exit_status_ready(self):
+            return not chunks or not isinstance(chunks[0], bytes)
+
+    # Test post-exit draining separately from timeout behavior: when a timeout
+    # occurs, the next item is a byte and the process is still running.
+    client = FakeSSHClient()
+    ssh_manager.sessions[session_id] = _session(client, Channel(), output_buffer=[], output_buffer_size=0)
+    emitted = []
+    histories = []
+
+    def deliver(_io, _room, _user, _session_id, payload, **_kwargs):
+        emitted.append(payload)
+        histories.append(''.join(ssh_manager.sessions[session_id]['output_buffer']))
+
+    monkeypatch.setattr(ssh_manager, 'emit_ssh_output', deliver)
+    monkeypatch.setattr('app.sftp_handler.close_sftp_cache', lambda _id: None)
+
+    class SocketIO:
+        def emit(self, *_args, **_kwargs):
+            pass
+
+    ssh_manager.read_ssh_output(session_id, SocketIO(), app)
+    assert not chunks
+    assert ''.join(event['data'] for event in emitted) == expected + '\ufffd'
+    assert histories[-1] == expected + '\ufffd'
+    assert [event['sequence'] for event in emitted] == list(range(1, len(emitted) + 1))

@@ -1,0 +1,104 @@
+{
+  "release": "v3.4.0",
+  "source": "https://github.com/ryanoasis/nerd-fonts",
+  "fonts": [
+    {
+      "family": "WebSSH JetBrains Mono",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/JetBrainsMono.tar.xz",
+      "archive_sha256": "ef552a3e638f25125c6ad4c51176a6adcdce295ab1d2ffacf0db060caf8c1582",
+      "files": [
+        {
+          "source": "JetBrainsMonoNLNerdFontMono-Regular.ttf",
+          "source_sha256": "d83b3639f2a78e6d6da2cc2a7de4c2fc6817819a2199a6213790b3f7573710d1",
+          "file": "JetBrainsMono-Regular.woff2",
+          "sha256": "18d369fb28eca93578b55400b3b2be0be091e63ef44c0ebfca7affb0c95d9a30",
+          "weight": 400
+        },
+        {
+          "source": "JetBrainsMonoNLNerdFontMono-Bold.ttf",
+          "source_sha256": "100877cb3c17f18e45108b6e769abaf8b7129b3b678fd0ce0908d966d35d1846",
+          "file": "JetBrainsMono-Bold.woff2",
+          "sha256": "66ac0f274f6237942b28980692ad5373c94b1513fc378d83a41946bb37975620",
+          "weight": 700
+        }
+      ]
+    },
+    {
+      "family": "WebSSH Hack",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/Hack.tar.xz",
+      "archive_sha256": "1d00a1435638084174516975840854368a45ac30bb0bad2c0c49db713b5925f0",
+      "files": [
+        {
+          "source": "HackNerdFontMono-Regular.ttf",
+          "source_sha256": "03e60d3c1a9f8bef4e1f78836f80aacb9ec005260a6b094f5bfc10043bb115ab",
+          "file": "Hack-Regular.woff2",
+          "sha256": "0d7de65b0180fbab6a3b06cceba66dc018311ee306e2ba32aa453ca0bb680aea",
+          "weight": 400
+        },
+        {
+          "source": "HackNerdFontMono-Bold.ttf",
+          "source_sha256": "711084fdea9f9eb4e5dbca372a19e6a5af996fc88bfce55918eeef560f0f6722",
+          "file": "Hack-Bold.woff2",
+          "sha256": "9e637419848b933b9d879b20e7e37863b958df608c58cea9e7b7562ece0bc7dc",
+          "weight": 700
+        }
+      ]
+    },
+    {
+      "family": "WebSSH Fira Mono",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/FiraMono.tar.xz",
+      "archive_sha256": "2e4adc97fefdfa2ad70a6e6e79bc0418acd401a305bcb5fcd848a84e03e35a74",
+      "files": [
+        {
+          "source": "FiraMonoNerdFontMono-Regular.otf",
+          "source_sha256": "2afd210aa324ce94ec5f722eff6432693ea3c0dd49fa5645efff5a034f2069df",
+          "file": "FiraMono-Regular.woff2",
+          "sha256": "9ca873feac26806018230a0ff89ea55ddf64b4793dd9e886ab7e28a51b95d610",
+          "weight": 400
+        },
+        {
+          "source": "FiraMonoNerdFontMono-Bold.otf",
+          "source_sha256": "142f567e8a870ac3d524885deac9317b34ef44c1bfe01a919c75fa48f56c7754",
+          "file": "FiraMono-Bold.woff2",
+          "sha256": "badf6a6afae24f3b2b6a233a9bb342dc955d99d8092583ac83188638de694d3c",
+          "weight": 700
+        }
+      ]
+    },
+    {
+      "family": "WebSSH Source Code Pro",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/SourceCodePro.tar.xz",
+      "archive_sha256": "d52d97b66c4c5d6d9d99c88df55148faf39738f244485026f22f8e47407744f4",
+      "files": [
+        {
+          "source": "SauceCodeProNerdFontMono-Regular.ttf",
+          "source_sha256": "6d687bfc41b42de0984ff58c43bf98115472027337a2e0980e8b1ecabe466099",
+          "file": "SourceCodePro-Regular.woff2",
+          "sha256": "b35056cfd83defb4c97e3f8048d55bfdc59e897ec2eb863fa74ea9f1765c7f9d",
+          "weight": 400
+        },
+        {
+          "source": "SauceCodeProNerdFontMono-Bold.ttf",
+          "source_sha256": "8cd3f451c85b9d656b4e4c47ca9f8a9704ee0f4e711c8b399fa29494865cf678",
+          "file": "SourceCodePro-Bold.woff2",
+          "sha256": "2010df09b9b3dff36b5b830932397ec08e8e1f3ff61e039457da7aea9d7ef0b2",
+          "weight": 700
+        }
+      ]
+    },
+    {
+      "family": "WebSSH Nerd Symbols",
+      "archive_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/NerdFontsSymbolsOnly.tar.xz",
+      "archive_sha256": "7f8c090da3b0eaa7108646bf34cbbb6ed13d5358a72460522108b06c7ecd716a",
+      "files": [
+        {
+          "source": "SymbolsNerdFontMono-Regular.ttf",
+          "source_sha256": "f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60",
+          "file": "NerdSymbols-Regular.woff2",
+          "sha256": "a8e2fc5ae3c2525812151b95da80c5beab0befa84aca84fc33aaed94317502df",
+          "weight": 400
+        }
+      ]
+    }
+  ]
+}

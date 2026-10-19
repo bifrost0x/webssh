@@ -4,6 +4,50 @@
     if (root) root.TerminalAppearance = api;
 }(typeof window !== 'undefined' ? window : null, function() {
     'use strict';
+    const bundledFonts = Object.freeze({
+        'WebSSH JetBrains Mono': 'JetBrains Mono',
+        'WebSSH Hack': 'Hack',
+        'WebSSH Fira Mono': 'Fira Mono',
+        'WebSSH Source Code Pro': 'Source Code Pro',
+    });
+    const fontLoads = new Map();
+    const loadedFonts = new Set();
+    const symbolFont = 'WebSSH Nerd Symbols';
+    function withIconFallback(family) {
+        // Respect the user's existing glyphs. Supply missing icons before the
+        // platform-dependent generic fallback, never ahead of named fonts.
+        const generic = /(?:^|,\s*)(monospace|ui-monospace)\s*$/i.exec(family);
+        const preferred = generic ? family.slice(0, generic.index) : family;
+        return `${preferred ? `${preferred}, ` : ''}"${symbolFont}", ${generic?.[1] || 'monospace'}`;
+    }
+    // Only our fixed CSS font families may trigger loading. Local names are never
+    // enumerated, converted to URLs or sent to a font service.
+    function loadFont(family, fontSet = typeof document !== 'undefined' ? document.fonts : null) {
+        if (family !== symbolFont && !Object.hasOwn(bundledFonts, family)) return Promise.resolve(true);
+        if (loadedFonts.has(family)) return Promise.resolve(true);
+        if (!fontSet?.load) return Promise.resolve(false);
+        if (fontLoads.has(family)) return fontLoads.get(family);
+        const pending = new Promise(resolveLoad => {
+            const timer = setTimeout(() => resolveLoad(false), 8000);
+            const weights = family === symbolFont ? [400] : [400, 700];
+            Promise.all(weights.map(weight => fontSet.load(`${weight} 14px "${family}"`, 'M\uf07b\ue0b0')))
+                .then(faces => {
+                    const loaded = faces.every(list => list.length > 0);
+                    if (loaded) loadedFonts.add(family);
+                    resolveLoad(loaded);
+                }, () => resolveLoad(false))
+                .finally(() => clearTimeout(timer));
+        });
+        fontLoads.set(family, pending);
+        // Cache successes; a later selection can retry a failed/blocked request.
+        pending.then(loaded => { if (!loaded) fontLoads.delete(family); });
+        return pending;
+    }
+    const samples = Object.freeze({
+        shell: '\x1b[32mops\x1b[0m@webssh \x1b[36m\ue0a0 main \ue0b0\x1b[0m ~\r\n$ eza -l --icons\r\n\x1b[34m\uf07b projects/\x1b[0m  \x1b[33m\ue73c app.py\x1b[0m  \uf15b config.yml\r\n\uf418 git  \uf489 terminal  \uf013 settings\r\n$ ',
+        code: '\x1b[35mconst\x1b[0m connect = \x1b[35masync\x1b[0m (host) => {\r\n  \x1b[35mconst\x1b[0m port = \x1b[33m22\x1b[0m;\r\n  \x1b[32m// Your next workspace\x1b[0m\r\n  \x1b[35mreturn await\x1b[0m ssh(host, port);\r\n};',
+        characters: '0O oO  1lI |!  {} [] () <>\r\nAa Bb Cc 0123456789 @#$%&*\r\n\x1b[1mBold: 0O 1lI  => != >=\x1b[0m\r\n┌─────────┐  ├── └── ─── │\r\n│ UTF-8   │  ä é ñ Ω 中 文\r\n└─────────┘  \ue0a0 \ue0b0 \uf07b \uf15b \udb80\udc04',
+    });
     function resolve(settings, base, font, size) {
         const value = settings && typeof settings === 'object' ? settings : {};
         const number = (key, min, max, fallback, integer = false) => (
@@ -14,6 +58,7 @@
         const color = (key, fallback) => /^#[\da-f]{6}$/i.test(value[key]) ? value[key] : fallback;
         const family = typeof value.font_family === 'string'
             && value.font_family !== 'theme'
+            && (!Object.hasOwn(bundledFonts, value.font_family) || loadedFonts.has(value.font_family))
             && /^[a-z\d][a-z\d _-]{0,63}$/i.test(value.font_family)
             ? `"${value.font_family}", monospace` : font;
         return {
@@ -26,7 +71,7 @@
                     cursor: color('cursor_color', base.cursor),
                     selectionBackground: color('selection_background', base.selectionBackground),
                 },
-                fontFamily: family,
+                fontFamily: loadedFonts.has(symbolFont) ? withIconFallback(family) : family,
                 fontSize: number('font_size', 8, 32, size, true),
                 lineHeight: number('line_height', 1, 2, 1),
                 letterSpacing: number('letter_spacing', -1, 3, 0),
@@ -55,9 +100,30 @@
         let preview;
         let fit;
         let saving = false;
+        let previewRevision = 0;
+        const fontInput = document.getElementById('terminalFontFamily');
+        const localFont = document.getElementById('terminalLocalFont');
+        const fontRadios = Array.from(form.querySelectorAll('[name="terminalFontPreset"]'));
+        const fontStatus = document.getElementById('terminalFontStatus');
+        const sample = document.getElementById('terminalPreviewSample');
+        let localName = Object.hasOwn(bundledFonts, preferences.font_family) || !preferences.font_family || preferences.font_family === 'theme'
+            ? 'monospace' : preferences.font_family;
         const t = key => window.i18n?.t?.(key) || key;
 
-        function updatePreview() {
+        function syncFontControls() {
+            const family = draft.font_family || 'theme';
+            const preset = family === 'theme' || Object.hasOwn(bundledFonts, family) ? family : 'custom';
+            fontRadios.forEach(radio => { radio.checked = radio.value === preset; });
+            localFont.hidden = preset !== 'custom';
+            fontInput.disabled = preset !== 'custom';
+            fontInput.value = preset === 'custom' ? family : localName;
+        }
+        function paintSample() {
+            if (!preview) return;
+            preview.reset();
+            preview.write(samples[sample.value] || samples.shell);
+        }
+        async function updatePreview() {
             const resolved = resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize());
             previewElement.style.setProperty('--terminal-surface-color', resolved.surface);
             previewElement.style.setProperty('--terminal-surface-opacity', `${resolved.opacity * 100}%`);
@@ -66,6 +132,21 @@
                 fit.fit();
             }
             document.getElementById('terminalOpacityValue').textContent = `${draft.background_opacity ?? 100}%`;
+            const family = draft.font_family || 'theme';
+            document.getElementById('terminalFontName').textContent = Object.hasOwn(bundledFonts, family)
+                ? bundledFonts[family] : (family === 'theme' ? t('terminalAppearance.themeDefault') : family);
+            const revision = ++previewRevision;
+            const bundled = Object.hasOwn(bundledFonts, family);
+            fontStatus.textContent = t(bundled ? 'terminalAppearance.fontLoading' : 'terminalAppearance.localPreview');
+            const [loaded, iconsLoaded] = await Promise.all([loadFont(family), loadFont(symbolFont)]);
+            if (revision !== previewRevision) return;
+            if (bundled) fontStatus.textContent = t(loaded ? 'terminalAppearance.fontReady' : 'terminalAppearance.fontFailed');
+            if (!iconsLoaded) fontStatus.textContent = t('terminalAppearance.iconsFailed');
+            if (preview && modal.classList.contains('show')) {
+                Object.assign(preview.options, resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options);
+                fit.fit();
+                preview.refresh(0, preview.rows - 1);
+            }
         }
         function renderControls() {
             const base = manager.buildTheme();
@@ -80,6 +161,7 @@
                 control.checked = Boolean(draft[control.dataset.colorOverride]);
                 form.querySelector(`[data-appearance="${control.dataset.colorOverride}"]`).disabled = !control.checked;
             });
+            syncFontControls();
             updatePreview();
         }
         function open() {
@@ -95,19 +177,28 @@
                     fit = new FitAddon.FitAddon();
                     preview.loadAddon(fit);
                     preview.open(previewElement);
-                    preview.write('\x1b[32mops\x1b[0m@webssh:~$ ls -lh\r\n\x1b[34mprojects/\x1b[0m  \x1b[33mnotes.txt\x1b[0m  config.yaml\r\n\x1b[36mTerminal preview\x1b[0m — Aa Bb 0123456789\r\nops@webssh:~$ ');
+                    paintSample();
                 }
                 updatePreview();
             });
         }
         document.querySelectorAll('[data-open-terminal-appearance]').forEach(button => button.addEventListener('click', open));
         modal.querySelectorAll('[data-close-terminal-appearance]').forEach(button => button.addEventListener('click', () => window.ModalManager.close(modal)));
+        sample.addEventListener('change', paintSample);
+        fontRadios.forEach(radio => radio.addEventListener('change', () => {
+            if (!radio.checked) return;
+            status.textContent = '';
+            draft.font_family = radio.value === 'custom' ? localName : radio.value;
+            syncFontControls();
+            updatePreview();
+        }));
         controls.forEach(control => control.addEventListener('input', () => {
             status.textContent = '';
             const key = control.dataset.appearance;
             if (control.type === 'checkbox') draft[key] = control.checked;
             else if (control.type === 'number' || control.type === 'range') draft[key] = control.value === '' ? null : Number(control.value);
             else draft[key] = control.value;
+            if (key === 'font_family') localName = control.value;
             updatePreview();
         }));
         form.querySelectorAll('[data-color-override]').forEach(control => control.addEventListener('change', () => {
@@ -144,6 +235,7 @@
                 if (!response.ok || !result.settings?.terminal_appearance) throw new Error('Save failed');
                 setPreferences(result.settings.terminal_appearance);
                 manager.applyThemeToAll();
+                refreshSavedFont();
                 status.textContent = t('terminalAppearance.saved');
             } catch {
                 status.textContent = t('terminalAppearance.failed');
@@ -152,6 +244,10 @@
                 submit.disabled = false;
                 form.querySelectorAll('fieldset').forEach(fieldset => { fieldset.disabled = false; });
                 document.getElementById('terminalAppearanceReset').disabled = false;
+                syncFontControls();
+                form.querySelectorAll('[data-color-override]').forEach(control => {
+                    form.querySelector(`[data-appearance="${control.dataset.colorOverride}"]`).disabled = !control.checked;
+                });
             }
         });
         const refreshPreview = () => {
@@ -159,8 +255,29 @@
         };
         window.addEventListener('resize', refreshPreview);
         window.addEventListener('themeChanged', refreshPreview);
+        function applyLoadedFont() {
+            const family = resolve(preferences, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options.fontFamily;
+            // Loading an unselected preview font must not reapply the live theme
+            // or send unsolicited PTY resizes to running full-screen programs.
+            if (Object.values(manager.terminals).some(terminal => terminal.options.fontFamily !== family)) {
+                manager.applyThemeToAll();
+            }
+        }
+        function refreshSavedFont() {
+            const family = preferences.font_family;
+            Promise.all([loadFont(family), loadFont(symbolFont)]).then(() => {
+                if (preferences.font_family === family) applyLoadedFont();
+            });
+        }
+        // A timed-out font can still finish later. Refit both live sessions and
+        // the preview then, without changing the user's selection.
+        document.fonts?.addEventListener?.('loadingdone', () => {
+            applyLoadedFont();
+            if (preview && modal.classList.contains('show')) updatePreview();
+        });
+        refreshSavedFont();
         manager.updateAppearanceSurface();
     }
     if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', init);
-    return {resolve, getPreferences, setPreferences};
+    return {resolve, getPreferences, setPreferences, bundledFonts, loadFont, samples};
 }));

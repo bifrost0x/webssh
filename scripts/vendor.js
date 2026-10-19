@@ -58,6 +58,21 @@ function contentsMatch(srcPath, destPath, dest) {
   return normalize(source) === normalize(destination);
 }
 
+// Fonts are built separately from pinned upstream release archives. Verify
+// their committed bytes in the normal vendor check as well (no network).
+const crypto = require('node:crypto');
+const fontDir = path.join(outDir, 'terminal-fonts');
+const fontManifest = JSON.parse(fs.readFileSync(path.join(fontDir, 'manifest.json'), 'utf8'));
+for (const font of fontManifest.fonts) {
+  for (const asset of font.files) {
+    const bytes = fs.readFileSync(path.join(fontDir, asset.file));
+    if (bytes.subarray(0, 4).toString() !== 'wOF2'
+        || crypto.createHash('sha256').update(bytes).digest('hex') !== asset.sha256) {
+      throw new Error(`Terminal font integrity mismatch: ${asset.file}`);
+    }
+  }
+}
+
 let count = 0;
 const stale = [];
 for (const [src, dest] of files) {

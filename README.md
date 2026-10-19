@@ -65,12 +65,32 @@ a hosted control plane or runtime CDN dependencies.
   authentication paths.
 - Broadcast input, terminal search, transcripts, reconnect controls, and
   configurable scrollback.
+- Per-account terminal appearance with four self-hosted Nerd Font Mono families
+  (JetBrains Mono, Hack, Fira Mono, and Source Code Pro), local font selection,
+  and live shell, code, and character previews.
 - Session-aware Files, Commands, Diagnostics, and Notes contexts.
 - **Active Session Monitoring** for supported Linux resource and runtime data.
 - **Expanded Diagnostics** for resource history, processes, systemd services,
   and Docker containers.
 - **Clipboard-Only Service Actions** that prepare allowlisted commands without
   executing the service change inside WebSSH.
+
+Terminal icon support applies to live server output, including Neovim, eza and
+Starship, with any selected text font. A self-hosted Symbols Nerd Font Mono face
+supplies private-use icons even for theme fonts and unpatched local fonts.
+The font assets and their licenses are documented in
+[`static/vendor/terminal-fonts/README.md`](static/vendor/terminal-fonts/README.md).
+No font enumeration, external font service, font upload or arbitrary font URL is
+required; the selected font name is saved with the account appearance settings.
+
+SSH output is decoded as a continuous UTF-8 stream. Existing terminal capability filters and
+Unicode width rules are unchanged. Font/spacing changes resize the remote PTY
+after xterm measures the new cells. The PTY continues to advertise `xterm-256color`.
+The remote application must emit UTF-8 and enable its icons (for example,
+`eza -l --icons`); WebSSH does not install plugins or change shell/tmux settings.
+Remote wcwidth tables and complex emoji sequences can still differ. Local fonts
+may be absent on another device, and custom proportional fonts cannot guarantee
+terminal alignment. Prefer the included Mono families for consistent geometry.
 
 ### Files and transfers
 

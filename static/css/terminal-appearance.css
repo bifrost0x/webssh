@@ -163,3 +163,32 @@ body[data-theme] .terminal-grid > .terminal-pane { background-image: none; }
 .session-files-recovery button { margin-left: 8px; }
 .session-files-mount:has([inert]) { opacity: 0.65; }
 .session-insights-state.reconnecting { color: var(--text-secondary); white-space: normal; }
+
+/* Font choices use native radios: keyboard navigation and checked state stay native. */
+.appearance-font-library { border: 0; padding: 0; margin: 0 0 20px; min-width: 0; }
+.appearance-font-library legend { font-weight: 650; font-size: 15px; }
+.appearance-font-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.appearance-font-card { display: flex; align-items: flex-start; gap: 9px; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); cursor: pointer; }
+.appearance-font-card:hover { background: var(--bg-hover); }
+.appearance-font-card:has(:checked) { border-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-primary)); }
+.appearance-font-card:has(:focus-visible) { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.appearance-font-card input { accent-color: var(--accent-primary); margin: 2px 0 0; flex: 0 0 auto; }
+.appearance-font-card strong { display: block; font-size: 13px; line-height: 1.4; }
+.appearance-font-card small { display: block; color: var(--text-secondary); font-size: 11px; line-height: 1.4; margin-top: 3px; }
+.appearance-local-font { margin-top: 12px; }
+.appearance-local-font label { display: block; font-size: 13px; margin-bottom: 7px; }
+.appearance-local-font input, .appearance-preview-toolbar select { min-height: 38px; padding: 7px 10px; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 5px; font: inherit; }
+.appearance-local-font input { width: 100%; }
+.appearance-local-font small { display: block; margin-top: 6px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.appearance-preview-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-color); border-bottom: 0; border-radius: 6px 6px 0 0; }
+.appearance-preview-toolbar strong { display: block; font-size: 13px; }
+#terminalFontStatus { display: block; color: var(--text-secondary); font-size: 11px; margin-top: 3px; }
+.appearance-preview-toolbar select { font-size: 12px; max-width: 170px; }
+.appearance-preview { height: 172px; border: 1px solid var(--border-color); border-radius: 0 0 6px 6px; margin-bottom: 6px; }
+.appearance-preview-label { margin-bottom: 22px; }
+@media (max-width: 767px) {
+    .appearance-font-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .appearance-font-card { padding: 10px; }
+    .appearance-preview-toolbar { align-items: flex-start; }
+    .appearance-preview-toolbar select { max-width: 130px; }
+}

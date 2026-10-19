@@ -917,7 +917,7 @@ test('embedded Workspace SFTP keeps folder drag beside the Move picker', async (
     await assertNoExternalRequests(page);
 });
 
-test('360px mobile workspace keeps tools available and preserves context across live resizes', async ({ page }, testInfo) => {
+test('360px mobile workspace keeps tools available and preserves context across live resizes', async ({ page, browserName }, testInfo) => {
     await page.setViewportSize({ width: 360, height: 640 });
     await login(page);
     await seedLinuxSession(page);
@@ -1028,26 +1028,33 @@ test('360px mobile workspace keeps tools available and preserves context across 
         embeddedScrollLayout.listClientHeight,
     );
 
-    const embeddedListBox = await embeddedList.boundingBox();
-    const touchClient = await page.context().newCDPSession(page);
-    const touchX = embeddedListBox.x + (embeddedListBox.width / 2);
-    const touchStartY = embeddedListBox.y + Math.min(embeddedListBox.height - 24, 300);
-    await touchClient.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{ x: touchX, y: touchStartY }],
-    });
-    await touchClient.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: touchX + 20, y: touchStartY - 2 }],
-    });
-    await touchClient.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x: touchX + 18, y: touchStartY - 160 }],
-    });
-    await touchClient.send('Input.dispatchTouchEvent', {
-        type: 'touchEnd',
-        touchPoints: [],
-    });
+    if (browserName === 'chromium') {
+        const embeddedListBox = await embeddedList.boundingBox();
+        const touchClient = await page.context().newCDPSession(page);
+        const touchX = embeddedListBox.x + (embeddedListBox.width / 2);
+        const touchStartY = embeddedListBox.y + Math.min(embeddedListBox.height - 24, 300);
+        await touchClient.send('Input.dispatchTouchEvent', {
+            type: 'touchStart',
+            touchPoints: [{ x: touchX, y: touchStartY }],
+        });
+        await touchClient.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: touchX + 20, y: touchStartY - 2 }],
+        });
+        await touchClient.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: touchX + 18, y: touchStartY - 160 }],
+        });
+        await touchClient.send('Input.dispatchTouchEvent', {
+            type: 'touchEnd',
+            touchPoints: [],
+        });
+    } else {
+        // CDP touch injection is Chromium-only. Other engines exercise native
+        // scrolling in the same compact layout; device swipe QA is separate.
+        await embeddedList.hover();
+        await page.mouse.wheel(0, 160);
+    }
     await expect.poll(() => embeddedList.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
     expect(embeddedScrollLayout.panelDisplay).toBe('flex');
     expect(embeddedScrollLayout.mountHeight).toBeLessThanOrEqual(
@@ -3038,4 +3045,103 @@ test('diagnostics retains the root disk trend when other measurements are unavai
     await page.locator('#contextWorkspaceLauncher').click();
     await expect(page.locator('#sessionDiagnosticsPressureChart')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+async function setFontTestPreferences(page, settings) {
+    const result = await page.evaluate(async appearance => {
+        const response = await fetch('/api/account/preferences', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content},
+            body: JSON.stringify({terminal_appearance: appearance}),
+        });
+        const result = await response.json();
+        if (response.ok) window.TerminalAppearance.setPreferences(result.settings.terminal_appearance);
+        return response.ok;
+    }, settings);
+    expect(result).toBe(true);
+}
+
+test('font changes preserve the live TUI, input modes, scrollback and existing colours while resizing the PTY', async ({page}) => {
+    await login(page);
+    await setFontTestPreferences(page, {foreground: '#dce8f4', background: '#142536', background_opacity: 45, cursor_style: 'bar', cursor_blink: false});
+    try {
+        await seedLinuxSession(page, {useTmux: true, initialLiveOutput: '\r\n'});
+        await expect.poll(() => page.evaluate(() => TerminalManager.terminalReady['workspace-linux'])).toBe(true);
+        await page.evaluate(async () => {
+            const term = TerminalManager.terminals['workspace-linux'];
+            window.__fontTerminalRef = term;
+            window.__fontOldSize = {cols: term.cols, rows: term.rows};
+            const history = Array.from({length: 150}, (_, i) => `history-${i}`).join('\r\n');
+            await new Promise(resolve => TerminalManager.writeOutput('workspace-linux', history + '\r\n\x1b[?1049h\x1b[H\x1b[?2004h\x1b[?1h\x1b[38;2;123;45;67m\uf07b app.py\x1b[0m', null, resolve));
+            window.__workspaceEvents = [];
+        });
+        await page.locator('#terminalAppearanceBtn').click();
+        await page.locator('[name="terminalFontPreset"][value="WebSSH Fira Mono"]').check();
+        await expect(page.locator('#terminalFontStatus')).not.toContainText('Loading');
+        await page.evaluate(async () => {
+            await document.fonts.ready;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        });
+        expect(await page.evaluate(() => window.__workspaceEvents.filter(e => e.event === 'ssh_resize'))).toEqual([]);
+        expect(await page.evaluate(() => TerminalAppearance.getPreferences().font_family)).toBeUndefined();
+        await page.locator('#terminalFontSize').fill('22');
+        await page.locator('#terminalLineHeight').fill('1.3');
+        await page.locator('#terminalAppearanceSave').click();
+        await expect.poll(() => page.evaluate(() => TerminalAppearance.getPreferences().font_size)).toBe(22);
+        await expect.poll(() => page.evaluate(() => {
+            const term = TerminalManager.terminals['workspace-linux'];
+            const resize = window.__workspaceEvents.filter(e => e.event === 'ssh_resize').at(-1)?.payload;
+            return resize?.cols === term.cols && resize?.rows === term.rows && term.rows < window.__fontOldSize.rows;
+        })).toBe(true);
+        const state = await page.evaluate(() => {
+            const term = TerminalManager.terminals['workspace-linux'];
+            const baseline = new Terminal({allowProposedApi: true});
+            const baselineUnicode = baseline.unicode.activeVersion;
+            baseline.dispose();
+            const history = Array.from({length: term.buffer.normal.length}, (_, i) => term.buffer.normal.getLine(i).translateToString(true)).join('\n');
+            return {same: term === window.__fontTerminalRef, unicode: term.unicode.activeVersion, baselineUnicode,
+                screen: term.buffer.active.type, text: term.buffer.active.getLine(0).translateToString(true),
+                ansi: term.buffer.active.getLine(0).getCell(0).getFgColor(), history,
+                paste: term.modes.bracketedPasteMode, cursorKeys: term.modes.applicationCursorKeysMode,
+                family: term.options.fontFamily, foreground: term.options.theme.foreground,
+                cursor: term.options.cursorStyle, blink: term.options.cursorBlink,
+                opacity: TerminalAppearance.getPreferences().background_opacity};
+        });
+        expect(state).toMatchObject({same: true, unicode: state.baselineUnicode, screen: 'alternate', text: '\uf07b app.py',
+            ansi: 0x7b2d43, paste: true, cursorKeys: true, foreground: '#dce8f4', cursor: 'bar', blink: false, opacity: 45});
+        expect(state.family).toBe('"WebSSH Fira Mono", "WebSSH Nerd Symbols", monospace');
+        expect(state.history).toContain('history-0');
+        expect(state.history).toContain('history-149');
+        await page.locator('[data-close-terminal-appearance]').last().click();
+        await page.locator('#terminal-workspace-linux textarea').press('ArrowUp');
+        await expect.poll(() => page.evaluate(() => window.__workspaceEvents.filter(e => e.event === 'ssh_input').map(e => e.payload.data).join(''))).toContain('\x1bOA');
+        await page.evaluate(() => new Promise(resolve => TerminalManager.writeOutput('workspace-linux', '\x1b[?1049l', null, resolve)));
+        expect(await page.evaluate(() => TerminalManager.terminals['workspace-linux'].buffer.active.type)).toBe('normal');
+        assertNoExternalRequests(page);
+    } finally {
+        await setFontTestPreferences(page, {});
+    }
+});
+
+test('failed font downloads and cancelled previews leave existing terminal input and settings usable', async ({page}) => {
+    await page.route('**/static/vendor/terminal-fonts/*.woff2', route => route.abort());
+    await login(page);
+    await setFontTestPreferences(page, {font_family: 'Consolas', font_size: 15});
+    try {
+        await seedLinuxSession(page);
+        await expect.poll(() => page.evaluate(() => TerminalManager.terminalReady['workspace-linux'])).toBe(true);
+        const originalFamily = await page.evaluate(() => TerminalManager.terminals['workspace-linux'].options.fontFamily);
+        await page.locator('#terminalAppearanceBtn').click();
+        await page.locator('[name="terminalFontPreset"][value="WebSSH Hack"]').check();
+        await expect(page.locator('#terminalFontStatus')).toContainText(/unavailable/i);
+        await page.locator('[data-close-terminal-appearance]').last().click();
+        expect(await page.evaluate(() => TerminalManager.terminals['workspace-linux'].options.fontFamily)).toBe(originalFamily);
+        expect(await page.evaluate(() => TerminalAppearance.getPreferences().font_family)).toBe('Consolas');
+        await page.locator('#terminal-workspace-linux textarea').pressSequentially('echo retained');
+        await page.locator('#terminal-workspace-linux textarea').press('Enter');
+        await expect.poll(() => page.evaluate(() => window.__workspaceEvents.filter(e => e.event === 'ssh_input').map(e => e.payload.data).join(''))).toContain('echo retained\r');
+        assertNoExternalRequests(page);
+    } finally {
+        await setFontTestPreferences(page, {});
+    }
 });

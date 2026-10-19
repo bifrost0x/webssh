@@ -55,6 +55,10 @@ def test_invalid_appearance_cannot_enter_settings_storage(appearance):
 
 @pytest.mark.parametrize('appearance', [
     {}, VALID_APPEARANCE,
+    *({'font_family': family} for family in (
+        'WebSSH JetBrains Mono', 'WebSSH Hack', 'WebSSH Fira Mono',
+        'WebSSH Source Code Pro', 'JetBrainsMono Nerd Font Mono',
+    )),
     {'font_family': 'theme', 'font_size': None, 'background': None},
     {'font_size': 8, 'line_height': 1, 'letter_spacing': -1,
      'background_opacity': 0, 'font_weight': 'normal', 'cursor_style': 'block'},

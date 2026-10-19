@@ -210,6 +210,18 @@ def test_socket_password_terminal_resize_and_disconnect(app, monkeypatch):
         output = wait_for_output(socket_client, marker)
         assert '40 120' in output
 
+        # Remote writes may split both BMP and supplementary Nerd Font icons.
+        # Octal escapes keep the complete marker out of the terminal's echo.
+        icon_marker = 'FONT_\uf07b\U000f0004\ue0b0_ä_END'
+        writes = [f"printf '\\{byte:03o}'; sleep 0.02" for byte in icon_marker.encode('utf-8')]
+        socket_client.emit('ssh_input', {
+            'session_id': session_id,
+            'data': '; '.join(writes) + "; printf '\\n'\n",
+        })
+        icon_output = wait_for_output(socket_client, icon_marker)
+        assert icon_marker in icon_output
+        assert '\ufffd' not in icon_output
+
         socket_client.emit('ssh_disconnect', {'session_id': session_id})
         disconnected = wait_for_event(
             socket_client,
