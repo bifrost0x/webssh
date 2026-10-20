@@ -57,13 +57,26 @@ def app():
             db.engine.dispose()
 
 
-def wait_for_event(socket_client, event_name, timeout=10):
+def wait_for_event(socket_client, event_name, timeout=10, *, approve_host_keys=False):
     deadline = time.monotonic() + timeout
     seen = []
     while time.monotonic() < deadline:
         received = socket_client.get_received()
         seen.extend(received)
         for event in received:
+            if event['name'] == 'ssh_host_key' and approve_host_keys:
+                prompt = event['args'][0]
+                assert (prompt['host'], prompt['port']) in {
+                    (TARGET_HOST, TARGET_PORT),
+                    (PROXY_TARGET_HOST, PROXY_TARGET_PORT),
+                    (BASTION_HOST, BASTION_PORT),
+                }
+                assert prompt['fingerprint'].startswith('SHA256:')
+                assert socket_client.emit('ssh_host_key_decision', {
+                    'prompt_id': prompt['prompt_id'],
+                    'client_request_id': prompt['client_request_id'],
+                    'accepted': True,
+                }, callback=True) == {'success': True}
             if event['name'] == event_name:
                 payload = event.get('args', [])
                 return payload[0] if payload else None
@@ -144,12 +157,18 @@ def emit_ssh_connect(socket_client, **overrides):
     }
     payload.update(overrides)
     socket_client.emit('ssh_connect', payload)
-    connected = wait_for_event(socket_client, 'ssh_connected')
+    connected = wait_for_event(socket_client, 'ssh_connected', approve_host_keys=True)
     assert connected['host'] == target_host
     assert connected['port'] == target_port
     assert connected['username'] == USERNAME
     assert connected['client_request_id'] == 'integration-request'
     return connected['session_id']
+
+
+def trust_target_for_sftp(socket_client, **auth):
+    session_id = emit_ssh_connect(socket_client, **auth)
+    socket_client.emit('ssh_disconnect', {'session_id': session_id})
+    assert wait_for_event(socket_client, 'ssh_disconnected')['session_id'] == session_id
 
 
 def save_integration_key(app, user_id, key_name):
@@ -293,6 +312,7 @@ def test_socket_quick_connect_sftp_crud_and_disconnects(
             'key_id': save_integration_key(app, user_id, auth),
         }
     try:
+        trust_target_for_sftp(socket_client, **auth_payload)
         socket_client.emit('quick_connect', {
             'host': TARGET_HOST,
             'port': TARGET_PORT,
@@ -386,6 +406,7 @@ def test_threaded_runtime_keeps_terminal_sftp_and_http_work_making_progress(app)
     sftp_client, _sftp_http, _sftp_user_id = create_authenticated_socket(
         app, 'threaded_sftp_user'
     )
+    trust_target_for_sftp(sftp_client, password=PASSWORD)
     terminal_session_id = emit_ssh_connect(
         terminal_client,
         password=PASSWORD,
@@ -510,6 +531,33 @@ def test_socket_proxy_jump_terminal_and_sftp_roundtrip(
             socket_client.disconnect()
 
 
+def test_socket_declining_new_host_key_does_not_create_session(app, monkeypatch):
+    import config
+    from app import ssh_manager
+
+    monkeypatch.setattr(config, 'RATELIMIT_ENABLED', False)
+    socket_client, _http_client, user_id = create_authenticated_socket(
+        app, 'socket_declined_trust_user',
+    )
+    try:
+        socket_client.emit('ssh_connect', {
+            'host': TARGET_HOST, 'port': TARGET_PORT, 'username': USERNAME,
+            'password': PASSWORD, 'client_request_id': 'declined-trust',
+        })
+        prompt = wait_for_event(socket_client, 'ssh_host_key')
+        assert prompt['fingerprint'].startswith('SHA256:')
+        assert not any(session.get('user_id') == user_id for session in ssh_manager.sessions.values())
+        assert socket_client.emit('ssh_host_key_decision', {
+            'prompt_id': prompt['prompt_id'], 'client_request_id': 'declined-trust',
+            'accepted': False,
+        }, callback=True) == {'success': True}
+        assert 'host key' in wait_for_event(socket_client, 'ssh_error')['error'].lower()
+        assert not any(session.get('user_id') == user_id for session in ssh_manager.sessions.values())
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()
+
+
 def test_socket_invalid_credentials_keep_generic_error(app, monkeypatch):
     import config
 
@@ -524,8 +572,9 @@ def test_socket_invalid_credentials_keep_generic_error(app, monkeypatch):
             'port': TARGET_PORT,
             'username': USERNAME,
             'password': 'wrong-password-marker',
+            'client_request_id': 'invalid-credentials-request',
         })
-        error = wait_for_event(socket_client, 'ssh_error')
+        error = wait_for_event(socket_client, 'ssh_error', approve_host_keys=True)
         assert error['error'] == 'Authentication failed - invalid credentials'
         assert 'wrong-password-marker' not in error['error']
     finally:
