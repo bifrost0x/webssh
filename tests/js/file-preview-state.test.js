@@ -25,6 +25,22 @@ function save(preview) {
     preview.commitReviewedEdit();
 }
 
+for (const warning of [undefined, 'SMB_RECOVERY_BACKUP_RETAINED']) {
+    test(`retained editor invalidates original-byte backup after save (${warning || 'late acknowledgement'})`, () => {
+        const {preview, fields, events, context} = setup();
+        preview.editOriginalBytes = 'b3JpZ2luYWw=';
+        save(preview);
+        context.timeout();
+        fields.editorContent.value = 'second edit';
+        preview.handleFileSaved({...events[0].data, revision: 'r2', warning_code: warning});
+        preview.saveEdit();
+        assert.equal(preview.editBaseline, 'one');
+        assert.equal(preview.editOriginalBytes, null);
+        assert.equal(fields.editorBackupBtn.disabled, true);
+        assert.equal(fields.editorReviewOriginal.value, 'one');
+    });
+}
+
 test('save acknowledgement preserves text entered while saving and updates revision', () => {
     const {preview, fields, events} = setup();
     save(preview);

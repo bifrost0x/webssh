@@ -66,6 +66,26 @@ Persisted JSON schemas are migrated additively. Profiles currently use schema ve
 
 Database changes likewise preserve existing installations. Always take a verified native backup before upgrading across versions.
 
+### Workspace upgrade and rollback
+
+The workspace update adds a nullable `profile_id` column to saved SSH sessions.
+Existing sessions do not need a profile association. Per-host notes and shortcuts
+use a separate `host_context.json` file; existing global notes remain in settings.
+Server mutations remain disabled unless explicitly enabled by the operator.
+
+Before upgrading, retain a verified backup and the matching application secret.
+Test restoration into a separate data directory; never run two versions against
+the same live directory.
+
+Parameterized command sets require the updated application. Older versions
+reject a command-set collection containing the new `argv` steps, including its
+ordinary sets, rather than silently dropping unsupported entries. They do not
+overwrite that collection. If these sets have been created, remove them through
+the updated application's UI before downgrading, or restore the complete
+pre-upgrade backup with its matching secret into a separate directory. Restoring
+that backup also discards changes made since it was created; preserve a current
+backup before choosing this route. Do not hand-edit the stored JSON.
+
 ## Encrypted SSH keys
 
 Private keys are encrypted with user-specific Fernet material derived from `SECRET_KEY:user_id` using PBKDF2-HMAC-SHA256 and 600,000 iterations. The key record, application secret, and user ID are therefore part of one recovery boundary.

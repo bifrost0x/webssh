@@ -153,7 +153,7 @@ window.CommandSetManager = {
         none.value = '';
         none.textContent = this.t('commandSets.none', 'None');
         select.appendChild(none);
-        this.commandSets.forEach(commandSet => {
+        this.commandSets.filter(commandSet => !commandSet.parameters?.length).forEach(commandSet => {
             const option = document.createElement('option');
             option.value = commandSet.id;
             option.textContent = commandSet.name;
@@ -576,7 +576,7 @@ window.CommandSetManager = {
             if (saved) {
                 const remaining = this.commandSets.filter(item => item.id !== saved.id);
                 this.setCommandSets([...remaining, saved]);
-                if (this.returnToConnection) this.selectForConnection(saved.id);
+                if (this.returnToConnection && !saved.parameters?.length) this.selectForConnection(saved.id);
             }
             if (isLegacyConversion && typeof ProfileManager !== 'undefined') {
                 ProfileManager.upsertProfile(acknowledgement.profile);

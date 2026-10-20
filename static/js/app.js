@@ -1288,6 +1288,10 @@
             this.lastSavedSequence = saved.sequence;
             this.editRevision = data.revision || this.editRevision;
             this.editBaseline = saved.content;
+            // Exact remote bytes must be read again after the baseline changes.
+            this.editOriginalBytes = null;
+            const backupButton = document.getElementById('editorBackupBtn');
+            if (backupButton) backupButton.disabled = true;
             const keepEditing = !isCurrent
                 || document.getElementById('editorContent')?.value !== saved.content;
             if (keepEditing) {

@@ -24,6 +24,12 @@ test('argument sets save explicit declarations and preview values before inserti
     await page.locator('#saveCommandSetBtn').click();
     await expect.poll(() => page.evaluate(() => window.CommandSetManager.commandSets.find(item => item.name === 'Parameterized path inspection')?.parameters)).toEqual([{name: 'path'}]);
     await page.evaluate(() => {
+        window.CommandSetManager.renderSelect();
+        window.ProfileManager.renderEditorSelects();
+    });
+    await expect(page.locator('#commandSetSelect option').filter({hasText: 'Parameterized path inspection'})).toHaveCount(0);
+    await expect(page.locator('#profileEditorCommandSetSelect option').filter({hasText: 'Parameterized path inspection'})).toHaveCount(0);
+    await page.evaluate(() => {
         SessionManager.createSession({session_id: 'parameter-session', host: 'preview.local', username: 'operator', port: 22});
         window.__parameterInputs = [];
         window.SSHInput = {...window.SSHInput, send: async (id, text) => { window.__parameterInputs.push([id, text]); return true; }};

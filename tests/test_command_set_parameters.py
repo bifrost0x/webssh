@@ -13,6 +13,42 @@ def payload():
     }
 
 
+def test_parameterized_sets_cannot_break_existing_startup_profiles(app):
+    from app import profile_manager
+    from app.models import User, db
+    with app.app_context():
+        user = User(username='startup-compat', password_hash='unused')
+        db.session.add(user)
+        db.session.commit()
+        normal, error = manager.upsert_command_set(user.id, {
+            'name': 'Existing startup', 'steps': [{'type': 'inline', 'command': 'pwd'}],
+        })
+        assert error is None
+        profile_payload = dict(name='Existing host', host='example.test', port=22,
+                               username='deploy', auth_type='password', startup_mode='command_set',
+                               command_set_id=normal['id'])
+        profile, error = profile_manager.upsert_profile(user.id, profile_payload)
+        assert error is None
+        sets_path = user.get_data_dir() / 'command_sets.json'
+        profiles_path = user.get_data_dir() / 'profiles.json'
+        previous_sets, previous_profiles = sets_path.read_bytes(), profiles_path.read_bytes()
+        converted, error = manager.upsert_command_set(user.id, {**payload(), 'id': normal['id']})
+        assert converted is None and error
+        assert sets_path.read_bytes() == previous_sets
+        assert profiles_path.read_bytes() == previous_profiles
+        assert manager.resolve_command_set(user.id, normal['id']) == ('pwd', None)
+        interactive, error = manager.upsert_command_set(user.id, payload())
+        assert error is None
+        rejected, error = profile_manager.upsert_profile(user.id, {
+            **profile_payload, 'id': profile['id'], 'command_set_id': interactive['id'],
+        })
+        assert rejected is None and error
+        assert profiles_path.read_bytes() == previous_profiles
+        rejected, error = profile_manager.assign_command_set(user.id, profile['id'], interactive['id'])
+        assert rejected is None and error
+        assert profiles_path.read_bytes() == previous_profiles
+
+
 def test_parameterized_set_is_saved_and_never_resolves_for_startup():
     validated, error = manager._validate_payload(payload(), [], {})
     assert error is None

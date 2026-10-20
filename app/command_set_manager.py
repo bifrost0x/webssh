@@ -474,6 +474,13 @@ def _get_command_set_with_lock_held(user_id, command_set_id):
 def upsert_command_set(user_id, payload):
     """Create or update one command set under the per-user coordinator lock."""
     with storage_lock(f'command-config:{user_id}'):
+        if isinstance(payload, dict) and payload.get('id') and payload.get('parameters'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profile_references(user_id)
+            if error:
+                return None, error
+            if any(profile.get('command_set_id') == payload['id'] for profile in profiles):
+                return None, 'Remove startup profile references before adding command parameters'
         with storage_lock(f'commands:{user_id}'):
             commands, error = _command_index(user_id)
         if error:

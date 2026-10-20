@@ -858,7 +858,8 @@ def assign_command_set(user_id, profile_id, command_set_id):
                 )
             if error:
                 return None, error
-
+            if command_set.get('parameters'):
+                return None, 'Parameterized command sets require interactive launch after connecting'
             with storage_lock(f'profiles:{user_id}'):
                 profiles, error = _load_profiles_for_write(user_id)
                 if error:

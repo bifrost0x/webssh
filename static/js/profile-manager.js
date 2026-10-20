@@ -1209,7 +1209,7 @@ const ProfileManager = {
         );
         this._fillSelect(
             document.getElementById('profileEditorCommandSetSelect'),
-            window.CommandSetManager?.commandSets || [],
+            (window.CommandSetManager?.commandSets || []).filter(commandSet => !commandSet.parameters?.length),
             this.t('commandSets.none', 'Select a Command Set'),
             commandSet => commandSet.name,
         );
