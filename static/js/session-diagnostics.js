@@ -596,6 +596,7 @@
             if (!value) return;
             wrapper.classList.remove('normal', 'warning', 'critical');
             wrapper.classList.add(value.severity);
+            wrapper.style?.setProperty?.('--resource-fill', `${boundedPercent(value.barPercent) || 0}%`);
             elements[`${key}Value`].textContent = value.label;
             elements[`${key}Detail`].textContent = value.detail || '';
             wrapper.setAttribute('title', value.severityLabel);
