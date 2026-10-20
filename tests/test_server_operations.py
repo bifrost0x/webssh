@@ -5,6 +5,24 @@ import pytest
 from app.server_operations import OperationError, build_command
 
 
+def test_process_inventory_includes_all_rows_and_keeps_command_names():
+    from app.server_operations import parse_process_list
+    output = '\n'.join(f'{pid} root 0.1 0.2 worker task' for pid in range(1, 142))
+    rows = parse_process_list(output)
+    assert len(rows) == 141
+    assert rows[-1] == dict(pid=141, user='root', cpu='0.1', memory='0.2', command='worker task')
+    command = build_command('process.list', {})
+    assert 'ps -e ' in command and 'head' not in command and 'args' not in command
+
+
+@pytest.mark.parametrize('output', ['1 root 0.0', '1 root nan 1 worker', '0 root 0 0 worker',
+                                   '1 root 0 0 worker\n1 root 0 0 worker'])
+def test_process_inventory_rejects_invalid_or_duplicate_rows(output):
+    from app.server_operations import parse_process_list
+    with pytest.raises(OperationError, match='invalid_output'):
+        parse_process_list(output)
+
+
 @pytest.mark.parametrize('target', ['sshd;id', '-a', '$(id)', 'a\nb', '../../x'])
 def test_service_targets_reject_shell_and_option_injection(target):
     with pytest.raises(OperationError):
@@ -252,3 +270,21 @@ def test_read_route_enforces_ownership_and_merges_docker_logs(app, client, sessi
     assert response.json['output'].splitlines()[0].endswith('new')
     assert response.json['error_output'] == ''
     assert '--timestamps --tail 100' in calls[0][3]
+
+
+def test_process_list_route_returns_structured_snapshot_only_on_success(app, client, session, monkeypatch):
+    from app import server_operations as operations
+    _login(app, client)
+    result = {'status': 'completed', 'exit_status': 0,
+              'output': '1 root 0.0 0.1 init\n123 user 5.2 1.3 worker', 'error_output': ''}
+    monkeypatch.setattr(operations, 'execute_command', lambda *args, **kwargs: dict(result))
+    payload = {'session_id': 'session', 'action': 'process.list', 'target': {}}
+    response = client.post('/api/server-operations/read', json=payload)
+    assert response.status_code == 200
+    assert [row['pid'] for row in response.json['processes']] == [1, 123]
+    assert response.json['output'] == ''
+    result.update(status='failed', exit_status=1, output='partial output')
+    response = client.post('/api/server-operations/read', json=payload)
+    assert 'processes' not in response.json
+    session['user_id'] = 2
+    assert client.post('/api/server-operations/read', json=payload).status_code == 404

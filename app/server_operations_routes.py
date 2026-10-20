@@ -77,6 +77,9 @@ def read():
         session_id, current_user.id, session, command,
         cancelled=lambda: not lifecycle.accepting_work(),
     )
+    if action == 'process.list' and result.get('status') == 'completed':
+        result['processes'] = operations.parse_process_list(result.get('output', ''))
+        result['output'] = ''
     if action == 'container.logs':
         result['output'], result['error_output'] = operations.newest_container_logs(
             result.get('output', ''), result.get('error_output', ''),

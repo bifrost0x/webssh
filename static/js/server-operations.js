@@ -165,6 +165,7 @@
         let pending = false;
         let capabilities = null;
         let resolved = null;
+        let processRows = [];
         let answer = null;
         let authorizationController = null;
         function cancelAuthorization() {
@@ -198,7 +199,7 @@
             detailTitle.textContent = kind === 'system' ? t('serverOps.hostActions', 'Host actions')
                 : selected ? String(sourceTarget.unit || sourceTarget.name || sourceTarget.pid || '') : labels[kind];
             detailHint.textContent = kind === 'process'
-                ? t('serverOps.processScope', 'Showing sampled top CPU and memory processes. Select a process to inspect its identity before control.')
+                ? t('serverOps.processScope', 'Snapshot of all visible processes. CPU is the lifetime average. Refresh to update; select a process to inspect its identity before control.')
                 : selected ? t('serverOps.targetDetail', 'Inspect the selected resource and review an action before executing it.')
                     : kind === 'system' ? ''
                         : t('serverOps.selectResource', 'Select a resource to view details and available actions.');
@@ -236,7 +237,7 @@
                     ? `${model.systemd.active} ${t('serverOps.running', 'Running / active')} · ${model.systemd.failed} ${t('serverOps.failedState', 'Failed')}`
                     : key === 'container' && model?.docker?.countsAvailable
                         ? `${model.docker.running} ${t('serverOps.running', 'Running / active')}`
-                        : key === 'process' ? t('serverOps.sampledProcesses', 'Sampled top CPU and memory processes')
+                        : key === 'process' ? t('serverOps.sampledProcesses', 'Browse all visible processes')
                             : t('serverOps.noMeasurements', 'Waiting for measurements');
                 copy.append(el('small', description));
                 link.classList.toggle('is-warning', key === 'service' && model?.systemd?.failed > 0);
@@ -267,9 +268,7 @@
             }
             list.replaceChildren();
             let rows = kind === 'service' ? model?.systemd?.rows : kind === 'container' ? model?.docker?.rows
-                : [...(model?.processes?.topCpu || []).map(row => ({...row, metric: 'CPU'})),
-                    ...(model?.processes?.topMemory || []).map(row => ({...row, metric: t('diagnostics.memory', 'Memory')}))]
-                    .filter((row, index, all) => all.findIndex(other => other.pid === row.pid) === index);
+                : processRows;
             rows = [...(rows || [])];
             if (kind === 'service') {
                 const rank = row => row.active === 'failed' ? 0 : row.active === 'active' ? 1 : 2;
@@ -279,6 +278,7 @@
                 rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
             }
             const query = search.value.trim().toLowerCase();
+            if (kind === 'process') list.append(el('p', `${rows.length} ${t('serverOps.processes', 'Processes')}`));
             for (const row of rows.filter(row => {
                 const state = String(row.active || row.status || '').toLowerCase();
                 const running = state === 'active' || state.startsWith('up') || state === 'running';
@@ -290,16 +290,17 @@
                 const rowButton = button('', () => select(kind, row.unit ? {unit: row.unit} : row.name ? {name: row.name} : {pid: Number(row.pid)}), list);
                 rowButton.className = 'server-management-row';
                 rowButton.append(el('strong', name), el('span', row.active || row.status || row.user, 'server-management-badge'),
-                    el('small', row.description || (row.pid ? `${row.metric}: ${row.label || `${row.percent ?? '—'}%`}` : '')));
+                    el('small', row.description || (row.pid ? `CPU: ${row.cpu}% · ${t('diagnostics.memory', 'Memory')}: ${row.memory}%` : '')));
+                rowButton.dataset.protected = String(row.pid === 1);
                 const state = String(row.active || row.status || '').toLowerCase();
                 rowButton.dataset.state = state === 'failed' ? 'failed' : /^(active$|up\b|running$)/.test(state) ? 'running' : 'other';
                 rowButton.setAttribute('aria-pressed', String(selected && (sourceTarget.unit === row.unit && !!row.unit || sourceTarget.name === row.name && !!row.name || Number(sourceTarget.pid) === Number(row.pid) && !!row.pid)));
             }
-            if (!list.children.length) list.append(el('p', rows.length ? t('serverOps.noMatches', 'No matching resources.')
+            if (!list.querySelector('button')) list.append(el('p', rows.length ? t('serverOps.noMatches', 'No matching resources.')
                 : t('serverOps.noInventory', 'No inventory available. The remote tool may be unsupported, access may be restricted, or sampling is still in progress.')));
-            const truncation = kind === 'service' ? model?.systemd?.truncationLabel : model?.docker?.truncationLabel;
+            const truncation = kind === 'service' ? model?.systemd?.truncationLabel : kind === 'container' ? model?.docker?.truncationLabel : '';
             if (truncation) list.append(el('p', truncation));
-            for (const node of list.querySelectorAll('button')) node.disabled = pending;
+            for (const node of list.querySelectorAll('button')) node.disabled = pending || node.dataset.protected === 'true';
         }
         function select(nextKind, target) {
             if (pending || !current()) return;
@@ -508,7 +509,7 @@
         }
         function setPending(value) {
             pending = value;
-            for (const node of [...tabs.children, ...list.querySelectorAll('button'), ...overview.querySelectorAll('button')]) node.disabled = value;
+            for (const node of [...tabs.children, ...list.querySelectorAll('button'), ...overview.querySelectorAll('button')]) node.disabled = value || node.dataset.protected === 'true';
         }
         async function read(action, target) {
             if (pending || !current()) return;
@@ -550,6 +551,38 @@
         }
         async function load() {
             resolved = null;
+            if (kind === 'process' && !selected) {
+                if (pending || !current()) return;
+                const revision = ++generation;
+                const restoreTabFocus = tabs.contains(document.activeElement);
+                processRows = [];
+                setPending(true);
+                drawWorkspace();
+                status.textContent = t('serverOps.loading', 'Loading…');
+                try {
+                    const result = await api('/api/server-operations/read', {
+                        method: 'POST', body: {session_id: sessionId, action: 'process.list', target: {}, use_sudo: false}
+                    });
+                    if (!current() || generation !== revision) return;
+                    if (result.status !== 'completed' || !Array.isArray(result.processes)) {
+                        throw new Error(t('serverOps.failed', 'Operation failed.'));
+                    }
+                    processRows = result.processes;
+                    status.textContent = t('serverOps.readComplete', 'Read complete.');
+                } catch (error) {
+                    if (current() && generation === revision) status.textContent = error.message;
+                } finally {
+                    if (current() && generation === revision) {
+                        setPending(false);
+                        drawWorkspace();
+                        renderActions();
+                        if (restoreTabFocus && document.activeElement === document.body) {
+                            tabs.querySelector('[aria-selected="true"]')?.focus();
+                        }
+                    }
+                }
+                return;
+            }
             if (kind === 'system' || !selected) {
                 window.dispatchEvent(new CustomEvent('server-operation-completed', {detail: {sessionId}}));
                 drawWorkspace();

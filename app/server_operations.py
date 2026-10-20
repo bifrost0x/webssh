@@ -10,7 +10,7 @@ import time
 
 from . import ssh_manager
 
-READ_ACTIONS = frozenset({'service.logs', 'container.logs', 'container.inspect', 'process.inspect', 'system.inspect'})
+READ_ACTIONS = frozenset({'service.logs', 'container.logs', 'container.inspect', 'process.list', 'process.inspect', 'system.inspect'})
 WRITE_ACTIONS = frozenset({
     'service.start', 'service.stop', 'service.restart',
     'container.start', 'container.stop', 'container.restart',
@@ -65,6 +65,27 @@ def newest_container_logs(output, error_output):
     return '\n'.join(line for _, lines in ordered for line in lines), '\n'.join(unstructured)
 
 
+def parse_process_list(output):
+    """Parse a complete bounded ps snapshot, never silently drop malformed rows."""
+    rows = []
+    seen = set()
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split(None, 4)
+        if len(fields) != 5 or not re.fullmatch(r'[0-9]{1,7}', fields[0]):
+            raise OperationError('invalid_output')
+        pid = int(fields[0])
+        if not 1 <= pid <= 4194304 or pid in seen:
+            raise OperationError('invalid_output')
+        if any(not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', value) for value in fields[2:4]):
+            raise OperationError('invalid_output')
+        seen.add(pid)
+        rows.append(dict(pid=pid, user=fields[1], cpu=fields[2],
+                         memory=fields[3], command=fields[4]))
+    return rows
+
+
 def build_command(action, target, *, use_sudo=False):
     if not isinstance(action, str) or action not in READ_ACTIONS | WRITE_ACTIONS:
         raise OperationError('invalid_action')
@@ -91,6 +112,8 @@ def build_command(action, target, *, use_sudo=False):
         verb = action.split('.')[1]
         option = '--timestamps --tail 100 ' if verb == 'logs' else ('--time 10 ' if verb in ('stop', 'restart') else '')
         command = f'docker {verb} {option}-- {container}'
+    elif action == 'process.list':
+        command = 'env LC_ALL=C ps -e -o pid=,user:32=,pcpu=,pmem=,comm= --sort=pid'
     elif action == 'process.inspect':
         pid = _process_target(target)
         script = (

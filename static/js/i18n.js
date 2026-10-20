@@ -1,7 +1,7 @@
 
 const translations = {
     en: {
-        'serverOps.sampledProcesses': "Sampled top CPU and memory processes",
+        'serverOps.sampledProcesses': "Browse all visible processes",
         'serverOps.output': "Output",
         'commandParameters.names': "Interactive parameter names (comma separated)",
         'commandParameters.hint': "Optional. Use argument steps only, with each {{name}} as a whole argument. Values are POSIX shell arguments. These sets require interactive launch and never run on connect.",
@@ -32,7 +32,7 @@ const translations = {
         'serverOps.containers': "Containers",
         'serverOps.processes': "Processes",
         'serverOps.hostActions': "Host actions",
-        'serverOps.processScope': "Showing sampled top CPU and memory processes. Select a process to inspect its identity before control.",
+        'serverOps.processScope': "Snapshot of all visible processes. CPU is the lifetime average. Refresh to update; select a process to inspect its identity before control.",
         'serverOps.targetDetail': "Inspect the selected resource and review an action before executing it.",
         'serverOps.hostHint': "Live measurements from this SSH session. Open a resource tab to inspect and manage it.",
         'serverOps.selectResource': "Select a resource to view details and available actions.",
@@ -1746,7 +1746,7 @@ const translations = {
 
 
     vi: {
-        'serverOps.sampledProcesses': "Các tiến trình dùng CPU và bộ nhớ nhiều nhất được lấy mẫu",
+        'serverOps.sampledProcesses': "Xem tất cả tiến trình có thể xem",
         'serverOps.output': "Kết quả",
         'commandParameters.names': "Tên tham số tương tác (phân cách bằng dấu phẩy)",
         'commandParameters.hint': "Tùy chọn. Chỉ dùng các bước đối số, mỗi {{name}} là một đối số đầy đủ. Giá trị là đối số shell POSIX. Các bộ lệnh này phải được khởi chạy tương tác và không bao giờ tự chạy khi kết nối.",
@@ -1777,7 +1777,7 @@ const translations = {
         'serverOps.containers': "Container",
         'serverOps.processes': "Tiến trình",
         'serverOps.hostActions': "Thao tác máy chủ",
-        'serverOps.processScope': "Hiển thị các tiến trình dùng nhiều CPU và bộ nhớ trong mẫu. Chọn tiến trình để kiểm tra danh tính trước khi điều khiển.",
+        'serverOps.processScope': "Ảnh chụp tất cả tiến trình có thể xem. CPU là trung bình suốt vòng đời. Làm mới để cập nhật; chọn tiến trình để kiểm tra danh tính.",
         'serverOps.targetDetail': "Kiểm tra tài nguyên đã chọn và xem lại thao tác trước khi thực hiện.",
         'serverOps.hostHint': "Số liệu trực tiếp từ phiên SSH này. Mở thẻ tài nguyên để kiểm tra và quản lý.",
         'serverOps.selectResource': "Chọn tài nguyên để xem chi tiết và các thao tác có sẵn.",
@@ -3490,7 +3490,7 @@ const translations = {
     },
 
     de: {
-        'serverOps.sampledProcesses': "Prozesse mit höchster CPU- und Speichernutzung",
+        'serverOps.sampledProcesses': "Alle sichtbaren Prozesse durchsuchen",
         'serverOps.output': "Ausgabe",
         'commandParameters.names': "Interaktive Parameternamen (durch Kommas getrennt)",
         'commandParameters.hint': "Optional. Nur Argumentschritte verwenden, mit jedem {{name}} als vollständigem Argument. Werte sind POSIX-Shell-Argumente. Diese Sets werden interaktiv gestartet und nie beim Verbinden ausgeführt.",
@@ -3521,7 +3521,7 @@ const translations = {
         'serverOps.containers': "Container",
         'serverOps.processes': "Prozesse",
         'serverOps.hostActions': "Serveraktionen",
-        'serverOps.processScope': "Zeigt die erfassten Prozesse mit der höchsten CPU- und Speichernutzung. Wähle einen Prozess, um vor einer Aktion seine Identität zu prüfen.",
+        'serverOps.processScope': "Momentaufnahme aller sichtbaren Prozesse. CPU zeigt den Durchschnitt seit Prozessstart. Zum Aktualisieren neu laden; vor Aktionen die Prozessidentität prüfen.",
         'serverOps.targetDetail': "Prüfe die gewählte Ressource und bestätige die Aktion vor der Ausführung.",
         'serverOps.hostHint': "Live-Messwerte dieser SSH-Sitzung. Öffne einen Ressourcen-Tab zur Prüfung und Verwaltung.",
         'serverOps.selectResource': "Wähle eine Ressource, um Details und verfügbare Aktionen zu sehen.",
@@ -5233,7 +5233,7 @@ const translations = {
     },
 
     fr: {
-        'serverOps.sampledProcesses': "Processus échantillonnés utilisant le plus de CPU et de mémoire",
+        'serverOps.sampledProcesses': "Parcourir tous les processus visibles",
         'serverOps.output': "Sortie",
         'commandParameters.names': "Noms des paramètres interactifs (séparés par des virgules)",
         'commandParameters.hint': "Facultatif. Utilisez uniquement des étapes d'arguments, chaque {{name}} constituant un argument entier. Les valeurs sont des arguments de shell POSIX. Ces ensembles nécessitent un lancement interactif et ne s'exécutent jamais à la connexion.",
@@ -5264,7 +5264,7 @@ const translations = {
         'serverOps.containers': "Conteneurs",
         'serverOps.processes': "Processus",
         'serverOps.hostActions': "Actions du serveur",
-        'serverOps.processScope': "Affiche les processus consommant le plus de CPU et de mémoire dans les échantillons. Sélectionnez un processus pour vérifier son identité avant toute action.",
+        'serverOps.processScope': "Instantané de tous les processus visibles. CPU : moyenne depuis le démarrage. Actualisez puis sélectionnez un processus pour vérifier son identité.",
         'serverOps.targetDetail': "Inspectez la ressource sélectionnée et vérifiez l’action avant de l’exécuter.",
         'serverOps.hostHint': "Mesures en direct de cette session SSH. Ouvrez un onglet de ressources pour les inspecter et les gérer.",
         'serverOps.selectResource': "Sélectionnez une ressource pour voir ses détails et les actions disponibles.",
@@ -6976,7 +6976,7 @@ const translations = {
     },
 
     es: {
-        'serverOps.sampledProcesses': "Muestra de procesos con mayor uso de CPU y memoria",
+        'serverOps.sampledProcesses': "Ver todos los procesos visibles",
         'serverOps.output': "Salida",
         'commandParameters.names': "Nombres de parámetros interactivos (separados por comas)",
         'commandParameters.hint': "Opcional. Use solo pasos de argumentos, con cada {{name}} como argumento completo. Los valores son argumentos del shell POSIX. Estos conjuntos requieren un inicio interactivo y nunca se ejecutan al conectar.",
@@ -7007,7 +7007,7 @@ const translations = {
         'serverOps.containers': "Contenedores",
         'serverOps.processes': "Procesos",
         'serverOps.hostActions': "Acciones del servidor",
-        'serverOps.processScope': "Muestra los procesos con mayor uso de CPU y memoria en las muestras. Seleccione un proceso para verificar su identidad antes de controlarlo.",
+        'serverOps.processScope': "Instantánea de todos los procesos visibles. CPU: promedio desde el inicio. Actualice y seleccione un proceso para comprobar su identidad.",
         'serverOps.targetDetail': "Inspeccione el recurso seleccionado y revise la acción antes de ejecutarla.",
         'serverOps.hostHint': "Mediciones en directo de esta sesión SSH. Abra una pestaña de recursos para inspeccionarlos y administrarlos.",
         'serverOps.selectResource': "Seleccione un recurso para ver sus detalles y las acciones disponibles.",
@@ -8719,7 +8719,7 @@ const translations = {
     },
 
     zh: {
-        'serverOps.sampledProcesses': "采样中 CPU 和内存使用最高的进程",
+        'serverOps.sampledProcesses': "浏览所有可见进程",
         'serverOps.output': "输出",
         'commandParameters.names': "交互式参数名称（用逗号分隔）",
         'commandParameters.hint': "可选。仅使用参数步骤，每个 {{name}} 必须是完整参数。值作为 POSIX Shell 参数处理。这些命令集必须交互式启动，连接时绝不会自动运行。",
@@ -8750,7 +8750,7 @@ const translations = {
         'serverOps.containers': "容器",
         'serverOps.processes': "进程",
         'serverOps.hostActions': "服务器操作",
-        'serverOps.processScope': "显示采样中 CPU 和内存占用最高的进程。选择进程以在操作前检查其身份。",
+        'serverOps.processScope': "所有可见进程的快照。CPU 为进程启动以来的平均值。刷新以更新，选择进程以检查身份。",
         'serverOps.targetDetail': "检查所选资源，并在执行前确认操作。",
         'serverOps.hostHint': "此 SSH 会话的实时测量值。打开资源选项卡以检查和管理资源。",
         'serverOps.selectResource': "选择资源以查看详细信息和可用操作。",

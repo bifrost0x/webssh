@@ -14,7 +14,11 @@ async function setup(page, {enabled = true, password = false} = {}) {
             status: 'completed', output: body.action === 'container.inspect'
                 ? JSON.stringify({id: 'a'.repeat(64), name: '/database', state: 'running'})
                 : body.action === 'process.inspect' ? JSON.stringify({pid: body.target.pid, command: 'worker', start_time: '12345'})
-                : 'Server output', error_output: ''
+                : 'Server output', error_output: '',
+            processes: body.action === 'process.list' ? Array.from({length: 141}, (_, index) => ({
+                pid: index + 1, user: 'root', command: index === 122 ? 'worker' : `task-${index + 1}`,
+                cpu: '12.0', memory: '0.1'
+            })) : undefined
         };
         else if (endpoint === 'intents') result = {
             intent: 'server-intent', command: 'systemctl reboot', action: body.action,
@@ -223,7 +227,10 @@ test('inventory entry has no implicit read and sorts services and containers by 
     await dialog.getByRole('tab', {name: 'Containers', exact: true}).click();
     await expect(dialog.locator('.server-management-row strong')).toHaveText(['database', 'cache']);
     await dialog.getByRole('tab', {name: 'Processes', exact: true}).click();
-    await expect(dialog.locator('.server-management-row small')).toHaveText(['CPU: 12.0%']);
+    await expect(dialog.locator('.server-management-row')).toHaveCount(141);
+    await expect(dialog.locator('.server-management-row').first()).toBeDisabled();
+    await dialog.getByRole('searchbox').fill('worker');
+    await expect(dialog.locator('.server-management-row small')).toHaveText(['CPU: 12.0% · Memory: 0.1%']);
     await dialog.locator('.server-management-row').click();
     await expect(dialog.locator('.server-management-facts')).toContainText('12345');
     expect(calls.find(call => call.body.action === 'process.inspect').body.target).toEqual({pid: 123});
