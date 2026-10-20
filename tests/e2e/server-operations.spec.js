@@ -229,3 +229,44 @@ test('inventory entry has no implicit read and sorts services and containers by 
     expect(calls.find(call => call.body.action === 'process.inspect').body.target).toEqual({pid: 123});
     await expect(dialog.locator('.server-management-row')).toHaveAttribute('aria-pressed', 'true');
 });
+
+
+test('overview resource navigation preserves filters and separates inspection from execution', async ({page}, testInfo) => {
+    const calls = await setup(page);
+    await page.evaluate(() => window.ServerOperations.open('ops', 'system'));
+    const dialog = page.getByRole('dialog', {name: 'Server management', exact: true});
+    await expect(dialog.locator('.server-management-resource-count')).toHaveText(['2', '2', '25']);
+    await expect(dialog.getByRole('button', {name: 'Reboot', exact: true})).toBeVisible();
+    await dialog.screenshot({animations: 'disabled', path: testInfo.outputPath('overview.png')});
+    await dialog.locator('.server-management-resources').getByRole('button', {name: 'Services', exact: true}).click();
+    await expect(dialog.getByRole('checkbox')).toBeHidden();
+    await dialog.getByRole('searchbox').fill('backup');
+    await dialog.getByRole('combobox', {name: 'Filter by status'}).selectOption('failed');
+    await dialog.locator('.server-management-row').click();
+    await expect(dialog.getByRole('status')).toContainText('Read complete');
+    await expect(dialog.getByRole('searchbox')).toHaveValue('backup');
+    await expect(dialog.getByRole('combobox', {name: 'Filter by status'})).toHaveValue('failed');
+    await expect(dialog.locator('.server-management-output')).toContainText('Server output');
+    await expect(dialog.locator('.server-management-facts')).toContainText('failed');
+    expect(calls.filter(call => ['execute', 'intents'].includes(call.endpoint))).toHaveLength(0);
+    await dialog.screenshot({animations: 'disabled', path: testInfo.outputPath('service-detail.png')});
+    const tabs = dialog.getByRole('tablist');
+    await expect(tabs).toHaveAttribute('aria-orientation', 'vertical');
+    await dialog.getByRole('tab', {name: 'Services', exact: true}).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(dialog.getByRole('tab', {name: 'Containers', exact: true})).toBeFocused();
+    await page.setViewportSize({width: 390, height: 844});
+    await expect(tabs).toHaveAttribute('aria-orientation', 'horizontal');
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await dialog.screenshot({animations: 'disabled', path: testInfo.outputPath('mobile.png')});
+    await dialog.locator('.close').click();
+    await page.setViewportSize({width: 320, height: 844});
+    await page.evaluate(() => {
+        window.i18n.setLanguage('de');
+        window.ServerOperations.open('ops', 'system');
+    });
+    const german = page.locator('.server-management');
+    await expect(german.locator('.server-management-resources')).toContainText('Dienste');
+    expect(await german.locator('.server-management-main').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await german.screenshot({animations: 'disabled', path: testInfo.outputPath('german-320.png')});
+});

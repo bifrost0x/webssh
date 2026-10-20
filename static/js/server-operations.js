@@ -10,6 +10,11 @@
         if (className) node.className = className;
         return node;
     };
+    const icon = name => {
+        const node = el('span', name, 'material-icons');
+        node.setAttribute('aria-hidden', 'true');
+        return node;
+    };
     const manager = () => typeof SessionManager !== 'undefined' ? SessionManager : window.SessionManager;
     const snapshots = new WeakMap();
     let workspaceSequence = 0;
@@ -82,14 +87,26 @@
         modal.setAttribute('aria-label', t('serverOps.title', 'Server management'));
         const content = el('div', undefined, 'modal-content');
         const header = el('div', undefined, 'modal-header');
-        header.append(el('h2', t('serverOps.title', 'Server management')));
+        const identity = el('div', undefined, 'server-management-identity');
+        const identityText = el('div');
+        identityText.append(el('span', t('serverOps.title', 'Server management'), 'server-management-eyebrow'),
+            el('h2', session.host || ''));
+        identity.append(icon('dns'), identityText);
+        header.append(identity);
         const close = el('button', 'close', 'close material-icons');
         close.setAttribute('aria-label', t('serverOps.close', 'Close'));
         header.append(close);
         const body = el('div', undefined, 'modal-body');
         const targetLabel = el('p', `${session.username || ''}@${session.host || ''}:${session.port || 22}`, 'server-management-host');
+        identityText.append(targetLabel);
+        const hostMeta = el('div', undefined, 'server-management-host-meta');
+        identityText.append(hostMeta);
         const tabs = el('div', undefined, 'server-management-tabs');
         tabs.setAttribute('role', 'tablist');
+        const narrowLayout = window.matchMedia('(max-width: 600px)');
+        const updateTabOrientation = () => tabs.setAttribute('aria-orientation', narrowLayout.matches ? 'horizontal' : 'vertical');
+        updateTabOrientation();
+        narrowLayout.addEventListener('change', updateTabOrientation);
         tabs.setAttribute('aria-label', t('serverOps.sections', 'Server sections'));
         const workspace = el('section', undefined, 'server-management-workspace');
         const workspaceId = `server-management-workspace-${++workspaceSequence}`;
@@ -110,14 +127,18 @@
         }
         const list = el('div', undefined, 'server-management-list');
         const detail = el('section', undefined, 'server-management-detail');
+        const selectionIcon = icon('touch_app');
+        selectionIcon.classList.add('server-management-selection-icon');
         const detailTitle = el('h3');
         detailTitle.tabIndex = -1;
         const detailHint = el('p', undefined, 'server-management-hint');
         const facts = el('dl', undefined, 'server-management-facts');
         const notice = el('p', undefined, 'server-management-notice');
-        inventory.append(search, filter, list);
+        const toolbar = el('div', undefined, 'server-management-toolbar');
+        toolbar.append(search, filter);
+        inventory.append(toolbar, list);
         workspace.append(overview, inventory, detail);
-        const status = el('p', t('serverOps.loading', 'Loading…'));
+        const status = el('p', t('serverOps.loading', 'Loading…'), 'server-management-status');
         status.setAttribute('role', 'status');
         const output = el('pre', undefined, 'server-operation-output');
         output.hidden = true;
@@ -126,10 +147,15 @@
         sudo.type = 'checkbox';
         sudoLabel.prepend(sudo);
         const controls = el('div', undefined, 'form-actions');
-        const review = el('section');
+        const review = el('section', undefined, 'server-management-review');
         const authentication = el('section');
-        detail.append(detailTitle, detailHint, facts, sudoLabel, controls, status, output, review, authentication);
-        body.append(targetLabel, tabs, notice, workspace);
+        const outputArea = el('div', undefined, 'server-management-output');
+        const outputTitle = el('h4', t('serverOps.output', 'Output'));
+        outputArea.append(outputTitle, output);
+        detail.append(selectionIcon, detailTitle, detailHint, facts, controls, sudoLabel, status, outputArea, review, authentication);
+        const main = el('div', undefined, 'server-management-main');
+        main.append(notice, workspace);
+        body.append(tabs, main);
         content.append(header, body);
         modal.append(content);
         document.body.append(modal);
@@ -154,7 +180,11 @@
                 tab.tabIndex = active ? 0 : -1;
                 if (active) workspace.setAttribute('aria-labelledby', tab.id);
             }
-            sudoLabel.hidden = kind === 'system' && !capabilities?.mutations_enabled;
+            workspace.dataset.kind = kind;
+            detail.classList.toggle('is-empty', kind !== 'system' && !selected);
+            selectionIcon.hidden = kind === 'system' || selected;
+            sudoLabel.hidden = (kind !== 'system' && !selected) || (kind === 'system' && !capabilities?.mutations_enabled);
+            hostMeta.textContent = [model?.os, model?.secondary?.uptime].filter(Boolean).join(' · ');
             overview.hidden = kind !== 'system';
             inventory.hidden = kind === 'system';
             filter.hidden = kind === 'process';
@@ -168,23 +198,66 @@
             notice.textContent = [model?.status, model?.inventory?.stale ? t('serverOps.staleInventory', 'Inventory is out of date. Refresh before choosing a target.') : '',
                 ...(model?.permissionNotices || []), capabilities && !capabilities.mutations_enabled
                     ? t('serverOps.disabled', 'Server mutations are disabled by the operator. Read-only inspection remains available.') : ''].filter(Boolean).join(' · ');
+            notice.classList.toggle('is-warning', !!model?.inventory?.stale || !!model?.permissionNotices?.length);
             overview.replaceChildren();
             const cards = el('div', undefined, 'server-management-cards');
             for (const [key, label] of [['cpu', 'CPU'], ['memory', t('diagnostics.memory', 'Memory')], ['disk', t('diagnostics.rootDisk', 'Root disk')], ['load', t('diagnostics.normalizedLoad', 'Normalized load')]]) {
                 const value = model?.resources?.[key];
                 const card = el('article', undefined, 'server-management-card');
-                card.append(el('span', label), el('strong', value?.label || '—'), el('small', value?.detail || t('serverOps.noMeasurements', 'Waiting for measurements')));
+                card.dataset.metric = key;
+                card.classList.toggle('is-warning', value?.severity === 'warning');
+                const meter = el('div', undefined, 'server-management-meter');
+                meter.setAttribute('aria-hidden', 'true');
+                const fill = el('span');
+                fill.style.width = `${Math.max(0, Math.min(100, Number(value?.barPercent) || 0))}%`;
+                meter.append(fill);
+                card.append(el('span', label), el('strong', value?.label || '—'), meter,
+                    el('small', value?.detail || t('serverOps.noMeasurements', 'Waiting for measurements')));
                 cards.append(card);
             }
-            overview.append(cards, el('p', [model?.os, model?.secondary?.uptime].filter(Boolean).join(' · ')));
-            const counts = el('div', undefined, 'server-management-counts');
-            for (const [label, value] of [[labels.service, model?.systemd?.total], [labels.container, model?.docker?.total],
-                [labels.process, model?.secondary?.processTotal], [t('serverOps.received', 'Received'), model?.secondary?.received],
-                [t('serverOps.transmitted', 'Transmitted'), model?.secondary?.transmitted]]) {
-                counts.append(el('span', `${label}: ${value ?? '—'}`));
+            overview.append(cards);
+            const resourceLinks = el('div', undefined, 'server-management-resources');
+            const resourceIcons = {service: 'settings_suggest', container: 'view_in_ar', process: 'memory'};
+            for (const [key, value] of [['service', model?.systemd?.countsAvailable ? model.systemd.total : null],
+                ['container', model?.docker?.countsAvailable ? model.docker.total : null], ['process', model?.secondary?.processTotal]]) {
+                const link = button('', () => select(key), resourceLinks);
+                link.className = 'server-management-resource';
+                link.setAttribute('aria-label', labels[key]);
+                const copy = el('span', undefined, 'server-management-resource-copy');
+                copy.append(el('strong', labels[key]));
+                const description = key === 'service' && model?.systemd?.countsAvailable
+                    ? `${model.systemd.active} ${t('serverOps.running', 'Running / active')} · ${model.systemd.failed} ${t('serverOps.failedState', 'Failed')}`
+                    : key === 'container' && model?.docker?.countsAvailable
+                        ? `${model.docker.running} ${t('serverOps.running', 'Running / active')}`
+                        : key === 'process' ? t('serverOps.sampledProcesses', 'Sampled top CPU and memory processes')
+                            : t('serverOps.noMeasurements', 'Waiting for measurements');
+                copy.append(el('small', description));
+                link.classList.toggle('is-warning', key === 'service' && model?.systemd?.failed > 0);
+                link.append(icon(resourceIcons[key]), copy, el('strong', String(value ?? '—'), 'server-management-resource-count'), icon('chevron_right'));
+                link.disabled = pending;
             }
-            overview.append(counts);
-            for (const finding of model?.findings || []) overview.append(el('p', finding.text, 'server-management-hint'));
+            overview.append(resourceLinks);
+            const findings = el('div', undefined, 'server-management-findings');
+            for (const finding of model?.findings || []) {
+                const row = el('p');
+                row.append(icon('info'), el('span', finding.text));
+                findings.append(row);
+            }
+            if (findings.children.length) overview.append(findings);
+            const traffic = el('div', undefined, 'server-management-traffic');
+            for (const [label, value] of [[t('serverOps.received', 'Received'), model?.secondary?.received],
+                [t('serverOps.transmitted', 'Transmitted'), model?.secondary?.transmitted]]) {
+                if (value) traffic.append(el('span', `${label}  ${value}`));
+            }
+            if (traffic.children.length) overview.append(traffic);
+            if (kind === 'service' && selected) {
+                facts.replaceChildren();
+                const service = model?.systemd?.rows?.find(row => row.unit === sourceTarget.unit);
+                if (service) {
+                    facts.append(el('dt', t('serverOps.state', 'State')), el('dd', service.active));
+                    if (service.description) detailHint.textContent = service.description;
+                }
+            }
             list.replaceChildren();
             let rows = kind === 'service' ? model?.systemd?.rows : kind === 'container' ? model?.docker?.rows
                 : [...(model?.processes?.topCpu || []).map(row => ({...row, metric: 'CPU'})),
@@ -211,6 +284,8 @@
                 rowButton.className = 'server-management-row';
                 rowButton.append(el('strong', name), el('span', row.active || row.status || row.user, 'server-management-badge'),
                     el('small', row.description || (row.pid ? `${row.metric}: ${row.label || `${row.percent ?? '—'}%`}` : '')));
+                const state = String(row.active || row.status || '').toLowerCase();
+                rowButton.dataset.state = state === 'failed' ? 'failed' : /^(active$|up\b|running$)/.test(state) ? 'running' : 'other';
                 rowButton.setAttribute('aria-pressed', String(selected && (sourceTarget.unit === row.unit && !!row.unit || sourceTarget.name === row.name && !!row.name || Number(sourceTarget.pid) === Number(row.pid) && !!row.pid)));
             }
             if (!list.children.length) list.append(el('p', rows.length ? t('serverOps.noMatches', 'No matching resources.')
@@ -227,8 +302,10 @@
             sourceTarget = target || {};
             selected = !!target;
             resolved = null;
-            search.value = '';
-            filter.value = 'all';
+            if (nextKind !== workspace.dataset.kind) {
+                search.value = '';
+                filter.value = 'all';
+            }
             facts.replaceChildren();
             review.replaceChildren();
             output.textContent = '';
@@ -239,7 +316,9 @@
             load();
         }
         for (const [key, label] of Object.entries(labels)) {
-            const tab = button(label, () => select(key), tabs);
+            const tab = button('', () => select(key), tabs);
+            tab.setAttribute('aria-label', label);
+            tab.append(icon({system: 'space_dashboard', service: 'settings_suggest', container: 'view_in_ar', process: 'memory'}[key]), el('span', label));
             tab.dataset.kind = key;
             tab.id = `${workspaceId}-${key}`;
             tab.setAttribute('role', 'tab');
@@ -247,7 +326,7 @@
             tab.addEventListener('keydown', event => {
                 const available = Array.from(tabs.children).filter(node => !node.disabled);
                 const index = available.indexOf(tab);
-                const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+                const offset = ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 0;
                 const next = event.key === 'Home' ? available[0] : event.key === 'End' ? available.at(-1)
                     : offset && available[(index + offset + available.length) % available.length];
                 if (!next || pending) return;
@@ -259,7 +338,7 @@
         search.addEventListener('input', drawWorkspace);
         filter.addEventListener('change', drawWorkspace);
         const onSnapshot = event => {
-            if (event.detail?.sessionId === sessionId && current() && !list.contains(document.activeElement)) drawWorkspace();
+            if (event.detail?.sessionId === sessionId && current() && !list.contains(document.activeElement) && !overview.contains(document.activeElement)) drawWorkspace();
         };
         window.addEventListener('server-management-snapshot', onSnapshot);
         const current = () => modal.isConnected && modal.classList.contains('show')
@@ -281,6 +360,7 @@
             window.removeEventListener('session-removed', invalidate);
             window.removeEventListener('server-management-snapshot', onSnapshot);
             document.removeEventListener('keydown', escape, true);
+            narrowLayout.removeEventListener('change', updateTabOrientation);
             window.ModalManager.close(modal);
             modal.remove();
             if (activeWorkspace === modal) activeWorkspace = null;
@@ -389,12 +469,13 @@
             const actions = kind === 'service' || kind === 'container'
                 ? ['start', 'stop', 'restart'] : kind === 'process' ? ['terminate'] : ['reboot'];
             for (const action of actions) {
-                button(t(`serverOps.${action}`, action), () => prepare(`${kind}.${action}`));
+                const actionButton = button(t(`serverOps.${action}`, action), () => prepare(`${kind}.${action}`));
+                actionButton.classList.add(['stop', 'terminate', 'reboot'].includes(action) ? 'server-management-danger' : 'server-management-action');
             }
         }
         function setPending(value) {
             pending = value;
-            for (const node of [...tabs.children, ...list.querySelectorAll('button')]) node.disabled = value;
+            for (const node of [...tabs.children, ...list.querySelectorAll('button'), ...overview.querySelectorAll('button')]) node.disabled = value;
         }
         async function read(action, target) {
             if (pending || !current()) return;
@@ -408,6 +489,7 @@
                     method: 'POST', body: {session_id: sessionId, action, target, use_sudo: sudo.checked}
                 });
                 if (!current() || generation !== revision) return;
+                outputTitle.textContent = t(action.endsWith('.logs') ? 'serverOps.logs' : 'serverOps.output', action.endsWith('.logs') ? 'Logs' : 'Output');
                 output.textContent = [result.output, result.error_output].filter(Boolean).join('\n');
                 output.hidden = false;
                 status.textContent = result.status === 'completed' ? t('serverOps.readComplete', 'Read complete.') : t('serverOps.failed', 'Operation failed.');
@@ -483,6 +565,7 @@
                             body: {intent: intent.intent, confirmation: confirmation?.value || ''}
                         });
                         if (!current() || revision !== generation) return;
+                        outputTitle.textContent = t('serverOps.output', 'Output');
                         output.textContent = [result.output, result.error_output].filter(Boolean).join('\n');
                         output.hidden = false;
                         const outcome = result.status === 'completed'

@@ -173,7 +173,11 @@ Readiness fails during maintenance, shutdown admission closure, database failure
 
 Open **Server management** in Diagnostics to browse the connected server's
 overview, services, containers and processes. Search the resource lists and
-select a resource to inspect its details, read logs or review an action.
+select a resource to inspect its details, read logs or review an action. The
+server header identifies the connected host and account. Overview resource
+shortcuts lead to the corresponding inventory; selecting a resource retains
+the current search and status filter. On desktop, navigation, inventory and
+details occupy distinct columns; narrow screens use a horizontal tab bar.
 The Diagnostics summary also opens each resource category directly. Resource
 history is open by default; technical tables remain collapsed. The expanded
 view uses the available width for metrics and resource navigation. Opening

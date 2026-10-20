@@ -1,6 +1,8 @@
 
 const translations = {
     en: {
+        'serverOps.sampledProcesses': "Sampled top CPU and memory processes",
+        'serverOps.output': "Output",
         'commandParameters.names': "Interactive parameter names (comma separated)",
         'commandParameters.hint': "Optional. Use argument steps only, with each {{name}} as a whole argument. Values are POSIX shell arguments. These sets require interactive launch and never run on connect.",
         'commandParameters.addStep': "Add argument step",
@@ -1744,6 +1746,8 @@ const translations = {
 
 
     vi: {
+        'serverOps.sampledProcesses': "Các tiến trình dùng CPU và bộ nhớ nhiều nhất được lấy mẫu",
+        'serverOps.output': "Kết quả",
         'commandParameters.names': "Tên tham số tương tác (phân cách bằng dấu phẩy)",
         'commandParameters.hint': "Tùy chọn. Chỉ dùng các bước đối số, mỗi {{name}} là một đối số đầy đủ. Giá trị là đối số shell POSIX. Các bộ lệnh này phải được khởi chạy tương tác và không bao giờ tự chạy khi kết nối.",
         'commandParameters.addStep': "Thêm bước đối số",
@@ -3486,6 +3490,8 @@ const translations = {
     },
 
     de: {
+        'serverOps.sampledProcesses': "Prozesse mit höchster CPU- und Speichernutzung",
+        'serverOps.output': "Ausgabe",
         'commandParameters.names': "Interaktive Parameternamen (durch Kommas getrennt)",
         'commandParameters.hint': "Optional. Nur Argumentschritte verwenden, mit jedem {{name}} als vollständigem Argument. Werte sind POSIX-Shell-Argumente. Diese Sets werden interaktiv gestartet und nie beim Verbinden ausgeführt.",
         'commandParameters.addStep': "Argumentschritt hinzufügen",
@@ -5227,6 +5233,8 @@ const translations = {
     },
 
     fr: {
+        'serverOps.sampledProcesses': "Processus échantillonnés utilisant le plus de CPU et de mémoire",
+        'serverOps.output': "Sortie",
         'commandParameters.names': "Noms des paramètres interactifs (séparés par des virgules)",
         'commandParameters.hint': "Facultatif. Utilisez uniquement des étapes d'arguments, chaque {{name}} constituant un argument entier. Les valeurs sont des arguments de shell POSIX. Ces ensembles nécessitent un lancement interactif et ne s'exécutent jamais à la connexion.",
         'commandParameters.addStep': "Ajouter une étape d'arguments",
@@ -6968,6 +6976,8 @@ const translations = {
     },
 
     es: {
+        'serverOps.sampledProcesses': "Muestra de procesos con mayor uso de CPU y memoria",
+        'serverOps.output': "Salida",
         'commandParameters.names': "Nombres de parámetros interactivos (separados por comas)",
         'commandParameters.hint': "Opcional. Use solo pasos de argumentos, con cada {{name}} como argumento completo. Los valores son argumentos del shell POSIX. Estos conjuntos requieren un inicio interactivo y nunca se ejecutan al conectar.",
         'commandParameters.addStep': "Añadir paso de argumentos",
@@ -8709,6 +8719,8 @@ const translations = {
     },
 
     zh: {
+        'serverOps.sampledProcesses': "采样中 CPU 和内存使用最高的进程",
+        'serverOps.output': "输出",
         'commandParameters.names': "交互式参数名称（用逗号分隔）",
         'commandParameters.hint': "可选。仅使用参数步骤，每个 {{name}} 必须是完整参数。值作为 POSIX Shell 参数处理。这些命令集必须交互式启动，连接时绝不会自动运行。",
         'commandParameters.addStep': "添加参数步骤",
