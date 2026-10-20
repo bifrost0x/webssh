@@ -11,6 +11,13 @@
         return node;
     };
     const manager = () => typeof SessionManager !== 'undefined' ? SessionManager : window.SessionManager;
+    const snapshots = new WeakMap();
+    let workspaceSequence = 0;
+    function updateSnapshot(sessionId, session, model) {
+        if (!session || manager()?.sessions?.[sessionId] !== session) return;
+        snapshots.set(session, model);
+        window.dispatchEvent(new CustomEvent('server-management-snapshot', {detail: {sessionId}}));
+    }
     async function api(path, options = {}) {
         const root = document.querySelector('meta[name="app-root"]')?.content || '';
         const response = await fetch(root + path, {
@@ -63,7 +70,7 @@
     function open(sessionId, kind, sourceTarget = {}) {
         const session = manager()?.sessions?.[sessionId];
         if (!session?.connected) return;
-        const modal = el('div', undefined, 'modal');
+        const modal = el('div', undefined, 'modal server-management');
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
         modal.setAttribute('aria-label', t('serverOps.title', 'Server management'));
@@ -74,10 +81,40 @@
         close.setAttribute('aria-label', t('serverOps.close', 'Close'));
         header.append(close);
         const body = el('div', undefined, 'modal-body');
-        const targetLabel = el('p', `${session.username || ''}@${session.host || ''}:${session.port || 22}`);
+        const targetLabel = el('p', `${session.username || ''}@${session.host || ''}:${session.port || 22}`, 'server-management-host');
+        const tabs = el('div', undefined, 'server-management-tabs');
+        tabs.setAttribute('role', 'tablist');
+        tabs.setAttribute('aria-label', t('serverOps.sections', 'Server sections'));
+        const workspace = el('section', undefined, 'server-management-workspace');
+        const workspaceId = `server-management-workspace-${++workspaceSequence}`;
+        workspace.id = workspaceId;
+        workspace.setAttribute('role', 'tabpanel');
+        const overview = el('div', undefined, 'server-management-overview');
+        const inventory = el('div', undefined, 'server-management-inventory');
+        const search = el('input', undefined, 'form-control');
+        search.type = 'search';
+        search.placeholder = t('serverOps.search', 'Search resources…');
+        search.setAttribute('aria-label', t('serverOps.search', 'Search resources…'));
+        const filter = el('select', undefined, 'form-control');
+        filter.setAttribute('aria-label', t('serverOps.statusFilter', 'Filter by status'));
+        for (const [value, label] of [['all', t('serverOps.all', 'All statuses')], ['running', t('serverOps.running', 'Running / active')], ['stopped', t('serverOps.stopped', 'Stopped / inactive')], ['failed', t('serverOps.failedState', 'Failed')]]) {
+            const option = el('option', label);
+            option.value = value;
+            filter.append(option);
+        }
+        const list = el('div', undefined, 'server-management-list');
+        const detail = el('section', undefined, 'server-management-detail');
+        const detailTitle = el('h3');
+        detailTitle.tabIndex = -1;
+        const detailHint = el('p', undefined, 'server-management-hint');
+        const facts = el('dl', undefined, 'server-management-facts');
+        const notice = el('p', undefined, 'server-management-notice');
+        inventory.append(search, filter, list);
+        workspace.append(overview, inventory, detail);
         const status = el('p', t('serverOps.loading', 'Loading…'));
         status.setAttribute('role', 'status');
         const output = el('pre', undefined, 'server-operation-output');
+        output.hidden = true;
         const sudoLabel = el('label', t('serverOps.sudo', 'Use non-interactive sudo (requires remote permission)'));
         const sudo = el('input');
         sudo.type = 'checkbox';
@@ -85,7 +122,8 @@
         const controls = el('div', undefined, 'form-actions');
         const review = el('section');
         const authentication = el('section');
-        body.append(targetLabel, sudoLabel, status, output, controls, review, authentication);
+        detail.append(detailTitle, detailHint, facts, sudoLabel, controls, status, output, review, authentication);
+        body.append(targetLabel, tabs, notice, workspace);
         content.append(header, body);
         modal.append(content);
         document.body.append(modal);
@@ -94,6 +132,120 @@
         let capabilities = null;
         let resolved = null;
         let answer = null;
+        let selected = kind !== 'system';
+        const labels = {
+            system: t('serverOps.overview', 'Overview'),
+            service: t('serverOps.services', 'Services'),
+            container: t('serverOps.containers', 'Containers'),
+            process: t('serverOps.processes', 'Processes')
+        };
+        function drawWorkspace() {
+            const model = snapshots.get(session);
+            for (const tab of tabs.children) {
+                const active = tab.dataset.kind === kind;
+                tab.setAttribute('aria-selected', String(active));
+                tab.tabIndex = active ? 0 : -1;
+                if (active) workspace.setAttribute('aria-labelledby', tab.id);
+            }
+            sudoLabel.hidden = kind === 'system' && !capabilities?.mutations_enabled;
+            overview.hidden = kind !== 'system';
+            inventory.hidden = kind === 'system';
+            filter.hidden = kind === 'process';
+            detailTitle.textContent = kind === 'system' ? t('serverOps.hostActions', 'Host actions')
+                : selected ? String(sourceTarget.unit || sourceTarget.name || sourceTarget.pid || '') : labels[kind];
+            detailHint.textContent = kind === 'process'
+                ? t('serverOps.processScope', 'Showing sampled top CPU and memory processes. Select a process to inspect its identity before control.')
+                : selected ? t('serverOps.targetDetail', 'Inspect the selected resource and review an action before executing it.')
+                    : kind === 'system' ? ''
+                        : t('serverOps.selectResource', 'Select a resource to view details and available actions.');
+            notice.textContent = [model?.status, model?.inventory?.stale ? t('serverOps.staleInventory', 'Inventory is out of date. Refresh before choosing a target.') : '',
+                ...(model?.permissionNotices || []), capabilities && !capabilities.mutations_enabled
+                    ? t('serverOps.disabled', 'Server mutations are disabled by the operator. Read-only inspection remains available.') : ''].filter(Boolean).join(' · ');
+            overview.replaceChildren();
+            const cards = el('div', undefined, 'server-management-cards');
+            for (const [key, label] of [['cpu', 'CPU'], ['memory', t('diagnostics.memory', 'Memory')], ['disk', t('diagnostics.rootDisk', 'Root disk')], ['load', t('diagnostics.normalizedLoad', 'Normalized load')]]) {
+                const value = model?.resources?.[key];
+                const card = el('article', undefined, 'server-management-card');
+                card.append(el('span', label), el('strong', value?.label || '—'), el('small', value?.detail || t('serverOps.noMeasurements', 'Waiting for measurements')));
+                cards.append(card);
+            }
+            overview.append(cards, el('p', [model?.os, model?.secondary?.uptime].filter(Boolean).join(' · ')));
+            const counts = el('div', undefined, 'server-management-counts');
+            for (const [label, value] of [[labels.service, model?.systemd?.total], [labels.container, model?.docker?.total],
+                [labels.process, model?.secondary?.processTotal], [t('serverOps.received', 'Received'), model?.secondary?.received],
+                [t('serverOps.transmitted', 'Transmitted'), model?.secondary?.transmitted]]) {
+                counts.append(el('span', `${label}: ${value ?? '—'}`));
+            }
+            overview.append(counts);
+            for (const finding of model?.findings || []) overview.append(el('p', finding.text, 'server-management-hint'));
+            list.replaceChildren();
+            let rows = kind === 'service' ? model?.systemd?.rows : kind === 'container' ? model?.docker?.rows
+                : [...(model?.processes?.topCpu || []), ...(model?.processes?.topMemory || [])].filter((row, index, all) => all.findIndex(other => other.pid === row.pid) === index);
+            rows = rows || [];
+            const query = search.value.trim().toLowerCase();
+            for (const row of rows.filter(row => {
+                const state = String(row.active || row.status || '').toLowerCase();
+                const running = state === 'active' || state.startsWith('up') || state === 'running';
+                return Object.values(row).join(' ').toLowerCase().includes(query)
+                    && (kind === 'process' || filter.value === 'all' || filter.value === 'running' && running
+                        || filter.value === 'failed' && state === 'failed' || filter.value === 'stopped' && !running && state !== 'failed');
+            })) {
+                const name = row.unit || row.name || `${row.pid} · ${row.command}`;
+                const rowButton = button('', () => select(kind, row.unit ? {unit: row.unit} : row.name ? {name: row.name} : {pid: row.pid}), list);
+                rowButton.className = 'server-management-row';
+                rowButton.append(el('strong', name), el('span', row.active || row.status || row.user, 'server-management-badge'),
+                    el('small', row.description || (row.pid ? row.label || `${row.percent ?? '—'}%` : '')));
+                rowButton.setAttribute('aria-pressed', String(selected && (sourceTarget.unit === row.unit && !!row.unit || sourceTarget.name === row.name && !!row.name || sourceTarget.pid === row.pid && !!row.pid)));
+            }
+            if (!list.children.length) list.append(el('p', rows.length ? t('serverOps.noMatches', 'No matching resources.')
+                : t('serverOps.noInventory', 'No inventory available. The remote tool may be unsupported, access may be restricted, or sampling is still in progress.')));
+            const truncation = kind === 'service' ? model?.systemd?.truncationLabel : model?.docker?.truncationLabel;
+            if (truncation) list.append(el('p', truncation));
+            for (const node of list.querySelectorAll('button')) node.disabled = pending;
+        }
+        function select(nextKind, target) {
+            if (pending || !current()) return;
+            generation++;
+            if (answer) { answer(null); answer = null; authentication.replaceChildren(); }
+            kind = nextKind;
+            sourceTarget = target || {};
+            selected = !!target;
+            resolved = null;
+            search.value = '';
+            filter.value = 'all';
+            facts.replaceChildren();
+            review.replaceChildren();
+            output.textContent = '';
+            output.hidden = true;
+            status.textContent = '';
+            drawWorkspace();
+            if (target) detailTitle.focus();
+            load();
+        }
+        for (const [key, label] of Object.entries(labels)) {
+            const tab = button(label, () => select(key), tabs);
+            tab.dataset.kind = key;
+            tab.id = `${workspaceId}-${key}`;
+            tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-controls', workspaceId);
+            tab.addEventListener('keydown', event => {
+                const available = Array.from(tabs.children).filter(node => !node.disabled);
+                const index = available.indexOf(tab);
+                const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+                const next = event.key === 'Home' ? available[0] : event.key === 'End' ? available.at(-1)
+                    : offset && available[(index + offset + available.length) % available.length];
+                if (!next || pending) return;
+                event.preventDefault();
+                next.click();
+                next.focus();
+            });
+        }
+        search.addEventListener('input', drawWorkspace);
+        filter.addEventListener('change', drawWorkspace);
+        const onSnapshot = event => {
+            if (event.detail?.sessionId === sessionId && current() && !list.contains(document.activeElement)) drawWorkspace();
+        };
+        window.addEventListener('server-management-snapshot', onSnapshot);
         const current = () => modal.isConnected && modal.classList.contains('show')
             && manager()?.sessions?.[sessionId] === session
             && session.connected && manager()?.activeSessionId === sessionId;
@@ -111,6 +263,7 @@
             if (answer) answer(null);
             window.removeEventListener('session-workspace-change', invalidate);
             window.removeEventListener('session-removed', invalidate);
+            window.removeEventListener('server-management-snapshot', onSnapshot);
             document.removeEventListener('keydown', escape, true);
             window.ModalManager.close(modal);
             modal.remove();
@@ -202,6 +355,7 @@
         function renderActions() {
             controls.replaceChildren();
             button(t('serverOps.refresh', 'Refresh'), load);
+            if (kind !== 'system' && !selected) return;
             if (kind === 'container' && resolved?.id) {
                 button(t('serverOps.logs', 'Logs'), () => read('container.logs', {container: resolved.id}));
             }
@@ -220,9 +374,13 @@
                 button(t(`serverOps.${action}`, action), () => prepare(`${kind}.${action}`));
             }
         }
+        function setPending(value) {
+            pending = value;
+            for (const node of [...tabs.children, ...list.querySelectorAll('button')]) node.disabled = value;
+        }
         async function read(action, target) {
             if (pending || !current()) return;
-            pending = true;
+            setPending(true);
             sudo.disabled = true;
             const revision = ++generation;
             review.replaceChildren();
@@ -233,20 +391,38 @@
                 });
                 if (!current() || generation !== revision) return;
                 output.textContent = [result.output, result.error_output].filter(Boolean).join('\n');
+                output.hidden = false;
                 status.textContent = result.status === 'completed' ? t('serverOps.readComplete', 'Read complete.') : t('serverOps.failed', 'Operation failed.');
                 if (action === 'container.inspect' || action === 'process.inspect') {
                     resolved = result.status === 'completed' ? JSON.parse(result.output) : null;
+                    if (resolved) {
+                        output.hidden = true;
+                        facts.replaceChildren();
+                        const fields = {name: t('serverOps.name', 'Name'), id: t('serverOps.identity', 'Immutable ID'),
+                            state: t('serverOps.state', 'State'), image: t('serverOps.image', 'Image'),
+                            pid: 'PID', command: t('serverOps.command', 'Command'), start_time: t('serverOps.startTime', 'Process start identity')};
+                        for (const [key, label] of Object.entries(fields)) {
+                            if (resolved[key] !== undefined) facts.append(el('dt', label), el('dd', String(resolved[key])));
+                        }
+                    }
                 }
             } catch (error) {
                 if (current() && generation === revision) status.textContent = error.message;
             } finally {
-                pending = false;
+                setPending(false);
                 sudo.disabled = !current();
                 if (current() && generation === revision) renderActions();
             }
         }
         async function load() {
             resolved = null;
+            if (kind === 'system' || !selected) {
+                window.dispatchEvent(new CustomEvent('server-operation-completed', {detail: {sessionId}}));
+                drawWorkspace();
+                status.textContent = '';
+                renderActions();
+                return;
+            }
             const action = kind === 'service' ? 'service.logs' : `${kind}.inspect`;
             await read(action, sourceTarget);
         }
@@ -254,7 +430,7 @@
             if (pending || !current()) return;
             const target = writeTarget();
             if (!target) return;
-            pending = true;
+            setPending(true);
             sudo.disabled = true;
             const revision = ++generation;
             review.replaceChildren();
@@ -275,7 +451,7 @@
                 }
                 const commit = button(t('serverOps.execute', 'Confirm and execute'), async () => {
                     if (pending || !current() || revision !== generation) return;
-                    pending = true;
+                    setPending(true);
                     commit.disabled = true;
                     sudo.disabled = true;
                     let dispatched = false;
@@ -290,6 +466,7 @@
                         });
                         if (!current() || revision !== generation) return;
                         output.textContent = [result.output, result.error_output].filter(Boolean).join('\n');
+                        output.hidden = false;
                         const outcome = result.status === 'completed'
                             ? t('serverOps.completed', 'The command completed. Refresh the observed server state.')
                             : result.status === 'requested'
@@ -302,7 +479,7 @@
                             ? t('serverOps.unknown', 'The outcome is unknown. Inspect the server before trying another action; do not retry automatically.')
                             : error.message;
                     } finally {
-                        pending = false;
+                        setPending(false);
                         review.replaceChildren();
                         sudo.disabled = !current();
                         // Intent and grant are never retried after execution or uncertainty.
@@ -321,7 +498,7 @@
                 }, review);
             } catch (error) {
                 if (current() && revision === generation) status.textContent = error.message;
-            } finally { pending = false; sudo.disabled = !current(); }
+            } finally { setPending(false); sudo.disabled = !current(); }
         }
         sudo.addEventListener('change', () => {
             generation++;
@@ -331,14 +508,13 @@
             if (!pending) load();
         });
         window.ModalManager.open(modal);
+        drawWorkspace();
         api(`/api/server-operations/${encodeURIComponent(sessionId)}`).then(result => {
             if (!current()) { invalidate(); return; }
             capabilities = result;
-            if (!result.mutations_enabled) {
-                body.insertBefore(el('p', t('serverOps.disabled', 'Server mutations are disabled by the operator. Read-only inspection remains available.')), controls);
-            }
+            drawWorkspace();
             return load();
         }).catch(error => { if (modal.isConnected) status.textContent = error.message; });
     }
-    window.ServerOperations = Object.freeze({open});
+    window.ServerOperations = Object.freeze({open, updateSnapshot});
 })();

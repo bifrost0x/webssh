@@ -772,6 +772,8 @@
         function drawCharts() {
             if (!latestModel || !chartModule) return;
             const model = latestModel;
+            windowRef?.ServerOperations?.updateSnapshot?.(latestState.sessionId, latestSession,
+                buildViewModel(latestState, latestSession, latestInventoryState, {}, translate));
             if (!elements.pressureSection.hidden) {
                 chartModule.drawLineChart(
                     elements.pressureChart,

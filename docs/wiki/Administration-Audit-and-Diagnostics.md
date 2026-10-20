@@ -171,10 +171,13 @@ Readiness fails during maintenance, shutdown admission closure, database failure
 
 ## Managing a connected SSH server
 
-Open **Server management** in Diagnostics for system information or a reviewed
-reboot request. **Inspect / manage** beside a service, container or process
-opens its scoped controls. Inspection uses separate SSH exec channels and does
-not insert commands into the interactive terminal.
+Open **Server management** in Diagnostics to browse the connected server's
+overview, services, containers and processes. Search the resource lists and
+select a resource to inspect its details, read logs or review an action.
+**Inspect / manage** beside a diagnostic row opens that resource directly.
+The overview uses the existing session measurements and inventory; it does not
+start a second background monitor. Inspection uses separate SSH exec channels
+and does not insert commands into the interactive terminal.
 
 Read-only views include the last 100 journal/container log lines, selected
 container metadata, process identity and system resource information. Commands

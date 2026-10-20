@@ -31,6 +31,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/server-operations.css') }}">
 </head>
 <body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
@@ -382,7 +383,7 @@
                     <button class="session-diagnostics-expand" id="sessionDiagnosticsExpand" type="button" aria-label="Expand diagnostics" title="Expand diagnostics" aria-pressed="false" data-i18n-aria-label="diagnostics.expand" data-i18n-title="diagnostics.expand">
                         <span class="material-icons" aria-hidden="true">open_in_full</span>
                     </button>
-                    <button class="btn btn-secondary" id="sessionServerManagement" type="button" data-i18n="serverOps.title">Server management</button>
+                    <button class="btn btn-secondary" id="sessionServerManagement" type="button" aria-label="Server management" title="Server management" data-i18n-aria-label="serverOps.title" data-i18n-title="serverOps.title"><span class="material-icons" aria-hidden="true">dns</span></button>
                     <button class="session-diagnostics-refresh" id="sessionDiagnosticsRefresh" type="button" aria-label="Refresh runtime inventory" title="Refresh runtime inventory" data-i18n-aria-label="diagnostics.refreshInventory" data-i18n-title="diagnostics.refreshInventory">
                         <span class="material-icons" aria-hidden="true">refresh</span>
                         <span data-i18n="admin.refresh">Refresh</span>
