@@ -120,16 +120,22 @@
             <button class="context-workspace-launcher" id="contextWorkspaceLauncher" type="button" aria-expanded="false" aria-controls="contextWorkspace" aria-label="Open session tools" title="Open session tools" data-i18n-aria-label="workspace.openTools" data-i18n-title="workspace.openTools"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="workspace.tools">Tools</span></button>
             <div class="tab-row-actions">
                 <button class="tab-row-icon-btn" id="terminalAppearanceBtn" type="button" data-open-terminal-appearance title="Terminal appearance" aria-label="Terminal appearance" data-i18n-title="terminalAppearance.title" data-i18n-aria-label="terminalAppearance.title"><span class="material-icons" aria-hidden="true">palette</span></button>
-                <div class="split-controls" aria-label="Split layout" data-i18n-aria-label="panes.layout">
-                    <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single">1</button>
-                    <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane" data-i18n-title="panes.split" data-i18n-aria-label="panes.split">2</button>
-                    <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane" data-i18n-title="panes.quad" data-i18n-aria-label="panes.quad">4</button>
-                    <button class="split-btn split-btn-windows" data-layout="windows" title="Floating windows" aria-label="Floating windows" data-i18n-title="windows.mode" data-i18n-aria-label="windows.mode"><span class="material-icons" aria-hidden="true">filter_none</span></button>
-                </div>
-                <div id="windowArrangeControls" class="window-arrange-controls" hidden>
-                    <button type="button" class="tab-row-icon-btn" data-window-arrange="tile" title="Tile windows" aria-label="Tile windows" data-i18n-title="windows.tile" data-i18n-aria-label="windows.tile"><span class="material-icons" aria-hidden="true">grid_view</span></button>
-                    <button type="button" class="tab-row-icon-btn" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><span class="material-icons" aria-hidden="true">filter_none</span></button>
-                </div>
+                <details class="workspace-layout-picker" id="workspaceLayoutPicker">
+                    <summary><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="panes.layout">Layout</span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
+                    <div class="workspace-layout-options">
+                        <div class="split-controls" aria-label="Split layout" data-i18n-aria-label="panes.layout">
+                            <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single"><span class="material-icons" aria-hidden="true">crop_square</span><span data-i18n="panes.single">Single pane</span></button>
+                            <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane" data-i18n-title="panes.split" data-i18n-aria-label="panes.split"><span class="material-icons" aria-hidden="true">view_column</span><span data-i18n="panes.split">Split pane</span></button>
+                            <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane" data-i18n-title="panes.quad" data-i18n-aria-label="panes.quad"><span class="material-icons" aria-hidden="true">grid_view</span><span data-i18n="panes.quad">Quad pane</span></button>
+                            <button class="split-btn split-btn-windows" data-layout="windows" title="Floating windows" aria-label="Floating windows" data-i18n-title="windows.mode" data-i18n-aria-label="windows.mode"><span class="material-icons" aria-hidden="true">filter_none</span><span data-i18n="windows.mode">Floating windows</span></button>
+                        </div>
+                        <div id="windowArrangeControls" class="window-arrange-controls" hidden>
+                            <button type="button" class="tab-row-icon-btn" data-window-arrange="tile" title="Tile windows" aria-label="Tile windows" data-i18n-title="windows.tile" data-i18n-aria-label="windows.tile"><span class="material-icons" aria-hidden="true">grid_view</span><span data-i18n="windows.tile">Tile windows</span></button>
+                            <button type="button" class="tab-row-icon-btn" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><span class="material-icons" aria-hidden="true">filter_none</span><span data-i18n="windows.cascade">Cascade windows</span></button>
+                            <p class="workspace-layout-hint" data-i18n="windows.snapHint">Drag a title bar to an edge to snap; to a corner for a quarter.</p>
+                        </div>
+                    </div>
+                </details>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>

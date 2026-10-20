@@ -17,7 +17,7 @@
     const MIN_CONTEXT_WIDTH = 320;
     const MAX_CONTEXT_WIDTH = 720;
     const MIN_TERMINAL_WIDTH = 480;
-    const AUTO_CONTEXT_WIDTH_RATIO = 0.32;
+    const AUTO_CONTEXT_WIDTH_RATIO = 0.25;
     const LAYOUT_CLASSES = ['layout-desktop', 'layout-tablet', 'layout-mobile'];
 
     function breakpointForWidth(width) {
@@ -54,7 +54,7 @@
         const numericViewport = Number(viewportWidth);
         const usableWidth = Number.isFinite(numericViewport) ? numericViewport : 1280;
         return clampContextWidth(
-            Math.max(DEFAULT_CONTEXT_WIDTH, usableWidth * AUTO_CONTEXT_WIDTH_RATIO),
+            Math.min(440, Math.max(360, usableWidth * AUTO_CONTEXT_WIDTH_RATIO)),
             usableWidth,
         );
     }

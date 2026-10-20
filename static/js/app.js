@@ -2449,8 +2449,21 @@
     }
 
     function setupSplitControls() {
+        const picker = document.getElementById('workspaceLayoutPicker');
+        const closePicker = () => { if (picker) picker.open = false; };
+        document.addEventListener('click', event => {
+            if (picker?.open && !picker.contains(event.target)) closePicker();
+        });
+        picker?.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closePicker();
+                picker.querySelector('summary')?.focus();
+                event.stopPropagation();
+            }
+        });
         document.querySelectorAll('.split-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                closePicker();
                 if (btn.dataset.layout === 'windows') {
                     SessionManager.setWindowMode(true);
                     return;
@@ -2473,6 +2486,7 @@
         document.querySelectorAll('[data-window-arrange]').forEach(btn => {
             btn.addEventListener('click', () => {
                 SessionManager.arrangeWindows(btn.dataset.windowArrange);
+                closePicker();
             });
         });
     }

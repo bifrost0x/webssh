@@ -15,7 +15,7 @@
     const MIN_WIDTH = 320;
     const MIN_HEIGHT = 180;
     const TITLE_HEIGHT = 36;
-    const SNAP_THRESHOLD = 14;
+    const SNAP_THRESHOLD = 28;
     const CASCADE_STEP = 30;
     const GAP = 8;
     const TERMINAL_ASPECT = 1.6;

@@ -1437,19 +1437,19 @@ test('automatic context width follows live desktop resizes without a reload', as
     const contextWidth = () => page.locator('#contextWorkspace').evaluate(
         element => Math.round(element.getBoundingClientRect().width),
     );
-    await expect.poll(contextWidth).toBe(420);
+    await expect.poll(contextWidth).toBe(360);
     await expect.poll(() => page.evaluate(
         () => window.workspaceLayoutController?.getContextWidthMode(),
     )).toBe('auto');
 
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await expect.poll(contextWidth).toBe(614);
+    await expect.poll(contextWidth).toBe(440);
 
     await page.setViewportSize({ width: 3440, height: 1440 });
-    await expect.poll(contextWidth).toBe(720);
+    await expect.poll(contextWidth).toBe(440);
 
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect.poll(contextWidth).toBe(420);
+    await expect.poll(contextWidth).toBe(360);
     await assertNoExternalRequests(page);
 });
 

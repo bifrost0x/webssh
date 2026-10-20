@@ -1,6 +1,7 @@
 
 const translations = {
     en: {
+        'windows.snapHint': "Drag a title bar to an edge to snap; to a corner for a quarter.",
         'serverOps.sampledProcesses': "Browse all visible processes",
         'serverOps.output': "Output",
         'commandParameters.names': "Interactive parameter names (comma separated)",
@@ -331,7 +332,7 @@ const translations = {
         'transfer.reviewDestination': "Check the destination before starting the transfer again.",
         'transfer.reconnectHint': "Reconnect the source and try again.",
         'commands.resources': "Command resources",
-        'panes.layout': "Split layout",
+        'panes.layout': "Layout",
         'windows.mode': "Floating windows",
         'windows.arrange': "Arrange windows",
         'windows.tile': "Tile windows",
@@ -1746,6 +1747,7 @@ const translations = {
 
 
     vi: {
+        'windows.snapHint': "Kéo thanh tiêu đề đến cạnh để căn cửa sổ; đến góc để chia tư.",
         'serverOps.sampledProcesses': "Xem tất cả tiến trình có thể xem",
         'serverOps.output': "Kết quả",
         'commandParameters.names': "Tên tham số tương tác (phân cách bằng dấu phẩy)",
@@ -2076,7 +2078,7 @@ const translations = {
         'transfer.reviewDestination': "Kiểm tra đích trước khi bắt đầu truyền lại.",
         'transfer.reconnectHint': "Kết nối lại nguồn rồi thử lại.",
         'commands.resources': "Tài nguyên lệnh",
-        'panes.layout': "Bố cục chia khung",
+        'panes.layout': "Bố cục",
         'windows.mode': "Cửa sổ nổi",
         'windows.arrange': "Sắp xếp cửa sổ",
         'windows.tile': "Xếp lát cửa sổ",
@@ -3490,6 +3492,7 @@ const translations = {
     },
 
     de: {
+        'windows.snapHint': "Titelleiste an den Rand ziehen zum Einrasten; in eine Ecke für ein Viertel.",
         'serverOps.sampledProcesses': "Alle sichtbaren Prozesse durchsuchen",
         'serverOps.output': "Ausgabe",
         'commandParameters.names': "Interaktive Parameternamen (durch Kommas getrennt)",
@@ -3820,7 +3823,7 @@ const translations = {
         'transfer.reviewDestination': "Prüfe das Ziel, bevor du die Übertragung erneut startest.",
         'transfer.reconnectHint': "Verbinde die Quelle erneut und versuche es noch einmal.",
         'commands.resources': "Befehlsressourcen",
-        'panes.layout': "Bereichsaufteilung",
+        'panes.layout': "Layout",
         'windows.mode': "Schwebende Fenster",
         'windows.arrange': "Fenster anordnen",
         'windows.tile': "Fenster nebeneinander",
@@ -5233,6 +5236,7 @@ const translations = {
     },
 
     fr: {
+        'windows.snapHint': "Glissez la barre de titre vers un bord pour aligner, vers un coin pour un quart.",
         'serverOps.sampledProcesses': "Parcourir tous les processus visibles",
         'serverOps.output': "Sortie",
         'commandParameters.names': "Noms des paramètres interactifs (séparés par des virgules)",
@@ -5563,7 +5567,7 @@ const translations = {
         'transfer.reviewDestination': "Vérifiez la destination avant de relancer le transfert.",
         'transfer.reconnectHint': "Reconnectez la source et réessayez.",
         'commands.resources': "Ressources de commandes",
-        'panes.layout': "Disposition des panneaux",
+        'panes.layout': "Disposition",
         'windows.mode': "Fenêtres flottantes",
         'windows.arrange': "Organiser les fenêtres",
         'windows.tile': "Fenêtres en mosaïque",
@@ -6976,6 +6980,7 @@ const translations = {
     },
 
     es: {
+        'windows.snapHint': "Arrastre la barra de título a un borde para ajustar; a una esquina para un cuarto.",
         'serverOps.sampledProcesses': "Ver todos los procesos visibles",
         'serverOps.output': "Salida",
         'commandParameters.names': "Nombres de parámetros interactivos (separados por comas)",
@@ -7306,7 +7311,7 @@ const translations = {
         'transfer.reviewDestination': "Comprueba el destino antes de volver a iniciar la transferencia.",
         'transfer.reconnectHint': "Vuelve a conectar el origen e inténtalo de nuevo.",
         'commands.resources': "Recursos de comandos",
-        'panes.layout': "Distribución de paneles",
+        'panes.layout': "Distribución",
         'windows.mode': "Ventanas flotantes",
         'windows.arrange': "Organizar ventanas",
         'windows.tile': "Ventanas en mosaico",
@@ -8719,6 +8724,7 @@ const translations = {
     },
 
     zh: {
+        'windows.snapHint': "将标题栏拖到边缘以吸附，拖到角落以占据四分之一。",
         'serverOps.sampledProcesses': "浏览所有可见进程",
         'serverOps.output': "输出",
         'commandParameters.names': "交互式参数名称（用逗号分隔）",
@@ -9049,7 +9055,7 @@ const translations = {
         'transfer.reviewDestination': "重新开始传输前，请检查目标位置。",
         'transfer.reconnectHint': "请重新连接源端后重试。",
         'commands.resources': "命令资源",
-        'panes.layout': "分屏布局",
+        'panes.layout': "布局",
         'windows.mode': "浮动窗口",
         'windows.arrange': "排列窗口",
         'windows.tile': "平铺窗口",

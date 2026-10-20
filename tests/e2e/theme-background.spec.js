@@ -36,6 +36,7 @@ test('custom backgrounds persist per theme and account in this browser, never on
     await page.locator('#overviewListBtn').click();
     await expect(page.locator('.overview-heading')).toHaveCSS('background-image', /data:image\/jpeg;base64,/);
     await page.locator('#workspaceNavBtn').click();
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('.split-btn[data-layout="windows"]').click();
     await expect(page.locator('#terminalGrid')).toHaveCSS('background-image', /data:image\/jpeg;base64,/);
     await page.screenshot({path: test.info().outputPath('custom-background.png')});
