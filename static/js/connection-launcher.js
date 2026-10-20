@@ -68,7 +68,7 @@
                         deps.openReview(profileId, targetPane, 'review');
                         return 'review';
                     }
-                    return deps.startConnection(connectionData, targetPane)
+                    return deps.startConnection({...connectionData, profile_id: profile.id}, targetPane)
                         ? 'connect'
                         : 'rejected';
                 }

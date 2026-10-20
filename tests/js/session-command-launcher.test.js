@@ -38,6 +38,55 @@ const commandSets = [
     },
 ];
 
+test('parameter previews bind exact session and set snapshot before deliberate insertion', async () => {
+    let session = { connected: true, name: 'Target A' };
+    let active = 'a';
+    let sets = [{ id: 'parameter-set', name: 'Path', parameters: [{ name: 'path' }], steps: [{ type: 'argv', argv: ['ls', '--', '{{path}}'] }] }];
+    const sent = [];
+    const controller = launcher.createSessionCommandController({
+        getSession: () => session,
+        getActiveSession: () => active,
+        getCommandSets: () => sets,
+        resolveParameters: async () => ({ success: true, resolved_command: "'ls' -- 'a b'" }),
+        emitInput: (id, data) => sent.push([id, data]),
+    });
+    assert.equal((await controller.insert('a', 'set', 'parameter-set')).ok, false);
+    const first = await controller.preview('a', 'parameter-set', { path: 'a b' });
+    assert.equal(first.ok, true);
+    assert.deepEqual(sent, []);
+    active = 'b';
+    assert.equal((await controller.insert('a', 'set', 'parameter-set', { preview: first.preview })).ok, false);
+    active = 'a';
+    session = { connected: true, name: 'Replacement transport' };
+    assert.equal((await controller.insert('a', 'set', 'parameter-set', { preview: first.preview })).ok, false);
+    const second = await controller.preview('a', 'parameter-set', { path: 'a b' });
+    sets = [{ ...sets[0], name: 'Changed set' }];
+    assert.equal((await controller.insert('a', 'set', 'parameter-set', { preview: second.preview })).ok, false);
+    const reconnected = await controller.preview('a', 'parameter-set', { path: 'a b' });
+    controller.invalidatePreviews();
+    assert.equal((await controller.insert('a', 'set', 'parameter-set', { preview: reconnected.preview })).ok, false);
+    const third = await controller.preview('a', 'parameter-set', { path: 'a b' });
+    assert.equal((await controller.insert('a', 'set', 'parameter-set', { preview: third.preview })).ok, true);
+    assert.deepEqual(sent, [['a', "'ls' -- 'a b'"]]);
+    assert.equal((await controller.insert('a', 'set', 'parameter-set', { preview: third.preview })).ok, false);
+});
+
+test('late parameter previews cannot follow a changed target', async () => {
+    const session = { connected: true };
+    let active = 'a';
+    let finish;
+    const controller = launcher.createSessionCommandController({
+        getSession: () => session,
+        getActiveSession: () => active,
+        getCommandSets: () => [{ id: 'p', parameters: [{ name: 'x' }] }],
+        resolveParameters: () => new Promise(resolve => { finish = resolve; }),
+    });
+    const pending = controller.preview('a', 'p', { x: 'v' });
+    active = 'b';
+    finish({ success: true, resolved_command: 'echo v' });
+    assert.equal((await pending).ok, false);
+});
+
 test('builds one searchable model with command sets before commands', async () => {
     const all = launcher.buildLauncherEntries(commands, commandSets, 'status');
 

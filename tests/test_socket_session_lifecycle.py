@@ -730,3 +730,76 @@ def test_admin_status_retains_ssh_session_after_browser_disconnect_and_restore(a
         assert session_event['buffered_output'] == 'preserved output'
     finally:
         restored.disconnect()
+
+def test_ssh_host_key_prompt_binds_request_and_socket(app, monkeypatch):
+    socket_client, _ = _authenticated_socket(app, 'host_key_prompt_user')
+    other, _ = _authenticated_socket(app, 'host_key_other_user')
+    decisions = []
+    def fake_create(**kwargs):
+        decisions.append(kwargs['host_key_decision']({
+            'host': 'example.com', 'port': 22, 'key_type': 'ssh-ed25519',
+            'fingerprint': 'SHA256:test', 'context': 'target',
+        }))
+        return None, 'Connection cancelled'
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', fake_create)
+    try:
+        socket_client.emit('ssh_connect', {
+            'host': 'example.com', 'port': 22, 'username': 'alice',
+            'password': 'secret', 'client_request_id': 'trust-request',
+        })
+        events = _collect_until(socket_client, 'ssh_host_key')
+        prompts = [e['args'][0] for e in events if e['name'] == 'ssh_host_key']
+        assert prompts, events
+        answer = dict(prompt_id=prompts[0]['prompt_id'], accepted=True,
+                      client_request_id='trust-request')
+        assert other.emit('ssh_host_key_decision', answer, callback=True) == {'success': False}
+        assert socket_client.emit('ssh_host_key_decision', dict(answer, client_request_id='wrong'), callback=True) == {'success': False}
+        assert socket_client.emit('ssh_host_key_decision', dict(answer, accepted=False), callback=True) == {'success': True}
+        _collect_until(socket_client, 'ssh_error')
+        assert decisions == [False]
+    finally:
+        socket_client.disconnect()
+        other.disconnect()
+
+@pytest.mark.parametrize('outcome', ['timeout', 'cancel', 'disconnect', 'runtime'])
+def test_host_key_prompt_fails_closed_without_acceptance(app, monkeypatch, outcome):
+    from app import socket_events
+    socket_client, _ = _authenticated_socket(app, 'trust_' + outcome)
+    decisions = []
+    runtime_events = []
+    def fake_create(**kwargs):
+        runtime_events.append(kwargs['cancel_event']._lifecycle_cancel_event)
+        decisions.append(kwargs['host_key_decision']({
+            'host': 'example.com', 'port': 22, 'key_type': 'ssh-ed25519',
+            'fingerprint': 'SHA256:test', 'context': 'jump_host',
+        }))
+        return None, 'Connection cancelled'
+    monkeypatch.setattr(ssh_manager, 'create_ssh_connection', fake_create)
+    monkeypatch.setattr(socket_events, 'SSH_AUTH_BANNER_DECISION_TIMEOUT', .3)
+    try:
+        socket_client.emit('ssh_connect', {
+            'host': 'example.com', 'port': 22, 'username': 'alice',
+            'password': 'secret', 'client_request_id': 'trust-request',
+        })
+        events = _collect_until(socket_client, 'ssh_host_key')
+        assert any(e['name'] == 'ssh_host_key' for e in events)
+        if outcome == 'cancel':
+            socket_client.emit('ssh_connect_cancel', {'client_request_id': 'trust-request'})
+        elif outcome == 'disconnect':
+            socket_client.disconnect()
+        elif outcome == 'runtime':
+            runtime_events[0].set()
+            prompt = next(e['args'][0] for e in events if e['name'] == 'ssh_host_key')
+            socket_client.emit('ssh_host_key_decision', {
+                'prompt_id': prompt['prompt_id'], 'client_request_id': 'trust-request',
+                'accepted': True,
+            })
+        deadline = time.monotonic() + 2
+        while not decisions and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert decisions == [False]
+        with socket_events._ssh_banner_prompts_lock:
+            assert not any(p.get('kind') == 'host_key' for p in socket_events._ssh_banner_prompts.values())
+    finally:
+        if socket_client.is_connected():
+            socket_client.disconnect()

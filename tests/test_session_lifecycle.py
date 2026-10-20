@@ -509,7 +509,8 @@ def test_close_session_quotes_tmux_target_and_sets_timeout_first(monkeypatch):
     assert transport.open_timeout == 2.0
     assert kill_channel.command == (
         "tmux kill-session -t 'name; touch /tmp/marker'")
-    assert kill_channel.events[0] == ('settimeout', 2.0)
+    assert kill_channel.events[0][0] == 'settimeout'
+    assert 0 < kill_channel.events[0][1] <= 2.0
     assert kill_channel.events[1][0] == 'exec_command'
     assert kill_channel.closed is True
 

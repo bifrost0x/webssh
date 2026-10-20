@@ -466,6 +466,13 @@
         let latestSession = null;
         let latestInventoryState = {};
         let latestModel = null;
+        const managementTrigger = byId('sessionServerManagement');
+        managementTrigger?.addEventListener('click', () => {
+            windowRef?.ServerOperations?.open(latestState.sessionId, 'system');
+        });
+        windowRef?.addEventListener?.('server-operation-completed', event => {
+            if (event.detail?.sessionId === latestState.sessionId) elements.refresh?.click();
+        });
         let redrawFrame = null;
         let selectedView = 'processes';
         const viewButtons = Array.from(elements.overlay.querySelectorAll?.('[data-diagnostics-view]') || []);
@@ -568,9 +575,12 @@
             container.replaceChildren();
             rows.forEach(row => {
                 const tr = documentRef.createElement('tr');
-                [row.command, row.user, row.pid].forEach(value => {
+                [row.command, row.user, row.pid].forEach((value, index) => {
                     const cell = documentRef.createElement('td');
                     cell.textContent = value;
+                    if (index === 0 && windowRef?.ServerOperations) {
+                        cell.appendChild(manageButton('process', {pid: Number(row.pid)}));
+                    }
                     tr.appendChild(cell);
                 });
                 const percentCell = documentRef.createElement('td');
@@ -598,6 +608,18 @@
             td.textContent = message;
             tr.appendChild(td);
             container.appendChild(tr);
+        }
+
+        function manageButton(kind, target) {
+            const button = documentRef.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-secondary';
+            button.textContent = t('serverOps.manage', 'Inspect / manage');
+            const sessionId = latestState.sessionId;
+            button.addEventListener('click', () => {
+                if (latestState.sessionId === sessionId) windowRef?.ServerOperations?.open(sessionId, kind, target);
+            });
+            return button;
         }
 
         function copyActionButton(action, service) {
@@ -695,6 +717,7 @@
                 description.textContent = service.description;
                 buttons.className = 'session-service-actions';
                 ['start', 'stop', 'restart'].forEach(action => buttons.appendChild(copyActionButton(action, service)));
+                if (windowRef?.ServerOperations) buttons.appendChild(manageButton('service', {unit: service.unit}));
                 actions.appendChild(buttons);
                 tr.append(unit, load, state, description, actions);
                 elements.systemdServices.appendChild(tr);
@@ -732,6 +755,7 @@
                 const name = documentRef.createElement('td');
                 const status = documentRef.createElement('td');
                 name.textContent = container.name;
+                if (windowRef?.ServerOperations) name.appendChild(manageButton('container', {name: container.name}));
                 status.textContent = container.status;
                 tr.append(name, status);
                 elements.dockerContainers.appendChild(tr);

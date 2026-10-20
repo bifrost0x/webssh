@@ -1545,3 +1545,17 @@ body.session-diagnostics-open {
     align-self: center;
     flex: 0 0 auto;
 }
+
+/* Private saved-host context. */
+.host-context-modal .modal-content { width: min(720px, calc(100vw - 24px)); }
+.host-context-modal .modal-body { display: grid; gap: 12px; overflow-y: auto; }
+.host-context-modal #hostContextFields { display: grid; gap: 10px; min-width: 0; }
+.host-context-modal #hostContextFields[hidden] { display: none; }
+.host-context-modal textarea { resize: vertical; min-height: 72px; width: 100%; }
+.host-context-target { overflow-wrap: anywhere; font-weight: 600; }
+.host-context-launchers, .host-context-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.host-context-launchers button { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.host-context-set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.host-context-set label { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.host-context-workspace-action { padding: 12px 16px 0; }
+.host-context-modal #hostContextStatus { min-height: 1.5em; }

@@ -8,7 +8,7 @@ import codecs
 from threading import Lock, Timer
 import config
 from .audit_logger import log_info, log_warning, log_error, log_debug
-from .host_key_store import HostKeyStore
+from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import (
     canonicalize_hostname,
     open_validated_socket,
@@ -46,9 +46,9 @@ class TailscaleSSHAuthStrategy(AuthStrategy):
         yield NoneAuth(self.username)
 
 
-def _configure_host_key_trust(client, store):
+def _configure_host_key_trust(client, store, decision=None, context="target"):
     store.load_into(client)
-    client.set_missing_host_key_policy(store.missing_key_policy())
+    client.set_missing_host_key_policy(store.missing_key_policy(decision, context))
 
 
 def _authentication_banner(transport):
@@ -87,16 +87,22 @@ def _authentication_banner_accepted(transport, decision_callback, context):
         return False
 
 
-def _open_exec_channel(transport, command, *, timeout, pty=None):
+def _open_exec_channel(transport, command, *, timeout, pty=None, before_exec=None):
     """Open a bounded exec channel for a reviewed, fully quoted command."""
+    deadline = time.monotonic() + timeout
     channel = transport.open_session(timeout=timeout)
-    channel.settimeout(timeout)
-    timeout_guard = Timer(timeout, channel.close)
+    remaining = max(0, deadline - time.monotonic())
+    channel.settimeout(remaining)
+    timeout_guard = Timer(remaining, channel.close)
     timeout_guard.daemon = True
     timeout_guard.start()
     try:
         if pty is not None:
             channel.get_pty(*pty)
+        if time.monotonic() >= deadline:
+            raise TimeoutError('SSH command deadline exceeded')
+        if before_exec is not None:
+            before_exec()
         # Intentional SSH command boundary; callers provide reviewed quoting.
         channel.exec_command(command)  # nosec B601
     except Exception:
@@ -147,10 +153,10 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                           proxy_jump_password=None, proxy_jump_key_content=None,
                           use_tmux=False, reconnect_tmux_name=None,
                           auth_type='password', startup_commands='',
-                          auth_banner_decision=None,
+                          auth_banner_decision=None, host_key_decision=None,
                           tailscale_authorization=None,
                           cancel_event=None, client_request_id=None,
-                          jump_host_id=None, gateway_attempt=None):
+                          jump_host_id=None, gateway_attempt=None, profile_id=None):
     """
     Create a new SSH connection and return session ID.
 
@@ -274,7 +280,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 if gateway_attempt is not None:
                     gateway_attempt.own(validated_socket)
                     gateway_attempt.own(bastion_client)
-                _configure_host_key_trust(bastion_client, host_key_store)
+                _configure_host_key_trust(bastion_client, host_key_store, host_key_decision, "jump_host")
 
                 bastion_auth = {
                     'hostname': bastion_target.hostname,
@@ -328,6 +334,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                     code="host_key_changed",
                     context="jump_host",
                 )
+            except HostKeyNotAccepted:
+                return None, SSHConnectionError(
+                    "SSH host key was not accepted", code="host_key_not_accepted",
+                    context="jump_host",
+                )
             except paramiko.AuthenticationException:
                 return None, "Jump host authentication failed - invalid credentials"
             except Exception as e:
@@ -371,7 +382,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 gateway_attempt.own(validated_socket)
             if bastion_client is not None:
                 gateway_attempt.own(bastion_client)
-        _configure_host_key_trust(client, host_key_store)
+        _configure_host_key_trust(client, host_key_store, host_key_decision)
 
         auth_kwargs = {
             'hostname': host,
@@ -547,6 +558,7 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
                 'bastion_client': bastion_client,
                 'proxy_jump_host': proxy_jump_host,
                 'jump_host_id': jump_host_id,
+                'profile_id': profile_id,
                 'auth_type': auth_type,
                 'use_tmux': use_tmux,
                 'tmux_session_name': tmux_session_name,
@@ -664,6 +676,11 @@ def create_ssh_connection(host, port, username, password=None, key_path=None, ke
         return None, "Authentication failed - invalid credentials"
     except ValueError as e:
         return None, str(e)
+    except HostKeyNotAccepted:
+        return None, SSHConnectionError(
+            "SSH host key was not accepted", code="host_key_not_accepted",
+            context="target",
+        )
     except paramiko.SSHException as e:
         # Detail to the server log only; the client gets a generic message so
         # low-level errors cannot be used to probe remote hosts/ports.
@@ -1054,6 +1071,7 @@ def get_session(session_id):
                 'connected': session['connected'],
                 'via_jump': session.get('proxy_jump_host'),
                 'jump_host_id': session.get('jump_host_id'),
+                'profile_id': session.get('profile_id'),
                 'reconnect_route_known': True,
                 'auth_type': session.get('auth_type', 'password'),
                 'use_tmux': session.get('use_tmux', False),

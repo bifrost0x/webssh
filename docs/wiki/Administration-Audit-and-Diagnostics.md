@@ -168,3 +168,43 @@ Readiness fails during maintenance, shutdown admission closure, database failure
 5. Test native backups and restores on a separate instance.
 6. Monitor capacity and temporary disk usage before raising quotas.
 7. Apply upgrades only after reviewing configuration changes and release notes.
+
+## Managing a connected SSH server
+
+Open **Server management** in Diagnostics for system information or a reviewed
+reboot request. **Inspect / manage** beside a service, container or process
+opens its scoped controls. Inspection uses separate SSH exec channels and does
+not insert commands into the interactive terminal.
+
+Read-only views include the last 100 journal/container log lines, selected
+container metadata, process identity and system resource information. Commands
+have a 15-second deadline and a combined 64 KiB output limit. The SSH account's
+remote permissions still apply.
+
+Mutating controls are disabled by default. Set `SERVER_OPERATIONS_ENABLED=true`
+in the application environment and recreate/restart the application to enable
+service and container start/stop/restart, process TERM and reboot requests.
+With the supplied Compose file, uncomment its optional environment entry.
+This permits users to request these operations only through SSH sessions they
+own; it does not grant remote privileges.
+
+Each mutation requires an exact-command preview, deliberate confirmation and
+WebSSH reauthentication under the existing account step-up policy. A recent
+strong authentication may satisfy that policy. Confirmations expire after
+90 seconds, are bound to the account login and SSH connection, and can be used
+only once. Reboot additionally requires typing the connection's host.
+
+Optional sudo uses `sudo -n`; WebSSH never collects a remote sudo password.
+Container mutations use the full immutable container ID resolved by inspection,
+not its potentially reused name. Process termination uses Linux pidfds and
+checks the inspected process start time before sending TERM. This requires
+remote Python 3 with `os.pidfd_open` and `signal.pidfd_send_signal`, a supporting
+kernel, and sufficient permissions. Unsupported targets require manual
+inspection and administration; WebSSH does not fall back to an unsafe PID-only
+kill. There is no force-kill control.
+
+A successful reboot command means **requested**, not a verified completed
+reboot. A disconnect, timeout or output overflow during a mutation has an
+**unknown** outcome: inspect the server before another action. WebSSH does not
+automatically retry. The audit records action types and outcomes, not remote
+output or credentials.

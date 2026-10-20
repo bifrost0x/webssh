@@ -13,12 +13,16 @@ from pathlib import Path
 import paramiko
 from paramiko.hostkeys import HostKeyEntry
 
-from .audit_logger import log_info, log_warning
+from .audit_logger import log_warning
 from .storage_utils import (
     atomic_write_bytes,
     fsync_parent_directory,
     storage_lock,
 )
+
+
+class HostKeyNotAccepted(paramiko.SSHException):
+    """First-contact trust requires an explicit interactive decision."""
 
 
 class RevokedHostKeyError(paramiko.SSHException):
@@ -188,29 +192,27 @@ class _LayeredHostKeys(paramiko.HostKeys):
 
 
 class _PerUserMissingHostKeyPolicy(paramiko.MissingHostKeyPolicy):
-    def __init__(self, store):
+    def __init__(self, store, decision=None, context="target"):
         self.store = store
+        self.decision = decision
+        self.context = context
 
     def missing_host_key(self, client, hostname, key):
-        fingerprint = binascii.hexlify(key.get_fingerprint()).decode("ascii")
-        formatted = ":".join(
-            fingerprint[index:index + 2]
-            for index in range(0, len(fingerprint), 2)
-        )
-        log_warning(
-            "SECURITY: New SSH host key detected",
-            host=hostname,
-            key_type=key.get_name(),
-            fingerprint=formatted,
-            user_id=self.store.user_id,
-        )
+        trusted = client.get_host_keys()
+        if isinstance(trusted, _LayeredHostKeys) and trusted.is_revoked(hostname, key):
+            raise RevokedHostKeyError("SSH host key is revoked")
+        host, port = self.store._split_management_host(hostname)
+        details = {
+            "host": host, "port": port, "context": self.context,
+            "key_type": key.get_name(),
+            "fingerprint": "SHA256:" + base64.b64encode(
+                hashlib.sha256(key.asbytes()).digest()
+            ).decode("ascii").rstrip("="),
+        }
+        if self.decision is None or self.decision(details) is not True:
+            raise HostKeyNotAccepted("SSH host key was not accepted")
         self.store.record(hostname, key)
         client.get_host_keys().add(hostname, key.get_name(), key)
-        log_info(
-            "Host key stored",
-            path=str(self.store.user_path),
-            user_id=self.store.user_id,
-        )
 
 
 class HostKeyStore:
@@ -245,12 +247,12 @@ class HostKeyStore:
         user_file = self._load_or_empty(self.user_path)
         client._host_keys = _LayeredHostKeys(global_file, user_file)
 
-    def missing_key_policy(self) -> paramiko.MissingHostKeyPolicy:
-        return _PerUserMissingHostKeyPolicy(self)
+    def missing_key_policy(self, decision=None, context="target") -> paramiko.MissingHostKeyPolicy:
+        return _PerUserMissingHostKeyPolicy(self, decision, context)
 
     def record(self, hostname: str, key: paramiko.PKey) -> None:
         """Append a first-seen key without rewriting the user's raw file."""
-        with storage_lock(self._lock_key):
+        with storage_lock("host_keys:global"), storage_lock(self._lock_key):
             self._ensure_private_directory()
             global_file = self._load_or_empty(self.global_path)
             user_file = self._load_or_empty(self.user_path)
@@ -261,14 +263,16 @@ class HostKeyStore:
                     f"Host key for {hostname!r} is revoked"
                 )
 
-            user_keys = _LayeredHostKeys(
-                _ParsedHostKeyFile(), user_file
-            ).lookup(hostname)
+            user_keys = layered.lookup(hostname)
             existing = (
                 user_keys.get(key.get_name())
                 if user_keys is not None
                 else None
             )
+            if user_keys and existing is None:
+                raise paramiko.BadHostKeyException(
+                    hostname, key, next(iter(user_keys.values()))
+                )
             if existing is not None:
                 if existing != key:
                     raise paramiko.BadHostKeyException(

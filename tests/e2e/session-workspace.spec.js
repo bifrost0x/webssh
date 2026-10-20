@@ -3145,3 +3145,53 @@ test('failed font downloads and cancelled previews leave existing terminal input
         await setFontTestPreferences(page, {});
     }
 });
+
+test('first-contact trust shows exact fingerprint and closes stale approval', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await page.evaluate(() => {
+        const emit = window.socket.emit.bind(window.socket);
+        window.__trustAnswers = [];
+        window.socket.emit = (event, payload, ...args) => {
+            if (event === 'ssh_connect') {
+                window.__trustRequest = payload.client_request_id;
+                return window.socket;
+            }
+            if (event === 'ssh_host_key_decision') {
+                window.__trustAnswers.push(payload);
+                return window.socket;
+            }
+            return emit(event, payload, ...args);
+        };
+    });
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('trust.example');
+    await page.locator('#usernameInput').fill('tester');
+    await page.locator('#passwordInput').fill('not-sent');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => window.__trustRequest)).toBeTruthy();
+    const showPrompt = () => page.evaluate(() => {
+        for (const handler of window.socket.listeners('ssh_host_key')) handler({
+            prompt_id: 'exact-key-prompt', client_request_id: window.__trustRequest,
+            host: 'trust.example', port: 2222, key_type: 'ssh-ed25519',
+            fingerprint: 'SHA256:verified-fingerprint', context: 'jump_host',
+        });
+    });
+    await showPrompt();
+    await expect(page.locator('#sshHostKeyModal')).toHaveClass(/show/);
+    await expect(page.locator('#sshHostKeyTarget')).toContainText('trust.example:2222');
+    await expect(page.locator('#sshHostKeyFingerprint')).toHaveText('ssh-ed25519\nSHA256:verified-fingerprint');
+    await page.locator('#sshHostKeyAccept').click();
+    await expect.poll(() => page.evaluate(() => window.__trustAnswers[0]?.accepted)).toBe(true);
+    await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+    await showPrompt();
+    await page.locator('#sshHostKeyCancel').focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => window.__trustAnswers[1]?.accepted)).toBe(false);
+    await showPrompt();
+    await page.evaluate(() => {
+        for (const handler of window.socket.listeners('ssh_host_key_closed')) handler({prompt_id: 'exact-key-prompt'});
+    });
+    await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+});

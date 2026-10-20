@@ -4,6 +4,7 @@ const ProfileManager = {
     keysLoaded: false,
     profilesLoaded: false,
     selectedLegacyStartupCommands: '',
+    selectedProfileId: null,
     editingProfileId: null,
     editingKeyId: null,
     editingKeyName: null,
@@ -97,6 +98,10 @@ const ProfileManager = {
             if (button.dataset.profileAction === 'connect') this.connect(profileId);
             if (button.dataset.profileAction === 'favorite') this.toggleFavorite(profileId);
             if (button.dataset.profileAction === 'edit') this.openEditor(profileId);
+            if (button.dataset.profileAction === 'context') {
+                const profile = this.profiles.find(item => item.id === profileId);
+                if (profile) window.HostContext?.open(profile.id, `${profile.name} · ${profile.username}@${profile.host}:${profile.port}`);
+            }
             if (button.dataset.profileAction === 'duplicate') this.duplicateProfile(profileId);
             if (button.dataset.profileAction === 'delete') this.deleteProfile(profileId);
         });
@@ -732,6 +737,7 @@ const ProfileManager = {
     selectProfile(profileId) {
         const profile = this.profiles.find(p => p.id === profileId);
         if (!profile) return;
+        this.selectedProfileId = profile.id;
 
         document.getElementById('hostInput').value = profile.host;
         document.getElementById('portInput').value = profile.port;
@@ -778,6 +784,14 @@ const ProfileManager = {
 
     getLegacyStartupCommands() {
         return this.selectedLegacyStartupCommands;
+    },
+
+    connectionProfileId(data) {
+        const profile = this.profiles.find(item => item.id === this.selectedProfileId);
+        if (!profile || profile.host !== data.host || Number(profile.port || 22) !== Number(data.port)
+                || profile.username !== data.username
+                || (profile.jump_host_id || null) !== (data.proxy_jump?.jump_host_id || null)) return null;
+        return profile.id;
     },
 
     clearLegacyCommands() {
@@ -1134,6 +1148,7 @@ const ProfileManager = {
                 const actionMenuItems = document.createElement('div');
                 actionMenuItems.className = 'profile-action-menu-items';
                 [
+                    ['context', this.t('hostContext.title', 'Host context'), 'btn-secondary'],
                     ['edit', this.t('common.edit', 'Edit'), 'btn-secondary'],
                     ['duplicate', this.t('profiles.duplicate', 'Duplicate'), 'btn-secondary'],
                     ['delete', this.t('common.delete', 'Delete'), 'btn-danger'],

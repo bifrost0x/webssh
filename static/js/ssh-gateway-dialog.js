@@ -186,6 +186,9 @@
                     cancel();
                 }
             });
+            socket.on('ssh_host_key', data => {
+                if (data?.client_request_id === active) window.ModalManager.close(modal);
+            });
             socket.on('ssh_auth_banner', data => {
                 if (data?.client_request_id === active) {
                     window.ModalManager.close(modal);

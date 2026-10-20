@@ -851,6 +851,8 @@ def test_editor_read_returns_revision_of_exact_remote_bytes():
     assert error is None
     assert result['content'] == 'old\ntext'
     assert result['revision'] == hashlib.sha256(b'old\r\ntext').hexdigest()
+    import base64
+    assert base64.b64decode(result['original_bytes']) == b'old\r\ntext'
 
 
 def test_editor_save_rejects_missing_or_changed_revision_before_staging():

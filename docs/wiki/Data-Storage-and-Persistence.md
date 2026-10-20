@@ -25,6 +25,7 @@ DATA_DIR/
 |       |-- jump_hosts.json
 |       |-- settings.json
 |       |-- notes.json
+|       |-- host_context.json
 |       |-- keys.json
 |       `-- known_hosts
 `-- deleted_users/

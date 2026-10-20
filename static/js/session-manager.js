@@ -124,6 +124,7 @@ const SessionManager = {
             auth_type: data.auth_type,
             via_jump: data.via_jump,
             jump_host_id: data.jump_host_id,
+            profile_id: data.profile_id,
             reconnect_route_known: data.reconnect_route_known,
             key_id: data.key_id,
             display_name: data.display_name,
@@ -179,6 +180,7 @@ const SessionManager = {
             displayName: display_name || null,
             viaJump: data.via_jump || null,
             jumpHostId: data.jump_host_id || null,
+            profileId: data.profile_id || null,
             reconnectRouteKnown: data.reconnect_route_known === true,
             useTmux: true,
             tmuxSessionName: tmux_session_name,
@@ -259,6 +261,7 @@ const SessionManager = {
             displayName: storedName || null,
             viaJump: sessionData.via_jump || null,
             jumpHostId: sessionData.jump_host_id || null,
+            profileId: sessionData.profile_id || null,
             reconnectRouteKnown: sessionData.reconnect_route_known,
             useTmux: sessionData.use_tmux || false,
             tmuxSessionName: sessionData.tmux_session_name || null,
@@ -549,6 +552,8 @@ const SessionManager = {
                             host: host,
                             port: parseInt(port),
                             username: username,
+                            profile_id: session.profileId || null,
+                            profile_context_optional: true,
                             client_request_id: `reconnect_${Date.now().toString(36)}`,
                             auth_type: authType,
                             use_tmux: useTmux,
@@ -571,6 +576,7 @@ const SessionManager = {
                 // No key_id — open pre-filled connection modal
                 setTimeout(() => {
                     window.clearConnectionProfileState();
+                    this.pendingReconnectProfileId = session.profileId || null;
                     const hostInput = document.getElementById('hostInput');
                     const portInput = document.getElementById('portInput');
                     const userInput = document.getElementById('usernameInput');
@@ -1648,6 +1654,7 @@ const SessionManager = {
         }
 
         window.clearConnectionProfileState();
+        this.pendingReconnectProfileId = session.profileId || null;
         this.pendingReconnectSessionId = session.connected && !session.isPersistentCandidate
             ? sessionId : null;
         const hostInput = document.getElementById('hostInput');
@@ -1743,6 +1750,8 @@ const SessionManager = {
                 host: host,
                 port: parseInt(port),
                 username: username,
+                profile_id: session.profileId || null,
+                profile_context_optional: true,
                 client_request_id: `reconnect_${Date.now().toString(36)}`,
                 auth_type: authType,
                 use_tmux: true,

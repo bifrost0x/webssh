@@ -927,6 +927,33 @@ def test_preview_limit_uses_fstat_from_the_open_object(monkeypatch):
     assert replacement.read_called is False
 
 
+def test_editor_original_backup_preserves_mixed_newlines_and_encoding(monkeypatch):
+    import base64
+    import hashlib
+    import io
+    import stat
+    from types import SimpleNamespace
+    import app.sftp_handler as sftp_handler
+
+    raw = b'caf\xe9\r\nsecond\nthird\r\n'
+
+    class RemoteFile(io.BytesIO):
+        def stat(self):
+            return SimpleNamespace(st_size=len(raw), st_mode=stat.S_IFREG | 0o600)
+
+    @contextmanager
+    def fake_session(_session_id):
+        yield SimpleNamespace(file=lambda *_args: RemoteFile(raw)), 'session'
+
+    monkeypatch.setattr(sftp_handler, 'sftp_session', fake_session)
+    result, error = sftp_handler.read_file_for_edit('session', '/report.txt')
+
+    assert error is None
+    assert result['content'] == 'caf\xe9\nsecond\nthird\n'
+    assert result['revision'] == hashlib.sha256(raw).hexdigest()
+    assert base64.b64decode(result['original_bytes']) == raw
+
+
 def test_editor_limit_uses_fstat_from_the_open_object(monkeypatch):
     """Editor authorization must describe the object that supplies bytes."""
     import io

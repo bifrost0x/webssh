@@ -424,7 +424,8 @@ def _validate_profile_payload(user_id, payload, dependent_lock_held=False):
     return result, None
 
 
-def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
+def upsert_profile(user_id, payload, preserve_legacy_fallback=False,
+                   skip_duplicate=False):
     """Create or update a profile under the per-user coordinator lock."""
     try:
         with storage_lock(f'command-config:{user_id}'):
@@ -472,6 +473,17 @@ def upsert_profile(user_id, payload, preserve_legacy_fallback=False):
                     return None, error
 
                 profile_id = payload.get('id')
+                if skip_duplicate:
+                    if profile_id:
+                        return None, 'Import cannot update profiles'
+                    for existing in profiles:
+                        same_name = existing.get('name', '').casefold() == validated['name'].casefold()
+                        same_endpoint = all(
+                            existing.get(field) == validated.get(field)
+                            for field in ('host', 'port', 'username', 'jump_host_id')
+                        )
+                        if same_name or same_endpoint:
+                            return None, 'Duplicate profile'
                 previous_count = len(profiles)
                 now = datetime.now(timezone.utc).isoformat()
                 if profile_id:

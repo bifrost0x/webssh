@@ -39,6 +39,10 @@ services:
 
       # Optional configuration
 
+      # Reviewed service/container actions, process TERM and reboot over SSH.
+      # Read-only server inspection remains available without this switch.
+      # - SERVER_OPERATIONS_ENABLED=true
+
       # Secret override; generated and persisted when omitted.
       # - SECRET_KEY=<paste output of: openssl rand -hex 32>
 

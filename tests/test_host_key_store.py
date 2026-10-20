@@ -698,7 +698,7 @@ def test_missing_policy_records_nondefault_port_and_updates_client(tmp_path):
     client = paramiko.SSHClient()
     key = _key()
 
-    store.missing_key_policy().missing_host_key(
+    store.missing_key_policy(decision=lambda details: True).missing_host_key(
         client, "[host.example]:2222", key
     )
 
@@ -935,3 +935,56 @@ def test_add_file_entry_rejects_invalid_unicode(tmp_path):
 
     assert entry is None
     assert error == "Invalid known_hosts entry"
+
+@pytest.mark.parametrize("decision", [None, lambda details: False])
+def test_unknown_host_requires_explicit_acceptance_before_auth(tmp_path, decision):
+    store = HostKeyStore(7, tmp_path / "known_hosts", tmp_path / "users")
+    client = paramiko.SSHClient()
+    store.load_into(client)
+    client.set_missing_host_key_policy(store.missing_key_policy(decision=decision))
+    _FakeTransport.remote_key = _key()
+    with pytest.raises(paramiko.SSHException, match="not accepted"):
+        client.connect("new.example", username="alice", sock=object(),
+                       auth_strategy=_SuccessfulAuthStrategy(), transport_factory=_FakeTransport)
+    assert not store.user_path.exists()
+
+
+def test_acceptance_runs_before_authentication_on_same_transport(tmp_path):
+    store = HostKeyStore(7, tmp_path / "known_hosts", tmp_path / "users")
+    client = paramiko.SSHClient()
+    store.load_into(client)
+    key = _key()
+    _FakeTransport.remote_key = key
+    seen = []
+    def accept(details):
+        assert client.get_transport().get_remote_server_key() == key
+        assert not store.user_path.exists()
+        seen.append(details)
+        return True
+    client.set_missing_host_key_policy(store.missing_key_policy(decision=accept, context="jump_host"))
+    result = client.connect("new.example", username="alice", sock=object(),
+                            auth_strategy=_SuccessfulAuthStrategy(), transport_factory=_FakeTransport)
+    assert result is client.get_transport()
+    assert seen[0]["fingerprint"].startswith("SHA256:")
+    assert seen[0]["context"] == "jump_host"
+    assert store.user_path.exists()
+
+def test_confirmed_key_cannot_override_new_global_trust(tmp_path):
+    store = HostKeyStore(7, tmp_path / 'known_hosts', tmp_path / 'users')
+    client = paramiko.SSHClient()
+    store.load_into(client)
+    original, changed = _key(), _key()
+    def accept(details):
+        _write_host_keys(store.global_path, ('race.example', original))
+        return True
+    with pytest.raises(paramiko.BadHostKeyException):
+        store.missing_key_policy(decision=accept).missing_host_key(client, 'race.example', changed)
+    assert not store.user_path.exists()
+
+def test_concurrent_first_contact_different_algorithm_cannot_add_conflicting_identity(tmp_path):
+    store = HostKeyStore(7, tmp_path / 'known_hosts', tmp_path / 'users')
+    first = _key()
+    store.record('same-host', first)
+    with pytest.raises(paramiko.BadHostKeyException):
+        store.record('same-host', paramiko.ECDSAKey.generate())
+    assert len(paramiko.HostKeys(str(store.user_path)).lookup('same-host')) == 1

@@ -17,7 +17,7 @@ import threading
 import paramiko
 from datetime import datetime
 import config
-from .host_key_store import HostKeyStore
+from .host_key_store import HostKeyStore, HostKeyNotAccepted
 from .network_policy import open_validated_socket, resolve_allowed_target
 from .ssh_key_loader import load_private_key as _load_private_key
 from .ssh_errors import SSHConnectionError
@@ -214,6 +214,11 @@ class TemporaryConnectionPool:
                 "SSH host key changed",
                 code="host_key_changed",
                 context="target",
+            )
+        except HostKeyNotAccepted:
+            return None, SSHConnectionError(
+                "SSH host key is not trusted. Connect through the terminal first to verify it.",
+                code="host_key_not_accepted", context="target",
             )
         except paramiko.AuthenticationException:
             return None, "Authentication failed: Invalid username or password"

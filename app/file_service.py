@@ -718,7 +718,10 @@ class FileService:
 
     def read_file_for_edit(self, source_id, *, user_id, path):
         source = self.resolve(source_id, user_id, FileCapability.EDIT)
-        return source.backend.read_file_for_edit(source, path)
+        result, error = source.backend.read_file_for_edit(source, path)
+        if result is not None and not error:
+            result = {**result, 'endpoint': source.descriptor.endpoint}
+        return result, error
 
     def read_binary_preview(self, source_id, *, user_id, path, max_size):
         source = self.resolve(source_id, user_id, FileCapability.PREVIEW)

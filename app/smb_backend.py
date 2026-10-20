@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import base64
 import errno
 import hashlib
 import secrets
@@ -1509,6 +1510,7 @@ class SMBBackend:
                 'encoding': encoding,
                 'newline': newline,
                 'revision': hashlib.sha256(data).hexdigest(),
+                'original_bytes': base64.b64encode(data).decode('ascii'),
             }, None
         except Exception as exc:
             return None, self._public_error(exc)

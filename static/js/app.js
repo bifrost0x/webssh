@@ -349,6 +349,8 @@
 
     window.clearConnectionProfileState = () => {
         selectedConnectionProfileState = null;
+        ProfileManager.selectedProfileId = null;
+        SessionManager.pendingReconnectProfileId = null;
         SessionManager.pendingReconnectSessionId = null;
         SessionManager.pendingReconnectTmux = null;
         const jumpSelect = document.getElementById('jumpHostSelect');
@@ -604,6 +606,10 @@
         editEncoding: 'utf-8',
         editNewline: 'lf',
         editRevision: null,
+        editBaseline: null,
+        editOriginalBytes: null,
+        editTarget: null,
+        editReview: null,
         recoverableReplaceSources: new Set(),
         maxEditFileSize: 5 * 1024 * 1024,
         _beforeUnloadHandler: null,
@@ -646,6 +652,9 @@
             document.getElementById('previewBinaryDownload')?.addEventListener('click', () => this.downloadFile());
             document.getElementById('previewEditBtn')?.addEventListener('click', () => this.enterEditMode());
             document.getElementById('editorSaveBtn')?.addEventListener('click', () => this.saveEdit());
+            document.getElementById('editorCommitBtn')?.addEventListener('click', () => this.commitReviewedEdit());
+            document.getElementById('editorBackBtn')?.addEventListener('click', () => this.dismissEditReview());
+            document.getElementById('editorBackupBtn')?.addEventListener('click', () => this.downloadOriginal());
             document.getElementById('editorCancelBtn')?.addEventListener('click', () => this.cancelEdit());
             document.getElementById('editorContent')?.addEventListener('input', () => this.markDirty());
 
@@ -730,6 +739,12 @@
         },
 
         open(sourceId, path, filename) {
+            if (this.editMode && (this.dirty || this.pendingSaveContent != null) && !window.confirm(window.i18n
+                ? i18n.t('editor.unsavedConfirm') : 'Discard unsaved changes?')) return;
+            this.resetEditReview();
+            this.editBaseline = null;
+            this.editOriginalBytes = null;
+            this.editTarget = null;
             this.currentSourceId = this.normalizeSourceId(sourceId);
             if (!this.currentSourceId) return;
             this.currentPath = path;
@@ -890,7 +905,7 @@
                 const status = document.getElementById('editorStatus');
                 if (data.code === 'SMB_RECOVERABLE_REPLACE_REQUIRED') {
                     if (this.recoverableReplaceSources.has(this.currentSourceId)) {
-                        this.saveEdit('recoverable_swap', data.save_challenge);
+                        this.saveReviewedEdit('recoverable_swap', data.save_challenge);
                         return true;
                     }
                     const prompt = window.i18n
@@ -898,7 +913,7 @@
                         : 'This server cannot replace the file in one safe step. WebSSH can save it with a temporary recovery backup and restore the original if replacement fails. Use this method for this SMB connection until the page is reloaded?';
                     if (window.confirm(prompt)) {
                         this.recoverableReplaceSources.add(this.currentSourceId);
-                        this.saveEdit('recoverable_swap', data.save_challenge);
+                        this.saveReviewedEdit('recoverable_swap', data.save_challenge);
                     } else if (status) {
                         status.textContent = window.i18n
                             ? i18n.t('editor.recoverableDeclined')
@@ -1048,7 +1063,7 @@
         attachBeforeUnload() {
             if (this._beforeUnloadHandler) return;
             this._beforeUnloadHandler = (e) => {
-                if (this.dirty) {
+                if (this.dirty || this.pendingSaveContent != null) {
                     e.preventDefault();
                     e.returnValue = '';
                 }
@@ -1065,15 +1080,17 @@
 
         markDirty() {
             if (!this.editMode) return;
-            this.dirty = true;
+            this.resetEditReview();
+            this.dirty = document.getElementById('editorContent')?.value !== this.editBaseline;
             const status = document.getElementById('editorStatus');
             if (status) {
-                status.textContent = window.i18n ? i18n.t('editor.unsavedChanges') : 'Unsaved changes';
+                status.textContent = this.dirty
+                    ? (window.i18n ? i18n.t('editor.unsavedChanges') : 'Unsaved changes') : '';
             }
         },
 
         enterEditMode() {
-            if (!this.currentSourceId || !this.currentPath) return;
+            if (this.editMode || !this.currentSourceId || !this.currentPath) return;
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = '';
             this.currentEditRequestId = this.nextRequestId('edit');
@@ -1092,10 +1109,21 @@
             const textarea = document.getElementById('editorContent');
             if (!textarea) return;
 
+            this.currentEditRequestId = null;
             this.editEncoding = data.encoding || 'utf-8';
             this.editNewline = data.newline || 'lf';
             this.editRevision = data.revision || null;
             textarea.value = data.content || '';
+            this.editBaseline = textarea.value;
+            this.editOriginalBytes = typeof data.original_bytes === 'string' ? data.original_bytes : null;
+            const source = window.sftpFileManager?.buildSourceCatalog?.()
+                .flatMap(group => group.items).find(item => item.sourceId === this.currentSourceId);
+            this.editTarget = Object.freeze({
+                sourceId: this.currentSourceId,
+                path: this.currentPath,
+                endpoint: data.endpoint || source?.endpoint || this.currentSourceId,
+            });
+            this.resetEditReview();
 
             document.getElementById('previewContent')?.classList.add('hidden');
             document.getElementById('previewTruncated')?.classList.add('hidden');
@@ -1136,16 +1164,88 @@
             showNotification(window.i18n ? i18n.t('editor.saveFailed') : 'Failed to save file', 'error');
         },
 
-        saveEdit(replaceStrategy = null, saveChallenge = null) {
+        resetEditReview() {
+            this.editReview = null;
+            document.getElementById('editorReview')?.classList.add('hidden');
+            document.getElementById('editorContent')?.classList.remove('hidden');
+            const reviewButton = document.getElementById('editorSaveBtn');
+            if (reviewButton) reviewButton.disabled = false;
+            for (const id of ['editorReviewOriginal', 'editorReviewEdited']) {
+                const field = document.getElementById(id);
+                if (field) field.value = '';
+            }
+        },
+
+        dismissEditReview() {
+            if (this.pendingSaveContent != null) return;
+            this.resetEditReview();
+            document.getElementById('editorContent')?.focus();
+        },
+
+        saveEdit() {
+            if (!this.editMode || this.pendingSaveContent != null || !this.editTarget
+                || this.editTarget.sourceId !== this.currentSourceId
+                || this.editTarget.path !== this.currentPath || !this.editRevision) return;
+            const content = document.getElementById('editorContent')?.value;
+            if (typeof content !== 'string' || this.editBaseline == null) return;
+            if (content.length > this.maxEditFileSize) {
+                const status = document.getElementById('editorStatus');
+                if (status) status.textContent = (window.i18n
+                    ? i18n.t('editor.reviewTooLarge')
+                    : 'File too large to review (maximum {size}).'
+                ).replace('{size}', this.formatFileSize(this.maxEditFileSize));
+                return;
+            }
+            const diff = window.FileEditDiff?.compare(this.editBaseline, content);
+            if (!diff?.changed) return;
+            this.editReview = Object.freeze({
+                ...this.editTarget, content, revision: this.editRevision,
+                encoding: this.editEncoding, newline: this.editNewline,
+            });
+            document.getElementById('editorReviewTarget').textContent = `${this.editTarget.endpoint}\n${this.editTarget.path}`;
+            document.getElementById('editorReviewDiff').textContent = `@@ ${diff.originalLine} @@\n${diff.text}`;
+            document.getElementById('editorReviewLimited')?.classList[diff.limited ? 'remove' : 'add']('hidden');
+            document.getElementById('editorReviewOriginal').value = this.editBaseline;
+            document.getElementById('editorReviewEdited').value = content;
+            document.getElementById('editorContent')?.classList.add('hidden');
+            document.getElementById('editorReview')?.classList.remove('hidden');
+            const backup = document.getElementById('editorBackupBtn');
+            if (backup) backup.disabled = this.editOriginalBytes == null;
+            document.getElementById('editorCommitBtn')?.focus();
+        },
+
+        commitReviewedEdit() {
+            this.saveReviewedEdit();
+        },
+
+        downloadOriginal() {
+            if (this.editOriginalBytes == null || !this.editTarget) return;
+            const decoded = atob(this.editOriginalBytes);
+            const bytes = Uint8Array.from(decoded, character => character.charCodeAt(0));
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${this.currentFilename || 'file'}.original`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+
+        saveReviewedEdit(replaceStrategy = null, saveChallenge = null) {
             if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             if (this.pendingSaveContent != null) return;
+            const reviewed = this.editReview;
+            const textarea = document.getElementById('editorContent');
+            if (!reviewed || reviewed.sourceId !== this.currentSourceId
+                || reviewed.path !== this.currentPath || reviewed.revision !== this.editRevision
+                || reviewed.content !== textarea?.value || reviewed.encoding !== this.editEncoding
+                || reviewed.newline !== this.editNewline) {
+                this.resetEditReview();
+                return;
+            }
             if (socket.connected !== true) {
                 showNotification(window.i18n ? i18n.t('editor.saveFailed') : 'Failed to save file', 'error');
                 return;
             }
-            const textarea = document.getElementById('editorContent');
-            if (!textarea) return;
-
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = window.i18n ? i18n.t('editor.saving') : 'Saving...';
 
@@ -1187,6 +1287,7 @@
             if (saved.sequence <= this.lastSavedSequence) return;
             this.lastSavedSequence = saved.sequence;
             this.editRevision = data.revision || this.editRevision;
+            this.editBaseline = saved.content;
             const keepEditing = !isCurrent
                 || document.getElementById('editorContent')?.value !== saved.content;
             if (keepEditing) {
@@ -1217,7 +1318,7 @@
         },
 
         cancelEdit() {
-            if (this.dirty) {
+            if (this.dirty || this.pendingSaveContent != null) {
                 const msg = window.i18n ? i18n.t('editor.unsavedConfirm') : 'Discard unsaved changes?';
                 if (!window.confirm(msg)) return;
             }
@@ -1227,11 +1328,15 @@
         },
 
         exitEditMode() {
+            this.resetEditReview();
             this.clearPendingSave();
             this.saveRequests.clear();
             this.editMode = false;
             this.dirty = false;
             this.editRevision = null;
+            this.editBaseline = null;
+            this.editOriginalBytes = null;
+            this.editTarget = null;
             this.detachBeforeUnload();
             document.getElementById('fileEditor')?.classList.add('hidden');
             this.modal?.classList.remove('editing');
@@ -1249,11 +1354,15 @@
         },
 
         close() {
-            if (this.editMode && this.dirty) {
+            if (this.editMode && (this.dirty || this.pendingSaveContent != null)) {
                 const msg = window.i18n ? i18n.t('editor.unsavedConfirm') : 'Discard unsaved changes?';
                 if (!window.confirm(msg)) return;
             }
             this.detachBeforeUnload();
+            this.resetEditReview();
+            this.editBaseline = null;
+            this.editOriginalBytes = null;
+            this.editTarget = null;
             this.editMode = false;
             this.dirty = false;
             document.getElementById('fileEditor')?.classList.add('hidden');
@@ -1307,6 +1416,11 @@
             socket.emit('keep_alive');
         }
     }, 60000);
+
+    window.SSHHostTrust?.init(socket, requestId => Boolean(requestId)
+        && !cancelledConnectRequestIds.has(requestId)
+        && (requestId === currentConnectRequestId || requestId.startsWith('reconnect_')
+            || window.SSHGatewayDialog?.has(requestId)));
 
     let pendingAuthBannerPrompt = null;
 
@@ -1496,6 +1610,7 @@
             stopConnectTimer();
             setConnectLoading(false);
             SessionManager.pendingReconnectTmux = null;
+            SessionManager.pendingReconnectProfileId = null;
             SessionManager.pendingDisplayName = null;
             currentConnectRequestId = null;
             if (connectionModalRequestId === requestId) {
@@ -2667,6 +2782,7 @@
         window.CommandSetManager?.init();
         window.ConnectionCommandManager?.init();
         window.SessionCommandLauncher?.init();
+        window.HostContext?.init();
         ProfileManager.init();
 
         window.connectionOverview = window.ConnectionOverview?.createController({
@@ -2804,6 +2920,10 @@
             if (proxyJump) {
                 connectionData.proxy_jump = proxyJump;
             }
+            const contextProfileId = SessionManager.pendingReconnectProfileId
+                || window.ProfileManager?.connectionProfileId?.(connectionData);
+            if (contextProfileId) connectionData.profile_id = contextProfileId;
+            if (SessionManager.pendingReconnectProfileId) connectionData.profile_context_optional = true;
 
             const useTmuxCheck = document.getElementById('useTmuxCheck');
             if (useTmuxCheck && useTmuxCheck.checked) {

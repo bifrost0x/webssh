@@ -803,6 +803,7 @@ class SSHSession(db.Model):
     tmux_session_name = db.Column(db.String(256), nullable=True)
     display_name = db.Column(db.String(128), nullable=True)
     jump_host_id = db.Column(db.String(64), nullable=True)
+    profile_id = db.Column(db.String(128), nullable=True)
     via_jump = db.Column(db.String(256), nullable=True)
     reconnect_route_known = db.Column(db.Boolean, nullable=False, default=False)
 
@@ -834,6 +835,8 @@ def ensure_ssh_session_columns():
         additions.append("ALTER TABLE ssh_sessions ADD COLUMN display_name VARCHAR(128)")
     if 'jump_host_id' not in existing:
         additions.append("ALTER TABLE ssh_sessions ADD COLUMN jump_host_id VARCHAR(64)")
+    if 'profile_id' not in existing:
+        additions.append("ALTER TABLE ssh_sessions ADD COLUMN profile_id VARCHAR(128)")
     if 'via_jump' not in existing:
         additions.append("ALTER TABLE ssh_sessions ADD COLUMN via_jump VARCHAR(256)")
     if 'reconnect_route_known' not in existing:
