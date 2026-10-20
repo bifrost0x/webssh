@@ -148,11 +148,12 @@
         sudoLabel.prepend(sudo);
         const controls = el('div', undefined, 'form-actions');
         const review = el('section', undefined, 'server-management-review');
+        review.tabIndex = -1;
         const authentication = el('section');
         const outputArea = el('div', undefined, 'server-management-output');
         const outputTitle = el('h4', t('serverOps.output', 'Output'));
         outputArea.append(outputTitle, output);
-        detail.append(selectionIcon, detailTitle, detailHint, facts, controls, sudoLabel, status, outputArea, review, authentication);
+        detail.append(selectionIcon, detailTitle, review, authentication, detailHint, facts, controls, sudoLabel, status, outputArea);
         const main = el('div', undefined, 'server-management-main');
         main.append(notice, workspace);
         body.append(tabs, main);
@@ -492,6 +493,7 @@
                 outputTitle.textContent = t(action.endsWith('.logs') ? 'serverOps.logs' : 'serverOps.output', action.endsWith('.logs') ? 'Logs' : 'Output');
                 output.textContent = [result.output, result.error_output].filter(Boolean).join('\n');
                 output.hidden = false;
+                output.scrollTop = 0;
                 status.textContent = result.status === 'completed' ? t('serverOps.readComplete', 'Read complete.') : t('serverOps.failed', 'Operation failed.');
                 if (action === 'container.inspect' || action === 'process.inspect') {
                     resolved = result.status === 'completed' ? JSON.parse(result.output) : null;
@@ -597,6 +599,8 @@
                     review.replaceChildren();
                     if (answer) { answer(null); answer = null; authentication.replaceChildren(); }
                 }, review);
+                review.focus({preventScroll: true});
+                main.scrollTop += review.getBoundingClientRect().top - main.getBoundingClientRect().top - 16;
             } catch (error) {
                 if (current() && revision === generation) status.textContent = error.message;
             } finally { setPending(false); sudo.disabled = !current(); }

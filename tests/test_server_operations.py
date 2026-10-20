@@ -45,8 +45,8 @@ def test_process_termination_uses_pidfd_and_checks_start_identity():
 def test_read_only_commands_are_bounded_and_do_not_follow_logs():
     journal = build_command('service.logs', {'unit': 'sshd.service'})
     docker = build_command('container.logs', {'container': 'b' * 64})
-    assert '--lines=100' in journal and '--no-pager' in journal
-    assert '--tail 100' in docker and '--follow' not in docker
+    assert '--lines=100' in journal and '--no-pager' in journal and '--reverse' in journal
+    assert '--tail 100' in docker and '--follow' not in docker and '--timestamps' in docker
 
 
 @pytest.fixture
@@ -215,3 +215,18 @@ def test_reboot_requires_exact_typed_host_and_reports_requested(app, client, ses
     assert client.post('/api/server-operations/execute', json={'intent': token}, headers=headers).status_code == 400
     response = client.post('/api/server-operations/execute', json={'intent': token, 'confirmation': 'example.com'}, headers=headers)
     assert response.json['status'] == 'requested'
+
+
+def test_container_logs_merge_streams_newest_first_and_keep_multiline_records():
+    from app.server_operations import newest_container_logs
+    old = '2026-10-19T10:00:00.000000001Z'
+    new = '2026-10-20T10:00:00.000000001Z'
+    middle = '2026-10-20T10:00:00.000000000Z'
+    output, errors = newest_container_logs(
+        f'{old} old\n{new} exception\n  continuation\n{new} same entry',
+        f'Docker warning\n{middle} stderr entry',
+    )
+    assert output.splitlines() == [f'{new} exception', '  continuation',
+                                   f'{new} same entry', f'{middle} stderr entry', f'{old} old']
+    assert errors == 'Docker warning'
+    assert newest_container_logs('', 'permission denied') == ('', 'permission denied')

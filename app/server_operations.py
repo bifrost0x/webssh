@@ -42,6 +42,29 @@ def _process_target(target, *, identity=False):
     return pid
 
 
+def newest_container_logs(output, error_output):
+    """Merge Docker's timestamped streams without reversing continuation lines."""
+    records = []
+    unstructured = []
+    timestamp = re.compile(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z)\s')
+    for stream in (output, error_output):
+        current = None
+        for line in stream.splitlines():
+            match = timestamp.match(line)
+            if match:
+                key = match.group(1)
+                if current is None or current[0] != key:
+                    current = (key, [])
+                    records.append(current)
+                current[1].append(line)
+            elif current is not None:
+                current[1].append(line)
+            else:
+                unstructured.append(line)
+    ordered = sorted(records, key=lambda record: record[0], reverse=True)
+    return '\n'.join(line for _, lines in ordered for line in lines), '\n'.join(unstructured)
+
+
 def build_command(action, target, *, use_sudo=False):
     if not isinstance(action, str) or action not in READ_ACTIONS | WRITE_ACTIONS:
         raise OperationError('invalid_action')
@@ -52,7 +75,7 @@ def build_command(action, target, *, use_sudo=False):
         if not isinstance(unit, str) or not _UNIT.fullmatch(unit):
             raise OperationError('invalid_target')
         if action == 'service.logs':
-            command = f'journalctl --no-pager --lines=100 --output=short-iso --unit={shlex.quote(unit)}'
+            command = f'journalctl --no-pager --reverse --lines=100 --output=short-iso --unit={shlex.quote(unit)}'
         else:
             command = f'systemctl {action.split(".")[1]} -- {shlex.quote(unit)}'
     elif action == 'container.inspect':
@@ -66,7 +89,7 @@ def build_command(action, target, *, use_sudo=False):
         if not isinstance(container, str) or not _CONTAINER.fullmatch(container):
             raise OperationError('invalid_target')
         verb = action.split('.')[1]
-        option = '--tail 100 ' if verb == 'logs' else ('--time 10 ' if verb in ('stop', 'restart') else '')
+        option = '--timestamps --tail 100 ' if verb == 'logs' else ('--time 10 ' if verb in ('stop', 'restart') else '')
         command = f'docker {verb} {option}-- {container}'
     elif action == 'process.inspect':
         pid = _process_target(target)

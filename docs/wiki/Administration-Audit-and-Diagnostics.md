@@ -188,7 +188,11 @@ The overview uses the existing session measurements and inventory; it does not
 start a second background monitor. Inspection uses separate SSH exec channels
 and does not insert commands into the interactive terminal.
 
-Read-only views include the last 100 journal/container log lines, selected
+Read-only views include the last 100 journal/container log lines, newest first.
+Docker stdout and stderr entries are merged by their timestamps while
+continuation lines retain their order. Action confirmation appears above the
+resource details and logs and is brought into view before execution. Other
+read-only views include selected
 container metadata, process identity and system resource information. Commands
 have a 15-second deadline and a combined 64 KiB output limit. The SSH account's
 remote permissions still apply.

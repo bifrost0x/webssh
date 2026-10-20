@@ -73,10 +73,15 @@ def read():
     session_id = data.get('session_id')
     session = operations.owned_session(session_id, current_user.id)
     lifecycle = current_app.extensions['runtime_lifecycle']
-    return jsonify(operations.execute_command(
+    result = operations.execute_command(
         session_id, current_user.id, session, command,
         cancelled=lambda: not lifecycle.accepting_work(),
-    ))
+    )
+    if action == 'container.logs':
+        result['output'], result['error_output'] = operations.newest_container_logs(
+            result.get('output', ''), result.get('error_output', ''),
+        )
+    return jsonify(result)
 
 
 @server_operations_blueprint.post('/api/server-operations/intents')

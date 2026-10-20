@@ -58,7 +58,7 @@ test('reboot requires typed host, explicit confirmation and reports only request
     await dialog.getByRole('button', {name: /^reboot$/i}).click();
     const confirm = dialog.getByRole('button', {name: 'Confirm and execute'});
     await expect(confirm).toBeDisabled();
-    await expect(dialog.locator('pre').last()).toContainText('systemctl reboot');
+    await expect(dialog.locator('.server-management-review pre')).toContainText('systemctl reboot');
     expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(0);
     await dialog.getByLabel(/Type the host/).fill('example.test');
     await confirm.click();
@@ -269,4 +269,26 @@ test('overview resource navigation preserves filters and separates inspection fr
     await expect(german.locator('.server-management-resources')).toContainText('Dienste');
     expect(await german.locator('.server-management-main').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
     await german.screenshot({animations: 'disabled', path: testInfo.outputPath('german-320.png')});
+});
+
+
+test('action review is visible above long logs and receives focus without executing', async ({page}) => {
+    const calls = await setup(page);
+    await page.route('**/api/server-operations/read', route => route.fulfill({json: {
+        status: 'completed', output: Array.from({length: 100}, (_, i) => `Log record ${100 - i}`).join('\n'), error_output: ''
+    }}));
+    await page.evaluate(() => window.ServerOperations.open('ops', 'service', {unit: 'sshd.service'}));
+    const dialog = page.locator('.server-management');
+    await expect(dialog.getByRole('status')).toContainText('Read complete');
+    await dialog.getByRole('button', {name: 'Restart', exact: true}).click();
+    const review = dialog.locator('.server-management-review');
+    await expect(review).toBeFocused();
+    expect(await review.evaluate(node => {
+        const box = node.getBoundingClientRect();
+        const main = node.closest('.server-management-main').getBoundingClientRect();
+        const output = node.parentElement.querySelector('.server-management-output').getBoundingClientRect();
+        return box.top >= main.top && box.bottom <= main.bottom && box.bottom < output.top;
+    })).toBe(true);
+    expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(0);
+    await review.getByRole('button', {name: 'Cancel', exact: true}).click();
 });
