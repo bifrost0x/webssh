@@ -19,6 +19,19 @@ def test_explicit_aliases_quotes_and_first_value_win():
     assert 'private' not in json.dumps(result)
 
 
+@pytest.mark.parametrize('line', [
+    'server.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA',
+    '[server.example]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNh',
+    '|1|c2FsdA==|aGFzaA== ssh-rsa AAAAB3NzaC1yc2E=',
+    '@cert-authority *.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA',
+    '@revoked server.example sk-ssh-ed25519@openssh.com AAAAC3NzaA==',
+])
+def test_known_hosts_is_rejected_with_specific_format_guidance(line):
+    for prefix in ('', 'Host valid\n User deploy\n'):
+        with pytest.raises(ExchangeError, match='known_hosts'):
+            preview_import(prefix + line, 'openssh')
+
+
 @pytest.mark.parametrize('directive', [
     'ProxyCommand touch /tmp/never', 'Match exec "id"', 'Include ~/.ssh/*',
 ])

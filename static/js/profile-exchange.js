@@ -35,7 +35,7 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     function openImport() {
-        const modal = element('div', undefined, 'modal');
+        const modal = element('div', undefined, 'modal profile-exchange-modal');
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
         modal.setAttribute('aria-label', t('exchange.import'));
@@ -60,18 +60,21 @@
         source.maxLength = 65536;
         source.spellcheck = false;
         source.setAttribute('aria-label', t('exchange.source'));
+        source.placeholder = 'Host my-server\n    HostName server.example\n    User deploy\n    Port 22';
         const file = element('input', undefined, 'form-control');
         file.type = 'file';
         file.setAttribute('aria-label', t('exchange.file'));
         const status = element('p');
         status.setAttribute('role', 'status');
+        const warnings = element('details', undefined, 'exchange-warnings');
+        warnings.hidden = true;
         const preview = element('button', t('exchange.preview'), 'btn btn-secondary');
         const submit = element('button', t('exchange.selected'), 'btn btn-primary');
         submit.disabled = true;
         const rows = element('div');
         const actions = element('div', undefined, 'form-actions');
         actions.append(preview, submit);
-        body.append(format, file, source, status, rows, actions);
+        body.append(format, file, source, status, warnings, rows, actions);
         content.append(heading, body);
         modal.append(content);
         document.body.append(modal);
@@ -85,6 +88,10 @@
             controls = [];
             submit.disabled = true;
             rows.replaceChildren();
+            status.textContent = '';
+            warnings.replaceChildren();
+            warnings.hidden = true;
+            warnings.open = false;
         };
         const dismiss = () => {
             generation++;
@@ -138,7 +145,14 @@
                 const result = await api('/api/profiles/exchange/preview', request);
                 if (current !== generation || !modal.isConnected) return;
                 snapshot = request;
-                status.textContent = result.warnings.join('\n') || t('exchange.review');
+                status.textContent = result.records.length ? t('exchange.review') : t('exchange.empty');
+                if (result.warnings.length) {
+                    warnings.append(element('summary', `${t('exchange.warnings')} (${result.warnings.length})`));
+                    const list = element('ul');
+                    for (const warning of result.warnings) list.append(element('li', warning));
+                    warnings.append(list);
+                    warnings.hidden = false;
+                }
                 controls = result.records.map((row, index) => {
                     const section = element('fieldset');
                     const selectLabel = element('label');

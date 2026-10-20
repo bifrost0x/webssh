@@ -13,6 +13,10 @@ _FIELDS = {
     'requires_key', 'jump_alias', 'auth_type',
 }
 _ALIAS = re.compile(r'^[a-zA-Z0-9_.-]{1,128}$')
+_KNOWN_HOST = re.compile(
+    r'^\s*(?:@(?:cert-authority|revoked)\s+)?\S+\s+'
+    r'(?:ssh-|ecdsa-|sk-)[^\s]+\s+[A-Za-z0-9+/]+={0,2}(?:\s|$)'
+)
 
 
 class ExchangeError(ValueError):
@@ -80,6 +84,15 @@ def _record(values):
 
 
 def _openssh(source):
+    if any(
+        _KNOWN_HOST.match(line) for line in source.splitlines()
+        if not line.lstrip().startswith('#')
+    ):
+        raise ExchangeError(
+            'This is known_hosts host-key data, not an OpenSSH config. '
+            'Choose your SSH config file (usually ~/.ssh/config), or add hosts manually. '
+            'Host keys are not imported or trusted by this tool.'
+        )
     records = []
     warnings = []
     aliases = []

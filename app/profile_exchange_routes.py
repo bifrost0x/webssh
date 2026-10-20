@@ -16,6 +16,15 @@ from .profile_manager import load_profiles, upsert_profile
 profile_exchange_blueprint = Blueprint('profile_exchange', __name__)
 
 _PUBLIC_ERRORS = {
+    (
+        'This is known_hosts host-key data, not an OpenSSH config. '
+        'Choose your SSH config file (usually ~/.ssh/config), or add hosts manually. '
+        'Host keys are not imported or trusted by this tool.'
+    ): (
+        'This is known_hosts host-key data, not an OpenSSH config. '
+        'Choose your SSH config file (usually ~/.ssh/config), or add hosts manually. '
+        'Host keys are not imported or trusted by this tool.'
+    ),
     'Invalid import request.': 'Invalid import request.',
     'Import supports at most 100 hosts.': 'Import supports at most 100 hosts.',
     'Import must contain text.': 'Import must contain text.',

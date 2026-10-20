@@ -1559,4 +1559,9 @@ body.session-diagnostics-open {
 .host-context-set label { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
 #notepadPanel .workspace-drawer-header { flex-wrap: wrap; gap: 8px 12px; }
 #activeHostContextBtn { flex-shrink: 0; }
+.profile-exchange-modal .modal-body > .form-control { margin-bottom: 12px; }
+.profile-exchange-modal [role="status"] { white-space: pre-line; overflow-wrap: anywhere; }
+.profile-exchange-modal .exchange-warnings { margin: 12px 0; }
+.profile-exchange-modal .exchange-warnings summary { cursor: pointer; }
+.profile-exchange-modal .exchange-warnings ul { max-height: 180px; overflow-y: auto; padding-left: 24px; }
 .host-context-modal #hostContextStatus { min-height: 1.5em; }
