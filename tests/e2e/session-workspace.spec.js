@@ -2683,6 +2683,14 @@ test('partial telemetry shows only metrics returned by the device', async ({ pag
     await assertNoExternalRequests(page);
 });
 
+async function openDiagnosticDetails(page) {
+    for (const id of ['sessionDiagnosticsHistory', 'sessionDiagnosticsTechnical']) {
+        if (!await page.locator(`#${id}`).evaluate(element => element.open)) {
+            await page.locator(`#${id} > summary`).click();
+        }
+    }
+}
+
 test('diagnostics canvas renders correlated inventory and keeps controls clipboard-only', async ({ page }, testInfo) => {
     await login(page);
     await seedLinuxSession(page);
@@ -2692,6 +2700,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     const diagnosticsTab = page.locator('#contextDiagnosticsTab');
     await expect(diagnosticsTab).toBeEnabled();
     await diagnosticsTab.click();
+    await openDiagnosticDetails(page);
 
     await expect(diagnosticsTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
@@ -2799,6 +2808,8 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await expect.poll(() => page.evaluate(() => window.__workspaceInventoryRequests)).toBe(beforeRefresh + 1);
     await expect(page.locator('#sessionDiagnosticsState')).toHaveText('Live');
     await expect(page.locator('#sessionDiagnosticsLastUpdated')).toContainText('Inventory stale');
+    await expect(page.locator('#sessionDiagnosticsServiceSummary')).toContainText('Stale');
+    await expect(page.locator('#sessionDiagnosticsContainerSummary')).toContainText('Stale');
     await expect(page.locator('#sessionDiagnosticsSystemdServices tr')).toHaveCount(3);
     await expect(page.locator('#sessionDiagnosticsDockerContainers tr')).toHaveCount(2);
 
@@ -2809,6 +2820,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
         'systemd service details are restricted',
     );
     await expect(page.locator('#sessionDiagnosticsSystemdSection')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsServiceSummary')).toHaveText('Details unavailable for this session');
     await page.locator('[data-diagnostics-view="docker"]').click();
     await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeVisible();
 
@@ -2832,6 +2844,7 @@ test('diagnostics charts keep stable dimensions across primary workspace navigat
     await login(page);
     await seedLinuxSession(page);
     await page.locator('#contextDiagnosticsTab').click();
+    await openDiagnosticDetails(page);
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
     await page.locator('#sessionDiagnosticsNetworkSection summary').click();
     await expect(page.locator('#sessionDiagnosticsNetworkChart')).toBeVisible({ timeout: 6000 });
@@ -3006,6 +3019,7 @@ test('diagnostics explains high load and keeps metric and inventory timestamps d
     await login(page);
     await seedLinuxSession(page, { highLoad: true });
     await page.locator('#contextDiagnosticsTab').click();
+    await openDiagnosticDetails(page);
     await expect(page.locator('#sessionDiagnosticsLoadValue')).toHaveText('133.3%');
     await expect(page.locator('#sessionDiagnosticsAssessment')).not.toHaveAttribute('open');
     await expect(page.locator('#sessionDiagnosticsFindings')).toBeHidden();
@@ -3020,6 +3034,7 @@ test('diagnostics explains high load and keeps metric and inventory timestamps d
     await expect(page.locator('#sessionDiagnosticsHistoryCaption')).toContainText('samples over', { timeout: 6500 });
     await expect(page.locator('#sessionDiagnosticsCpuValue')).toContainText('%');
     await page.locator('#sessionDiagnosticsAssessment summary').click();
+    await page.locator('#sessionDiagnosticsCpuProcesses').scrollIntoViewIfNeeded();
     await expect(page.locator('#sessionDiagnosticsCpuProcesses')).toBeInViewport();
     await expect.poll(() => page.evaluate(() => window.__workspaceChartSamples?.pressure || 0), { timeout: 6500 }).toBeGreaterThan(2);
     await page.screenshot({ path: testInfo.outputPath('diagnostics-high-load.png') });
@@ -3048,6 +3063,7 @@ test('diagnostics retains the root disk trend when other measurements are unavai
     await login(page);
     await seedLinuxSession(page, { diskOnlyMetrics: true });
     await page.locator('#contextDiagnosticsTab').click();
+    await openDiagnosticDetails(page);
     await expect(page.locator('#sessionDiagnosticsPressureChart')).toBeVisible({ timeout: 6500 });
     await expect(page.locator('#sessionDiagnosticsDiskValue')).toHaveText('80.0%');
     await expect(page.locator('#sessionDiagnosticsPressureSection .session-chart-legend .disk')).toHaveText('Root disk');
@@ -3214,4 +3230,48 @@ test('first-contact trust shows exact fingerprint and closes stale approval', as
         for (const handler of window.socket.listeners('ssh_host_key_closed')) handler({prompt_id: 'exact-key-prompt'});
     });
     await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+});
+
+test('resource cards keep diagnostics compact and open the matching management inventory', async ({page}, testInfo) => {
+    await login(page);
+    await seedLinuxSession(page, {highLoad: true});
+    await page.route('**/api/server-operations/workspace-linux', route => route.fulfill({json: {mutations_enabled: true}}));
+    await page.locator('#contextDiagnosticsTab').click();
+    await expect(page.locator('#sessionDiagnosticsServiceSummary')).toContainText('1 failed');
+    await expect(page.locator('#sessionDiagnosticsHistory')).not.toHaveAttribute('open');
+    await expect(page.locator('#sessionDiagnosticsTechnical')).not.toHaveAttribute('open');
+    await expect(page.locator('.session-resource-card')).toHaveCount(3);
+    const card = page.locator('#sessionDiagnosticsServiceCard');
+    await card.focus();
+    const before = await page.locator('#sessionDiagnosticsMetricsUpdated').textContent();
+    await expect.poll(() => page.locator('#sessionDiagnosticsMetricsUpdated').textContent(), {timeout: 6500}).not.toBe(before);
+    await expect(card).toBeFocused();
+    for (const width of [600, 480, 320]) {
+        await page.locator('#contextWorkspace').evaluate((element, width) => {
+            element.style.width = `${width}px`;
+            element.style.minWidth = '0';
+            element.style.maxWidth = `${width}px`;
+        }, width);
+        const overflow = await page.locator('.session-diagnostics-content').evaluate(element => element.scrollWidth - element.clientWidth);
+        expect(overflow).toBeLessThanOrEqual(1);
+        await page.locator('#contextWorkspace').screenshot({path: testInfo.outputPath(`diagnostics-cards-${width}.png`)});
+    }
+    for (const [kind, label] of [['Service', 'Services'], ['Container', 'Containers'], ['Process', 'Processes']]) {
+        await page.locator(`#sessionDiagnostics${kind}Card`).click();
+        const dialog = page.getByRole('dialog', {name: 'Server management', exact: true});
+        await expect(dialog.getByRole('tab', {name: label, exact: true})).toHaveAttribute('aria-selected', 'true');
+        await expect(dialog.locator('.server-management-detail h3')).toHaveText(label);
+        await dialog.getByRole('button', {name: 'Close', exact: true}).click();
+    }
+    await openDiagnosticDetails(page);
+    await expect(page.locator('#sessionDiagnosticsCpuProcesses button')).toHaveCount(0);
+    await expect(page.locator('#sessionDiagnosticsMemoryProcesses button')).toHaveCount(0);
+    await expect(page.locator('#sessionDiagnosticsCpuProcesses td').first()).toHaveAttribute('title', /.+/);
+    await page.locator('#sessionDiagnosticsTechnical > summary').click();
+    await page.locator('#sessionDiagnosticsHistory > summary').click();
+    await page.evaluate(() => window.i18n.setLanguage('de'));
+    await expect(page.locator('#sessionDiagnosticsServiceCard')).toContainText('Dienste');
+    await expect(page.locator('#sessionDiagnosticsProcessSummary')).toContainText('Prozesse');
+    expect(await page.locator('.session-diagnostics-content').evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    await page.locator('#contextWorkspace').screenshot({path: testInfo.outputPath('diagnostics-cards-german-320.png')});
 });

@@ -526,8 +526,74 @@ body.session-diagnostics-open {
 .session-diagnostics-content {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     padding: 22px 26px 30px;
     overflow-y: auto;
+}
+
+.session-resource-cards {
+    display: grid;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.session-resource-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    text-align: left;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.session-resource-card:hover,
+.session-resource-card:focus-visible {
+    border-color: var(--accent-color);
+}
+
+.session-resource-card-copy {
+    display: grid;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.session-resource-card-copy small,
+.session-resource-card-action {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.session-resource-card-action {
+    max-width: 90px;
+}
+
+.session-resource-card.warning .session-resource-card-copy small {
+    color: var(--warning-color, #d29922);
+}
+
+.session-diagnostics-details {
+    min-width: 0;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-color);
+}
+
+.session-diagnostics-details > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 3px 0;
+}
+
+.session-diagnostics-details[open] > summary {
+    margin-bottom: 12px;
 }
 
 .session-diagnostics-permissions {

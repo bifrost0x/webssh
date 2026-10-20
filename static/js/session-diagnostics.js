@@ -183,6 +183,7 @@
         const inactive = Math.max(0, total - active - failed);
         return {
             state: String(section.state ?? ''),
+            countsAvailable: finiteNumber(section.total) !== null,
             total,
             active,
             failed,
@@ -219,6 +220,7 @@
         const stopped = Math.max(0, total - running);
         return {
             version: String(section.version ?? ''),
+            countsAvailable: finiteNumber(section.total) !== null,
             total,
             running,
             stopped,
@@ -251,7 +253,7 @@
         if (metrics.load >= 100) add('load', 'diagnostics.assessmentLoad', 'One-minute load is at least one task per CPU. Compare CPU usage and I/O waits; load includes runnable and uninterruptible tasks.');
         if (inventoryState.status === 'ready' && !inventoryState.permissionDenied?.includes('systemd')
                 && finiteNumber(inventoryState.inventory?.systemd?.failed) > 0) {
-            add('services', 'diagnostics.assessmentServices', 'The service inventory reports failed units. Filter for failed services below and inspect their status or logs.');
+            add('services', 'diagnostics.assessmentServices', 'The service inventory reports failed units. Open Services to inspect their status or logs.');
         }
         if (!findings.length) add('scope', 'diagnostics.assessmentScope', 'No guide threshold is exceeded in the available readings. These samples do not establish overall server health.');
         return findings;
@@ -473,6 +475,34 @@
         windowRef?.addEventListener?.('server-operation-completed', event => {
             if (event.detail?.sessionId === latestState.sessionId) elements.refresh?.click();
         });
+        const resourceCards = ['service', 'container', 'process'].map(kind => {
+            const title = kind[0].toUpperCase() + kind.slice(1);
+            const button = byId(`sessionDiagnostics${title}Card`);
+            const summary = byId(`sessionDiagnostics${title}Summary`);
+            const handler = () => {
+                if (latestSession?.connected && latestModel?.available) {
+                    windowRef?.ServerOperations?.open(latestState.sessionId, kind);
+                }
+            };
+            button?.addEventListener('click', handler);
+            return {kind, button, summary, handler};
+        });
+        function renderResourceCards(model) {
+            for (const {kind, button, summary} of resourceCards) {
+                if (!button || !summary) continue;
+                button.disabled = !model.available;
+                const value = kind === 'service' ? model.systemd : kind === 'container' ? model.docker : model.secondary.processTotal;
+                button.classList.toggle('warning', kind === 'service' && value?.countsAvailable && value.failed > 0);
+                summary.textContent = value === null || value === undefined || value.countsAvailable === false
+                    ? t('diagnostics.resourceUnavailable', 'Details unavailable for this session')
+                    : kind === 'service' ? t('diagnostics.serviceOverview', '{active} active · {failed} failed', value)
+                        : kind === 'container' ? t('diagnostics.containerOverview', '{running} running · {total} total', value)
+                            : t('diagnostics.processOverview', '{total} processes · top 5 CPU / memory', {total: value});
+                if (kind !== 'process' && value?.countsAvailable && model.inventory.stale) {
+                    summary.textContent += ` · ${t('diagnostics.statusStale', 'Stale')}`;
+                }
+            }
+        }
         let redrawFrame = null;
         let selectedView = 'processes';
         const viewButtons = Array.from(elements.overlay.querySelectorAll?.('[data-diagnostics-view]') || []);
@@ -575,12 +605,10 @@
             container.replaceChildren();
             rows.forEach(row => {
                 const tr = documentRef.createElement('tr');
-                [row.command, row.user, row.pid].forEach((value, index) => {
+                [row.command, row.user, row.pid].forEach(value => {
                     const cell = documentRef.createElement('td');
                     cell.textContent = value;
-                    if (index === 0 && windowRef?.ServerOperations) {
-                        cell.appendChild(manageButton('process', {pid: Number(row.pid)}));
-                    }
+                    cell.title = String(value);
                     tr.appendChild(cell);
                 });
                 const percentCell = documentRef.createElement('td');
@@ -608,18 +636,6 @@
             td.textContent = message;
             tr.appendChild(td);
             container.appendChild(tr);
-        }
-
-        function manageButton(kind, target) {
-            const button = documentRef.createElement('button');
-            button.type = 'button';
-            button.className = 'btn btn-secondary';
-            button.textContent = t('serverOps.manage', 'Inspect / manage');
-            const sessionId = latestState.sessionId;
-            button.addEventListener('click', () => {
-                if (latestState.sessionId === sessionId) windowRef?.ServerOperations?.open(sessionId, kind, target);
-            });
-            return button;
         }
 
         function copyActionButton(action, service) {
@@ -717,7 +733,6 @@
                 description.textContent = service.description;
                 buttons.className = 'session-service-actions';
                 ['start', 'stop', 'restart'].forEach(action => buttons.appendChild(copyActionButton(action, service)));
-                if (windowRef?.ServerOperations) buttons.appendChild(manageButton('service', {unit: service.unit}));
                 actions.appendChild(buttons);
                 tr.append(unit, load, state, description, actions);
                 elements.systemdServices.appendChild(tr);
@@ -755,7 +770,6 @@
                 const name = documentRef.createElement('td');
                 const status = documentRef.createElement('td');
                 name.textContent = container.name;
-                if (windowRef?.ServerOperations) name.appendChild(manageButton('container', {name: container.name}));
                 status.textContent = container.status;
                 tr.append(name, status);
                 elements.dockerContainers.appendChild(tr);
@@ -949,6 +963,7 @@
                 replaceProcesses(elements.cpuProcesses, model.processes.topCpu);
                 replaceProcesses(elements.memoryProcesses, model.processes.topMemory);
             }
+            renderResourceCards(model);
             renderSystemd(model.systemd);
             renderDocker(model.docker);
             updateViews(previousFocus);
@@ -981,6 +996,7 @@
             button.addEventListener('keydown', keydown);
         });
         elements.networkSection?.addEventListener('toggle', scheduleRedraw);
+        byId('sessionDiagnosticsHistory')?.addEventListener('toggle', scheduleRedraw);
         const handleRefresh = () => onRefreshInventory();
         const handleExpand = () => setExpanded(!expanded);
         const handleCollapse = () => setExpanded(false);
@@ -1035,6 +1051,8 @@
                 elements.dockerSearch?.removeEventListener('input', handleDockerSearch);
                 filterHandlers.forEach((handler, button) => button.removeEventListener('click', handler));
                 elements.networkSection?.removeEventListener('toggle', scheduleRedraw);
+                byId('sessionDiagnosticsHistory')?.removeEventListener('toggle', scheduleRedraw);
+                resourceCards.forEach(({button, handler}) => button?.removeEventListener('click', handler));
                 viewHandlers.forEach(({ click, keydown }, button) => {
                     button.removeEventListener('click', click);
                     button.removeEventListener('keydown', keydown);

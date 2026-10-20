@@ -13,6 +13,7 @@ async function setup(page, {enabled = true, password = false} = {}) {
         else if (endpoint === 'read') result = {
             status: 'completed', output: body.action === 'container.inspect'
                 ? JSON.stringify({id: 'a'.repeat(64), name: '/database', state: 'running'})
+                : body.action === 'process.inspect' ? JSON.stringify({pid: body.target.pid, command: 'worker', start_time: '12345'})
                 : 'Server output', error_output: ''
         };
         else if (endpoint === 'intents') result = {
@@ -210,4 +211,21 @@ test('resource tabs support roving keyboard navigation and label their panel', a
     await expect(processes).toBeFocused();
     await processes.press('Home');
     await expect(overview).toBeFocused();
+});
+
+test('inventory entry has no implicit read and sorts services and containers by actionable state', async ({page}) => {
+    const calls = await setup(page);
+    await page.evaluate(() => window.ServerOperations.open('ops', 'service'));
+    const dialog = page.getByRole('dialog', {name: 'Server management', exact: true});
+    await expect(dialog.locator('.server-management-row strong')).toHaveText(['backup.service', 'sshd.service']);
+    await expect(dialog.locator('.server-management-detail h3')).toHaveText('Services');
+    expect(calls.filter(call => call.endpoint === 'read')).toHaveLength(0);
+    await dialog.getByRole('tab', {name: 'Containers', exact: true}).click();
+    await expect(dialog.locator('.server-management-row strong')).toHaveText(['database', 'cache']);
+    await dialog.getByRole('tab', {name: 'Processes', exact: true}).click();
+    await expect(dialog.locator('.server-management-row small')).toHaveText(['CPU: 12.0%']);
+    await dialog.locator('.server-management-row').click();
+    await expect(dialog.locator('.server-management-facts')).toContainText('12345');
+    expect(calls.find(call => call.body.action === 'process.inspect').body.target).toEqual({pid: 123});
+    await expect(dialog.locator('.server-management-row')).toHaveAttribute('aria-pressed', 'true');
 });

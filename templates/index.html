@@ -429,6 +429,25 @@
                     <ul id="sessionDiagnosticsFindings"></ul>
                 </details>
 
+                <div class="session-resource-cards">
+                    <button type="button" class="session-resource-card" id="sessionDiagnosticsServiceCard" data-resource-kind="service">
+                        <span class="material-icons" aria-hidden="true">settings_suggest</span>
+                        <span class="session-resource-card-copy"><strong data-i18n="serverOps.services">Services</strong><small id="sessionDiagnosticsServiceSummary">—</small></span>
+                        <span class="session-resource-card-action" data-i18n="diagnostics.viewManage">View / manage</span><span class="material-icons" aria-hidden="true">chevron_right</span>
+                    </button>
+                    <button type="button" class="session-resource-card" id="sessionDiagnosticsContainerCard" data-resource-kind="container">
+                        <span class="material-icons" aria-hidden="true">view_in_ar</span>
+                        <span class="session-resource-card-copy"><strong data-i18n="serverOps.containers">Containers</strong><small id="sessionDiagnosticsContainerSummary">—</small></span>
+                        <span class="session-resource-card-action" data-i18n="diagnostics.viewManage">View / manage</span><span class="material-icons" aria-hidden="true">chevron_right</span>
+                    </button>
+                    <button type="button" class="session-resource-card" id="sessionDiagnosticsProcessCard" data-resource-kind="process">
+                        <span class="material-icons" aria-hidden="true">memory</span>
+                        <span class="session-resource-card-copy"><strong data-i18n="serverOps.processes">Processes</strong><small id="sessionDiagnosticsProcessSummary">—</small></span>
+                        <span class="session-resource-card-action" data-i18n="diagnostics.viewManage">View / manage</span><span class="material-icons" aria-hidden="true">chevron_right</span>
+                    </button>
+                </div>
+                <details class="session-diagnostics-details" id="sessionDiagnosticsHistory">
+                    <summary data-i18n="diagnostics.historyDetails">Resource history</summary>
                 <div class="session-diagnostics-chart-grid">
                     <section class="session-diagnostics-section session-diagnostics-chart-panel" id="sessionDiagnosticsPressureSection" hidden>
                         <div class="session-diagnostics-section-heading">
@@ -460,6 +479,9 @@
                     </details>
                 </div>
 
+                </details>
+                <details class="session-diagnostics-details" id="sessionDiagnosticsTechnical">
+                    <summary data-i18n="diagnostics.technicalDetails">Technical details</summary>
                 <div class="session-diagnostics-inventory-meta"><span id="sessionDiagnosticsLastUpdated" data-i18n="diagnostics.inventoryNotLoaded">Inventory not loaded</span></div>
                 <div class="session-diagnostics-views" role="tablist" aria-label="Diagnostics" data-i18n-aria-label="workspaceContext.diagnostics">
                     <button id="sessionDiagnosticsProcessesTab" type="button" role="tab" aria-controls="sessionDiagnosticsProcessesSection" aria-selected="true" data-diagnostics-view="processes" data-i18n="diagnostics.processes">Processes</button>
@@ -561,6 +583,7 @@
                     <article id="sessionDiagnosticsProcessMetric" hidden><span data-i18n="diagnostics.processes">Processes</span><strong id="sessionDiagnosticsProcessValue">--</strong><small id="sessionDiagnosticsProcessDetail"></small></article>
                 </section>
 
+                </details>
                 </details>
                 <p class="sr-only" id="sessionDiagnosticsClipboardFeedback" aria-live="polite"></p>
             </div>

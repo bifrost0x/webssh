@@ -132,7 +132,7 @@
         let capabilities = null;
         let resolved = null;
         let answer = null;
-        let selected = kind !== 'system';
+        let selected = Boolean(kind === 'service' ? sourceTarget.unit : kind === 'container' ? sourceTarget.name : kind === 'process' ? sourceTarget.pid : false);
         const labels = {
             system: t('serverOps.overview', 'Overview'),
             service: t('serverOps.services', 'Services'),
@@ -180,8 +180,17 @@
             for (const finding of model?.findings || []) overview.append(el('p', finding.text, 'server-management-hint'));
             list.replaceChildren();
             let rows = kind === 'service' ? model?.systemd?.rows : kind === 'container' ? model?.docker?.rows
-                : [...(model?.processes?.topCpu || []), ...(model?.processes?.topMemory || [])].filter((row, index, all) => all.findIndex(other => other.pid === row.pid) === index);
-            rows = rows || [];
+                : [...(model?.processes?.topCpu || []).map(row => ({...row, metric: 'CPU'})),
+                    ...(model?.processes?.topMemory || []).map(row => ({...row, metric: t('diagnostics.memory', 'Memory')}))]
+                    .filter((row, index, all) => all.findIndex(other => other.pid === row.pid) === index);
+            rows = [...(rows || [])];
+            if (kind === 'service') {
+                const rank = row => row.active === 'failed' ? 0 : row.active === 'active' ? 1 : 2;
+                rows.sort((a, b) => rank(a) - rank(b) || a.unit.localeCompare(b.unit));
+            } else if (kind === 'container') {
+                const rank = row => /^(up\b|running$)/i.test(row.status) ? 0 : 1;
+                rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+            }
             const query = search.value.trim().toLowerCase();
             for (const row of rows.filter(row => {
                 const state = String(row.active || row.status || '').toLowerCase();
@@ -191,11 +200,11 @@
                         || filter.value === 'failed' && state === 'failed' || filter.value === 'stopped' && !running && state !== 'failed');
             })) {
                 const name = row.unit || row.name || `${row.pid} · ${row.command}`;
-                const rowButton = button('', () => select(kind, row.unit ? {unit: row.unit} : row.name ? {name: row.name} : {pid: row.pid}), list);
+                const rowButton = button('', () => select(kind, row.unit ? {unit: row.unit} : row.name ? {name: row.name} : {pid: Number(row.pid)}), list);
                 rowButton.className = 'server-management-row';
                 rowButton.append(el('strong', name), el('span', row.active || row.status || row.user, 'server-management-badge'),
-                    el('small', row.description || (row.pid ? row.label || `${row.percent ?? '—'}%` : '')));
-                rowButton.setAttribute('aria-pressed', String(selected && (sourceTarget.unit === row.unit && !!row.unit || sourceTarget.name === row.name && !!row.name || sourceTarget.pid === row.pid && !!row.pid)));
+                    el('small', row.description || (row.pid ? `${row.metric}: ${row.label || `${row.percent ?? '—'}%`}` : '')));
+                rowButton.setAttribute('aria-pressed', String(selected && (sourceTarget.unit === row.unit && !!row.unit || sourceTarget.name === row.name && !!row.name || Number(sourceTarget.pid) === Number(row.pid) && !!row.pid)));
             }
             if (!list.children.length) list.append(el('p', rows.length ? t('serverOps.noMatches', 'No matching resources.')
                 : t('serverOps.noInventory', 'No inventory available. The remote tool may be unsupported, access may be restricted, or sampling is still in progress.')));

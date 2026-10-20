@@ -174,7 +174,9 @@ Readiness fails during maintenance, shutdown admission closure, database failure
 Open **Server management** in Diagnostics to browse the connected server's
 overview, services, containers and processes. Search the resource lists and
 select a resource to inspect its details, read logs or review an action.
-**Inspect / manage** beside a diagnostic row opens that resource directly.
+The Diagnostics summary also opens each resource category directly. History
+charts and technical tables are expandable below the summary, so routine
+inspection does not require scrolling through repeated action buttons.
 The overview uses the existing session measurements and inventory; it does not
 start a second background monitor. Inspection uses separate SSH exec channels
 and does not insert commands into the interactive terminal.
