@@ -166,6 +166,12 @@
         let capabilities = null;
         let resolved = null;
         let answer = null;
+        let authorizationController = null;
+        function cancelAuthorization() {
+            authorizationController?.abort();
+            authorizationController = null;
+            if (answer) { answer(null); answer = null; authentication.replaceChildren(); }
+        }
         let selected = Boolean(kind === 'service' ? sourceTarget.unit : kind === 'container' ? sourceTarget.name : kind === 'process' ? sourceTarget.pid : false);
         const labels = {
             system: t('serverOps.overview', 'Overview'),
@@ -298,7 +304,7 @@
         function select(nextKind, target) {
             if (pending || !current()) return;
             generation++;
-            if (answer) { answer(null); answer = null; authentication.replaceChildren(); }
+            cancelAuthorization();
             kind = nextKind;
             sourceTarget = target || {};
             selected = !!target;
@@ -352,11 +358,11 @@
             controls.replaceChildren();
             status.textContent = t('serverOps.targetChanged', 'The active session changed. Reopen server management.');
             sudo.disabled = true;
-            if (answer) { answer(null); answer = null; authentication.replaceChildren(); }
+            cancelAuthorization();
         }
         const dismiss = () => {
             generation++;
-            if (answer) answer(null);
+            cancelAuthorization();
             window.removeEventListener('session-workspace-change', invalidate);
             window.removeEventListener('session-removed', invalidate);
             window.removeEventListener('server-management-snapshot', onSnapshot);
@@ -425,26 +431,52 @@
             });
             return new Promise(resolve => { answer = resolve; });
         }
-        const stepUp = window.WebSSHSecurityUI.createAccountStepUpClient({
-            api: async (...args) => {
-                if (!current()) throw new Error(t('serverOps.targetChanged', 'The active session changed.'));
-                return api(...args);
-            },
-            chooseMethod: (methods, preferred) => question(preferred, methods),
-            requestSecret: method => question(method),
-            getPasskeyAssertion: options => navigator.credentials.get({
-                publicKey: {
-                    ...options, challenge: bytes(options.challenge),
-                    allowCredentials: (options.allowCredentials || []).map(item => ({...item, id: bytes(item.id)}))
+        function createStepUp(revision, signal) {
+            const guard = () => {
+                if (signal.aborted || !current() || generation !== revision) {
+                    throw new DOMException('Authorization cancelled', 'AbortError');
                 }
-            }),
-            serializeCredential: credentialJSON,
-            openAuthorization: url => {
-                if (!window.open(url, 'webssh-server-step-up', 'popup,width=720,height=760')) {
-                    throw new Error(t('serverOps.popup', 'Allow the authentication popup and try again.'));
-                }
-            }
-        });
+            };
+            return window.WebSSHSecurityUI.createAccountStepUpClient({
+                api: async (path, options) => {
+                    guard();
+                    const result = await api(path, {...options, signal});
+                    guard();
+                    return result;
+                },
+                chooseMethod: (methods, preferred) => { guard(); return question(preferred, methods); },
+                requestSecret: method => { guard(); return question(method); },
+                getPasskeyAssertion: options => {
+                    guard();
+                    return navigator.credentials.get({
+                        signal,
+                        publicKey: {
+                            ...options, challenge: bytes(options.challenge),
+                            allowCredentials: (options.allowCredentials || []).map(item => ({...item, id: bytes(item.id)}))
+                        }
+                    });
+                },
+                serializeCredential: credentialJSON,
+                openAuthorization: url => {
+                    guard();
+                    const popup = window.open(url, 'webssh-server-step-up', 'popup,width=720,height=760');
+                    if (!popup) throw new Error(t('serverOps.popup', 'Allow the authentication popup and try again.'));
+                    signal.addEventListener('abort', () => popup.close(), {once: true});
+                },
+                wait: milliseconds => new Promise((resolve, reject) => {
+                    guard();
+                    const abort = () => {
+                        clearTimeout(timer);
+                        reject(new DOMException('Authorization cancelled', 'AbortError'));
+                    };
+                    const timer = setTimeout(() => {
+                        signal.removeEventListener('abort', abort);
+                        resolve();
+                    }, milliseconds);
+                    signal.addEventListener('abort', abort, {once: true});
+                })
+            });
+        }
         function writeTarget() {
             if (kind === 'container') return resolved?.id ? {container: resolved.id} : null;
             if (kind === 'process') return resolved?.pidfd_supported
@@ -557,6 +589,9 @@
                     commit.disabled = true;
                     sudo.disabled = true;
                     let dispatched = false;
+                    const controller = new AbortController();
+                    authorizationController = controller;
+                    const stepUp = createStepUp(revision, controller.signal);
                     try {
                         const grant = await stepUp.authorize('server.operation', intent.intent);
                         if (!grant || !current() || revision !== generation) return;
@@ -582,9 +617,13 @@
                             ? t('serverOps.unknown', 'The outcome is unknown. Inspect the server before trying another action; do not retry automatically.')
                             : error.message;
                     } finally {
-                        setPending(false);
-                        review.replaceChildren();
-                        sudo.disabled = !current();
+                        controller.abort();
+                        if (authorizationController === controller) authorizationController = null;
+                        if (generation === revision) {
+                            setPending(false);
+                            review.replaceChildren();
+                            sudo.disabled = !current();
+                        }
                         // Intent and grant are never retried after execution or uncertainty.
                     }
                 }, review);
@@ -597,7 +636,9 @@
                 const cancel = button(t('serverOps.cancel', 'Cancel'), () => {
                     generation++;
                     review.replaceChildren();
-                    if (answer) { answer(null); answer = null; authentication.replaceChildren(); }
+                    cancelAuthorization();
+                    setPending(false);
+                    sudo.disabled = !current();
                 }, review);
                 review.focus({preventScroll: true});
                 main.scrollTop += review.getBoundingClientRect().top - main.getBoundingClientRect().top - 16;

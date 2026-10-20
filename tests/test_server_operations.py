@@ -230,3 +230,25 @@ def test_container_logs_merge_streams_newest_first_and_keep_multiline_records():
                                    f'{new} same entry', f'{middle} stderr entry', f'{old} old']
     assert errors == 'Docker warning'
     assert newest_container_logs('', 'permission denied') == ('', 'permission denied')
+
+
+def test_read_route_enforces_ownership_and_merges_docker_logs(app, client, session, monkeypatch):
+    from app import server_operations as operations
+    _login(app, client)
+    calls = []
+    def execute(*args, **kwargs):
+        calls.append(args)
+        return {'status': 'completed', 'exit_status': 0,
+                'output': '2026-10-19T10:00:00.000000000Z old',
+                'error_output': '2026-10-20T10:00:00.000000000Z new'}
+    monkeypatch.setattr(operations, 'execute_command', execute)
+    payload = {'session_id': 'session', 'action': 'container.logs', 'target': {'container': 'a' * 64}}
+    session['user_id'] = 2
+    assert client.post('/api/server-operations/read', json=payload).status_code == 404
+    assert calls == []
+    session['user_id'] = 1
+    response = client.post('/api/server-operations/read', json=payload)
+    assert response.status_code == 200
+    assert response.json['output'].splitlines()[0].endswith('new')
+    assert response.json['error_output'] == ''
+    assert '--timestamps --tail 100' in calls[0][3]

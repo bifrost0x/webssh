@@ -3227,6 +3227,11 @@ test('first-contact trust shows exact fingerprint and closes stale approval', as
     await page.keyboard.press('Escape');
     await expect.poll(() => page.evaluate(() => window.__trustAnswers[1]?.accepted)).toBe(false);
     await showPrompt();
+    await page.locator('#sshHostKeyModal').click({position: {x: 4, y: 4}});
+    await expect.poll(() => page.evaluate(() => window.__trustAnswers[2]?.accepted)).toBe(false);
+    await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+    await showPrompt();
+    await expect(page.locator('#sshHostKeyModal')).toHaveClass(/show/);
     await page.evaluate(() => {
         for (const handler of window.socket.listeners('ssh_host_key_closed')) handler({prompt_id: 'exact-key-prompt'});
     });

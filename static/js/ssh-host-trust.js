@@ -43,6 +43,11 @@
             socket.on('disconnect', close);
             document.getElementById('sshHostKeyCancel').addEventListener('click', () => answer(false));
             document.getElementById('sshHostKeyAccept').addEventListener('click', () => answer(true));
+            modal.addEventListener('click', event => {
+                if (event.target !== modal) return;
+                event.stopPropagation();
+                answer(false);
+            });
             modal.addEventListener('keydown', event => {
                 if (event.key === 'Escape') {
                     event.preventDefault();

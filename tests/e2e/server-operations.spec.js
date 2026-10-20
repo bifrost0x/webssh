@@ -292,3 +292,60 @@ test('action review is visible above long logs and receives focus without execut
     expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(0);
     await review.getByRole('button', {name: 'Cancel', exact: true}).click();
 });
+
+
+test('cancelling pending authentication prevents a late credential prompt', async ({page}) => {
+    const calls = await setup(page);
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let requested = false;
+    await page.route('**/api/account/step-up/intents', async route => {
+        requested = true;
+        await gate;
+        await route.fulfill({json: {intent: 'delayed', methods: ['password'], preferred_method: 'password'}});
+    });
+    await page.evaluate(() => window.ServerOperations.open('ops', 'service', {unit: 'sshd.service'}));
+    const dialog = page.locator('.server-management');
+    await dialog.getByRole('button', {name: 'Restart', exact: true}).click();
+    await dialog.getByRole('button', {name: 'Confirm and execute'}).click();
+    await expect.poll(() => requested).toBe(true);
+    await dialog.locator('.server-management-review').getByRole('button', {name: 'Cancel', exact: true}).click();
+    await expect(dialog.getByRole('tab', {name: 'Containers', exact: true})).toBeEnabled();
+    release();
+    await dialog.getByRole('tab', {name: 'Containers', exact: true}).click();
+    await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
+    expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(0);
+});
+
+test('cancelling external authentication closes its popup and stops polling', async ({page}) => {
+    const calls = await setup(page);
+    await page.evaluate(() => {
+        window.__providerOpened = false;
+        window.__providerClosed = false;
+        window.open = () => {
+            window.__providerOpened = true;
+            return {close() { window.__providerClosed = true; }};
+        };
+    });
+    let polls = 0;
+    await page.route('**/api/account/step-up/intents', route => route.fulfill({json: {
+        intent: 'external', methods: ['oidc'], preferred_method: 'oidc'
+    }}));
+    await page.route('**/api/account/step-up/oidc/start', route => route.fulfill({json: {authorization_url: '/test-provider'}}));
+    await page.route('**/api/account/step-up/status', route => {
+        polls++;
+        return route.fulfill({json: {status: 'pending'}});
+    });
+    await page.evaluate(() => window.ServerOperations.open('ops', 'service', {unit: 'sshd.service'}));
+    const dialog = page.locator('.server-management');
+    await dialog.getByRole('button', {name: 'Restart', exact: true}).click();
+    await dialog.getByRole('button', {name: 'Confirm and execute'}).click();
+    await expect.poll(() => page.evaluate(() => window.__providerOpened)).toBe(true);
+    await dialog.locator('.server-management-review').getByRole('button', {name: 'Cancel', exact: true}).click();
+    await expect(dialog.getByRole('tab', {name: 'Services', exact: true})).toBeEnabled();
+    expect(await page.evaluate(() => window.__providerClosed)).toBe(true);
+    const pollsAtCancel = polls;
+    await page.waitForTimeout(1100);
+    expect(polls).toBe(pollsAtCancel);
+    expect(calls.filter(call => call.endpoint === 'execute')).toHaveLength(0);
+});

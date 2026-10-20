@@ -34,3 +34,16 @@ test('disconnect clears pending approval', () => {
     nodes.sshHostKeyAccept.click();
     assert.equal(sent.length, 0);
 });
+
+test('backdrop dismissal rejects the prompt and allows the next connection decision', () => {
+    const {listeners, sent, nodes} = setup();
+    listeners.ssh_host_key({prompt_id: 'first', client_request_id: 'current', fingerprint: 'SHA256:first'});
+    let stopped = false;
+    nodes.sshHostKeyModal.click({target: nodes.sshHostKeyModal, stopPropagation() { stopped = true; }});
+    assert.equal(stopped, true);
+    assert.equal(sent[0][1].accepted, false);
+    listeners.ssh_host_key({prompt_id: 'second', client_request_id: 'current', fingerprint: 'SHA256:second'});
+    nodes.sshHostKeyAccept.click();
+    assert.equal(sent[1][1].prompt_id, 'second');
+    assert.equal(sent[1][1].accepted, true);
+});
