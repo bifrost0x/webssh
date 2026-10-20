@@ -1474,7 +1474,6 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
     const diagnosticsGeometry = await page.evaluate(() => {
         const panel = document.querySelector('#contextWorkspace');
         const content = document.querySelector('.session-diagnostics-content');
-        const grid = document.querySelector('.session-diagnostics-primary-grid');
         const visible = selector => Array.from(document.querySelectorAll(selector))
             .filter(element => !element.hidden && element.getClientRects().length > 0);
         const contained = (child, parent) => {
@@ -1504,8 +1503,10 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
             documentContained: document.documentElement.scrollWidth <= innerWidth,
             panelClipsOverflow: getComputedStyle(panel).overflowX === 'hidden',
             contentContained: content.scrollWidth <= content.clientWidth + 1,
-            rowsStacked: getComputedStyle(grid).display === 'block' && cards.every((card, index) => index === 0
-                || card.getBoundingClientRect().top >= cards[index - 1].getBoundingClientRect().bottom - 1),
+            metricsDoNotOverlap: cards.every((card, index) => cards.slice(index + 1).every(other => {
+                const a = card.getBoundingClientRect(), b = other.getBoundingClientRect();
+                return a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1;
+            })),
             escapedDescendants,
             overflowingSurfaces,
         };
@@ -1514,7 +1515,7 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
         documentContained: true,
         panelClipsOverflow: true,
         contentContained: true,
-        rowsStacked: true,
+        metricsDoNotOverlap: true,
         escapedDescendants: [],
         overflowingSurfaces: [],
     });
@@ -3238,7 +3239,7 @@ test('resource cards keep diagnostics compact and open the matching management i
     await page.route('**/api/server-operations/workspace-linux', route => route.fulfill({json: {mutations_enabled: true}}));
     await page.locator('#contextDiagnosticsTab').click();
     await expect(page.locator('#sessionDiagnosticsServiceSummary')).toContainText('1 failed');
-    await expect(page.locator('#sessionDiagnosticsHistory')).not.toHaveAttribute('open');
+    await expect(page.locator('#sessionDiagnosticsHistory')).toHaveAttribute('open');
     await expect(page.locator('#sessionDiagnosticsTechnical')).not.toHaveAttribute('open');
     await expect(page.locator('.session-resource-card')).toHaveCount(3);
     const card = page.locator('#sessionDiagnosticsServiceCard');
@@ -3274,4 +3275,33 @@ test('resource cards keep diagnostics compact and open the matching management i
     await expect(page.locator('#sessionDiagnosticsProcessSummary')).toContainText('Prozesse');
     expect(await page.locator('.session-diagnostics-content').evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
     await page.locator('#contextWorkspace').screenshot({path: testInfo.outputPath('diagnostics-cards-german-320.png')});
+});
+
+
+test('expanded diagnostics opens one usable management dialog and returns on close', async ({page}, testInfo) => {
+    await login(page);
+    await seedLinuxSession(page, {highLoad: true});
+    await page.route('**/api/server-operations/workspace-linux', route => route.fulfill({json: {mutations_enabled: false}}));
+    await page.locator('#contextDiagnosticsTab').click();
+    await page.locator('#sessionDiagnosticsExpand').click();
+    await expect(page.locator('#sessionDiagnosticsPressureSection')).toBeVisible({timeout: 7000});
+    await page.locator('#sessionDiagnosticsOverlay').screenshot({path: testInfo.outputPath('expanded-diagnostics.png')});
+    await page.locator('#sessionServerManagement').click();
+    const dialog = page.getByRole('dialog', {name: 'Server management', exact: true});
+    await expect(dialog).toHaveCount(1);
+    await dialog.screenshot({path: testInfo.outputPath('management-overview.png')});
+    expect(await dialog.evaluate(node => {
+        const rect = node.querySelector('.modal-header').getBoundingClientRect();
+        return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    })).toBe(true);
+    await page.evaluate(() => {
+        window.ServerOperations.open('workspace-linux', 'system');
+        window.ServerOperations.open('workspace-linux', 'system');
+    });
+    await expect(dialog).toHaveCount(1);
+    await dialog.getByRole('tab', {name: 'Services', exact: true}).click();
+    await expect(dialog.getByRole('tab', {name: 'Services', exact: true})).toHaveAttribute('aria-selected', 'true');
+    await dialog.getByRole('button', {name: 'Close', exact: true}).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('#sessionDiagnosticsExpand')).toHaveAttribute('aria-pressed', 'true');
 });

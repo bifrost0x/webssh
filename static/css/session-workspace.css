@@ -1697,6 +1697,57 @@ body.session-diagnostics-open {
 .session-diagnostics-compact .session-diagnostics-assessment { margin-top: 8px; }
 .session-diagnostics-compact .session-diagnostics-details { padding: 10px 0; }
 
+/* The metric accents match the corresponding history series. */
+#sessionDiagnosticsMemoryMetric { --resource-color: #a371f7; }
+#sessionDiagnosticsDiskMetric { --resource-color: #f778ba; }
+#sessionDiagnosticsLoadMetric { --resource-color: #d29922; }
+.session-diagnostics-metric-row .session-diagnostics-card-heading::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--resource-color, var(--accent-primary));
+    vertical-align: middle;
+}
+.session-diagnostics-compact .session-diagnostics-chart-panel canvas {
+    height: 140px;
+    --session-chart-grid: color-mix(in srgb, var(--border-color) 45%, transparent);
+}
+.session-diagnostics-compact .session-chart-legend {
+    gap: 6px 12px;
+    font-size: 11px;
+    margin: 4px 0 10px;
+}
+.session-diagnostics-compact .session-diagnostics-chart-caption {
+    font-size: 10px;
+    margin-top: 8px;
+}
+.session-diagnostics-compact .session-diagnostics-details > summary {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.session-diagnostics-open .session-diagnostics-drawer {
+    width: min(1080px, 94vw);
+    background: var(--ws2-surface, var(--bg-primary));
+}
+@media (min-width: 800px) {
+    .session-diagnostics-open .session-diagnostics-drawer .session-diagnostics-primary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 24px;
+        padding: 24px 0 12px;
+    }
+    .session-diagnostics-open .session-resource-cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin: 12px 0 20px;
+    }
+    .session-diagnostics-open .session-diagnostics-chart-panel canvas { height: 210px; }
+    .session-diagnostics-open .session-diagnostics-drawer .session-diagnostics-content { padding: 0 28px 24px; }
+    .session-diagnostics-open .session-diagnostics-drawer .session-diagnostics-header { padding: 18px 28px; }
+}
+
 /* Private saved-host context. */
 .host-context-modal .modal-content { width: min(720px, calc(100vw - 24px)); }
 .host-context-modal .modal-body { display: grid; gap: 12px; overflow-y: auto; }

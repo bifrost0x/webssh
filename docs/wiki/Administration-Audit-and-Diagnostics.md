@@ -120,7 +120,7 @@ cached. Refresh is manual; a failed detail refresh removes stale action rows.
 
 ### Session diagnostics
 
-Diagnostics uses compact metric rows and a shared resource chart for CPU, memory, normalized load and root filesystem usage. The disk trend remains available even when other measurements are missing. Expand the findings row for interpretation or the network row for throughput history. Processes, systemd services and Docker containers have separate keyboard-accessible tabs; existing filters and copy-command actions remain available. Additional server facts are collapsed below the selected view.
+Diagnostics uses compact metric tiles and a shared resource chart for CPU, memory, normalized load and root filesystem usage. The disk trend remains available even when other measurements are missing. Expand the findings row for interpretation or the network row for throughput history. Processes, systemd services and Docker containers have separate keyboard-accessible tabs; existing filters and copy-command actions remain available. Additional server facts are collapsed below the selected view.
 
 Open **Workspaces > Diagnostics** for measurements from the selected SSH host.
 CPU measures time used between two samples. Memory shows usage based on
@@ -174,9 +174,12 @@ Readiness fails during maintenance, shutdown admission closure, database failure
 Open **Server management** in Diagnostics to browse the connected server's
 overview, services, containers and processes. Search the resource lists and
 select a resource to inspect its details, read logs or review an action.
-The Diagnostics summary also opens each resource category directly. History
-charts and technical tables are expandable below the summary, so routine
-inspection does not require scrolling through repeated action buttons.
+The Diagnostics summary also opens each resource category directly. Resource
+history is open by default; technical tables remain collapsed. The expanded
+view uses the available width for metrics and resource navigation. Opening
+management temporarily returns expanded Diagnostics to its sidebar and restores
+the expanded view on close if the same session is still active. Only one
+management dialog can be open at a time.
 The overview uses the existing session measurements and inventory; it does not
 start a second background monitor. Inspection uses separate SSH exec channels
 and does not insert commands into the interactive terminal.

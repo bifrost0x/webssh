@@ -8,12 +8,14 @@
 .server-management .modal-body { overflow: auto; min-height: 0; padding: 24px; }
 .server-management-host { font-size: 1.1rem; overflow-wrap: anywhere; margin: 0 0 20px; }
 .server-management-tabs { display: flex; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--border-color, #444); padding-bottom: 12px; }
-.server-management-tabs [aria-selected="true"] { background: var(--primary-color, #2196f3); color: white; }
+.server-management-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--text-secondary); padding: 10px 14px; }
+.server-management-tabs [aria-selected="true"] { border-bottom-color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 7%, transparent); color: var(--accent-primary); }
+.server-management button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .server-management-notice { color: var(--text-secondary, #aaa); font-size: .85rem; line-height: 1.6; }
 .server-management-workspace { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
 .server-management-overview { width: 100%; }
 .server-management-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.server-management-card { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border-color, #444); border-radius: 12px; padding: 18px; }
+.server-management-card { display: flex; flex-direction: column; gap: 6px; border: 0; border-bottom: 2px solid var(--border-color); border-radius: 0; padding: 14px 0; }
 .server-management-card strong { font-size: 1.9rem; font-weight: 600; }
 .server-management-card small, .server-management-hint { color: var(--text-secondary, #aaa); line-height: 1.6; }
 .server-management-inventory { flex: 1 1 380px; min-width: 0; }
@@ -25,12 +27,12 @@
 .server-management-facts dd { margin: 0; overflow-wrap: anywhere; }
 .server-management button:disabled { opacity: .5; cursor: wait; }
 .server-management-list { max-height: 52dvh; overflow: auto; }
-.server-management-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 14px; margin-bottom: 6px; border: 1px solid var(--border-color, #444); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.server-management-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 14px; margin-bottom: 0; border: 0; border-bottom: 1px solid var(--border-color); border-radius: 0; background: transparent; color: inherit; cursor: pointer; }
 .server-management-row strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .server-management-row small { width: 100%; opacity: .7; }
 .server-management-row:hover, .server-management-row[aria-pressed="true"] { border-color: var(--primary-color, #2196f3); background: rgba(33, 150, 243, .09); }
 .server-management-badge { font-size: .75rem; border-radius: 20px; padding: 4px 9px; background: rgba(128, 128, 128, .15); overflow-wrap: anywhere; }
-.server-management-detail { flex: 1 1 340px; min-width: 0; border: 1px solid var(--border-color, #444); border-radius: 12px; padding: 20px; }
+.server-management-detail { flex: 1 1 340px; min-width: 0; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--text-primary) 3%, transparent); padding: 20px; }
 .server-management-detail h3 { margin-top: 0; overflow-wrap: anywhere; }
 .server-management-detail label { display: block; margin: 12px 0; font-size: .85rem; }
 .server-management-detail input[type="checkbox"] { margin-right: 8px; }

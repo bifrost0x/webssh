@@ -13,6 +13,7 @@
     const manager = () => typeof SessionManager !== 'undefined' ? SessionManager : window.SessionManager;
     const snapshots = new WeakMap();
     let workspaceSequence = 0;
+    let activeWorkspace = null;
     function updateSnapshot(sessionId, session, model) {
         if (!session || manager()?.sessions?.[sessionId] !== session) return;
         snapshots.set(session, model);
@@ -70,6 +71,11 @@
     function open(sessionId, kind, sourceTarget = {}) {
         const session = manager()?.sessions?.[sessionId];
         if (!session?.connected) return;
+        if (activeWorkspace?.isConnected) {
+            activeWorkspace.querySelector('.close')?.focus();
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('server-management-opening', {detail: {sessionId}}));
         const modal = el('div', undefined, 'modal server-management');
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
@@ -127,6 +133,7 @@
         content.append(header, body);
         modal.append(content);
         document.body.append(modal);
+        activeWorkspace = modal;
         let generation = 0;
         let pending = false;
         let capabilities = null;
@@ -276,6 +283,8 @@
             document.removeEventListener('keydown', escape, true);
             window.ModalManager.close(modal);
             modal.remove();
+            if (activeWorkspace === modal) activeWorkspace = null;
+            window.dispatchEvent(new CustomEvent('server-management-closed', {detail: {sessionId}}));
         };
         const escape = event => {
             if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); dismiss(); }

@@ -1008,6 +1008,22 @@
             updateExpandButton();
             rerenderLocal();
         };
+        let managementReturn = null;
+        const handleManagementOpening = event => {
+            if (event.detail?.sessionId !== latestState.sessionId || !expanded) return;
+            managementReturn = {sessionId: latestState.sessionId, session: latestSession};
+            setExpanded(false);
+        };
+        const handleManagementClosed = event => {
+            const previous = managementReturn;
+            managementReturn = null;
+            if (previous && event.detail?.sessionId === previous.sessionId
+                && latestState.sessionId === previous.sessionId && latestSession === previous.session
+                && latestSession?.connected && open) {
+                setExpanded(true);
+                managementTrigger?.focus();
+            }
+        };
         const handlePrimaryWorkspaceChange = event => {
             if (event?.detail?.view === 'workspaces') scheduleRedraw();
         };
@@ -1025,6 +1041,8 @@
         elements.backdrop?.addEventListener('click', handleCollapse);
         elements.systemdSearch?.addEventListener('input', handleSystemdSearch);
         elements.dockerSearch?.addEventListener('input', handleDockerSearch);
+        windowRef?.addEventListener?.('server-management-opening', handleManagementOpening);
+        windowRef?.addEventListener?.('server-management-closed', handleManagementClosed);
         windowRef?.addEventListener?.('themeChanged', scheduleRedraw);
         windowRef?.addEventListener?.('languageChanged', handleLanguageChanged);
         windowRef?.addEventListener?.('primary-workspace-change', handlePrimaryWorkspaceChange);
@@ -1058,6 +1076,8 @@
                     button.removeEventListener('click', click);
                     button.removeEventListener('keydown', keydown);
                 });
+                windowRef?.removeEventListener?.('server-management-opening', handleManagementOpening);
+                windowRef?.removeEventListener?.('server-management-closed', handleManagementClosed);
                 windowRef?.removeEventListener?.('themeChanged', scheduleRedraw);
                 windowRef?.removeEventListener?.('languageChanged', handleLanguageChanged);
                 windowRef?.removeEventListener?.('primary-workspace-change', handlePrimaryWorkspaceChange);
