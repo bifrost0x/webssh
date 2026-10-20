@@ -1306,6 +1306,26 @@ test(`account settings navigation does not warn for an active SSH session (recon
 });
 }
 
+test('host context shares the notes header without taking an editor column', async ({ page }, testInfo) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedLinuxSession(page);
+    await page.locator('#contextNotesTab').click();
+    for (const width of [1440, 1024]) {
+        await page.setViewportSize({width, height: 900});
+        const panel = page.locator('#contextNotesPanel');
+        const notes = page.locator('#notepadPanel');
+        await expect(notes).toBeVisible();
+        await expect(notes.locator('.workspace-drawer-header #activeHostContextBtn')).toBeVisible();
+        await expect.poll(async () => {
+            const outer = await panel.boundingBox();
+            const inner = await notes.boundingBox();
+            return outer.width - inner.width;
+        }).toBeLessThan(4);
+    }
+    await page.screenshot({path: testInfo.outputPath('notes-header.png')});
+});
+
 test('account settings navigation still protects unsaved notes', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);

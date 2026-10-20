@@ -15,6 +15,29 @@ from .profile_manager import load_profiles, upsert_profile
 
 profile_exchange_blueprint = Blueprint('profile_exchange', __name__)
 
+_PUBLIC_ERRORS = {
+    'Invalid import request.': 'Invalid import request.',
+    'Import supports at most 100 hosts.': 'Import supports at most 100 hosts.',
+    'Import must contain text.': 'Import must contain text.',
+    'Import must contain valid UTF-8.': 'Import must contain valid UTF-8.',
+    'Import exceeds 64 KiB.': 'Import exceeds 64 KiB.',
+    'Unsupported import format.': 'Unsupported import format.',
+    'Invalid JSON document.': 'Invalid JSON document.',
+    'Unsupported host exchange document.': 'Unsupported host exchange document.',
+    'Host document contains unsupported fields.': 'Host document contains unsupported fields.',
+    'Choose up to 100 hosts.': 'Choose up to 100 hosts.',
+    'Invalid host selection.': 'Invalid host selection.',
+    'Unsupported configuration cannot be imported.': 'Unsupported configuration cannot be imported.',
+    'Invalid host mapping.': 'Invalid host mapping.',
+}
+
+
+def _public_error(error):
+    # Exception text selects a fixed public message; it is never returned itself.
+    return _PUBLIC_ERRORS.get(
+        str(error), 'Invalid import document. Check its format and syntax.',
+    )
+
 
 def _data():
     request.max_content_length = 512 * 1024
@@ -41,7 +64,7 @@ def preview():
         ]
         return jsonify(result)
     except ExchangeError as error:
-        return jsonify({'error': str(error)}), 400
+        return jsonify({'error': _public_error(error)}), 400
 
 
 @profile_exchange_blueprint.get('/api/profiles/exchange')
@@ -86,7 +109,7 @@ def import_hosts():
                 ):
                     raise ExchangeError('Invalid host mapping.')
     except ExchangeError as error:
-        return jsonify({'error': str(error)}), 400
+        return jsonify({'error': _public_error(error)}), 400
 
     results = []
     for selection in selections:

@@ -100,6 +100,31 @@ def test_routes_require_authentication(client):
     assert client.get('/api/profiles/exchange').status_code in (302, 401)
 
 
+@pytest.mark.parametrize('endpoint', [
+    '/api/profiles/exchange/preview', '/api/profiles/exchange',
+])
+def test_exchange_routes_never_return_unrecognized_exception_details(app, client, monkeypatch, endpoint):
+    _login(app, client)
+
+    def fail(*args, **kwargs):
+        raise ExchangeError('Internal storage path and secret diagnostic marker')
+
+    monkeypatch.setattr('app.profile_exchange_routes.preview_import', fail)
+    response = client.post(endpoint, json={'source': '{}', 'format': 'json'})
+    assert response.status_code == 400
+    assert response.json == {'error': 'Invalid import document. Check its format and syntax.'}
+
+
+@pytest.mark.parametrize('endpoint', [
+    '/api/profiles/exchange/preview', '/api/profiles/exchange',
+])
+def test_exchange_routes_preserve_safe_actionable_errors(app, client, endpoint):
+    _login(app, client)
+    response = client.post(endpoint, json={'source': '{', 'format': 'json'})
+    assert response.status_code == 400
+    assert response.json == {'error': 'Invalid JSON document.'}
+
+
 def test_import_revalidates_source_and_skips_duplicates(app, client):
     user_id = _login(app, client)
     data = {'format': 'openssh', 'source': 'Host api\n User deploy', 'selections': [{'index': 0}]}
