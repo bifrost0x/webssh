@@ -25,6 +25,7 @@ DATA_DIR/
 |       |-- jump_hosts.json
 |       |-- settings.json
 |       |-- notes.json
+|       |-- host_context.json
 |       |-- keys.json
 |       `-- known_hosts
 `-- deleted_users/
@@ -64,6 +65,26 @@ byte and record ceilings; avoid hand-editing JSON.
 Persisted JSON schemas are migrated additively. Profiles currently use schema version 3; command sets, jump hosts, keys, settings, application settings, and SMB shares use version 2. Before changing a file, migration creates a private backup and writes the upgraded representation atomically. The profile v3 migration removes transient Tailscale launch-authorization state from disk; that state is derived from the live server policy for each response.
 
 Database changes likewise preserve existing installations. Always take a verified native backup before upgrading across versions.
+
+### Workspace upgrade and rollback
+
+The workspace update adds a nullable `profile_id` column to saved SSH sessions.
+Existing sessions do not need a profile association. Per-host notes and shortcuts
+use a separate `host_context.json` file; existing global notes remain in settings.
+Server mutations remain disabled unless explicitly enabled by the operator.
+
+Before upgrading, retain a verified backup and the matching application secret.
+Test restoration into a separate data directory; never run two versions against
+the same live directory.
+
+Parameterized command sets require the updated application. Older versions
+reject a command-set collection containing the new `argv` steps, including its
+ordinary sets, rather than silently dropping unsupported entries. They do not
+overwrite that collection. If these sets have been created, remove them through
+the updated application's UI before downgrading, or restore the complete
+pre-upgrade backup with its matching secret into a separate directory. Restoring
+that backup also discards changes made since it was created; preserve a current
+backup before choosing this route. Do not hand-edit the stored JSON.
 
 ## Encrypted SSH keys
 

@@ -1306,6 +1306,26 @@ test(`account settings navigation does not warn for an active SSH session (recon
 });
 }
 
+test('host context shares the notes header without taking an editor column', async ({ page }, testInfo) => {
+    await page.setViewportSize({width: 1440, height: 900});
+    await login(page);
+    await seedLinuxSession(page);
+    await page.locator('#contextNotesTab').click();
+    for (const width of [1440, 1024]) {
+        await page.setViewportSize({width, height: 900});
+        const panel = page.locator('#contextNotesPanel');
+        const notes = page.locator('#notepadPanel');
+        await expect(notes).toBeVisible();
+        await expect(notes.locator('.workspace-drawer-header #activeHostContextBtn')).toBeVisible();
+        await expect.poll(async () => {
+            const outer = await panel.boundingBox();
+            const inner = await notes.boundingBox();
+            return outer.width - inner.width;
+        }).toBeLessThan(4);
+    }
+    await page.screenshot({path: testInfo.outputPath('notes-header.png')});
+});
+
 test('account settings navigation still protects unsaved notes', async ({ page }) => {
     await login(page);
     await seedLinuxSession(page);
@@ -1417,19 +1437,19 @@ test('automatic context width follows live desktop resizes without a reload', as
     const contextWidth = () => page.locator('#contextWorkspace').evaluate(
         element => Math.round(element.getBoundingClientRect().width),
     );
-    await expect.poll(contextWidth).toBe(420);
+    await expect.poll(contextWidth).toBe(360);
     await expect.poll(() => page.evaluate(
         () => window.workspaceLayoutController?.getContextWidthMode(),
     )).toBe('auto');
 
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await expect.poll(contextWidth).toBe(614);
+    await expect.poll(contextWidth).toBe(440);
 
     await page.setViewportSize({ width: 3440, height: 1440 });
-    await expect.poll(contextWidth).toBe(720);
+    await expect.poll(contextWidth).toBe(440);
 
     await page.setViewportSize({ width: 1280, height: 900 });
-    await expect.poll(contextWidth).toBe(420);
+    await expect.poll(contextWidth).toBe(360);
     await assertNoExternalRequests(page);
 });
 
@@ -1454,7 +1474,6 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
     const diagnosticsGeometry = await page.evaluate(() => {
         const panel = document.querySelector('#contextWorkspace');
         const content = document.querySelector('.session-diagnostics-content');
-        const grid = document.querySelector('.session-diagnostics-primary-grid');
         const visible = selector => Array.from(document.querySelectorAll(selector))
             .filter(element => !element.hidden && element.getClientRects().length > 0);
         const contained = (child, parent) => {
@@ -1484,8 +1503,10 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
             documentContained: document.documentElement.scrollWidth <= innerWidth,
             panelClipsOverflow: getComputedStyle(panel).overflowX === 'hidden',
             contentContained: content.scrollWidth <= content.clientWidth + 1,
-            rowsStacked: getComputedStyle(grid).display === 'block' && cards.every((card, index) => index === 0
-                || card.getBoundingClientRect().top >= cards[index - 1].getBoundingClientRect().bottom - 1),
+            metricsDoNotOverlap: cards.every((card, index) => cards.slice(index + 1).every(other => {
+                const a = card.getBoundingClientRect(), b = other.getBoundingClientRect();
+                return a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1;
+            })),
             escapedDescendants,
             overflowingSurfaces,
         };
@@ -1494,7 +1515,7 @@ test('narrow desktop tools contain German diagnostics and commands inside every 
         documentContained: true,
         panelClipsOverflow: true,
         contentContained: true,
-        rowsStacked: true,
+        metricsDoNotOverlap: true,
         escapedDescendants: [],
         overflowingSurfaces: [],
     });
@@ -2663,6 +2684,14 @@ test('partial telemetry shows only metrics returned by the device', async ({ pag
     await assertNoExternalRequests(page);
 });
 
+async function openDiagnosticDetails(page) {
+    for (const id of ['sessionDiagnosticsHistory', 'sessionDiagnosticsTechnical']) {
+        if (!await page.locator(`#${id}`).evaluate(element => element.open)) {
+            await page.locator(`#${id} > summary`).click();
+        }
+    }
+}
+
 test('diagnostics canvas renders correlated inventory and keeps controls clipboard-only', async ({ page }, testInfo) => {
     await login(page);
     await seedLinuxSession(page);
@@ -2672,6 +2701,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     const diagnosticsTab = page.locator('#contextDiagnosticsTab');
     await expect(diagnosticsTab).toBeEnabled();
     await diagnosticsTab.click();
+    await openDiagnosticDetails(page);
 
     await expect(diagnosticsTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
@@ -2779,6 +2809,8 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
     await expect.poll(() => page.evaluate(() => window.__workspaceInventoryRequests)).toBe(beforeRefresh + 1);
     await expect(page.locator('#sessionDiagnosticsState')).toHaveText('Live');
     await expect(page.locator('#sessionDiagnosticsLastUpdated')).toContainText('Inventory stale');
+    await expect(page.locator('#sessionDiagnosticsServiceSummary')).toContainText('Stale');
+    await expect(page.locator('#sessionDiagnosticsContainerSummary')).toContainText('Stale');
     await expect(page.locator('#sessionDiagnosticsSystemdServices tr')).toHaveCount(3);
     await expect(page.locator('#sessionDiagnosticsDockerContainers tr')).toHaveCount(2);
 
@@ -2789,6 +2821,7 @@ test('diagnostics canvas renders correlated inventory and keeps controls clipboa
         'systemd service details are restricted',
     );
     await expect(page.locator('#sessionDiagnosticsSystemdSection')).toBeHidden();
+    await expect(page.locator('#sessionDiagnosticsServiceSummary')).toHaveText('Details unavailable for this session');
     await page.locator('[data-diagnostics-view="docker"]').click();
     await expect(page.locator('#sessionDiagnosticsDockerSection')).toBeVisible();
 
@@ -2812,6 +2845,7 @@ test('diagnostics charts keep stable dimensions across primary workspace navigat
     await login(page);
     await seedLinuxSession(page);
     await page.locator('#contextDiagnosticsTab').click();
+    await openDiagnosticDetails(page);
     await expect(page.locator('#sessionDiagnosticsOverlay')).toBeVisible();
     await page.locator('#sessionDiagnosticsNetworkSection summary').click();
     await expect(page.locator('#sessionDiagnosticsNetworkChart')).toBeVisible({ timeout: 6000 });
@@ -2986,6 +3020,7 @@ test('diagnostics explains high load and keeps metric and inventory timestamps d
     await login(page);
     await seedLinuxSession(page, { highLoad: true });
     await page.locator('#contextDiagnosticsTab').click();
+    await openDiagnosticDetails(page);
     await expect(page.locator('#sessionDiagnosticsLoadValue')).toHaveText('133.3%');
     await expect(page.locator('#sessionDiagnosticsAssessment')).not.toHaveAttribute('open');
     await expect(page.locator('#sessionDiagnosticsFindings')).toBeHidden();
@@ -3000,6 +3035,7 @@ test('diagnostics explains high load and keeps metric and inventory timestamps d
     await expect(page.locator('#sessionDiagnosticsHistoryCaption')).toContainText('samples over', { timeout: 6500 });
     await expect(page.locator('#sessionDiagnosticsCpuValue')).toContainText('%');
     await page.locator('#sessionDiagnosticsAssessment summary').click();
+    await page.locator('#sessionDiagnosticsCpuProcesses').scrollIntoViewIfNeeded();
     await expect(page.locator('#sessionDiagnosticsCpuProcesses')).toBeInViewport();
     await expect.poll(() => page.evaluate(() => window.__workspaceChartSamples?.pressure || 0), { timeout: 6500 }).toBeGreaterThan(2);
     await page.screenshot({ path: testInfo.outputPath('diagnostics-high-load.png') });
@@ -3028,6 +3064,7 @@ test('diagnostics retains the root disk trend when other measurements are unavai
     await login(page);
     await seedLinuxSession(page, { diskOnlyMetrics: true });
     await page.locator('#contextDiagnosticsTab').click();
+    await openDiagnosticDetails(page);
     await expect(page.locator('#sessionDiagnosticsPressureChart')).toBeVisible({ timeout: 6500 });
     await expect(page.locator('#sessionDiagnosticsDiskValue')).toHaveText('80.0%');
     await expect(page.locator('#sessionDiagnosticsPressureSection .session-chart-legend .disk')).toHaveText('Root disk');
@@ -3144,4 +3181,132 @@ test('failed font downloads and cancelled previews leave existing terminal input
     } finally {
         await setFontTestPreferences(page, {});
     }
+});
+
+test('first-contact trust shows exact fingerprint and closes stale approval', async ({ page }) => {
+    await login(page);
+    await seedLinuxSession(page);
+    await page.evaluate(() => {
+        const emit = window.socket.emit.bind(window.socket);
+        window.__trustAnswers = [];
+        window.socket.emit = (event, payload, ...args) => {
+            if (event === 'ssh_connect') {
+                window.__trustRequest = payload.client_request_id;
+                return window.socket;
+            }
+            if (event === 'ssh_host_key_decision') {
+                window.__trustAnswers.push(payload);
+                return window.socket;
+            }
+            return emit(event, payload, ...args);
+        };
+    });
+    await page.locator('#newTabBtn').click();
+    await page.locator('.terminal-pane.active .profile-launcher-new').click();
+    await page.locator('#hostInput').fill('trust.example');
+    await page.locator('#usernameInput').fill('tester');
+    await page.locator('#passwordInput').fill('not-sent');
+    await page.locator('#connectBtn').click();
+    await expect.poll(() => page.evaluate(() => window.__trustRequest)).toBeTruthy();
+    const showPrompt = () => page.evaluate(() => {
+        for (const handler of window.socket.listeners('ssh_host_key')) handler({
+            prompt_id: 'exact-key-prompt', client_request_id: window.__trustRequest,
+            host: 'trust.example', port: 2222, key_type: 'ssh-ed25519',
+            fingerprint: 'SHA256:verified-fingerprint', context: 'jump_host',
+        });
+    });
+    await showPrompt();
+    await expect(page.locator('#sshHostKeyModal')).toHaveClass(/show/);
+    await expect(page.locator('#sshHostKeyTarget')).toContainText('trust.example:2222');
+    await expect(page.locator('#sshHostKeyFingerprint')).toHaveText('ssh-ed25519\nSHA256:verified-fingerprint');
+    await page.locator('#sshHostKeyAccept').click();
+    await expect.poll(() => page.evaluate(() => window.__trustAnswers[0]?.accepted)).toBe(true);
+    await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+    await showPrompt();
+    await page.locator('#sshHostKeyCancel').focus();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => window.__trustAnswers[1]?.accepted)).toBe(false);
+    await showPrompt();
+    await page.locator('#sshHostKeyModal').click({position: {x: 4, y: 4}});
+    await expect.poll(() => page.evaluate(() => window.__trustAnswers[2]?.accepted)).toBe(false);
+    await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+    await showPrompt();
+    await expect(page.locator('#sshHostKeyModal')).toHaveClass(/show/);
+    await page.evaluate(() => {
+        for (const handler of window.socket.listeners('ssh_host_key_closed')) handler({prompt_id: 'exact-key-prompt'});
+    });
+    await expect(page.locator('#sshHostKeyModal')).not.toHaveClass(/show/);
+});
+
+test('resource cards keep diagnostics compact and open the matching management inventory', async ({page}, testInfo) => {
+    await login(page);
+    await seedLinuxSession(page, {highLoad: true});
+    await page.route('**/api/server-operations/workspace-linux', route => route.fulfill({json: {mutations_enabled: true}}));
+    await page.locator('#contextDiagnosticsTab').click();
+    await expect(page.locator('#sessionDiagnosticsServiceSummary')).toContainText('1 failed');
+    await expect(page.locator('#sessionDiagnosticsHistory')).toHaveAttribute('open');
+    await expect(page.locator('#sessionDiagnosticsTechnical')).not.toHaveAttribute('open');
+    await expect(page.locator('.session-resource-card')).toHaveCount(3);
+    const card = page.locator('#sessionDiagnosticsServiceCard');
+    await card.focus();
+    const before = await page.locator('#sessionDiagnosticsMetricsUpdated').textContent();
+    await expect.poll(() => page.locator('#sessionDiagnosticsMetricsUpdated').textContent(), {timeout: 6500}).not.toBe(before);
+    await expect(card).toBeFocused();
+    for (const width of [600, 480, 320]) {
+        await page.locator('#contextWorkspace').evaluate((element, width) => {
+            element.style.width = `${width}px`;
+            element.style.minWidth = '0';
+            element.style.maxWidth = `${width}px`;
+        }, width);
+        const overflow = await page.locator('.session-diagnostics-content').evaluate(element => element.scrollWidth - element.clientWidth);
+        expect(overflow).toBeLessThanOrEqual(1);
+        await page.locator('#contextWorkspace').screenshot({path: testInfo.outputPath(`diagnostics-cards-${width}.png`)});
+    }
+    for (const [kind, label] of [['Service', 'Services'], ['Container', 'Containers'], ['Process', 'Processes']]) {
+        await page.locator(`#sessionDiagnostics${kind}Card`).click();
+        const dialog = page.getByRole('dialog', {name: 'Server management', exact: true});
+        await expect(dialog.getByRole('tab', {name: label, exact: true})).toHaveAttribute('aria-selected', 'true');
+        await expect(dialog.locator('.server-management-detail h3')).toHaveText(label);
+        await dialog.getByRole('button', {name: 'Close', exact: true}).click();
+    }
+    await openDiagnosticDetails(page);
+    await expect(page.locator('#sessionDiagnosticsCpuProcesses button')).toHaveCount(0);
+    await expect(page.locator('#sessionDiagnosticsMemoryProcesses button')).toHaveCount(0);
+    await expect(page.locator('#sessionDiagnosticsCpuProcesses td').first()).toHaveAttribute('title', /.+/);
+    await page.locator('#sessionDiagnosticsTechnical > summary').click();
+    await page.locator('#sessionDiagnosticsHistory > summary').click();
+    await page.evaluate(() => window.i18n.setLanguage('de'));
+    await expect(page.locator('#sessionDiagnosticsServiceCard')).toContainText('Dienste');
+    await expect(page.locator('#sessionDiagnosticsProcessSummary')).toContainText('Prozesse');
+    expect(await page.locator('.session-diagnostics-content').evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    await page.locator('#contextWorkspace').screenshot({path: testInfo.outputPath('diagnostics-cards-german-320.png')});
+});
+
+
+test('expanded diagnostics opens one usable management dialog and returns on close', async ({page}, testInfo) => {
+    await login(page);
+    await seedLinuxSession(page, {highLoad: true});
+    await page.route('**/api/server-operations/workspace-linux', route => route.fulfill({json: {mutations_enabled: false}}));
+    await page.locator('#contextDiagnosticsTab').click();
+    await page.locator('#sessionDiagnosticsExpand').click();
+    await expect(page.locator('#sessionDiagnosticsPressureSection')).toBeVisible({timeout: 7000});
+    await page.locator('#sessionDiagnosticsOverlay').screenshot({path: testInfo.outputPath('expanded-diagnostics.png')});
+    await page.locator('#sessionServerManagement').click();
+    const dialog = page.getByRole('dialog', {name: 'Server management', exact: true});
+    await expect(dialog).toHaveCount(1);
+    await dialog.screenshot({path: testInfo.outputPath('management-overview.png')});
+    expect(await dialog.evaluate(node => {
+        const rect = node.querySelector('.modal-header').getBoundingClientRect();
+        return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    })).toBe(true);
+    await page.evaluate(() => {
+        window.ServerOperations.open('workspace-linux', 'system');
+        window.ServerOperations.open('workspace-linux', 'system');
+    });
+    await expect(dialog).toHaveCount(1);
+    await dialog.getByRole('tab', {name: 'Services', exact: true}).click();
+    await expect(dialog.getByRole('tab', {name: 'Services', exact: true})).toHaveAttribute('aria-selected', 'true');
+    await dialog.getByRole('button', {name: 'Close', exact: true}).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('#sessionDiagnosticsExpand')).toHaveAttribute('aria-pressed', 'true');
 });

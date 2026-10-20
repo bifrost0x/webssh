@@ -41,6 +41,27 @@ def call_socket_handler(app, monkeypatch, handler, sid, payload=None):
     return acknowledgement, emitted
 
 
+def test_parameter_preview_requires_owned_set_and_never_emits_values(app, monkeypatch):
+    import app.socket_events as socket_events
+    from app import command_set_manager
+
+    owner, sid = create_socket_user(app, 'parameter_socket_owner')
+    _other, other_sid = create_socket_user(app, 'parameter_socket_other')
+    with app.app_context():
+        saved, error = command_set_manager.upsert_command_set(owner, {
+            'name': 'Path', 'parameters': [{'name': 'path'}],
+            'steps': [{'type': 'argv', 'argv': ['ls', '--', '{{path}}']}],
+        })
+    assert error is None
+    values = {'command_set_id': saved['id'], 'values': {'path': "a'; id"}}
+    denied, _ = call_socket_handler(app, monkeypatch, socket_events.handle_resolve_command_set_parameters, other_sid, values)
+    assert denied['success'] is False
+    preview, emitted = call_socket_handler(app, monkeypatch, socket_events.handle_resolve_command_set_parameters, sid, values)
+    assert preview['success'] is True
+    assert preview['resolved_command'] == "'ls' -- 'a'\"'\"'; id'"
+    assert emitted == []
+
+
 def test_command_set_crud_socket_events_return_structured_acknowledgements(app, monkeypatch):
     import app.socket_events as socket_events
 

@@ -89,7 +89,7 @@ untrusted networks.
 - Protect WebSSH with HTTPS and a trusted reverse proxy.
 - Restrict access to the host, data volume, logs, and backups.
 - Keep a tested local break-glass administrator when enabling external identity.
-- Review host-key fingerprints after first use and treat changes as incidents.
+- Verify host-key fingerprints before accepting first-contact trust and treat changes as incidents.
 - Keep `BLOCK_INTERNAL_SSH=true` for exposed multi-user deployments unless a
   reviewed use case requires private targets.
 - Back up `DATA_DIR` securely; a backup may contain the persisted `SECRET_KEY`

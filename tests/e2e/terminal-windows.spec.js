@@ -64,6 +64,7 @@ async function dragBy(page, handle, dx, dy) {
 async function enterWindowMode(page) {
     await login(page);
     await simulateSessions(page);
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('.split-btn[data-layout="windows"]').click();
     await expect(page.locator('#terminalGrid')).toHaveClass(/window-mode/);
 }
@@ -85,6 +86,7 @@ test('all sixteen tiled windows keep their actions inside narrow frames', async 
     await enterWindowMode(page);
     for (let index = 0; index < 16; index++) await connect(page, `win-tile-${index}`, `host-${index}.example`);
     await page.locator('#contextWorkspaceResizer').press('End');
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('[data-window-arrange="tile"]').click();
     await expect(page.locator('.ws-window.is-gliding')).toHaveCount(0);
     const clipped = await page.locator('.ws-window').evaluateAll(frames => frames.flatMap(frame => {
@@ -101,6 +103,7 @@ test('an explicit split selection during compact fallback replaces the window pr
     await enterWindowMode(page);
     await page.setViewportSize({width:1280, height:500});
     await expect(page.locator('#terminalGrid')).toHaveClass(/split-1/);
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('[data-layout="2"]').click();
     await page.setViewportSize({width:1600, height:960});
     await expect(page.locator('#terminalGrid')).toHaveClass(/split-2/);
@@ -121,7 +124,12 @@ test('a normal window keeps saved hosts usable alongside session tools', async (
 test('window mode opens one window per session from the tab rail', async ({ page }) => {
     await enterWindowMode(page);
     await expect(page.locator('.split-btn[data-layout="windows"]')).toHaveClass(/active/);
+    await page.locator('#workspaceLayoutPicker > summary').click();
     await expect(page.locator('#windowArrangeControls')).toBeVisible();
+    await page.screenshot({animations: 'disabled', path: test.info().outputPath('layout-picker.png')});
+    await page.locator('#workspaceLayoutPicker > summary').press('Escape');
+    await expect(page.locator('#workspaceLayoutPicker > summary')).toBeFocused();
+    await expect(page.locator('#windowArrangeControls')).toBeHidden();
     await expect(page.locator('#terminalGrid > .ws-window')).toHaveCount(1);
     await expect(page.locator('.ws-window .ws-window-title')).toHaveText('New connection');
     await expect(page.locator('.ws-window .profile-launcher')).toBeVisible();
@@ -229,6 +237,7 @@ test('arranging tiles every window and closing a window ends its session', async
         await connect(page, `win-${name}`, `${name}.example`);
     }
 
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('[data-window-arrange="tile"]').click();
     await expect.poll(async () => {
         const rects = await page.locator('#terminalGrid > .ws-window').evaluateAll(frames => (
@@ -241,6 +250,7 @@ test('arranging tiles every window and closing a window ends its session', async
         )));
     }).toBe(true);
 
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('[data-window-arrange="cascade"]').click();
     await expect.poll(async () => new Set(await page.locator('#terminalGrid > .ws-window')
         .evaluateAll(frames => frames.map(frame => frame.style.left))).size).toBe(3);
@@ -261,6 +271,7 @@ test('split layouts take the front-most windows and window placement returns', a
     await dragBy(page, windowFor(page, 'win-alpha').locator('.ws-window-heading'), 90, 40);
     const placed = await box(windowFor(page, 'win-alpha'));
 
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('.split-btn[data-layout="2"]').click();
     await expect(page.locator('#terminalGrid')).toHaveClass(/split-2/);
     await expect(page.locator('.ws-window')).toHaveCount(0);
@@ -268,6 +279,7 @@ test('split layouts take the front-most windows and window placement returns', a
     await expect(page.locator('.terminal-pane[data-pane-index="1"] #terminal-win-beta')).toBeAttached();
     expect(await page.evaluate(() => localStorage.getItem('webssh.workspace.windowMode'))).toBe('off');
 
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('.split-btn[data-layout="windows"]').click();
     await expect.poll(async () => box(windowFor(page, 'win-alpha'))).toEqual(placed);
 });
@@ -405,6 +417,7 @@ for (const theme of ['glass', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold
             TerminalManager.applyThemeToAll();
             TerminalManager.terminals['win-alpha'].write('ops@alpha:~$ pwd\r\n/home/ops\r\n');
         }, theme);
+        await page.locator("#workspaceLayoutPicker > summary").click();
         await page.locator('[data-window-arrange="tile"]').click();
         const frame = windowFor(page, 'win-alpha');
         await expect(frame).toBeVisible();
@@ -427,6 +440,7 @@ test('dense tiling never overlaps windows even when cells are smaller than manua
     await page.setViewportSize({width: 1280, height: 800});
     await enterWindowMode(page);
     for (let index = 0; index < 12; index++) await connect(page, `win-${index}`, `host-${index}.example`);
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('[data-window-arrange="tile"]').click();
     await expect(page.locator('.ws-window.is-gliding')).toHaveCount(0);
     const rectangles = await page.locator('#terminalGrid > .ws-window').evaluateAll(elements => elements.map(el => {
@@ -448,6 +462,7 @@ test('dense tiling never overlaps windows even when cells are smaller than manua
 
 test('plus creates another window even while an empty host launcher is open', async ({page}) => {
     await login(page);
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('[data-layout="windows"]').click();
     await expect(page.locator('#terminalGrid > .ws-window')).toHaveCount(1);
     await page.locator('#newTabBtn').click();

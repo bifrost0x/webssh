@@ -78,6 +78,11 @@ window.CommandSetManager = {
             this.renderSteps();
             document.querySelector('#commandSetSteps .command-set-inline-input:last-of-type')?.focus();
         });
+        document.getElementById('addArgumentCommandStepBtn')?.addEventListener('click', () => {
+            this.draftSteps.push({ type: 'argv', argv: ['ls', '--', '{{path}}'] });
+            this.renderSteps();
+            document.querySelector('#commandSetSteps [data-step-field="argv"]:last-of-type')?.focus();
+        });
         document.getElementById('commandSetLibraryResults')?.addEventListener('click', event => {
             const button = event.target.closest('[data-add-command-id]');
             if (button) this.addLibraryStep(button.dataset.addCommandId);
@@ -148,7 +153,7 @@ window.CommandSetManager = {
         none.value = '';
         none.textContent = this.t('commandSets.none', 'None');
         select.appendChild(none);
-        this.commandSets.forEach(commandSet => {
+        this.commandSets.filter(commandSet => !commandSet.parameters?.length).forEach(commandSet => {
             const option = document.createElement('option');
             option.value = commandSet.id;
             option.textContent = commandSet.name;
@@ -169,6 +174,7 @@ window.CommandSetManager = {
     },
 
     stepSummary(step) {
+        if (step.type === 'argv') return JSON.stringify(step.argv);
         if (step.type === 'inline') return step.command || this.t('commandSets.emptyInline', 'Empty free-text step');
         const command = this.commandById(step.command_id);
         if (!command) return this.t('commandSets.missingCommand', 'Missing library command');
@@ -226,6 +232,8 @@ window.CommandSetManager = {
             : [];
         document.getElementById('commandSetNameInput').value = source?.name || '';
         document.getElementById('commandSetDescriptionInput').value = source?.description || '';
+        const parameterNames = document.getElementById('commandSetParameterNames');
+        if (parameterNames) parameterNames.value = (source?.parameters || []).map(item => item.name).join(', ');
         const sudoInput = document.getElementById('commandSetUseSudoInput');
         if (sudoInput) sudoInput.checked = source ? source.use_sudo === true : false;
         document.getElementById('commandSetEditorTitle').textContent = source
@@ -413,7 +421,18 @@ window.CommandSetManager = {
             header.append(label, controls);
             row.appendChild(header);
 
-            if (step.type === 'inline') {
+            if (step.type === 'argv') {
+                label.textContent = `${index + 1}. ${this.t('commandParameters.argumentStep', 'Argument step (JSON array)')}`;
+                const input = document.createElement('textarea');
+                input.className = 'form-control';
+                input.rows = 3;
+                input.maxLength = 4096;
+                input.dataset.stepField = 'argv';
+                input.dataset.stepIndex = index;
+                input.setAttribute('aria-label', label.textContent);
+                input.value = step.argvText ?? JSON.stringify(step.argv);
+                row.append(input);
+            } else if (step.type === 'inline') {
                 const textarea = document.createElement('textarea');
                 textarea.className = 'form-control command-set-inline-input';
                 textarea.rows = 3;
@@ -481,6 +500,17 @@ window.CommandSetManager = {
         const index = Number(event.target.dataset.stepIndex);
         const step = this.draftSteps[index];
         if (!step || !field) return;
+        if (field === 'argv') {
+            step.argvText = event.target.value;
+            try {
+                const parsed = JSON.parse(step.argvText);
+                if (!Array.isArray(parsed) || !parsed.length || !parsed.every(value => typeof value === 'string')) throw new Error('Invalid arguments');
+                step.argv = parsed;
+                step.argvError = false;
+            } catch {
+                step.argvError = true;
+            }
+        }
         if (field === 'command') step.command = event.target.value;
         if (field === 'parameters_override') step.parameters_override = event.target.value;
         if (field === 'use-default-parameters') {
@@ -524,11 +554,18 @@ window.CommandSetManager = {
     },
 
     save() {
+        if (this.draftSteps.some(step => step.argvError)) {
+            window.showNotification?.(this.t('commandParameters.invalidArguments', 'Argument steps require a JSON array of strings.'), 'error');
+            return;
+        }
+        const names = document.getElementById('commandSetParameterNames')?.value || '';
         const payload = {
             name: document.getElementById('commandSetNameInput')?.value.trim(),
             description: document.getElementById('commandSetDescriptionInput')?.value.trim() || '',
             use_sudo: document.getElementById('commandSetUseSudoInput')?.checked === true,
-            steps: this.draftSteps.map(step => ({ ...step })),
+            parameters: names.split(',').map(name => name.trim()).filter(Boolean).map(name => ({name})),
+            steps: this.draftSteps.map(step => step.type === 'argv'
+                ? { type: 'argv', argv: step.argv } : { ...step }),
         };
         if (this.editingId) payload.id = this.editingId;
         const event = this.convertingProfileId ? 'convert_legacy_command_set' : 'save_command_set';
@@ -539,7 +576,7 @@ window.CommandSetManager = {
             if (saved) {
                 const remaining = this.commandSets.filter(item => item.id !== saved.id);
                 this.setCommandSets([...remaining, saved]);
-                if (this.returnToConnection) this.selectForConnection(saved.id);
+                if (this.returnToConnection && !saved.parameters?.length) this.selectForConnection(saved.id);
             }
             if (isLegacyConversion && typeof ProfileManager !== 'undefined') {
                 ProfileManager.upsertProfile(acknowledgement.profile);

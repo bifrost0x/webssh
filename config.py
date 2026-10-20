@@ -52,6 +52,9 @@ WEBAUTHN_ORIGIN = os.environ.get(
 HOST_KEY_MANAGEMENT_ENABLED = (
     os.environ.get('HOST_KEY_MANAGEMENT_ENABLED', 'true').lower() == 'true'
 )
+SERVER_OPERATIONS_ENABLED = (
+    os.environ.get('SERVER_OPERATIONS_ENABLED', 'false').lower() == 'true'
+)
 RECOVERY_CODES_ENABLED = (
     os.environ.get('RECOVERY_CODES_ENABLED', 'true').lower() == 'true'
 )

@@ -1001,6 +1001,7 @@ def restore_user_sessions(user_id, socket_sid):
                 'auth_type': session.get('auth_type', db_session.auth_type),
                 'via_jump': session.get('via_jump'),
                 'jump_host_id': session.get('jump_host_id'),
+                'profile_id': session.get('profile_id'),
                 'reconnect_route_known': session.get('reconnect_route_known', False),
                 'key_id': db_session.key_id,
                 'use_tmux': session.get('use_tmux', False),
@@ -1037,6 +1038,7 @@ def restore_user_sessions(user_id, socket_sid):
                 'key_id': db_session.key_id,
                 'auth_type': db_session.auth_type,
                 'jump_host_id': db_session.jump_host_id,
+                'profile_id': db_session.profile_id,
                 'via_jump': db_session.via_jump,
                 'reconnect_route_known': db_session.reconnect_route_known,
                 'tmux_session_name': db_session.tmux_session_name,
@@ -1044,6 +1046,28 @@ def restore_user_sessions(user_id, socket_sid):
             }, to=socket_sid)
             log_info("Persistent tmux session available for reconnect",
                      host=db_session.host, tmux_session=db_session.tmux_session_name)
+
+@socketio.on('ssh_host_key_decision')
+@socket_login_required
+def handle_ssh_host_key_decision(data, current_user=None):
+    """Only the requesting authenticated socket may confirm this exact key."""
+    if not isinstance(data, dict) or type(data.get('accepted')) is not bool:
+        return {'success': False}
+    prompt_id = data.get('prompt_id')
+    if not isinstance(prompt_id, str):
+        return {'success': False}
+    with _ssh_banner_prompts_lock:
+        prompt = _ssh_banner_prompts.get(prompt_id)
+        if (prompt is None or prompt.get('kind') != 'host_key'
+                or prompt['socket_sid'] != request.sid
+                or prompt['user_id'] != current_user.id
+                or prompt['client_request_id'] != _ssh_request_id(data)
+                or prompt['event'].is_set()):
+            return {'success': False}
+        prompt['accepted'] = data['accepted']
+        prompt['event'].set()
+    return {'success': True}
+
 
 @socketio.on('ssh_auth_banner_decision')
 @socket_login_required
@@ -1064,6 +1088,7 @@ def handle_ssh_auth_banner_decision(data, current_user=None):
         prompt = _ssh_banner_prompts.get(prompt_id)
         if (
             prompt is None
+            or prompt.get('kind') == 'host_key'
             or prompt['socket_sid'] != request.sid
             or prompt['user_id'] != current_user.id
             or prompt['event'].is_set()
@@ -1110,6 +1135,36 @@ def handle_ssh_connect(data, current_user=None):
                 message,
                 client_request_id=client_request_id,
             ))
+
+        def request_host_key_decision(details, cancellation):
+            def cancelled():
+                return cancellation.is_set()
+            if not client_request_id or cancelled():
+                return False
+            prompt_id = secrets.token_urlsafe(24)
+            decision_event = threading.Event()
+            prompt = {
+                'kind': 'host_key', 'event': decision_event, 'accepted': False,
+                'socket_sid': socket_sid, 'user_id': current_user.id,
+                'client_request_id': client_request_id,
+            }
+            with _ssh_banner_prompts_lock:
+                if len(_ssh_banner_prompts) >= 128 or cancelled():
+                    return False
+                _ssh_banner_prompts[prompt_id] = prompt
+            try:
+                emit('ssh_host_key', dict(details, prompt_id=prompt_id,
+                                         client_request_id=client_request_id), to=socket_sid)
+                deadline = time.monotonic() + SSH_AUTH_BANNER_DECISION_TIMEOUT
+                while time.monotonic() < deadline and not cancelled():
+                    if decision_event.wait(.1):
+                        return prompt['accepted'] is True and not cancelled()
+                return False
+            finally:
+                with _ssh_banner_prompts_lock:
+                    _ssh_banner_prompts.pop(prompt_id, None)
+                emit('ssh_host_key_closed', {'prompt_id': prompt_id,
+                     'client_request_id': client_request_id}, to=socket_sid)
 
         def request_auth_banner_decision(banner, context):
             if (client_cancel_event.is_set()
@@ -1256,6 +1311,23 @@ def handle_ssh_connect(data, current_user=None):
         if error:
             emit_error(error)
             return
+
+        from .host_context import bind_profile, ContextError
+        try:
+            profile_id = bind_profile(
+                current_user.id, data.get('profile_id'), host, port, username,
+                saved_jump_host_id, optional=data.get('profile_context_optional') is True,
+            )
+        except ContextError:
+            emit_error('Saved host no longer matches this connection. Select it again or use Quick Connect.')
+            return
+        # An inline jump route cannot represent a profile's direct connection.
+        if profile_id and proxy_jump and not saved_jump_host_id:
+            if data.get('profile_context_optional') is True:
+                profile_id = None
+            else:
+                emit_error('Saved host no longer matches this connection. Select it again or use Quick Connect.')
+                return
 
         if auth_type not in {'password', 'key', 'tailscale'}:
             emit_error('Invalid authentication method')
@@ -1405,6 +1477,7 @@ def handle_ssh_connect(data, current_user=None):
                     user_id=current_user.id,
                     proxy_jump_host=bastion_host,
                     jump_host_id=saved_jump_host_id,
+                    **({'profile_id': profile_id} if profile_id else {}),
                     proxy_jump_port=bastion_port,
                     proxy_jump_username=bastion_username,
                     proxy_jump_password=local_bastion_password,
@@ -1416,6 +1489,7 @@ def handle_ssh_connect(data, current_user=None):
                         '' if reconnect_tmux_name else startup_commands
                     ),
                     auth_banner_decision=request_auth_banner_decision,
+                    host_key_decision=lambda details: request_host_key_decision(details, cancellation),
                     tailscale_authorization=tailscale_authorization,
                     cancel_event=cancellation,
                     client_request_id=client_request_id,
@@ -1513,6 +1587,7 @@ def handle_ssh_connect(data, current_user=None):
                         key_id=key_id,
                         auth_type=auth_type,
                         jump_host_id=saved_jump_host_id,
+                        profile_id=profile_id,
                         via_jump=bastion_host,
                         reconnect_route_known=True,
                         tmux_session_name=created_tmux_name,
@@ -1536,6 +1611,7 @@ def handle_ssh_connect(data, current_user=None):
                     'client_request_id': client_request_id,
                     'via_jump': bastion_host,
                     'jump_host_id': saved_jump_host_id,
+                    'profile_id': profile_id,
                     'reconnect_route_known': True,
                     'use_tmux': actual_use_tmux,
                     'key_id': key_id,
@@ -3001,6 +3077,26 @@ def handle_list_command_sets(data=None, current_user=None):
     payload = {'success': True, 'command_sets': command_sets}
     emit('command_sets_list', payload)
     return payload
+
+
+@socketio.on('resolve_command_set_parameters')
+@socket_login_required
+def handle_resolve_command_set_parameters(data, current_user=None):
+    """Return a private preview without executing or persisting input values."""
+    from . import command_set_manager
+
+    if not isinstance(data, dict) or type(data.get('use_sudo', False)) is not bool:
+        return {'success': False, 'error': 'Invalid command parameter data'}
+    try:
+        resolved, error = command_set_manager.resolve_command_set_parameters(
+            current_user.id, data.get('command_set_id'), data.get('values'),
+            data.get('use_sudo', False),
+        )
+    except StorageCorruptionError:
+        return {'success': False, 'error': 'Command set storage is unreadable'}
+    if error:
+        return {'success': False, 'error': error}
+    return {'success': True, 'resolved_command': resolved}
 
 
 @socketio.on('save_command_set')

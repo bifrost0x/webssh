@@ -88,6 +88,17 @@ def _request_data():
 def _action_target(action, data):
     if action not in ACCOUNT_STEP_UP_ACTIONS:
         raise StepUpError("step-up request is invalid")
+    if action == "server.operation":
+        from .server_operations import get_intent, OperationError
+        auth_session = current_authentication_session()
+        if not config.SERVER_OPERATIONS_ENABLED or auth_session is None:
+            raise StepUpError("step-up request is invalid")
+        target = data.get("target")
+        try:
+            get_intent(target, current_user.id, auth_session.id)
+        except OperationError as error:
+            raise StepUpError("step-up request is invalid") from error
+        return target
     feature = {
         "passkey.enroll": "passkey",
         "passkey.delete": "passkey",

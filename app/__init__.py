@@ -684,6 +684,9 @@ def create_app(
     from .account_step_up_routes import account_step_up_blueprint
     from .health import health_blueprint
     from .host_key_routes import host_key_blueprint
+    from .profile_exchange_routes import profile_exchange_blueprint
+    from .host_context_routes import host_context_blueprint
+    from .server_operations_routes import server_operations_blueprint
     from .github_auth_routes import github_auth_blueprint
     from .oidc_routes import init_oidc, oidc_blueprint
     from .recovery_routes import recovery_blueprint
@@ -703,6 +706,9 @@ def create_app(
     from .operations import operations_blueprint
     app.register_blueprint(operations_blueprint)
     app.register_blueprint(host_key_blueprint)
+    app.register_blueprint(profile_exchange_blueprint)
+    app.register_blueprint(host_context_blueprint)
+    app.register_blueprint(server_operations_blueprint)
     app.register_blueprint(github_auth_blueprint)
     app.register_blueprint(oidc_blueprint)
     app.register_blueprint(recovery_blueprint)

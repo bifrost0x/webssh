@@ -87,6 +87,7 @@ def connect_terminal(**overrides):
         'port': PROXY_TARGET_PORT if uses_proxy else TARGET_PORT,
         'username': USERNAME,
         'user_id': 1,
+        'host_key_decision': lambda details: details['fingerprint'].startswith('SHA256:'),
     }
     kwargs.update(overrides)
     session_id, error = ssh_manager.create_ssh_connection(**kwargs)
@@ -147,11 +148,24 @@ def test_direct_key_terminal_roundtrip(key_name):
         assert ssh_manager.close_session(session_id) is True
 
 
+def test_quick_connect_sftp_rejects_unknown_host_key():
+    pool = make_pool()
+    connection_id, error = pool.create_connection(
+        host=TARGET_HOST, port=TARGET_PORT, username=USERNAME,
+        user_id='1', password=PASSWORD,
+    )
+    assert connection_id is None
+    assert 'host key' in error.lower()
+    assert not pool.connections
+
+
 @pytest.mark.parametrize(
     'auth',
     ['password', 'rsa', 'ed25519', 'ecdsa'],
 )
 def test_quick_connect_sftp_roundtrip(auth):
+    trusted_session = connect_terminal(password=PASSWORD)
+    assert ssh_manager.close_session(trusted_session)
     pool = make_pool()
     kwargs = {'password': PASSWORD} if auth == 'password' else {
         'key_content': (RUNTIME_DIR / f'{auth}.pem').read_text(

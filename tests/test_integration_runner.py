@@ -223,16 +223,20 @@ def test_socket_layer_proxy_uses_the_bastion_visible_target(monkeypatch):
         2200,
         raising=False,
     )
-    monkeypatch.setattr(
-        test_paramiko5_socketio,
-        "wait_for_event",
-        lambda _client, _event: {
+    def connected_event(_client, _event, *, approve_host_keys=False):
+        assert approve_host_keys is True
+        return {
             "host": "compose-target",
             "port": 2200,
             "username": test_paramiko5_socketio.USERNAME,
             "client_request_id": "integration-request",
             "session_id": "session-id",
-        },
+        }
+
+    monkeypatch.setattr(
+        test_paramiko5_socketio,
+        "wait_for_event",
+        connected_event,
     )
 
     test_paramiko5_socketio.emit_ssh_connect(

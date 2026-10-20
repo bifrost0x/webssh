@@ -487,6 +487,79 @@ body[data-theme] .ws-window .terminal-pane.active {
 }
 
 /* Toolbar */
+.session-tabs-row:has(.workspace-layout-picker[open]) {
+    overflow: visible;
+}
+
+.workspace-layout-picker {
+    position: relative;
+}
+
+.workspace-layout-picker > summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    list-style: none;
+    font-size: 12px;
+}
+
+.workspace-layout-picker > summary::-webkit-details-marker { display: none; }
+.workspace-layout-picker > summary .material-icons { font-size: 17px; }
+.workspace-layout-picker > summary:focus-visible { outline: 2px solid var(--accent-primary); }
+
+.workspace-layout-options {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 1100;
+    width: 230px;
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--ws2-panel, var(--bg-secondary));
+    box-shadow: 0 12px 32px #0006;
+}
+
+.workspace-layout-options .split-controls,
+.workspace-layout-options .window-arrange-controls {
+    display: grid;
+    gap: 4px;
+}
+
+.workspace-layout-options .window-arrange-controls {
+    border-top: 1px solid var(--border-color);
+    margin-top: 6px;
+    padding-top: 6px;
+}
+
+.workspace-layout-options .split-btn,
+.workspace-layout-options .tab-row-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 12px;
+}
+
+.workspace-layout-options .material-icons { font-size: 18px; }
+.workspace-layout-hint {
+    padding: 6px 10px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
 .split-btn-windows svg,
 .window-arrange-controls svg {
     display: block;
@@ -536,6 +609,10 @@ body.terminal-window-mode .session-tab.is-minimized:hover {
     .split-btn-windows {
         display: none !important;
     }
+}
+
+@media (max-width: 767px) {
+    .workspace-layout-picker { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

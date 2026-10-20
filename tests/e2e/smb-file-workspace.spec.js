@@ -351,9 +351,14 @@ test('SMB editor remembers recoverable-swap consent for the current connection',
         preview.currentPath = '/report.txt';
         preview.editMode = true;
         preview.editRevision = 'a'.repeat(64);
+        preview.editBaseline = 'original';
+        preview.editTarget = Object.freeze({
+            sourceId: preview.currentSourceId, path: preview.currentPath, endpoint: 'SMB test source',
+        });
         preview.dirty = true;
         document.getElementById('editorContent').value = 'updated';
         preview.saveEdit();
+        preview.commitReviewedEdit();
         preview.handleSocketError({
             operation: 'save_file',
             source_id: 'smb-quick:e2eowned',
@@ -379,6 +384,7 @@ test('SMB editor remembers recoverable-swap consent for the current connection',
             editMode: preview.editMode,
         };
         preview.saveEdit();
+        preview.commitReviewedEdit();
 
         return {
             emitted,

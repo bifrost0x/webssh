@@ -163,6 +163,20 @@ def test_file_service_resolves_ownership_and_capability_before_backend_call():
     assert backend.calls == [('list', 'sftp-session:owned', '/etc')]
 
 
+def test_editor_read_binds_review_endpoint_to_the_resolved_source():
+    source = resolved_source(
+        FileCapability.EDIT,
+        backend=SimpleNamespace(read_file_for_edit=lambda source, path: (
+            {'content': 'text', 'revision': 'loaded'}, None,
+        )),
+    )
+    service = FileService(SimpleNamespace(resolve=lambda source_id, user_id: source))
+    result, error = service.read_file_for_edit('sftp-session:owned', user_id=7, path='/etc/report')
+    assert error is None
+    assert result['endpoint'] == 'host.test:22'
+    assert result['revision'] == 'loaded'
+
+
 def test_file_service_rejects_missing_capability_before_backend_call():
     backend = RecordingBackend()
     source = resolved_source(FileCapability.READ, backend=backend)

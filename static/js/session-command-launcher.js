@@ -78,6 +78,7 @@
         else if (!resolved.trim()) unavailableReason = 'empty';
         return {
             type: 'set',
+            parameters: Array.isArray(commandSet?.parameters) ? commandSet.parameters : [],
             id: commandSet?.id || '',
             name: commandSet?.name || '',
             description: commandSet?.description || '',
@@ -114,7 +115,12 @@
     }
 
     function createSessionCommandController(dependencies = {}) {
+        const previews = new WeakSet();
+        let previewEpoch = 0;
+        const snapshot = id => JSON.stringify((dependencies.getCommandSets?.() || []).find(item => item.id === id));
+        const active = id => !dependencies.getActiveSession || dependencies.getActiveSession() === id;
         return {
+            invalidatePreviews() { previewEpoch++; },
             entries(query = '') {
                 return buildLauncherEntries(
                     dependencies.getCommands?.() || [],
@@ -123,9 +129,35 @@
                 );
             },
 
+            async preview(sessionId, id, values, useSudo = false) {
+                const session = dependencies.getSession?.(sessionId);
+                const before = snapshot(id);
+                const epoch = previewEpoch;
+                const entry = this.entries().find(item => item.type === 'set' && item.id === id);
+                if (!session?.connected || !active(sessionId) || !entry?.parameters.length) {
+                    return { ok: false };
+                }
+                let response;
+                try {
+                    response = await dependencies.resolveParameters?.(id, values, useSudo);
+                } catch {
+                    return { ok: false };
+                }
+                if (!response?.success || typeof response.resolved_command !== 'string'
+                        || !response.resolved_command.trim() || response.resolved_command.length > 4096
+                        || /[\x00-\x1f\x7f-\x9f]/.test(response.resolved_command)
+                        || dependencies.getSession?.(sessionId) !== session || !session.connected
+                        || !active(sessionId) || before !== snapshot(id) || epoch !== previewEpoch) {
+                    return { ok: false, error: response?.error };
+                }
+                const preview = Object.freeze({ sessionId, id, session, before, useSudo, epoch, command: response.resolved_command });
+                previews.add(preview);
+                return { ok: true, preview };
+            },
+
             async insert(sessionId, type, id, options = {}) {
                 const session = dependencies.getSession?.(sessionId);
-                if (!session || !session.connected) {
+                if (!session || !session.connected || !active(sessionId)) {
                     return { ok: false, reason: 'session-unavailable' };
                 }
                 let entry = this.entries().find(candidate => (
@@ -137,7 +169,18 @@
                     }
                     entry = commandEntry({ ...entry, parameters: options.parameters });
                 }
-                const insertText = insertTextFor(entry, options.useSudo);
+                let insertText = insertTextFor(entry, options.useSudo);
+                if (entry?.type === 'set' && entry.parameters.length) {
+                    const reviewed = options.preview;
+                    if (!reviewed || !previews.has(reviewed) || reviewed.session !== session
+                            || reviewed.sessionId !== sessionId || reviewed.id !== id
+                            || reviewed.before !== snapshot(id) || reviewed.epoch !== previewEpoch) {
+                        return { ok: false, reason: 'preview-required' };
+                    }
+                    previews.delete(reviewed);
+                    insertText = reviewed.command;
+                    entry = { ...entry, available: true };
+                }
                 if (!entry || !entry.available || !insertText || hasLineBreak(insertText)) {
                     return { ok: false, reason: entry?.unavailableReason || 'entry-unavailable' };
                 }
@@ -240,8 +283,15 @@
             if (!this.trigger || !this.panel || !this.mount) return;
             this.controller = createSessionCommandController({
                 getSession: sessionId => getSessionManager()?.getSession(sessionId),
+                getActiveSession: () => getSessionManager()?.getActiveSession(),
                 getCommands: () => getCommandLibrary()?.commands || [],
                 getCommandSets: () => root.CommandSetManager?.commandSets || [],
+                resolveParameters: (id, values, useSudo) => new Promise(resolve => {
+                    if (!root.socket?.connected) { resolve({ success: false }); return; }
+                    root.socket.timeout(10000).emit('resolve_command_set_parameters', {
+                        command_set_id: id, values, use_sudo: useSudo,
+                    }, (error, response) => resolve(error ? { success: false } : response));
+                }),
                 emitInput: (sessionId, data) => root.SSHInput
                     ? root.SSHInput.send(sessionId, data)
                     : root.socket?.emit('ssh_input', {
@@ -284,6 +334,7 @@
         },
 
         sync() {
+            this.controller?.invalidatePreviews();
             const sessionManager = getSessionManager();
             const sessionId = sessionManager?.getActiveSession?.();
             const session = sessionId ? sessionManager.getSession(sessionId) : null;
@@ -456,6 +507,8 @@
 
             matching.forEach(savedEntry => {
                 let entry = savedEntry;
+                const parameterized = entry.type === 'set' && entry.parameters.length > 0;
+                const boundSessionId = this.sessionId;
                 if (entry.type === 'command' && this.parameterDrafts.has(entry.id)) {
                     entry = commandEntry({ ...entry, parameters: this.parameterDrafts.get(entry.id) });
                 }
@@ -473,10 +526,13 @@
                 const description = document.createElement('span');
                 description.textContent = entry.description;
                 const preview = document.createElement('code');
-                preview.textContent = insertText || entry.preview;
+                if (parameterized) preview.className = 'command-parameter-preview';
+                preview.textContent = parameterized
+                    ? this.t('commandParameters.reviewHint', 'Resolve a preview, then insert it. Press Enter in the terminal to run.')
+                    : (insertText || entry.preview);
                 details.append(name);
                 if (entry.description) details.append(description);
-                if (entry.preview) details.append(preview);
+                if (entry.preview || parameterized) details.append(preview);
 
                 const insert = document.createElement('button');
                 insert.type = 'button';
@@ -484,8 +540,9 @@
                 insert.textContent = this.t('sessionCommands.insert', 'Insert');
                 let currentAvailable = available;
                 let inserting = false;
+                let parameterPreview = null;
                 insert.disabled = !available;
-                if (!available) {
+                if (!available && !parameterized) {
                     const reason = entry.unavailableReason === 'multiline'
                         ? this.t(
                             'sessionCommands.multilineUnavailable',
@@ -502,7 +559,60 @@
                     reasonText.textContent = reason;
                     details.append(reasonText);
                 }
-                if (entry.type === 'command') {
+                if (parameterized) {
+                    const values = Object.create(null);
+                    let revision = 0;
+                    const form = document.createElement('div');
+                    form.className = 'session-command-parameters';
+                    entry.parameters.forEach(parameter => {
+                        const label = document.createElement('label');
+                        label.textContent = parameter.name;
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'form-control';
+                        input.maxLength = 1024;
+                        input.setAttribute('aria-label', parameter.name);
+                        input.autocomplete = 'off';
+                        values[parameter.name] = '';
+                        input.addEventListener('input', () => {
+                            values[parameter.name] = input.value;
+                            revision++;
+                            parameterPreview = null;
+                            currentAvailable = false;
+                            insert.disabled = true;
+                            preview.textContent = this.t('commandParameters.reviewHint', 'Resolve a preview, then insert it. Press Enter in the terminal to run.');
+                        });
+                        label.append(input);
+                        form.append(label);
+                    });
+                    const resolve = document.createElement('button');
+                    resolve.type = 'button';
+                    resolve.className = 'btn btn-secondary btn-small';
+                    resolve.textContent = this.t('commandParameters.resolve', 'Resolve preview');
+                    resolve.disabled = !canInsert;
+                    resolve.addEventListener('click', async () => {
+                        if (resolve.disabled) return;
+                        resolve.disabled = true;
+                        parameterPreview = null;
+                        currentAvailable = false;
+                        insert.disabled = true;
+                        const requestedRevision = revision;
+                        const result = await this.controller.preview(boundSessionId, entry.id, {...values}, this.useSudo);
+                        resolve.disabled = !canInsert;
+                        if (requestedRevision !== revision || this.sessionId !== boundSessionId
+                                || document.contains?.(row) === false) return;
+                        if (result.ok) {
+                            parameterPreview = result.preview;
+                            preview.textContent = result.preview.command;
+                            currentAvailable = true;
+                            insert.disabled = false;
+                        } else {
+                            preview.textContent = result.error || this.t('commandParameters.previewFailed', 'The preview is unavailable. Check the parameters and selected session.');
+                        }
+                    });
+                    form.append(resolve);
+                    details.append(form);
+                } else if (entry.type === 'command') {
                     const editor = document.createElement('details');
                     editor.className = 'session-command-parameters';
                     editor.open = this.expandedParameters.has(entry.id);
@@ -545,12 +655,16 @@
                     inserting = true;
                     insert.disabled = true;
                     const result = await this.controller.insert(
-                        this.sessionId,
+                        boundSessionId,
                         entry.type,
                         entry.id,
-                        { useSudo: this.useSudo, parameters: entry.type === 'command' ? this.parameterDrafts.get(entry.id) : undefined }
+                        { useSudo: this.useSudo, preview: parameterPreview, parameters: entry.type === 'command' ? this.parameterDrafts.get(entry.id) : undefined }
                     );
                     inserting = false;
+                    if (parameterized) {
+                        parameterPreview = null;
+                        currentAvailable = false;
+                    }
                     insert.disabled = !currentAvailable;
                     if (!result.ok) {
                         root.showNotification?.(

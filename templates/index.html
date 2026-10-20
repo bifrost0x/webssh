@@ -31,6 +31,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/product-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/midnight-ui.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
+    <link rel="stylesheet" href="{{ static_asset_url(filename='css/server-operations.css') }}">
 </head>
 <body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
@@ -119,16 +120,22 @@
             <button class="context-workspace-launcher" id="contextWorkspaceLauncher" type="button" aria-expanded="false" aria-controls="contextWorkspace" aria-label="Open session tools" title="Open session tools" data-i18n-aria-label="workspace.openTools" data-i18n-title="workspace.openTools"><span class="material-icons" aria-hidden="true">tune</span><span data-i18n="workspace.tools">Tools</span></button>
             <div class="tab-row-actions">
                 <button class="tab-row-icon-btn" id="terminalAppearanceBtn" type="button" data-open-terminal-appearance title="Terminal appearance" aria-label="Terminal appearance" data-i18n-title="terminalAppearance.title" data-i18n-aria-label="terminalAppearance.title"><span class="material-icons" aria-hidden="true">palette</span></button>
-                <div class="split-controls" aria-label="Split layout" data-i18n-aria-label="panes.layout">
-                    <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single">1</button>
-                    <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane" data-i18n-title="panes.split" data-i18n-aria-label="panes.split">2</button>
-                    <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane" data-i18n-title="panes.quad" data-i18n-aria-label="panes.quad">4</button>
-                    <button class="split-btn split-btn-windows" data-layout="windows" title="Floating windows" aria-label="Floating windows" data-i18n-title="windows.mode" data-i18n-aria-label="windows.mode"><span class="material-icons" aria-hidden="true">filter_none</span></button>
-                </div>
-                <div id="windowArrangeControls" class="window-arrange-controls" hidden>
-                    <button type="button" class="tab-row-icon-btn" data-window-arrange="tile" title="Tile windows" aria-label="Tile windows" data-i18n-title="windows.tile" data-i18n-aria-label="windows.tile"><span class="material-icons" aria-hidden="true">grid_view</span></button>
-                    <button type="button" class="tab-row-icon-btn" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><span class="material-icons" aria-hidden="true">filter_none</span></button>
-                </div>
+                <details class="workspace-layout-picker" id="workspaceLayoutPicker">
+                    <summary><span class="material-icons" aria-hidden="true">dashboard</span><span data-i18n="panes.layout">Layout</span><span class="material-icons" aria-hidden="true">expand_more</span></summary>
+                    <div class="workspace-layout-options">
+                        <div class="split-controls" aria-label="Split layout" data-i18n-aria-label="panes.layout">
+                            <button class="split-btn active" data-layout="1" title="Single pane" aria-label="Single pane" data-i18n-title="panes.single" data-i18n-aria-label="panes.single"><span class="material-icons" aria-hidden="true">crop_square</span><span data-i18n="panes.single">Single pane</span></button>
+                            <button class="split-btn" data-layout="2" title="Split pane" aria-label="Split pane" data-i18n-title="panes.split" data-i18n-aria-label="panes.split"><span class="material-icons" aria-hidden="true">view_column</span><span data-i18n="panes.split">Split pane</span></button>
+                            <button class="split-btn" data-layout="4" title="Quad pane" aria-label="Quad pane" data-i18n-title="panes.quad" data-i18n-aria-label="panes.quad"><span class="material-icons" aria-hidden="true">grid_view</span><span data-i18n="panes.quad">Quad pane</span></button>
+                            <button class="split-btn split-btn-windows" data-layout="windows" title="Floating windows" aria-label="Floating windows" data-i18n-title="windows.mode" data-i18n-aria-label="windows.mode"><span class="material-icons" aria-hidden="true">filter_none</span><span data-i18n="windows.mode">Floating windows</span></button>
+                        </div>
+                        <div id="windowArrangeControls" class="window-arrange-controls" hidden>
+                            <button type="button" class="tab-row-icon-btn" data-window-arrange="tile" title="Tile windows" aria-label="Tile windows" data-i18n-title="windows.tile" data-i18n-aria-label="windows.tile"><span class="material-icons" aria-hidden="true">grid_view</span><span data-i18n="windows.tile">Tile windows</span></button>
+                            <button type="button" class="tab-row-icon-btn" data-window-arrange="cascade" title="Cascade windows" aria-label="Cascade windows" data-i18n-title="windows.cascade" data-i18n-aria-label="windows.cascade"><span class="material-icons" aria-hidden="true">filter_none</span><span data-i18n="windows.cascade">Cascade windows</span></button>
+                            <p class="workspace-layout-hint" data-i18n="windows.snapHint">Drag a title bar to an edge to snap; to a corner for a quarter.</p>
+                        </div>
+                    </div>
+                </details>
                 <button class="tab-row-icon-btn" id="broadcastToggleBtn" type="button" aria-pressed="false" title="Broadcast to all sessions" data-i18n-title="broadcast.toggle">
                     <span class="material-icons" aria-hidden="true">cell_tower</span>
                 </button>
@@ -330,6 +337,7 @@
                                     </div>
                                     <p data-i18n="workspaceContext.notesHint">Your private notes, shared across all your sessions.</p>
                                 </div>
+                                <button type="button" class="btn btn-secondary btn-sm" id="activeHostContextBtn" data-i18n="hostContext.title">Host context</button>
                             </div>
                             <div class="notepad-section">
                                 <textarea id="sessionNotepad" class="notepad-input" aria-labelledby="notepadTitle" data-i18n-placeholder="workspaceContext.notesPlaceholder" placeholder="Write notes, commands, or snippets here..."></textarea>
@@ -381,6 +389,7 @@
                     <button class="session-diagnostics-expand" id="sessionDiagnosticsExpand" type="button" aria-label="Expand diagnostics" title="Expand diagnostics" aria-pressed="false" data-i18n-aria-label="diagnostics.expand" data-i18n-title="diagnostics.expand">
                         <span class="material-icons" aria-hidden="true">open_in_full</span>
                     </button>
+                    <button class="btn btn-secondary" id="sessionServerManagement" type="button" aria-label="Server management" title="Server management" data-i18n-aria-label="serverOps.title" data-i18n-title="serverOps.title"><span class="material-icons" aria-hidden="true">dns</span></button>
                     <button class="session-diagnostics-refresh" id="sessionDiagnosticsRefresh" type="button" aria-label="Refresh runtime inventory" title="Refresh runtime inventory" data-i18n-aria-label="diagnostics.refreshInventory" data-i18n-title="diagnostics.refreshInventory">
                         <span class="material-icons" aria-hidden="true">refresh</span>
                         <span data-i18n="admin.refresh">Refresh</span>
@@ -426,11 +435,27 @@
                     <ul id="sessionDiagnosticsFindings"></ul>
                 </details>
 
+                <div class="session-resource-cards">
+                    <button type="button" class="session-resource-card" id="sessionDiagnosticsServiceCard" data-resource-kind="service">
+                        <span class="material-icons" aria-hidden="true">settings_suggest</span>
+                        <span class="session-resource-card-copy"><strong data-i18n="serverOps.services">Services</strong><small id="sessionDiagnosticsServiceSummary">—</small></span>
+                        <span class="session-resource-card-action" data-i18n="diagnostics.viewManage">View / manage</span><span class="material-icons" aria-hidden="true">chevron_right</span>
+                    </button>
+                    <button type="button" class="session-resource-card" id="sessionDiagnosticsContainerCard" data-resource-kind="container">
+                        <span class="material-icons" aria-hidden="true">view_in_ar</span>
+                        <span class="session-resource-card-copy"><strong data-i18n="serverOps.containers">Containers</strong><small id="sessionDiagnosticsContainerSummary">—</small></span>
+                        <span class="session-resource-card-action" data-i18n="diagnostics.viewManage">View / manage</span><span class="material-icons" aria-hidden="true">chevron_right</span>
+                    </button>
+                    <button type="button" class="session-resource-card" id="sessionDiagnosticsProcessCard" data-resource-kind="process">
+                        <span class="material-icons" aria-hidden="true">memory</span>
+                        <span class="session-resource-card-copy"><strong data-i18n="serverOps.processes">Processes</strong><small id="sessionDiagnosticsProcessSummary">—</small></span>
+                        <span class="session-resource-card-action" data-i18n="diagnostics.viewManage">View / manage</span><span class="material-icons" aria-hidden="true">chevron_right</span>
+                    </button>
+                </div>
+                <details class="session-diagnostics-details" id="sessionDiagnosticsHistory" open>
+                    <summary data-i18n="diagnostics.historyDetails">Resource history</summary>
                 <div class="session-diagnostics-chart-grid">
                     <section class="session-diagnostics-section session-diagnostics-chart-panel" id="sessionDiagnosticsPressureSection" hidden>
-                        <div class="session-diagnostics-section-heading">
-                            <div><span class="material-icons" aria-hidden="true">monitor_heart</span><h3 data-i18n="diagnostics.systemPressure">Resource history</h3></div>
-                        </div>
                         <div class="session-chart-legend" aria-hidden="true">
                             <span class="cpu" data-i18n="diagnostics.cpu">CPU</span><span class="memory" data-i18n="diagnostics.memory">Memory</span><span class="load" data-i18n="diagnostics.normalizedLoad">Normalized load</span><span class="disk" data-i18n="diagnostics.rootDisk">Root disk</span>
                         </div>
@@ -457,6 +482,9 @@
                     </details>
                 </div>
 
+                </details>
+                <details class="session-diagnostics-details" id="sessionDiagnosticsTechnical">
+                    <summary data-i18n="diagnostics.technicalDetails">Technical details</summary>
                 <div class="session-diagnostics-inventory-meta"><span id="sessionDiagnosticsLastUpdated" data-i18n="diagnostics.inventoryNotLoaded">Inventory not loaded</span></div>
                 <div class="session-diagnostics-views" role="tablist" aria-label="Diagnostics" data-i18n-aria-label="workspaceContext.diagnostics">
                     <button id="sessionDiagnosticsProcessesTab" type="button" role="tab" aria-controls="sessionDiagnosticsProcessesSection" aria-selected="true" data-diagnostics-view="processes" data-i18n="diagnostics.processes">Processes</button>
@@ -559,9 +587,27 @@
                 </section>
 
                 </details>
+                </details>
                 <p class="sr-only" id="sessionDiagnosticsClipboardFeedback" aria-live="polite"></p>
             </div>
         </section>
+    </div>
+
+    <div class="modal modal-small ssh-auth-banner-modal" id="sshHostKeyModal" role="alertdialog" aria-modal="true" aria-labelledby="sshHostKeyTitle" aria-describedby="sshHostKeyHint" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="sshHostKeyTitle" data-i18n="connection.hostKeyTitle">Trust SSH host key?</h2>
+            </div>
+            <div class="modal-body ssh-auth-banner-body">
+                <p id="sshHostKeyHint" data-i18n="connection.hostKeyHint">Verify this fingerprint through a trusted channel before sending credentials. Accepting saves this key for your account.</p>
+                <p class="ssh-auth-banner-target" id="sshHostKeyTarget"></p>
+                <pre class="ssh-auth-banner-text" id="sshHostKeyFingerprint" tabindex="0"></pre>
+                <div class="ssh-auth-banner-actions">
+                    <button type="button" class="btn btn-secondary" id="sshHostKeyCancel" data-i18n="connection.authBannerCancel">Cancel connection</button>
+                    <button type="button" class="btn btn-primary" id="sshHostKeyAccept" data-i18n="connection.hostKeyAccept">Trust and connect</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="modal modal-small ssh-auth-banner-modal" id="sshAuthBannerModal" role="alertdialog" aria-modal="true" aria-labelledby="sshAuthBannerTitle" aria-describedby="sshAuthBannerHint" aria-hidden="true">
@@ -824,6 +870,8 @@
                         <div class="management-panel-actions">
                             <button type="button" id="profileDensityBtn" class="btn btn-secondary" aria-pressed="false" data-i18n="profiles.compact">Compact view</button>
                             <button type="button" id="collapseAllProfilesBtn" class="btn btn-secondary" data-i18n="profiles.collapseAll">Collapse all</button>
+                            <button type="button" id="importProfilesBtn" class="btn btn-secondary" data-i18n="exchange.import">Import hosts</button>
+                            <button type="button" id="exportProfilesBtn" class="btn btn-secondary" data-i18n="exchange.export">Export host metadata</button>
                             <button type="button" id="newProfileBtn" class="btn btn-primary" data-i18n="profiles.create">Create saved connection</button>
                         </div>
                     </div>
@@ -1127,6 +1175,12 @@
                                 <input id="commandSetDescriptionInput" class="form-control" type="text">
                             </div>
                         </div>
+                        <div class="form-group">
+                            <label for="commandSetParameterNames" data-i18n="commandParameters.names">Interactive parameter names (comma separated)</label>
+                            <input id="commandSetParameterNames" class="form-control" type="text" maxlength="680" placeholder="path, service" aria-describedby="commandSetParameterHint">
+                            <p id="commandSetParameterHint" data-i18n="commandParameters.hint">Optional. Use argument steps only, with each {{ '{{name}}' }} as a whole argument. Values are POSIX shell arguments. These sets require interactive launch and never run on connect.</p>
+                            <button id="addArgumentCommandStepBtn" type="button" class="btn btn-secondary btn-sm" data-i18n="commandParameters.addStep">Add argument step</button>
+                        </div>
                         <div class="command-set-sudo-option">
                             <label for="commandSetUseSudoInput">
                                 <input id="commandSetUseSudoInput" type="checkbox">
@@ -1299,6 +1353,35 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal host-context-modal" id="hostContextModal" role="dialog" aria-modal="true" aria-labelledby="hostContextTitle" aria-hidden="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="hostContextTitle" data-i18n="hostContext.title">Host context</h2>
+                <button type="button" class="close material-icons" id="hostContextClose" aria-label="Close" data-i18n-aria-label="common.close">close</button>
+            </div>
+            <div class="modal-body">
+                <p id="hostContextTarget" class="host-context-target"></p>
+                <p data-i18n="hostContext.hint">Private notes and shortcuts for this saved host. Opening context does not connect SSH.</p>
+                <p id="hostContextEmpty" data-i18n="hostContext.adHoc">This session has no saved host context. Select a saved host when connecting to use private host notes and shortcuts.</p>
+                <div id="hostContextFields" hidden>
+                    <label for="hostContextNotes" data-i18n="hostContext.notes">Host notes (up to 100000 characters)</label>
+                    <textarea id="hostContextNotes" class="form-control" rows="8" maxlength="100000"></textarea>
+                    <label for="hostContextDirectories" data-i18n="hostContext.directories">Favorite directories (up to 20 absolute paths, one per line)</label>
+                    <textarea id="hostContextDirectories" class="form-control" rows="4" maxlength="82000" spellcheck="false"></textarea>
+                    <div id="hostContextLaunchers" class="host-context-launchers"></div>
+                    <p id="hostContextSessionHint" data-i18n="hostContext.sessionHint">To open directories or command sets, select the connected SSH session for this saved host and open its host context again.</p>
+                    <h3 data-i18n="hostContext.commandSets">Assigned command sets (up to 20)</h3>
+                    <div id="hostContextSets"></div>
+                </div>
+                <p id="hostContextStatus" role="status" aria-live="polite"></p>
+                <div class="host-context-actions">
+                    <button id="hostContextReload" type="button" class="btn btn-secondary" data-i18n="hostContext.reload">Discard draft and reload</button>
+                    <button id="hostContextSave" type="button" class="btn btn-primary" data-i18n="common.save" disabled>Save</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1507,11 +1590,31 @@
                 </div>
                 <div class="file-editor hidden" id="fileEditor">
                     <div class="editor-toolbar">
-                        <button class="btn btn-primary" id="editorSaveBtn" data-i18n="editor.save">Save</button>
+                        <button class="btn btn-primary" id="editorSaveBtn" data-i18n="editor.reviewChanges">Review changes</button>
                         <button class="btn btn-secondary" id="editorCancelBtn" data-i18n="editor.cancel">Cancel</button>
                         <span class="editor-status" id="editorStatus"></span>
                     </div>
-                    <textarea class="editor-content" id="editorContent" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+                    <textarea class="editor-content" id="editorContent" aria-label="File content" data-i18n-aria-label="editor.fileContent" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+                    <section class="editor-review hidden" id="editorReview" aria-labelledby="editorReviewHeading">
+                        <h3 id="editorReviewHeading" data-i18n="editor.reviewChanges">Review changes</h3>
+                        <p class="editor-review-target" id="editorReviewTarget"></p>
+                        <p data-i18n="editor.reviewExplanation">Removed lines start with -, added lines with +. Nearby edits may appear as one replacement.</p>
+                        <p class="hidden" id="editorReviewLimited" data-i18n="editor.reviewLimited">The comparison is shortened. Inspect both full versions below before saving.</p>
+                        <pre class="editor-review-diff" id="editorReviewDiff" tabindex="0" aria-label="Changes" data-i18n-aria-label="editor.changes"></pre>
+                        <details class="editor-review-versions">
+                            <summary data-i18n="editor.fullVersions">Inspect full original and edited text</summary>
+                            <div class="editor-review-columns">
+                                <label><span data-i18n="editor.originalText">Original text</span><textarea class="editor-content" id="editorReviewOriginal" readonly wrap="off" spellcheck="false"></textarea></label>
+                                <label><span data-i18n="editor.editedText">Edited text</span><textarea class="editor-content" id="editorReviewEdited" readonly wrap="off" spellcheck="false"></textarea></label>
+                            </div>
+                        </details>
+                        <p data-i18n="editor.backupExplanation">Optionally download the exact original opened file as a local backup before saving.</p>
+                        <div class="editor-toolbar editor-review-actions">
+                            <button class="btn btn-secondary" id="editorBackupBtn" data-i18n="editor.downloadOriginal">Download original</button>
+                            <button class="btn btn-secondary" id="editorBackBtn" data-i18n="editor.backToEditing">Back to editing</button>
+                            <button class="btn btn-primary" id="editorCommitBtn" data-i18n="editor.saveReviewed">Save reviewed changes</button>
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>
@@ -1521,6 +1624,7 @@
     <script src="{{ static_asset_url(filename='vendor/xterm/xterm-addon-fit.js') }}"></script>
     <script src="{{ static_asset_url(filename='vendor/xterm/xterm-addon-search.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/preview-highlight.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/file-edit-diff.js') }}"></script>
     <script src="{{ static_asset_url(filename='vendor/socketio/socket.io.min.js') }}"></script>
 
     <script>
@@ -1536,6 +1640,8 @@
     <script src="{{ static_asset_url(filename='js/session-runtime-inventory.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-diagnostics-charts.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-diagnostics.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/security-ui.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/server-operations.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-files-panel.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-workspace.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-directory-sync.js') }}"></script>
@@ -1560,11 +1666,13 @@
     <script src="{{ static_asset_url(filename='js/account-workspace-pulse.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/broadcast-input.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/profile-manager.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/profile-exchange.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/jump-host-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/command-library.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/command-set-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-command-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/session-command-launcher.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/host-context.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/file-transfer.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/file-workspace-state.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/smb-source-dialog.js') }}"></script>
@@ -1578,6 +1686,7 @@
     <script src="{{ static_asset_url(filename='js/auth-session-guard.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-validation.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/ssh-gateway-dialog.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/ssh-host-trust.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/app.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/terminal-file-bridge.js') }}"></script>
     <script>

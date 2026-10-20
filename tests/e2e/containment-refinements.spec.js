@@ -24,7 +24,7 @@ for (const width of [390, 768, 1024, 1440]) {
         }
         await page.screenshot({path:test.info().outputPath(`overview-${width}.png`)});
         await (width < 768 ? page.locator('[data-mobile-view="workspaces"]') : page.locator('#workspaceNavBtn')).click();
-        if (width >= 768) await page.locator('[data-layout="windows"]').click();
+        if (width >= 768) { await page.locator("#workspaceLayoutPicker > summary").click(); await page.locator('[data-layout="windows"]').click(); }
         const escaped = await page.locator('.session-tabs-row').evaluate(row => {
             const r = row.getBoundingClientRect();
             return [...row.querySelectorAll('button')].filter(button => {

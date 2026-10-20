@@ -526,8 +526,104 @@ body.session-diagnostics-open {
 .session-diagnostics-content {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     padding: 22px 26px 30px;
     overflow-y: auto;
+}
+
+.session-resource-cards {
+    display: grid;
+    gap: 0;
+    margin: 12px 0;
+}
+
+.session-resource-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px 8px;
+    text-align: left;
+    color: var(--text-primary);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    cursor: pointer;
+}
+
+.session-resource-card:hover,
+.session-resource-card:focus-visible {
+    background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
+}
+
+.session-resource-card:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+    border-radius: 6px;
+}
+
+.session-resource-card > .material-icons:first-child {
+    font-size: 19px;
+    color: var(--accent-primary);
+    padding: 7px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent-primary) 9%, transparent);
+}
+
+.session-resource-card > .material-icons:last-child {
+    font-size: 18px;
+    color: var(--text-muted);
+}
+
+.session-resource-card-copy strong {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.session-resource-card-copy {
+    display: grid;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.session-resource-card-copy small,
+.session-resource-card-action {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.session-resource-card-action {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.session-resource-card.warning .session-resource-card-copy small {
+    color: var(--warning-color, #d29922);
+}
+
+.session-diagnostics-details {
+    min-width: 0;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-color);
+}
+
+.session-diagnostics-details > summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 3px 0;
+}
+
+.session-diagnostics-details[open] > summary {
+    margin-bottom: 12px;
 }
 
 .session-diagnostics-permissions {
@@ -1545,3 +1641,129 @@ body.session-diagnostics-open {
     align-self: center;
     flex: 0 0 auto;
 }
+
+/* Keep the overview readable at narrow terminal-sidebar widths. */
+.session-diagnostics-drawer.session-diagnostics-compact .session-diagnostics-primary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 18px;
+    padding-top: 16px;
+}
+
+.session-diagnostics-compact .session-diagnostics-metric-row {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: 0 0 12px;
+    border: 0;
+    --resource-color: var(--accent-primary);
+}
+
+.session-diagnostics-compact .session-diagnostics-metric-row[hidden] { display: none; }
+.session-diagnostics-compact .session-diagnostics-metric-row.warning { --resource-color: var(--warning-color, #d29922); }
+.session-diagnostics-compact .session-diagnostics-metric-row.critical { --resource-color: var(--danger-color, #f85149); }
+
+.session-diagnostics-compact .session-diagnostics-metric-row::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0;
+    height: 3px;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--resource-color) var(--resource-fill, 0%), var(--border-color) var(--resource-fill, 0%));
+}
+
+.session-diagnostics-compact .session-diagnostics-metric-row > strong {
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.6px;
+    line-height: 1.2;
+}
+
+.session-diagnostics-compact .session-diagnostics-metric-row.critical > strong { color: var(--resource-color); }
+.session-diagnostics-compact .session-diagnostics-metric-row > small {
+    text-align: left;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.session-diagnostics-compact .session-diagnostics-metric-row .session-diagnostics-card-heading {
+    font-size: 12px;
+}
+.session-diagnostics-compact .session-diagnostics-assessment { margin-top: 8px; }
+.session-diagnostics-compact .session-diagnostics-details { padding: 10px 0; }
+
+/* The metric accents match the corresponding history series. */
+#sessionDiagnosticsMemoryMetric { --resource-color: #a371f7; }
+#sessionDiagnosticsDiskMetric { --resource-color: #f778ba; }
+#sessionDiagnosticsLoadMetric { --resource-color: #d29922; }
+.session-diagnostics-metric-row .session-diagnostics-card-heading::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--resource-color, var(--accent-primary));
+    vertical-align: middle;
+}
+.session-diagnostics-compact .session-diagnostics-chart-panel canvas {
+    height: 140px;
+    --session-chart-grid: color-mix(in srgb, var(--border-color) 45%, transparent);
+}
+.session-diagnostics-compact .session-chart-legend {
+    gap: 6px 12px;
+    font-size: 11px;
+    margin: 4px 0 10px;
+}
+.session-diagnostics-compact .session-diagnostics-chart-caption {
+    font-size: 10px;
+    margin-top: 8px;
+}
+.session-diagnostics-compact .session-diagnostics-details > summary {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+.session-diagnostics-open .session-diagnostics-drawer {
+    width: min(1080px, 94vw);
+    background: var(--ws2-surface, var(--bg-primary));
+}
+@media (min-width: 800px) {
+    .session-diagnostics-open .session-diagnostics-drawer .session-diagnostics-primary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 24px;
+        padding: 24px 0 12px;
+    }
+    .session-diagnostics-open .session-resource-cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin: 12px 0 20px;
+    }
+    .session-diagnostics-open .session-diagnostics-chart-panel canvas { height: 210px; }
+    .session-diagnostics-open .session-diagnostics-drawer .session-diagnostics-content { padding: 0 28px 24px; }
+    .session-diagnostics-open .session-diagnostics-drawer .session-diagnostics-header { padding: 18px 28px; }
+}
+
+/* Private saved-host context. */
+.host-context-modal .modal-content { width: min(720px, calc(100vw - 24px)); }
+.host-context-modal .modal-body { display: grid; gap: 12px; overflow-y: auto; }
+.host-context-modal #hostContextFields { display: grid; gap: 10px; min-width: 0; }
+.host-context-modal #hostContextFields[hidden] { display: none; }
+.host-context-modal textarea { resize: vertical; min-height: 72px; width: 100%; }
+.host-context-target { overflow-wrap: anywhere; font-weight: 600; }
+.host-context-launchers, .host-context-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.host-context-launchers button { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.host-context-set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.host-context-set label { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+#notepadPanel .workspace-drawer-header { flex-wrap: wrap; gap: 8px 12px; }
+#activeHostContextBtn { flex-shrink: 0; }
+.profile-exchange-modal .modal-body > .form-control { margin-bottom: 12px; }
+.profile-exchange-modal [role="status"] { white-space: pre-line; overflow-wrap: anywhere; }
+.profile-exchange-modal .exchange-warnings { margin: 12px 0; }
+.profile-exchange-modal .exchange-warnings summary { cursor: pointer; }
+.profile-exchange-modal .exchange-warnings ul { max-height: 180px; overflow-y: auto; padding-left: 24px; }
+.host-context-modal #hostContextStatus { min-height: 1.5em; }

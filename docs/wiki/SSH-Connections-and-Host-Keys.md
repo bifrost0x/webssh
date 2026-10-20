@@ -39,10 +39,20 @@ atomic.
 
 WebSSH uses persistent trust on first use (TOFU):
 
-1. On the first connection to a host identity, the server key fingerprint is
-   stored and logged.
+1. On the first terminal connection to a host identity, review the SHA-256
+   fingerprint, key algorithm, host and port before authentication. Verify the
+   fingerprint through a trusted channel, then explicitly choose **Trust and
+   connect**. Only that exact negotiated key is saved for your account.
+   Jump hosts and gateway endpoints require the same verification.
+   Declining, cancelling, disconnecting or leaving the prompt unanswered for
+   60 seconds closes the connection without authenticating or saving the key.
 2. Later connections require the stored key to match.
 3. A changed key is rejected instead of being silently accepted.
+
+Standalone SFTP connections require an already trusted key. Connect through the
+terminal to verify a new host first, or ask an administrator to provision a
+verified global trust record. A simultaneous approval cannot overwrite a
+conflicting stored key.
 
 Trust is scoped to the relevant user or administrator-managed global store.
 Users can inspect and revoke their own trust records in the Security Center;

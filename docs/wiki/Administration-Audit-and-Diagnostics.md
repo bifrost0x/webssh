@@ -120,7 +120,7 @@ cached. Refresh is manual; a failed detail refresh removes stale action rows.
 
 ### Session diagnostics
 
-Diagnostics uses compact metric rows and a shared resource chart for CPU, memory, normalized load and root filesystem usage. The disk trend remains available even when other measurements are missing. Expand the findings row for interpretation or the network row for throughput history. Processes, systemd services and Docker containers have separate keyboard-accessible tabs; existing filters and copy-command actions remain available. Additional server facts are collapsed below the selected view.
+Diagnostics uses compact metric tiles and a shared resource chart for CPU, memory, normalized load and root filesystem usage. The disk trend remains available even when other measurements are missing. Expand the findings row for interpretation or the network row for throughput history. Processes, systemd services and Docker containers have separate keyboard-accessible tabs; existing filters and copy-command actions remain available. Additional server facts are collapsed below the selected view.
 
 Open **Workspaces > Diagnostics** for measurements from the selected SSH host.
 CPU measures time used between two samples. Memory shows usage based on
@@ -168,3 +168,59 @@ Readiness fails during maintenance, shutdown admission closure, database failure
 5. Test native backups and restores on a separate instance.
 6. Monitor capacity and temporary disk usage before raising quotas.
 7. Apply upgrades only after reviewing configuration changes and release notes.
+
+## Managing a connected SSH server
+
+Open **Server management** in Diagnostics to browse the connected server's
+overview, services, containers and processes. Search the resource lists and
+select a resource to inspect its details, read logs or review an action. The
+server header identifies the connected host and account. Overview resource
+shortcuts lead to the corresponding inventory; selecting a resource retains
+the current search and status filter. On desktop, navigation, inventory and
+details occupy distinct columns; narrow screens use a horizontal tab bar.
+The Diagnostics summary also opens each resource category directly. Resource
+history is open by default; technical tables remain collapsed. The expanded
+view uses the available width for metrics and resource navigation. Opening
+management temporarily returns expanded Diagnostics to its sidebar and restores
+the expanded view on close if the same session is still active. Only one
+management dialog can be open at a time.
+The overview uses the existing session measurements and inventory; it does not
+start a second background monitor. Inspection uses separate SSH exec channels
+and does not insert commands into the interactive terminal.
+
+Read-only views include the last 100 journal/container log lines, newest first.
+Docker stdout and stderr entries are merged by their timestamps while
+continuation lines retain their order. Action confirmation appears above the
+resource details and logs and is brought into view before execution. Other
+read-only views include selected
+container metadata, process identity and system resource information. Commands
+have a 15-second deadline and a combined 64 KiB output limit. The SSH account's
+remote permissions still apply.
+
+Mutating controls are disabled by default. Set `SERVER_OPERATIONS_ENABLED=true`
+in the application environment and recreate/restart the application to enable
+service and container start/stop/restart, process TERM and reboot requests.
+With the supplied Compose file, uncomment its optional environment entry.
+This permits users to request these operations only through SSH sessions they
+own; it does not grant remote privileges.
+
+Each mutation requires an exact-command preview, deliberate confirmation and
+WebSSH reauthentication under the existing account step-up policy. A recent
+strong authentication may satisfy that policy. Confirmations expire after
+90 seconds, are bound to the account login and SSH connection, and can be used
+only once. Reboot additionally requires typing the connection's host.
+
+Optional sudo uses `sudo -n`; WebSSH never collects a remote sudo password.
+Container mutations use the full immutable container ID resolved by inspection,
+not its potentially reused name. Process termination uses Linux pidfds and
+checks the inspected process start time before sending TERM. This requires
+remote Python 3 with `os.pidfd_open` and `signal.pidfd_send_signal`, a supporting
+kernel, and sufficient permissions. Unsupported targets require manual
+inspection and administration; WebSSH does not fall back to an unsafe PID-only
+kill. There is no force-kill control.
+
+A successful reboot command means **requested**, not a verified completed
+reboot. A disconnect, timeout or output overflow during a mutation has an
+**unknown** outcome: inspect the server before another action. WebSSH does not
+automatically retry. The audit records action types and outcomes, not remote
+output or credentials.

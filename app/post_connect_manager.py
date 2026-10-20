@@ -147,6 +147,8 @@ def validate_configuration(user_id, payload, dependent_lock_held=False):
         )
     if error:
         return None, error
+    if command_set.get('parameters'):
+        return None, 'Parameterized command sets require interactive launch after connecting'
     return {
         'startup_mode': mode,
         'command_set_id': command_set['id'],

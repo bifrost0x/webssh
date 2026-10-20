@@ -1,0 +1,118 @@
+.server-management .modal-content {
+    width: min(1200px, calc(100vw - 40px));
+    max-width: none;
+    height: min(800px, calc(100dvh - 40px));
+    max-height: calc(100dvh - 40px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 16px;
+    background: var(--ws2-surface, var(--bg-primary));
+}
+.server-management .modal-header { padding: 20px 24px; align-items: flex-start; flex-shrink: 0; }
+.server-management-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.server-management-identity > .material-icons { padding: 12px; border-radius: 12px; font-size: 26px; color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+.server-management-identity h2 { font-size: 22px; font-weight: 600; letter-spacing: -.5px; margin: 3px 0; overflow-wrap: anywhere; }
+.server-management-eyebrow { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-muted); }
+.server-management-host { font: 11px var(--font-mono); color: var(--text-secondary); margin: 0; overflow-wrap: anywhere; }
+.server-management-host-meta { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+.server-management .modal-body { display: grid; grid-template-columns: 175px minmax(0, 1fr); padding: 0; flex: 1; min-height: 0; overflow: hidden; }
+.server-management-tabs { display: flex; flex-direction: column; gap: 6px; padding: 20px 12px; border-right: 1px solid var(--border-color); background: color-mix(in srgb, var(--text-primary) 2%, transparent); }
+.server-management-tabs button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 1px solid transparent; border-radius: 8px; text-align: left; background: transparent; color: var(--text-secondary); font-size: 12px; }
+.server-management-tabs .material-icons { font-size: 19px; }
+.server-management-tabs button[aria-selected="true"] { color: var(--accent-primary); border-color: color-mix(in srgb, var(--accent-primary) 18%, transparent); background: color-mix(in srgb, var(--accent-primary) 10%, transparent); }
+.server-management button:focus-visible, .server-management h3:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.server-management-main { padding: 20px 24px; min-width: 0; overflow: auto; }
+.server-management-notice { margin: 0 0 18px; padding: 0 0 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.server-management-notice.is-warning { color: var(--warning-color, #d29922); }
+.server-management-workspace { display: grid; grid-template-columns: minmax(220px, .85fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+.server-management-workspace[data-kind="system"] { display: flex; flex-direction: column; gap: 20px; }
+.server-management-overview { width: 100%; min-width: 0; }
+.server-management-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+.server-management-card { --meter: #58a6ff; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; border-radius: 10px; background: color-mix(in srgb, var(--text-primary) 3%, transparent); border: 1px solid color-mix(in srgb, var(--border-color) 65%, transparent); }
+.server-management-card[data-metric="memory"] { --meter: #a371f7; }
+.server-management-card[data-metric="disk"] { --meter: #f778ba; }
+.server-management-card[data-metric="load"] { --meter: #d29922; }
+.server-management-card > span { color: var(--text-secondary); font-size: 11px; }
+.server-management-card > strong { font-size: clamp(20px, 2.4vw, 30px); letter-spacing: -.7px; line-height: 1.15; font-weight: 600; font-variant-numeric: tabular-nums; }
+.server-management-card.is-warning > strong { color: var(--warning-color, #d29922); }
+.server-management-card small { color: var(--text-muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.server-management-meter { height: 3px; border-radius: 3px; overflow: hidden; background: var(--border-color); margin: 4px 0; }
+.server-management-meter span { display: block; height: 100%; background: var(--meter); border-radius: inherit; }
+.server-management-resources { display: grid; gap: 8px; }
+.server-management-resource { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 14px; text-align: left; color: var(--text-primary); background: transparent; border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; }
+.server-management-resource:hover { background: color-mix(in srgb, var(--accent-primary) 6%, transparent); border-color: var(--accent-primary); }
+.server-management-resource > .material-icons:first-child { color: var(--accent-primary); background: color-mix(in srgb, var(--accent-primary) 8%, transparent); padding: 8px; border-radius: 8px; font-size: 20px; }
+.server-management-resource > .material-icons:last-child { color: var(--text-muted); font-size: 18px; }
+.server-management-resource-copy { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.server-management-resource-copy strong { font-size: 13px; font-weight: 600; }
+.server-management-resource-copy small { color: var(--text-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.server-management-resource.is-warning .server-management-resource-copy small { color: var(--warning-color, #d29922); }
+.server-management-resource-count { font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.server-management-findings { margin-top: 18px; padding: 2px 12px; border-left: 2px solid var(--warning-color, #d29922); background: color-mix(in srgb, var(--warning-color, #d29922) 5%, transparent); border-radius: 0 8px 8px 0; }
+.server-management-findings p { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; line-height: 1.6; color: var(--text-secondary); margin: 10px 0; }
+.server-management-findings .material-icons { font-size: 16px; color: var(--warning-color, #d29922); margin-top: 2px; }
+.server-management-traffic { display: flex; flex-wrap: wrap; gap: 16px; color: var(--text-muted); font: 11px var(--font-mono); margin-top: 16px; }
+.server-management-inventory { min-width: 0; }
+.server-management-toolbar { display: grid; gap: 8px; margin-bottom: 12px; }
+.server-management-toolbar .form-control { width: 100%; min-width: 0; font-size: 12px; }
+.server-management-list { max-height: 480px; overflow: auto; }
+.server-management-row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; width: 100%; min-width: 0; text-align: left; padding: 12px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-primary); cursor: pointer; }
+.server-management-row strong { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.server-management-row small { width: 100%; color: var(--text-muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.server-management-row:hover, .server-management-row[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent-primary) 25%, transparent); background: color-mix(in srgb, var(--accent-primary) 8%, transparent); }
+.server-management-badge { font-size: 10px; padding: 3px 6px; border-radius: 5px; background: color-mix(in srgb, var(--text-primary) 5%, transparent); color: var(--text-secondary); overflow-wrap: anywhere; }
+.server-management-row[data-state="running"] .server-management-badge { color: var(--success-color, #3fb950); background: color-mix(in srgb, var(--success-color, #3fb950) 9%, transparent); }
+.server-management-row[data-state="failed"] .server-management-badge { color: var(--danger-color, #f85149); background: color-mix(in srgb, var(--danger-color, #f85149) 9%, transparent); }
+.server-management-detail { min-width: 0; padding: 20px; border: 1px solid var(--border-color); border-radius: 12px; background: color-mix(in srgb, var(--text-primary) 2%, transparent); }
+.server-management-detail h3 { margin: 0 0 8px; font-size: 17px; letter-spacing: -.2px; overflow-wrap: anywhere; }
+.server-management-hint { color: var(--text-muted); font-size: 11px; line-height: 1.6; margin: 0 0 16px; }
+.server-management-detail.is-empty { text-align: center; padding: 42px 24px; border-style: dashed; background: transparent; }
+.server-management-selection-icon { font-size: 32px; color: var(--text-muted); margin-bottom: 14px; }
+.server-management-facts { display: grid; grid-template-columns: minmax(60px, auto) minmax(0, 1fr); gap: 8px 12px; font-size: 11px; margin: 16px 0; }
+.server-management-facts:empty { display: none; }
+.server-management-facts dt { color: var(--text-muted); }
+.server-management-facts dd { margin: 0; overflow-wrap: anywhere; font-family: var(--font-mono); }
+.server-management-detail label { display: block; margin: 14px 0; font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+.server-management-detail input[type="checkbox"] { margin-right: 6px; vertical-align: middle; }
+.server-management-detail .form-actions { justify-content: flex-start; flex-wrap: wrap; gap: 6px; padding: 0; margin: 14px 0; border: 0; }
+.server-management-detail.is-empty .form-actions { justify-content: center; }
+.server-management-detail .btn { font-size: 11px; padding: 8px 12px; }
+.server-management-detail .server-management-danger { color: var(--danger-color, #f85149); border-color: color-mix(in srgb, var(--danger-color, #f85149) 30%, transparent); background: color-mix(in srgb, var(--danger-color, #f85149) 6%, transparent); }
+.server-management-detail .server-management-action { color: var(--accent-primary); }
+.server-management-status { color: var(--text-secondary); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.server-management-status:empty { display: none; }
+.server-management-output { margin-top: 16px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
+.server-management-output:has(pre[hidden]) { display: none; }
+.server-management-output h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin: 0; padding: 10px 12px; color: var(--text-muted); background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+.server-management-detail pre { max-height: 310px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: color-mix(in srgb, var(--bg-primary) 70%, transparent); font: 11px/1.7 var(--font-mono); margin: 0; }
+.server-management-review:not(:empty) { border-top: 2px solid var(--warning-color, #d29922); padding-top: 12px; margin-top: 18px; font-size: 12px; }
+.server-management-review pre { margin-bottom: 12px; }
+.server-management-workspace[data-kind="system"] > .server-management-detail { width: 100%; padding: 14px 18px; }
+.server-management-workspace[data-kind="system"] > .server-management-detail h3 { font-size: 12px; color: var(--text-secondary); }
+.server-management button:disabled { opacity: .5; cursor: not-allowed; }
+.server-management [hidden] { display: none !important; }
+#sessionServerManagement { flex: 0 0 34px; width: 34px; min-width: 34px; padding: 6px; }
+#sessionServerManagement .material-icons { font-size: 18px; }
+@media (max-width: 900px) {
+    .server-management .modal-body { grid-template-columns: 145px minmax(0, 1fr); }
+    .server-management-main { padding: 16px; }
+    .server-management-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .server-management-workspace { grid-template-columns: minmax(0, 1fr); }
+    .server-management-list { max-height: 220px; }
+}
+@media (max-width: 600px) {
+    .server-management .modal-content { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); border-radius: 12px; margin: 0; }
+    .server-management { padding: 8px; }
+    .server-management .modal-header { padding: 14px; }
+    .server-management-identity { gap: 10px; }
+    .server-management-identity > .material-icons { padding: 8px; font-size: 21px; }
+    .server-management-identity h2 { font-size: 18px; }
+    .server-management .modal-body { display: flex; flex-direction: column; }
+    .server-management-tabs { flex-direction: row; flex-shrink: 0; gap: 4px; padding: 8px; border-right: 0; border-bottom: 1px solid var(--border-color); }
+    .server-management-tabs button { flex-direction: column; justify-content: center; gap: 4px; padding: 8px 2px; font-size: 10px; min-width: 0; overflow-wrap: anywhere; }
+    .server-management-main { padding: 14px; }
+    .server-management-resource { padding: 10px; gap: 8px; }
+    .server-management-detail { padding: 14px; }
+    .server-management-resource-count { font-size: 18px; }
+}

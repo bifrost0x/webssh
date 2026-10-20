@@ -183,6 +183,7 @@
         const inactive = Math.max(0, total - active - failed);
         return {
             state: String(section.state ?? ''),
+            countsAvailable: finiteNumber(section.total) !== null,
             total,
             active,
             failed,
@@ -219,6 +220,7 @@
         const stopped = Math.max(0, total - running);
         return {
             version: String(section.version ?? ''),
+            countsAvailable: finiteNumber(section.total) !== null,
             total,
             running,
             stopped,
@@ -251,7 +253,7 @@
         if (metrics.load >= 100) add('load', 'diagnostics.assessmentLoad', 'One-minute load is at least one task per CPU. Compare CPU usage and I/O waits; load includes runnable and uninterruptible tasks.');
         if (inventoryState.status === 'ready' && !inventoryState.permissionDenied?.includes('systemd')
                 && finiteNumber(inventoryState.inventory?.systemd?.failed) > 0) {
-            add('services', 'diagnostics.assessmentServices', 'The service inventory reports failed units. Filter for failed services below and inspect their status or logs.');
+            add('services', 'diagnostics.assessmentServices', 'The service inventory reports failed units. Open Services to inspect their status or logs.');
         }
         if (!findings.length) add('scope', 'diagnostics.assessmentScope', 'No guide threshold is exceeded in the available readings. These samples do not establish overall server health.');
         return findings;
@@ -466,6 +468,41 @@
         let latestSession = null;
         let latestInventoryState = {};
         let latestModel = null;
+        const managementTrigger = byId('sessionServerManagement');
+        managementTrigger?.addEventListener('click', () => {
+            windowRef?.ServerOperations?.open(latestState.sessionId, 'system');
+        });
+        windowRef?.addEventListener?.('server-operation-completed', event => {
+            if (event.detail?.sessionId === latestState.sessionId) elements.refresh?.click();
+        });
+        const resourceCards = ['service', 'container', 'process'].map(kind => {
+            const title = kind[0].toUpperCase() + kind.slice(1);
+            const button = byId(`sessionDiagnostics${title}Card`);
+            const summary = byId(`sessionDiagnostics${title}Summary`);
+            const handler = () => {
+                if (latestSession?.connected && latestModel?.available) {
+                    windowRef?.ServerOperations?.open(latestState.sessionId, kind);
+                }
+            };
+            button?.addEventListener('click', handler);
+            return {kind, button, summary, handler};
+        });
+        function renderResourceCards(model) {
+            for (const {kind, button, summary} of resourceCards) {
+                if (!button || !summary) continue;
+                button.disabled = !model.available;
+                const value = kind === 'service' ? model.systemd : kind === 'container' ? model.docker : model.secondary.processTotal;
+                button.classList.toggle('warning', kind === 'service' && value?.countsAvailable && value.failed > 0);
+                summary.textContent = value === null || value === undefined || value.countsAvailable === false
+                    ? t('diagnostics.resourceUnavailable', 'Details unavailable for this session')
+                    : kind === 'service' ? t('diagnostics.serviceOverview', '{active} active · {failed} failed', value)
+                        : kind === 'container' ? t('diagnostics.containerOverview', '{running} running · {total} total', value)
+                            : t('diagnostics.processOverview', '{total} processes · top 5 CPU / memory', {total: value});
+                if (kind !== 'process' && value?.countsAvailable && model.inventory.stale) {
+                    summary.textContent += ` · ${t('diagnostics.statusStale', 'Stale')}`;
+                }
+            }
+        }
         let redrawFrame = null;
         let selectedView = 'processes';
         const viewButtons = Array.from(elements.overlay.querySelectorAll?.('[data-diagnostics-view]') || []);
@@ -559,6 +596,7 @@
             if (!value) return;
             wrapper.classList.remove('normal', 'warning', 'critical');
             wrapper.classList.add(value.severity);
+            wrapper.style?.setProperty?.('--resource-fill', `${boundedPercent(value.barPercent) || 0}%`);
             elements[`${key}Value`].textContent = value.label;
             elements[`${key}Detail`].textContent = value.detail || '';
             wrapper.setAttribute('title', value.severityLabel);
@@ -571,6 +609,7 @@
                 [row.command, row.user, row.pid].forEach(value => {
                     const cell = documentRef.createElement('td');
                     cell.textContent = value;
+                    cell.title = String(value);
                     tr.appendChild(cell);
                 });
                 const percentCell = documentRef.createElement('td');
@@ -748,6 +787,8 @@
         function drawCharts() {
             if (!latestModel || !chartModule) return;
             const model = latestModel;
+            windowRef?.ServerOperations?.updateSnapshot?.(latestState.sessionId, latestSession,
+                buildViewModel(latestState, latestSession, latestInventoryState, {}, translate));
             if (!elements.pressureSection.hidden) {
                 chartModule.drawLineChart(
                     elements.pressureChart,
@@ -923,6 +964,7 @@
                 replaceProcesses(elements.cpuProcesses, model.processes.topCpu);
                 replaceProcesses(elements.memoryProcesses, model.processes.topMemory);
             }
+            renderResourceCards(model);
             renderSystemd(model.systemd);
             renderDocker(model.docker);
             updateViews(previousFocus);
@@ -955,6 +997,7 @@
             button.addEventListener('keydown', keydown);
         });
         elements.networkSection?.addEventListener('toggle', scheduleRedraw);
+        byId('sessionDiagnosticsHistory')?.addEventListener('toggle', scheduleRedraw);
         const handleRefresh = () => onRefreshInventory();
         const handleExpand = () => setExpanded(!expanded);
         const handleCollapse = () => setExpanded(false);
@@ -964,6 +1007,22 @@
         const handleLanguageChanged = () => {
             updateExpandButton();
             rerenderLocal();
+        };
+        let managementReturn = null;
+        const handleManagementOpening = event => {
+            if (event.detail?.sessionId !== latestState.sessionId || !expanded) return;
+            managementReturn = {sessionId: latestState.sessionId, session: latestSession};
+            setExpanded(false);
+        };
+        const handleManagementClosed = event => {
+            const previous = managementReturn;
+            managementReturn = null;
+            if (previous && event.detail?.sessionId === previous.sessionId
+                && latestState.sessionId === previous.sessionId && latestSession === previous.session
+                && latestSession?.connected && open) {
+                setExpanded(true);
+                managementTrigger?.focus();
+            }
         };
         const handlePrimaryWorkspaceChange = event => {
             if (event?.detail?.view === 'workspaces') scheduleRedraw();
@@ -982,6 +1041,8 @@
         elements.backdrop?.addEventListener('click', handleCollapse);
         elements.systemdSearch?.addEventListener('input', handleSystemdSearch);
         elements.dockerSearch?.addEventListener('input', handleDockerSearch);
+        windowRef?.addEventListener?.('server-management-opening', handleManagementOpening);
+        windowRef?.addEventListener?.('server-management-closed', handleManagementClosed);
         windowRef?.addEventListener?.('themeChanged', scheduleRedraw);
         windowRef?.addEventListener?.('languageChanged', handleLanguageChanged);
         windowRef?.addEventListener?.('primary-workspace-change', handlePrimaryWorkspaceChange);
@@ -1009,10 +1070,14 @@
                 elements.dockerSearch?.removeEventListener('input', handleDockerSearch);
                 filterHandlers.forEach((handler, button) => button.removeEventListener('click', handler));
                 elements.networkSection?.removeEventListener('toggle', scheduleRedraw);
+                byId('sessionDiagnosticsHistory')?.removeEventListener('toggle', scheduleRedraw);
+                resourceCards.forEach(({button, handler}) => button?.removeEventListener('click', handler));
                 viewHandlers.forEach(({ click, keydown }, button) => {
                     button.removeEventListener('click', click);
                     button.removeEventListener('keydown', keydown);
                 });
+                windowRef?.removeEventListener?.('server-management-opening', handleManagementOpening);
+                windowRef?.removeEventListener?.('server-management-closed', handleManagementClosed);
                 windowRef?.removeEventListener?.('themeChanged', scheduleRedraw);
                 windowRef?.removeEventListener?.('languageChanged', handleLanguageChanged);
                 windowRef?.removeEventListener?.('primary-workspace-change', handlePrimaryWorkspaceChange);

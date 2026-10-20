@@ -4693,6 +4693,32 @@ body.keyboard-open.notepad-focused .notepad-panel {
     border-color: var(--accent-primary, var(--border-color));
 }
 
+.editor-review {
+    min-height: 0;
+    overflow: auto;
+    padding: 4px;
+}
+
+.editor-review h3 { margin: 0 0 8px; }
+.editor-review p { margin: 8px 0; }
+.editor-review-target { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); }
+.editor-review-diff {
+    padding: 12px;
+    max-height: 35vh;
+    overflow: auto;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    white-space: pre;
+}
+.editor-review-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.editor-review-columns label { min-width: 0; }
+.editor-review-columns textarea { height: 220px; margin-top: 4px; }
+.editor-review-actions, .file-editor > .editor-toolbar { flex-wrap: wrap; }
+.editor-review-actions { padding-bottom: 8px; }
+@media (max-width: 600px) { .editor-review-columns { grid-template-columns: minmax(0, 1fr); } }
+
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
@@ -6329,3 +6355,13 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .gateway-modal input:focus { outline: 2px solid var(--accent-color, #58a6ff); outline-offset: 2px; }
 .gateway-footer { display: flex; justify-content: flex-end; padding: 20px 24px; border-top: 1px solid var(--border-color); background: var(--bg-secondary); }
 .gateway-terminal { margin: 12px 0; overflow: auto; }
+/* Keep remote diagnostic output readable without growing the action dialog. */
+.server-operation-output {
+    max-height: 40vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}

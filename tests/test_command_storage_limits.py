@@ -91,6 +91,7 @@ def test_legacy_oversized_command_can_shrink_or_be_deleted_but_not_grow(
         path.write_text(
             json.dumps([_legacy_command('x' * (16 * 1024 + 1))], indent=2),
             encoding='utf-8',
+            newline='\n',
         )
 
         with pytest.raises(CommandStorageLimitError, match='byte limit'):

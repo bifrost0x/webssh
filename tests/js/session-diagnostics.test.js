@@ -474,3 +474,15 @@ test('shows disk-only history after two readings without inventing missing metri
     assert.equal(model.resources.memory, null);
     assert.equal(model.resources.load, null);
 });
+
+test('distinguishes missing inventory counts from a confirmed empty inventory', () => {
+    const state = {sessionId: 's', status: 'ready'};
+    const session = {connected: true};
+    const model = inventory => diagnostics.buildViewModel(state, session, {sessionId: 's', status: 'ready', inventory});
+    const unknown = model({systemd: {state: 'unsupported'}, docker: {version: ''}});
+    assert.equal(unknown.systemd.countsAvailable, false);
+    assert.equal(unknown.docker.countsAvailable, false);
+    const empty = model({systemd: {total: 0, active: 0, failed: 0}, docker: {total: 0, running: 0}});
+    assert.equal(empty.systemd.countsAvailable, true);
+    assert.equal(empty.docker.countsAvailable, true);
+});

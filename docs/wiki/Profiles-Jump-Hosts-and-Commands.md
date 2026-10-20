@@ -28,6 +28,31 @@ bounded name, and has no source profile ID. Saving therefore creates a separate
 profile and never overwrites the original. Passwords remain excluded because
 they are never stored in profiles.
 
+## Private host context
+
+Open **Host context** from a saved host's action menu, or from the active
+session's **Notes** tools. Host notes are separate from the global notepad.
+Each saved profile has its own private context, even when two profiles use the
+same hostname. Ad-hoc connections have no saved host context.
+
+Context supports up to 100000 characters of notes, 20 favorite absolute remote
+directory paths, and references to 20 command sets belonging to your account.
+Use **Save** to persist changes. A concurrent change preserves your local draft
+and reports a conflict; copy your changes before choosing **Discard draft and
+reload**. Drafts also survive switching contexts within the open page; reloads
+retain saved content only.
+
+For a connected session explicitly launched from that saved profile, directory
+buttons open its SFTP source and command-set buttons open the existing command
+launcher. Command insertion and execution retain the launcher's normal preview
+and confirmation behavior. Actions stop when the active session changes. Missing
+or deleted command sets appear unavailable and can be removed from assignments.
+Opening context never establishes or restores an SSH connection.
+
+Context is stored in the account's `host_context.json`, with a 4 MiB account
+quota, and included in normal application backups. Deleted profiles cannot
+access their context; orphaned entries are pruned on the next context write.
+
 ## Favorites and groups
 
 The connection manager provides:
@@ -98,6 +123,27 @@ terminal.
 Command sets combine ordered steps. A step can reference a library command or
 contain free text. Sets can be duplicated, reordered, assigned to profiles, and
 launched for an active session.
+
+For an interactive parameterized set, enter comma-separated parameter names
+in the set editor and use **Add argument step**. Each step is a JSON array:
+`["ls", "--", "{{path}}"]`. Declare `path`, then enter its value when launching
+from the active session's **Commands** panel. **Resolve preview** shows the full
+POSIX command for that session. Review it, choose **Insert**, and press Enter in
+the terminal to execute. Editing a value or changing sessions invalidates the
+preview. Values are never saved with the set or in launcher preferences.
+
+Parameters occupy a whole argument; `prefix{{path}}` and placeholders inside
+shell source are unsupported. The executable must be fixed, and shell
+interpreters and execution wrappers are unsupported. Values are quoted as POSIX
+shell arguments, including empty values, quotes, dollar signs, and backticks.
+The selected program still interprets its own arguments and options: use `--`
+before a path where the program supports it. This mode requires a POSIX shell.
+There are at most 20 unique parameter names (ASCII identifiers, 32 characters),
+50 steps, and 64 arguments per step. Values are limited to 1024 characters,
+with control characters rejected; the fully resolved command is limited to
+4096 characters. Parameterized sets cannot run automatically on connect and
+cannot mix argument steps with library or free-text steps. Existing literal
+sets retain their original behavior.
 
 ![WebSSH command-set workflow from saved connections through ordered steps and profile assignment](https://github.com/bifrost0x/webssh/blob/main/assets/command-sets.gif?raw=true)
 
@@ -188,6 +234,28 @@ Use favorites for the small set of hosts accessed every day. Put shared
 bastions in Jump Hosts rather than duplicating their configuration.
 
 ## Troubleshooting
+
+### Import and export host metadata
+
+Use **Import hosts** in the host manager to preview an OpenSSH configuration or
+a WebSSH host JSON file. Select the hosts, supply missing SSH usernames, and
+explicitly map stored keys and jump hosts before importing. Imports never
+overwrite existing profiles: duplicate names or connection endpoints are
+reported as skipped, making retries safe.
+
+OpenSSH import accepts explicit `Host` aliases, `HostName`, `User`, `Port`, and
+a single alias in `ProxyJump`. `IdentityFile` requests a stored-key mapping; its
+path is never opened. Wildcard defaults, `Include`, `Match`, `ProxyCommand`,
+multi-hop expressions and other unsupported directives block the document
+instead of silently changing its connection behavior. Resolve those rules in
+a copy before importing. Configuration is never executed.
+
+Each import accepts up to 64 KiB and 100 hosts. **Export host metadata** excludes
+passwords, private keys, local key paths, internal IDs and startup commands.
+It preserves authentication requirements and jump-host names, which must be
+mapped again at import. Large exports download a ZIP containing bounded JSON
+batches; extract it and import each JSON file separately. Metadata still
+contains hostnames and usernames, so share it only with intended recipients.
 
 ### Profile launch still asks for a password
 

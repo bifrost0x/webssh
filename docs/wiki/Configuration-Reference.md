@@ -47,6 +47,7 @@ Prefer `flask create-admin` for controlled deployments. Public registration is i
 |---|---|
 | `BLOCK_INTERNAL_SSH` | Blocks SSH connections to loopback, private, link-local, and other protected targets according to the network policy |
 | `PROXY_JUMP_REMOTE_DNS_ALLOWLIST` | Exact hostnames a trusted bastion may resolve remotely |
+| `SERVER_OPERATIONS_ENABLED` | Default `false`; enables reviewed, step-up protected service/container actions, process TERM and reboot on owned SSH sessions |
 
 `BLOCK_INTERNAL_SSH=true` is appropriate for an Internet-facing gateway but can conflict with homelab use. Resolve and validate the exact target policy before enabling it. Host-key verification remains a separate control.
 

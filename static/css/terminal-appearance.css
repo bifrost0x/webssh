@@ -159,6 +159,7 @@ body[data-theme] .terminal-grid > .terminal-pane { background-image: none; }
 .session-command-parameters summary { cursor: pointer; color: var(--ws2-text-secondary); padding: 6px 0; }
 .session-command-parameters input { display: block; width: 100%; min-width: 0; min-height: 40px; margin: 6px 0; padding: 8px; border: 1px solid var(--ws2-border); border-radius: 4px; background: var(--ws2-canvas); color: var(--ws2-text); font: inherit; }
 .session-command-parameters summary:focus-visible, .session-command-parameters input:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.session-command-item-details code.command-parameter-preview { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; text-overflow: clip; max-height: 240px; }
 .context-workspace .session-files-status.session-files-recovery { display: block; text-align: left; order: -1; flex: 0 0 auto; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--ws2-border); color: var(--ws2-text-secondary); }
 .session-files-recovery button { margin-left: 8px; }
 .session-files-mount:has([inert]) { opacity: 0.65; }

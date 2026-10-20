@@ -76,6 +76,9 @@ test('a window already past an edge can keep resizing out there', () => {
 });
 
 test('snap zones follow the edges and corners of the desktop', () => {
+    assert.equal(windows.snapZone({x: 24, y: 400}, DESKTOP), 'left');
+    assert.equal(windows.snapZone({x: 24, y: 24}, DESKTOP), 'top-left');
+    assert.equal(windows.snapZone({x: 32, y: 400}, DESKTOP), null);
     assert.equal(windows.snapZone({x: 2, y: 400}, DESKTOP), 'left');
     assert.equal(windows.snapZone({x: 1198, y: 400}, DESKTOP), 'right');
     assert.equal(windows.snapZone({x: 600, y: 3}, DESKTOP), 'maximize');

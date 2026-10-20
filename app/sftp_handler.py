@@ -1,3 +1,4 @@
+import base64
 import errno
 import hashlib
 import os
@@ -1582,6 +1583,7 @@ def read_file_for_edit(session_id, path, max_bytes=None):
             'encoding': encoding,
             'newline': newline,
             'revision': hashlib.sha256(raw).hexdigest(),
+            'original_bytes': base64.b64encode(raw).decode('ascii'),
         }, None
 
     except SFTPOperationError as e:

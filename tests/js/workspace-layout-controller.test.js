@@ -151,10 +151,10 @@ test('breakpointForWidth uses the approved desktop tablet and mobile boundaries'
 test('automatic context width grows with the live desktop viewport', () => {
     const { defaultContextWidth } = require('../../static/js/workspace-layout-controller.js');
 
-    assert.equal(defaultContextWidth(1280), 420);
-    assert.equal(defaultContextWidth(1536), 492);
-    assert.equal(defaultContextWidth(1920), 614);
-    assert.equal(defaultContextWidth(3440), 720);
+    assert.equal(defaultContextWidth(1280), 360);
+    assert.equal(defaultContextWidth(1536), 384);
+    assert.equal(defaultContextWidth(1920), 440);
+    assert.equal(defaultContextWidth(3440), 440);
 });
 
 test('desktop starts with the last available context open and still allows dismissal', () => {
@@ -277,11 +277,11 @@ test('desktop context width uses automatic sizing without stored state', () => {
 
     controller.init();
 
-    assert.equal(controller.getContextWidth(), 614);
+    assert.equal(controller.getContextWidth(), 440);
     assert.equal(controller.getContextWidthMode(), 'auto');
     assert.equal(
         state.elements.workspace.style.getPropertyValue('--context-workspace-width'),
-        '614px',
+        '440px',
     );
 });
 
@@ -290,7 +290,7 @@ test('legacy default width migrates to auto while custom widths stay manual', ()
     legacyDefault.state.storage.setItem('webssh.workspace.contextWidth', '420');
     legacyDefault.controller.init();
 
-    assert.equal(legacyDefault.controller.getContextWidth(), 614);
+    assert.equal(legacyDefault.controller.getContextWidth(), 440);
     assert.equal(legacyDefault.controller.getContextWidthMode(), 'auto');
 
     const legacyCustom = createHarness(1920);
@@ -304,22 +304,22 @@ test('legacy default width migrates to auto while custom widths stay manual', ()
 test('automatic width follows resize and double click resets manual width to auto', () => {
     const { controller, state, syncCalls } = createHarness(1280);
     controller.init();
-    assert.equal(controller.getContextWidth(), 420);
+    assert.equal(controller.getContextWidth(), 360);
 
     state.setWidth(1920);
     state.listeners.get('resize')?.();
-    assert.equal(controller.getContextWidth(), 614);
+    assert.equal(controller.getContextWidth(), 440);
     assert.ok(syncCalls.length > 0);
 
     state.elements.contextWorkspaceResizer.dispatch('keydown', {
         key: 'ArrowRight',
         preventDefault() {},
     });
-    assert.equal(controller.getContextWidth(), 590);
+    assert.equal(controller.getContextWidth(), 416);
     assert.equal(controller.getContextWidthMode(), 'manual');
 
     state.elements.contextWorkspaceResizer.dispatch('dblclick');
-    assert.equal(controller.getContextWidth(), 614);
+    assert.equal(controller.getContextWidth(), 440);
     assert.equal(controller.getContextWidthMode(), 'auto');
     assert.equal(state.storage.getItem('webssh.workspace.contextWidthMode'), 'auto');
 });

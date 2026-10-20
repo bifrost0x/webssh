@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 import config
 
+from .command_parameters import validate_parameter_set, resolve_parameters
+
 from .audit_logger import log_error
 from .command_storage_policy import (
     CommandStorageLimitError,
@@ -199,6 +201,10 @@ def _valid_step(step):
         return False
     if step.get('type') == 'inline':
         return isinstance(step.get('command'), str)
+    if step.get('type') == 'argv':
+        return isinstance(step.get('argv'), list) and all(
+            isinstance(value, str) for value in step['argv']
+        )
     if step.get('type') == 'library':
         if not isinstance(step.get('command_id'), str):
             return False
@@ -224,6 +230,8 @@ def _valid_command_set(item):
             return False
     if 'use_sudo' in item and type(item['use_sudo']) is not bool:
         return False
+    if item.get('parameters') and validate_parameter_set(item):
+        return False
     return True
 
 
@@ -238,7 +246,7 @@ def _valid_command_set_document(value):
 
 _COMMAND_SET_FIELDS = {
     'id', 'name', 'description', 'use_sudo', 'steps',
-    'created_at', 'updated_at',
+    'created_at', 'updated_at', 'parameters',
 }
 
 
@@ -414,9 +422,19 @@ def _validate_payload(payload, existing_sets, commands):
     except CommandStorageLimitError as exc:
         return None, str(exc)
 
-    steps, _resolved_parts, error = _normalize_steps(
-        payload.get('steps'), commands
-    )
+    parameters = payload.get('parameters', [])
+    if not isinstance(parameters, list):
+        return None, 'Command parameters must be a list'
+    if parameters:
+        error = validate_parameter_set(payload)
+        steps = [
+            {'type': 'argv', 'argv': list(step['argv'])}
+            for step in payload['steps']
+        ] if not error else None
+    else:
+        steps, _resolved_parts, error = _normalize_steps(
+            payload.get('steps'), commands
+        )
     if error:
         return None, error
     return {
@@ -425,6 +443,7 @@ def _validate_payload(payload, existing_sets, commands):
         'description': description.strip(),
         'use_sudo': use_sudo,
         'steps': steps,
+        'parameters': copy.deepcopy(parameters),
     }, None
 
 
@@ -455,6 +474,13 @@ def _get_command_set_with_lock_held(user_id, command_set_id):
 def upsert_command_set(user_id, payload):
     """Create or update one command set under the per-user coordinator lock."""
     with storage_lock(f'command-config:{user_id}'):
+        if isinstance(payload, dict) and payload.get('id') and payload.get('parameters'):
+            with storage_lock(f'profiles:{user_id}'):
+                profiles, error = _load_profile_references(user_id)
+            if error:
+                return None, error
+            if any(profile.get('command_set_id') == payload['id'] for profile in profiles):
+                return None, 'Remove startup profile references before adding command parameters'
         with storage_lock(f'commands:{user_id}'):
             commands, error = _command_index(user_id)
         if error:
@@ -534,6 +560,7 @@ def duplicate_command_set(user_id, command_set_id):
                 'description': source.get('description', ''),
                 'use_sudo': source.get('use_sudo') is True,
                 'steps': copy.deepcopy(source.get('steps', [])),
+                'parameters': copy.deepcopy(source.get('parameters', [])),
                 'created_at': now,
                 'updated_at': now,
             }
@@ -553,6 +580,8 @@ def duplicate_command_set(user_id, command_set_id):
 
 def _resolve_loaded_command_set(command_set, commands):
     """Resolve one already-loaded set using an already-built command index."""
+    if command_set.get('parameters'):
+        return None, 'Parameterized command sets require interactive launch after connecting'
     _steps, resolved_parts, error = _normalize_steps(
         command_set.get('steps'), commands
     )
@@ -596,6 +625,16 @@ def resolve_command_set(user_id, command_set_id):
         return _resolve_command_set_with_coordinator_held(
             user_id, command_set_id
         )
+
+
+def resolve_command_set_parameters(user_id, command_set_id, values, use_sudo=False):
+    """Resolve only an owned saved set; never store supplied parameter values."""
+    with storage_lock(f'command-config:{user_id}'):
+        with storage_lock(f'command-sets:{user_id}'):
+            command_set, error = _get_command_set_with_lock_held(user_id, command_set_id)
+        if error:
+            return None, error
+        return resolve_parameters(command_set, values, use_sudo)
 
 
 def _load_command_sets_with_resolution_with_coordinator_held(user_id):

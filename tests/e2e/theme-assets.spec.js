@@ -47,6 +47,7 @@ test('login downloads only the selected scene and keeps it behind the form', asy
 test('theme scenes follow the selected theme on overview and the window desktop', async ({page}) => {
     await page.setViewportSize({width: 1440, height: 900});
     await login(page);
+    await page.locator("#workspaceLayoutPicker > summary").click();
     await page.locator('.split-btn[data-layout="windows"]').click();
     await expect(page.locator('#terminalGrid')).toHaveClass(/window-mode/);
     await page.locator('#overviewNavBtn').click();
