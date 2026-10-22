@@ -589,7 +589,7 @@ window.CommandSetManager = {
     },
 
     duplicate(id) {
-        this.emitWithAck('duplicate_command_set', { command_set_id: id }, () => this.load());
+        this.emitWithAck('duplicate_command_set', { command_set_id: id });
     },
 
     delete(id) {
