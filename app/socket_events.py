@@ -4,7 +4,7 @@ from flask_socketio import (
     emit,
     join_room,
 )
-from flask import copy_current_request_context, request, current_app, url_for
+from flask import copy_current_request_context, request, current_app, has_app_context, url_for
 from contextlib import contextmanager
 from functools import wraps
 from . import (socketio, ssh_manager, profile_manager, key_manager,
@@ -679,11 +679,32 @@ def disconnect_socket_transport(server, namespace_sid, *, drain=True):
         return False
     cleanup_context = _engineio_cleanup_context(server, namespace_sid)
     terminalized = _terminalize_engineio_cleanup(cleanup_context)
+    owner_id = socket_capacity.owner(namespace_sid)
+    cleanup_app = None
+    if owner_id is not None:
+        if has_app_context():
+            cleanup_app = current_app._get_current_object()
+        else:
+            environ = server.get_environ(namespace_sid, namespace='/')
+            cleanup_app = (environ or {}).get('flask.app')
+    namespace_disconnected = False
     try:
         server.disconnect(namespace_sid, namespace='/')
+        if terminalized and owner_id is not None:
+            namespace_disconnected = not server.manager.is_connected(namespace_sid, '/')
     finally:
-        if terminalized:
-            _schedule_engineio_cleanup(cleanup_context, drain=drain)
+        try:
+            # Socket.IO sends DISCONNECT before invoking Flask's handler. A fast
+            # client can close Engine.IO and remove its environ first, causing
+            # Flask-SocketIO to skip that handler. Finish the same exact-SID
+            # teardown only when its original reservation still exists.
+            if (namespace_disconnected and cleanup_app is not None and owner_id is not None
+                    and socket_capacity.owner(namespace_sid) == owner_id):
+                with cleanup_app.app_context():
+                    _cleanup_socket_session(namespace_sid)
+        finally:
+            if terminalized:
+                _schedule_engineio_cleanup(cleanup_context, drain=drain)
     return True
 
 
@@ -883,7 +904,11 @@ def handle_connect(auth=None):
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
-    socket_sid = request.sid
+    _cleanup_socket_session(request.sid)
+
+
+def _cleanup_socket_session(socket_sid):
+    """Release one browser's resources with or without its request environ."""
     ssh_output_flow.release_socket(socket_sid)
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
     _cancel_ssh_connect_attempts_for_socket(socket_sid)

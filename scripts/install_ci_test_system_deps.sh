@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]; then
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+    sudo "$(command -v python)" "$script_dir/ci_apt_mirrors.py"
+fi
+
 packages=(libldap2-dev libsasl2-dev)
 missing=false
 for package in "${packages[@]}"; do

@@ -141,7 +141,7 @@ test('interrupt stops a detached descendant TCP server and preserves an unrelate
         assert.equal(await reachable(descendant.port), false, 'detached descendant must stop with its owning runner');
         assert.equal(await reachable(unrelated.address().port), true, 'unrelated server must remain available');
     } finally {
-        if (runnerChild && runnerChild.exitCode === null && runnerChild.signalCode === null) terminateTree(runnerChild);
+        if (runnerChild && runnerChild.exitCode === null && runnerChild.signalCode === null) await terminateTree(runnerChild);
         if (descendant) {
             try { process.kill(descendant.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
         }
@@ -150,7 +150,7 @@ test('interrupt stops a detached descendant TCP server and preserves an unrelate
     }
 });
 
-test('Linux cancellation checks start identities and excludes recycled PIDs and unrelated children', () => {
+test('Linux cancellation checks start identities and excludes recycled PIDs and unrelated children', async () => {
     const { terminateLinuxTree } = require(modulePath);
     const processes = new Map([
         [10, { pid: 10, parent: 1, startTime: 'root' }],
@@ -159,11 +159,12 @@ test('Linux cancellation checks start identities and excludes recycled PIDs and 
         [90, { pid: 90, parent: 1, startTime: 'unrelated' }],
     ]);
     const signals = [];
-    terminateLinuxTree(10, {
+    await terminateLinuxTree(10, {
         readProcess: pid => processes.get(pid),
         listPids: () => [...processes.keys()],
         signal(pid, name) {
             signals.push([pid, name]);
+            if (name === 'SIGKILL') processes.delete(pid);
             if (pid === 11 && name === 'SIGSTOP') {
                 // A descendant exits and its numeric PID is reused before fallback.
                 processes.set(12, { pid: 12, parent: 90, startTime: 'recycled' });
@@ -199,4 +200,61 @@ test('CI records traces on the first retry while keeping every assertion, retry 
             screenshot: 'only-on-failure', workers: 1,
         });
     }
+});
+
+test('interrupt waits for owned descendant teardown even when the lane root closes first', async () => {
+    const { runGroup } = require(modulePath);
+    const signals = new EventEmitter();
+    const child = new EventEmitter();
+    let releaseTeardown;
+    let scratchDirectory;
+    let completed = false;
+    const teardown = new Promise(resolve => { releaseTeardown = resolve; });
+    const running = runGroup({ group: 1, groups: 1, lanes: 1 }, {
+        platform: 'linux', signals,
+        spawn(_command, _args, options) { scratchDirectory = options.env.TMPDIR; return child; },
+        terminateTree() {
+            setImmediate(() => child.emit('close', null, 'SIGKILL'));
+            return teardown;
+        },
+    }).then(code => { completed = true; return code; });
+    signals.emit('SIGTERM');
+    await new Promise(resolve => setImmediate(() => setImmediate(resolve)));
+    assert.equal(completed, false, 'root closure must not announce completed descendant teardown');
+    assert.equal(fs.existsSync(scratchDirectory), true, 'descendant scratch must survive until teardown completes');
+    releaseTeardown();
+    assert.equal(await running, 1);
+    assert.equal(fs.existsSync(scratchDirectory), false);
+});
+
+test('Linux cancellation confirms delayed kernel exit without following a recycled identity', async () => {
+    const { terminateLinuxTree } = require(modulePath);
+    const processes = new Map([
+        [10, { pid: 10, parent: 1, startTime: 'root', state: 'S' }],
+        [11, { pid: 11, parent: 10, startTime: 'descendant', state: 'S' }],
+        [90, { pid: 90, parent: 1, startTime: 'unrelated', state: 'S' }],
+    ]);
+    let descendantExited = false;
+    await terminateLinuxTree(10, {
+        readProcess: pid => processes.get(pid), listPids: () => [...processes.keys()],
+        signal(pid, name) {
+            assert.notEqual(pid, 90);
+            if (name !== 'SIGKILL') return;
+            if (pid === 10) processes.set(10, { pid: 10, parent: 90, startTime: 'recycled', state: 'S' });
+            else setTimeout(() => {
+                processes.get(11).state = 'Z';
+                descendantExited = true;
+            }, 15);
+        },
+    });
+    assert.equal(descendantExited, true, 'signal delivery alone must not finish teardown');
+    assert.equal(processes.get(90).state, 'S');
+});
+
+test('Linux cancellation fails when owned processes do not exit before the deadline', async () => {
+    const { terminateLinuxTree } = require(modulePath);
+    await assert.rejects(terminateLinuxTree(10, {
+        readProcess: pid => pid === 10 ? { pid: 10, parent: 1, startTime: 'root', state: 'S' } : null,
+        listPids: () => [10], signal() {}, timeoutMs: 0,
+    }), /teardown did not complete before its deadline/);
 });

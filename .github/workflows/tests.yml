@@ -121,7 +121,8 @@ jobs:
         run: bash scripts/install_ci_test_system_deps.sh
 
       - name: Install dependencies
-        run: python -m pip install --require-hashes -r requirements-test.txt
+        run: |
+          python -m pip install --require-hashes -r requirements-test.txt
 
       - name: Run Python 3.11 minimum compatibility
         run: >-
@@ -145,7 +146,7 @@ jobs:
           tests/test_threaded_runtime.py
           -p scripts.pytest_shard --ci-shard=1/1
           -q -n 2 --dist=loadscope --durations=30
-          --basetemp=test-results/python-minimum
+          --basetemp="$RUNNER_TEMP/python-minimum"
 
       - name: Run Redis 7 rate limiter test
         env:
@@ -153,7 +154,7 @@ jobs:
         run: >-
           python -m pytest
           tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
-          -q --basetemp=test-results/redis-7
+          -q --basetemp="$RUNNER_TEMP/redis-7"
 
       - name: Run Redis 8 rate limiter test
         env:
@@ -161,7 +162,7 @@ jobs:
         run: >-
           python -m pytest
           tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
-          -q --basetemp=test-results/redis-8
+          -q --basetemp="$RUNNER_TEMP/redis-8"
 
   pytest-shards:
     needs: dispatch-integrity
@@ -273,8 +274,8 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Verify native Docker image tools
+        run: docker buildx version
 
       - name: Run disposable OpenSSH, SMB and release promotion checks
         run: python scripts/run_ci_protocol_checks.py

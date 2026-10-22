@@ -34,14 +34,14 @@ function readLinuxProcess(pid) {
         const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
         // comm may contain spaces or parentheses; fields after its final ')' are stable.
         const fields = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
-        return { pid, parent: Number(fields[1]), startTime: fields[19] };
+        return { pid, state: fields[0], parent: Number(fields[1]), startTime: fields[19] };
     } catch (error) {
         if (['ENOENT', 'ESRCH', 'EACCES'].includes(error.code)) return null;
         throw error;
     }
 }
 
-function terminateLinuxTree(pid, { readProcess = readLinuxProcess, listPids = () => fs.readdirSync('/proc').filter(name => /^\d+$/.test(name)).map(Number), signal = process.kill } = {}) {
+async function terminateLinuxTree(pid, { readProcess = readLinuxProcess, listPids = () => fs.readdirSync('/proc').filter(name => /^\d+$/.test(name)).map(Number), signal = process.kill, timeoutMs = 5000 } = {}) {
     const root = readProcess(pid);
     if (!root) return;
     const owned = new Map([[pid, root]]);
@@ -84,6 +84,17 @@ function terminateLinuxTree(pid, { readProcess = readLinuxProcess, listPids = ()
         // Descendants die first, including servers/browser groups detached by Playwright.
         for (const entry of [...owned.values()].reverse()) signalOwned(entry, 'SIGKILL');
     }
+    // kill() queues a signal; the root's close event does not prove detached
+    // descendants have released their sockets. Confirm kernel exit by identity.
+    const deadline = Date.now() + timeoutMs;
+    while ([...owned.values()].some(entry => {
+        const current = readProcess(entry.pid);
+        return current && current.startTime === entry.startTime
+            && !['Z', 'X'].includes(current.state);
+    })) {
+        if (Date.now() >= deadline) throw new Error('Owned E2E process teardown did not complete before its deadline.');
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
 }
 
 function terminateTree(child) {
@@ -93,7 +104,7 @@ function terminateTree(child) {
         const result = spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
         if (result.error) throw result.error;
     } else if (process.platform === 'linux') {
-        terminateLinuxTree(child.pid);
+        return terminateLinuxTree(child.pid);
     } else {
         try { process.kill(-child.pid, 'SIGKILL'); } catch (error) {
             if (error.code !== 'ESRCH') throw error;
@@ -119,13 +130,19 @@ async function runGroup(config, options = {}) {
     const outputRoot = path.resolve(options.outputRoot || 'test-results');
     const temporaryRoot = fs.mkdtempSync(path.join(options.temporaryParent || os.tmpdir(), 'webssh-e2e-group-'));
     const children = new Set();
+    const terminationTasks = [];
     let failed = false;
     let interrupted = false;
     const interrupt = () => {
         interrupted = true;
         failed = true;
         for (const child of children) {
-            try { killTree(child); } catch (error) { console.error(error.message); }
+            try {
+                terminationTasks.push(Promise.resolve(killTree(child)).catch(error => {
+                    failed = true;
+                    console.error(error.message);
+                }));
+            } catch (error) { console.error(error.message); }
         }
     };
     signals.on('SIGINT', interrupt);
@@ -173,6 +190,7 @@ async function runGroup(config, options = {}) {
             });
         })));
     } finally {
+        await Promise.all(terminationTasks);
         signals.removeListener('SIGINT', interrupt);
         signals.removeListener('SIGTERM', interrupt);
         fs.rmSync(temporaryRoot, { recursive: true, force: true });

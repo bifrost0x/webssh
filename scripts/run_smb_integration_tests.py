@@ -20,16 +20,22 @@ def main():
     compose = [
         'docker',
         'compose',
+        '--parallel',
+        '2',
         '-f',
         COMPOSE_FILE,
         '--project-name',
         project,
     ]
     try:
-        startup = _run([*compose, 'up', '-d', '--build', '--wait', 'samba'])
+        # Build both independent images together before waiting for Samba.
+        build = _run([*compose, 'build', 'samba', 'client'])
+        if build:
+            return build
+        startup = _run([*compose, 'up', '-d', '--no-build', '--wait', 'samba'])
         if startup:
             return startup
-        return _run([*compose, 'run', '--rm', '--build', 'client'])
+        return _run([*compose, 'run', '--rm', 'client'])
     finally:
         _run([*compose, 'down', '--volumes', '--remove-orphans'])
 

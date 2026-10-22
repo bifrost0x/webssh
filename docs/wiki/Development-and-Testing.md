@@ -143,6 +143,9 @@ Firefox and WebKit also probe their installed runtime before requesting system
 packages. LDAP package installation bounds stalled HTTP mirror connections to
 two seconds and HTTPS connections to five seconds, with failures still blocking
 the gate when no configured mirror can serve the packages.
+On GitHub-hosted runners, the recognized default mirror list prefers its existing
+official HTTPS archive and retains Azure as a fallback. Unknown mirror lists are
+left unchanged. The isolated SMB lab prebuilds both images with two build slots.
 Pull requests build scan images with the native Docker builder on AMD64 and
 ARM64 runners, avoiding a separate Buildx daemon and remote cache export.
 Base images are pulled and OS package refresh inputs remain unique per run.

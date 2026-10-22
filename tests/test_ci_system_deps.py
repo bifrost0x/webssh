@@ -39,6 +39,7 @@ if (( count <= INSTALL_FAILURES )); then exit 42; fi
         command.chmod(0o755)
     env = {
         **os.environ,
+        "GITHUB_ACTIONS": "false",
         "PATH": str(commands) + os.pathsep + os.environ["PATH"],
         "INSTALLED": installed,
         "INSTALL_FAILURES": str(install_failures),

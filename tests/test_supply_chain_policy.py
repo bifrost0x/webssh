@@ -701,6 +701,7 @@ def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
     assert 'python -m pip install --require-hashes -r requirements-test.txt' in locks
     minimum = locks.split('- name: Run Python 3.11 minimum compatibility', 1)[1].split('- name:', 1)[0]
     assert 'python -m pytest' in minimum and '--ci-shard=1/1' in minimum
+    assert '--basetemp="$RUNNER_TEMP/python-minimum"' in minimum
     assert '-n 2' in minimum and '--dist=loadscope' in minimum
     expected = {
         'admin_cli', 'backup_manager', 'deployment_compatibility', 'auth', 'entrypoint',
@@ -721,7 +722,7 @@ def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
         assert f'TEST_REDIS_URL: redis://localhost:{port}/15' in step
         assert 'python -m pytest' in step
         assert 'tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests' in step
-        assert f'--basetemp=test-results/redis-{version}' in step
+        assert f'--basetemp="$RUNNER_TEMP/redis-{version}"' in step
     assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in python_gate
     assert 'MINIMUM_RESULT: ${{ needs.dependency-locks.result }}' in python_gate
     assert 'test "$PYTEST_RESULT" = success && test "$MINIMUM_RESULT" = success' in python_gate
@@ -738,7 +739,7 @@ def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
     ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
     assert "python-version: '3.14'" in ssh and "node-version: '24'" in ssh
     assert 'cache: pip' in ssh and 'cache: npm' in ssh
-    buildx = 'docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069'
+    buildx = 'run: docker buildx version'
     runner = 'python scripts/run_ci_protocol_checks.py'
     assert ssh.index(buildx) < ssh.index(runner)
     assert 'name: ssh-browser-evidence' in ssh and 'if: always()' in ssh
