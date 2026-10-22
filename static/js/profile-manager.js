@@ -1152,7 +1152,7 @@ const ProfileManager = {
 
                 const actionMenu = document.createElement('details');
                 actionMenu.className = 'profile-action-menu';
-                actionMenu.open = openMenus.has(profile.id);
+                actionMenu.open = !collapsed && openMenus.has(profile.id);
                 const actionSummary = document.createElement('summary');
                 actionSummary.className = 'btn btn-secondary btn-sm material-icons';
                 actionSummary.setAttribute('aria-label',
