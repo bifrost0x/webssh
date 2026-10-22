@@ -28,6 +28,7 @@ async function login(page, username = 'e2e_admin', {workspace = true} = {}) {
     await expect(page).toHaveURL(/\/$/);
     await expect.poll(() => page.evaluate(() => (
         window.ProfileManager?.profilesLoaded === true
+        && window.JumpHostManager?.loaded === true
         && Array.isArray(window.JumpHostManager?.jumpHosts)
     ))).toBe(true);
     if (workspace) await openWorkspace(page);

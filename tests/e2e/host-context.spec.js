@@ -22,7 +22,11 @@ test('restored session reconnect treats its old profile association as optional 
 });
 
 async function openContext(page, profileName) {
+    await expect.poll(() => page.evaluate(() => window.ProfileManager?.profilesLoaded === true)).toBe(true);
     await openProfileManagement(page);
+    // The modal first renders cached profiles. Its queued refresh replaces the
+    // cards, so wait for a fresh list and its handler ACK before opening one.
+    await page.evaluate(() => new Promise(resolve => window.socket.emit('list_profiles', resolve)));
     const card = page.locator('.profile-management-item').filter({has: page.getByText(profileName, {exact: true})});
     await card.locator('summary').click();
     await card.locator('[data-profile-action="context"]').click();
