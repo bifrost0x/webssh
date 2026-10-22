@@ -62,14 +62,21 @@ for (const transport of ['polling', 'websocket']) {
                 callbacks: Object.fromEntries(Object.entries(TerminalManager.terminalWriteCallbacks).map(([key, callbacks]) => [key, callbacks.size])) })));
             throw error;
         });
-        const result = await page.evaluate(() => ({ done: window.__loadDone, disconnects: window.__loadDisconnects }));
+        const result = await page.evaluate(() => ({
+            done: window.__loadDone, disconnects: window.__loadDisconnects,
+            acks: window.__loadAcks, received: window.__loadReceived,
+        }));
+        // A producer watchdog abort must be distinguished from missing renderer
+        // ACKs. Keep this bounded completion record even when a later check fails.
+        console.log('TUI LOAD COMPLETION', JSON.stringify({transport, ...result, disconnects: result.disconnects.slice(0, 5)}));
+        expect(result.done.aborted).toBe(false);
+        expect(result.done.counts).toEqual(Array(20).fill(240));
         expect(maxPollingPackets).toBeLessThanOrEqual(16);
         expect(result.done.peak).toBeLessThanOrEqual(8);
         expect(result.done.peak).toBeGreaterThan(0);
         await expect.poll(() => page.evaluate(() => window.__loadAcks)).toBe(4800);
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1920);
         expect(result.disconnects).toEqual([]);
-        expect(result.done.counts).toEqual(Array(20).fill(240));
         for (const index of [0, 10, 19]) {
             await page.evaluate(i => SessionManager.switchSession(`load-${i}`), index);
             await expect.poll(() => page.evaluate(i => {
