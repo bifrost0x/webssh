@@ -27,6 +27,7 @@ SMB_CAPABILITIES = (
     FileCapability.LIST,
     FileCapability.READ,
     FileCapability.WRITE,
+    FileCapability.CREATE_FILE,
     FileCapability.MKDIR,
     FileCapability.RENAME,
     FileCapability.DELETE,

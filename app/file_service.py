@@ -642,6 +642,67 @@ class FileService:
         source = self.resolve(source_id, user_id, FileCapability.MKDIR)
         return source.backend.mkdir(source, path)
 
+    def create_file(self, source_id, *, user_id, parent_path, name):
+        from .file_mutations import creation_path, validate_leaf, validate_path
+
+        source = self.resolve(source_id, user_id, FileCapability.CREATE_FILE)
+        creation_path(parent_path, name)
+        return source.backend.create_file(
+            source, validate_path(parent_path), validate_leaf(name),
+            authorize=lambda: self._authorize_mutation(source_id, user_id, FileCapability.CREATE_FILE),
+        )
+
+    def _authorize_mutation(self, source_id, user_id, capability):
+        from flask import current_app, has_request_context, request
+        from .file_sources import FileSourceUnavailable
+
+        if has_request_context() and hasattr(request, 'sid'):
+            from .auth import get_user_from_socket
+            from .decorators import _socket_authentication_is_valid
+            from .maintenance_mode import is_active
+
+            user = get_user_from_socket(request.sid)
+            runtime = current_app.extensions.get('runtime_lifecycle')
+            if (user is None or str(user.id) != str(user_id)
+                    or not _socket_authentication_is_valid(user) or is_active()
+                    or runtime is None or not runtime.accepting_work()):
+                raise FileSourceUnavailable()
+        return self.resolve(source_id, user_id, capability)
+
+    def _permissions_source(self, source_id, user_id):
+        from .file_mutations import FileMutationError
+
+        if not config.SFTP_CHMOD_ENABLED:
+            raise FileMutationError('UNSUPPORTED_OPERATION')
+        return self._authorize_mutation(source_id, user_id, FileCapability.CHMOD)
+
+    def get_file_permissions(self, source_id, *, user_id, path):
+        from .file_mutations import issue_metadata_token, validate_path
+
+        source = self._permissions_source(source_id, user_id)
+        path = validate_path(path, mutation=True)
+        result = source.backend.get_permissions(
+            source, path, authorize=lambda: self._permissions_source(source_id, user_id),
+        )
+        return {**result, 'path': path, 'metadata_token': issue_metadata_token(user_id, source_id, path, result)}
+
+    def set_file_permissions(self, source_id, *, user_id, path, mode, expected_metadata):
+        from .file_mutations import parse_mode, validate_path, verify_metadata_token
+
+        source = self._permissions_source(source_id, user_id)
+        path = validate_path(path, mutation=True)
+        requested = parse_mode(mode)
+
+        def verify(snapshot):
+            self._permissions_source(source_id, user_id)
+            verify_metadata_token(expected_metadata, user_id, source_id, path, snapshot)
+
+        result = source.backend.set_permissions(
+            source, path, requested, verify_metadata=verify,
+            authorize=lambda: self._permissions_source(source_id, user_id),
+        )
+        return {**result, 'path': path}
+
     def rename(self, source_id, *, user_id, old_path, new_path):
         source = self.resolve(source_id, user_id, FileCapability.RENAME)
         if any(

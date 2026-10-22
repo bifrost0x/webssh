@@ -8,6 +8,7 @@ import errno
 import hashlib
 import secrets
 import stat as stat_module
+import time
 
 import config
 
@@ -522,6 +523,37 @@ class SMBBackend:
                     'mkdir_no_follow',
                     smb_path.to_unc(actual.target_ip, actual.share),
                 )
+
+    def create_file(self, source, parent_path, name, *, authorize=None):
+        from .file_mutations import creation_path, FileMutationError, mutation_failure
+
+        path = self._mutable_path(self._path(creation_path(parent_path, name)))
+        actual = self._owned_source(source)
+        deadline = time.monotonic() + 10.0
+        if not actual.lock.acquire(timeout=10.0):
+            raise FileMutationError('TIMEOUT')
+        started = False
+        try:
+            if authorize is not None:
+                authorize()
+            actual = self._owned_source(source)
+            with actual.session.mutation_deadline(deadline):
+                with self._mutation_guard(actual, path):
+                    self._validate_path_components(actual, path, include_leaf=False)
+                    if authorize is not None:
+                        authorize()
+                    started = True
+                    handle = actual.session.invoke('create_file_verified', path.to_unc(actual.target_ip, actual.share))
+                    try:
+                        if int(handle.fd.end_of_file) != 0:
+                            raise FileMutationError('OUTCOME_UNKNOWN')
+                    finally:
+                        self._close_handle_or_taint_session(actual.session, handle)
+            return {'path': str(path), 'size': 0}
+        except Exception as error:
+            raise mutation_failure(error, uncertain=started) from None
+        finally:
+            actual.lock.release()
 
     def mkdir(self, source, path):
         try:

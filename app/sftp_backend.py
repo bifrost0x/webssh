@@ -18,6 +18,69 @@ class SFTPBackend:
     def normalize_path(self, path):
         return sftp_handler.sanitize_path(path)
 
+    def create_file(self, source, parent_path, name, *, authorize=None):
+        from .file_mutations import creation_path, mutation_failure, FileMutationError
+
+        path = creation_path(parent_path, name)
+        started = False
+        try:
+            with sftp_handler.mutation_session(source.handle_id, authorize=authorize) as sftp:
+                # This is only a friendly collision diagnostic. Exclusive OPEN
+                # remains mandatory even if the name is concurrently created.
+                try:
+                    sftp_handler.mutation_lstat(sftp, path)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise FileExistsError()
+                started = True
+                with sftp_handler.open_exclusive_file(sftp, path) as remote_file:
+                    info = remote_file.stat()
+                    if type(info.st_mode) is not int or not stat_module.S_ISREG(info.st_mode) or info.st_size != 0:
+                        raise FileMutationError('OUTCOME_UNKNOWN')
+            return {'path': path, 'size': 0}
+        except Exception as error:
+            raise mutation_failure(error, uncertain=started) from None
+
+    def get_permissions(self, source, path, *, authorize=None):
+        from .file_mutations import FileMutationError, mutation_failure, permission_snapshot, validate_path
+
+        path = validate_path(path, mutation=True)
+        try:
+            with sftp_handler.mutation_session(source.handle_id, authorize=authorize) as sftp:
+                if getattr(sftp, 'server_extensions', {}).get('lsetstat@openssh.com') != '1':
+                    raise FileMutationError('UNSUPPORTED_OPERATION')
+                return permission_snapshot(sftp_handler.mutation_lstat(sftp, path))
+        except Exception as error:
+            raise mutation_failure(error) from None
+
+    def set_permissions(self, source, path, mode, *, verify_metadata, authorize=None):
+        from .file_mutations import FileMutationError, mutation_failure, permission_snapshot, validate_path
+
+        path = validate_path(path, mutation=True)
+        started = False
+        try:
+            with sftp_handler.mutation_session(source.handle_id, authorize=authorize) as sftp:
+                if getattr(sftp, 'server_extensions', {}).get('lsetstat@openssh.com') != '1':
+                    raise FileMutationError('UNSUPPORTED_OPERATION')
+                before = permission_snapshot(sftp_handler.mutation_lstat(sftp, path))
+                verify_metadata(before)
+                if before['special_bits']:
+                    raise FileMutationError('UNSUPPORTED_OPERATION')
+                if before['mode'] == f'{mode:03o}':
+                    return {**before, 'old_mode': before['mode']}
+                started = True
+                sftp.set_permissions_no_follow(path, mode)
+                try:
+                    after = permission_snapshot(sftp_handler.mutation_lstat(sftp, path))
+                except Exception:
+                    raise FileMutationError('OUTCOME_UNKNOWN') from None
+                if after['mode'] != f'{mode:03o}' or after['special_bits']:
+                    raise FileMutationError('MODE_MISMATCH', actual_mode=after['mode'])
+                return {**after, 'old_mode': before['mode']}
+        except Exception as error:
+            raise mutation_failure(error, uncertain=started) from None
+
     def list_directory(self, source, path):
         return sftp_handler.list_directory(source.handle_id, path)
 

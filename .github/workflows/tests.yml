@@ -94,7 +94,7 @@ jobs:
         shell: pwsh
         run: ./scripts/lock_requirements.ps1 -Check
 
-  pytest:
+  pytest-shards:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
     name: ${{ matrix.check_name }}
@@ -106,11 +106,23 @@ jobs:
       matrix:
         include:
           - python_version: '3.14'
-            check_name: pytest
+            check_name: pytest (Python 3.14 shard 1/3)
+            pytest_shard: 1/3
+            pytest_targets: tests/
+            pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
+          - python_version: '3.14'
+            check_name: pytest (Python 3.14 shard 2/3)
+            pytest_shard: 2/3
+            pytest_targets: tests/
+            pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
+          - python_version: '3.14'
+            check_name: pytest (Python 3.14 shard 3/3)
+            pytest_shard: 3/3
             pytest_targets: tests/
             pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
           - python_version: '3.11'
             check_name: pytest (Python 3.11 minimum)
+            pytest_shard: 1/1
             # The production runtime runs the complete suite above.  The
             # documented minimum version keeps a representative compatibility
             # gate across startup, authentication, storage migrations, remote
@@ -148,9 +160,7 @@ jobs:
             requirements-test.txt
 
       - name: Install LDAP build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+        run: bash scripts/install_ci_test_system_deps.sh
 
       - name: Install dependencies
         run: |
@@ -161,10 +171,23 @@ jobs:
           python -m compileall -q app tests &&
           pytest ${{ matrix.pytest_targets }}
           ${{ matrix.pytest_ignores }}
+          -p scripts.pytest_shard --ci-shard=${{ matrix.pytest_shard }}
           -q
           -n 2
           --dist=loadscope
           --durations=30
+
+  pytest:
+    needs: [dispatch-integrity, pytest-shards]
+    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Require every Python shard and minimum-version check
+        env:
+          PYTEST_RESULT: ${{ needs.pytest-shards.result }}
+        run: test "$PYTEST_RESULT" = success
 
   redis-rate-limiter:
     needs: dispatch-integrity
@@ -208,9 +231,7 @@ jobs:
             requirements-test.txt
 
       - name: Install LDAP build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+        run: bash scripts/install_ci_test_system_deps.sh
 
       - name: Install dependencies
         run: |
@@ -244,16 +265,35 @@ jobs:
             requirements-test.txt
 
       - name: Install LDAP build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+        run: bash scripts/install_ci_test_system_deps.sh
 
       - name: Install dependencies
         run: |
           python -m pip install --require-hashes -r requirements-test.txt
 
-      - name: Run disposable OpenSSH integration tests
-        run: python scripts/run_integration_tests.py
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install locked Node dependencies
+        run: npm ci
+
+      - name: Install locked Playwright Chromium
+        run: node scripts/install-ci-chromium.js
+
+      - name: Run disposable OpenSSH and real browser integration tests
+        run: python scripts/run_integration_tests.py --browser
+
+      - name: Upload real-browser integration evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ssh-browser-evidence
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   smb-integration:
     needs: dispatch-integrity
@@ -277,22 +317,16 @@ jobs:
   browser-e2e-shards:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
-    name: browser-e2e (${{ matrix.shard }}/2)
+    name: browser-e2e (${{ matrix.group }}/8)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - shard: 1
-            e2e_port: 4173
-            run_static_checks: true
-          - shard: 2
-            e2e_port: 4174
-            run_static_checks: false
+        group: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
-      WEBSSH_E2E_PORT: ${{ matrix.e2e_port }}
+      WEBSSH_E2E_PORT: '4173'
 
     steps:
       - name: Checkout repository
@@ -309,9 +343,7 @@ jobs:
             requirements-test.txt
 
       - name: Install LDAP build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev
+        run: bash scripts/install_ci_test_system_deps.sh
 
       - name: Install Python dependencies
         run: |
@@ -327,42 +359,28 @@ jobs:
         run: npm ci
 
       - name: Check vendored frontend assets
-        if: matrix.run_static_checks
+        if: matrix.group == 1
         run: npm run vendor:check
 
       - name: Lint JavaScript
-        if: matrix.run_static_checks
+        if: matrix.group == 1
         run: npm run lint:js
 
       - name: Run JavaScript unit tests
-        if: matrix.run_static_checks
+        if: matrix.group == 1
         run: npm run test:js
 
       - name: Install locked Playwright Chromium
-        run: npx playwright install --with-deps chromium
+        run: node scripts/install-ci-chromium.js
 
       - name: Run required local browser gate
-        run: npm run test:e2e:ci -- --shard=${{ matrix.shard }}/2
-
-      - name: Install locked Firefox and WebKit for font regressions
-        if: matrix.run_static_checks
-        run: npx playwright install --with-deps firefox webkit
-
-      - name: Verify live terminal font changes in Firefox and WebKit
-        if: matrix.run_static_checks
-        run: |
-          for browser in firefox webkit; do
-            WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-${browser}.json" \
-              npm run test:e2e -- tests/e2e/session-workspace.spec.js \
-              --browser="$browser" --output="test-results/font-${browser}" \
-              --grep='font changes preserve|failed font downloads'
-          done
+        run: node scripts/run-e2e-ci-parallel.js --group=${{ matrix.group }}/8 --lanes=4
 
       - name: Upload browser timing evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-e2e-${{ matrix.shard }}-timings
+          name: browser-e2e-${{ matrix.group }}-timings
           overwrite: true
           path: test-results/e2e-*.json
           if-no-files-found: warn
@@ -372,14 +390,67 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-e2e-${{ matrix.shard }}-failure
+          name: browser-e2e-${{ matrix.group }}-failure
           overwrite: true
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
 
+  browser-fonts:
+    needs: dispatch-integrity
+    if: needs.dispatch-integrity.outputs.mode == 'full'
+    name: browser-fonts (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      WEBSSH_E2E_FAST_HASHING: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      - name: Install LDAP build dependencies
+        run: bash scripts/install_ci_test_system_deps.sh
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements-test.txt
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked Node dependencies
+        run: npm ci
+      - name: Install locked font-test browser
+        run: npx playwright install --with-deps "${{ matrix.browser }}"
+      - name: Verify live terminal font changes
+        run: |
+          WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-${{ matrix.browser }}.json" \
+            npm run test:e2e -- tests/e2e/session-workspace.spec.js \
+            --browser="${{ matrix.browser }}" --output="test-results/font-${{ matrix.browser }}" \
+            --grep='font changes preserve|failed font downloads'
+      - name: Upload font-test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-fonts-${{ matrix.browser }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   browser-e2e:
-    needs: [dispatch-integrity, browser-e2e-shards]
+    needs: [dispatch-integrity, browser-e2e-shards, browser-fonts]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -389,7 +460,10 @@ jobs:
       - name: Require all browser shards
         env:
           SHARD_RESULT: ${{ needs.browser-e2e-shards.result }}
-        run: test "$SHARD_RESULT" = success
+          FONT_RESULT: ${{ needs.browser-fonts.result }}
+        run: |
+          test "$SHARD_RESULT" = success
+          test "$FONT_RESULT" = success
 
   container-threading-smoke:
     needs: dispatch-integrity
@@ -574,7 +648,7 @@ jobs:
         run: python scripts/check_release_promotion.py
 
   all-tests:
-    needs: [dispatch-integrity, dependency-locks, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-e2e, container-threading-smoke, release-contract]
+    needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, release-contract]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     permissions:

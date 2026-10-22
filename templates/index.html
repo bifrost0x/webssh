@@ -1592,6 +1592,8 @@
                     <div class="editor-toolbar">
                         <button class="btn btn-primary" id="editorSaveBtn" data-i18n="editor.reviewChanges">Review changes</button>
                         <button class="btn btn-secondary" id="editorCancelBtn" data-i18n="editor.cancel">Cancel</button>
+                        <button class="btn btn-secondary" id="editorDraftBtn" data-i18n="editor.downloadDraft" hidden>Download draft</button>
+                        <button class="btn btn-secondary" id="editorReloadBtn" data-i18n="editor.reopenFile" hidden>Reopen file</button>
                         <span class="editor-status" id="editorStatus"></span>
                     </div>
                     <textarea class="editor-content" id="editorContent" aria-label="File content" data-i18n-aria-label="editor.fileContent" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
@@ -1677,6 +1679,7 @@
     <script src="{{ static_asset_url(filename='js/file-workspace-state.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/smb-source-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/file-directory-requests.js') }}"></script>
+    <script src="{{ static_asset_url(filename='js/file-mutation-dialog.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/sftp-file-manager.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/connection-history.js') }}"></script>
     <script src="{{ static_asset_url(filename='js/primary-workspace-controller.js') }}"></script>

@@ -26,7 +26,7 @@ body[data-theme] .terminal-grid > .terminal-pane { background-image: none; }
 .fm-embedded-mode .fm-session-folder-action { display: inline-flex !important; }
 .context-workspace .session-files-panel .session-panel-header { padding: 2px 10px; }
 .session-files-panel[data-directory-sync-enabled="true"] .fm-embedded-mode #fmOpenTerminalFolder { display: none !important; }
-.session-files-panel[data-directory-sync-enabled="true"] .fm-embedded-mode .fm-toolbar { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.session-files-panel[data-directory-sync-enabled="true"] .fm-embedded-mode .fm-toolbar { grid-template-columns: none; }
 .context-workspace .fm-embedded-mode .fm-toolbar { padding: 8px 12px; border: 0; border-bottom: 1px solid var(--ws2-border); border-radius: 0; background: transparent; box-shadow: none; gap: 6px; }
 .context-workspace .fm-embedded-mode :is(.fm-pane, .fm-pane.active) { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .context-workspace .fm-embedded-mode .fm-pane-nav { padding: 8px 12px; background: transparent; border-bottom: 1px solid var(--ws2-border); }
@@ -37,6 +37,7 @@ body[data-theme] .terminal-grid > .terminal-pane { background-image: none; }
 .context-workspace .notepad-input { border: 0; border-radius: 0; padding: 16px; background: transparent; box-shadow: none; }
 .context-workspace :is(.session-diagnostics-primary-card, .session-diagnostics-secondary article, .session-diagnostics-chart-panel) { border: 1px solid var(--ws2-border); border-radius: 4px; box-shadow: none; background: var(--ws2-surface); }
 @media (max-width: 680px) {
+    #sftpFileManager.fm-embedded-mode .fm-toolbar { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); }
     #commandLibraryPanel { flex: 0 0 100%; width: 100%; align-self: flex-start; overflow: visible; }
     #commandLibraryPanel > .management-panel-heading { display: none; }
     #commandLibraryPanel .commands-table-wrapper, #commandLibraryPanel .commands-table-body { flex: 0 0 auto; overflow: visible; }

@@ -25,6 +25,16 @@ function save(preview) {
     preview.commitReviewedEdit();
 }
 
+test('unconfirmed save blocks another mutation and preserves the draft', () => {
+    const {preview, events, fields, context} = setup();
+    save(preview);
+    context.timeout();
+    save(preview);
+    assert.equal(events.length, 1);
+    assert.equal(fields.editorContent.value, 'one');
+    assert.equal(preview.saveOutcomeUnknown, true);
+});
+
 for (const warning of [undefined, 'SMB_RECOVERY_BACKUP_RETAINED']) {
     test(`retained editor invalidates original-byte backup after save (${warning || 'late acknowledgement'})`, () => {
         const {preview, fields, events, context} = setup();
@@ -99,14 +109,15 @@ test('failed save retains dirty text and permits a deliberate retry', () => {
     assert.equal(events.length, 2);
 });
 
-test('late acknowledgement updates revision without unlocking a newer pending save', () => {
+test('late acknowledgement reconciles uncertainty before another save is allowed', () => {
     const {preview, fields, events, context} = setup();
     save(preview);
     const first = events[0].data;
     context.timeout();
     assert.equal(preview.dirty, true);
     save(preview);
-    assert.equal(events.length, 2);
+    assert.equal(events.length, 1);
+    fields.editorContent.value = 'new draft';
     preview.handleFileSaved({...first, revision: 'late'});
     assert.equal(preview.editRevision, 'late');
     assert.equal(preview.editMode, true);
@@ -136,6 +147,7 @@ test('older acknowledgement cannot roll revision back after newer success', () =
     save(preview);
     context.timeout();
     fields.editorContent.value = 'two';
+    preview.handleFileSaved({...events[0].data, revision: 'r2'});
     save(preview);
     fields.editorContent.value = 'three';
     preview.handleFileSaved({...events[1].data, revision: 'r3'});
@@ -156,7 +168,7 @@ test('reopening the same file ignores acknowledgement from abandoned editor', ()
     assert.equal(preview.editRevision, 'reopened');
 });
 
-test('disconnect cancels pending save and preserves text for revision-checked retry', () => {
+test('disconnect preserves the draft and blocks retry until the result is reconciled', () => {
     const {preview, events, context} = setup();
     save(preview);
     context.socket.connected = false;
@@ -165,7 +177,8 @@ test('disconnect cancels pending save and preserves text for revision-checked re
     assert.equal(events.length, 1);
     context.socket.connected = true;
     save(preview);
-    assert.equal(events[1].data.expected_revision, 'r1');
+    assert.equal(events.length, 1);
+    assert.equal(preview.saveOutcomeUnknown, true);
 });
 
 

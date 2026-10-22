@@ -7,6 +7,23 @@ import pytest
 from smbprotocol.exceptions import LogonFailure, SMBOSError
 from smbprotocol.header import NtStatus
 
+
+def test_control_deadline_aborts_only_owned_socket_and_expires_session():
+    import time
+    from types import SimpleNamespace
+    from app.file_mutations import FileMutationError
+    _protocol, session = _connect()
+    aborted = Event()
+    session.raw_connection.transport._sock = SimpleNamespace(shutdown=lambda _how: aborted.set())
+    with pytest.raises(FileMutationError) as failure:
+        with session.mutation_deadline(time.monotonic() + 0.02):
+            assert aborted.wait(1), 'deadline did not abort the blocked control lane'
+    assert failure.value.code == 'OUTCOME_UNKNOWN'
+    with pytest.raises(SMBProtocolError):
+        session._ensure_alive()
+    assert session._lock.acquire(blocking=False)
+    session._lock.release()
+
 from app.smb_protocol import (
     SMBProtocolClient,
     SMBProtocolError,
@@ -396,6 +413,8 @@ def test_raw_open_accepts_a_direct_binding_to_the_requested_share(monkeypatch):
     )
 
     assert raw.closed is False
+
+    raw.close()
     raw.close()
 
 
@@ -2398,7 +2417,32 @@ def test_atomic_temp_is_exclusively_created_with_same_handle_rename_rights(
         smb_protocol.CreateOptions.FILE_OPEN_REPARSE_POINT
     )
     assert raw.closed is False
-    raw.close()
+
+
+def test_empty_file_creation_does_not_require_delete_access(monkeypatch):
+    from types import SimpleNamespace
+    from app import smb_protocol
+    captured = {}
+
+    class Raw:
+        def __init__(self, path, **kwargs):
+            captured.update(kwargs)
+            self.closed = True
+            self.fd = SimpleNamespace(file_attributes=0, tree_connect=SimpleNamespace(share_name=r'\\server\Docs', is_dfs_share=False))
+
+        def open(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(smb_protocol, 'SMBFileIO', Raw)
+    handle = smb_protocol._create_file_handle(r'\\server\Docs\new.txt')
+    assert captured['mode'] == 'xb'
+    assert captured['desired_access'] == int(smb_protocol.FilePipePrinterAccessMask.FILE_WRITE_DATA | smb_protocol.FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES)
+    assert captured['create_options'] & int(smb_protocol.CreateOptions.FILE_OPEN_REPARSE_POINT)
+    assert handle.closed is False
+    handle.close()
 
 
 def test_verified_delete_preserves_multiple_hardlink_compatibility(monkeypatch):

@@ -1911,11 +1911,9 @@
 }
 
 .fm-workspace-controls {
-    position: absolute;
-    left: 50%;
+    position: static;
     gap: 12px;
-    margin: 0;
-    transform: translateX(-50%);
+    margin-left: auto;
 }
 
 .fm-layout-switch {
@@ -2245,11 +2243,12 @@
 
 .fm-pane-toolbar {
     display: flex;
+    flex-wrap: wrap;
     min-height: 46px;
     align-items: center;
     gap: 2px;
     padding: 6px 10px;
-    overflow-x: auto;
+    overflow-x: visible;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -3206,3 +3205,38 @@
         flex: 1 1 96px;
     }
 }
+
+/* Keep mutation controls usable in the split workspace and on touch devices. */
+.fm-mutation-dialog {
+    width: min(30rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem);
+    box-sizing: border-box; overflow: auto; border: 1px solid var(--border-color, #555);
+    border-radius: 12px; margin: auto; padding: 1.25rem; color: var(--text-primary, #eee);
+    background: var(--bg-secondary, #20252b);
+}
+.fm-mutation-dialog::backdrop { background: rgb(0 0 0 / 60%); }
+.fm-mutation-dialog form { display: grid; gap: 1rem; }
+.fm-mutation-dialog h3, .fm-mutation-dialog p { margin: 0; }
+.fm-mutation-dialog input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; padding: .6rem; margin-top: .4rem; font: inherit; color: inherit; background: var(--bg-primary, #15191e); border: 1px solid var(--border-color, #555); border-radius: 6px; }
+.fm-mutation-dialog fieldset { min-width: 0; padding: .75rem; border: 1px solid var(--border-color, #555); border-radius: 6px; }
+.fm-mutation-dialog input[type="checkbox"] { width: 1.1rem; height: 1.1rem; }
+.fm-mutation-target { white-space: pre-wrap; overflow-wrap: anywhere; }
+.fm-mutation-hint { font-size: .88rem; }
+.fm-mutation-status { overflow-wrap: anywhere; }
+.fm-permission-grid > div { display: grid; grid-template-columns: 1fr repeat(3, 3rem); align-items: center; gap: .3rem; }
+.fm-permission-grid label { display: flex; align-items: center; gap: .2rem; padding-block: .4rem; }
+.fm-mutation-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; }
+.fm-mutation-dialog [hidden], .fm-pane-toolbar [hidden], #fmPermissions[hidden], #fmActionSheet [hidden] { display: none !important; }
+
+.fm-permissions-help { flex: 0 0 auto; min-width: 0; color: var(--text-secondary); font-size: .85rem; }
+.fm-permissions-help summary { display: flex; align-items: center; gap: .4rem; min-height: 36px; padding: .35rem .7rem; border: 1px solid color-mix(in srgb, var(--accent-primary) 55%, var(--border-color)); border-radius: 8px; background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-secondary)); color: var(--accent-primary); cursor: pointer; list-style: none; white-space: nowrap; }
+.fm-permissions-help summary::-webkit-details-marker { display: none; }
+.fm-permissions-help summary::after { content: '▾'; }
+.fm-permissions-help[open] summary::after { content: '▴'; }
+.fm-permissions-help summary .material-icons { font-size: 18px; }
+.fm-permissions-help summary:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.fm-permissions-help > div { position: fixed; z-index: 28000; width: min(34rem, calc(100vw - 24px)); box-sizing: border-box; display: grid; gap: .75rem; padding: 1rem; overflow: auto; overflow-wrap: anywhere; border: 1px solid var(--accent-primary); border-radius: 10px; background: var(--bg-secondary); box-shadow: 0 12px 32px rgb(0 0 0 / 35%); white-space: normal; }
+.fm-permissions-help p { margin: 0; }
+.fm-permissions-help code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-primary); }
+.fm-embedded-mode .fm-permissions-help summary { justify-content: center; padding: 6px; }
+.fm-embedded-mode .fm-permissions-help summary > span[data-i18n] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (any-pointer: coarse) { .fm-permissions-help summary { min-height: 44px; } }

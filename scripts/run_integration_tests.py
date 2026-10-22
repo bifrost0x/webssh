@@ -1,9 +1,11 @@
 """Run the disposable OpenSSH integration environment and its tests."""
 
 import os
+import argparse
 import shutil
 import stat
 import sys
+import tempfile
 from pathlib import Path
 from subprocess import run
 
@@ -50,7 +52,12 @@ def cleanup_runtime():
     shutil.rmtree(runtime_dir)
 
 
-def main() -> int:
+def main(*, browser=False) -> int:
+    browser_cli = PROJECT_ROOT / 'node_modules/playwright/cli.js'
+    node = shutil.which('node') if browser else None
+    if browser and (node is None or not browser_cli.is_file()):
+        print('Browser integration requires Node.js, npm ci and npx playwright install chromium.', file=sys.stderr)
+        return 2
     try:
         key_generation = run(
             [sys.executable, KEY_GENERATOR],
@@ -90,12 +97,30 @@ def main() -> int:
             if returncode(startup):
                 return returncode(startup)
 
-            tests = run(
-                [sys.executable, "-m", "pytest", *INTEGRATION_MODULES],
-                cwd=PROJECT_ROOT,
-                env=environment,
-            )
-            return returncode(tests)
+            with tempfile.TemporaryDirectory(prefix='webssh-ssh-integration-') as temporary:
+                state = Path(temporary)
+                for name in ('backups', 'transfers'):
+                    (state / name).mkdir(mode=0o700)
+                environment.update({
+                    'PYTHON': sys.executable,
+                    'WEBSSH_E2E_PORT': environment.get('WEBSSH_E2E_PORT', '4184'),
+                    'WEBSSH_E2E_TIMING_FILE': str(PROJECT_ROOT / 'test-results/e2e-timing-ssh-browser.json'),
+                    'BACKUP_TEMP_DIR': str(state / 'backups'),
+                    'TRANSFER_TEMP_DIR': str(state / 'transfers'),
+                })
+                tests = run(
+                    [sys.executable, '-m', 'pytest', f'--basetemp={state / "pytest"}', *INTEGRATION_MODULES],
+                    cwd=PROJECT_ROOT,
+                    env=environment,
+                )
+                if returncode(tests) or not browser:
+                    return returncode(tests)
+                return returncode(run(
+                    [node, str(browser_cli), 'test', '--config',
+                     'tests/integration/playwright.file-mutations.config.js', '--forbid-only'],
+                    cwd=PROJECT_ROOT,
+                    env=environment,
+                ))
         finally:
             run([*compose, "down", "-v"], cwd=PROJECT_ROOT)
     finally:
@@ -103,4 +128,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--browser', action='store_true',
+                        help='Also run the real file-mutation browser lifecycle against the same lab.')
+    raise SystemExit(main(browser=parser.parse_args().browser))

@@ -477,7 +477,7 @@ def test_browser_ci_runs_javascript_units_before_playwright():
     )[0]
 
     unit_step = browser_job.index('run: npm run test:js')
-    browser_step = browser_job.index('run: npm run test:e2e')
+    browser_step = browser_job.index('run: node scripts/run-e2e-ci-parallel.js')
 
     assert unit_step < browser_step
 
@@ -494,14 +494,46 @@ def test_slow_test_gates_are_sharded_without_duplicate_redis_unit_runs():
         'tests/test_rate_limiter.py::'
         'test_real_redis_does_not_store_denied_requests'
     ) == 1
-    assert 'name: browser-e2e (${{ matrix.shard }}/2)' in workflow
-    assert 'npm run test:e2e:ci -- --shard=${{ matrix.shard }}/2' in workflow
+    assert 'name: browser-e2e (${{ matrix.group }}/8)' in workflow
+    assert 'node scripts/run-e2e-ci-parallel.js --group=${{ matrix.group }}/8 --lanes=4' in workflow
+    assert 'group: [1, 2, 3, 4, 5, 6, 7, 8]' in workflow
+    assert '--ci-shard=${{ matrix.pytest_shard }}' in workflow
     assert re.search(
-        r'\n  browser-e2e:\s*\n\s+needs:\s+\[dispatch-integrity, browser-e2e-shards\]',
+        r'\n  browser-e2e:\s*\n\s+needs:\s+\[dispatch-integrity, browser-e2e-shards, browser-fonts\]',
         workflow,
     )
     assert 'test "$SHARD_RESULT" = success' in workflow
     assert 'fullyParallel: true' in playwright
+
+
+def test_real_browser_lab_is_required_in_ssh_integration():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    job = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
+    assert 'actions/setup-node@' in job
+    assert 'npm ci' in job
+    assert 'node scripts/install-ci-chromium.js' in job
+    assert 'python scripts/run_integration_tests.py --browser' in job
+    assert 'if: always()' in job and 'test-results/' in job
+
+
+def test_font_browsers_and_python_shards_are_required_parallel_gates():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
+    assert 'browser: [firefox, webkit]' in fonts
+    assert '--browser="${{ matrix.browser }}"' in fonts
+    assert '--grep=' in fonts and 'font changes preserve|failed font downloads' in fonts
+    assert 'FONT_RESULT: ${{ needs.browser-fonts.result }}' in workflow
+    assert 'test "$FONT_RESULT" = success' in workflow
+    assert 'needs: [dispatch-integrity, pytest-shards]' in workflow
+
+
+def test_ci_setup_keeps_safe_dependency_fallbacks():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    assert 'bash scripts/install_ci_test_system_deps.sh' in workflow
+    assert 'node scripts/install-ci-chromium.js' in workflow
+    browser = (ROOT / 'scripts/install-ci-chromium.js').read_text(encoding='utf-8')
+    assert "runCli(['install-deps', 'chromium'])" in browser
+    assert 'await probe()' in browser
 
 
 def test_release_only_promotes_the_candidate_after_exact_sha_tests_and_scans():
@@ -620,7 +652,7 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
     assert 'python -m unittest discover -s tests -p test_documentation_surface.py -v' in tests
     assert '--ignore=tests/test_documentation_surface.py' in tests
     from scripts.check_release_gates import REQUIRED
-    for name in REQUIRED - {'dispatch-integrity', 'browser-e2e'}:
+    for name in REQUIRED - {'dispatch-integrity', 'browser-e2e', 'pytest'}:
         job = re.split(r'\n  [a-z][a-z-]*:', tests.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
         assert 'needs: dispatch-integrity' in job
         assert "if: needs.dispatch-integrity.outputs.mode == 'full'" in job
@@ -628,3 +660,16 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
         job = re.split(r'\n  [a-z][a-z0-9-]*:', images.split('\n  image-security-' + arch + ':', 1)[1], maxsplit=1)[0]
         assert 'needs: change-scope' in job
         assert "if: needs.change-scope.outputs.mode == 'full'" in job
+
+
+def test_pr_image_scans_use_native_builder_without_skipping_security_gates():
+    workflow = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
+    for arch in ('amd64', 'arm64'):
+        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  image-security-' + arch + ':', 1)[1], maxsplit=1)[0]
+        assert "if: github.event_name == 'pull_request'\n        run: bash scripts/build_pr_scan_image.sh " + arch in job
+        for action in ('docker/setup-buildx-action@', 'docker/build-push-action@'):
+            assert "if: github.event_name != 'pull_request'\n        uses: " + action in job
+        assert 'aquasecurity/trivy-action@' in job
+        assert "exit-code: '1'" in job
+        assert 'OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}' in job
+    assert 'anchore/sbom-action@' in workflow

@@ -253,17 +253,30 @@ def _seed_post_connect_profiles(admin, key):
         raise RuntimeError('Failed to seed post-connect profiles')
 
 
+def _temporary_storage_environment(temporary_root):
+    """Keep persistent data and operation scratch space in disjoint siblings."""
+    root = Path(temporary_root).resolve()
+    return {
+        'DATA_DIR': str(root / 'data'),
+        'BACKUP_TEMP_DIR': str(root / 'backups'),
+        'TRANSFER_TEMP_DIR': str(root / 'transfers'),
+    }
+
+
 def main():
     project_root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(project_root))
     with tempfile.TemporaryDirectory(
         prefix='webssh-e2e-',
         ignore_cleanup_errors=True,
-    ) as data_dir:
+    ) as temporary_root:
+        storage_environment = _temporary_storage_environment(temporary_root)
+        data_dir = storage_environment['DATA_DIR']
+        Path(data_dir).mkdir(mode=0o700)
         oidc_secret = Path(data_dir) / 'oidc-client-secret'
         oidc_secret.write_text('e2e-only-oidc-secret', encoding='utf-8')
         os.environ.update({
-            'DATA_DIR': data_dir,
+            **storage_environment,
             'SECRET_KEY': 'e2e-only-secret-key',
             'DEBUG': 'False',
             # This fixture binds plain HTTP on loopback. WebKit correctly omits
@@ -304,6 +317,10 @@ def main():
             'TAILSCALE_SSH_ALLOWED_TARGETS': 'tail-node',
             'TAILSCALE_SSH_ALLOWED_REMOTE_USERS': 'root',
         })
+
+        if os.environ.get('WEBSSH_E2E_FAST_HASHING') == '1':
+            from test_hashing import enable_fast_password_hashing
+            enable_fast_password_hashing()
 
         from app import create_app, socketio
         from app.auth import register_user

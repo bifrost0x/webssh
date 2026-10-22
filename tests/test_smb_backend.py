@@ -147,6 +147,10 @@ class _PartialWritable(_Writable):
 
 
 class _Session:
+    @contextmanager
+    def mutation_deadline(self, _deadline):
+        yield
+
     def __init__(self):
         self.calls = []
         self.responses = {}
@@ -310,6 +314,28 @@ def _fixture():
     backend = SMBBackend(_Pool())
     resolved = ResolvedFileSource(descriptor, '7', 'abc', backend)
     return backend, resolved, session
+
+
+def test_create_empty_file_uses_exclusive_minimal_access_and_pins_ancestors():
+    backend, source, session = _fixture()
+    handle = _Writable()
+    handle.fd = SimpleNamespace(end_of_file=0)
+    session.responses['create_file_verified'] = handle
+    session.responses['stat'] = _Stat(mode=0o40700)
+    result = backend.create_file(source, '/safe', 'new.txt')
+    assert result == {'path': '/safe/new.txt', 'size': 0}
+    assert handle.closed
+    assert any(name == 'pin_mutation_ancestors' for name, _, _ in session.calls)
+    assert not any(name in {'remove', 'rename', 'replace'} for name, _, _ in session.calls)
+
+
+def test_create_empty_file_rejects_reparse_parent_before_open():
+    from app.file_mutations import FileMutationError
+    backend, source, session = _fixture()
+    session.responses['stat'] = _Stat(attributes=0x400)
+    with pytest.raises(FileMutationError):
+        backend.create_file(source, '/unsafe', 'new.txt')
+    assert not any(name == 'create_file_verified' for name, _, _ in session.calls)
 
 
 class _StatefulSMBSession(_Session):

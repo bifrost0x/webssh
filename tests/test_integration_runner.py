@@ -35,6 +35,71 @@ def test_runner_always_requests_compose_teardown(monkeypatch):
     assert calls[-1][-2:] == ["down", "-v"]
 
 
+@pytest.fixture
+def browser_prerequisites(monkeypatch):
+    cli = run_integration_tests.PROJECT_ROOT / 'node_modules/playwright/cli.js'
+    cli.parent.mkdir(parents=True)
+    cli.write_text('// installed test dependency', encoding='utf-8')
+    monkeypatch.setattr(run_integration_tests.shutil, 'which', lambda _: 'node')
+
+
+def test_browser_runner_reuses_lab_and_isolates_temporary_state(monkeypatch, browser_prerequisites):
+    calls = []
+    monkeypatch.setenv('BACKUP_TEMP_DIR', '/existing-backups')
+    monkeypatch.setenv('TRANSFER_TEMP_DIR', '/existing-transfers')
+
+    def record(args, **kwargs):
+        if args[0] == 'node':
+            environment = kwargs['env']
+            assert environment['PARAMIKO5_DISPOSABLE_LAB'] == '1'
+            for key in ('BACKUP_TEMP_DIR', 'TRANSFER_TEMP_DIR'):
+                assert Path(environment[key]).is_dir()
+                assert 'existing-' not in environment[key]
+        calls.append((args, kwargs))
+        return 0
+
+    monkeypatch.setattr(run_integration_tests, 'run', record)
+    assert run_integration_tests.main(browser=True) == 0
+    assert len([args for args, _ in calls if 'up' in args]) == 1
+    assert 'pytest' in calls[2][0]
+    assert any(arg.startswith('--basetemp=') for arg in calls[2][0])
+    browser_args, options = calls[3]
+    assert browser_args[0] == 'node'
+    assert browser_args[2:] == ['test', '--config', 'tests/integration/playwright.file-mutations.config.js', '--forbid-only']
+    assert options['env']['WEBSSH_E2E_PORT'] == '4184'
+    assert options['env']['PYTHON'] == sys.executable
+    assert not Path(options['env']['BACKUP_TEMP_DIR']).exists()
+    assert calls[-1][0][-2:] == ['down', '-v']
+
+
+@pytest.mark.parametrize('failed_phase,code', [('pytest', 23), ('browser', 17)])
+def test_browser_runner_preserves_failures_and_cleans_lab(monkeypatch, browser_prerequisites, failed_phase, code):
+    calls, cleanup = [], []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        return code if ('pytest' in args if failed_phase == 'pytest' else args[0] == 'node') else 0
+
+    monkeypatch.setattr(run_integration_tests, 'run', run)
+    monkeypatch.setattr(run_integration_tests, 'cleanup_runtime', lambda: cleanup.append(True))
+    assert run_integration_tests.main(browser=True) == code
+    assert calls[-1][-2:] == ['down', '-v']
+    assert cleanup == [True]
+    if failed_phase == 'pytest':
+        assert not any(args[0] == 'node' for args in calls)
+
+
+@pytest.mark.parametrize('missing', ['node', 'playwright'])
+def test_browser_runner_rejects_missing_tools_without_touching_lab(monkeypatch, browser_prerequisites, missing):
+    if missing == 'node':
+        monkeypatch.setattr(run_integration_tests.shutil, 'which', lambda _: None)
+    else:
+        (run_integration_tests.PROJECT_ROOT / 'node_modules/playwright/cli.js').unlink()
+    monkeypatch.setattr(run_integration_tests, 'run', lambda *_args, **_kwargs: pytest.fail('missing tools reached lab'))
+    monkeypatch.setattr(run_integration_tests, 'cleanup_runtime', lambda: pytest.fail('missing tools removed existing runtime'))
+    assert run_integration_tests.main(browser=True) == 2
+
+
 def test_runner_always_removes_generated_key_runtime(monkeypatch):
     cleanup_calls = []
     monkeypatch.setattr(

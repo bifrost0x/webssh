@@ -44,6 +44,29 @@ environment:
   - ALLOW_CORS_WILDCARD=false
 ```
 
+## Optional SFTP permissions (chmod)
+
+chmod is disabled by default. To enable it for all WebSSH users, remove the `#`
+from `# - SFTP_CHMOD_ENABLED=true` in the base Compose file's `environment`
+section. For the production overlay, the equivalent optional entry is
+`# SFTP_CHMOD_ENABLED: "true"`.
+
+```bash
+docker compose up -d --force-recreate webssh
+# With the production overlay, use the same files as the running deployment:
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --force-recreate webssh
+```
+
+Run the command matching your deployment. Restarting an existing container alone
+does not apply a changed environment. Keep the data and recovery volumes mounted.
+Comment out the setting again, or set false, and recreate to disable it.
+
+Users then reload WebSSH, reconnect and open an SFTP directory. The SSH server
+must advertise `lsetstat@openssh.com` version 1, and the remote account must be
+allowed to change the selected file's permissions. SMB is not supported.
+See the [file workspace manual](SFTP-File-Workspace-and-Transfers#unix-permissions)
+for usage, troubleshooting and the remaining path, hardlink and ACL boundaries.
+
 ## Application secret
 
 When `SECRET_KEY` is not supplied, the container entrypoint creates a strong

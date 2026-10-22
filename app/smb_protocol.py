@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from threading import RLock
+from threading import Event, RLock, Timer
+import socket
+import time
 import uuid
 
 import smbclient
@@ -977,8 +979,8 @@ def _verified_file_move_handle(
     )
 
 
-def _create_file_move_handle(path, **connection_kwargs):
-    """Exclusively create a writable file that can be renamed by its handle."""
+def _create_file_handle(path, *, allow_move=False, **connection_kwargs):
+    """Exclusively create a regular file with only the required access."""
     raw = None
     try:
         raw = SMBFileIO(
@@ -986,7 +988,7 @@ def _create_file_move_handle(path, **connection_kwargs):
             mode='xb',
             share_access=None,
             desired_access=int(
-                FilePipePrinterAccessMask.DELETE
+                (FilePipePrinterAccessMask.DELETE if allow_move else 0)
                 | FilePipePrinterAccessMask.FILE_WRITE_DATA
                 | FilePipePrinterAccessMask.FILE_READ_ATTRIBUTES
             ),
@@ -1005,6 +1007,11 @@ def _create_file_move_handle(path, **connection_kwargs):
             except Exception:
                 pass
         raise
+
+
+def _create_file_move_handle(path, **connection_kwargs):
+    """Exclusively create a writable file that can be renamed by its handle."""
+    return _create_file_handle(path, allow_move=True, **connection_kwargs)
 
 
 def _require_open_handle(raw):
@@ -1383,6 +1390,8 @@ class _RealSMBProtocol:
                 return _verified_file_move_handle(*args, **kwargs)
             if name == 'create_file_move_verified':
                 return _create_file_move_handle(*args, **kwargs)
+            if name == 'create_file_verified':
+                return _create_file_handle(*args, **kwargs)
             if name == 'open_directory_verified':
                 return _verified_directory_handle(*args, **kwargs)
             if name == 'delete_verified':
@@ -1432,6 +1441,7 @@ class SMBProtocolSession:
         self.secure_negotiate = True
         self._lock = RLock()
         self._closed = False
+        self._deadline_expired = False
         self._mutation_guard_depth = 0
         self.connection_cache = _SealedConnectionCache(
             f'{target_ip.lower()}:445',
@@ -1440,8 +1450,44 @@ class SMBProtocolSession:
 
     def _ensure_alive(self):
         transport = getattr(self.raw_connection, 'transport', None)
-        if self._closed or transport is None or not transport.connected:
+        if self._closed or self._deadline_expired or transport is None or not transport.connected:
             raise SMBProtocolError('SOURCE_UNAVAILABLE')
+
+    @contextmanager
+    def mutation_deadline(self, deadline):
+        """Bound one control mutation without waiting on a busy session lock."""
+        from .file_mutations import FileMutationError
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self._lock.acquire(timeout=max(0, remaining)):
+            raise FileMutationError('TIMEOUT')
+        expired = Event()
+
+        def abort():
+            expired.set()
+            self._deadline_expired = True
+            # This connection is owned by this source/control lane. Shutdown
+            # the socket directly: transport.close waits for the send lock.
+            sock = getattr(self.raw_connection.transport, '_sock', None)
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+        guard = Timer(max(0, deadline - time.monotonic()), abort)
+        guard.daemon = True
+        try:
+            self._ensure_alive()
+            guard.start()
+            yield
+            if expired.is_set():
+                raise FileMutationError('OUTCOME_UNKNOWN')
+        finally:
+            guard.cancel()
+            if guard.ident is not None:
+                guard.join()
+            self._lock.release()
 
     def invoke(self, name, *args, **kwargs):
         """Run one high-level operation without allowing implicit reconnect."""
@@ -1463,6 +1509,7 @@ class SMBProtocolSession:
             if (
                 name in {
                     'create_file_move_verified',
+                    'create_file_verified',
                     'delete_open_handle_verified',
                     'delete_verified',
                     'mkdir_no_follow',
