@@ -147,7 +147,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         if (!supported || state?.path !== '/' || state.source.kind !== 'smb') {
             return supported;
         }
-        if (capability === 'write' && state.source.access?.createFile === 'denied') {
+        if (['write', 'create-file'].includes(capability) && state.source.access?.createFile === 'denied') {
             return false;
         }
         if (capability === 'mkdir' && state.source.access?.createDirectory === 'denied') {
@@ -768,6 +768,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
     }
 
     activateSourceTab(pane, tabId) {
+        this.mutationDialog?.close();
         const tab = this.workspace.activateTab(pane, tabId);
         if (!tab) return null;
         this.syncPaneFromWorkspace(pane);
@@ -991,6 +992,10 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             if (element) element.disabled = disabled;
         };
         setDisabled('fmNewFolder', operationLocked || !this.sourceCan(state, 'mkdir'));
+        setDisabled('fmNewFile', operationLocked || !this.sourceCan(state, 'create-file'));
+        setDisabled('fmPermissions', operationLocked || selectedCount !== 1 || !this.sourceCan(state, 'chmod'));
+        const permissionsButton = document.getElementById('fmPermissions');
+        if (permissionsButton) permissionsButton.hidden = !this.sourceCan(state, 'chmod');
         setDisabled('fmEmbeddedUpload', operationLocked || !this.sourceCan(state, 'write'));
         setDisabled('fmDownload', operationLocked || !this.sourceCan(state, 'read') || selectedCount === 0);
         setDisabled('fmPreview', operationLocked || !this.sourceCan(state, 'preview') || !selectedFile || selectedFile.is_dir);
@@ -1022,6 +1027,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 const action = button.dataset.paneAction;
                 const disabled = {
                     newfolder: operationLocked || !this.sourceCan(paneState, 'mkdir'),
+                    newfile: operationLocked || !this.sourceCan(paneState, 'create-file'),
+                    permissions: operationLocked || paneSelection !== 1 || !this.sourceCan(paneState, 'chmod'),
                     upload: operationLocked || !this.sourceCan(paneState, 'write'),
                     download: operationLocked || !this.sourceCan(paneState, 'read') || paneSelection === 0,
                     preview: operationLocked || !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
@@ -1030,6 +1037,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                     delete: operationLocked || !this.sourceCan(paneState, 'delete') || paneSelection === 0,
                 }[action];
                 button.disabled = Boolean(disabled);
+                if (action === 'permissions') button.hidden = !this.sourceCan(paneState, 'chmod');
             });
             const selectAll = document.querySelector(`[data-pane-select-all="${pane}"]`);
             if (selectAll) {
@@ -1102,6 +1110,16 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                         </span>
                     </h2>
                     <div class="fm-workspace-controls">
+                    <details class="fm-permissions-help">
+                        <summary data-i18n-title="fm.chmodHelpTitle" title="Enable chmod"><span class="material-icons" aria-hidden="true">info_outline</span><span data-i18n="fm.chmodHelpTitle">Enable chmod</span></summary>
+                        <div>
+                            <p data-i18n="fm.chmodHelpOperator">Disabled by default. A WebSSH operator can enable it for the whole instance: uncomment this line under environment in docker-compose.yml, then recreate the webssh container.</p>
+                            <code>- SFTP_CHMOD_ENABLED=true</code>
+                            <code>docker compose up -d --force-recreate webssh</code>
+                            <p data-i18n="fm.chmodHelpRequirement">Reconnect and open an SFTP directory. The server must advertise lsetstat@openssh.com version 1; SMB is not supported. This is not a per-user switch.</p>
+                            <p data-i18n="fm.chmodHelpUsage">Select one file or directory, choose Permissions, then set rwx or a three-digit mode (for example 640). Your remote account must be allowed to change its permissions.</p>
+                        </div>
+                    </details>
                         <div class="fm-layout-switch" role="group" aria-label="File Manager layout" data-i18n-aria-label="fm.workspace.layout">
                             <button type="button" class="fm-layout-btn active" id="fmLayoutSingle" data-layout="single" aria-pressed="true" aria-label="1 pane" data-i18n-aria-label="fm.workspace.onePane">
                                 <span class="material-icons" aria-hidden="true">crop_7_5</span>
@@ -1128,6 +1146,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                                 <span class="material-icons" aria-hidden="true">create_new_folder</span>
                                 <span class="btn-text" data-i18n="fm.newFolder">New Folder</span>
                             </button>
+<button class="btn btn-secondary btn-sm" id="fmNewFile" aria-label="New file" data-i18n-aria-label="fm.newFile"><span class="material-icons" aria-hidden="true">note_add</span><span class="btn-text" data-i18n="fm.newFile">New file</span></button>
+<button class="btn btn-secondary btn-sm" id="fmPermissions" aria-label="Permissions" data-i18n-aria-label="fm.permissions" hidden><span class="material-icons" aria-hidden="true">lock</span><span class="btn-text" data-i18n="fm.permissions">Permissions</span></button>
                             <button class="btn btn-secondary btn-sm fm-session-folder-action" id="fmOpenTerminalFolder" type="button" title="Open folder in Files" aria-label="Open folder in Files" data-i18n-title="terminalFiles.openFolder" data-i18n-aria-label="terminalFiles.openFolder">
                                 <span class="material-icons" aria-hidden="true">folder_open</span>
                             </button>
@@ -1165,6 +1185,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                             </button>
                         </div>
                     </div>
+
 
                     <!-- Mobile Pane Tabs -->
                     <div class="fm-pane-tabs" id="fmPaneTabs" role="tablist" aria-label="File Manager panes" data-i18n-aria-label="fm.workspace.layout">
@@ -1209,7 +1230,9 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                                 </button>
                             </div>
                             <div class="fm-pane-toolbar" data-pane-toolbar="left">
-                                <button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
+                                <button type="button" data-pane-action="newfile" aria-label="New file" data-i18n-aria-label="fm.newFile"><span class="material-icons" aria-hidden="true">note_add</span><span data-i18n="fm.newFile">New file</span></button>
+<button type="button" data-pane-action="permissions" aria-label="Permissions" data-i18n-aria-label="fm.permissions" hidden><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="fm.permissions">Permissions</span></button>
+<button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
                                 <button type="button" data-pane-action="upload" aria-label="Upload" title="Upload" data-i18n-aria-label="fm.upload" data-i18n-title="fm.upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button>
                                 <button type="button" data-pane-action="download" aria-label="Download" title="Download" data-i18n-aria-label="fm.download" data-i18n-title="fm.download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview" aria-label="Preview" title="Preview" data-i18n-aria-label="fm.preview" data-i18n-title="fm.preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button>
@@ -1276,7 +1299,9 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                                 </button>
                             </div>
                             <div class="fm-pane-toolbar" data-pane-toolbar="right">
-                                <button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
+                                <button type="button" data-pane-action="newfile" aria-label="New file" data-i18n-aria-label="fm.newFile"><span class="material-icons" aria-hidden="true">note_add</span><span data-i18n="fm.newFile">New file</span></button>
+<button type="button" data-pane-action="permissions" aria-label="Permissions" data-i18n-aria-label="fm.permissions" hidden><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="fm.permissions">Permissions</span></button>
+<button type="button" data-pane-action="newfolder" aria-label="New Folder" title="New Folder" data-i18n-aria-label="fm.newFolder" data-i18n-title="fm.newFolder"><span class="material-icons" aria-hidden="true">create_new_folder</span><span data-i18n="fm.newFolder">New Folder</span></button>
                                 <button type="button" data-pane-action="upload" aria-label="Upload" title="Upload" data-i18n-aria-label="fm.upload" data-i18n-title="fm.upload"><span class="material-icons" aria-hidden="true">upload</span><span data-i18n="fm.upload">Upload</span></button>
                                 <button type="button" data-pane-action="download" aria-label="Download" title="Download" data-i18n-aria-label="fm.download" data-i18n-title="fm.download"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="fm.download">Download</span></button>
                                 <button type="button" data-pane-action="preview" aria-label="Preview" title="Preview" data-i18n-aria-label="fm.preview" data-i18n-title="fm.preview"><span class="material-icons" aria-hidden="true">preview</span><span data-i18n="fm.preview">Preview</span></button>
@@ -1386,6 +1411,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                         <span class="material-icons" aria-hidden="true">create_new_folder</span>
                         <span data-i18n="fm.newFolder">New Folder</span>
                     </button>
+<button type="button" class="fm-action-sheet-item" data-action="newfile"><span class="material-icons" aria-hidden="true">note_add</span><span data-i18n="fm.newFile">New file</span></button>
+<button type="button" class="fm-action-sheet-item" data-action="permissions" hidden><span class="material-icons" aria-hidden="true">lock</span><span data-i18n="fm.permissions">Permissions</span></button>
                     <button type="button" class="fm-action-sheet-item danger" data-action="delete">
                         <span class="material-icons" aria-hidden="true">delete</span>
                         <span data-i18n="fm.delete">Delete</span>
@@ -1402,6 +1429,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.modal = modal;
         this.modalContent = modal.querySelector('.modal-content');
         this.modalBody = modal.querySelector('.modal-body');
+        this.permissionsHelp = modal.querySelector('.fm-permissions-help');
         this.actionSheet = modal.querySelector('.fm-action-sheet');
 
         this.createQuickConnectModal();
@@ -1535,6 +1563,19 @@ class SFTPFileManager extends window.FileDirectoryRequests {
     }
 
     setupEventListeners() {
+        this.permissionsHelp.addEventListener('toggle', () => this.positionPermissionsHelp());
+        window.addEventListener('resize', () => this.positionPermissionsHelp());
+        document.addEventListener('pointerdown', event => {
+            if (this.permissionsHelp.open && !this.permissionsHelp.contains(event.target)) this.permissionsHelp.open = false;
+        }, true);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && this.permissionsHelp.open) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.permissionsHelp.open = false;
+                this.permissionsHelp.querySelector('summary').focus();
+            }
+        }, true);
         document.getElementById('fmClose').addEventListener('click', () => this.close());
         this.modal.addEventListener('click', (e) => {
             if (
@@ -1545,6 +1586,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
 
         document.getElementById('fmRefresh').addEventListener('click', () => this.refreshBothPanes());
         document.getElementById('fmNewFolder').addEventListener('click', () => this.createNewFolder());
+        document.getElementById('fmNewFile')?.addEventListener('click', () => this.createNewFile());
+        document.getElementById('fmPermissions')?.addEventListener('click', () => this.changePermissions());
         document.getElementById('fmOpenTerminalFolder').addEventListener('click', () => {
             window.TerminalFileBridge?.openSelection(this.embeddedTarget?.sessionId);
         });
@@ -1573,6 +1616,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             this.setActivePane(pane);
             const actions = {
                 newfolder: () => this.createNewFolder(),
+                newfile: () => this.createNewFile(),
+                permissions: () => this.changePermissions(),
                 upload: () => document.getElementById('fmMobileUploadInput')?.click(),
                 download: () => this.downloadSelected(),
                 preview: () => this.previewSelected(),
@@ -1830,6 +1875,19 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             this.refreshSource(data.source_id);
         });
 
+        for (const [event, operation] of [['file_created', 'create_file'], ['file_permissions', 'get_file_permissions'], ['file_permissions_changed', 'set_file_permissions']]) {
+            this.socket.on(event, data => window.FileMutationDialog?.handle(this, data, operation));
+        }
+        this.socket.on('file_mutation_capabilities', data => {
+            this.getPaneStateEntries().forEach(({ state }) => {
+                if (state.pendingDirectoryRequestId === data.request_id && this.getPaneSourceId(state) === data.source_id) {
+                    const source = this.normalizeSourceDescriptor(data.file_source);
+                    if (source?.sourceId === data.source_id) state.source = source;
+                }
+            });
+            this.updateWorkspaceActions();
+        });
+
         this.socket.on('file_renamed', (data) => {
             if (!this.consumeOperationResponse(data, 'rename_file')) return;
             this.showNotification(this.t('fm.renamedSuccess', 'Renamed successfully'), 'success');
@@ -1903,6 +1961,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         });
 
         this.socket.on('error', (data) => {
+            if (window.FileMutationDialog?.handle(this, data, data?.operation, true)) return;
             if (!this.handlesSocketError(data)) return;
             const errorMsg = data.error || data.message || 'Unknown error';
             if (data.operation !== 'list_directory') {
@@ -2215,6 +2274,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
     }
 
     close(options = {}) {
+        this.mutationDialog?.close();
         if (this.displayMode === 'embedded') {
             this.closeEmbedded();
             return;
@@ -2292,6 +2352,24 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         }
     }
 
+    positionPermissionsHelp() {
+        if (!this.permissionsHelp?.open) return;
+        const panel = this.permissionsHelp.querySelector('div');
+        const anchor = this.permissionsHelp.getBoundingClientRect();
+        const top = Math.max(12, Math.min(anchor.bottom + 8, window.innerHeight - 160));
+        panel.style.left = `${Math.max(12, Math.min(anchor.right - panel.offsetWidth, window.innerWidth - panel.offsetWidth - 12))}px`;
+        panel.style.top = `${top}px`;
+        panel.style.maxHeight = `${Math.max(100, window.innerHeight - top - 12)}px`;
+    }
+
+    movePermissionsHelp(embedded) {
+        if (!this.permissionsHelp) return;
+        this.permissionsHelp.open = false;
+        const target = embedded ? this.modalBody.querySelector('.fm-toolbar') : this.modal.querySelector('.fm-workspace-controls');
+        if (embedded) target?.appendChild(this.permissionsHelp);
+        else target?.prepend(this.permissionsHelp);
+    }
+
     async openEmbedded(container, sessionId, session = {}) {
         if (!container || !sessionId) return false;
         this.embeddedRecovery = null;
@@ -2307,6 +2385,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.modal?.classList.remove('fm-workspace-mode', 'fm-workspace-single', 'fm-workspace-split', 'fm-single-right');
         this.embeddedContainer = container;
         this.modalBody.classList.add('fm-embedded-mode');
+        this.movePermissionsHelp(true);
         this.applyTranslations();
         container.replaceChildren(this.modalBody);
         this.updateSessionLists();
@@ -2394,6 +2473,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.closeContextMenu();
         this.resetPane('left');
         this.modalBody.classList.remove('fm-embedded-mode');
+        this.movePermissionsHelp(false);
         this.modalContent.insertBefore(this.modalBody, this.actionSheet);
         this.embeddedContainer = null;
         this.displayMode = 'closed';
@@ -2836,6 +2916,8 @@ class SFTPFileManager extends window.FileDirectoryRequests {
 
     async navigatePaneTo(pane, path, options = {}) {
         const state = this.panes[pane];
+        state.mutationViewVersion = (state.mutationViewVersion || 0) + 1;
+        this.mutationDialog?.close();
 
         if (!options.directorySync && this.displayMode === 'embedded'
                 && pane === 'left'
@@ -3477,6 +3559,10 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             setDisabled('move', !this.canOpenMovePickerForState(state));
             setDisabled('rename', selectedCount !== 1 || !this.sourceCan(state, 'rename'));
             setDisabled('newfolder', !this.sourceCan(state, 'mkdir'));
+            setDisabled('newfile', !this.sourceCan(state, 'create-file'));
+            setDisabled('permissions', selectedCount !== 1 || !this.sourceCan(state, 'chmod'));
+            const permissionsAction = sheet.querySelector('[data-action="permissions"]');
+            if (permissionsAction) permissionsAction.hidden = !this.sourceCan(state, 'chmod');
             setDisabled('delete', selectedCount === 0 || !this.sourceCan(state, 'delete'));
             sheet.classList.toggle('gesture-active', gestureActive);
             sheet.classList.add('visible');
@@ -3520,6 +3606,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         const actionSheetIndex = this.actionSheetIndex;
         const actionSheetPane = this.actionSheetPane || this.activePane;
         this.hideActionSheet();
+        if (action === 'newfile' || action === 'permissions') {
+            this.setActivePane(actionSheetPane);
+            if (action === 'newfile') this.createNewFile();
+            else this.changePermissions(actionSheetPane, actionSheetIndex);
+            return;
+        }
         if (action === 'insert-terminal-path') {
             if (this.canInsertActionSheetPath(actionSheetPane, actionSheetIndex)) {
                 this.handleContextAction(action, actionSheetPane, actionSheetIndex);
@@ -3645,6 +3737,28 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             remote_path: path,
             request_id: this.registerOperationRequest(sourceId, 'create_directory'),
         });
+    }
+
+    createNewFile() {
+        if (this.fileOperationBlocked()) return;
+        const state = this.panes[this.activePane];
+        if (!this.sourceCan(state, 'create-file') || !window.FileMutationDialog) return;
+        this.mutationDialog?.close();
+        this.mutationDialog = new window.FileMutationDialog(this, this.activePane);
+    }
+
+    changePermissions(pane = this.activePane, index = null) {
+        if (this.fileOperationBlocked()) return;
+        const state = this.panes[pane];
+        if (!this.sourceCan(state, 'chmod') || !window.FileMutationDialog) return;
+        if (index === null) {
+            if (state.selected.size !== 1) return;
+            index = Array.from(state.selected)[0];
+        }
+        const file = state.files[index];
+        if (!file) return;
+        this.mutationDialog?.close();
+        this.mutationDialog = new window.FileMutationDialog(this, pane, file);
     }
 
     deleteSelected() {
@@ -5845,6 +5959,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         if (this.sourceCan(state, 'mkdir')) {
             items.push({ action: 'newfolder', icon: 'create_new_folder', text: this.t('fm.newFolder', 'New Folder') });
         }
+        if (this.sourceCan(state, 'create-file')) {
+            items.push({ action: 'newfile', icon: 'note_add', text: this.t('fm.newFile', 'New file') });
+        }
+        if (file && this.sourceCan(state, 'chmod')) {
+            items.push({ action: 'permissions', icon: 'lock', text: this.t('fm.permissions', 'Permissions') });
+        }
         if (this.sourceCan(state, 'list')) {
             items.push({ action: 'refresh', icon: 'refresh', text: this.t('fm.refresh', 'Refresh') });
         }
@@ -5869,6 +5989,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         };
 
         switch (action) {
+            case 'newfile':
+                this.createNewFile();
+                break;
+            case 'permissions':
+                this.changePermissions(pane, index);
+                break;
             case 'insert-terminal-path': {
                 const file = state.files[index];
                 const sessionId = window.TerminalFileBridge?.sourceSession(this.getPaneSourceId(state));

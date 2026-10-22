@@ -477,7 +477,7 @@ def test_browser_ci_runs_javascript_units_before_playwright():
     )[0]
 
     unit_step = browser_job.index('run: npm run test:js')
-    browser_step = browser_job.index('run: npm run test:e2e')
+    browser_step = browser_job.index('run: node scripts/run-e2e-ci-parallel.js')
 
     assert unit_step < browser_step
 
@@ -493,15 +493,76 @@ def test_slow_test_gates_are_sharded_without_duplicate_redis_unit_runs():
     assert workflow.count(
         'tests/test_rate_limiter.py::'
         'test_real_redis_does_not_store_denied_requests'
-    ) == 1
-    assert 'name: browser-e2e (${{ matrix.shard }}/2)' in workflow
-    assert 'npm run test:e2e:ci -- --shard=${{ matrix.shard }}/2' in workflow
+    ) == 2
+    assert 'name: browser-e2e (${{ matrix.group }}/8)' in workflow
+    assert 'node scripts/run-e2e-ci-parallel.js --group=${{ matrix.group }}/8 --lanes=4' in workflow
+    assert 'group: [1, 2, 3, 4, 5, 6, 7, 8]' in workflow
+    assert '--ci-shard=${{ matrix.pytest_shard }}' in workflow
     assert re.search(
-        r'\n  browser-e2e:\s*\n\s+needs:\s+\[dispatch-integrity, browser-e2e-shards\]',
+        r'\n  browser-e2e:\s*\n\s+needs:\s+\[dispatch-integrity, browser-e2e-shards, browser-fonts\]',
         workflow,
     )
     assert 'test "$SHARD_RESULT" = success' in workflow
     assert 'fullyParallel: true' in playwright
+
+
+def test_real_browser_lab_is_required_in_ssh_integration():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    job = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
+    assert 'actions/setup-node@' in job
+    assert 'python scripts/run_ci_protocol_checks.py' in job
+    from scripts.run_ci_protocol_checks import GROUPS
+    assert ('npm', 'ci') in GROUPS['ssh']
+    assert ('node', 'scripts/install-ci-chromium.js') in GROUPS['ssh']
+    assert GROUPS['ssh'][-1][1:] == ('scripts/run_integration_tests.py', '--browser')
+    assert 'if: always()' in job and 'test-results/' in job
+
+
+def test_font_browsers_and_python_shards_are_required_parallel_gates():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
+    assert 'matrix:' not in fonts
+    assert "WEBSSH_E2E_FAST_HASHING: '1'" in fonts
+    assert "python-version: '3.14'" in fonts
+    for browser, port in (('firefox', '4173'), ('webkit', '4174')):
+        assert 'node scripts/install-ci-chromium.js ' + browser in fonts
+        assert 'WEBSSH_E2E_PORT=' + port in fonts
+        assert '--browser=' + browser in fonts
+        assert '--output="test-results/font-' + browser + '"' in fonts
+        assert 'WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-' + browser + '.json"' in fonts
+        assert browser + '_pid=$!' in fonts
+        assert 'wait "$' + browser + '_pid" || ' + browser + '_status=$?' in fonts
+        assert 'test "$' + browser + '_status" -eq 0' in fonts
+    assert fonts.index('firefox_pid=$!') < fonts.index('webkit_pid=$!') < fonts.index('wait "$firefox_pid"')
+    assert fonts.index('wait "$firefox_pid"') < fonts.index('wait "$webkit_pid"') < fonts.index('test "$firefox_status" -eq 0')
+    assert '--grep=' in fonts and 'font changes preserve|failed font downloads' in fonts
+    assert 'FONT_RESULT: ${{ needs.browser-fonts.result }}' in workflow
+    assert 'test "$FONT_RESULT" = success' in workflow
+    assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in workflow
+
+
+def test_font_job_uses_hosted_runtime_and_locked_browser_launch_checks():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
+    assert 'runs-on: ubuntu-24.04' in fonts
+    assert 'container:' not in fonts
+    assert 'PLAYWRIGHT_BROWSERS_PATH:' not in fonts
+    assert "python-version: '3.14'" in fonts
+    assert "node-version: '24'" in fonts
+    assert 'run: npm ci' in fonts
+    for browser in ('firefox', 'webkit'):
+        assert 'node scripts/install-ci-chromium.js ' + browser in fonts
+    ldap = fonts.split('- name: Install LDAP build dependencies', 1)[1].split('- name:', 1)[0]
+    assert 'run: bash scripts/install_ci_test_system_deps.sh' in ldap
+
+
+def test_ci_setup_keeps_safe_dependency_fallbacks():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    assert 'bash scripts/install_ci_test_system_deps.sh' in workflow
+    assert 'node scripts/install-ci-chromium.js' in workflow
+    browser = (ROOT / 'scripts/install-ci-chromium.js').read_text(encoding='utf-8')
+    assert "runCli(['install-deps', browserName])" in browser
+    assert 'await launchProbe()' in browser
 
 
 def test_release_only_promotes_the_candidate_after_exact_sha_tests_and_scans():
@@ -620,7 +681,7 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
     assert 'python -m unittest discover -s tests -p test_documentation_surface.py -v' in tests
     assert '--ignore=tests/test_documentation_surface.py' in tests
     from scripts.check_release_gates import REQUIRED
-    for name in REQUIRED - {'dispatch-integrity', 'browser-e2e'}:
+    for name in REQUIRED - {'dispatch-integrity', 'browser-e2e', 'pytest', 'redis-rate-limiter', 'smb-integration', 'release-contract'}:
         job = re.split(r'\n  [a-z][a-z-]*:', tests.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
         assert 'needs: dispatch-integrity' in job
         assert "if: needs.dispatch-integrity.outputs.mode == 'full'" in job
@@ -628,3 +689,82 @@ def test_docs_selection_is_job_level_and_keeps_both_required_aggregates():
         job = re.split(r'\n  [a-z][a-z0-9-]*:', images.split('\n  image-security-' + arch + ':', 1)[1], maxsplit=1)[0]
         assert 'needs: change-scope' in job
         assert "if: needs.change-scope.outputs.mode == 'full'" in job
+
+
+def test_pr_image_scans_use_native_builder_without_skipping_security_gates():
+    workflow = (WORKFLOWS / 'security.yml').read_text(encoding='utf-8')
+    for arch in ('amd64', 'arm64'):
+        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  image-security-' + arch + ':', 1)[1], maxsplit=1)[0]
+        assert "if: github.event_name == 'pull_request'\n        run: bash scripts/build_pr_scan_image.sh " + arch in job
+        for action in ('docker/setup-buildx-action@', 'docker/build-push-action@'):
+            assert "if: github.event_name != 'pull_request'\n        uses: " + action in job
+        assert 'aquasecurity/trivy-action@' in job
+        assert "exit-code: '1'" in job
+        assert 'OS_PACKAGE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}' in job
+    assert 'anchore/sbom-action@' in workflow
+
+
+def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    locks = workflow.split('\n  dependency-locks:', 1)[1].split('\n  pytest-shards:', 1)[0]
+    shards = workflow.split('\n  pytest-shards:', 1)[1].split('\n  pytest:', 1)[0]
+    python_gate = workflow.split('\n  pytest:', 1)[1].split('\n  redis-rate-limiter:', 1)[0]
+    redis_gate = workflow.split('\n  redis-rate-limiter:', 1)[1].split('\n  ssh-integration:', 1)[0]
+    assert "python-version: '3.11'" in locks
+    assert 'lock_requirements.ps1 -Check' in locks
+    assert 'bash scripts/install_ci_test_system_deps.sh' in locks
+    assert 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt' in locks
+    minimum = locks.split('- name: Run Python 3.11 minimum compatibility', 1)[1].split('- name:', 1)[0]
+    assert 'python -m pytest' in minimum and '--ci-shard=1/1' in minimum
+    assert '--basetemp="$RUNNER_TEMP/python-minimum"' in minimum
+    assert '-n 2' in minimum and '--dist=loadscope' in minimum
+    expected = {
+        'admin_cli', 'backup_manager', 'deployment_compatibility', 'auth', 'entrypoint',
+        'factor_bootstrap', 'file_service', 'gunicorn_command', 'ldap_auth', 'network_policy',
+        'production_config', 'sftp_handler', 'smb_protocol_contract', 'ssh_manager',
+        'storage_migrations', 'threaded_runtime',
+    }
+    assert set(re.findall(r'tests/test_([a-z_]+)\.py', minimum)) == expected
+    assert "python_version: '3.11'" not in shards
+    assert shards.count("python_version: '3.14'") == 3
+    for version, port, digest in (
+        ('7', 6379, 'e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2'),
+        ('8', 6380, '978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241'),
+    ):
+        assert f'image: redis:{version}-alpine@sha256:{digest}' in locks
+        assert f'{port}:6379' in locks
+        step = locks.split(f'- name: Run Redis {version} rate limiter test', 1)[1].split('- name:', 1)[0]
+        assert f'TEST_REDIS_URL: redis://localhost:{port}/15' in step
+        assert 'python -m pytest' in step
+        assert 'tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests' in step
+        assert f'--basetemp="$RUNNER_TEMP/redis-{version}"' in step
+    assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in python_gate
+    assert 'MINIMUM_RESULT: ${{ needs.dependency-locks.result }}' in python_gate
+    assert 'test "$PYTEST_RESULT" = success && test "$MINIMUM_RESULT" = success' in python_gate
+    assert 'needs: [dispatch-integrity, dependency-locks]' in redis_gate
+    assert "always() && needs.dispatch-integrity.outputs.mode == 'full'" in redis_gate
+    assert 'REDIS_RESULT: ${{ needs.dependency-locks.result }}' in redis_gate
+    assert 'test "$REDIS_RESULT" = success' in redis_gate
+    assert 'strategy:' not in redis_gate and 'services:' not in redis_gate
+    assert 'continue-on-error:' not in locks
+
+
+def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
+    assert "python-version: '3.14'" in ssh and "node-version: '24'" in ssh
+    assert 'astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7' in ssh
+    assert 'cache: npm' in ssh
+    buildx = 'run: docker buildx version'
+    runner = 'python scripts/run_ci_protocol_checks.py'
+    assert ssh.index(buildx) < ssh.index(runner)
+    assert 'name: ssh-browser-evidence' in ssh and 'if: always()' in ssh
+    assert 'continue-on-error:' not in ssh
+    for name, variable in [('smb-integration', 'SMB_RESULT'), ('release-contract', 'RELEASE_RESULT')]:
+        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
+        assert 'needs: [dispatch-integrity, ssh-integration]' in job
+        assert "always() && needs.dispatch-integrity.outputs.mode == 'full'" in job
+        assert variable + ': ${{ needs.ssh-integration.result }}' in job
+        assert f'test "${variable}" = success' in job
+        assert 'actions/setup-python@' not in job
+        assert 'continue-on-error:' not in job

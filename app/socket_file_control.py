@@ -19,6 +19,7 @@ from .auth import get_user_from_socket
 _FILE_SOURCE_ID_MAX_BYTES = 160
 _FILE_CONTROL_SMALL_TEXT_MAX_BYTES = 128
 _FILE_CONTROL_PATH_FIELDS = frozenset({
+    'parent_path',
     'remote_path',
     'path',
     'old_path',
@@ -447,6 +448,9 @@ def _sanitize_file_control_payload(payload):
         (_FILE_CONTROL_PATH_FIELDS, config.FILE_CONTROL_MAX_PATH_BYTES),
         (_FILE_CONTROL_SOURCE_FIELDS, _FILE_SOURCE_ID_MAX_BYTES),
         (_FILE_CONTROL_SMALL_FIELDS, _FILE_CONTROL_SMALL_TEXT_MAX_BYTES),
+        (('name',), 255),
+        (('mode',), 3),
+        (('expected_metadata',), 512),
     )
     for fields, maximum in limits:
         for field in fields:

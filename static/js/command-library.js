@@ -43,7 +43,7 @@ const CommandLibrary = {
                 if (window.CommandWorkspace?.activeSection === 'library') {
                     this.returnToModalId = null;
                     window.CommandWorkspace.open();
-                    setTimeout(() => document.getElementById('commandSearchInput')?.focus(), 0);
+                    setTimeout(() => document.getElementById('commandSearchInput')?.focus({preventScroll: true}), 0);
                 } else {
                     window.CommandSetManager?.openManagement();
                 }
@@ -120,7 +120,7 @@ const CommandLibrary = {
         window.CommandWorkspace.open('library', {primary: true});
 
         setTimeout(() => {
-            document.getElementById('commandSearchInput').focus();
+            document.getElementById('commandSearchInput').focus({preventScroll: true});
         }, 100);
     },
 

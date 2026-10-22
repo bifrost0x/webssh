@@ -74,6 +74,79 @@ source; independent File Workspace tabs remain intact.
 
 ## File operations
 
+### New files
+
+Use **New file** in the pane toolbar, context menu, or mobile action sheet.
+Enter a single filename in the displayed directory. Existing files, folders,
+and links are never replaced by this action. SFTP requests initial permissions
+of `0600`; SMB retains the server's normal inherited ACLs. Optionally open the
+empty file in the editor after creation. A failed editor open does not delete
+the created file.
+
+### Unix permissions
+
+Permissions are disabled by default. This is an instance-wide operator setting,
+not a personal preference or an Admin-panel toggle. The file manager includes
+an expandable **Enable chmod** help section even when the action is unavailable.
+
+For Docker Compose, remove the leading `#` from this existing optional line under
+the `webssh` service's `environment` section in `docker-compose.yml`:
+
+```yaml
+      - SFTP_CHMOD_ENABLED=true
+```
+
+Apply the change with `docker compose up -d --force-recreate webssh`. When using
+the production overlay, use the same `-f` files as your normal deployment;
+alternatively uncomment `SFTP_CHMOD_ENABLED: "true"` in that overlay. A plain
+`docker compose restart` does not apply changed container environment variables.
+For source installations, set `SFTP_CHMOD_ENABLED=true` in the application
+environment or `.env`, then restart the application. An explicit environment
+variable takes precedence over `.env`.
+
+After activation, users reload WebSSH, reconnect their SSH/SFTP source and open
+a directory. No WebSSH administrator role is required for using the action;
+the remote account must have permission to change the selected object's mode.
+To disable it, comment out the Compose line (or set it to false) and recreate
+the service again. The action disappears from toolbars and menus, while new-file
+creation and editing remain available. Direct mutation requests are also denied.
+
+The action appears for SFTP sources after a successful handshake advertises
+`lsetstat@openssh.com` version 1. SMB has no Unix permission editor. Unsupported
+servers fail closed; WebSSH does not fall back to ordinary path-based chmod,
+shell commands, or sudo.
+
+Select one regular file or directory and choose **Permissions**. Review the
+freshly loaded owner/group/other rwx values, change the checkboxes or three-digit
+octal value, then explicitly apply. For directories, execute means traversal.
+Removing owner access can prevent you from accessing the item afterward.
+Known symlinks, special files, and objects with setuid/setgid/sticky bits cannot
+be edited. There is no recursive chmod, chown, or ACL editor.
+
+No-follow applies to the final path component, not to every ancestor or to an
+immutable file identity. Use trusted servers and appropriately restricted remote
+accounts. Do not enable this feature for privileged accounts working in directories
+that untrusted users can replace or modify without suitable server-side isolation.
+Metadata checks detect observed changes; they are not an atomic compare-and-set.
+Unix rwx values do not describe every ACL rule. Changing mode can affect POSIX ACL
+masks; hardlinks share the same inode and therefore the same permissions.
+
+### Saving and uncertain results
+
+SFTP editor saves stage content in a privately and exclusively created file,
+retain ordinary rwx permissions, and require atomic replacement. Known special
+bits or an owner/group mismatch prevent replacement. SFTP v3 does not provide
+general ACL preservation: inode replacement can lose extended ACLs. Use another
+method when exact ACL preservation is required. If staging fails, a private
+`.webssh-tmp-*` file may remain on the remote server; WebSSH avoids unsafe
+path-based rollback when an object could have changed concurrently.
+
+A lost mutation acknowledgement is shown as an unknown result. Refresh and
+review the remote state before acting again. The editor keeps the draft and
+blocks another save after an uncertain outcome; download the draft, explicitly
+reopen the file, then compare. A matching delayed success can reconcile the
+result. Successful creation or rename is not a promise of power-loss durability.
+
 Supported operations include:
 
 - directory listing and navigation;

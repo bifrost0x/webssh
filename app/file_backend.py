@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 _WRITE_ERROR_CODES = frozenset({
     'EDIT_CONFLICT',
+    'EDIT_METADATA_UNSUPPORTED',
+    'SAVE_OUTCOME_UNKNOWN',
     'SMB_RECOVERABLE_REPLACE_REQUIRED',
     'SMB_RECOVERABLE_REPLACE_FAILED',
     'SMB_RECOVERY_REQUIRED',
@@ -125,6 +127,9 @@ class FileBackend(Protocol):
     """Small filesystem contract shared by SFTP and future backends."""
 
     def normalize_path(self, path: str) -> str:
+        ...
+
+    def create_file(self, source: 'ResolvedFileSource', parent_path: str, name: str, *, authorize=None) -> dict:
         ...
 
     def list_directory(self, source: 'ResolvedFileSource', path: str) -> Any:

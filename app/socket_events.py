@@ -4,7 +4,7 @@ from flask_socketio import (
     emit,
     join_room,
 )
-from flask import copy_current_request_context, request, current_app, url_for
+from flask import copy_current_request_context, request, current_app, has_app_context, url_for
 from contextlib import contextmanager
 from functools import wraps
 from . import (socketio, ssh_manager, profile_manager, key_manager,
@@ -282,6 +282,8 @@ def _audit_file_source_operation(
     destination=None,
     destination_path=None,
     ip_address=None,
+    old_mode=None,
+    new_mode=None,
 ):
     """Record target metadata without ever accepting SMB credentials."""
     try:
@@ -305,6 +307,7 @@ def _audit_file_source_operation(
                 posixpath.basename(str(destination_path).rstrip('/')) or '/'
                 if destination_path is not None else None
             ),
+            **({'old_mode': old_mode, 'new_mode': new_mode} if old_mode is not None or new_mode is not None else {}),
             **identity,
         )
     except Exception as error:
@@ -676,11 +679,32 @@ def disconnect_socket_transport(server, namespace_sid, *, drain=True):
         return False
     cleanup_context = _engineio_cleanup_context(server, namespace_sid)
     terminalized = _terminalize_engineio_cleanup(cleanup_context)
+    owner_id = socket_capacity.owner(namespace_sid)
+    cleanup_app = None
+    if owner_id is not None:
+        if has_app_context():
+            cleanup_app = current_app._get_current_object()
+        else:
+            environ = server.get_environ(namespace_sid, namespace='/')
+            cleanup_app = (environ or {}).get('flask.app')
+    namespace_disconnected = False
     try:
         server.disconnect(namespace_sid, namespace='/')
+        if terminalized and owner_id is not None:
+            namespace_disconnected = not server.manager.is_connected(namespace_sid, '/')
     finally:
-        if terminalized:
-            _schedule_engineio_cleanup(cleanup_context, drain=drain)
+        try:
+            # Socket.IO sends DISCONNECT before invoking Flask's handler. A fast
+            # client can close Engine.IO and remove its environ first, causing
+            # Flask-SocketIO to skip that handler. Finish the same exact-SID
+            # teardown only when its original reservation still exists.
+            if (namespace_disconnected and cleanup_app is not None and owner_id is not None
+                    and socket_capacity.owner(namespace_sid) == owner_id):
+                with cleanup_app.app_context():
+                    _cleanup_socket_session(namespace_sid)
+        finally:
+            if terminalized:
+                _schedule_engineio_cleanup(cleanup_context, drain=drain)
     return True
 
 
@@ -880,7 +904,11 @@ def handle_connect(auth=None):
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle client disconnection - cleanup socket session."""
-    socket_sid = request.sid
+    _cleanup_socket_session(request.sid)
+
+
+def _cleanup_socket_session(socket_sid):
+    """Release one browser's resources with or without its request environ."""
     ssh_output_flow.release_socket(socket_sid)
     _cancel_ssh_banner_prompts_for_socket(socket_sid)
     _cancel_ssh_connect_attempts_for_socket(socket_sid)
@@ -2679,6 +2707,11 @@ def handle_list_directory(data, current_user=None):
         else:
             log_info("list_directory OK", path=remote_path, files=len(files),
                     auth_ms=int((_t1-_t0)*1000), sftp_ms=int((_t2-_t1)*1000))
+            if config.SFTP_CHMOD_ENABLED:
+                try:
+                    emit('file_mutation_capabilities', {**identity, 'file_source': _public_file_source(source_id, current_user.id)})
+                except FileSourceUnavailable:
+                    pass
             emit('directory_listing', {
                 **identity,
                 'path': remote_path,
@@ -4157,6 +4190,83 @@ def handle_file_source_disconnect(data, current_user=None):
         )
         return
     emit('error', _file_source_unavailable_payload(source_id=source_id))
+
+def _handle_file_mutation(operation, data, current_user):
+    from .file_mutations import (
+        FileMutationError, creation_path, mutation_failure,
+        parse_mode, validate_path,
+    )
+
+    payload = data if isinstance(data, dict) else {}
+    identity = _file_request_identity(payload, current_user.id)
+    context = {'operation': operation, **identity}
+    source = None
+    path = None
+    try:
+        if not _valid_file_request(identity):
+            raise FileMutationError('INVALID_REQUEST')
+        source_id = identity['source_id']
+        if operation == 'create_file':
+            path = creation_path(payload.get('parent_path'), payload.get('name'))
+            source = file_service.resolve(source_id, current_user.id, FileCapability.CREATE_FILE)
+            result = file_service.create_file(
+                source_id, user_id=current_user.id,
+                parent_path=payload['parent_path'], name=payload['name'],
+            )
+            event = 'file_created'
+        else:
+            path = validate_path(payload.get('path'), mutation=True)
+            if operation == 'set_file_permissions':
+                parse_mode(payload.get('mode'))
+            source = file_service._permissions_source(source_id, current_user.id)
+            if operation == 'get_file_permissions':
+                result = file_service.get_file_permissions(source_id, user_id=current_user.id, path=path)
+                event = 'file_permissions'
+            else:
+                result = file_service.set_file_permissions(
+                    source_id, user_id=current_user.id, path=path,
+                    mode=payload['mode'], expected_metadata=payload.get('expected_metadata'),
+                )
+                event = 'file_permissions_changed'
+        if operation != 'get_file_permissions':
+            _audit_file_source_operation(
+                current_user, source,
+                operation='chmod' if operation == 'set_file_permissions' else 'create_file',
+                result='COMPLETED', path=path,
+                old_mode=result.get('old_mode'), new_mode=result.get('mode'),
+            )
+        emit(event, {**result, **context})
+    except FileSourceUnavailable:
+        emit('error', _file_source_unavailable_payload(**context))
+    except Exception as error:
+        failure = mutation_failure(error)
+        if source is not None and operation != 'get_file_permissions':
+            _audit_file_source_operation(
+                current_user, source,
+                operation='chmod' if operation == 'set_file_permissions' else 'create_file',
+                result=failure.code, path=path,
+            )
+        extra = {'actual_mode': failure.actual_mode} if failure.actual_mode is not None else {}
+        emit('error', {'error': str(failure), 'code': failure.code, **context, **extra})
+
+
+@socketio.on('create_file')
+@socket_login_required
+def handle_create_file(data, current_user=None):
+    return _handle_file_mutation('create_file', data, current_user)
+
+
+@socketio.on('get_file_permissions')
+@socket_login_required
+def handle_get_file_permissions(data, current_user=None):
+    return _handle_file_mutation('get_file_permissions', data, current_user)
+
+
+@socketio.on('set_file_permissions')
+@socket_login_required
+def handle_set_file_permissions(data, current_user=None):
+    return _handle_file_mutation('set_file_permissions', data, current_user)
+
 
 @socketio.on('create_directory')
 @socket_login_required

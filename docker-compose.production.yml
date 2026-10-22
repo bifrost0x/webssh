@@ -12,6 +12,9 @@ services:
       BOOTSTRAP_REGISTRATION_ENABLED: "false"
       BLOCK_INTERNAL_SSH: "true"
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-1}
+      # Optional chmod: uncomment to enable instance-wide, then recreate the service.
+      # Requires SFTP lsetstat@openssh.com v1; see the file workspace manual.
+      # SFTP_CHMOD_ENABLED: "true"
       TOTP_ENABLED: "${TOTP_ENABLED:-true}"
       OIDC_MFA_AMR_VALUES: "${OIDC_MFA_AMR_VALUES:-}"
       OIDC_MFA_ACR_VALUES: "${OIDC_MFA_ACR_VALUES:-}"

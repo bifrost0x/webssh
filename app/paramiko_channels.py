@@ -89,6 +89,73 @@ def optional_channel_rejection_fields(error):
 class BoundedSFTPClient(paramiko.SFTPClient):
     """Reject attacker-declared SFTP packets before allocating their body."""
 
+    def _send_version(self):
+        from paramiko.message import Message
+        from paramiko.sftp import CMD_INIT, CMD_VERSION
+
+        message = Message()
+        message.add_int(3)
+        self._send_packet(CMD_INIT, message)
+        command, data = self._read_packet()
+        if command != CMD_VERSION or len(data) < 4:
+            raise SFTPError('Invalid SFTP version response')
+        version = struct.unpack('>I', data[:4])[0]
+        self.server_extensions = {}
+        if not config.SFTP_CHMOD_ENABLED:
+            return version
+        offset = 4
+        extensions = {}
+        pairs = 0
+        while offset < len(data):
+            pairs += 1
+            if pairs > 64:
+                return version
+            pair = []
+            for _ in range(2):
+                if offset + 4 > len(data):
+                    return version
+                length = struct.unpack('>I', data[offset:offset + 4])[0]
+                offset += 4
+                if not 0 < length <= 256 or offset + length > len(data):
+                    return version
+                pair.append(data[offset:offset + length])
+                offset += length
+            try:
+                name, value = (part.decode('ascii') for part in pair)
+            except UnicodeDecodeError:
+                # Unknown binary extensions are not candidates for chmod.
+                continue
+            if name in extensions and extensions[name] != value:
+                return version
+            extensions[name] = value
+        self.server_extensions = extensions if version == 3 else {}
+        return version
+
+    def set_permissions_no_follow(self, path, mode):
+        from paramiko.sftp import CMD_EXTENDED
+        from paramiko.sftp_attr import SFTPAttributes
+        from .file_mutations import FileMutationError
+
+        if self.server_extensions.get('lsetstat@openssh.com') != '1':
+            raise FileMutationError('UNSUPPORTED_OPERATION')
+        if type(mode) is not int or not 0 <= mode <= 0o777:
+            raise FileMutationError('INVALID_REQUEST')
+        attributes = SFTPAttributes()
+        attributes.st_mode = mode
+        return self._request(CMD_EXTENDED, 'lsetstat@openssh.com', self._adjust_cwd(path), attributes)
+
+    def _convert_status(self, message):
+        # Preserve Paramiko's exception contract while distinguishing an
+        # explicit server rejection from a lost mutation acknowledgement.
+        position = len(message.get_so_far())
+        status = message.get_int()
+        message.packet.seek(position)
+        try:
+            return super()._convert_status(message)
+        except OSError as error:
+            error.sftp_status = status
+            raise
+
     def _read_packet(self):
         header = self._read_all(4)
         size = struct.unpack('>I', header)[0]
@@ -156,6 +223,9 @@ def open_sftp_client(transport, *, timeout, operation_timeout, deadline=None):
         if channel.closed:
             raise socket.timeout('SFTP request exceeded its deadline')
         channel.settimeout(_remaining_timeout(deadline, operation_timeout))
+        # Advisory support belongs to this live SSH transport; mutations still
+        # check their own SFTP handshake instead of trusting this observation.
+        transport._webssh_sftp_extensions = dict(getattr(sftp, 'server_extensions', {}))
         return sftp
     except Exception:
         channel.close()

@@ -513,7 +513,7 @@ def test_python_runtime_contract_stays_synchronized():
     workflow = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    pytest_job = workflow_job(workflow, "pytest")
+    pytest_job = workflow_job(workflow, "pytest-shards")
     matrix_entries = re.findall(
         r"- python_version: '([^']+)'\s+check_name: ([^\n]+)",
         pytest_job,
@@ -523,10 +523,17 @@ def test_python_runtime_contract_stays_synchronized():
         f"FROM python:{production_python}-slim@sha256:"
     )
     assert matrix_entries == [
-        (production_python, "pytest"),
-        (minimum_python, f"pytest (Python {minimum_python} minimum)"),
+        (production_python, "pytest (Python 3.14 shard 1/3)"),
+        (production_python, "pytest (Python 3.14 shard 2/3)"),
+        (production_python, "pytest (Python 3.14 shard 3/3)"),
     ]
     assert "python-version: ${{ matrix.python_version }}" in pytest_job
+    compatibility_job = workflow_job(workflow, "dependency-locks")
+    assert f"python-version: '{minimum_python}'" in compatibility_job
+    assert f"Run Python {minimum_python} minimum compatibility" in compatibility_job
+    assert "python -m pytest" in compatibility_job
+    assert "tests/test_auth.py" in compatibility_job
+    assert "tests/test_smb_protocol_contract.py" in compatibility_job
 
     for job_name in ("ssh-integration", "browser-e2e-shards"):
         assert (

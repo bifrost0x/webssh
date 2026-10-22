@@ -602,6 +602,10 @@
         saveRequests: new Map(),
         lastSavedSequence: 0,
         editMode: false,
+        _previewPanel: 'previewLoading',
+        _previewTruncated: false,
+        _previewEditable: false,
+        saveOutcomeUnknown: false,
         dirty: false,
         editEncoding: 'utf-8',
         editNewline: 'lf',
@@ -655,6 +659,8 @@
             document.getElementById('editorCommitBtn')?.addEventListener('click', () => this.commitReviewedEdit());
             document.getElementById('editorBackBtn')?.addEventListener('click', () => this.dismissEditReview());
             document.getElementById('editorBackupBtn')?.addEventListener('click', () => this.downloadOriginal());
+            document.getElementById('editorDraftBtn')?.addEventListener('click', () => this.downloadDraft());
+            document.getElementById('editorReloadBtn')?.addEventListener('click', () => this.open(this.currentSourceId, this.currentPath, this.currentFilename));
             document.getElementById('editorCancelBtn')?.addEventListener('click', () => this.cancelEdit());
             document.getElementById('editorContent')?.addEventListener('input', () => this.markDirty());
 
@@ -741,6 +747,7 @@
         open(sourceId, path, filename) {
             if (this.editMode && (this.dirty || this.pendingSaveContent != null) && !window.confirm(window.i18n
                 ? i18n.t('editor.unsavedConfirm') : 'Discard unsaved changes?')) return;
+            this.setSaveOutcomeUnknown(false);
             this.resetEditReview();
             this.editBaseline = null;
             this.editOriginalBytes = null;
@@ -901,6 +908,10 @@
             }
             if (data?.operation === 'save_file'
                     && this.matchesResponse(data, this.currentSaveRequestId)) {
+                if (data.code === 'SAVE_OUTCOME_UNKNOWN') {
+                    this.interruptSave();
+                    return true;
+                }
                 this.clearPendingSave();
                 const status = document.getElementById('editorStatus');
                 if (data.code === 'SMB_RECOVERABLE_REPLACE_REQUIRED') {
@@ -943,14 +954,24 @@
             return false;
         },
 
+        renderPreviewPanels() {
+            // Responses may prepare the preview while editing, but only the
+            // current mode owns visibility. Cancel reveals the prepared panel.
+            for (const id of ['previewLoading', 'previewError', 'previewBinary', 'previewImage', 'previewContent']) {
+                document.getElementById(id)?.classList.toggle('hidden', this.editMode || id !== this._previewPanel);
+            }
+            document.getElementById('previewTruncated')?.classList.toggle('hidden',
+                this.editMode || this._previewPanel !== 'previewContent' || !this._previewTruncated);
+            document.getElementById('previewEditBtn')?.classList.toggle('hidden',
+                this.editMode || this._previewPanel !== 'previewContent' || !this._previewEditable);
+        },
+
         showLoading() {
-            document.getElementById('previewLoading')?.classList.remove('hidden');
-            document.getElementById('previewError')?.classList.add('hidden');
-            document.getElementById('previewBinary')?.classList.add('hidden');
-            document.getElementById('previewImage')?.classList.add('hidden');
-            document.getElementById('previewContent')?.classList.add('hidden');
-            document.getElementById('previewTruncated')?.classList.add('hidden');
-            document.getElementById('fileEditor')?.classList.add('hidden');
+            this._previewPanel = 'previewLoading';
+            this._previewTruncated = false;
+            this._previewEditable = false;
+            this.renderPreviewPanels();
+            if (!this.editMode) document.getElementById('fileEditor')?.classList.add('hidden');
         },
 
         hideLoading() {
@@ -958,19 +979,24 @@
         },
 
         showError(message) {
-            document.getElementById('previewError')?.classList.remove('hidden');
             document.getElementById('previewErrorMessage').textContent = message;
+            this._previewPanel = 'previewError';
+            this._previewEditable = false;
+            this.renderPreviewPanels();
         },
 
         showBinary() {
-            document.getElementById('previewBinary')?.classList.remove('hidden');
+            this._previewPanel = 'previewBinary';
+            this._previewEditable = false;
+            this.renderPreviewPanels();
         },
 
         showImage(url, size) {
-            const imageContainer = document.getElementById('previewImage');
             const imageElement = document.getElementById('previewImageElement');
 
-            imageContainer?.classList.remove('hidden');
+            this._previewPanel = 'previewImage';
+            this._previewEditable = false;
+            this.renderPreviewPanels();
             document.getElementById('previewSize').textContent = this.formatFileSize(size);
 
             if (imageElement.src && imageElement.src.startsWith('blob:')) {
@@ -978,8 +1004,9 @@
             }
 
             imageElement.onload = () => {};
+            const requestId = this.currentPreviewRequestId;
             imageElement.onerror = () => {
-                imageContainer?.classList.add('hidden');
+                if (this.currentPreviewRequestId !== requestId) return;
                 this.showError('Failed to load image');
             };
 
@@ -987,11 +1014,11 @@
         },
 
         showContent(content, filename, truncated, readSize, totalSize) {
-            const contentDiv = document.getElementById('previewContent');
             const codeEl = document.getElementById('previewCode');
             const lineNumbersEl = document.getElementById('previewLineNumbers');
 
-            contentDiv?.classList.remove('hidden');
+            this._previewPanel = 'previewContent';
+            this._previewTruncated = Boolean(truncated);
 
             // Keep the raw content for an accurate copy; for display, drop a
             // single trailing newline so the file's terminator isn't rendered
@@ -1014,10 +1041,10 @@
             lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
 
             if (truncated) {
-                document.getElementById('previewTruncated')?.classList.remove('hidden');
                 document.getElementById('previewTruncatedSize').textContent = this.formatFileSize(readSize);
                 document.getElementById('previewTotalSize').textContent = this.formatFileSize(totalSize);
             }
+            this.renderPreviewPanels();
         },
 
         async copyToClipboard() {
@@ -1039,11 +1066,13 @@
 
         // ---- Inline editor ----
         showEditButton() {
-            document.getElementById('previewEditBtn')?.classList.remove('hidden');
+            this._previewEditable = true;
+            this.renderPreviewPanels();
         },
 
         hideEditButton() {
-            document.getElementById('previewEditBtn')?.classList.add('hidden');
+            this._previewEditable = false;
+            this.renderPreviewPanels();
         },
 
         showPreviewActions() {
@@ -1101,6 +1130,13 @@
             });
         },
 
+        openForEditing(sourceId, path, filename) {
+            const previousRequest = this.currentPreviewRequestId;
+            this.open(sourceId, path, filename);
+            if (this.currentPreviewRequestId !== previousRequest
+                    && this.currentSourceId === sourceId && this.currentPath === path) this.enterEditMode();
+        },
+
         handleEditData(data) {
             // Ignore responses for a file the user has since navigated away from.
             if (!this.matchesResponse(data, this.currentEditRequestId)
@@ -1125,14 +1161,12 @@
             });
             this.resetEditReview();
 
-            document.getElementById('previewContent')?.classList.add('hidden');
-            document.getElementById('previewTruncated')?.classList.add('hidden');
-            document.getElementById('previewError')?.classList.add('hidden');
+            this.editMode = true;
+            this.renderPreviewPanels();
             document.getElementById('fileEditor')?.classList.remove('hidden');
             this.modal?.classList.add('editing');
             this.hidePreviewActions();
 
-            this.editMode = true;
             this.dirty = false;
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = '';
@@ -1161,7 +1195,37 @@
             // so a delayed acknowledgement can reconcile the revision.
             this.clearPendingSave(true);
             this.markDirty();
-            showNotification(window.i18n ? i18n.t('editor.saveFailed') : 'Failed to save file', 'error');
+            this.setSaveOutcomeUnknown(true);
+        },
+
+        setSaveOutcomeUnknown(unknown) {
+            this.saveOutcomeUnknown = unknown;
+            for (const id of ['editorSaveBtn', 'editorCommitBtn']) {
+                const button = document.getElementById(id);
+                if (button) button.disabled = unknown;
+            }
+            for (const id of ['editorDraftBtn', 'editorReloadBtn']) {
+                const button = document.getElementById(id);
+                if (button) button.hidden = !unknown;
+            }
+            if (unknown) {
+                const message = window.i18n ? i18n.t('editor.saveOutcomeUnknown')
+                    : 'The save result is unknown. Download your draft, then reopen and compare before saving again.';
+                const status = document.getElementById('editorStatus');
+                if (status) status.textContent = message;
+                showNotification(message, 'warning');
+            }
+        },
+
+        downloadDraft() {
+            const text = document.getElementById('editorContent')?.value;
+            if (typeof text !== 'string') return;
+            const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${this.currentFilename || 'file'}.draft.txt`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         },
 
         resetEditReview() {
@@ -1169,7 +1233,7 @@
             document.getElementById('editorReview')?.classList.add('hidden');
             document.getElementById('editorContent')?.classList.remove('hidden');
             const reviewButton = document.getElementById('editorSaveBtn');
-            if (reviewButton) reviewButton.disabled = false;
+            if (reviewButton) reviewButton.disabled = Boolean(this.saveOutcomeUnknown);
             for (const id of ['editorReviewOriginal', 'editorReviewEdited']) {
                 const field = document.getElementById(id);
                 if (field) field.value = '';
@@ -1183,6 +1247,7 @@
         },
 
         saveEdit() {
+            if (this.saveOutcomeUnknown) return;
             if (!this.editMode || this.pendingSaveContent != null || !this.editTarget
                 || this.editTarget.sourceId !== this.currentSourceId
                 || this.editTarget.path !== this.currentPath || !this.editRevision) return;
@@ -1231,6 +1296,7 @@
         },
 
         saveReviewedEdit(replaceStrategy = null, saveChallenge = null) {
+            if (this.saveOutcomeUnknown) return;
             if (!this.editMode || !this.currentSourceId || !this.currentPath) return;
             if (this.pendingSaveContent != null) return;
             const reviewed = this.editReview;
@@ -1285,6 +1351,7 @@
             this.saveRequests.delete(data.request_id);
             if (isCurrent) this.clearPendingSave();
             if (saved.sequence <= this.lastSavedSequence) return;
+            this.setSaveOutcomeUnknown(false);
             this.lastSavedSequence = saved.sequence;
             this.editRevision = data.revision || this.editRevision;
             this.editBaseline = saved.content;
@@ -1327,11 +1394,10 @@
                 if (!window.confirm(msg)) return;
             }
             this.exitEditMode();
-            // The preview content is still rendered underneath; just reveal it.
-            document.getElementById('previewContent')?.classList.remove('hidden');
         },
 
         exitEditMode() {
+            this.setSaveOutcomeUnknown(false);
             this.resetEditReview();
             this.clearPendingSave();
             this.saveRequests.clear();
@@ -1347,7 +1413,7 @@
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = '';
             this.showPreviewActions();
-            this.showEditButton();
+            this.renderPreviewPanels();
         },
 
         refresh() {

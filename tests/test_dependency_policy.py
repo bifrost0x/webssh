@@ -11,7 +11,11 @@ from packaging.version import Version
 APPROVED_PIP_INSTALL_COMMAND = (
     "python -m pip install --require-hashes -r requirements-test.txt"
 )
-ALLOWED_PIP_LINES = {"cache: pip", APPROVED_PIP_INSTALL_COMMAND}
+APPROVED_UV_INSTALL_COMMAND = (
+    'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'
+)
+APPROVED_INSTALL_COMMANDS = {APPROVED_PIP_INSTALL_COMMAND, APPROVED_UV_INSTALL_COMMAND}
+ALLOWED_PIP_LINES = {"cache: pip", *APPROVED_INSTALL_COMMANDS}
 MINIMUM_PYTHON = "3.11"
 
 
@@ -19,10 +23,10 @@ def pip_policy_allows(workflow):
     pip_lines = [
         line.strip()
         for line in workflow.splitlines()
-        if line.strip() and "pip" in line.casefold()
+        if line.strip() and ("pip" in line.casefold() or re.search(r'\buv\s+', line, re.IGNORECASE))
     ]
     return (
-        APPROVED_PIP_INSTALL_COMMAND in pip_lines
+        bool(APPROVED_INSTALL_COMMANDS.intersection(pip_lines))
         and all(line in ALLOWED_PIP_LINES for line in pip_lines)
     )
 
@@ -315,3 +319,30 @@ def test_pip_policy_allows_only_explicit_workflow_lines(lines, allowed):
     workflow = "\n".join(lines)
 
     assert pip_policy_allows(workflow) is allowed
+
+
+@pytest.mark.parametrize('lines,allowed', [
+    (['uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'], True),
+    (['cache: pip', 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'], True),
+    (['cache: pip'], False),
+    ([], False),
+    (['uv pip install --python "$(command -v python)" -r requirements-test.txt'], False),
+    (['uv pip install --python "$(command -v python)" --require-hashes -r requirements.in'], False),
+    (['uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt requests'], False),
+    (['uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt --no-deps'], False),
+    (['uv pip sync --python "$(command -v python)" --require-hashes -r requirements-test.txt'], False),
+    ([APPROVED_PIP_INSTALL_COMMAND, 'uv add requests'], False),
+    ([APPROVED_PIP_INSTALL_COMMAND, 'uv sync'], False),
+])
+def test_uv_installer_policy_is_exact_and_keeps_all_hash_requirements(lines, allowed):
+    assert pip_policy_allows('\n'.join(lines)) is allowed
+
+
+def test_every_host_test_environment_sets_up_the_reviewed_uv_before_installing():
+    workflow = Path('.github/workflows/tests.yml').read_text(encoding='utf-8')
+    setup = 'astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7'
+    for name in ['dependency-locks', 'pytest-shards', 'ssh-integration', 'browser-e2e-shards', 'browser-fonts']:
+        job = re.split(r'\n  [a-z][a-z0-9-]*:', workflow.split('\n  ' + name + ':', 1)[1], maxsplit=1)[0]
+        install = 'python scripts/run_ci_protocol_checks.py' if name == 'ssh-integration' else 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt'
+        assert job.index(setup) < job.index(install)
+        assert "version: '0.12.3'" in job

@@ -150,6 +150,7 @@ additional Socket.IO connections.
 | `MAX_PREVIEW_TAIL_LINES` | `10000` |
 | `MAX_SUPPORTED_FILE_SIZE` | `1073741824` (1 GiB) |
 | `SFTP_OPERATION_TIMEOUT` | `30` seconds |
+| `SFTP_CHMOD_ENABLED` | `false`; instance-wide opt-in for single-object SFTP Unix permissions, requiring `lsetstat@openssh.com` v1 |
 | `SFTP_MAX_PACKET_BYTES` | `1048576` (1 MiB) |
 | `SFTP_MAX_HANDLE_BYTES` | `16384` (16 KiB) |
 | `MAX_EDITOR_FILE_SIZE` | `5242880` (5 MiB) |
@@ -167,6 +168,14 @@ additional Socket.IO connections.
 | `CONNECTION_STORE_RECOVERY_MAX_RECORDS` | `10000` |
 
 Bulk uploads and downloads are streamed over HTTP; Socket.IO carries control events and bounded editor content rather than entire files. Align proxy request-body and timeout limits with WebSSH when increasing an application limit.
+
+To enable chmod in Docker Compose, uncomment the existing
+`SFTP_CHMOD_ENABLED=true` line under `environment` and recreate the service;
+changing `.env` alone does not pass this optional setting into the container.
+For a source install, set the variable in the process environment or `.env` and
+restart WebSSH. This grants no extra remote privileges and does not enable SMB
+ACL editing. See [Unix permissions](SFTP-File-Workspace-and-Transfers#unix-permissions)
+for activation, normal use, supported servers and security boundaries.
 
 SFTP directory responses are paged. Declared protocol packet and opaque handle
 size, raw entry count (including `.` and `..`), filename, longname, aggregate

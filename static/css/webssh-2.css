@@ -4398,6 +4398,16 @@ body[data-theme="paper"]:has(.auth-access-dock) {
     line-height: 1.2;
 }
 
+#primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode #fmModalTitle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 #primaryWorkspaceSurface #sftpFileManager.fm-workspace-mode .modal-body {
     flex: 1 1 auto;
     min-height: 0;

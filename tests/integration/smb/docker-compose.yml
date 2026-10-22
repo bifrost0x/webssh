@@ -17,6 +17,8 @@ services:
       DEPLOYMENT_PROFILE: homelab
       SECRET_KEY: smb-integration-only-secret
       SMB_ENABLED: "true"
+      # Exercise protocol isolation while the SFTP-only permissions feature is enabled.
+      SFTP_CHMOD_ENABLED: "true"
       SMB_ALLOWED_TARGETS: samba
       SMB_INTEGRATION: "1"
       SMB_INTEGRATION_HOST: samba

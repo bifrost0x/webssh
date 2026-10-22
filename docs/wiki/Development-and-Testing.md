@@ -44,10 +44,35 @@ Run the suite with:
 The pytest harness uses a reduced bcrypt work factor to keep authentication-heavy
 tests fast. An isolated subprocess contract verifies that normal application
 processes retain bcrypt's production work factor. The maintained gates execute
-the full unit suite on Python 3.14 and a representative compatibility suite on
-Python 3.11. Separate jobs exercise Redis 7/8 rate limiting and disposable
+the full unit suite in three complete file partitions on Python 3.14 and a representative compatibility suite on
+Python 3.11. The dependency-lock job also runs that unchanged minimum-version
+suite and checks Redis 7 and 8 against separate digest-pinned services, reducing
+concurrent setup jobs. Separate jobs exercise disposable
 OpenSSH and encrypted SMB servers. Targeted tests are useful while developing, but
 they do not replace the relevant full gate before release.
+
+### Real browser with disposable OpenSSH
+
+The tracked integration runner can also create an SFTP file through the browser,
+set its permissions, edit it and verify both content and mode after reopening.
+Install the hash-locked Python test requirements, Node dependencies and Chromium,
+then run the complete Python and browser integration against the same Docker lab:
+
+```bash
+npm ci
+npx playwright install chromium
+python scripts/run_integration_tests.py --browser
+```
+
+On Linux, use `npx playwright install --with-deps chromium` when browser system
+libraries are not installed. Docker Compose must be available; loopback ports
+2222-2224 and 4184 must be free. Set `WEBSSH_E2E_PORT` to choose another browser
+port. The runner uses temporary application, backup and transfer data, creates
+disposable SSH keys, and tears down its lab after success or failure. It refuses
+missing Node/Playwright prerequisites before touching the lab. Do not run two
+instances of this lab concurrently. Without `--browser`, the existing Python-only
+command remains available. Browser failure, skipped tests and focused-only tests
+fail the gate; timing and failure evidence goes under `test-results/`.
 
 ## Frontend dependencies
 
@@ -69,19 +94,73 @@ npm run test:js
 npm run test:e2e
 ```
 
-`test:e2e` always runs the complete suite. CI uses two isolated servers with one
-worker each and assigns tests by recorded duration:
+`test:e2e` always runs the complete suite. CI uses eight runner groups with four
+isolated app servers per group. Each server keeps one worker and receives one of
+32 disjoint partitions, assigned by recorded duration:
 
 ```bash
-npm run test:e2e:ci -- --shard=1/2
-npm run test:e2e:ci -- --shard=2/2
+node scripts/run-e2e-ci-parallel.js --group=1/8 --lanes=4
+# Repeat groups 2/8 through 8/8 for the complete CI browser gate.
+# Individual partitions can still be reproduced directly:
+npm run test:e2e:ci -- --shard=1/32
 ```
 
 The runner discovers the current suite before partitioning it. Every discovered
 test belongs to exactly one shard; new tests receive a fallback weight. Test
 identity is based on file and full title, so moving source lines does not change
-assignment. Shared account and session fixtures require one worker per server;
-increasing workers without isolating that state can invalidate results.
+assignment. Groups interleave the 32 partitions so the heaviest terminal-load
+cases run on different runners. Shared account and session fixtures require one
+worker per server; increasing workers without isolating that state can invalidate
+results. The group
+runner gives each server a separate port, data directory, temporary namespace
+and artifact directory. It waits for every partition and fails if any child fails;
+interrupts terminate only its owned process trees. Fixture password hashing is
+reduced only in the explicit isolated test process; application hashing is unchanged.
+The parallel launcher supports Linux and Windows. On other platforms, use the
+individual sequential partition command above.
+Firefox and WebKit font regressions run in parallel on separate ports in one
+mandatory job; both process results must succeed.
+The two 20-terminal transport-load cases reserve their runner before its other
+cases start. Their partitions are calculated from the current discovery and
+weights. Only those cases run exclusively; all four lanes then run their remaining
+cases in parallel, with separate output and timing files for each phase. All
+remaining cases still run even when one fails.
+Font tests use Ubuntu hosted runners with Python 3.14 and the locked Playwright
+browsers. Both browser runtimes must pass their installation and launch checks.
+
+The Python partitions are computed from the current collection and keep whole
+files together, preserving module/class fixture locality. Run all three:
+
+```bash
+python -m pytest tests/ --ignore=tests/integration --ignore=tests/test_documentation_surface.py -p scripts.pytest_shard --ci-shard=1/3 -n 2 --dist=loadscope
+# Repeat --ci-shard=2/3 and --ci-shard=3/3; no single partition is the full gate.
+```
+
+The `pytest`, `browser-e2e` and `all-tests` aggregate checks retain all required
+partitions, minimum-version compatibility, font browsers and protocol labs.
+The runtime target is two to three minutes for the entire required gate, including
+`all-tests` and `security-scan / image-security`;
+queueing, cold dependency installation and runner capacity still require measured
+GitHub validation at the published revision. No test is dropped to meet that target.
+CI installs the unchanged hash-locked Python test requirements with pinned uv
+0.12.3 into the interpreter selected by `setup-python`. This retains the Python
+3.11 and 3.14 checks and does not change production installation commands.
+On Ubuntu CI, installed LDAP headers are reused and package indexes are refreshed
+only if installation from the existing indexes fails. Chromium installs the
+headless shell used by these tests and must pass a real launch probe; missing
+system libraries trigger dependency installation and a second mandatory probe.
+Firefox and WebKit also probe their installed runtime before requesting system
+packages. LDAP package installation bounds stalled HTTP mirror connections to
+two seconds and HTTPS connections to five seconds, with failures still blocking
+the gate when no configured mirror can serve the packages.
+On GitHub-hosted runners, the recognized default mirror list prefers its existing
+official HTTPS archive and retains Azure as a fallback. Unknown mirror lists are
+left unchanged. The isolated SMB lab prebuilds both images with two build slots.
+Pull requests build scan images with the native Docker builder on AMD64 and
+ARM64 runners, avoiding a separate Buildx daemon and remote cache export.
+Base images are pulled and OS package refresh inputs remain unique per run.
+The SPDX SBOM, both Trivy scans and their required aggregate remain mandatory.
+Other events retain the existing Buildx cache path.
 
 CI uploads `test-results/e2e-timing-*.json` from each shard, including failed runs.
 Download reports from a representative successful run into `test-results/` and
@@ -93,6 +172,8 @@ npm run test:e2e:timings:refresh
 npm run test:e2e:timings:refresh -- path/to/shard-1.json path/to/shard-2.json
 ```
 
+Include both phase reports for split shards and every other shard report. The
+import rejects missing or duplicate phases and overlapping test identities.
 Review the baseline diff alongside the suite change. Do not mix reports from
 different revisions when refreshing it. Timing weights affect scheduling only;
 they do not decide which tests run.
@@ -191,7 +272,7 @@ runs cannot satisfy a newer revision.
 
 | Change or trigger | Tests | Container scans and publication |
 |---|---|---|
-| Code, tests, dependencies, workflow or mixed PR | Full Python 3.14 suite; Python 3.11 compatibility; Redis 7/8; OpenSSH; SMB; JavaScript, vendor and lint checks; both browser shards; runtime and release contracts | Native AMD64 and ARM64 scans; no publication |
+| Code, tests, dependencies, workflow or mixed PR | Full Python 3.14 partitions; Python 3.11 compatibility; Redis 7/8; OpenSSH with real browser lifecycle; SMB; JavaScript, vendor and lint checks; all 32 browser partitions; Firefox/WebKit fonts; runtime and release contracts | Native AMD64 and ARM64 scans; no publication |
 | Documentation-only PR | Exact-revision classification, documentation contracts and both required aggregates | Both image scans deliberately skipped; no publication |
 | Main push or version tag | Complete reusable Tests workflow once | Native candidates build alongside tests; publish only after all gates pass |
 | Manual exact-SHA test run | Full tests, regardless of changed paths | No publication from the Tests workflow |

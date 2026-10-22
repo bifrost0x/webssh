@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 import sys
 from collections.abc import Mapping
 from itertools import islice
@@ -450,6 +451,8 @@ def log_file_source_operation(
     destination_target_host=None,
     destination_share=None,
     destination_filename=None,
+    old_mode=None,
+    new_mode=None,
 ):
     """Audit one file-source operation using credential-free target fields."""
     operation = str(operation).lower()
@@ -474,6 +477,8 @@ def log_file_source_operation(
         destination_target_host=destination_target_host,
         destination_share=destination_share,
         destination_filename=destination_filename,
+        old_mode=old_mode if isinstance(old_mode, str) and re.fullmatch(r'[0-7]{3}', old_mode) else None,
+        new_mode=new_mode if isinstance(new_mode, str) and re.fullmatch(r'[0-7]{3}', new_mode) else None,
     )
 
 def log_key_upload(username, key_name, success, ip_address):

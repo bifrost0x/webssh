@@ -114,3 +114,44 @@ test('empty library uses existing translations in all six languages', () => {
         assert.equal(state.elements.commandsList.textContent, text);
     }
 });
+
+test('deferred command-library autofocus preserves a scroll made before the timer runs', () => {
+    for (const entryPoint of ['openLibrary', 'libraryButton']) {
+        const timers = [];
+        let scrollTop = 0;
+        let focused = false;
+        let click;
+        const search = {
+            addEventListener() {},
+            focus(options) {
+                focused = true;
+                if (!options?.preventScroll) scrollTop = 0;
+            },
+        };
+        const button = {addEventListener(event, handler) { if (event === 'click') click = handler; }};
+        const window = {
+            CommandWorkspace: {activeSection: 'library', open() {}},
+            addEventListener() {},
+        };
+        const document = {
+            getElementById: id => ({commandLibraryBtn: button, commandSearchInput: search}[id] || null),
+            querySelectorAll: () => [],
+        };
+        vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../static/js/command-library.js'), 'utf8'), {
+            window, document, setTimeout: callback => timers.push(callback),
+        });
+        const library = window.CommandLibrary;
+        library.detectOs = () => {};
+        if (entryPoint === 'openLibrary') library.openLibrary();
+        else {
+            library.setupEventListeners();
+            click();
+        }
+        assert.equal(focused, false, `${entryPoint} keeps deferred autofocus`);
+        assert.equal(timers.length, 1);
+        scrollTop = 680;
+        timers[0]();
+        assert.equal(focused, true, `${entryPoint} still focuses search`);
+        assert.equal(scrollTop, 680, `${entryPoint} must preserve the user's scroll`);
+    }
+});

@@ -19,8 +19,15 @@ from paramiko.sftp import (
     CMD_HANDLE,
     CMD_NAME,
     CMD_OPENDIR,
+    CMD_OPEN,
+    CMD_LSTAT,
+    CMD_FSTAT,
+    CMD_ATTRS,
     CMD_READDIR,
     SFTPError,
+    SFTP_FLAG_CREATE,
+    SFTP_FLAG_EXCL,
+    SFTP_FLAG_WRITE,
 )
 from paramiko.sftp_attr import SFTPAttributes
 import config
@@ -31,6 +38,7 @@ from .paramiko_channels import (
 )
 from .audit_logger import log_info, log_warning, log_error
 from .file_backend import FileReaderLease, FileWriteOutcome
+from .file_mutations import FileMutationError, permission_snapshot
 
 _sftp_cache = {}
 _sftp_cache_lock = Lock()
@@ -133,6 +141,105 @@ class SFTPOperationError(Exception):
 
 
 @contextmanager
+def mutation_session(identifier, *, timeout=10.0, authorize=None):
+    """Own one deadline-bound channel after bounded control-lane admission."""
+    from .file_mutations import FileMutationError
+
+    deadline = time.monotonic() + timeout
+    lock = _get_sftp_lock(identifier)
+    if not lock.acquire(timeout=max(0, timeout)):
+        raise FileMutationError('TIMEOUT')
+    client = None
+    guard = None
+    try:
+        if authorize is not None:
+            authorize()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise FileMutationError('TIMEOUT')
+        ssh_client = get_ssh_client(identifier)
+        if ssh_client is None:
+            raise FileMutationError('NOT_FOUND')
+        client = open_sftp_client(
+            ssh_client.get_transport(), timeout=remaining,
+            operation_timeout=remaining, deadline=deadline,
+        )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise FileMutationError('TIMEOUT')
+        guard = Timer(remaining, client.get_channel().close)
+        guard.daemon = True
+        guard.start()
+        if authorize is not None:
+            authorize()
+        yield client
+    finally:
+        if guard is not None:
+            guard.cancel()
+            # This channel is never reused. A running deadline callback can
+            # only close its own channel, not the next control-lane owner's.
+        if client is not None:
+            try:
+                client.get_channel().close()
+            except Exception:
+                pass
+        lock.release()
+
+
+@contextmanager
+def open_exclusive_file(sftp, path, *, mode=0o600):
+    """Create privately without TRUNC and observe the CLOSE acknowledgement."""
+    from paramiko import SFTPFile
+
+    attributes = SFTPAttributes()
+    attributes.st_mode = mode
+    command, message = sftp._request(
+        CMD_OPEN, sftp._adjust_cwd(path),
+        SFTP_FLAG_WRITE | SFTP_FLAG_CREATE | SFTP_FLAG_EXCL, attributes,
+    )
+    if command != CMD_HANDLE:
+        raise SFTPOperationError('File creation was not confirmed')
+    handle = _bounded_message_binary(message, 'file handle', config.SFTP_MAX_HANDLE_BYTES)
+    if not handle or message.get_remainder():
+        raise RemoteMetadataLimitExceeded('Invalid file handle response')
+
+    class MutationFile(SFTPFile):
+        def stat(self):
+            return mutation_fstat(self.sftp, self)
+
+    remote_file = MutationFile(sftp, handle, 'wb', bufsize=0)
+    try:
+        yield remote_file
+        remote_file.flush()
+    finally:
+        # SFTPFile.close deliberately suppresses some protocol errors. Mark the
+        # handle closed before our single confirmed CLOSE, including on error.
+        remote_file._closed = True
+        sftp._request(CMD_CLOSE, remote_file.handle)
+
+
+def _mutation_attributes(command, message):
+    if command != CMD_ATTRS:
+        raise RemoteMetadataLimitExceeded('Invalid file attribute response')
+    attributes = _bounded_sftp_attributes(message, '', '')
+    if message.get_remainder():
+        raise RemoteMetadataLimitExceeded('Trailing file attributes')
+    return attributes
+
+
+def mutation_lstat(sftp, path):
+    """Read non-following metadata through the existing bounded v3 parser."""
+    command, message = sftp._request(CMD_LSTAT, sftp._adjust_cwd(path))
+    return _mutation_attributes(command, message)
+
+
+def mutation_fstat(sftp, remote_file):
+    """Read handle metadata without Paramiko's unbounded extension parser."""
+    command, message = sftp._request(CMD_FSTAT, remote_file.handle)
+    return _mutation_attributes(command, message)
+
+
+@contextmanager
 def open_bound_reader(session_id, path, *, io_lane='control'):
     """Open one SFTP object and derive all read metadata through FSTAT."""
     safe_path = sanitize_path(path)
@@ -150,14 +257,14 @@ def open_bound_reader(session_id, path, *, io_lane='control'):
 
 
 @contextmanager
-def _open_bound_reader_from_client(sftp, safe_path):
+def _open_bound_reader_from_client(sftp, safe_path, *, bounded_metadata=False):
     """Bind one already-owned SFTP client read to its opened handle."""
     with sftp.file(safe_path, 'rb') as remote_file:
         handle_stat = getattr(remote_file, 'stat', None)
         if not callable(handle_stat):
             raise SFTPOperationError('Remote file metadata unavailable')
         try:
-            file_stat = handle_stat()
+            file_stat = mutation_fstat(sftp, remote_file) if bounded_metadata else handle_stat()
             mode = getattr(file_stat, 'st_mode', None)
             size = getattr(file_stat, 'st_size', None)
             modified = getattr(file_stat, 'st_mtime', None)
@@ -1610,6 +1717,8 @@ def write_file_text(
     bytes opened by the editor must still be current before a temp file is
     staged; direct truncating overwrite is never used as a fallback.
     """
+    from .file_mutations import FileMutationError, permission_snapshot
+
     try:
         safe_path = sanitize_path(path)
         if safe_path is None:
@@ -1627,11 +1736,18 @@ def write_file_text(
         except UnicodeEncodeError:
             data = text.encode('utf-8')
 
-        tmp_path = safe_path + '.webssh-tmp-' + os.urandom(4).hex()
+        tmp_path = safe_path + '.webssh-tmp-' + secrets.token_hex(12)
 
-        with sftp_session(session_id) as (sftp, source_type):
+        with mutation_session(session_id) as sftp:
             maximum = getattr(config, 'MAX_EDITOR_FILE_SIZE', 5 * 1024 * 1024)
-            with _open_bound_reader_from_client(sftp, safe_path) as lease:
+            with _open_bound_reader_from_client(sftp, safe_path, bounded_metadata=True) as lease:
+                metadata = permission_snapshot(mutation_fstat(sftp, lease.reader))
+                if metadata['special_bits']:
+                    return FileWriteOutcome(
+                        success=False,
+                        error='Editing files with special permission bits is not supported.',
+                        code='EDIT_METADATA_UNSUPPORTED',
+                    )
                 if lease.size > maximum:
                     return FileWriteOutcome(
                         success=False,
@@ -1653,26 +1769,59 @@ def write_file_text(
                     ),
                     code='EDIT_CONFLICT',
                 )
+            rename_started = False
             try:
-                with sftp.file(tmp_path, 'wb') as remote_file:
+                if permission_snapshot(mutation_lstat(sftp, safe_path)) != metadata:
+                    raise FileMutationError('METADATA_CHANGED')
+                with open_exclusive_file(sftp, tmp_path) as remote_file:
                     remote_file.write(data)
+                    # Replacing the inode must not silently change known owner
+                    # or group. ACL preservation is outside the SFTP-v3 contract.
+                    staged = permission_snapshot(remote_file.stat())
+                    if any(staged.get(key) != metadata.get(key) for key in ('uid', 'gid')):
+                        return FileWriteOutcome(
+                            success=False,
+                            error='The file owner or group cannot be preserved by this save method.',
+                            code='EDIT_METADATA_UNSUPPORTED',
+                        )
+                    remote_file.chmod(int(metadata['mode'], 8))
+                    if permission_snapshot(remote_file.stat())['mode'] != metadata['mode']:
+                        raise FileMutationError('MODE_MISMATCH')
+                if permission_snapshot(mutation_lstat(sftp, safe_path)) != metadata:
+                    raise FileMutationError('METADATA_CHANGED')
+                # Check bytes again after staging; this detects observed edits,
+                # without claiming a server-side atomic compare-and-swap.
+                with _open_bound_reader_from_client(sftp, safe_path, bounded_metadata=True) as current:
+                    if current.size > maximum or hashlib.sha256(current.reader.read(maximum + 1)).hexdigest() != current_revision:
+                        raise FileMutationError('METADATA_CHANGED')
                 try:
+                    rename_started = True
                     sftp.posix_rename(tmp_path, safe_path)
-                except (IOError, OSError, AttributeError):
+                except AttributeError:
+                    rename_started = False
                     raise SFTPOperationError(
                         'Atomic replacement is unavailable'
                     )
-            except Exception:
-                # Best-effort cleanup of the temp file on failure.
-                try:
-                    sftp.remove(tmp_path)
-                except Exception:
-                    pass
+            except Exception as error:
+                # A lost rename reply cannot establish which object now owns
+                # either pathname. Never remove an unbound path as rollback.
+                if rename_started and getattr(error, 'sftp_status', None) is None:
+                    return FileWriteOutcome(
+                        success=False,
+                        error='The save result could not be confirmed. Keep your draft and reopen the file before saving again.',
+                        code='SAVE_OUTCOME_UNKNOWN',
+                    )
                 raise
 
         return FileWriteOutcome(
             success=True,
             revision=hashlib.sha256(data).hexdigest(),
+        )
+    except FileMutationError as e:
+        return FileWriteOutcome(
+            success=False,
+            error=str(e),
+            code='EDIT_CONFLICT' if e.code == 'METADATA_CHANGED' else 'EDIT_METADATA_UNSUPPORTED',
         )
     except SFTPOperationError as e:
         return FileWriteOutcome(success=False, error=public_sftp_error(e))

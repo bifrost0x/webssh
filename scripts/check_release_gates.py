@@ -5,8 +5,8 @@ import os
 
 
 REQUIRED = frozenset({
-    'dispatch-integrity', 'dependency-locks', 'pytest', 'redis-rate-limiter',
-    'ssh-integration', 'smb-integration', 'browser-e2e-shards', 'browser-e2e',
+    'dispatch-integrity', 'dependency-locks', 'pytest-shards', 'pytest', 'redis-rate-limiter',
+    'ssh-integration', 'smb-integration', 'browser-e2e-shards', 'browser-fonts', 'browser-e2e',
     'container-threading-smoke', 'release-contract',
 })
 

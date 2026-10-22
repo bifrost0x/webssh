@@ -39,6 +39,11 @@ services:
 
       # Optional configuration
 
+      # Optional single-object Unix permissions (disabled by default).
+      # Uncomment to enable for all users, then recreate: docker compose up -d --force-recreate webssh
+      # Requires SFTP lsetstat@openssh.com v1 and remote permission to chmod; no SMB support.
+      # - SFTP_CHMOD_ENABLED=true
+
       # Reviewed service/container actions, process TERM and reboot over SSH.
       # Read-only server inspection remains available without this switch.
       # - SERVER_OPERATIONS_ENABLED=true

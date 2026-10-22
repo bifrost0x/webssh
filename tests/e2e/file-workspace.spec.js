@@ -98,7 +98,7 @@ test('split file toolbars expose every action without horizontal scrolling', asy
 
     for (const side of ['Left', 'Right']) {
         const toolbar = page.locator(`#fm${side}Pane .fm-pane-toolbar`);
-        await expect(toolbar.locator('[data-pane-action]')).toHaveCount(7);
+        await expect(toolbar.locator('[data-pane-action]')).toHaveCount(9);
         expect(await toolbar.evaluate(element => element.scrollWidth <= element.clientWidth + 1))
             .toBe(true);
         await expect(toolbar.locator('[data-pane-action="delete"]')).toBeInViewport();
@@ -120,9 +120,9 @@ test.describe('touch file workspace', () => {
             await page.setViewportSize({ width: viewportWidth, height: 844 });
             for (const side of sides) {
                 const widths = await page.locator(
-                    `#fm${side}Pane .fm-pane-toolbar button:nth-child(n + 3)`,
+                    `#fm${side}Pane .fm-pane-toolbar button:not([hidden])`,
                 ).evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width));
-                expect(widths).toHaveLength(5);
+                expect(widths).toHaveLength(8);
                 expect(Math.min(...widths), `${viewportWidth}px ${side}: ${widths.join(', ')}`)
                     .toBeGreaterThanOrEqual(44);
             }
@@ -761,7 +761,9 @@ test.describe('mobile touch File Manager', () => {
             type: 'touchStart',
             touchPoints: [{ x: fileX, y: fileY }],
         });
-        await page.waitForTimeout(550);
+        // Hold until the browser has handled its long-press timer. A fixed
+        // wall-clock sleep can release the pointer before a busy renderer runs it.
+        await expect(page.locator('#fmActionSheet')).toHaveClass(/visible/);
         await client.send('Input.dispatchTouchEvent', {
             type: 'touchEnd',
             touchPoints: [],

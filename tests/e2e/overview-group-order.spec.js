@@ -2,6 +2,11 @@ const {test, expect} = require('playwright/test');
 const {login, assertNoExternalRequests, installSshConnectTrap} = require('./helpers');
 
 async function fixtures(page) {
+    // Reloads request both lists again; fixture IDs must outlive those responses.
+    await expect.poll(() => page.evaluate(() => (
+        window.ProfileManager?.profilesLoaded === true
+        && window.JumpHostManager?.loaded === true
+    ))).toBe(true);
     await page.evaluate(() => {
         JumpHostManager.setJumpHosts([{id:'arrange-jump',name:'Bastion'}]);
         ProfileManager.setProfiles([

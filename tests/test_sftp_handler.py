@@ -84,11 +84,12 @@ def test_directory_and_editor_save_report_permission_failure(monkeypatch):
     import app.sftp_handler as sftp_handler
 
     @contextmanager
-    def denied_session(_identifier):
+    def denied_session(_identifier, **_kwargs):
         raise PermissionError(errno.EACCES, 'Permission denied', '/private/key')
         yield
 
     monkeypatch.setattr(sftp_handler, 'sftp_session', denied_session)
+    monkeypatch.setattr(sftp_handler, 'mutation_session', denied_session)
 
     files, listing_error = sftp_handler.list_directory('session', '/private')
     save = sftp_handler.write_file_text('session', '/private/key', 'updated')

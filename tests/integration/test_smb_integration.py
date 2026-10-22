@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import os
 from threading import Event
+from types import SimpleNamespace
 
-from app.file_sources import ResolvedFileSource
+from app.file_sources import FileCapability, FileSourceUnavailable, ResolvedFileSource
+from app.file_service import FileService
 from app.remote_transfer import TransferBudget, copy_remote_entry
 from app.smb_backend import SMBBackend
 from app.smb_pool import SMBConnectionPool, SMBSourceError
@@ -56,6 +58,8 @@ def run_checks():
             user_id='integration-user',
             cancel_event=Event(),
         )
+        assert FileCapability.CHMOD not in descriptor.capabilities
+        assert FileCapability.CREATE_FILE in descriptor.capabilities
         assert descriptor.access == {
             'list': 'granted',
             'create_file': 'granted',
@@ -70,10 +74,42 @@ def run_checks():
             backend=backend,
         )
 
+        # Even with chmod enabled, direct service calls must reject SMB sources.
+        import config
+        assert config.SFTP_CHMOD_ENABLED is True
+        service = FileService(SimpleNamespace(resolve=lambda *_: source))
+        for operation in (
+            lambda: service.get_file_permissions(
+                descriptor.source_id, user_id=source.user_id, path='/hello.txt',
+            ),
+            lambda: service.set_file_permissions(
+                descriptor.source_id, user_id=source.user_id, path='/hello.txt',
+                mode='777', expected_metadata='not-a-valid-token',
+            ),
+        ):
+            try:
+                operation()
+            except FileSourceUnavailable:
+                pass
+            else:
+                raise AssertionError('SMB source unexpectedly accepted chmod')
+
         listing, error = backend.list_directory(source, '/')
         assert error is None, error
         names = {item['name'] for item in listing}
         assert {'hello.txt', 'Überblick.txt'}.issubset(names)
+        from app.file_mutations import FileMutationError
+        created = backend.create_file(source, '/', 'created-empty.txt')
+        assert created == {'path': '/created-empty.txt', 'size': 0}
+        try:
+            backend.create_file(source, '/', 'created-empty.txt')
+        except FileMutationError as failure:
+            assert failure.code == 'CONFLICT'
+        else:
+            raise AssertionError('exclusive SMB creation overwrote an existing file')
+        # This sticky directory permits creation but denies deleting another
+        # owner's entries: creating a new file must not require DELETE access.
+        assert backend.create_file(source, '/atomic-denied', 'created-only.txt')['size'] == 0
         link = next((item for item in listing if item['name'] == 'escape-link'), None)
         if link is not None:
             assert link['is_dir'] is False

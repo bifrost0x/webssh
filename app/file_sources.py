@@ -21,6 +21,8 @@ class FileCapability(StrEnum):
     LIST = 'list'
     READ = 'read'
     WRITE = 'write'
+    CREATE_FILE = 'create-file'
+    CHMOD = 'chmod'
     MKDIR = 'mkdir'
     RENAME = 'rename'
     DELETE = 'delete'
@@ -62,6 +64,7 @@ SFTP_CAPABILITIES = (
     FileCapability.LIST,
     FileCapability.READ,
     FileCapability.WRITE,
+    FileCapability.CREATE_FILE,
     FileCapability.MKDIR,
     FileCapability.RENAME,
     FileCapability.DELETE,
@@ -276,13 +279,21 @@ def _sftp_descriptor(
     safe_port = str(port or 22)
     safe_username = str(username or 'unknown')
     label = str(display_name) if display_name else f'{safe_username}@{safe_host}'
+    capabilities = SFTP_CAPABILITIES
+    import config
+    if config.SFTP_CHMOD_ENABLED:
+        from .sftp_handler import get_ssh_client
+        client = get_ssh_client(handle_id)
+        transport = client.get_transport() if client is not None else None
+        if getattr(transport, '_webssh_sftp_extensions', {}).get('lsetstat@openssh.com') == '1':
+            capabilities = (*capabilities, FileCapability.CHMOD)
     return FileSourceDescriptor(
         source_id=make_source_id(kind, handle_id),
         kind='sftp',
         label=label,
         endpoint=f'{safe_host}:{safe_port}',
         protocol='SFTP',
-        capabilities=SFTP_CAPABILITIES,
+        capabilities=capabilities,
         ephemeral=kind is FileSourceKind.SFTP_QUICK,
         security={'host_key_verified': True},
     )

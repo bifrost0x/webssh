@@ -135,6 +135,91 @@ def test_direct_password_terminal_roundtrip():
         assert ssh_manager.close_session(session_id) is True
 
 
+def test_file_mutations_are_exclusive_preserve_modes_and_refuse_final_symlink_race(monkeypatch):
+    import hashlib
+    from types import SimpleNamespace
+    from app.file_mutations import FileMutationError
+    from app.paramiko_channels import BoundedSFTPClient
+    from app.sftp_backend import SFTPBackend
+    from app import sftp_handler
+
+    monkeypatch.setattr(config, 'SFTP_CHMOD_ENABLED', True)
+
+    session_id = connect_terminal(password=PASSWORD)
+    source = SimpleNamespace(handle_id=session_id)
+    backend = SFTPBackend()
+    client = ssh_manager.sessions[session_id]['client']
+    from app.paramiko_channels import open_sftp_client
+    sftp = open_sftp_client(client.get_transport(), timeout=5, operation_timeout=5)
+    directory = f'/tmp/webssh-mutations-{uuid.uuid4().hex}'
+    sftp.mkdir(directory, 0o700)
+    try:
+        created = backend.create_file(source, directory, 'new.txt')
+        path = created['path']
+        assert sftp.stat(path).st_size == 0
+        assert stat.S_IMODE(sftp.stat(path).st_mode) == 0o600
+        with pytest.raises(FileMutationError) as conflict:
+            backend.create_file(source, directory, 'new.txt')
+        assert conflict.value.code in {'CONFLICT', 'OUTCOME_UNKNOWN'}
+        sftp.mkdir(directory + '/existing-directory')
+        for name in ['existing-directory']:
+            with pytest.raises(FileMutationError):
+                backend.create_file(source, directory, name)
+
+        before = backend.get_permissions(source, path)
+        result = backend.set_permissions(source, path, 0o750, verify_metadata=lambda current: current == before or pytest.fail('changed snapshot'))
+        assert result['mode'] == '750'
+        outcome = sftp_handler.write_file_text(session_id, path, 'edited', expected_revision=hashlib.sha256(b'').hexdigest())
+        assert outcome.success, outcome.error
+        assert stat.S_IMODE(sftp.stat(path).st_mode) == 0o750
+        with sftp.file(path, 'rb') as remote:
+            assert remote.read() == b'edited'
+        before_directory = backend.get_permissions(source, directory + '/existing-directory')
+        result = backend.set_permissions(source, directory + '/existing-directory', 0o700, verify_metadata=lambda current: current == before_directory or pytest.fail('changed directory'))
+        assert result['mode'] == '700'
+
+        # chmod changes the inode, so a hardlink observes the same mode. This
+        # is an explicit remote-account boundary, not path confinement.
+        alias = directory + '/hardlink'
+        _, stdout, _ = client.exec_command(f'ln -- {path} {alias}')
+        assert stdout.channel.recv_exit_status() == 0
+        result = backend.set_permissions(source, path, 0o000, verify_metadata=lambda _current: None)
+        assert result['mode'] == '000'
+        assert stat.S_IMODE(sftp.stat(alias).st_mode) == 0o000
+        backend.set_permissions(source, path, 0o750, verify_metadata=lambda _current: None)
+        sftp.remove(alias)
+
+        canary = directory + '/canary'
+        backend.create_file(source, directory, 'canary')
+        sftp.symlink(canary, directory + '/existing-link')
+        with pytest.raises(FileMutationError):
+            backend.create_file(source, directory, 'existing-link')
+        with pytest.raises(FileMutationError):
+            backend.get_permissions(source, directory + '/existing-link')
+
+        original = BoundedSFTPClient.set_permissions_no_follow
+
+        def swapped(self, remote_path, mode):
+            self.remove(remote_path)
+            self.symlink(canary, remote_path)
+            return original(self, remote_path, mode)
+
+        monkeypatch.setattr(BoundedSFTPClient, 'set_permissions_no_follow', swapped)
+        with pytest.raises(FileMutationError):
+            backend.set_permissions(source, path, 0o777, verify_metadata=lambda _current: None)
+        assert stat.S_IMODE(sftp.stat(canary).st_mode) == 0o600
+    finally:
+        for entry in sftp.listdir_attr(directory):
+            path = directory + '/' + entry.filename
+            if stat.S_ISDIR(entry.st_mode):
+                sftp.rmdir(path)
+            else:
+                sftp.remove(path)
+        sftp.rmdir(directory)
+        sftp.close()
+        ssh_manager.close_session(session_id)
+
+
 @pytest.mark.parametrize('key_name', ['rsa', 'ed25519', 'ecdsa'])
 def test_direct_key_terminal_roundtrip(key_name):
     key_content = (RUNTIME_DIR / f'{key_name}.pem').read_text(

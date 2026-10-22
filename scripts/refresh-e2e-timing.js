@@ -3,6 +3,7 @@ const path = require('node:path');
 
 const { DEFAULT_FALLBACK_SECONDS } = require('./e2e-sharding');
 const { parseShard } = require('./e2e-sharding');
+const { validateResourceInventory, isExclusiveTest } = require('./e2e-resources');
 
 const BASELINE_PATH = path.join('tests', 'e2e', 'timing-baseline.json');
 
@@ -11,6 +12,7 @@ function buildBaseline(reports, sources) {
         throw new Error('Timing refresh requires one source name per report.');
     }
     const shardCoordinates = [];
+    const shardReports = new Map();
     for (let index = 0; index < reports.length; index += 1) {
         const report = reports[index];
         const source = sources[index];
@@ -30,7 +32,23 @@ function buildBaseline(reports, sources) {
                 throw new Error(`${source} contains a test without a final passed attempt.`);
             }
         }
-        if (report.shard) shardCoordinates.push(parseShard(report.shard));
+        const phase = report.phase ?? 'all';
+        if (!['all', 'exclusive', 'shared'].includes(phase)) throw new Error(`${source} has an unknown timing phase.`);
+        if (!report.shard && phase !== 'all') throw new Error('Phased timing reports require shard coordinates.');
+        const identities = report.tests.map(test => test.identity);
+        if (new Set(identities).size !== identities.length) throw new Error(`${source} contains duplicate test identities.`);
+        if (report.shard) {
+            if (report.discovered < 1) throw new Error(`${source} contains an empty shard phase.`);
+            const coordinate = parseShard(report.shard);
+            shardCoordinates.push(coordinate);
+            const shardKey = `${coordinate.current}/${coordinate.total}`;
+            const entries = shardReports.get(shardKey) || [];
+            entries.push({report, phase});
+            shardReports.set(shardKey, entries);
+            if (phase !== 'all' && report.tests.some(test => isExclusiveTest(test) !== (phase === 'exclusive'))) {
+                throw new Error(`${source} contains tests assigned to the wrong resource phase.`);
+            }
+        }
     }
     if (shardCoordinates.length > 0) {
         if (shardCoordinates.length !== reports.length) {
@@ -39,8 +57,22 @@ function buildBaseline(reports, sources) {
         const totals = new Set(shardCoordinates.map(shard => shard.total));
         const currents = new Set(shardCoordinates.map(shard => shard.current));
         const total = shardCoordinates[0].total;
-        if (totals.size !== 1 || currents.size !== total || reports.length !== total) {
+        if (totals.size !== 1 || currents.size !== total) {
             throw new Error('Timing refresh requires one complete shard set with no duplicates.');
+        }
+        for (const entries of shardReports.values()) {
+            const phases = entries.map(entry => entry.phase).sort();
+            if (!(phases.length === 1 && phases[0] === 'all')
+                    && JSON.stringify(phases) !== JSON.stringify(['exclusive', 'shared'])) {
+                throw new Error('Each shard requires one all report or a complete exclusive/shared phase pair.');
+            }
+        }
+        const tests = reports.flatMap(report => report.tests);
+        if (new Set(tests.map(test => test.identity)).size !== tests.length) {
+            throw new Error('Sharded timing reports contain overlapping test identities.');
+        }
+        if (reports.some(report => report.phase === 'exclusive' || report.phase === 'shared')) {
+            validateResourceInventory(tests);
         }
     }
 

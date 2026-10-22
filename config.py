@@ -521,6 +521,8 @@ COMMAND_CONFIG_MAX_BYTES = _bounded_int_env(
 FILE_CONTROL_MAX_PATH_BYTES = _bounded_int_env(
     'FILE_CONTROL_MAX_PATH_BYTES', 4096, 512, 16 * 1024
 )
+# Explicit operator opt-in; changing permissions requires no-follow support.
+SFTP_CHMOD_ENABLED = os.environ.get('SFTP_CHMOD_ENABLED', 'false').lower() == 'true'
 REMOTE_FILENAME_MAX_BYTES = _bounded_int_env(
     'REMOTE_FILENAME_MAX_BYTES', 4096, 255, 16 * 1024
 )

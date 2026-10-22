@@ -7,15 +7,15 @@ const python = process.env.PYTHON
         : 'python');
 const e2ePort = process.env.WEBSSH_E2E_PORT || '4173';
 const e2eBaseUrl = `http://127.0.0.1:${e2ePort}`;
-const outputDir = process.env.CI
+const outputDir = process.env.WEBSSH_E2E_OUTPUT_DIR || (process.env.CI
     ? 'test-results'
-    : path.join(os.tmpdir(), 'webssh-playwright-results');
+    : path.join(os.tmpdir(), 'webssh-playwright-results'));
 const timingOutput = process.env.WEBSSH_E2E_TIMING_FILE
     || path.join(outputDir, 'e2e-timing-full.json');
 
 module.exports = {
     testDir: './tests/e2e',
-    // Test-level sharding keeps both isolated CI servers evenly loaded.
+    // Test-level sharding keeps independent CI servers evenly loaded.
     fullyParallel: true,
     workers: 1,
     forbidOnly: true,
@@ -28,7 +28,9 @@ module.exports = {
     ],
     use: {
         baseURL: e2eBaseUrl,
-        trace: 'retain-on-failure',
+        // Passing CI cases need no DOM snapshot stream. Failed first attempts
+        // keep screenshots; their existing retry records a complete trace.
+        trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
         screenshot: 'only-on-failure',
     },
     webServer: {
