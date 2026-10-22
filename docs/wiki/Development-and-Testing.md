@@ -120,6 +120,11 @@ The parallel launcher supports Linux and Windows. On other platforms, use the
 individual sequential partition command above.
 Firefox and WebKit font regressions run in parallel on separate ports in one
 mandatory job; both process results must succeed.
+The two 20-terminal transport-load cases reserve their runner before its other
+lanes start. Their partitions are calculated from the current discovery and
+weights; all remaining partitions still run even when one fails.
+Font tests use the digest-pinned official Playwright image matching the locked
+package version, with Python 3.14 and the same test and launch checks.
 
 The Python partitions are computed from the current collection and keep whole
 files together, preserving module/class fixture locality. Run all three:

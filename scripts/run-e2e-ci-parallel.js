@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
+const { assignTests, parseShard } = require('./e2e-sharding');
 
 function parseArguments(argv) {
     const group = argv.find(argument => /^--group=\d+\/\d+$/.test(argument));
@@ -27,6 +28,28 @@ function planGroup({ group, groups, lanes, portBase = 4173 }) {
         const total = groups * lanes;
         return { shard: `${current}/${total}`, name: `shard-${current}-of-${total}`, port: portBase + index };
     });
+}
+
+const exclusiveResourceTests = [
+    'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
+    'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
+];
+
+function classifyExclusiveShards(discovered, shardCount, baseline) {
+    const known = new Set(exclusiveResourceTests);
+    const identities = new Set(discovered.map(item => item.identity));
+    for (const identity of known) {
+        if (!identities.has(identity)) throw new Error(`Missing exclusive resource test: ${identity}`);
+    }
+    for (const item of discovered) {
+        if (item.identity.includes('tests/e2e/terminal-load.spec.js::') && !known.has(item.identity)) {
+            throw new Error(`Unknown exclusive resource test: ${item.identity}`);
+        }
+    }
+    const assignment = assignTests(discovered, shardCount, baseline);
+    return assignment.shards.flatMap((items, index) => (
+        items.some(item => known.has(item.identity)) ? [`${index + 1}/${shardCount}`] : []
+    ));
 }
 
 function readLinuxProcess(pid) {
@@ -121,6 +144,12 @@ function assertSupportedPlatform(platform = process.platform) {
 async function runGroup(config, options = {}) {
     assertSupportedPlatform(options.platform || process.platform);
     const plan = planGroup(config);
+    const exclusive = new Set(options.exclusiveShards || []);
+    for (const shard of exclusive) {
+        if (parseShard(shard).total !== config.groups * config.lanes) {
+            throw new Error('Exclusive resource shard does not match the planned partition count.');
+        }
+    }
     console.log(`E2E runner resources: ${os.availableParallelism()} available CPUs, `
         + `${(os.totalmem() / 1024 ** 3).toFixed(1)} GiB RAM, ${plan.length} browser lanes.`);
     const runner = options.runner || path.join(__dirname, 'run-e2e-ci.js');
@@ -147,8 +176,7 @@ async function runGroup(config, options = {}) {
     };
     signals.on('SIGINT', interrupt);
     signals.on('SIGTERM', interrupt);
-    try {
-        await Promise.all(plan.map(lane => new Promise(resolve => {
+    const runLane = lane => new Promise(resolve => {
             if (interrupted) { resolve(); return; }
             let child;
             try {
@@ -188,7 +216,16 @@ async function runGroup(config, options = {}) {
                 children.delete(child);
                 resolve();
             });
-        })));
+        });
+    try {
+        // A 20-terminal renderer/transport workload needs the runner's CPU.
+        // Complete those lanes serially, then run every remaining lane together.
+        const exclusiveLanes = plan.filter(lane => exclusive.has(lane.shard));
+        const parallelLanes = plan.filter(lane => !exclusive.has(lane.shard));
+        console.log(`E2E resource schedule: exclusive [${exclusiveLanes.map(lane => lane.shard).join(', ')}], `
+            + `then ${parallelLanes.length} parallel lanes.`);
+        for (const lane of exclusiveLanes) await runLane(lane);
+        await Promise.all(parallelLanes.map(runLane));
     } finally {
         await Promise.all(terminationTasks);
         signals.removeListener('SIGINT', interrupt);
@@ -198,10 +235,18 @@ async function runGroup(config, options = {}) {
     return failed ? 1 : 0;
 }
 
+async function main(argv, options = {}) {
+    const config = parseArguments(argv);
+    const discover = options.discover || require('./run-e2e-ci').discover;
+    const baseline = require('../tests/e2e/timing-baseline.json');
+    const exclusiveShards = classifyExclusiveShards(discover(), config.groups * config.lanes, baseline);
+    return (options.runGroup || runGroup)(config, { exclusiveShards });
+}
+
 if (require.main === module) {
-    Promise.resolve().then(() => runGroup(parseArguments(process.argv.slice(2))))
+    Promise.resolve().then(() => main(process.argv.slice(2)))
         .then(code => { process.exitCode = code; })
         .catch(error => { console.error(error.message); process.exitCode = 1; });
 }
 
-module.exports = { parseArguments, planGroup, runGroup, terminateTree, terminateLinuxTree, assertSupportedPlatform };
+module.exports = { main, classifyExclusiveShards, parseArguments, planGroup, runGroup, terminateTree, terminateLinuxTree, assertSupportedPlatform };

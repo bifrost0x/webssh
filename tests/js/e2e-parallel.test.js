@@ -258,3 +258,80 @@ test('Linux cancellation fails when owned processes do not exit before the deadl
         listPids: () => [10], signal() {}, timeoutMs: 0,
     }), /teardown did not complete before its deadline/);
 });
+
+test('exclusive resource lanes finish serially before other lanes, and failures retain all partitions', async () => {
+    const { runGroup } = require(modulePath);
+    const children = new Map();
+    const started = [];
+    const running = runGroup({ group: 1, groups: 1, lanes: 4 }, {
+        exclusiveShards: ['2/4', '4/4'], signals: new EventEmitter(),
+        spawn(_command, _args, options) {
+            const shard = options.env.WEBSSH_E2E_SHARD;
+            started.push(shard);
+            const child = new EventEmitter();
+            children.set(shard, child);
+            return child;
+        },
+    });
+    assert.deepEqual(started, ['2/4']);
+    children.get('2/4').emit('close', 1, null);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(started, ['2/4', '4/4']);
+    children.get('4/4').emit('close', 0, null);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(started, ['2/4', '4/4', '1/4', '3/4']);
+    children.get('1/4').emit('close', 0, null);
+    children.get('3/4').emit('close', 0, null);
+    assert.equal(await running, 1);
+    assert.equal(new Set(started).size, 4);
+});
+
+test('exclusive lane selection follows discovery and the same weighted assignment, never fixed shard numbers', () => {
+    const { classifyExclusiveShards } = require(modulePath);
+    const tests = [
+        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
+        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
+        'tests/e2e/a.spec.js::normal a', 'tests/e2e/b.spec.js::normal b',
+        'tests/e2e/c.spec.js::normal c', 'tests/e2e/d.spec.js::normal d',
+    ].map(identity => ({ identity, selector: identity }));
+    const first = { tests: Object.fromEntries(tests.map((item, i) => [item.identity, 100 - i * 10])) };
+    const second = { tests: Object.fromEntries(tests.map((item, i) => [item.identity, i < 2 ? 1 : 100 - i * 10])) };
+    const before = classifyExclusiveShards(tests, 4, first);
+    const after = classifyExclusiveShards(tests, 4, second);
+    assert.notDeepEqual(before, after);
+    const { assignTests } = require('../../scripts/e2e-sharding');
+    for (const baseline of [first, second]) {
+        const assignment = assignTests(tests, 4, baseline);
+        const expected = assignment.shards.flatMap((items, index) => items.some(item => item.identity.includes('terminal-load.spec.js::')) ? [`${index + 1}/4`] : []);
+        assert.deepEqual(classifyExclusiveShards(tests, 4, baseline), expected);
+    }
+    assert.throws(() => classifyExclusiveShards(tests.slice(1), 4, first), /missing.*resource|resource.*missing/i);
+    assert.throws(() => classifyExclusiveShards([...tests, {
+        identity: 'tests/e2e/terminal-load.spec.js::new unclassified workload', selector: 'unknown',
+    }], 4, first), /unknown.*resource|resource.*unknown/i);
+});
+
+test('the production CLI always classifies the discovered inventory before launching lanes', async () => {
+    const { main } = require(modulePath);
+    const inventory = [
+        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
+        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
+    ].map(identity => ({ identity, selector: identity }));
+    let discoveries = 0;
+    let executions = 0;
+    assert.equal(await main(['--group=1/1', '--lanes=2'], {
+        discover() { discoveries++; return inventory; },
+        runGroup(config, options) {
+            executions++;
+            assert.equal(config.groups * config.lanes, 2);
+            assert.deepEqual(options.exclusiveShards, ['1/2', '2/2']);
+            return 0;
+        },
+    }), 0);
+    assert.equal(discoveries, 1);
+    assert.equal(executions, 1);
+    await assert.rejects(main(['--group=1/1', '--lanes=2'], {
+        discover: () => inventory.slice(1),
+        runGroup() { throw new Error('must not launch an unclassified inventory'); },
+    }), /Missing exclusive resource test/);
+});

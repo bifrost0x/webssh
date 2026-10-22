@@ -541,6 +541,27 @@ def test_font_browsers_and_python_shards_are_required_parallel_gates():
     assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in workflow
 
 
+def test_font_job_uses_version_matched_digest_pinned_browser_runtime():
+    workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
+    fonts = workflow.split('\n  browser-fonts:', 1)[1].split('\n  browser-e2e:', 1)[0]
+    locked = json.loads((ROOT / 'package-lock.json').read_text(encoding='utf-8'))
+    version = locked['packages']['node_modules/playwright']['version']
+    assert re.search(r'^    container:\n      image: mcr\.microsoft\.com/playwright:v'
+                     + re.escape(version) + r'-noble@sha256:[0-9a-f]{64}\n', fonts, re.MULTILINE)
+    assert 'options: --shm-size=1g' in fonts
+    assert '--privileged' not in fonts and '--ipc=host' not in fonts
+    assert 'PLAYWRIGHT_BROWSERS_PATH: /ms-playwright' in fonts
+    assert "python-version: '3.14'" in fonts
+    assert "node-version: '24'" in fonts
+    assert 'run: npm ci' in fonts
+    for browser in ('firefox', 'webkit'):
+        assert 'node scripts/install-ci-chromium.js ' + browser in fonts
+    ldap = fonts.split('- name: Install LDAP build dependencies', 1)[1].split('- name:', 1)[0]
+    assert 'apt-get update' in ldap
+    assert 'apt-get install --yes --no-install-recommends build-essential libldap2-dev libsasl2-dev' in ldap
+    assert 'sudo' not in ldap
+
+
 def test_ci_setup_keeps_safe_dependency_fallbacks():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     assert 'bash scripts/install_ci_test_system_deps.sh' in workflow
