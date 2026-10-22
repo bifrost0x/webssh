@@ -1268,7 +1268,7 @@
                 encoding: this.editEncoding, newline: this.editNewline,
             });
             document.getElementById('editorReviewTarget').textContent = `${this.editTarget.endpoint}\n${this.editTarget.path}`;
-            document.getElementById('editorReviewDiff').textContent = `@@ ${diff.originalLine} @@\n${diff.text}`;
+            window.FileEditDiff.render(document.getElementById('editorReviewDiff'), diff);
             document.getElementById('editorReviewLimited')?.classList[diff.limited ? 'remove' : 'add']('hidden');
             document.getElementById('editorReviewOriginal').value = this.editBaseline;
             document.getElementById('editorReviewEdited').value = content;

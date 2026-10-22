@@ -916,6 +916,7 @@ def create_app(
             ),
             max_editor_file_size=config.MAX_EDITOR_FILE_SIZE,
             smb_enabled=config.SMB_ENABLED,
+            sftp_chmod_enabled=config.SFTP_CHMOD_ENABLED,
             transfer_limits={
                 'uploadBytes': config.MAX_UPLOAD_SIZE,
                 'downloadBytes': config.MAX_DOWNLOAD_SIZE,

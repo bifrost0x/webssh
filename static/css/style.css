@@ -4665,10 +4665,11 @@ body.keyboard-open.notepad-focused .notepad-panel {
 }
 
 .editor-status {
-    margin-left: auto;
+    margin: 0;
     font-size: 12px;
     color: var(--text-muted, var(--text-secondary));
 }
+.editor-status:empty { display: none; }
 
 .editor-content {
     flex: 1;
@@ -4696,28 +4697,57 @@ body.keyboard-open.notepad-focused .notepad-panel {
 .editor-review {
     min-height: 0;
     overflow: auto;
-    padding: 4px;
+    padding: 0 4px;
 }
-
-.editor-review h3 { margin: 0 0 8px; }
-.editor-review p { margin: 8px 0; }
+.file-editor:has(.editor-review:not(.hidden)) > .editor-toolbar { display: none; }
+.editor-review-heading { display: flex; align-items: center; gap: 12px; padding: 4px 0 16px; }
+.editor-review-heading > .material-icons { font-size: 28px; color: var(--accent-primary); }
+.editor-review h3 { margin: 0 0 4px; font-size: 18px; }
+.editor-review p { margin: 4px 0; }
+.editor-review-heading p, .editor-review-explanation, .editor-review-footer > p { color: var(--text-secondary); font-size: 12px; }
+.editor-review-destination { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin-bottom: 16px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; }
+.editor-review-destination > .material-icons { color: var(--text-secondary); }
 .editor-review-target { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); }
+.editor-review-destination .editor-review-target { min-width: 0; margin: 0; font-size: 12px; line-height: 1.6; }
+.editor-diff-legend { display: flex; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 600; }
+.editor-diff-legend span { padding: 4px 10px; border-radius: 4px; }
 .editor-review-diff {
-    padding: 12px;
-    max-height: 35vh;
+    margin: 0;
+    padding: 8px 0;
+    max-height: 38vh;
     overflow: auto;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.65;
     white-space: pre;
 }
+.editor-diff-line { display: block; width: max-content; min-width: 100%; box-sizing: border-box; padding: 0 12px; }
+.editor-diff-line::before { display: inline-block; width: 5ch; margin-right: 12px; text-align: right; color: var(--text-secondary); border-right: 1px solid var(--border-color); padding-right: 12px; }
+.editor-diff-removed { background: color-mix(in srgb, #d73043 14%, var(--bg-primary)); color: var(--text-primary); border-left: 3px solid #d73043; }
+.editor-diff-added { background: color-mix(in srgb, #16884c 14%, var(--bg-primary)); color: var(--text-primary); border-left: 3px solid #16884c; }
+.editor-diff-removed::before { content: attr(data-old-line); }
+.editor-diff-added::before { content: attr(data-new-line); }
+.editor-diff-location, .editor-diff-note { color: var(--text-secondary); font-size: 12px; }
+.editor-diff-location::before, .editor-diff-note::before { content: ''; }
+.editor-review .editor-review-warning { padding: 10px 12px; margin: 12px 0; border: 1px solid var(--warning-color, #b77900); border-radius: 6px; }
+.editor-review-versions { margin: 16px 0; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; }
+.editor-review-versions summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .editor-review-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
 .editor-review-columns label { min-width: 0; }
 .editor-review-columns textarea { height: 220px; margin-top: 4px; }
 .editor-review-actions, .file-editor > .editor-toolbar { flex-wrap: wrap; }
-.editor-review-actions { padding-bottom: 8px; }
-@media (max-width: 600px) { .editor-review-columns { grid-template-columns: minmax(0, 1fr); } }
+.editor-review-footer { position: sticky; bottom: 0; padding: 12px 0 4px; border-top: 1px solid var(--border-color); background: var(--bg-secondary); }
+.editor-review-actions { margin-top: 8px; }
+.editor-review-actions #editorCommitBtn { margin-left: auto; }
+@media (max-width: 600px) {
+    .editor-review-columns { grid-template-columns: minmax(0, 1fr); }
+    .editor-review-actions .btn { flex: 1 1 auto; }
+    .editor-review-actions #editorCommitBtn { width: 100%; margin-left: 0; }
+    .editor-review-diff { max-height: 32vh; font-size: 12px; }
+}
 
 @keyframes spin {
     to { transform: rotate(360deg); }

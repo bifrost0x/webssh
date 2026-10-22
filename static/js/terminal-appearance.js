@@ -87,6 +87,28 @@
     }
     const getPreferences = () => preferences;
     const setPreferences = value => { preferences = {...value}; };
+    const terminalFontLoads = new WeakMap();
+
+    function applyLoadedFont(manager) {
+        const family = resolve(preferences, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options.fontFamily;
+        // Unselected preview fonts must not resize live server PTYs.
+        if (Object.values(manager.terminals).some(terminal => terminal.options.fontFamily !== family)) {
+            manager.applyThemeToAll();
+        }
+    }
+    function loadForTerminal(manager) {
+        if (!Object.keys(manager.terminals).length) return Promise.resolve();
+        const family = preferences.font_family;
+        const pending = terminalFontLoads.get(manager);
+        if (pending && pending.family === family) return pending.promise;
+        const promise = Promise.all([loadFont(family), loadFont(symbolFont)]).then(() => {
+            if (preferences.font_family === family) applyLoadedFont(manager);
+        }).finally(() => {
+            if (terminalFontLoads.get(manager)?.promise === promise) terminalFontLoads.delete(manager);
+        });
+        terminalFontLoads.set(manager, {family, promise});
+        return promise;
+    }
 
     function init() {
         const modal = document.getElementById('terminalAppearanceModal');
@@ -139,9 +161,16 @@
             const revision = ++previewRevision;
             const bundled = Object.hasOwn(bundledFonts, family);
             fontStatus.textContent = t(bundled ? 'terminalAppearance.fontLoading' : 'terminalAppearance.localPreview');
-            const [loaded, iconsLoaded] = await Promise.all([loadFont(family), loadFont(symbolFont)]);
+            const selectedFont = loadFont(family).then(loaded => {
+                // An icon-font retry can remain pending in some browsers. Report
+                // the selected text font's result without waiting for that retry.
+                if (revision === previewRevision && bundled) {
+                    fontStatus.textContent = t(loaded ? 'terminalAppearance.fontReady' : 'terminalAppearance.fontFailed');
+                }
+                return loaded;
+            });
+            const [, iconsLoaded] = await Promise.all([selectedFont, loadFont(symbolFont)]);
             if (revision !== previewRevision) return;
-            if (bundled) fontStatus.textContent = t(loaded ? 'terminalAppearance.fontReady' : 'terminalAppearance.fontFailed');
             if (!iconsLoaded) fontStatus.textContent = t('terminalAppearance.iconsFailed');
             if (preview && modal.classList.contains('show')) {
                 Object.assign(preview.options, resolve(draft, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options);
@@ -256,29 +285,18 @@
         };
         window.addEventListener('resize', refreshPreview);
         window.addEventListener('themeChanged', refreshPreview);
-        function applyLoadedFont() {
-            const family = resolve(preferences, manager.buildTheme(), manager.getMonoFont(), manager.getResponsiveFontSize()).options.fontFamily;
-            // Loading an unselected preview font must not reapply the live theme
-            // or send unsolicited PTY resizes to running full-screen programs.
-            if (Object.values(manager.terminals).some(terminal => terminal.options.fontFamily !== family)) {
-                manager.applyThemeToAll();
-            }
-        }
         function refreshSavedFont() {
-            const family = preferences.font_family;
-            Promise.all([loadFont(family), loadFont(symbolFont)]).then(() => {
-                if (preferences.font_family === family) applyLoadedFont();
-            });
+            return loadForTerminal(manager);
         }
         // A timed-out font can still finish later. Refit both live sessions and
         // the preview then, without changing the user's selection.
         document.fonts?.addEventListener?.('loadingdone', () => {
-            applyLoadedFont();
+            applyLoadedFont(manager);
             if (preview && modal.classList.contains('show')) updatePreview();
         });
         refreshSavedFont();
         manager.updateAppearanceSurface();
     }
     if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', init);
-    return {resolve, getPreferences, setPreferences, bundledFonts, loadFont, samples};
+    return {resolve, getPreferences, setPreferences, bundledFonts, loadFont, loadForTerminal, samples};
 }));

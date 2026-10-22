@@ -99,3 +99,42 @@ test('switching file source requires draft confirmation and invalidates a prior 
     await page.evaluate(() => window.FilePreview.commitReviewedEdit());
     expect(await page.evaluate(() => window.__reviewSaves.length)).toBe(0);
 });
+
+for (const width of [390, 1536]) {
+    test(`review confirmation separates literal colored changes and final actions at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 960 });
+        await page.locator('#editorContent').fill('café\n<img src=x onerror="window.__reviewInjected=true">\n');
+        await page.locator('#editorSaveBtn').click();
+        await expect(page.locator('#editorSaveBtn')).toBeHidden();
+        await expect(page.locator('#editorReview .editor-review-heading')).toBeVisible();
+        await expect(page.locator('#editorReviewDiff .editor-diff-removed')).toContainText('-old');
+        await expect(page.locator('#editorReviewDiff .editor-diff-added')).toContainText('+<img');
+        await expect(page.locator('#editorReviewDiff .editor-diff-removed')).toHaveAttribute('data-old-line', '2');
+        await expect(page.locator('#editorReviewDiff .editor-diff-added')).toHaveAttribute('data-new-line', '2');
+        expect(await page.locator('#editorReviewDiff img').count()).toBe(0);
+        expect(await page.evaluate(() => window.__reviewInjected)).toBeUndefined();
+        expect(await page.locator('#editorReview').evaluate(el => el.getBoundingClientRect().right <= innerWidth)).toBe(true);
+        await expect(page.locator('#editorCommitBtn')).toBeVisible();
+        await page.screenshot({ path: test.info().outputPath('review-confirmation.png') });
+        await page.locator('#editorBackBtn').click();
+        await expect(page.locator('#editorSaveBtn')).toBeVisible();
+        expect(await page.evaluate(() => window.__reviewSaves.length)).toBe(0);
+    });
+}
+
+test('unknown save retains the draft and exposes recovery actions immediately', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 960 });
+    await page.locator('#editorContent').fill('keep this recovery draft');
+    await page.locator('#editorSaveBtn').click();
+    await page.locator('#editorCommitBtn').click();
+    await page.evaluate(() => window.FilePreview.interruptSave());
+    await expect(page.locator('#editorReview')).toBeHidden();
+    await expect(page.locator('#editorContent')).toHaveValue('keep this recovery draft');
+    await expect(page.locator('#editorDraftBtn')).toBeVisible();
+    await expect(page.locator('#editorReloadBtn')).toBeVisible();
+    await expect(page.locator('#editorCommitBtn')).toBeDisabled();
+    const downloading = page.waitForEvent('download');
+    await page.locator('#editorDraftBtn').click();
+    expect(await fs.readFile(await (await downloading).path(), 'utf8')).toBe('keep this recovery draft');
+    expect(await page.evaluate(() => window.__reviewSaves.length)).toBe(1);
+});
