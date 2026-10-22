@@ -1,11 +1,13 @@
 
 const translations = {
     en: {
+        'fm.batchInspectionTimeout': "Permissions inspection timed out. Reopen this dialog.",
+        'fm.batchMetadataChanged': "Metadata changed since inspection. Close and reopen this dialog before trying again.",
         'editor.reviewBeforeSaving': "Check the target and changes before saving.",
         'editor.removedLines': "− Removed",
         'editor.addedLines': "+ Added",
         'fm.selectedItems': "selected items",
-        'fm.batchPermissionsHint': "Applies the same mode to each selected item, without recursion (up to 20 items). Stops on the first error; completed changes remain. Inspected metadata expires after 60 seconds.",
+        'fm.batchPermissionsHint': "Applies the same mode to each selected item, without recursion (up to 20 items). Rechecks the original metadata before each write and stops on the first error; completed changes remain.",
         'fm.batchPending': "Pending",
         'fm.batchInspected': "Inspected",
         'fm.batchCompleted': "Changed",
@@ -1791,11 +1793,13 @@ const translations = {
 
 
     vi: {
+        'fm.batchInspectionTimeout': "Kiểm tra quyền đã hết thời gian chờ. Hãy mở lại hộp thoại này.",
+        'fm.batchMetadataChanged': "Siêu dữ liệu đã thay đổi từ lần kiểm tra. Đóng rồi mở lại hộp thoại trước khi thử lại.",
         'editor.reviewBeforeSaving': "Kiểm tra đích và thay đổi trước khi lưu.",
         'editor.removedLines': "− Đã xóa",
         'editor.addedLines': "+ Đã thêm",
         'fm.selectedItems': "mục đã chọn",
-        'fm.batchPermissionsHint': "Áp dụng cùng chế độ cho từng mục đã chọn, không đệ quy (tối đa 20 mục). Dừng khi có lỗi đầu tiên; các thay đổi đã thực hiện vẫn giữ nguyên. Siêu dữ liệu đã kiểm tra hết hạn sau 60 giây.",
+        'fm.batchPermissionsHint': "Áp dụng cùng chế độ cho từng mục đã chọn, không đệ quy (tối đa 20 mục). Kiểm tra lại siêu dữ liệu ban đầu trước mỗi lần ghi và dừng khi có lỗi đầu tiên; các thay đổi đã thực hiện vẫn giữ nguyên.",
         'fm.batchPending': "Đang chờ",
         'fm.batchInspected': "Đã kiểm tra",
         'fm.batchCompleted': "Đã thay đổi",
@@ -3580,11 +3584,13 @@ const translations = {
     },
 
     de: {
+        'fm.batchInspectionTimeout': "Die Rechteprüfung hat zu lange gedauert. Öffne diesen Dialog erneut.",
+        'fm.batchMetadataChanged': "Die Metadaten haben sich seit der Prüfung geändert. Schließe den Dialog und öffne ihn vor einem neuen Versuch erneut.",
         'editor.reviewBeforeSaving': "Prüfe Ziel und Änderungen vor dem Speichern.",
         'editor.removedLines': "− Entfernt",
         'editor.addedLines': "+ Hinzugefügt",
         'fm.selectedItems': "ausgewählte Objekte",
-        'fm.batchPermissionsHint': "Setzt denselben Modus für jedes ausgewählte Objekt, ohne Rekursion (bis zu 20 Objekte). Stoppt beim ersten Fehler; bereits erfolgte Änderungen bleiben bestehen. Geprüfte Metadaten laufen nach 60 Sekunden ab.",
+        'fm.batchPermissionsHint': "Setzt denselben Modus für jedes ausgewählte Objekt, ohne Rekursion (bis zu 20 Objekte). Prüft vor jedem Schreiben die ursprünglichen Metadaten erneut und stoppt beim ersten Fehler; erfolgte Änderungen bleiben bestehen.",
         'fm.batchPending': "Ausstehend",
         'fm.batchInspected': "Geprüft",
         'fm.batchCompleted': "Geändert",
@@ -5368,11 +5374,13 @@ const translations = {
     },
 
     fr: {
+        'fm.batchInspectionTimeout': "La vérification des permissions a expiré. Rouvrez cette boîte de dialogue.",
+        'fm.batchMetadataChanged': "Les métadonnées ont changé depuis la vérification. Fermez puis rouvrez cette boîte de dialogue avant de réessayer.",
         'editor.reviewBeforeSaving': "Vérifiez la cible et les modifications avant d’enregistrer.",
         'editor.removedLines': "− Supprimé",
         'editor.addedLines': "+ Ajouté",
         'fm.selectedItems': "éléments sélectionnés",
-        'fm.batchPermissionsHint': "Applique le même mode à chaque élément, sans récursion (20 éléments maximum). S’arrête à la première erreur ; les modifications effectuées sont conservées. Les métadonnées vérifiées expirent après 60 secondes.",
+        'fm.batchPermissionsHint': "Applique le même mode à chaque élément, sans récursion (20 éléments maximum). Revérifie les métadonnées initiales avant chaque écriture et s’arrête à la première erreur ; les modifications effectuées restent.",
         'fm.batchPending': "En attente",
         'fm.batchInspected': "Vérifié",
         'fm.batchCompleted': "Modifié",
@@ -7156,11 +7164,13 @@ const translations = {
     },
 
     es: {
+        'fm.batchInspectionTimeout': "La comprobación de permisos agotó el tiempo de espera. Vuelva a abrir este diálogo.",
+        'fm.batchMetadataChanged': "Los metadatos cambiaron desde la comprobación. Cierre y vuelva a abrir este diálogo antes de reintentar.",
         'editor.reviewBeforeSaving': "Compruebe el destino y los cambios antes de guardar.",
         'editor.removedLines': "− Eliminado",
         'editor.addedLines': "+ Añadido",
         'fm.selectedItems': "elementos seleccionados",
-        'fm.batchPermissionsHint': "Aplica el mismo modo a cada elemento, sin recursión (máximo 20). Se detiene al primer error; los cambios realizados se conservan. Los metadatos comprobados caducan tras 60 segundos.",
+        'fm.batchPermissionsHint': "Aplica el mismo modo a cada elemento, sin recursión (máximo 20). Vuelve a comprobar los metadatos originales antes de cada escritura y se detiene al primer error; los cambios realizados se conservan.",
         'fm.batchPending': "Pendiente",
         'fm.batchInspected': "Comprobado",
         'fm.batchCompleted': "Modificado",
@@ -8944,11 +8954,13 @@ const translations = {
     },
 
     zh: {
+        'fm.batchInspectionTimeout': "权限检查超时。请重新打开此对话框。",
+        'fm.batchMetadataChanged': "元数据自检查后已更改。请关闭并重新打开此对话框后再试。",
         'editor.reviewBeforeSaving': "保存前请检查目标和更改。",
         'editor.removedLines': "− 已删除",
         'editor.addedLines': "+ 已添加",
         'fm.selectedItems': "个已选项目",
-        'fm.batchPermissionsHint': "为每个所选项目设置相同模式，不递归（最多 20 项）。遇到首个错误即停止；已完成的更改保留。已检查的元数据在 60 秒后过期。",
+        'fm.batchPermissionsHint': "为每个所选项目设置相同模式，不递归（最多 20 项）。每次写入前重新检查原始元数据，遇到首个错误即停止；已完成的更改保留。",
         'fm.batchPending': "待处理",
         'fm.batchInspected': "已检查",
         'fm.batchCompleted': "已更改",

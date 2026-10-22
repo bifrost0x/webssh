@@ -76,6 +76,34 @@ def test_metadata_token_is_bound_to_user_source_path_snapshot_and_expiry():
             verify_metadata_token(token + 'x', '7', 'sftp-session:a', '/a', snapshot, now=101)
 
 
+def test_batch_fingerprint_stays_stable_only_for_the_same_complete_metadata():
+    from app.file_mutations import FileMutationError, issue_metadata_token, verify_metadata_token
+
+    app = Flask(__name__)
+    app.secret_key = 'unit-test-secret'
+    snapshot = {'mode': '600', 'object_type': 'file', 'special_bits': 0,
+                'size': 2**60, 'modified': 1, 'uid': 1000, 'gid': 1000}
+    with app.app_context():
+        original = issue_metadata_token('7', 'sftp-session:a', '/a', snapshot, now=100)
+        refreshed = issue_metadata_token('7', 'sftp-session:a', '/a', snapshot, now=200)
+        assert original != refreshed
+        assert original.split('.')[1] == refreshed.split('.')[1]
+        verify_metadata_token(refreshed, '7', 'sftp-session:a', '/a', snapshot, now=201)
+        with pytest.raises(FileMutationError):
+            verify_metadata_token(original, '7', 'sftp-session:a', '/a', snapshot, now=201)
+        # Compare the server fingerprint, not rounded JavaScript metadata:
+        # a one-byte change above Number.MAX_SAFE_INTEGER must still differ.
+        changes = [{'mode': '640'}, {'object_type': 'directory'}, {'special_bits': 0o1000},
+                   {'size': 2**60 + 1}, {'modified': 2}, {'uid': 1001}, {'gid': 1001}]
+        for change in changes:
+            changed = issue_metadata_token('7', 'sftp-session:a', '/a', {**snapshot, **change}, now=200)
+            assert changed.split('.')[1] != original.split('.')[1]
+        for user, source, path in [('8', 'sftp-session:a', '/a'),
+                                   ('7', 'sftp-session:b', '/a'), ('7', 'sftp-session:a', '/b')]:
+            changed = issue_metadata_token(user, source, path, snapshot, now=200)
+            assert changed.split('.')[1] != original.split('.')[1]
+
+
 @pytest.mark.parametrize('error, code', [
     (PermissionError('private'), 'PERMISSION_DENIED'),
     (FileExistsError('private'), 'CONFLICT'),

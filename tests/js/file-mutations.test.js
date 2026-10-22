@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 global.window = {};
 const { validLeaf, validMode, FileMutationDialog } = require('../../static/js/file-mutation-dialog.js');
 
@@ -57,23 +58,40 @@ test('mutation response requires the pending source, request and operation', () 
     assert.equal(FileMutationDialog.handle(manager, { request_id: 'r', source_id: 'sftp-session:a' }, 'create_file'), false);
 });
 
-test('bulk permissions retain each inspected token and stop on conflict', () => {
+function signedFixture(snapshot = {}, stamp = 100) {
+    return `${stamp}.${createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')}.${'c'.repeat(64)}`;
+}
+
+function recheckDialog(snapshots = [{ mode: '600', path: '/a' }, { mode: '600', path: '/b' }]) {
     const dialog = Object.create(FileMutationDialog.prototype);
     const sent = [];
     Object.assign(dialog, {
         batch: true, batchPhase: 'applying', batchIndex: 0,
-        targets: [{ path: '/a', metadataToken: 'a-token', originalMode: '600', outcome: 'pending' },
-            { path: '/b', metadataToken: 'b-token', originalMode: '600', outcome: 'pending' }],
+        targets: snapshots.map(snapshot => ({ path: snapshot.path, metadataToken: signedFixture(snapshot),
+            metadataFingerprint: signedFixture(snapshot).split('.')[1], originalMode: snapshot.mode, outcome: 'inspected' })),
         applyMode: '640', closed: false, isCurrent: () => true,
         send: (operation, fields) => sent.push({ operation, fields }),
-        renderBatch() {}, update() {}, status: {}, mode: { value: '640' },
-        manager: { t: (_, fallback) => fallback, refreshSource() {} }, target: { sourceId: 'sftp:a' },
+        renderBatch() {}, update() {}, syncChecks() {}, status: {}, mode: { value: '640' },
+        manager: { t: (_, fallback) => fallback, refreshSource() {}, socket: { connected: true } }, target: { sourceId: 'sftp:a' },
     });
+    return { dialog, sent };
+}
+
+function metadata(snapshot, stamp = 200) {
+    return { mode: snapshot.mode, object_type: 'file', special_bits: 0, metadata_token: signedFixture(snapshot, stamp) };
+}
+
+test('bulk permissions recheck each fingerprint, use the fresh token and stop on server conflict', () => {
+    const snapshot = { mode: '600', path: '/a' };
+    const { dialog, sent } = recheckDialog();
     dialog.advanceBatch();
-    assert.deepEqual(sent[0], { operation: 'set_file_permissions', fields: { path: '/a', mode: '640', expected_metadata: 'a-token' } });
+    assert.deepEqual(sent, [{ operation: 'get_file_permissions', fields: { path: '/a' } }]);
+    dialog.receiveBatch(metadata(snapshot), 'get_file_permissions', false);
+    assert.deepEqual(sent[1], { operation: 'set_file_permissions', fields: { path: '/a', mode: '640', expected_metadata: signedFixture(snapshot, 200) } });
+    assert.notEqual(sent[1].fields.expected_metadata, dialog.targets[0].metadataToken);
     dialog.pendingId = 'r';
     dialog.receive({ request_id: 'r', code: 'METADATA_CHANGED', error: 'Changed.' }, 'set_file_permissions', true);
-    assert.equal(sent.length, 1);
+    assert.equal(sent.length, 2);
     assert.equal(dialog.targets[0].outcome, 'failed');
     assert.equal(dialog.targets[1].outcome, 'not-sent');
     assert.equal(dialog.batchPhase, 'stopped');
@@ -110,21 +128,19 @@ test('a stopped in-flight write remains unknown until its correlated result', ()
     assert.equal(refreshed, 1);
 });
 
-test('bulk completion preserves skipped targets and refreshes once', () => {
-    const dialog = Object.create(FileMutationDialog.prototype);
-    const sent = [];
+test('bulk completion freshly inspects skipped targets and refreshes once', () => {
+    const snapshots = [{ path: '/a', mode: '600' }, { path: '/b', mode: '750' }];
+    const { dialog, sent } = recheckDialog(snapshots);
     let refreshed = 0;
-    Object.assign(dialog, { batch: true, batchPhase: 'applying', batchIndex: 0, pending: false,
-        targets: [{ path: '/a', originalMode: '600', metadataToken: 'token-a', outcome: 'inspected' },
-            { path: '/b', originalMode: '750', metadataToken: 'token-b', outcome: 'inspected' }],
-        applyMode: '750', closed: false, isCurrent: () => true,
-        send: (operation, fields) => sent.push({ operation, fields }),
-        renderBatch() {}, update() {}, status: {},
-        manager: { t: (_, fallback) => fallback, refreshSource: () => refreshed++ }, target: { sourceId: 'sftp:a' },
-    });
+    dialog.manager.refreshSource = () => refreshed++;
+    dialog.applyMode = '750';
     dialog.advanceBatch();
+    dialog.receiveBatch(metadata(snapshots[0]), 'get_file_permissions', false);
     dialog.receiveBatch({}, 'set_file_permissions', false);
-    assert.equal(sent.length, 1);
+    assert.equal(sent.length, 3);
+    assert.deepEqual(sent[2], { operation: 'get_file_permissions', fields: { path: '/b' } });
+    dialog.receiveBatch(metadata(snapshots[1]), 'get_file_permissions', false);
+    assert.equal(sent.length, 3);
     assert.deepEqual(dialog.targets.map(item => item.outcome), ['completed', 'unchanged']);
     assert.equal(dialog.batchPhase, 'done');
     assert.equal(refreshed, 1);
@@ -169,13 +185,97 @@ test('closed initial inspection cannot start a write or inspect another target',
 test('special bits, symlinks and failed initial inspection cannot enable writes', () => {
     for (const value of [{ special_bits: 0o1000, object_type: 'file' }, { special_bits: 0, object_type: 'symlink' }, { special_bits: 0, object_type: 'file', mode: '7777' }]) {
         const dialog = Object.create(FileMutationDialog.prototype);
-        Object.assign(dialog, { batch: true, batchPhase: 'inspecting', batchIndex: 0, closed: false,
+        Object.assign(dialog, { batch: true, batchPhase: 'inspecting', batchIndex: 0, closed: false, isCurrent: () => true,
             targets: [{ path: '/a', outcome: 'pending' }, { path: '/b', outcome: 'pending' }],
             send() { assert.fail('sent after unsupported metadata'); }, renderBatch() {}, update() {}, status: {},
             manager: { t: (_, fallback) => fallback }, target: {},
         });
-        dialog.receiveBatch({ mode: '600', metadata_token: 'token', ...value }, 'get_file_permissions', false);
+        dialog.receiveBatch({ mode: '600', metadata_token: signedFixture({}), ...value }, 'get_file_permissions', false);
         assert.equal(dialog.batchPhase, 'stopped');
         assert.deepEqual(dialog.targets.map(item => item.outcome), ['failed', 'not-sent']);
+    }
+});
+
+
+test('every full snapshot or binding digest change stops before SET even with the same visible mode', () => {
+    const original = { mode: '600', uid: 7, gid: 8, type: 'file', modified: 123, size: '9007199254740993', user: 1, path: '/a', source: 'sftp:a' };
+    for (const key of Object.keys(original)) {
+        const { dialog, sent } = recheckDialog([original, { mode: '600', path: '/b' }]);
+        dialog.advanceBatch();
+        dialog.receiveBatch({ ...metadata({ ...original, [key]: `changed-${key}` }), mode: '600' }, 'get_file_permissions', false);
+        assert.equal(sent.length, 1, key);
+        assert.equal(dialog.batchPhase, 'stopped', key);
+        assert.deepEqual(dialog.targets.map(item => item.outcome), ['failed', 'not-sent'], key);
+        assert.match(dialog.targets[0].error, /metadata changed/i);
+    }
+});
+
+test('malformed or missing metadata tokens fail closed in initial and fresh inspection', () => {
+    for (const token of [null, undefined, '', 'token', signedFixture({}, 1) + '\n', signedFixture({}).toUpperCase(), `1.${'a'.repeat(63)}.${'b'.repeat(64)}`]) {
+        for (const phase of ['inspecting', 'applying']) {
+            const { dialog, sent } = recheckDialog();
+            dialog.batchPhase = phase;
+            dialog.receiveBatch({ mode: '600', object_type: 'file', special_bits: 0, metadata_token: token }, 'get_file_permissions', false);
+            assert.equal(dialog.batchPhase, 'stopped', `${phase}:${token}`);
+            assert.equal(sent.length, 0);
+        }
+    }
+});
+
+test('recheck answers cannot write after closing, staleness, disconnect or an explicit stop', () => {
+    for (const reason of ['closed', 'stale', 'disconnect', 'stopped']) {
+        const { dialog, sent } = recheckDialog();
+        dialog.advanceBatch();
+        if (reason === 'closed') dialog.closed = true;
+        if (reason === 'stale') dialog.isCurrent = () => false;
+        if (reason === 'disconnect') dialog.manager.socket.connected = false;
+        if (reason === 'stopped') dialog.stopBatch('stop', 'Stopped');
+        dialog.receiveBatch(metadata({ mode: '600', path: '/a' }), 'get_file_permissions', false);
+        assert.equal(sent.length, 1, reason);
+        assert.equal(dialog.batchPhase, 'stopped', reason);
+    }
+});
+
+test('GET timeout cannot claim an unknown chmod outcome, including after close or disconnect', () => {
+    const originalSetTimeout = global.setTimeout;
+    let expire;
+    global.setTimeout = fn => { expire = fn; return 1; };
+    try {
+        for (const stopped of [false, true]) {
+            const { dialog } = recheckDialog();
+            dialog.manager.pendingOperationRequests = new Map();
+            dialog.manager.registerOperationRequest = () => { dialog.manager.pendingOperationRequests.set('r', {}); return 'r'; };
+            dialog.manager.socket.emit = () => {};
+            dialog.send = FileMutationDialog.prototype.send;
+            dialog.send('get_file_permissions', { path: '/a' });
+            if (stopped) dialog.stopBatch('stop', 'Stopped');
+            expire();
+            assert.equal(dialog.targets[0].outcome, stopped ? 'not-sent' : 'failed');
+            assert.equal(dialog.targets[1].outcome, 'not-sent');
+            assert.equal(dialog.uncertain, false);
+            assert.equal(dialog.batchPhase, 'stopped');
+        }
+    } finally { global.setTimeout = originalSetTimeout; }
+});
+
+test('late inspection after a completed write and close or disconnect refreshes once without another SET', () => {
+    for (const reason of ['closed', 'disconnect']) {
+        const { dialog, sent } = recheckDialog();
+        let refreshed = 0;
+        dialog.manager.refreshSource = () => refreshed++;
+        dialog.batchStarted = true;
+        dialog.targets[0].outcome = 'completed';
+        dialog.batchIndex = 1;
+        dialog.pending = true;
+        dialog.pendingId = 'late-get';
+        dialog.stopBatch('stop', 'Stopped');
+        if (reason === 'closed') dialog.closed = true;
+        else dialog.manager.socket.connected = false;
+        assert.equal(refreshed, 0);
+        dialog.receive({ ...metadata({ mode: '600', path: '/b' }), request_id: 'late-get' }, 'get_file_permissions', false);
+        assert.equal(refreshed, 1, reason);
+        assert.equal(sent.length, 0, reason);
+        dialog.refreshBatch();
+        assert.equal(refreshed, 1, reason);
     }
 });

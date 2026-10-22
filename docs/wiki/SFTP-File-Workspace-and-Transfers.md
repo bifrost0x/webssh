@@ -132,10 +132,12 @@ enter an explicit common mode; otherwise the existing mode is shown. Applying
 changes each selected object individually and never changes directory contents.
 For mixed files and directories, choose execute/traversal bits deliberately.
 
-WebSSH inspects every target before enabling Apply, then checks the original
-signed metadata again at each write. Inspection tokens expire after **60 seconds**;
-close and reopen the dialog if they expire. WebSSH does not silently accept a
-replacement object by obtaining a new token. Requests run sequentially and stop
+WebSSH inspects every target before enabling Apply, then reads it again immediately
+before applying its mode. A fresh token is used only if its complete metadata
+fingerprint matches the originally inspected target, including the source, path,
+type, owner, group, mode, size and modification time. This supports slower batches
+without silently accepting changed metadata. The server still enforces the signed
+token's **60-second** lifetime and checks it again before the write. Requests run sequentially and stop
 at the first error, conflict, disconnect or uncertain result. The dialog reports
 each changed, unchanged, failed or unsent item. Completed changes remain; this is
 not an atomic transaction and there is no automatic rollback. Closing the dialog
