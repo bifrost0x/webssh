@@ -33,7 +33,7 @@
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/terminal-windows.css') }}">
     <link rel="stylesheet" href="{{ static_asset_url(filename='css/server-operations.css') }}">
 </head>
-<body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
+<body class="webssh-shell webssh-ui" data-primary-workspace="overview" data-sftp-chmod-enabled="{{ 'true' if sftp_chmod_enabled else 'false' }}" data-sync-terminal-directory="{{ 'true' if sync_terminal_directory else 'false' }}" data-theme="{{ theme|default('glass') }}" data-confirm-session-close="{{ 'true' if confirm_session_close else 'false' }}" data-disconnect-session-action="{{ disconnect_session_action }}" data-connection-history-scope="{{ connection_history_scope }}" data-auth-session-expires-at="{{ auth_session_expires_at }}" data-auth-server-now="{{ auth_server_now }}" data-terminal-appearance="{{ terminal_appearance|default({})|tojson|forceescape }}">
     <script src="{{ static_asset_url(filename='js/theme-preference.js') }}"></script>
 
     <header class="header">
@@ -1594,15 +1594,21 @@
                         <button class="btn btn-secondary" id="editorCancelBtn" data-i18n="editor.cancel">Cancel</button>
                         <button class="btn btn-secondary" id="editorDraftBtn" data-i18n="editor.downloadDraft" hidden>Download draft</button>
                         <button class="btn btn-secondary" id="editorReloadBtn" data-i18n="editor.reopenFile" hidden>Reopen file</button>
-                        <span class="editor-status" id="editorStatus"></span>
                     </div>
+                    <p class="editor-status" id="editorStatus" role="status" aria-live="polite"></p>
                     <textarea class="editor-content" id="editorContent" aria-label="File content" data-i18n-aria-label="editor.fileContent" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
                     <section class="editor-review hidden" id="editorReview" aria-labelledby="editorReviewHeading">
-                        <h3 id="editorReviewHeading" data-i18n="editor.reviewChanges">Review changes</h3>
-                        <p class="editor-review-target" id="editorReviewTarget"></p>
-                        <p data-i18n="editor.reviewExplanation">Removed lines start with -, added lines with +. Nearby edits may appear as one replacement.</p>
-                        <p class="hidden" id="editorReviewLimited" data-i18n="editor.reviewLimited">The comparison is shortened. Inspect both full versions below before saving.</p>
-                        <pre class="editor-review-diff" id="editorReviewDiff" tabindex="0" aria-label="Changes" data-i18n-aria-label="editor.changes"></pre>
+                        <div class="editor-review-heading">
+                            <span class="material-icons" aria-hidden="true">difference</span>
+                            <div><h3 id="editorReviewHeading" data-i18n="editor.reviewChanges">Review changes</h3><p data-i18n="editor.reviewBeforeSaving">Check the target and changes before saving.</p></div>
+                        </div>
+                        <div class="editor-review-destination"><span class="material-icons" aria-hidden="true">description</span><p class="editor-review-target" id="editorReviewTarget"></p></div>
+                        <div class="editor-review-comparison">
+                            <div class="editor-diff-legend"><span class="editor-diff-removed" data-i18n="editor.removedLines">− Removed</span><span class="editor-diff-added" data-i18n="editor.addedLines">+ Added</span></div>
+                            <pre class="editor-review-diff" id="editorReviewDiff" tabindex="0" aria-label="Changes" data-i18n-aria-label="editor.changes"></pre>
+                            <p class="editor-review-explanation" data-i18n="editor.reviewExplanation">Removed lines start with -, added lines with +. Nearby edits may appear as one replacement.</p>
+                        </div>
+                        <p class="editor-review-warning hidden" id="editorReviewLimited" data-i18n="editor.reviewLimited">The comparison is shortened. Inspect both full versions below before saving.</p>
                         <details class="editor-review-versions">
                             <summary data-i18n="editor.fullVersions">Inspect full original and edited text</summary>
                             <div class="editor-review-columns">
@@ -1610,12 +1616,14 @@
                                 <label><span data-i18n="editor.editedText">Edited text</span><textarea class="editor-content" id="editorReviewEdited" readonly wrap="off" spellcheck="false"></textarea></label>
                             </div>
                         </details>
+                        <footer class="editor-review-footer">
                         <p data-i18n="editor.backupExplanation">Optionally download the exact original opened file as a local backup before saving.</p>
                         <div class="editor-toolbar editor-review-actions">
-                            <button class="btn btn-secondary" id="editorBackupBtn" data-i18n="editor.downloadOriginal">Download original</button>
                             <button class="btn btn-secondary" id="editorBackBtn" data-i18n="editor.backToEditing">Back to editing</button>
+                            <button class="btn btn-secondary" id="editorBackupBtn"><span class="material-icons" aria-hidden="true">download</span><span data-i18n="editor.downloadOriginal">Download original</span></button>
                             <button class="btn btn-primary" id="editorCommitBtn" data-i18n="editor.saveReviewed">Save reviewed changes</button>
                         </div>
+                        </footer>
                     </section>
                 </div>
             </div>

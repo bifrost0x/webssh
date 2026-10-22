@@ -16,6 +16,9 @@
             cursor = stop;
             lines++;
         }
+        // A size-limited single line must not merge its old/new excerpts into
+        // one row. The explicit limited warning requires full-version review.
+        if (output && !output.endsWith('\n')) output += '\n';
         return { text: output, limited: cursor < end };
     }
 
@@ -51,5 +54,31 @@
         };
     }
 
-    window.FileEditDiff = Object.freeze({ compare });
+    function render(element, result) {
+        const doc = element.ownerDocument;
+        const fragment = doc.createDocumentFragment();
+        const heading = doc.createElement('span');
+        heading.className = 'editor-diff-line editor-diff-location';
+        heading.textContent = `@@ ${result.originalLine} @@\n`;
+        fragment.appendChild(heading);
+        let oldLine = result.originalLine;
+        let newLine = result.originalLine;
+        // compare() already caps each side at 200 lines / 32 KiB. Text nodes
+        // keep remote file contents literal, including HTML and script markup.
+        const lines = result.text.split('\n');
+        if (lines[lines.length - 1] === '') lines.pop();
+        for (const line of lines) {
+            const row = doc.createElement('span');
+            const removed = line.startsWith('-');
+            const added = line.startsWith('+');
+            row.className = `editor-diff-line editor-diff-${removed ? 'removed' : added ? 'added' : 'note'}`;
+            row.dataset.oldLine = removed ? String(oldLine++) : '';
+            row.dataset.newLine = added ? String(newLine++) : '';
+            row.textContent = `${line}\n`;
+            fragment.appendChild(row);
+        }
+        element.replaceChildren(fragment);
+    }
+
+    window.FileEditDiff = Object.freeze({ compare, render });
 })();

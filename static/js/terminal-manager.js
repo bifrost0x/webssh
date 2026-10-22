@@ -511,6 +511,7 @@ const TerminalManager = {
             this.sessionTerminals[sessionId].push(key);
         }
 
+        window.TerminalAppearance?.loadForTerminal?.(this);
         return terminal;
     },
 

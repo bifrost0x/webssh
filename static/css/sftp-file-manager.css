@@ -3222,6 +3222,11 @@
 .fm-mutation-target { white-space: pre-wrap; overflow-wrap: anywhere; }
 .fm-mutation-hint { font-size: .88rem; }
 .fm-mutation-status { overflow-wrap: anywhere; }
+.fm-mutation-results { margin: 0; padding: 0; list-style: none; max-height: 24vh; overflow: auto; border: 1px solid var(--border-color); border-radius: 6px; }
+.fm-mutation-results li { padding: .5rem .65rem; overflow-wrap: anywhere; font-size: 12px; border-bottom: 1px solid var(--border-color); }
+.fm-mutation-results li:last-child { border-bottom: 0; }
+.fm-mutation-results li[data-outcome="completed"] { border-left: 3px solid var(--success-color, #16884c); }
+.fm-mutation-results li[data-outcome="failed"], .fm-mutation-results li[data-outcome="unknown"] { border-left: 3px solid var(--error-color, #d73043); }
 .fm-permission-grid > div { display: grid; grid-template-columns: 1fr repeat(3, 3rem); align-items: center; gap: .3rem; }
 .fm-permission-grid label { display: flex; align-items: center; gap: .2rem; padding-block: .4rem; }
 .fm-mutation-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; }

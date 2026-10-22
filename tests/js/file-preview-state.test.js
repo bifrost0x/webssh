@@ -21,6 +21,9 @@ function setup() {
         };
     };
     const fields = Object.fromEntries(['editorStatus', 'previewFilename', 'previewSize', 'editorReview', 'editorReviewTarget', 'editorReviewDiff', 'editorReviewLimited', 'editorReviewOriginal', 'editorReviewEdited', 'editorCommitBtn', 'editorBackupBtn'].map(id => [id, { classList: classes(), focus() {} }]));
+    const makeDiffNode = () => ({ dataset: {}, children: [], appendChild(child) { this.children.push(child); } });
+    fields.editorReviewDiff.ownerDocument = { createElement: makeDiffNode, createDocumentFragment: makeDiffNode };
+    fields.editorReviewDiff.replaceChildren = fragment => { fields.editorReviewDiff.children = fragment.children; };
     fields.editorContent = { value: 'one', classList: classes() };
     const events = [];
     const context = { setTimeout: fn => { context.timeout = fn; return 1; }, clearTimeout() {}, window: { confirm: () => true, removeEventListener() {}, addEventListener() {}, ModalManager: { open() {} } }, document: { getElementById: id => fields[id] || null }, socket: { connected: true, emit: (event, data) => events.push({event, data}) }, showNotification() {}, console };

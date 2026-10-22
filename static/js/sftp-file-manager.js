@@ -993,9 +993,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         };
         setDisabled('fmNewFolder', operationLocked || !this.sourceCan(state, 'mkdir'));
         setDisabled('fmNewFile', operationLocked || !this.sourceCan(state, 'create-file'));
-        setDisabled('fmPermissions', operationLocked || selectedCount !== 1 || !this.sourceCan(state, 'chmod'));
+        setDisabled('fmPermissions', operationLocked || selectedCount === 0 || selectedCount > 20 || !this.sourceCan(state, 'chmod'));
         const permissionsButton = document.getElementById('fmPermissions');
-        if (permissionsButton) permissionsButton.hidden = !this.sourceCan(state, 'chmod');
+        if (permissionsButton) {
+            permissionsButton.hidden = !this.sourceCan(state, 'chmod');
+            permissionsButton.title = this.t('fm.batchLimit', 'Select at most 20 items per permissions change.');
+        }
         setDisabled('fmEmbeddedUpload', operationLocked || !this.sourceCan(state, 'write'));
         setDisabled('fmDownload', operationLocked || !this.sourceCan(state, 'read') || selectedCount === 0);
         setDisabled('fmPreview', operationLocked || !this.sourceCan(state, 'preview') || !selectedFile || selectedFile.is_dir);
@@ -1028,7 +1031,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                 const disabled = {
                     newfolder: operationLocked || !this.sourceCan(paneState, 'mkdir'),
                     newfile: operationLocked || !this.sourceCan(paneState, 'create-file'),
-                    permissions: operationLocked || paneSelection !== 1 || !this.sourceCan(paneState, 'chmod'),
+                    permissions: operationLocked || paneSelection === 0 || paneSelection > 20 || !this.sourceCan(paneState, 'chmod'),
                     upload: operationLocked || !this.sourceCan(paneState, 'write'),
                     download: operationLocked || !this.sourceCan(paneState, 'read') || paneSelection === 0,
                     preview: operationLocked || !this.sourceCan(paneState, 'preview') || !onlyFile || onlyFile.is_dir,
@@ -1037,7 +1040,10 @@ class SFTPFileManager extends window.FileDirectoryRequests {
                     delete: operationLocked || !this.sourceCan(paneState, 'delete') || paneSelection === 0,
                 }[action];
                 button.disabled = Boolean(disabled);
-                if (action === 'permissions') button.hidden = !this.sourceCan(paneState, 'chmod');
+                if (action === 'permissions') {
+                    button.hidden = !this.sourceCan(paneState, 'chmod');
+                    button.title = this.t('fm.batchLimit', 'Select at most 20 items per permissions change.');
+                }
             });
             const selectAll = document.querySelector(`[data-pane-select-all="${pane}"]`);
             if (selectAll) {
@@ -1430,6 +1436,7 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         this.modalContent = modal.querySelector('.modal-content');
         this.modalBody = modal.querySelector('.modal-body');
         this.permissionsHelp = modal.querySelector('.fm-permissions-help');
+        this.permissionsHelp.hidden = document.body.dataset.sftpChmodEnabled === 'true';
         this.actionSheet = modal.querySelector('.fm-action-sheet');
 
         this.createQuickConnectModal();
@@ -3560,9 +3567,12 @@ class SFTPFileManager extends window.FileDirectoryRequests {
             setDisabled('rename', selectedCount !== 1 || !this.sourceCan(state, 'rename'));
             setDisabled('newfolder', !this.sourceCan(state, 'mkdir'));
             setDisabled('newfile', !this.sourceCan(state, 'create-file'));
-            setDisabled('permissions', selectedCount !== 1 || !this.sourceCan(state, 'chmod'));
+            setDisabled('permissions', selectedCount === 0 || selectedCount > 20 || !this.sourceCan(state, 'chmod'));
             const permissionsAction = sheet.querySelector('[data-action="permissions"]');
-            if (permissionsAction) permissionsAction.hidden = !this.sourceCan(state, 'chmod');
+            if (permissionsAction) {
+                permissionsAction.hidden = !this.sourceCan(state, 'chmod');
+                permissionsAction.title = this.t('fm.batchLimit', 'Select at most 20 items per permissions change.');
+            }
             setDisabled('delete', selectedCount === 0 || !this.sourceCan(state, 'delete'));
             sheet.classList.toggle('gesture-active', gestureActive);
             sheet.classList.add('visible');
@@ -3751,14 +3761,15 @@ class SFTPFileManager extends window.FileDirectoryRequests {
         if (this.fileOperationBlocked()) return;
         const state = this.panes[pane];
         if (!this.sourceCan(state, 'chmod') || !window.FileMutationDialog) return;
-        if (index === null) {
-            if (state.selected.size !== 1) return;
-            index = Array.from(state.selected)[0];
+        const indices = index === null || state.selected.has(index) ? Array.from(state.selected) : [index];
+        const files = indices.map(value => state.files[value]).filter(Boolean);
+        if (files.length > 20) {
+            this.showNotification(this.t('fm.batchLimit', 'Select at most 20 items per permissions change.'), 'warning');
+            return;
         }
-        const file = state.files[index];
-        if (!file) return;
+        if (files.length === 0) return;
         this.mutationDialog?.close();
-        this.mutationDialog = new window.FileMutationDialog(this, pane, file);
+        this.mutationDialog = new window.FileMutationDialog(this, pane, files.length === 1 ? files[0] : files);
     }
 
     deleteSelected() {

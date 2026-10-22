@@ -102,6 +102,45 @@ test('custom font names never trigger font discovery or URL fetching', async () 
     assert.equal(await appearance.loadFont('WebSSH Source Code Pro', null), false);
 });
 
+test('terminal fonts stay deferred until a terminal exists and share pending loads', async () => {
+    const vm = require('node:vm');
+    const fs = require('node:fs');
+    const calls = [];
+    let complete;
+    const bytes = new Promise(resolve => { complete = resolve; });
+    const context = {
+        module: {exports: {}}, setTimeout, clearTimeout,
+        document: {body: {dataset: {}}, addEventListener() {}, fonts: {
+            load(spec) { calls.push(spec); return bytes; },
+        }},
+    };
+    vm.runInNewContext(fs.readFileSync(require.resolve('../../static/js/terminal-appearance'), 'utf8'), context);
+    const api = context.module.exports;
+    api.setPreferences({font_family: 'WebSSH Hack'});
+    let refreshes = 0;
+    const manager = {
+        terminals: {}, buildTheme: () => base, getMonoFont: () => 'monospace',
+        getResponsiveFontSize: () => 14, applyThemeToAll() { refreshes++; },
+    };
+    await api.loadForTerminal(manager);
+    assert.deepEqual(calls, []);
+    manager.terminals.restored = {options: {fontFamily: 'monospace'}};
+    const first = api.loadForTerminal(manager);
+    const second = api.loadForTerminal(manager);
+    assert.equal(first, second);
+    assert.equal(calls.length, 3);
+    assert.match(calls[2], /WebSSH Nerd Symbols/);
+    // A newly created terminal starts with the current fallback until fonts arrive.
+    assert.equal(refreshes, 0);
+    complete([{}]);
+    await first;
+    await second;
+    assert.equal(refreshes, 1);
+    assert.match(api.resolve(api.getPreferences(), base, 'monospace', 14).options.fontFamily, /WebSSH Hack.*WebSSH Nerd Symbols/);
+    api.setPreferences({});
+    await api.loadForTerminal(manager);
+});
+
 test('preview contains Nerd Font icons from both Unicode private-use planes', () => {
     assert.match(appearance.samples.shell, /\uf07b/);
     assert.match(appearance.samples.characters, /\u{f0004}/u);

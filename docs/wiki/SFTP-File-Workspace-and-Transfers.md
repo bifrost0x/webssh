@@ -87,7 +87,9 @@ the created file.
 
 Permissions are disabled by default. This is an instance-wide operator setting,
 not a personal preference or an Admin-panel toggle. The file manager includes
-an expandable **Enable chmod** help section even when the action is unavailable.
+an expandable **Enable chmod** help section while the instance setting is disabled.
+After activation and a page reload, this setup hint disappears. Missing server
+support or an SMB source does not make this instance-wide hint reappear.
 
 For Docker Compose, remove the leading `#` from this existing optional line under
 the `webssh` service's `environment` section in `docker-compose.yml`:
@@ -123,6 +125,25 @@ Removing owner access can prevent you from accessing the item afterward.
 Known symlinks, special files, and objects with setuid/setgid/sticky bits cannot
 be edited. There is no recursive chmod, chown, or ACL editor.
 
+You can also select up to **20** regular files and/or directories in one pane
+and choose **Permissions** from its toolbar, context menu or mobile actions.
+All selected targets are listed in the dialog. If their current modes differ,
+enter an explicit common mode; otherwise the existing mode is shown. Applying
+changes each selected object individually and never changes directory contents.
+For mixed files and directories, choose execute/traversal bits deliberately.
+
+WebSSH inspects every target before enabling Apply, then reads it again immediately
+before applying its mode. A fresh token is used only if its complete metadata
+fingerprint matches the originally inspected target, including the source, path,
+type, owner, group, mode, size and modification time. This supports slower batches
+without silently accepting changed metadata. The server still enforces the signed
+token's **60-second** lifetime and checks it again before the write. Requests run sequentially and stop
+at the first error, conflict, disconnect or uncertain result. The dialog reports
+each changed, unchanged, failed or unsent item. Completed changes remain; this is
+not an atomic transaction and there is no automatic rollback. Closing the dialog
+stops remaining requests; an already submitted request may still complete.
+Refresh and inspect the remote state before another attempt.
+
 No-follow applies to the final path component, not to every ancestor or to an
 immutable file identity. Use trusted servers and appropriately restricted remote
 accounts. Do not enable this feature for privileged accounts working in directories
@@ -132,6 +153,14 @@ Unix rwx values do not describe every ACL rule. Changing mode can affect POSIX A
 masks; hardlinks share the same inode and therefore the same permissions.
 
 ### Saving and uncertain results
+
+The editor's **Review changes** step separates the target endpoint and path,
+removed and added lines, and final save actions. Red `−` lines show removed
+text; green `+` lines show added text, with their respective line numbers.
+Large comparisons remain bounded and explicitly show when shortened; expand
+the full original/edited versions before saving in that case. **Back to editing**
+keeps the draft, **Download original** preserves the opened file's exact bytes,
+and **Save reviewed changes** saves only the reviewed version.
 
 SFTP editor saves stage content in a privately and exclusively created file,
 retain ordinary rwx permissions, and require atomic replacement. Known special

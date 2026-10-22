@@ -423,15 +423,15 @@ jobs:
         run: |
           WEBSSH_E2E_PORT=4173 \
             WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-firefox.json" \
-            npm run test:e2e -- tests/e2e/session-workspace.spec.js \
+              npm run test:e2e -- tests/e2e/session-workspace.spec.js tests/e2e/terminal-appearance.spec.js \
             --browser=firefox --output="test-results/font-firefox" \
-            --grep='font changes preserve|failed font downloads' &
+              --grep='font changes preserve|failed font downloads|overview defers terminal fonts|restored terminals load their saved fonts' &
           firefox_pid=$!
           WEBSSH_E2E_PORT=4174 \
             WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-webkit.json" \
-            npm run test:e2e -- tests/e2e/session-workspace.spec.js \
+              npm run test:e2e -- tests/e2e/session-workspace.spec.js tests/e2e/terminal-appearance.spec.js \
             --browser=webkit --output="test-results/font-webkit" \
-            --grep='font changes preserve|failed font downloads' &
+              --grep='font changes preserve|failed font downloads|overview defers terminal fonts|restored terminals load their saved fonts' &
           webkit_pid=$!
           firefox_status=0
           webkit_status=0
