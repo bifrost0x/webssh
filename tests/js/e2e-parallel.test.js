@@ -5,6 +5,38 @@ const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const modulePath = '../../scripts/run-e2e-ci-parallel';
+function reachable(port, connect = require('node:net').connect) {
+    return new Promise(resolve => {
+        const socket = connect(port, '127.0.0.1');
+        socket.once('connect', () => {
+            // Linux can connect an ephemeral client port back to itself even
+            // after the listener exits. Such a socket does not prove a server is listening.
+            const selfConnected = socket.localAddress === socket.remoteAddress
+                && socket.localPort === socket.remotePort;
+            socket.destroy();
+            resolve(!selfConnected);
+        });
+        socket.once('error', () => resolve(false));
+    });
+}
+
+test('TCP reachability rejects a Linux self-connection without a listening server', {skip: process.platform !== 'linux'}, async () => {
+    const net = require('node:net');
+    const reservation = net.createServer();
+    await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+    const port = reservation.address().port;
+    await new Promise(resolve => reservation.close(resolve));
+    let connected = false;
+    const result = await reachable(port, (target, host) => {
+        // Force the same endpoint deterministically rather than waiting for the
+        // kernel's ephemeral allocator to choose it during an ordinary probe.
+        const socket = net.connect({port: target, host, localPort: target});
+        socket.once('connect', () => { connected = true; });
+        return socket;
+    });
+    assert.equal(connected, true, 'Linux establishes this connection despite the absent listener');
+    assert.equal(result, false, 'a connection to itself is not evidence of a surviving server');
+});
 
 test('all eight groups cover exactly 32 independent single-worker shards', () => {
     const { planGroup, parseArguments } = require(modulePath);
@@ -114,11 +146,7 @@ test('interrupt stops a detached descendant TCP server and preserves an unrelate
     let descendant;
     let ready;
     const readiness = new Promise(resolve => { ready = resolve; });
-    const reachable = port => new Promise(resolve => {
-        const socket = net.connect(port, '127.0.0.1');
-        socket.once('connect', () => { socket.destroy(); resolve(true); });
-        socket.once('error', () => resolve(false));
-    });
+
     try {
         const runner = path.join(directory, 'runner.js');
         const serverScript = `const net=require('node:net'); const s=net.createServer(); s.listen(0,'127.0.0.1',()=>process.send({port:s.address().port,pid:process.pid}));`;
