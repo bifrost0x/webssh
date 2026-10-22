@@ -9,7 +9,8 @@ import pytest
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="requires POSIX bash and fake executable commands")
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "install_ci_test_system_deps.sh"
-INSTALL = "apt-get install --yes --no-install-recommends libldap2-dev libsasl2-dev"
+APT = "apt-get -o Acquire::http::Timeout=5 -o Acquire::https::Timeout=5 -o Acquire::Retries=0"
+INSTALL = APT + " install --yes --no-install-recommends libldap2-dev libsasl2-dev"
 
 
 def run_installer(tmp_path, *, installed="all", install_failures=0, update_failure=0):
@@ -25,7 +26,7 @@ esac
 ''',
         "sudo": '''#!/bin/bash
 printf '%s\\n' "$*" >> "$CALL_LOG"
-if [[ "$2" == update ]]; then exit "$UPDATE_FAILURE"; fi
+if [[ " $* " == *' update '* ]]; then exit "$UPDATE_FAILURE"; fi
 count=0
 [[ ! -f "$COUNT_FILE" ]] || read -r count < "$COUNT_FILE"
 count=$((count + 1))
@@ -70,16 +71,16 @@ def test_one_missing_header_still_installs_requirements(tmp_path):
 def test_stale_indexes_are_refreshed_and_install_retried(tmp_path):
     result, calls = run_installer(tmp_path, installed="none", install_failures=1)
     assert result.returncode == 0, result.stderr
-    assert calls == [INSTALL, "apt-get update", INSTALL]
+    assert calls == [INSTALL, APT + " update", INSTALL]
 
 
 def test_second_install_failure_is_not_hidden(tmp_path):
     result, calls = run_installer(tmp_path, installed="none", install_failures=2)
     assert result.returncode == 42
-    assert calls == [INSTALL, "apt-get update", INSTALL]
+    assert calls == [INSTALL, APT + " update", INSTALL]
 
 
 def test_update_failure_is_not_hidden(tmp_path):
     result, calls = run_installer(tmp_path, installed="none", install_failures=1, update_failure=43)
     assert result.returncode == 43
-    assert calls == [INSTALL, "apt-get update"]
+    assert calls == [INSTALL, APT + " update"]

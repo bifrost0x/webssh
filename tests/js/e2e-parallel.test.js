@@ -11,8 +11,13 @@ test('all eight groups cover exactly 32 independent single-worker shards', () =>
     const plans = Array.from({ length: 8 }, (_, index) => planGroup(parseArguments([
         `--group=${index + 1}/8`, '--lanes=4',
     ])));
-    assert.deepEqual(plans.flat().map(lane => lane.shard), Array.from({ length: 32 }, (_, i) => `${i + 1}/32`));
+    assert.deepEqual(plans.flat().map(lane => Number(lane.shard.split('/')[0])).sort((a, b) => a - b), Array.from({ length: 32 }, (_, i) => i + 1));
     assert.equal(new Set(plans[0].map(lane => lane.port)).size, 4);
+    assert.deepEqual(plans[0].map(lane => lane.shard), ['1/32', '9/32', '17/32', '25/32']);
+    // The two 20-terminal transport workloads occupy weighted shards 6 and 7.
+    // Spread early/heavy partitions across jobs rather than creating 40 TUIs on one runner.
+    assert.notEqual(plans.findIndex(plan => plan.some(lane => lane.shard === '6/32')),
+        plans.findIndex(plan => plan.some(lane => lane.shard === '7/32')));
     for (const args of [[], ['--group=0/8'], ['--group=1/8', '--lanes=0'], ['--group=1/8', '--lanes=4', '--unknown']]) {
         assert.throws(() => parseArguments(args));
     }

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 
-def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, changed=False, malformed_at=None):
+def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, rename_error=None, changed=False, malformed_at=None):
     from app import sftp_handler
     state = {'data': b'old', 'mode': mode, 'renamed': False, 'removed': []}
 
@@ -74,6 +74,8 @@ def fixture(monkeypatch, mode=0o600, *, fail_chmod=False, fail_rename=False, cha
             return SFTPAttributes._from_msg(self._request(CMD_LSTAT, _path)[1])
 
         def posix_rename(self, _old, _new):
+            if rename_error is not None:
+                raise rename_error
             if fail_rename:
                 raise EOFError('lost acknowledgement')
             state.update(data=staged.getvalue(), mode=staged.new_mode, renamed=True)
@@ -146,3 +148,17 @@ def test_unconfirmed_rename_never_claims_original_is_unchanged_or_deletes_by_pat
     assert not outcome.success
     assert outcome.code == 'SAVE_OUTCOME_UNKNOWN'
     assert state['removed'] == []
+
+
+@pytest.mark.parametrize('status', [3, 4, 8])
+def test_explicit_rename_rejection_is_a_retryable_save_failure(monkeypatch, status):
+    from app.sftp_handler import write_file_text
+    error = OSError('private remote details')
+    error.sftp_status = status
+    state = fixture(monkeypatch, rename_error=error)
+    outcome = write_file_text('a', '/file', 'new', expected_revision=hashlib.sha256(b'old').hexdigest())
+    assert not outcome.success
+    assert outcome.code != 'SAVE_OUTCOME_UNKNOWN'
+    assert 'private remote details' not in outcome.error
+    assert state['data'] == b'old'
+    assert not state['renamed'] and state['removed'] == []

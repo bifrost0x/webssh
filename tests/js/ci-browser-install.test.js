@@ -78,3 +78,25 @@ test('the real launch probe requests headless Chromium and closes it', async () 
     } });
     assert.deepEqual(events, [{ headless: true }, 'close']);
 });
+
+for (const browser of ['firefox', 'webkit']) {
+    test(`downloads and probes ${browser} without apt when the installed runtime works`, async () => {
+        const { installCiBrowser } = require('../../scripts/install-ci-chromium');
+        const setup = fixture();
+        await installCiBrowser(browser, setup);
+        assert.deepEqual(setup.events, [['install', browser], 'probe']);
+    });
+    test(`repairs proven missing ${browser} runtime dependencies once`, async () => {
+        const { installCiBrowser } = require('../../scripts/install-ci-chromium');
+        const setup = fixture({ failures: [new Error('Host system is missing dependencies')] });
+        await installCiBrowser(browser, setup);
+        assert.deepEqual(setup.events, [['install', browser], 'probe', ['install-deps', browser], 'probe']);
+    });
+}
+
+test('rejects unsupported browser names before invoking setup', async () => {
+    const { installCiBrowser } = require('../../scripts/install-ci-chromium');
+    const setup = fixture();
+    await assert.rejects(installCiBrowser('unknown', setup), /Unsupported CI browser/);
+    assert.deepEqual(setup.events, []);
+});

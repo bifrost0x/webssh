@@ -1802,10 +1802,10 @@ def write_file_text(
                     raise SFTPOperationError(
                         'Atomic replacement is unavailable'
                     )
-            except Exception:
+            except Exception as error:
                 # A lost rename reply cannot establish which object now owns
                 # either pathname. Never remove an unbound path as rollback.
-                if rename_started:
+                if rename_started and getattr(error, 'sftp_status', None) is None:
                     return FileWriteOutcome(
                         success=False,
                         error='The save result could not be confirmed. Keep your draft and reopen the file before saving again.',

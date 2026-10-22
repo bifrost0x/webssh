@@ -107,6 +107,8 @@ The runner discovers the current suite before partitioning it. Every discovered
 test belongs to exactly one shard; new tests receive a fallback weight. Test
 identity is based on file and full title, so moving source lines does not change
 assignment. Shared account and session fixtures require one worker per server;
+Groups interleave the 32 partitions so the heaviest terminal-load cases run on
+different runners.
 increasing workers without isolating that state can invalidate results. The group
 runner gives each server a separate port, data directory, temporary namespace
 and artifact directory. It waits for every partition and fails if any child fails;
@@ -134,6 +136,9 @@ On Ubuntu CI, installed LDAP headers are reused and package indexes are refreshe
 only if installation from the existing indexes fails. Chromium installs the
 headless shell used by these tests and must pass a real launch probe; missing
 system libraries trigger dependency installation and a second mandatory probe.
+Firefox and WebKit also probe their installed runtime before requesting system
+packages. LDAP package installation bounds stalled mirror connections to five
+seconds so apt can try the next configured mirror without long retry delays.
 Pull requests build scan images with the native Docker builder on AMD64 and
 ARM64 runners, avoiding a separate Buildx daemon and remote cache export.
 Base images are pulled and OS package refresh inputs remain unique per run.

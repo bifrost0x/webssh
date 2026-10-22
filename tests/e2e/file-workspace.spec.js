@@ -761,7 +761,9 @@ test.describe('mobile touch File Manager', () => {
             type: 'touchStart',
             touchPoints: [{ x: fileX, y: fileY }],
         });
-        await page.waitForTimeout(550);
+        // Hold until the browser has handled its long-press timer. A fixed
+        // wall-clock sleep can release the pointer before a busy renderer runs it.
+        await expect(page.locator('#fmActionSheet')).toHaveClass(/visible/);
         await client.send('Input.dispatchTouchEvent', {
             type: 'touchEnd',
             touchPoints: [],

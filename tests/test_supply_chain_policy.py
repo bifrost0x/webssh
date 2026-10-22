@@ -532,8 +532,8 @@ def test_ci_setup_keeps_safe_dependency_fallbacks():
     assert 'bash scripts/install_ci_test_system_deps.sh' in workflow
     assert 'node scripts/install-ci-chromium.js' in workflow
     browser = (ROOT / 'scripts/install-ci-chromium.js').read_text(encoding='utf-8')
-    assert "runCli(['install-deps', 'chromium'])" in browser
-    assert 'await probe()' in browser
+    assert "runCli(['install-deps', browserName])" in browser
+    assert 'await launchProbe()' in browser
 
 
 def test_release_only_promotes_the_candidate_after_exact_sha_tests_and_scans():

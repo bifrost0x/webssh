@@ -21,7 +21,9 @@ function planGroup({ group, groups, lanes, portBase = 4173 }) {
         throw new Error('Invalid E2E group, lane count or port range.');
     }
     return Array.from({ length: lanes }, (_, index) => {
-        const current = (group - 1) * lanes + index + 1;
+        // Weighted shards start with the slowest individual cases. Interleave
+        // them across runners so parallel terminal-load cases do not share a CPU.
+        const current = index * groups + group;
         const total = groups * lanes;
         return { shard: `${current}/${total}`, name: `shard-${current}-of-${total}`, port: portBase + index };
     });
@@ -108,6 +110,8 @@ function assertSupportedPlatform(platform = process.platform) {
 async function runGroup(config, options = {}) {
     assertSupportedPlatform(options.platform || process.platform);
     const plan = planGroup(config);
+    console.log(`E2E runner resources: ${os.availableParallelism()} available CPUs, `
+        + `${(os.totalmem() / 1024 ** 3).toFixed(1)} GiB RAM, ${plan.length} browser lanes.`);
     const runner = options.runner || path.join(__dirname, 'run-e2e-ci.js');
     const spawnChild = options.spawn || spawn;
     const killTree = options.terminateTree || terminateTree;

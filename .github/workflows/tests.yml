@@ -169,7 +169,7 @@ jobs:
       - name: Run tests
         run: >-
           python -m compileall -q app tests &&
-          pytest ${{ matrix.pytest_targets }}
+          python -m pytest ${{ matrix.pytest_targets }}
           ${{ matrix.pytest_ignores }}
           -p scripts.pytest_shard --ci-shard=${{ matrix.pytest_shard }}
           -q
@@ -433,7 +433,7 @@ jobs:
       - name: Install locked Node dependencies
         run: npm ci
       - name: Install locked font-test browser
-        run: npx playwright install --with-deps "${{ matrix.browser }}"
+        run: node scripts/install-ci-chromium.js "${{ matrix.browser }}"
       - name: Verify live terminal font changes
         run: |
           WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-${{ matrix.browser }}.json" \

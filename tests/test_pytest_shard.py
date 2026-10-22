@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -106,3 +107,40 @@ def test_real_pytest_collection_reports_only_selected_nodeids(tmp_path):
     assert 'test_b.py::test_one' not in result.stdout
     assert '1 deselected' in result.stdout
     assert 'CI shard 1/2: selected 1 of 2 collected tests' in result.stdout
+
+
+def test_ci_workflow_entrypoint_loads_local_plugin_without_pythonpath(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / '.github/workflows/tests.yml').read_text(encoding='utf-8')
+    invocation = re.search(
+        r'^\s+(python -m pytest|pytest) \$\{\{ matrix\.pytest_targets \}\}',
+        workflow, re.MULTILINE,
+    )
+    assert invocation is not None, 'Locate the actual sharded CI entry point'
+    if invocation[1] == 'python -m pytest':
+        command = [sys.executable, '-m', 'pytest']
+    else:
+        command = [str(Path(sys.executable).with_name(
+            'pytest.exe' if os.name == 'nt' else 'pytest'
+        ))]
+    test_file = tmp_path / 'test_ci_entrypoint.py'
+    test_file.write_text(
+        'def test_pass(): pass\n'
+        'def test_failure(): assert False, "preserved CI failure"\n',
+        encoding='utf-8',
+    )
+    environment = os.environ.copy()
+    environment.pop('PYTHONPATH', None)
+    environment.pop('PYTEST_ADDOPTS', None)
+    environment['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
+    result = subprocess.run(
+        [*command, str(test_file), '-p', 'scripts.pytest_shard',
+         '-p', 'xdist.plugin', '--ci-shard=1/1', '-q', '-n', '2',
+         '--dist=loadscope', '--basetemp', str(tmp_path / 'temp')],
+        cwd=root, env=environment, text=True, capture_output=True,
+        timeout=45, check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert 'CI shard 1/1: selected 2 of 2 collected tests' in result.stdout
+    assert '1 failed, 1 passed' in result.stdout
+    assert 'preserved CI failure' in result.stdout

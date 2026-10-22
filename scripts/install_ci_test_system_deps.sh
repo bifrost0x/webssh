@@ -16,7 +16,9 @@ if [[ "$missing" == false ]]; then
 fi
 
 # Hosted runners commonly have usable indexes already. Refresh only if needed.
-if ! sudo apt-get install --yes --no-install-recommends "${packages[@]}"; then
-    sudo apt-get update
-    sudo apt-get install --yes --no-install-recommends "${packages[@]}"
+# Bound stalled mirrors so apt can reach the next configured mirror promptly.
+apt_options=(-o Acquire::http::Timeout=5 -o Acquire::https::Timeout=5 -o Acquire::Retries=0)
+if ! sudo apt-get "${apt_options[@]}" install --yes --no-install-recommends "${packages[@]}"; then
+    sudo apt-get "${apt_options[@]}" update
+    sudo apt-get "${apt_options[@]}" install --yes --no-install-recommends "${packages[@]}"
 fi

@@ -5,9 +5,19 @@ from pathlib import Path
 import sys
 import tempfile
 from datetime import datetime, timezone
+from werkzeug.serving import WSGIRequestHandler
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
+
+class FixtureRequestHandler(WSGIRequestHandler):
+    """Keep HTTP errors visible without serializing thousands of success logs."""
+
+    def log_request(self, code='-', size='-'):
+        if str(code).isdigit() and int(code) < 400:
+            return
+        super().log_request(code, size)
 
 
 def _profile(name, host, username, auth_type, **extra):
@@ -415,6 +425,7 @@ def main():
             debug=False,
             use_reloader=False,
             allow_unsafe_werkzeug=True,
+            request_handler=FixtureRequestHandler,
         )
 
 
