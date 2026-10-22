@@ -7,7 +7,19 @@ const path = require('node:path');
 function setup() {
     const source = fs.readFileSync(path.join(__dirname, '../../static/js/app.js'), 'utf8');
     const part = source.slice(source.indexOf('const FilePreview = {'), source.indexOf('window.FilePreview = FilePreview;'));
-    const classes = () => ({ add() {}, remove() {} });
+    const classes = () => {
+        const values = new Set();
+        return {
+            add: (...items) => items.forEach(item => values.add(item)),
+            remove: (...items) => items.forEach(item => values.delete(item)),
+            contains: item => values.has(item),
+            toggle(item, force = !values.has(item)) {
+                if (force) values.add(item);
+                else values.delete(item);
+                return force;
+            },
+        };
+    };
     const fields = Object.fromEntries(['editorStatus', 'previewFilename', 'previewSize', 'editorReview', 'editorReviewTarget', 'editorReviewDiff', 'editorReviewLimited', 'editorReviewOriginal', 'editorReviewEdited', 'editorCommitBtn', 'editorBackupBtn'].map(id => [id, { classList: classes(), focus() {} }]));
     fields.editorContent = { value: 'one', classList: classes() };
     const events = [];
@@ -17,13 +29,136 @@ function setup() {
     const preview = context.preview;
     Object.assign(preview, { currentSourceId: 'sftp-session:s', currentPath: '/a', editMode: true, dirty: true, editRevision: 'r1', editBaseline: '', editTarget: { sourceId: 'sftp-session:s', path: '/a', endpoint: 'user@first.example:22' } });
     preview.refresh = () => { preview.refreshed = true; };
-    return { preview, fields, events, context };
+    return { preview, fields, events, context, classes };
 }
 
 function save(preview) {
     preview.saveEdit();
     preview.commitReviewedEdit();
 }
+
+const previewPanels = ['previewLoading', 'previewError', 'previewBinary', 'previewImage', 'previewContent'];
+
+function setupOpening(filename = 'new.txt') {
+    const fixture = setup();
+    const { preview, fields, context, classes } = fixture;
+    for (const id of [...previewPanels, 'previewTruncated', 'previewCode', 'previewLineNumbers',
+        'previewErrorMessage', 'previewImageElement', 'previewTruncatedSize', 'previewTotalSize',
+        'fileEditor', 'previewEditBtn', 'previewCopyBtn', 'previewDownloadBtn', 'previewRefreshBtn']) {
+        fields[id] = { classList: classes(), focus() {}, src: '' };
+        fields[id].classList.add('hidden');
+    }
+    context.socket.on = () => {};
+    context.socket.off = () => {};
+    fields.editorContent.focus = () => {};
+    preview.modal = { classList: classes() };
+    preview.editMode = false;
+    preview.dirty = false;
+    preview.openForEditing('sftp-session:s', `/new/${filename}`, filename);
+    return fixture;
+}
+
+for (const order of ['preview-first', 'edit-first']) {
+    for (const kind of ['text', 'truncated', 'binary', 'error', 'image', 'image-error']) {
+        test(`direct editor keeps preview hidden and restores it on cancel (${order}, ${kind})`, () => {
+            const image = kind.startsWith('image');
+            const { preview, fields, events } = setupOpening(image ? 'new.svg' : 'new.txt');
+            assert.deepEqual(events.map(item => item.event), [image ? 'download_file_binary' : 'preview_file', 'open_file_for_edit']);
+            const previewRequest = events[0].data;
+            const editRequest = events[1].data;
+            const deliverPreview = () => {
+                if (image) {
+                    preview._pendingImageHandler({ ...previewRequest, encoding: 'base64', file_data: 'PHN2Zy8+', size: 6 });
+                    if (kind === 'image-error') fields.previewImageElement.onerror();
+                } else if (kind === 'error') {
+                    preview.handlePreviewError({ ...previewRequest, error: 'Preview unavailable' });
+                } else {
+                    preview.handlePreviewData({ ...previewRequest, filename: 'new.txt', content: 'preview\n',
+                        size: 12, read_size: 8, truncated: kind === 'truncated', is_binary: kind === 'binary' });
+                }
+            };
+            const deliverEdit = () => {
+                preview.handleEditData({ ...editRequest, content: 'full editable content', revision: 'revision',
+                    original_bytes: 'ZnVsbA==', encoding: 'utf-8', newline: 'lf' });
+                fields.editorContent.value = 'unsaved draft';
+                preview.markDirty();
+            };
+            if (order === 'preview-first') { deliverPreview(); deliverEdit(); }
+            else { deliverEdit(); deliverPreview(); }
+
+            assert.equal(preview.editMode, true);
+            assert.equal(fields.fileEditor.classList.contains('hidden'), false);
+            for (const id of [...previewPanels, 'previewTruncated', 'previewEditBtn', 'previewCopyBtn', 'previewDownloadBtn', 'previewRefreshBtn']) {
+                assert.equal(fields[id].classList.contains('hidden'), true, `${id} stays hidden while editing`);
+            }
+            assert.equal(fields.editorContent.value, 'unsaved draft');
+            assert.equal(preview.editBaseline, 'full editable content');
+            assert.equal(preview.editRevision, 'revision');
+            assert.equal(preview.editOriginalBytes, 'ZnVsbA==');
+            assert.equal(preview.dirty, true);
+
+            preview.cancelEdit();
+            const expected = { text: 'previewContent', truncated: 'previewContent', binary: 'previewBinary',
+                error: 'previewError', image: 'previewImage', 'image-error': 'previewError' }[kind];
+            for (const id of previewPanels) {
+                assert.equal(fields[id].classList.contains('hidden'), id !== expected, `${id} restored after cancel`);
+            }
+            assert.equal(fields.fileEditor.classList.contains('hidden'), true);
+            assert.equal(fields.previewTruncated.classList.contains('hidden'), kind !== 'truncated');
+            assert.equal(fields.previewEditBtn.classList.contains('hidden'), !['text', 'truncated'].includes(kind));
+            assert.equal(events.length, 2, 'cancel only reveals the received preview, without any extra request');
+            if (['text', 'truncated'].includes(kind)) {
+                assert.equal(preview._previewFullContent, 'preview\n');
+                assert.equal(fields.previewCode.textContent, 'preview');
+            }
+        });
+    }
+}
+
+test('cancelling direct editing before its preview arrives restores loading until the matching response', () => {
+    const { preview, fields, events } = setupOpening();
+    preview.handleEditData({ ...events[1].data, content: '', revision: 'empty' });
+    assert.equal(fields.previewLoading.classList.contains('hidden'), true);
+    preview.cancelEdit();
+    assert.equal(fields.previewLoading.classList.contains('hidden'), false);
+    assert.equal(fields.previewEditBtn.classList.contains('hidden'), true);
+    preview.handlePreviewData({ ...events[0].data, filename: 'new.txt', content: '', size: 0 });
+    assert.equal(fields.previewLoading.classList.contains('hidden'), true);
+    assert.equal(fields.previewContent.classList.contains('hidden'), false);
+    assert.equal(fields.previewEditBtn.classList.contains('hidden'), false);
+});
+
+test('an abandoned image error cannot replace the preview of another source', () => {
+    const { preview, fields, events } = setupOpening('new.svg');
+    preview._pendingImageHandler({ ...events[0].data, encoding: 'base64', file_data: 'PHN2Zy8+', size: 6 });
+    const oldError = fields.previewImageElement.onerror;
+    preview.open('smb-quick:other', '/other.txt', 'other.txt');
+    preview.handlePreviewData({ ...events.at(-1).data, filename: 'other.txt', content: 'other source', size: 12 });
+    oldError();
+    assert.equal(fields.previewContent.classList.contains('hidden'), false);
+    assert.equal(fields.previewError.classList.contains('hidden'), true);
+    assert.equal(preview._previewFullContent, 'other source');
+    assert.equal(preview.currentSourceId, 'smb-quick:other');
+});
+
+test('late responses from an abandoned direct editor cannot change the new target or draft', () => {
+    const { preview, fields, events } = setupOpening();
+    const oldPreview = events[0].data;
+    const oldEdit = events[1].data;
+    preview.openForEditing('smb-quick:other', '/other.txt', 'other.txt');
+    preview.handleEditData({ ...events.at(-1).data, content: 'current', revision: 'current-revision' });
+    fields.editorContent.value = 'current draft';
+    preview.markDirty();
+    preview.handlePreviewData({ ...oldPreview, filename: 'new.txt', content: 'stale preview', size: 13 });
+    preview.handlePreviewError({ ...oldPreview, error: 'stale error' });
+    preview.handleEditData({ ...oldEdit, content: 'stale editor', revision: 'stale-revision' });
+    assert.equal(fields.previewContent.classList.contains('hidden'), true);
+    assert.equal(fields.previewError.classList.contains('hidden'), true);
+    assert.equal(fields.fileEditor.classList.contains('hidden'), false);
+    assert.equal(fields.editorContent.value, 'current draft');
+    assert.equal(preview.editRevision, 'current-revision');
+    assert.equal(preview.currentSourceId, 'smb-quick:other');
+});
 
 test('unconfirmed save blocks another mutation and preserves the draft', () => {
     const {preview, events, fields, context} = setup();

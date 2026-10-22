@@ -602,6 +602,9 @@
         saveRequests: new Map(),
         lastSavedSequence: 0,
         editMode: false,
+        _previewPanel: 'previewLoading',
+        _previewTruncated: false,
+        _previewEditable: false,
         saveOutcomeUnknown: false,
         dirty: false,
         editEncoding: 'utf-8',
@@ -951,14 +954,24 @@
             return false;
         },
 
+        renderPreviewPanels() {
+            // Responses may prepare the preview while editing, but only the
+            // current mode owns visibility. Cancel reveals the prepared panel.
+            for (const id of ['previewLoading', 'previewError', 'previewBinary', 'previewImage', 'previewContent']) {
+                document.getElementById(id)?.classList.toggle('hidden', this.editMode || id !== this._previewPanel);
+            }
+            document.getElementById('previewTruncated')?.classList.toggle('hidden',
+                this.editMode || this._previewPanel !== 'previewContent' || !this._previewTruncated);
+            document.getElementById('previewEditBtn')?.classList.toggle('hidden',
+                this.editMode || this._previewPanel !== 'previewContent' || !this._previewEditable);
+        },
+
         showLoading() {
-            document.getElementById('previewLoading')?.classList.remove('hidden');
-            document.getElementById('previewError')?.classList.add('hidden');
-            document.getElementById('previewBinary')?.classList.add('hidden');
-            document.getElementById('previewImage')?.classList.add('hidden');
-            document.getElementById('previewContent')?.classList.add('hidden');
-            document.getElementById('previewTruncated')?.classList.add('hidden');
-            document.getElementById('fileEditor')?.classList.add('hidden');
+            this._previewPanel = 'previewLoading';
+            this._previewTruncated = false;
+            this._previewEditable = false;
+            this.renderPreviewPanels();
+            if (!this.editMode) document.getElementById('fileEditor')?.classList.add('hidden');
         },
 
         hideLoading() {
@@ -966,19 +979,24 @@
         },
 
         showError(message) {
-            document.getElementById('previewError')?.classList.remove('hidden');
             document.getElementById('previewErrorMessage').textContent = message;
+            this._previewPanel = 'previewError';
+            this._previewEditable = false;
+            this.renderPreviewPanels();
         },
 
         showBinary() {
-            document.getElementById('previewBinary')?.classList.remove('hidden');
+            this._previewPanel = 'previewBinary';
+            this._previewEditable = false;
+            this.renderPreviewPanels();
         },
 
         showImage(url, size) {
-            const imageContainer = document.getElementById('previewImage');
             const imageElement = document.getElementById('previewImageElement');
 
-            imageContainer?.classList.remove('hidden');
+            this._previewPanel = 'previewImage';
+            this._previewEditable = false;
+            this.renderPreviewPanels();
             document.getElementById('previewSize').textContent = this.formatFileSize(size);
 
             if (imageElement.src && imageElement.src.startsWith('blob:')) {
@@ -986,8 +1004,9 @@
             }
 
             imageElement.onload = () => {};
+            const requestId = this.currentPreviewRequestId;
             imageElement.onerror = () => {
-                imageContainer?.classList.add('hidden');
+                if (this.currentPreviewRequestId !== requestId) return;
                 this.showError('Failed to load image');
             };
 
@@ -995,11 +1014,11 @@
         },
 
         showContent(content, filename, truncated, readSize, totalSize) {
-            const contentDiv = document.getElementById('previewContent');
             const codeEl = document.getElementById('previewCode');
             const lineNumbersEl = document.getElementById('previewLineNumbers');
 
-            contentDiv?.classList.remove('hidden');
+            this._previewPanel = 'previewContent';
+            this._previewTruncated = Boolean(truncated);
 
             // Keep the raw content for an accurate copy; for display, drop a
             // single trailing newline so the file's terminator isn't rendered
@@ -1022,10 +1041,10 @@
             lineNumbersEl.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
 
             if (truncated) {
-                document.getElementById('previewTruncated')?.classList.remove('hidden');
                 document.getElementById('previewTruncatedSize').textContent = this.formatFileSize(readSize);
                 document.getElementById('previewTotalSize').textContent = this.formatFileSize(totalSize);
             }
+            this.renderPreviewPanels();
         },
 
         async copyToClipboard() {
@@ -1047,11 +1066,13 @@
 
         // ---- Inline editor ----
         showEditButton() {
-            document.getElementById('previewEditBtn')?.classList.remove('hidden');
+            this._previewEditable = true;
+            this.renderPreviewPanels();
         },
 
         hideEditButton() {
-            document.getElementById('previewEditBtn')?.classList.add('hidden');
+            this._previewEditable = false;
+            this.renderPreviewPanels();
         },
 
         showPreviewActions() {
@@ -1140,14 +1161,12 @@
             });
             this.resetEditReview();
 
-            document.getElementById('previewContent')?.classList.add('hidden');
-            document.getElementById('previewTruncated')?.classList.add('hidden');
-            document.getElementById('previewError')?.classList.add('hidden');
+            this.editMode = true;
+            this.renderPreviewPanels();
             document.getElementById('fileEditor')?.classList.remove('hidden');
             this.modal?.classList.add('editing');
             this.hidePreviewActions();
 
-            this.editMode = true;
             this.dirty = false;
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = '';
@@ -1375,8 +1394,6 @@
                 if (!window.confirm(msg)) return;
             }
             this.exitEditMode();
-            // The preview content is still rendered underneath; just reveal it.
-            document.getElementById('previewContent')?.classList.remove('hidden');
         },
 
         exitEditMode() {
@@ -1396,7 +1413,7 @@
             const status = document.getElementById('editorStatus');
             if (status) status.textContent = '';
             this.showPreviewActions();
-            this.showEditButton();
+            this.renderPreviewPanels();
         },
 
         refresh() {
