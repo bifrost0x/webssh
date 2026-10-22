@@ -125,8 +125,8 @@ cases start. Their partitions are calculated from the current discovery and
 weights. Only those cases run exclusively; all four lanes then run their remaining
 cases in parallel, with separate output and timing files for each phase. All
 remaining cases still run even when one fails.
-Font tests use the digest-pinned official Playwright image matching the locked
-package version, with Python 3.14 and the same test and launch checks.
+Font tests use Ubuntu hosted runners with Python 3.14 and the locked Playwright
+browsers. Both browser runtimes must pass their installation and launch checks.
 
 The Python partitions are computed from the current collection and keep whole
 files together, preserving module/class fixture locality. Run all three:

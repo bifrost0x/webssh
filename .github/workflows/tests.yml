@@ -388,14 +388,10 @@ jobs:
     if: needs.dispatch-integrity.outputs.mode == 'full'
     name: browser-fonts (Firefox and WebKit)
     runs-on: ubuntu-24.04
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
-      options: --shm-size=1g
     permissions:
       contents: read
     env:
       WEBSSH_E2E_FAST_HASHING: '1'
-      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -404,9 +400,7 @@ jobs:
         with:
           python-version: '3.14'
       - name: Install LDAP build dependencies
-        run: |
-          apt-get update
-          apt-get install --yes --no-install-recommends build-essential libldap2-dev libsasl2-dev
+        run: bash scripts/install_ci_test_system_deps.sh
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
