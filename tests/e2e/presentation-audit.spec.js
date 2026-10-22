@@ -1,5 +1,5 @@
 const {test, expect} = require('playwright/test');
-const {login, assertNoExternalRequests} = require('./helpers');
+const {login, installExternalRequestGuard, assertNoExternalRequests} = require('./helpers');
 const themes = ['glass', 'solar', 'paper', 'noir', 'arctic-ice', 'rose-gold', 'obsidian', 'retro', 'cyberpunk-neon', 'emerald-matrix'];
 const languages = ['en', 'vi', 'de', 'fr', 'es', 'zh'];
 
@@ -86,7 +86,7 @@ for (const theme of themes) {
 
 for (const language of languages) {
     for (const width of [1440, 390]) {
-        test(`translated navigation and content in ${language} at ${width}px`, async ({page}) => {
+        test(`translated navigation and content in ${language} at ${width}px`, async ({page, browser}) => {
             await page.setViewportSize({width, height: 1024});
             await login(page);
             await records(page);
@@ -115,16 +115,32 @@ for (const language of languages) {
                 .map(el => el.dataset.i18n));
             expect(invalid).toEqual([]);
             // Exercise the public auth bundle separately from the full app bundle.
-            await page.context().clearCookies();
-            await page.goto('/');
-            await expect(page.locator('.alert[data-i18n="auth.loginRequired"]')).toBeVisible();
-            await page.evaluate(language => i18n.setLanguage(language), language);
-            await expect(page.locator('.alert')).toHaveText(await page.evaluate(() => i18n.t('auth.loginRequired')));
-            await page.locator('#username').fill('missing_audit_account');
-            await page.locator('#password').fill('incorrect');
-            await page.locator('#localLoginForm button[type="submit"]').click();
-            await expect(page.locator('.alert[data-i18n="auth.invalidCredentials"]')).toHaveText(await page.evaluate(() => i18n.t('auth.invalidCredentials')));
-            await capture(page, `language-${language}-${width}-login`);
+            // An authenticated settings response can refresh its session cookie
+            // after clearCookies(). Keep public auth in its own empty cookie jar.
+            const publicContext = await browser.newContext({
+                baseURL: new URL(page.url()).origin,
+                viewport: {width, height: 1024},
+            });
+            let publicPage;
+            try {
+                publicPage = await publicContext.newPage();
+                installExternalRequestGuard(publicPage);
+                await publicPage.goto('/');
+                await expect(publicPage.locator('.alert[data-i18n="auth.loginRequired"]')).toBeVisible();
+                await publicPage.evaluate(language => i18n.setLanguage(language), language);
+                await expect(publicPage.locator('.alert')).toHaveText(await publicPage.evaluate(() => i18n.t('auth.loginRequired')));
+                await publicPage.locator('#username').fill('missing_audit_account');
+                await publicPage.locator('#password').fill('incorrect');
+                await publicPage.locator('#localLoginForm button[type="submit"]').click();
+                await expect(publicPage.locator('.alert[data-i18n="auth.invalidCredentials"]')).toHaveText(await publicPage.evaluate(() => i18n.t('auth.invalidCredentials')));
+                await capture(publicPage, `language-${language}-${width}-login`);
+            } finally {
+                try {
+                    if (publicPage) await assertNoExternalRequests(publicPage);
+                } finally {
+                    await publicContext.close();
+                }
+            }
         });
     }
 }

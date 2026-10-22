@@ -1233,14 +1233,20 @@ for (const width of [360, 1920]) {
             await page.screenshot({ path: capturePath(`commands-${width}.png`) });
         }
         if (width === 360) {
+            // Opening the library refreshes its catalog. Drain that response
+            // before replacing it with the deliberate 95-command scroll fixture.
+            await page.evaluate(() => new Promise(resolve => window.socket.emit('list_commands', {os_filter: null}, resolve)));
             await page.evaluate(() => {
                 const original = window.CommandLibrary.commands[0];
                 window.CommandLibrary.setCommands(Array.from({ length: 95 }, (_, index) => ({
                     ...original, id: `scroll-${index}`, name: `Command ${index}`,
                 })));
             });
-            for (let chunk = 0; chunk < 3; chunk++) {
+            for (const expectedCount of [80, 95]) {
                 await panel.locator('.command-row').last().scrollIntoViewIfNeeded();
+                // Scrolling schedules a chunk; wait for its rows before choosing
+                // the next last row. Both scroll containers may advance a chunk.
+                await expect.poll(() => panel.locator('.command-row').count()).toBeGreaterThanOrEqual(expectedCount);
             }
             await expect(panel.locator('.command-row')).toHaveCount(95);
             const action = panel.locator('.command-row').last().locator('button').first();
