@@ -126,6 +126,24 @@ test('host actions retain their menu and keyboard focus across refreshed profile
     await expect(page.locator('#profileEditorHost')).toHaveValue('refreshed-target.invalid');
 });
 
+test('collapsing a host group dismisses its open action menus across refresh and expansion', async ({page}) => {
+    await page.locator('#manageProfilesBtn').click();
+    const search = page.locator('#profileSearchInput');
+    await search.fill('Post free text');
+    const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
+    const section = host.locator('xpath=ancestor::section[contains(@class, "profile-management-section")]');
+    const toggle = section.locator('[data-profile-group-toggle]');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await host.locator('.profile-action-menu > summary').click();
+    await expect(host.locator('.profile-action-menu')).toHaveAttribute('open', '');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await page.evaluate(() => ProfileManager.setProfiles([...ProfileManager.profiles]));
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(host.locator('.profile-action-menu')).not.toHaveAttribute('open', '');
+});
+
 test('refreshing away an active host action returns focus without retaining stale actions', async ({page}) => {
     await page.locator('#manageProfilesBtn').click();
     const search = page.locator('#profileSearchInput');
