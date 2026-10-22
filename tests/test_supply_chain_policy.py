@@ -536,6 +536,8 @@ def test_font_browsers_and_python_shards_are_required_parallel_gates():
     assert fonts.index('firefox_pid=$!') < fonts.index('webkit_pid=$!') < fonts.index('wait "$firefox_pid"')
     assert fonts.index('wait "$firefox_pid"') < fonts.index('wait "$webkit_pid"') < fonts.index('test "$firefox_status" -eq 0')
     assert '--grep=' in fonts and 'font changes preserve|failed font downloads' in fonts
+    assert fonts.count('tests/e2e/terminal-appearance.spec.js') == 2
+    assert fonts.count('overview defers terminal fonts|restored terminals load their saved fonts') == 2
     assert 'FONT_RESULT: ${{ needs.browser-fonts.result }}' in workflow
     assert 'test "$FONT_RESULT" = success' in workflow
     assert 'needs: [dispatch-integrity, pytest-shards, dependency-locks]' in workflow
