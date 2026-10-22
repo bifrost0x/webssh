@@ -75,6 +75,25 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    services:
+      redis7:
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis8:
+        image: redis:8-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     steps:
       - name: Checkout repository
@@ -84,6 +103,10 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -93,6 +116,52 @@ jobs:
       - name: Check dependency locks
         shell: pwsh
         run: ./scripts/lock_requirements.ps1 -Check
+
+      - name: Install LDAP build dependencies
+        run: bash scripts/install_ci_test_system_deps.sh
+
+      - name: Install dependencies
+        run: python -m pip install --require-hashes -r requirements-test.txt
+
+      - name: Run Python 3.11 minimum compatibility
+        run: >-
+          python -m compileall -q app tests &&
+          python -m pytest
+          tests/test_admin_cli.py
+          tests/test_backup_manager.py
+          tests/test_deployment_compatibility.py
+          tests/test_auth.py
+          tests/test_entrypoint.py
+          tests/test_factor_bootstrap.py
+          tests/test_file_service.py
+          tests/test_gunicorn_command.py
+          tests/test_ldap_auth.py
+          tests/test_network_policy.py
+          tests/test_production_config.py
+          tests/test_sftp_handler.py
+          tests/test_smb_protocol_contract.py
+          tests/test_ssh_manager.py
+          tests/test_storage_migrations.py
+          tests/test_threaded_runtime.py
+          -p scripts.pytest_shard --ci-shard=1/1
+          -q -n 2 --dist=loadscope --durations=30
+          --basetemp=test-results/python-minimum
+
+      - name: Run Redis 7 rate limiter test
+        env:
+          TEST_REDIS_URL: redis://localhost:6379/15
+        run: >-
+          python -m pytest
+          tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
+          -q --basetemp=test-results/redis-7
+
+      - name: Run Redis 8 rate limiter test
+        env:
+          TEST_REDIS_URL: redis://localhost:6380/15
+        run: >-
+          python -m pytest
+          tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
+          -q --basetemp=test-results/redis-8
 
   pytest-shards:
     needs: dispatch-integrity
@@ -120,31 +189,6 @@ jobs:
             pytest_shard: 3/3
             pytest_targets: tests/
             pytest_ignores: --ignore=tests/integration --ignore=tests/test_documentation_surface.py
-          - python_version: '3.11'
-            check_name: pytest (Python 3.11 minimum)
-            pytest_shard: 1/1
-            # The production runtime runs the complete suite above.  The
-            # documented minimum version keeps a representative compatibility
-            # gate across startup, authentication, storage migrations, remote
-            # protocols, pagination, and threaded transport admission.
-            pytest_targets: >-
-              tests/test_admin_cli.py
-              tests/test_backup_manager.py
-              tests/test_deployment_compatibility.py
-              tests/test_auth.py
-              tests/test_entrypoint.py
-              tests/test_factor_bootstrap.py
-              tests/test_file_service.py
-              tests/test_gunicorn_command.py
-              tests/test_ldap_auth.py
-              tests/test_network_policy.py
-              tests/test_production_config.py
-              tests/test_sftp_handler.py
-              tests/test_smb_protocol_contract.py
-              tests/test_ssh_manager.py
-              tests/test_storage_migrations.py
-              tests/test_threaded_runtime.py
-            pytest_ignores: ''
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -152,7 +196,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          # Test both the production runtime and documented minimum version.
+          # The documented minimum runs with dependency locks and Redis above.
           python-version: ${{ matrix.python_version }}
           cache: pip
           cache-dependency-path: |
@@ -178,7 +222,7 @@ jobs:
           --durations=30
 
   pytest:
-    needs: [dispatch-integrity, pytest-shards]
+    needs: [dispatch-integrity, pytest-shards, dependency-locks]
     if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -187,61 +231,20 @@ jobs:
       - name: Require every Python shard and minimum-version check
         env:
           PYTEST_RESULT: ${{ needs.pytest-shards.result }}
-        run: test "$PYTEST_RESULT" = success
+          MINIMUM_RESULT: ${{ needs.dependency-locks.result }}
+        run: test "$PYTEST_RESULT" = success && test "$MINIMUM_RESULT" = success
 
   redis-rate-limiter:
-    needs: dispatch-integrity
-    if: needs.dispatch-integrity.outputs.mode == 'full'
-    name: Redis rate limiter (${{ matrix.redis-version }})
+    needs: [dispatch-integrity, dependency-locks]
+    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - redis-version: '7'
-            redis-image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
-          - redis-version: '8'
-            redis-image: redis:8-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
-    env:
-      TEST_REDIS_URL: redis://localhost:6379/15
-    services:
-      redis:
-        image: ${{ matrix.redis-image }}
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-test.txt
-
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --require-hashes -r requirements-test.txt
-
-      - name: Run Redis rate limiter tests
-        run: >-
-          pytest
-          tests/test_rate_limiter.py::test_real_redis_does_not_store_denied_requests
-          -q
+      - name: Require both Redis versions
+        env:
+          REDIS_RESULT: ${{ needs.dependency-locks.result }}
+        run: test "$REDIS_RESULT" = success
 
   ssh-integration:
     needs: dispatch-integrity
@@ -264,27 +267,17 @@ jobs:
             requirements.txt
             requirements-test.txt
 
-      - name: Install LDAP build dependencies
-        run: bash scripts/install_ci_test_system_deps.sh
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --require-hashes -r requirements-test.txt
-
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
           cache: npm
 
-      - name: Install locked Node dependencies
-        run: npm ci
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      - name: Install locked Playwright Chromium
-        run: node scripts/install-ci-chromium.js
-
-      - name: Run disposable OpenSSH and real browser integration tests
-        run: python scripts/run_integration_tests.py --browser
+      - name: Run disposable OpenSSH, SMB and release promotion checks
+        run: python scripts/run_ci_protocol_checks.py
 
       - name: Upload real-browser integration evidence
         if: always()
@@ -296,23 +289,17 @@ jobs:
           retention-days: 7
 
   smb-integration:
-    needs: dispatch-integrity
-    if: needs.dispatch-integrity.outputs.mode == 'full'
+    needs: [dispatch-integrity, ssh-integration]
+    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
-
-      - name: Run disposable encrypted SMB integration tests
-        run: python scripts/run_smb_integration_tests.py
+      - name: Require encrypted SMB integration success
+        env:
+          SMB_RESULT: ${{ needs.ssh-integration.result }}
+        run: test "$SMB_RESULT" = success
 
   browser-e2e-shards:
     needs: dispatch-integrity
@@ -399,16 +386,12 @@ jobs:
   browser-fonts:
     needs: dispatch-integrity
     if: needs.dispatch-integrity.outputs.mode == 'full'
-    name: browser-fonts (${{ matrix.browser }})
+    name: browser-fonts (Firefox and WebKit)
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
       WEBSSH_E2E_FAST_HASHING: '1'
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [firefox, webkit]
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -432,19 +415,35 @@ jobs:
           cache: npm
       - name: Install locked Node dependencies
         run: npm ci
-      - name: Install locked font-test browser
-        run: node scripts/install-ci-chromium.js "${{ matrix.browser }}"
+      - name: Install locked font-test browsers
+        run: |
+          node scripts/install-ci-chromium.js firefox
+          node scripts/install-ci-chromium.js webkit
       - name: Verify live terminal font changes
         run: |
-          WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-${{ matrix.browser }}.json" \
+          WEBSSH_E2E_PORT=4173 \
+            WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-firefox.json" \
             npm run test:e2e -- tests/e2e/session-workspace.spec.js \
-            --browser="${{ matrix.browser }}" --output="test-results/font-${{ matrix.browser }}" \
-            --grep='font changes preserve|failed font downloads'
+            --browser=firefox --output="test-results/font-firefox" \
+            --grep='font changes preserve|failed font downloads' &
+          firefox_pid=$!
+          WEBSSH_E2E_PORT=4174 \
+            WEBSSH_E2E_TIMING_FILE="test-results/e2e-fonts-webkit.json" \
+            npm run test:e2e -- tests/e2e/session-workspace.spec.js \
+            --browser=webkit --output="test-results/font-webkit" \
+            --grep='font changes preserve|failed font downloads' &
+          webkit_pid=$!
+          firefox_status=0
+          webkit_status=0
+          wait "$firefox_pid" || firefox_status=$?
+          wait "$webkit_pid" || webkit_status=$?
+          test "$firefox_status" -eq 0
+          test "$webkit_status" -eq 0
       - name: Upload font-test evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-fonts-${{ matrix.browser }}
+          name: browser-fonts
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
@@ -634,18 +633,16 @@ jobs:
           fi
 
   release-contract:
-    needs: dispatch-integrity
-    if: needs.dispatch-integrity.outputs.mode == 'full'
+    needs: [dispatch-integrity, ssh-integration]
+    if: ${{ always() && needs.dispatch-integrity.outputs.mode == 'full' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-      - name: Exercise immutable promotion against a disposable local registry
-        run: python scripts/check_release_promotion.py
+      - name: Require immutable release promotion contract success
+        env:
+          RELEASE_RESULT: ${{ needs.ssh-integration.result }}
+        run: test "$RELEASE_RESULT" = success
 
   all-tests:
     needs: [dispatch-integrity, dependency-locks, pytest-shards, pytest, redis-rate-limiter, ssh-integration, smb-integration, browser-e2e-shards, browser-fonts, browser-e2e, container-threading-smoke, release-contract]

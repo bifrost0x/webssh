@@ -45,7 +45,9 @@ The pytest harness uses a reduced bcrypt work factor to keep authentication-heav
 tests fast. An isolated subprocess contract verifies that normal application
 processes retain bcrypt's production work factor. The maintained gates execute
 the full unit suite in three complete file partitions on Python 3.14 and a representative compatibility suite on
-Python 3.11. Separate jobs exercise Redis 7/8 rate limiting and disposable
+Python 3.11. The dependency-lock job also runs that unchanged minimum-version
+suite and checks Redis 7 and 8 against separate digest-pinned services, reducing
+concurrent setup jobs. Separate jobs exercise disposable
 OpenSSH and encrypted SMB servers. Targeted tests are useful while developing, but
 they do not replace the relevant full gate before release.
 
@@ -106,17 +108,18 @@ npm run test:e2e:ci -- --shard=1/32
 The runner discovers the current suite before partitioning it. Every discovered
 test belongs to exactly one shard; new tests receive a fallback weight. Test
 identity is based on file and full title, so moving source lines does not change
-assignment. Shared account and session fixtures require one worker per server;
-Groups interleave the 32 partitions so the heaviest terminal-load cases run on
-different runners.
-increasing workers without isolating that state can invalidate results. The group
+assignment. Groups interleave the 32 partitions so the heaviest terminal-load
+cases run on different runners. Shared account and session fixtures require one
+worker per server; increasing workers without isolating that state can invalidate
+results. The group
 runner gives each server a separate port, data directory, temporary namespace
 and artifact directory. It waits for every partition and fails if any child fails;
 interrupts terminate only its owned process trees. Fixture password hashing is
 reduced only in the explicit isolated test process; application hashing is unchanged.
 The parallel launcher supports Linux and Windows. On other platforms, use the
 individual sequential partition command above.
-Firefox and WebKit font regressions run in separate mandatory parallel jobs.
+Firefox and WebKit font regressions run in parallel on separate ports in one
+mandatory job; both process results must succeed.
 
 The Python partitions are computed from the current collection and keep whole
 files together, preserving module/class fixture locality. Run all three:
@@ -137,8 +140,9 @@ only if installation from the existing indexes fails. Chromium installs the
 headless shell used by these tests and must pass a real launch probe; missing
 system libraries trigger dependency installation and a second mandatory probe.
 Firefox and WebKit also probe their installed runtime before requesting system
-packages. LDAP package installation bounds stalled mirror connections to five
-seconds so apt can try the next configured mirror without long retry delays.
+packages. LDAP package installation bounds stalled HTTP mirror connections to
+two seconds and HTTPS connections to five seconds, with failures still blocking
+the gate when no configured mirror can serve the packages.
 Pull requests build scan images with the native Docker builder on AMD64 and
 ARM64 runners, avoiding a separate Buildx daemon and remote cache export.
 Base images are pulled and OS package refresh inputs remain unique per run.

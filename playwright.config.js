@@ -28,7 +28,9 @@ module.exports = {
     ],
     use: {
         baseURL: e2eBaseUrl,
-        trace: 'retain-on-failure',
+        // Passing CI cases need no DOM snapshot stream. Failed first attempts
+        // keep screenshots; their existing retry records a complete trace.
+        trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
         screenshot: 'only-on-failure',
     },
     webServer: {

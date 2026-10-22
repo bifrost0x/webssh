@@ -187,3 +187,16 @@ test('unsupported platforms fail before spawning or creating temporary state', a
     }), /supports Linux and Windows/);
     assert.equal(spawned, false);
 });
+
+test('CI records traces on the first retry while keeping every assertion, retry and failure screenshot', () => {
+    const { execFileSync } = require('node:child_process');
+    for (const ci of ['', 'true']) {
+        const result = execFileSync(process.execPath, ['-e', "const c=require('./playwright.config'); console.log(JSON.stringify({ trace:c.use.trace,retries:c.retries,screenshot:c.use.screenshot,workers:c.workers }));"], {
+            cwd: path.resolve(__dirname, '../..'), env: { ...process.env, CI: ci }, encoding: 'utf8',
+        });
+        assert.deepEqual(JSON.parse(result), {
+            trace: ci ? 'on-first-retry' : 'retain-on-failure', retries: ci ? 1 : 0,
+            screenshot: 'only-on-failure', workers: 1,
+        });
+    }
+});

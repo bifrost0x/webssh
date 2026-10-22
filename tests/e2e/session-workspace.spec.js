@@ -3104,6 +3104,14 @@ test('font changes preserve the live TUI, input modes, scrollback and existing c
     try {
         await seedLinuxSession(page, {useTmux: true, initialLiveOutput: '\r\n'});
         await expect.poll(() => page.evaluate(() => TerminalManager.terminalReady['workspace-linux'])).toBe(true);
+        // Session creation coalesces its first PTY fit. Let that initialization
+        // finish before observing whether an unselected font preview resizes it.
+        await expect.poll(() => page.evaluate(() => {
+            const term = TerminalManager.terminals['workspace-linux'];
+            const size = TerminalManager.syncedSizes['workspace-linux'];
+            return TerminalManager.fitSyncTimer === null
+                && size?.cols === term.cols && size?.rows === term.rows;
+        })).toBe(true);
         await page.evaluate(async () => {
             const term = TerminalManager.terminals['workspace-linux'];
             window.__fontTerminalRef = term;

@@ -9,7 +9,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="requires POSIX bash and fake executable commands")
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "install_ci_test_system_deps.sh"
-APT = "apt-get -o Acquire::http::Timeout=5 -o Acquire::https::Timeout=5 -o Acquire::Retries=0"
+APT = "apt-get -o Acquire::http::Timeout=2 -o Acquire::https::Timeout=5 -o Acquire::Retries=0"
 INSTALL = APT + " install --yes --no-install-recommends libldap2-dev libsasl2-dev"
 
 
