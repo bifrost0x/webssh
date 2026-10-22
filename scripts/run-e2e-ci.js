@@ -6,6 +6,7 @@ const { spawnSync } = require('node:child_process');
 const baseline = require('../tests/e2e/timing-baseline.json');
 const { resolvePlaywrightCli } = require('./e2e-process');
 const { assignTests, parsePlaywrightList, parseShard } = require('./e2e-sharding');
+const { validateResourceInventory, selectPhase } = require('./e2e-resources');
 
 const playwrightCli = resolvePlaywrightCli();
 
@@ -62,23 +63,33 @@ function assertNoSharedExecutionGroups() {
     }
 }
 
-function main(argv) {
+function parseArguments(argv) {
     const shardArgs = argv.filter(argument => argument.startsWith('--shard='));
-    if (shardArgs.length !== 1 || argv.length !== 1) {
-        throw new Error('Usage: npm run test:e2e:ci -- --shard=<current>/<total>');
+    const phaseArgs = argv.filter(argument => argument.startsWith('--phase='));
+    if (shardArgs.length !== 1 || phaseArgs.length > 1 || argv.length !== 1 + phaseArgs.length) {
+        throw new Error('Usage: npm run test:e2e:ci -- --shard=<current>/<total> [--phase=all|exclusive|shared]');
     }
     const shard = parseShard(shardArgs[0].slice('--shard='.length));
-    assertNoSharedExecutionGroups();
+    const phase = phaseArgs.length ? phaseArgs[0].slice('--phase='.length) : 'all';
+    if (!['all', 'exclusive', 'shared'].includes(phase)) throw new Error(`Unknown E2E phase: ${phase}`);
+    return { shard, phase };
+}
 
-    const discovered = discover();
+function selectAssignedTests(discovered, shard, phase, timingBaseline = baseline) {
     if (shard.total > discovered.length) {
         throw new Error(`Cannot divide ${discovered.length} tests into ${shard.total} non-empty shards.`);
     }
-    const assignment = assignTests(discovered, shard.total, baseline);
-    const selected = assignment.shards[shard.current - 1];
-    if (selected.length === 0) {
-        throw new Error(`Weighted shard ${shard.current}/${shard.total} is empty.`);
-    }
+    if (phase !== 'all') validateResourceInventory(discovered);
+    const assignment = assignTests(discovered, shard.total, timingBaseline);
+    const selected = selectPhase(assignment.shards[shard.current - 1], phase);
+    return { assignment, selected };
+}
+
+function main(argv) {
+    const { shard, phase } = parseArguments(argv);
+    assertNoSharedExecutionGroups();
+    const discovered = discover();
+    const { assignment, selected } = selectAssignedTests(discovered, shard, phase);
 
     const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'webssh-e2e-shard-'));
     const testList = path.join(temporaryDirectory, `shard-${shard.current}-of-${shard.total}.txt`);
@@ -96,12 +107,12 @@ function main(argv) {
 
         const loadSummary = assignment.loads.map(value => value.toFixed(3)).join('s, ');
         console.log(
-            `Weighted E2E shard ${shard.current}/${shard.total}: ${selected.length} of `
+            `Weighted E2E shard ${shard.current}/${shard.total} phase ${phase}: ${selected.length} of `
             + `${discovered.length} tests (estimated shard loads: ${loadSummary}s).`,
         );
-        const timingFile = path.join(
+        const timingFile = process.env.WEBSSH_E2E_TIMING_FILE || path.join(
             'test-results',
-            `e2e-timing-shard-${shard.current}-of-${shard.total}.json`,
+            `e2e-timing-shard-${shard.current}-of-${shard.total}${phase === 'all' ? '' : `-${phase}`}.json`,
         );
         const result = runPlaywright([
             '--forbid-only',
@@ -109,6 +120,7 @@ function main(argv) {
         ], {
             env: {
                 WEBSSH_E2E_SHARD: `${shard.current}/${shard.total}`,
+                WEBSSH_E2E_PHASE: phase,
                 WEBSSH_E2E_TIMING_FILE: timingFile,
             },
         });
@@ -127,4 +139,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { assertNoSharedExecutionGroups, discover, main };
+module.exports = { assertNoSharedExecutionGroups, discover, main, parseArguments, selectAssignedTests };

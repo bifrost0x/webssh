@@ -121,8 +121,10 @@ individual sequential partition command above.
 Firefox and WebKit font regressions run in parallel on separate ports in one
 mandatory job; both process results must succeed.
 The two 20-terminal transport-load cases reserve their runner before its other
-lanes start. Their partitions are calculated from the current discovery and
-weights; all remaining partitions still run even when one fails.
+cases start. Their partitions are calculated from the current discovery and
+weights. Only those cases run exclusively; all four lanes then run their remaining
+cases in parallel, with separate output and timing files for each phase. All
+remaining cases still run even when one fails.
 Font tests use the digest-pinned official Playwright image matching the locked
 package version, with Python 3.14 and the same test and launch checks.
 
@@ -136,10 +138,13 @@ python -m pytest tests/ --ignore=tests/integration --ignore=tests/test_documenta
 
 The `pytest`, `browser-e2e` and `all-tests` aggregate checks retain all required
 partitions, minimum-version compatibility, font browsers and protocol labs.
-The runtime target is under two minutes for the entire required gate, including
+The runtime target is two to three minutes for the entire required gate, including
 `all-tests` and `security-scan / image-security`;
 queueing, cold dependency installation and runner capacity still require measured
 GitHub validation at the published revision. No test is dropped to meet that target.
+CI installs the unchanged hash-locked Python test requirements with pinned uv
+0.12.3 into the interpreter selected by `setup-python`. This retains the Python
+3.11 and 3.14 checks and does not change production installation commands.
 On Ubuntu CI, installed LDAP headers are reused and package indexes are refreshed
 only if installation from the existing indexes fails. Chromium installs the
 headless shell used by these tests and must pass a real launch probe; missing
@@ -167,6 +172,8 @@ npm run test:e2e:timings:refresh
 npm run test:e2e:timings:refresh -- path/to/shard-1.json path/to/shard-2.json
 ```
 
+Include both phase reports for split shards and every other shard report. The
+import rejects missing or duplicate phases and overlapping test identities.
 Review the baseline diff alongside the suite change. Do not mix reports from
 different revisions when refreshing it. Timing weights affect scheduling only;
 they do not decide which tests run.

@@ -3,6 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { assignTests, parseShard } = require('./e2e-sharding');
+const { validateResourceInventory, isExclusiveTest } = require('./e2e-resources');
 
 function parseArguments(argv) {
     const group = argv.find(argument => /^--group=\d+\/\d+$/.test(argument));
@@ -30,25 +31,11 @@ function planGroup({ group, groups, lanes, portBase = 4173 }) {
     });
 }
 
-const exclusiveResourceTests = [
-    'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
-    'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
-];
-
 function classifyExclusiveShards(discovered, shardCount, baseline) {
-    const known = new Set(exclusiveResourceTests);
-    const identities = new Set(discovered.map(item => item.identity));
-    for (const identity of known) {
-        if (!identities.has(identity)) throw new Error(`Missing exclusive resource test: ${identity}`);
-    }
-    for (const item of discovered) {
-        if (item.identity.includes('tests/e2e/terminal-load.spec.js::') && !known.has(item.identity)) {
-            throw new Error(`Unknown exclusive resource test: ${item.identity}`);
-        }
-    }
+    validateResourceInventory(discovered);
     const assignment = assignTests(discovered, shardCount, baseline);
     return assignment.shards.flatMap((items, index) => (
-        items.some(item => known.has(item.identity)) ? [`${index + 1}/${shardCount}`] : []
+        items.some(isExclusiveTest) ? [`${index + 1}/${shardCount}`] : []
     ));
 }
 
@@ -176,19 +163,21 @@ async function runGroup(config, options = {}) {
     };
     signals.on('SIGINT', interrupt);
     signals.on('SIGTERM', interrupt);
-    const runLane = lane => new Promise(resolve => {
+    const runLane = (lane, phase = 'all') => new Promise(resolve => {
             if (interrupted) { resolve(); return; }
             let child;
             try {
-                const temporaryDirectory = path.join(temporaryRoot, lane.name);
+                const phaseName = phase === 'all' ? lane.name : `${lane.name}-${phase}`;
+                const temporaryDirectory = path.join(temporaryRoot, phaseName);
                 fs.mkdirSync(temporaryDirectory);
-                child = spawnChild(process.execPath, [runner, `--shard=${lane.shard}`], {
+                child = spawnChild(process.execPath, [runner, `--shard=${lane.shard}`, ...(phase === 'all' ? [] : [`--phase=${phase}`])], {
                     cwd: process.cwd(),
                     env: {
                         ...process.env,
                         WEBSSH_E2E_PORT: String(lane.port),
                         WEBSSH_E2E_SHARD: lane.shard,
-                        WEBSSH_E2E_OUTPUT_DIR: path.join(outputRoot, lane.name),
+                        WEBSSH_E2E_OUTPUT_DIR: path.join(outputRoot, phaseName),
+                        WEBSSH_E2E_TIMING_FILE: path.join(outputRoot, `e2e-timing-${phaseName}.json`),
                         WEBSSH_E2E_FAST_HASHING: '1',
                         BACKUP_TEMP_DIR: path.join(temporaryDirectory, 'backups'),
                         TRANSFER_TEMP_DIR: path.join(temporaryDirectory, 'transfers'),
@@ -219,13 +208,13 @@ async function runGroup(config, options = {}) {
         });
     try {
         // A 20-terminal renderer/transport workload needs the runner's CPU.
-        // Complete those lanes serially, then run every remaining lane together.
+        // Run only their resource cases first, then every lane's remaining cases.
         const exclusiveLanes = plan.filter(lane => exclusive.has(lane.shard));
-        const parallelLanes = plan.filter(lane => !exclusive.has(lane.shard));
+        const parallelLanes = plan;
         console.log(`E2E resource schedule: exclusive [${exclusiveLanes.map(lane => lane.shard).join(', ')}], `
             + `then ${parallelLanes.length} parallel lanes.`);
-        for (const lane of exclusiveLanes) await runLane(lane);
-        await Promise.all(parallelLanes.map(runLane));
+        for (const lane of exclusiveLanes) await runLane(lane, 'exclusive');
+        await Promise.all(parallelLanes.map(lane => runLane(lane, exclusive.has(lane.shard) ? 'shared' : 'all')));
     } finally {
         await Promise.all(terminationTasks);
         signals.removeListener('SIGINT', interrupt);

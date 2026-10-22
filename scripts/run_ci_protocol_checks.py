@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {
     'ssh': (
         ('bash', 'scripts/install_ci_test_system_deps.sh'),
-        (sys.executable, '-m', 'pip', 'install', '--require-hashes', '-r', 'requirements-test.txt'),
+        ('uv', 'pip', 'install', '--python', sys.executable, '--require-hashes', '-r', 'requirements-test.txt'),
         ('npm', 'ci'),
         ('node', 'scripts/install-ci-chromium.js'),
         (sys.executable, 'scripts/run_integration_tests.py', '--browser'),

@@ -259,15 +259,21 @@ test('Linux cancellation fails when owned processes do not exit before the deadl
     }), /teardown did not complete before its deadline/);
 });
 
-test('exclusive resource lanes finish serially before other lanes, and failures retain all partitions', async () => {
+test('exclusive cases finish serially before all four shared remainders, preserving failure aggregation and artifacts', async () => {
     const { runGroup } = require(modulePath);
     const children = new Map();
     const started = [];
+    const phases = [];
+    const outputs = [];
+    const timings = [];
     const running = runGroup({ group: 1, groups: 1, lanes: 4 }, {
         exclusiveShards: ['2/4', '4/4'], signals: new EventEmitter(),
-        spawn(_command, _args, options) {
+        spawn(_command, args, options) {
             const shard = options.env.WEBSSH_E2E_SHARD;
             started.push(shard);
+            phases.push(args.find(arg => arg.startsWith('--phase=')));
+            outputs.push(options.env.WEBSSH_E2E_OUTPUT_DIR);
+            timings.push(options.env.WEBSSH_E2E_TIMING_FILE);
             const child = new EventEmitter();
             children.set(shard, child);
             return child;
@@ -279,9 +285,11 @@ test('exclusive resource lanes finish serially before other lanes, and failures 
     assert.deepEqual(started, ['2/4', '4/4']);
     children.get('4/4').emit('close', 0, null);
     await new Promise(resolve => setImmediate(resolve));
-    assert.deepEqual(started, ['2/4', '4/4', '1/4', '3/4']);
-    children.get('1/4').emit('close', 0, null);
-    children.get('3/4').emit('close', 0, null);
+    assert.deepEqual(started, ['2/4', '4/4', '1/4', '2/4', '3/4', '4/4']);
+    assert.deepEqual(phases, ['--phase=exclusive', '--phase=exclusive', undefined, '--phase=shared', undefined, '--phase=shared']);
+    assert.equal(new Set(outputs).size, 6);
+    assert.equal(new Set(timings).size, 6);
+    for (const shard of ['1/4', '2/4', '3/4', '4/4']) children.get(shard).emit('close', 0, null);
     assert.equal(await running, 1);
     assert.equal(new Set(started).size, 4);
 });
@@ -334,4 +342,53 @@ test('the production CLI always classifies the discovered inventory before launc
         discover: () => inventory.slice(1),
         runGroup() { throw new Error('must not launch an unclassified inventory'); },
     }), /Missing exclusive resource test/);
+});
+
+
+test('weighted runner phase flags are finite and shared/exclusive exactly partition assigned tests', () => {
+    const { parseArguments, selectAssignedTests } = require('../../scripts/run-e2e-ci');
+    assert.equal(parseArguments(['--shard=1/2']).phase, 'all');
+    for (const phase of ['all', 'exclusive', 'shared']) {
+        assert.equal(parseArguments(['--shard=1/2', `--phase=${phase}`]).phase, phase);
+    }
+    for (const args of [
+        ['--shard=1/2', '--phase='], ['--shard=1/2', '--phase=unknown'],
+        ['--shard=1/2', '--phase=all', '--phase=shared'], ['--shard=1/2', '--unknown'],
+    ]) assert.throws(() => parseArguments(args));
+    const tests = [
+        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over polling',
+        'tests/e2e/terminal-load.spec.js::20 active TUIs retain state without reconnecting over websocket',
+        'tests/e2e/a.spec.js::normal a', 'tests/e2e/b.spec.js::normal b',
+    ].map(identity => ({ identity, selector: identity }));
+    const shard = {current: 1, total: 1};
+    const all = selectAssignedTests(tests, shard, 'all').selected;
+    const exclusive = selectAssignedTests(tests, shard, 'exclusive').selected;
+    const shared = selectAssignedTests(tests, shard, 'shared').selected;
+    assert.equal(exclusive.length, 2);
+    assert.equal(shared.length, 2);
+    assert.deepEqual([...exclusive, ...shared].map(t => t.identity).sort(), all.map(t => t.identity).sort());
+    assert.equal(new Set([...exclusive, ...shared].map(t => t.identity)).size, all.length);
+    assert.throws(() => selectAssignedTests(tests, {current: 1, total: 4}, 'exclusive'), /has no assigned tests/);
+});
+
+test('interrupt during an exclusive case starts no queued phase and awaits owned teardown', async () => {
+    const { runGroup } = require(modulePath);
+    const signals = new EventEmitter();
+    const child = new EventEmitter();
+    const started = [];
+    let release;
+    let finished = false;
+    const teardown = new Promise(resolve => { release = resolve; });
+    const running = runGroup({group: 1, groups: 1, lanes: 4}, {
+        exclusiveShards: ['2/4', '4/4'], signals,
+        spawn(_command, args) { started.push(args); return child; },
+        terminateTree() { setImmediate(() => child.emit('close', null, 'SIGKILL')); return teardown; },
+    }).then(code => { finished = true; return code; });
+    signals.emit('SIGTERM');
+    await new Promise(resolve => setImmediate(() => setImmediate(resolve)));
+    assert.equal(started.length, 1);
+    assert.equal(finished, false);
+    release();
+    assert.equal(await running, 1);
+    assert.equal(started.length, 1);
 });

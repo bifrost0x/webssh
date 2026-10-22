@@ -719,7 +719,7 @@ def test_minimum_python_and_both_redis_versions_share_the_lock_gate():
     assert "python-version: '3.11'" in locks
     assert 'lock_requirements.ps1 -Check' in locks
     assert 'bash scripts/install_ci_test_system_deps.sh' in locks
-    assert 'python -m pip install --require-hashes -r requirements-test.txt' in locks
+    assert 'uv pip install --python "$(command -v python)" --require-hashes -r requirements-test.txt' in locks
     minimum = locks.split('- name: Run Python 3.11 minimum compatibility', 1)[1].split('- name:', 1)[0]
     assert 'python -m pytest' in minimum and '--ci-shard=1/1' in minimum
     assert '--basetemp="$RUNNER_TEMP/python-minimum"' in minimum
@@ -759,7 +759,8 @@ def test_protocol_labs_share_one_runner_and_keep_required_aggregate_checks():
     workflow = (WORKFLOWS / 'tests.yml').read_text(encoding='utf-8')
     ssh = workflow.split('\n  ssh-integration:', 1)[1].split('\n  smb-integration:', 1)[0]
     assert "python-version: '3.14'" in ssh and "node-version: '24'" in ssh
-    assert 'cache: pip' in ssh and 'cache: npm' in ssh
+    assert 'astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7' in ssh
+    assert 'cache: npm' in ssh
     buildx = 'run: docker buildx version'
     runner = 'python scripts/run_ci_protocol_checks.py'
     assert ssh.index(buildx) < ssh.index(runner)

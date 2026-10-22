@@ -14,7 +14,7 @@ def test_fixed_groups_preserve_every_original_command():
     assert checks.GROUPS == {
         'ssh': (
             ('bash', 'scripts/install_ci_test_system_deps.sh'),
-            (sys.executable, '-m', 'pip', 'install', '--require-hashes', '-r', 'requirements-test.txt'),
+            ('uv', 'pip', 'install', '--python', sys.executable, '--require-hashes', '-r', 'requirements-test.txt'),
             ('npm', 'ci'),
             ('node', 'scripts/install-ci-chromium.js'),
             (sys.executable, 'scripts/run_integration_tests.py', '--browser'),

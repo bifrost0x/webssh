@@ -46,6 +46,7 @@ class TimingReporter {
             generatedAt: new Date().toISOString(),
             status: result.status,
             shard: process.env.WEBSSH_E2E_SHARD || null,
+            phase: process.env.WEBSSH_E2E_PHASE || 'all',
             workers: this.workers,
             discovered: this.discovered,
             tests: [...this.tests.values()].sort(
