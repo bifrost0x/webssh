@@ -420,3 +420,21 @@ test('interrupt during an exclusive case starts no queued phase and awaits owned
     assert.equal(await running, 1);
     assert.equal(started.length, 1);
 });
+
+test('Linux cancellation waits for live sibling threads after the process leader becomes a zombie', async () => {
+    const { terminateLinuxTree } = require(modulePath);
+    const leader = { pid: 10, parent: 1, startTime: 'owned', state: 'S', threads: 2 };
+    let threadsExited = false;
+    await terminateLinuxTree(10, {
+        readProcess: pid => pid === 10 ? leader : null,
+        listPids: () => [10],
+        signal(_pid, name) {
+            if (name !== 'SIGKILL') return;
+            leader.state = 'Z';
+            // Linux can report a zombie leader while a sibling still owns the
+            // shared listening socket. Only its exit releases that resource.
+            setTimeout(() => { leader.threads = 1; threadsExited = true; }, 15);
+        },
+    });
+    assert.equal(threadsExited, true, 'a zombie leader alone does not prove its threads released shared sockets');
+});

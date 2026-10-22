@@ -44,7 +44,7 @@ function readLinuxProcess(pid) {
         const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
         // comm may contain spaces or parentheses; fields after its final ')' are stable.
         const fields = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
-        return { pid, state: fields[0], parent: Number(fields[1]), startTime: fields[19] };
+        return { pid, state: fields[0], parent: Number(fields[1]), threads: Number(fields[17]), startTime: fields[19] };
     } catch (error) {
         if (['ENOENT', 'ESRCH', 'EACCES'].includes(error.code)) return null;
         throw error;
@@ -95,12 +95,13 @@ async function terminateLinuxTree(pid, { readProcess = readLinuxProcess, listPid
         for (const entry of [...owned.values()].reverse()) signalOwned(entry, 'SIGKILL');
     }
     // kill() queues a signal; the root's close event does not prove detached
-    // descendants have released their sockets. Confirm kernel exit by identity.
+    // descendants have released their sockets. A zombie process leader can still
+    // have live sibling threads holding shared sockets, so also check num_threads.
     const deadline = Date.now() + timeoutMs;
     while ([...owned.values()].some(entry => {
         const current = readProcess(entry.pid);
         return current && current.startTime === entry.startTime
-            && !['Z', 'X'].includes(current.state);
+            && (!['Z', 'X'].includes(current.state) || current.threads > 1);
     })) {
         if (Date.now() >= deadline) throw new Error('Owned E2E process teardown did not complete before its deadline.');
         await new Promise(resolve => setTimeout(resolve, 5));
