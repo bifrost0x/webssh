@@ -190,6 +190,19 @@ and traces remain available without the flag. Captures used by the README or
 product site update their declared files below `assets/`; additional QA captures
 are written to the ignored `.test-run.tmp/captures/` directory.
 
+To refresh only the README stills and tour frames, use the focused capture suite:
+
+```bash
+WEBSSH_CAPTURE_ASSETS=1 npx playwright test tests/e2e/product-captures.spec.js --forbid-only
+# Optional authoring dependency; not needed by WebSSH or normal tests.
+python -m pip install Pillow
+python scripts/build-product-gifs.py
+```
+
+The encoder uses those captures for the three looping product GIFs. Review every
+still and animation before publishing: use synthetic `.example` hosts, keep
+credentials and personal data out of frame, and retain the capture assertions.
+
 Playwright assumptions must be updated when a default frontend state changes.
 Test both the new default and the user's explicit override.
 
