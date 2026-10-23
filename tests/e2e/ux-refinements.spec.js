@@ -131,17 +131,23 @@ test('collapsing a host group dismisses its open action menus across refresh and
     const search = page.locator('#profileSearchInput');
     await search.fill('Post free text');
     const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
-    const section = host.locator('xpath=ancestor::section[contains(@class, "profile-management-section")]');
+    const groupKey = await host.locator('xpath=ancestor::section[contains(@class, "profile-management-section")]')
+        .locator('[data-profile-group-toggle]').getAttribute('data-profile-group-toggle');
+    await search.fill('');
+    const section = page.locator('.profile-management-section')
+        .filter({has: page.locator('[data-profile-group-toggle="' + groupKey + '"]')});
     const toggle = section.locator('[data-profile-group-toggle]');
+    const target = section.locator('.profile-management-item').filter({hasText: 'Post free text'});
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await host.locator('.profile-action-menu > summary').click();
-    await expect(host.locator('.profile-action-menu')).toHaveAttribute('open', '');
+    await target.locator('.profile-action-menu > summary').click();
+    await expect(target.locator('.profile-action-menu')).toHaveAttribute('open', '');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await page.evaluate(() => ProfileManager.setProfiles([...ProfileManager.profiles]));
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(host.locator('.profile-action-menu')).not.toHaveAttribute('open', '');
+    await expect(target.locator('.profile-action-menu')).not.toHaveAttribute('open', '');
 });
 
 test('refreshing away an active host action returns focus without retaining stale actions', async ({page}) => {
