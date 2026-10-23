@@ -3104,7 +3104,17 @@ async function setFontTestPreferences(page, settings) {
     expect(result).toBe(true);
 }
 
-test('font changes preserve the live TUI, input modes, scrollback and existing colours while resizing the PTY', async ({page}) => {
+async function checkLiveFontChange({page}, delaySymbols = false) {
+    let releaseSymbols;
+    let symbolRequests = 0;
+    if (delaySymbols) {
+        const released = new Promise(resolve => { releaseSymbols = resolve; });
+        await page.route('**/NerdSymbols-Regular.woff2', async route => {
+            symbolRequests++;
+            await released;
+            await route.continue();
+        });
+    }
     await login(page);
     await setFontTestPreferences(page, {foreground: '#dce8f4', background: '#142536', background_opacity: 45, cursor_style: 'bar', cursor_blink: false});
     try {
@@ -3118,6 +3128,31 @@ test('font changes preserve the live TUI, input modes, scrollback and existing c
             return TerminalManager.fitSyncTimer === null
                 && size?.cols === term.cols && size?.rows === term.rows;
         })).toBe(true);
+        // The first fit can finish while the lazy symbol font is still in flight.
+        // Finish that initialization before recording the preview-only interval.
+        const initialResizes = await page.evaluate(() => window.__workspaceEvents.filter(e => e.event === 'ssh_resize').length);
+        if (delaySymbols) {
+            await expect.poll(() => symbolRequests).toBe(1);
+            expect(await page.evaluate(() => TerminalManager.terminals['workspace-linux'].options.fontFamily))
+                .not.toContain('"WebSSH Nerd Symbols"');
+        }
+        releaseSymbols?.();
+        await page.evaluate(async () => {
+            await TerminalAppearance.loadForTerminal(TerminalManager);
+            await document.fonts.ready;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        });
+        await expect.poll(() => page.evaluate(() => {
+            const term = TerminalManager.terminals['workspace-linux'];
+            const size = TerminalManager.syncedSizes['workspace-linux'];
+            return term.options.fontFamily.includes('"WebSSH Nerd Symbols"')
+                && TerminalManager.fitSyncTimer === null
+                && size?.cols === term.cols && size?.rows === term.rows;
+        })).toBe(true);
+        if (delaySymbols) {
+            expect(await page.evaluate(() => window.__workspaceEvents.filter(e => e.event === 'ssh_resize').length))
+                .toBeGreaterThan(initialResizes);
+        }
         await page.evaluate(async () => {
             const term = TerminalManager.terminals['workspace-linux'];
             window.__fontTerminalRef = term;
@@ -3170,9 +3205,16 @@ test('font changes preserve the live TUI, input modes, scrollback and existing c
         expect(await page.evaluate(() => TerminalManager.terminals['workspace-linux'].buffer.active.type)).toBe('normal');
         assertNoExternalRequests(page);
     } finally {
+        releaseSymbols?.();
         await setFontTestPreferences(page, {});
     }
-});
+}
+
+test('font changes preserve the live TUI, input modes, scrollback and existing colours while resizing the PTY',
+    async ({page}) => checkLiveFontChange({page}));
+
+test('font changes preserve the live TUI after the initial symbol font arrives late',
+    async ({page}) => checkLiveFontChange({page}, true));
 
 test('failed font downloads and cancelled previews leave existing terminal input and settings usable', async ({page}) => {
     await page.route('**/static/vendor/terminal-fonts/*.woff2', route => route.abort());

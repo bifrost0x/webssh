@@ -104,6 +104,79 @@ test('host density persists and advanced hosts expose their existing settings', 
     await expect(page.locator('#profileAdvancedSettingsCard')).toHaveAttribute('open', '');
 });
 
+test('host actions retain their menu and keyboard focus across refreshed profile data', async ({page}) => {
+    await page.locator('#manageProfilesBtn').click();
+    await page.locator('#profileSearchInput').fill('Post free text');
+    const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
+    const profileId = await host.getAttribute('data-profile-card-id');
+    await host.locator('.profile-action-menu > summary').click();
+    await host.locator('[data-profile-action="edit"]').focus();
+    await page.evaluate(async id => {
+        await new Promise(requestAnimationFrame);
+        ProfileManager.setProfiles(ProfileManager.profiles.map(profile => profile.id === id
+            ? {...profile, host: 'refreshed-target.invalid'} : profile));
+    }, profileId);
+    await expect(host.locator('.profile-action-menu')).toHaveAttribute('open', '');
+    await expect(host.locator('[data-profile-action="edit"]')).toBeFocused();
+    await page.locator('#profileSearchInput').focus();
+    await page.evaluate(() => ProfileManager.setProfiles([...ProfileManager.profiles]));
+    await expect(page.locator('#profileSearchInput')).toBeFocused();
+    await expect(host.locator('.profile-action-menu')).toHaveAttribute('open', '');
+    await host.locator('[data-profile-action="edit"]').click();
+    await expect(page.locator('#profileEditorHost')).toHaveValue('refreshed-target.invalid');
+});
+
+test('collapsing a host group dismisses its open action menus across refresh and expansion', async ({page}) => {
+    await page.locator('#manageProfilesBtn').click();
+    const search = page.locator('#profileSearchInput');
+    await search.fill('Post free text');
+    const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
+    const groupKey = await host.locator('xpath=ancestor::section[contains(@class, "profile-management-section")]')
+        .locator('[data-profile-group-toggle]').getAttribute('data-profile-group-toggle');
+    await search.fill('');
+    const section = page.locator('.profile-management-section')
+        .filter({has: page.locator('[data-profile-group-toggle="' + groupKey + '"]')});
+    const toggle = section.locator('[data-profile-group-toggle]');
+    const target = section.locator('.profile-management-item').filter({hasText: 'Post free text'});
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await target.locator('.profile-action-menu > summary').click();
+    await expect(target.locator('.profile-action-menu')).toHaveAttribute('open', '');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await page.evaluate(() => ProfileManager.setProfiles([...ProfileManager.profiles]));
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(target.locator('.profile-action-menu')).not.toHaveAttribute('open', '');
+});
+
+test('refreshing away an active host action returns focus without retaining stale actions', async ({page}) => {
+    await page.locator('#manageProfilesBtn').click();
+    const search = page.locator('#profileSearchInput');
+    await search.fill('Post free text');
+    const host = page.locator('.profile-management-item').filter({hasText: 'Post free text'});
+    const profileId = await host.getAttribute('data-profile-card-id');
+    await host.locator('.profile-action-menu > summary').click();
+    await search.fill('Operations');
+    await expect(host).toHaveCount(0);
+    await expect(page.locator('.profile-action-menu[open]')).toHaveCount(0);
+    await expect(search).toBeFocused();
+    await search.fill('Post free text');
+    await expect(host.locator('.profile-action-menu')).not.toHaveAttribute('open', '');
+    await host.locator('.profile-action-menu > summary').click();
+    await host.locator('[data-profile-action="edit"]').focus();
+    await page.evaluate(id => ProfileManager.setProfiles(
+        ProfileManager.profiles.filter(profile => profile.id !== id),
+    ), profileId);
+    await expect(host).toHaveCount(0);
+    await expect(page.locator('.profile-action-menu[open]')).toHaveCount(0);
+    await expect(search).toBeFocused();
+    // Clearing the filter must not restore a removed host or its actions.
+    await search.fill('');
+    await expect(host).toHaveCount(0);
+    await expect(page.locator('.profile-action-menu[open]')).toHaveCount(0);
+});
+
 
 test.describe('mobile header touch interaction', () => {
     test.use({hasTouch: true});

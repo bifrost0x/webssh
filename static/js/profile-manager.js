@@ -929,6 +929,16 @@ const ProfileManager = {
     renderManagementList() {
         const container = document.getElementById('profileManagementList');
         if (!container) return;
+        const openMenus = new Set(Array.from(container.querySelectorAll('.profile-action-menu[open]'))
+            .map(menu => menu.closest('[data-profile-card-id]')?.dataset.profileCardId));
+        const active = document.activeElement;
+        const activeMenu = container.contains(active) ? active.closest('.profile-action-menu') : null;
+        const focusedProfileId = activeMenu?.closest('[data-profile-card-id]')?.dataset.profileCardId;
+        const focusedAction = activeMenu ? active.dataset.profileAction : null;
+        let focusTarget = null;
+        const restoreFocus = () => {
+            if (activeMenu) (focusTarget || document.getElementById('profileSearchInput'))?.focus({preventScroll: true});
+        };
         container.replaceChildren();
         if (!this.profiles.length) {
             this.updateCollapseAllState([]);
@@ -936,6 +946,7 @@ const ProfileManager = {
             empty.className = 'no-items';
             empty.textContent = this.t('profiles.none', 'No saved connections.');
             container.appendChild(empty);
+            restoreFocus();
             return;
         }
 
@@ -949,6 +960,7 @@ const ProfileManager = {
                 'No saved connections match this search.',
             );
             container.appendChild(empty);
+            restoreFocus();
             return;
         }
 
@@ -1140,6 +1152,7 @@ const ProfileManager = {
 
                 const actionMenu = document.createElement('details');
                 actionMenu.className = 'profile-action-menu';
+                actionMenu.open = !collapsed && openMenus.has(profile.id);
                 const actionSummary = document.createElement('summary');
                 actionSummary.className = 'btn btn-secondary btn-sm material-icons';
                 actionSummary.setAttribute('aria-label',
@@ -1162,6 +1175,11 @@ const ProfileManager = {
                     actionMenuItems.appendChild(button);
                 });
                 actionMenu.append(actionSummary, actionMenuItems);
+                if (profile.id === focusedProfileId && !collapsed) {
+                    focusTarget = focusedAction
+                        ? Array.from(actionMenuItems.children).find(button => button.dataset.profileAction === focusedAction)
+                        : actionSummary;
+                }
                 actions.appendChild(actionMenu);
                 card.append(dragHandle, info, actions);
                 items.appendChild(card);
@@ -1169,6 +1187,7 @@ const ProfileManager = {
             appendDropSlot(section.profiles.length);
             container.appendChild(sectionElement);
         });
+        restoreFocus();
     },
 
     _fillSelect(select, items, placeholder, labelBuilder) {

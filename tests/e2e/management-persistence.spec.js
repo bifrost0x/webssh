@@ -136,3 +136,73 @@ test('command-set editor does not steal focus after the user chooses another fie
     await expect(page.locator('#commandSetNameInput')).toHaveValue('');
     await assertNoExternalRequests(page);
 });
+
+for (const refreshOrder of ['before opening', 'after opening']) {
+    test(`command-set actions survive list refresh ${refreshOrder} the menu`, async ({page}) => {
+        await login(page);
+        await openCommands(page);
+        await page.locator('#commandSetsTab').click();
+        await expect(page.locator('.command-set-management-item')).toHaveCount(2);
+        await page.evaluate(() => {
+            CommandSetManager.setCommandSets([{
+                id: 'refresh-target', name: 'Refresh target', description: '',
+                steps: [{type: 'inline', command: 'printf original'}],
+            }, {
+                id: 'removed-copy', name: 'Removed copy', description: '', steps: [],
+            }]);
+        });
+        const target = page.locator('.command-set-management-item').filter({hasText: 'Refresh target'});
+        const refresh = () => page.evaluate(() => CommandSetManager.setCommandSets([{
+            id: 'refresh-target', name: 'Refresh target', description: '',
+            steps: [{type: 'inline', command: 'printf refreshed'}],
+        }]));
+        if (refreshOrder === 'before opening') await refresh();
+        await target.locator('summary').click();
+        await target.locator('[data-command-set-action="edit"]').focus();
+        if (refreshOrder === 'after opening') await refresh();
+        await expect(target.locator('details')).toHaveAttribute('open', '');
+        await expect(target.locator('[data-command-set-action="edit"]')).toBeFocused();
+        await expect(page.locator('.command-set-management-item')).toHaveCount(1);
+        await target.locator('[data-command-set-action="edit"]').click();
+        await expect(page.locator('#commandSetSteps textarea')).toHaveValue('printf refreshed');
+        await page.locator('#cancelCommandSetBtn').click();
+        await expect(target.locator('details')).not.toHaveAttribute('open', '');
+        await assertNoExternalRequests(page);
+    });
+}
+
+test('command-set refresh drops removed or filtered actions without stealing external focus', async ({page}) => {
+    await login(page);
+    await openCommands(page);
+    await page.locator('#commandSetsTab').click();
+    await expect(page.locator('.command-set-management-item')).toHaveCount(2);
+    const search = page.locator('#commandSetManagementSearch');
+    const first = page.locator('.command-set-management-item').first();
+    await first.locator('summary').click();
+    await first.locator('[data-command-set-action="edit"]').focus();
+    await page.evaluate(() => CommandSetManager.setCommandSets(CommandSetManager.commandSets.slice(1)));
+    await expect(search).toBeFocused();
+    await expect(page.locator('.command-set-action-menu[open]')).toHaveCount(0);
+    await first.locator('summary').click();
+    await first.locator('[data-command-set-action="edit"]').focus();
+    await page.evaluate(() => {
+        CommandSetManager.managementSearchQuery = 'no matching command set';
+        CommandSetManager.renderManagementList();
+    });
+    await expect(search).toBeFocused();
+    await expect(page.locator('.command-set-management-item')).toHaveCount(0);
+    await page.evaluate(() => {
+        CommandSetManager.managementSearchQuery = '';
+        CommandSetManager.renderManagementList();
+    });
+    await expect(first.locator('details')).not.toHaveAttribute('open', '');
+    await page.locator('#newCommandSetBtn').focus();
+    await page.evaluate(() => CommandSetManager.setCommandSets([...CommandSetManager.commandSets]));
+    await expect(page.locator('#newCommandSetBtn')).toBeFocused();
+    await first.locator('summary').click();
+    await first.locator('[data-command-set-action="edit"]').focus();
+    await page.evaluate(() => CommandSetManager.setCommandSets([]));
+    await expect(search).toBeFocused();
+    await expect(page.locator('.command-set-management-item')).toHaveCount(0);
+    await assertNoExternalRequests(page);
+});

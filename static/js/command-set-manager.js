@@ -286,12 +286,23 @@ window.CommandSetManager = {
     renderManagementList() {
         const container = document.getElementById('commandSetManagementList');
         if (!container) return;
+        const openMenus = new Set(Array.from(container.querySelectorAll('.command-set-action-menu[open]'))
+            .map(menu => menu.dataset.commandSetId));
+        const active = document.activeElement;
+        const activeMenu = container.contains(active) ? active.closest('.command-set-action-menu') : null;
+        const focusedId = activeMenu?.dataset.commandSetId;
+        const focusedAction = activeMenu ? active.dataset.commandSetAction : null;
+        let focusTarget = null;
+        const restoreFocus = () => {
+            if (activeMenu) (focusTarget || document.getElementById('commandSetManagementSearch'))?.focus({preventScroll: true});
+        };
         container.replaceChildren();
         if (!this.commandSets.length) {
             const empty = document.createElement('p');
             empty.className = 'no-items';
             empty.textContent = this.t('commandSets.empty', 'No command sets saved.');
             container.appendChild(empty);
+            restoreFocus();
             return;
         }
         const managementQuery = String(this.managementSearchQuery || '').trim().toLowerCase();
@@ -306,6 +317,7 @@ window.CommandSetManager = {
             empty.className = 'no-items';
             empty.textContent = this.t('commandSets.emptySearch', 'No command sets match this search.');
             container.appendChild(empty);
+            restoreFocus();
             return;
         }
         visibleCommandSets.forEach(commandSet => {
@@ -334,6 +346,8 @@ window.CommandSetManager = {
             actions.className = 'command-set-actions';
             const menu = document.createElement('details');
             menu.className = 'command-set-action-menu';
+            menu.dataset.commandSetId = commandSet.id;
+            menu.open = openMenus.has(commandSet.id);
             const summary = document.createElement('summary');
             summary.className = 'btn btn-secondary btn-sm material-icons';
             summary.setAttribute('aria-label',
@@ -352,10 +366,16 @@ window.CommandSetManager = {
                 menuItems.appendChild(button);
             });
             menu.append(summary, menuItems);
+            if (commandSet.id === focusedId) {
+                focusTarget = focusedAction && menu.open
+                    ? Array.from(menuItems.children).find(button => button.dataset.commandSetAction === focusedAction)
+                    : summary;
+            }
             actions.appendChild(menu);
             row.append(info, actions);
             container.appendChild(row);
         });
+        restoreFocus();
     },
 
     renderLibraryResults() {
