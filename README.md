@@ -87,7 +87,7 @@ SSH output is decoded as a continuous UTF-8 stream. Existing terminal capability
 Unicode width rules are unchanged. Font/spacing changes resize the remote PTY
 after xterm measures the new cells. The PTY continues to advertise `xterm-256color`.
 The remote application must emit UTF-8 and enable its icons (for example,
-`eza -l --icons`); WebSSH does not install plugins or change shell/tmux settings.
+`eza -l --icons`); font selection does not install plugins or change shell/tmux settings.
 Remote wcwidth tables and complex emoji sequences can still differ. Local fonts
 may be absent on another device, and custom proportional fonts cannot guarantee
 terminal alignment. Prefer the included Mono families for consistent geometry.

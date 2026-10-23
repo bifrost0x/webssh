@@ -58,7 +58,7 @@ they can accumulate unbounded browser memory.
 
 ### Remote tmux clipboard configuration
 
-WebSSH preserves the remote tmux configuration on both new connections and
+WebSSH preserves the remote tmux clipboard configuration on both new connections and
 reconnects. It does not change `set-clipboard` or `allow-passthrough` automatically.
 Existing persistent sessions keep using the same tmux server and session names.
 

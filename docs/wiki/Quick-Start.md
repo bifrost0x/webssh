@@ -106,7 +106,7 @@ The base Compose file intentionally configures:
 - `DEPLOYMENT_PROFILE=homelab`
 - wildcard CORS for trusted-network convenience;
 - non-secure browser cookies for HTTP;
-- tmux support enabled and selected by default;
+- tmux support enabled, with persistent sessions selected explicitly per connection;
 - one Gunicorn worker with a bounded thread pool;
 - persistent state in the `webssh_data` volume.
 
