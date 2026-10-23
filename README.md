@@ -166,6 +166,8 @@ run it only on a trusted host and allowlist only trusted shares.
 
 ## Screenshots
 
+Captured from the current interface with synthetic hosts and example data.
+
 ### Focused session workspace
 
 <p align="center">
@@ -182,6 +184,21 @@ The active session stays central while contextual tools remain close at hand.
 
 Split panes make side-by-side observation and coordinated work visible without
 mixing session ownership or terminal state.
+
+### Commands, favorites, and reusable sequences
+
+<p align="center">
+  <img src="assets/commandlibrary.png" alt="WebSSH Command Library with searchable command cards, operating-system filters, and separate Favorites and Command Sets tabs" width="1100">
+</p>
+
+Browse the library, keep frequently used entries in Favorites, and build
+reusable Command Sets. Each has its own label, icon, and color.
+
+<p align="center">
+  <img src="assets/command-set-builder.png" alt="WebSSH Command Set editor with a searchable library, ordered steps, and per-step parameter controls" width="1100">
+</p>
+
+Arrange steps, review parameters, and assign a saved sequence to a connection.
 
 ### File workspace
 
@@ -201,9 +218,23 @@ changes remain visible; jobs stop on the first detected conflict or error.
 See the [chmod manual](https://github.com/bifrost0x/webssh/wiki/SFTP-File-Workspace-and-Transfers#unix-permissions)
 for production-overlay instructions and security boundaries.
 
+### Review file changes before saving
+
+<p align="center">
+  <img src="assets/file-edit-review.png" alt="WebSSH file editor showing the destination, a colored line diff, original-file backup, and explicit save confirmation" width="1100">
+</p>
+
+Check the target and changed lines, optionally download the original, then
+explicitly save the reviewed content.
+
+<details>
+  <summary>Preview the file editing workflow</summary>
+
 <p align="center">
   <img src="assets/file-editing.gif" alt="WebSSH file workflow from dual-pane browsing through preview, editing, save confirmation, and transfer completion" width="1100">
 </p>
+
+</details>
 
 ### Security Center
 

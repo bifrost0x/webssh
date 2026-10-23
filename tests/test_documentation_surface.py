@@ -16,6 +16,9 @@ DIAGRAM_NAMES = {
     "backup-restore-safety",
 }
 DESKTOP_PRODUCT_CAPTURES = {
+    "commandlibrary.png",
+    "command-set-builder.png",
+    "file-edit-review.png",
     "workspace-overview.png",
     "multi-session.png",
     "sftp-workspace.png",
@@ -271,6 +274,9 @@ def test_readme_uses_the_new_product_media():
         "sftp-workspace.png",
         "security-center.png",
         "mobile-workspace.png",
+        "commandlibrary.png",
+        "command-set-builder.png",
+        "file-edit-review.png",
     ):
         assert f"assets/{name}" in readme
 

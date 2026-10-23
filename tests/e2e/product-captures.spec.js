@@ -319,6 +319,7 @@ async function seedDemoFileManager(page) {
         manager.activePane = 'left';
         manager.closeSourceLauncher();
         manager.renderWorkspaceChrome();
+        manager.buildSourceCatalog = () => [{ items: Object.values(demoPanes).map(pane => pane.source) }];
 
         manager.transferQueue = [
             {
@@ -411,6 +412,24 @@ async function seedDemoWorkspace(page) {
                     'ops@edge-01:~$ systemctl --type=service --state=running',
                     'ssh.service        loaded active running  OpenSSH server',
                     'nginx.service      loaded active running  Web gateway',
+                    'webssh.service     loaded active running  WebSSH workspace',
+                    '',
+                    'ops@edge-01:~$ free -h',
+                    '               total       used       free     available',
+                    'Mem:           7.8Gi      2.1Gi      3.9Gi         5.2Gi',
+                    'Swap:          2.0Gi         0B      2.0Gi',
+                    '',
+                    'ops@edge-01:~$ df -h / /srv',
+                    'Filesystem      Size  Used Avail Use% Mounted on',
+                    '/dev/vda1        48G   14G   32G  31% /',
+                    '/dev/vdb1       196G   62G  124G  34% /srv',
+                    '',
+                    'ops@edge-01:~$ systemctl is-active ssh nginx webssh',
+                    '\u001b[32mactive',
+                    'active',
+                    'active\u001b[0m',
+                    '',
+                    'ops@edge-01:~$ ',
                 ].join('\r\n'),
             },
             {
@@ -427,6 +446,19 @@ async function seedDemoWorkspace(page) {
                     'worker         Up 3 days',
                     'deploy@build:~$ git status --short',
                     '\u001b[32mworking tree clean\u001b[0m',
+                    '',
+                    'deploy@build:~$ docker compose logs --tail 6 web',
+                    'web  | GET /ready 200',
+                    'web  | GET /health 200',
+                    'web  | Application ready',
+                    'web  | Session transport connected',
+                    'web  | Background worker idle',
+                    'web  | GET /ready 200',
+                    '',
+                    'deploy@build:~$ sha256sum release-manifest.json',
+                    '4c6e4b8a0fa6bca3963b3b5e5f646d2a2ffb23332a4459dc5bdb05e685fd0bb2',
+                    '',
+                    'deploy@build:~$ ',
                 ].join('\r\n'),
             },
             {
@@ -753,7 +785,7 @@ test('captures six current file preview and editing frames without remote action
         '## Deployment checklist',
         '- Verify service health',
         '- Review application logs',
-        '- Confirm backup completion',
+        '- Confirm encrypted backup completion',
         '- Record release validation',
         '',
         'Status: Ready for handoff',
@@ -814,6 +846,8 @@ test('captures six current file preview and editing frames without remote action
             content,
             encoding: 'utf-8',
             newline: 'lf',
+            revision: 'demo-readme-revision',
+            original_bytes: btoa(content),
         });
     }, initialContent);
     await expect(page.locator('#filePreviewModal')).toHaveClass(/editing/);
@@ -823,6 +857,13 @@ test('captures six current file preview and editing frames without remote action
     await page.locator('#editorContent').fill(updatedContent);
     await expect(page.locator('#editorStatus')).toContainText('Unsaved');
     await captureCssFrame(page, frameDirectory, '04-content-edited.png');
+    await page.locator('#editorSaveBtn').click();
+    await expect(page.locator('#editorReview')).toBeVisible();
+    await expect(page.locator('#editorReviewTarget')).toContainText('edge-01.example:22');
+    await expect(page.locator('#editorBackupBtn')).toBeEnabled();
+    await expect(page.locator('#editorReviewDiff')).toContainText('+Status: Ready for handoff');
+    await captureDesktopStill(page, 'file-edit-review.png', testInfo);
+    await page.locator('#editorBackBtn').click();
 
     await page.evaluate(content => {
         const preview = window.FilePreview;
@@ -918,6 +959,7 @@ test('captures six current Command Sets animation frames without remote actions'
     await expect(page.locator('#commandSetSteps')).toContainText('1. System Uptime');
     await expect(page.locator('#commandSetSteps')).toContainText('2. Service Status');
     await captureCssFrame(page, frameDirectory, '03-baseline-editor.png');
+    await captureDesktopStill(page, 'command-set-builder.png', testInfo);
 
     await page.locator('#commandSetSearchInput').fill('Disk Usage');
     await expect(page.locator('#commandSetLibraryResults')).toContainText('Disk Usage');
@@ -1024,6 +1066,13 @@ test('captures the current Security Center assurance overview', async ({ page },
     await expect(page.locator('#recoveryGenerateBtn')).toBeVisible();
 
     await page.locator('[data-account-section="security-overview"]').click();
+    await expect(page.locator('#githubIdentityStatus')).toContainText('Connected as');
+    await page.evaluate(() => {
+        document.querySelector('.settings-context-card strong').textContent = 'operator';
+        document.querySelector('.settings-context-avatar').textContent = 'O';
+        document.getElementById('githubIdentityStatus').textContent = 'Connected as operations-demo';
+    });
+    expect(await page.locator('body').innerText()).not.toMatch(/e2e[_-]/i);
     await expect(page.locator('body')).not.toContainText('E2E');
     await captureDesktopStill(page, 'security-center.png', testInfo);
 
@@ -1044,6 +1093,21 @@ test.describe('mobile product capture', () => {
         await seedDemoWorkspace(page);
         await focusDemoWorkspace(page);
         await page.evaluate(() => window.workspaceLayoutController.setNotesOpen(false));
+        await page.evaluate(() => TerminalManager.writeOutput('capture-edge', [
+            '\u001b[2J\u001b[HDemo: edge-01.example',
+            'ops@edge-01:~$ uptime -p',
+            'up 18 days, 4 hours',
+            '',
+            'ops@edge-01:~$ systemctl \\',
+            '  is-active ssh nginx',
+            '\u001b[32mactive',
+            'active\u001b[0m',
+            '',
+            'OpenSSH server: ready',
+            'Web gateway: healthy',
+            '',
+            'ops@edge-01:~$ ',
+        ].join('\r\n')));
 
         expect(page.viewportSize()).toEqual(MOBILE_VIEWPORT);
         await expect(page.locator('#sessionTabs')).toContainText('Production Edge');

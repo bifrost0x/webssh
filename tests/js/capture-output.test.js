@@ -20,6 +20,9 @@ test('public product captures are the only captures written to assets', () => {
     assert.deepEqual(
         [...PUBLISHED_CAPTURE_ASSETS].sort(),
         [
+            'command-set-builder.png',
+            'commandlibrary.png',
+            'file-edit-review.png',
             'mobile-workspace.png',
             'multi-session.png',
             'security-center.png',
