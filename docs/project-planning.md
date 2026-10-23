@@ -55,7 +55,8 @@ The published [v2.5.0 release](https://github.com/bifrost0x/webssh/releases/tag/
 related workspace fixes. [#248](https://github.com/bifrost0x/webssh/issues/248) records
 the exact candidate, publication and image verification. The maintainer authorized
 publication with the reported deployment acceptance still unverified; those checks
-remain open in [#254](https://github.com/bifrost0x/webssh/issues/254). Publication and operational acceptance are
+were recorded in the now-closed [#254](https://github.com/bifrost0x/webssh/issues/254).
+Current v2.6.0 deployment acceptance is tracked separately in [#288](https://github.com/bifrost0x/webssh/issues/288). Publication and operational acceptance are
 recorded separately, without repeating implementation PRs or marking unrun checks passed.
 
 ## Record decisions and blockers
@@ -108,8 +109,15 @@ is preserved; the manifest records the exception and native milestone numbers.
 
 Published on **2026-10-05**: v2.5.0 adds PRs #249-#252 to the original scope.
 The release milestone and #248 are closed after tag/image verification. The current
-manifest contains eleven releases and 165 merged PR mappings; deferred deployment
-acceptance remains open in #254. The original backfill counts above are not rewritten.
+manifest at that time contained eleven releases and 165 merged PR mappings; deferred
+deployment acceptance was recorded in #254 (now closed). The original backfill counts above are not rewritten.
+
+Published on **2026-10-23**: [v2.6.0](https://github.com/bifrost0x/webssh/releases/tag/v2.6.0) adds 24 first-included PRs and three
+implementation-linked issues. The manifest now contains twelve releases, 189 merged
+PR mappings and 27 implementation-linked issues. Release record #289 and milestone 12
+close after tag/image verification; the separate deployment acceptance follow-up #288
+remains open. PR #255 first appears in this release because membership follows Git ancestry.
+The original dated backfill snapshot remains unchanged.
 
 For historical backfill:
 
