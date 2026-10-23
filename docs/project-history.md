@@ -45,12 +45,29 @@ These belong to the first official release baseline, not invented pre-1.0 releas
 | [v2.3.0](https://github.com/bifrost0x/webssh/releases/tag/v2.3.0) / 2026-09-11 | Session-duration controls, verified OIDC linking, mobile/copy/notes/transfer fixes and security remediation | [#202](https://github.com/bifrost0x/webssh/pull/202): validated repository security findings; [#208](https://github.com/bifrost0x/webssh/issues/208)/[#209](https://github.com/bifrost0x/webssh/pull/209): linking friction without weakening stable issuer/subject binding; [#210](https://github.com/bifrost0x/webssh/issues/210)/[#211](https://github.com/bifrost0x/webssh/pull/211): mobile input regression remained | 27 |
 | [v2.4.0](https://github.com/bifrost0x/webssh/releases/tag/v2.4.0) / 2026-09-21 | High-output multi-session rendering/recovery, terminal/files sync, hardened remote work and native-image release gates | [#221](https://github.com/bifrost0x/webssh/pull/221): hidden-pane rendering delayed ACKs and caused reconnect loops; [#223](https://github.com/bifrost0x/webssh/pull/223)-[#226](https://github.com/bifrost0x/webssh/pull/226): verify immutable image candidates without breaking deployment compatibility | 16 |
 | [v2.5.0](https://github.com/bifrost0x/webssh/releases/tag/v2.5.0) / 2026-10-05 | Optional gateways and everyday workspace continuity | [#238](https://github.com/bifrost0x/webssh/pull/238): optional Warpgate; #231/#233/#242: workspace and connection usability; #234-#236/#239/#241: terminal correctness; #251: background loading; #252: dependency updates | 17 |
+| [v2.6.0](https://github.com/bifrost0x/webssh/releases/tag/v2.6.0) / 2026-10-23 | Trusted SSH workspaces, reviewable server/file actions, windows and local fonts | #258: subfolder proxy fix; #271/#273: workspace redesign; #279: Nerd Fonts; #280: host trust/context and server operations; #284/#286: file creation/chmod/review; #287: stable action menus | 24 |
 
-The 165 PRs in these release stages are assigned by their **first tagged inclusion**,
+The 189 PRs in these release stages are assigned by their **first tagged inclusion**,
 not by the week in which they merged. The machine-readable
 [release history](release-history.json) lists every PR number, tag SHA, release URL,
 comparison and verified issue-to-implementation link. Direct commits are covered by the
 Git comparisons even though they have no PR to attach to a native milestone.
+
+## v2.6.0 delivery and remaining acceptance
+
+The tag contains 24 merged PRs first included after v2.5.0, including #255's
+v2.5.0 history documentation. Direct commits remain visible in the comparison.
+[Tag CI](https://github.com/bifrost0x/webssh/actions/runs/39916394736) and native image publication passed on `6806b56cafd3445f0abd14ff2aef5b6b3883504b`.
+The published AMD64/ARM64 index is `ghcr.io/bifrost0x/webssh@sha256:27bcf7bf013a39243192dccc6ca9078bd7bb610e5e9295fd83ee7cecb1bf0b37`;
+SPDX SBOM and SLSA provenance accompany both architectures.
+
+SFTP chmod and server mutations remain default-off and enforce their existing
+server-side ownership, capability and review boundaries. Parameterized `argv`
+command-set steps introduce an explicit older-version downgrade boundary; see
+[upgrade and rollback guidance](wiki/Upgrading-Rollback-and-FAQ.md).
+[Release record #289](https://github.com/bifrost0x/webssh/issues/289) separates
+publication from the unrun deployment-specific checks in [#288](https://github.com/bifrost0x/webssh/issues/288).
+No native-device or real-environment certification is inferred from browser-engine CI.
 
 ## v2.5.0 delivery and remaining acceptance
 
@@ -60,8 +77,8 @@ PR #253 was superseded by #252 and is not counted as a separately merged PR.
 
 [Tag CI](https://github.com/bifrost0x/webssh/actions/runs/37276528581) and native image publication passed on `07f472691e61eab6554dd6f75cf56fb8333964ba`.
 The maintainer authorized publication after the remaining deployment acceptance was
-explicitly reported. Real Warpgate, deployment canary, upgrade/recovery and applicable
-environment-specific checks remain tracked in [#254](https://github.com/bifrost0x/webssh/issues/254).
+explicitly reported. The then-unrun real Warpgate, deployment canary, upgrade/recovery and
+environment-specific checks were recorded in the now-closed historical [#254](https://github.com/bifrost0x/webssh/issues/254).
 Release closure does not mark those checks passed.
 
 [#237](https://github.com/bifrost0x/webssh/issues/237) and

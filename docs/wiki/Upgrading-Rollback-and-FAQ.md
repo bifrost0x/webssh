@@ -55,6 +55,23 @@ the production file removes those previously implicit limits on recreation.
 Existing image-only upgrades do not change container settings. Review the merged
 configuration before recreating containers; keep data and recovery volumes intact.
 
+## v2.6.0 compatibility
+
+Keep a complete pre-upgrade data backup, matching secrets and the previous image digest.
+Session profile metadata is migrated additively; private host context is included in
+native backups. After using new parameterized `argv` command-set steps, older releases
+cannot read the affected collection. Remove these sets through the updated UI before
+an image-only downgrade, or restore the complete pre-upgrade data/secret backup into
+an isolated installation. Do not assume that changing the image alone reverses new formats.
+See [data storage](Data-Storage-and-Persistence.md) for the collection contract.
+
+SFTP permissions and server mutations remain disabled by default. Uncomment
+`SFTP_CHMOD_ENABLED=true` or `SERVER_OPERATIONS_ENABLED=true` under Compose
+`environment` only when required, then recreate the service. Use all Compose files
+from the same release. The flags grant no additional remote privileges.
+See [SFTP permissions](SFTP-File-Workspace-and-Transfers.md) and
+[server operations](Administration-Audit-and-Diagnostics.md) for prerequisites and limits.
+
 ## Post-upgrade verification
 
 - `/health` returns 200.

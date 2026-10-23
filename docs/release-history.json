@@ -5,8 +5,8 @@
   "baseline_commit": "dc3d9bf26f57cbeb440227afe13f9635c4d9f258",
   "native_milestone_backfill": "applied_with_exceptions",
   "method": "First tagged release containing each merged PR's merge_commit_sha, with every compare page retrieved. The first release includes all prior verified PR merges. Issues require an explicit implementation link.",
-  "expected_merged_pr_count": 165,
-  "expected_implementation_linked_issue_count": 24,
+  "expected_merged_pr_count": 189,
+  "expected_implementation_linked_issue_count": 27,
   "historical": [
     {
       "title": "v1.0.0",
@@ -470,6 +470,69 @@
       "validation_followup": 254,
       "image_digest": "sha256:5cd320c7e48ab805dcb5a78950ed1ac41015e7f9ac0c97dd880e84308021312a",
       "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/37276528581"
+    },
+    {
+      "title": "v2.6.0",
+      "state": "closed",
+      "goal": "Deliver trusted SSH workspaces, local terminal fonts and reviewable file/server actions",
+      "previous_release": "v2.5.0",
+      "compare_url": "https://github.com/bifrost0x/webssh/compare/v2.5.0...v2.6.0",
+      "description": "Published v2.6.0 on 2026-10-23. Redesigned workspace and windows, first-contact SSH trust, host imports/context, parameterized commands, default-off server mutations and SFTP chmod, file creation/review, local Nerd Fonts and startup improvements.\n\nRelease: https://github.com/bifrost0x/webssh/releases/tag/v2.6.0\nTag commit: 6806b56cafd3445f0abd14ff2aef5b6b3883504b\nTag CI: https://github.com/bifrost0x/webssh/actions/runs/39916394736\nImage: ghcr.io/bifrost0x/webssh@sha256:27bcf7bf013a39243192dccc6ca9078bd7bb610e5e9295fd83ee7cecb1bf0b37\n\n24 merged PRs assigned by first tagged inclusion, including #255 (the earlier release-history documentation). Automated gates and native image verification passed. Deployment-specific acceptance not repeated on this revision is tracked separately in #288.",
+      "pull_requests": [
+        255,
+        256,
+        258,
+        259,
+        261,
+        262,
+        263,
+        264,
+        265,
+        266,
+        267,
+        268,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        279,
+        280,
+        284,
+        285,
+        286,
+        287
+      ],
+      "issues": [
+        {
+          "number": 257,
+          "implemented_by": 258,
+          "evidence": "GitHub closingIssuesReferences and PR #258 subfolder authentication/proxy fix"
+        },
+        {
+          "number": 278,
+          "implemented_by": 279,
+          "evidence": "GitHub closingIssuesReferences and PR #279 local Nerd Fonts"
+        },
+        {
+          "number": 283,
+          "implemented_by": 284,
+          "evidence": "GitHub closingIssuesReferences and PR #284 file creation and opt-in SFTP chmod"
+        },
+        {
+          "number": 289,
+          "evidence": "v2.6.0 publication and image verification record; unrun deployment-specific acceptance tracked separately in #288"
+        }
+      ],
+      "published_at": "2026-10-23T07:23:00Z",
+      "tag_commit": "6806b56cafd3445f0abd14ff2aef5b6b3883504b",
+      "release_url": "https://github.com/bifrost0x/webssh/releases/tag/v2.6.0",
+      "rationale_summary": "Make remote administration easier to review and use while preserving host trust, account/session ownership, safe mutation boundaries and self-hosted delivery.",
+      "milestone_number": 12,
+      "validation_followup": 288,
+      "image_digest": "sha256:27bcf7bf013a39243192dccc6ca9078bd7bb610e5e9295fd83ee7cecb1bf0b37",
+      "tag_workflow_url": "https://github.com/bifrost0x/webssh/actions/runs/39916394736"
     }
   ],
   "excluded_issues": [
@@ -577,7 +640,7 @@
     "verification": "All 185 accessible planned items matched their intended milestone through the GitHub API. Browser milestone overview confirmed 10 closed and 1 open. Release-readiness issue #248 remains open. No due dates were added."
   },
   "candidate": null,
-  "updated_on": "2026-10-05",
+  "updated_on": "2026-10-23",
   "release_updates": [
     {
       "version": "v2.5.0",
@@ -594,6 +657,47 @@
       "closed_release_gate": 248,
       "open_validation_followup": 254,
       "note": "The native_milestone_backfill_result block remains the original dated 2026-10-04 snapshot."
+    },
+    {
+      "version": "v2.6.0",
+      "published_at": "2026-10-23T07:23:00Z",
+      "tag_commit": "6806b56cafd3445f0abd14ff2aef5b6b3883504b",
+      "milestone_number": 12,
+      "milestone_state": "closed",
+      "assigned_additional_pull_requests": [
+        255,
+        256,
+        258,
+        259,
+        261,
+        262,
+        263,
+        264,
+        265,
+        266,
+        267,
+        268,
+        269,
+        270,
+        271,
+        273,
+        274,
+        275,
+        279,
+        280,
+        284,
+        285,
+        286,
+        287
+      ],
+      "assigned_implementation_linked_issues": [
+        257,
+        278,
+        283
+      ],
+      "closed_release_gate": 289,
+      "open_validation_followup": 288,
+      "note": "First tagged inclusion determines release membership; #255 first ships in v2.6.0. The dated native_milestone_backfill_result snapshot remains unchanged."
     }
   ]
 }
