@@ -2,9 +2,46 @@ import paramiko
 import pytest
 import socket
 import threading
+import shlex
 
 from app import ssh_manager
 from app.network_policy import ResolvedTarget
+
+
+@pytest.mark.parametrize('reconnect', [False, True])
+@pytest.mark.parametrize('name', ['webssh_owned', 'name; touch /tmp/marker', 'webssh_other_suffix'])
+def test_tmux_start_enables_mouse_only_on_the_exact_session(name, reconnect):
+    command = ssh_manager._tmux_session_command('tmux', name, reconnect=reconnect)
+    assert shlex.split(command) == [
+        'tmux', 'new-session', *(['-A'] if reconnect else []), '-s', name,
+        ';', 'set-option', '-t', '=' + name + ':', 'mouse', 'on',
+    ]
+
+
+def test_tmux_start_retains_the_tailscale_utf8_prefix():
+    command = ssh_manager._tmux_session_command(
+        'env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u', 'webssh_owned', reconnect=True,
+    )
+    assert shlex.split(command) == [
+        'env', 'LANG=C.UTF-8', 'LC_ALL=C.UTF-8', 'tmux', '-u',
+        'new-session', '-A', '-s', 'webssh_owned', ';',
+        'set-option', '-t', '=webssh_owned:', 'mouse', 'on',
+    ]
+
+
+@pytest.mark.parametrize('missing_tmux', [False, True])
+def test_normal_shell_and_missing_tmux_do_not_change_remote_options(monkeypatch, missing_tmux):
+    clients = install_ssh_clients(monkeypatch)
+    if missing_tmux:
+        monkeypatch.setattr(FakeChannel, 'recv_exit_status', lambda self: 1)
+    session_id, error = connect_target(password='secret', use_tmux=missing_tmux)
+    assert error is None
+    assert ssh_manager.get_session(session_id)['use_tmux'] is False
+    channels = clients[0].transport.session_channels
+    assert [channel.command for channel in channels if channel.command] == (
+        ['command -v tmux'] if missing_tmux else []
+    )
+    assert any(channel.shell_invoked for channel in channels)
 
 
 class FakeForwardChannel:
@@ -571,7 +608,7 @@ def test_tailscale_tmux_forces_utf8_locale(monkeypatch):
     assert tmux_channel.pty == ('xterm-256color', 80, 24)
     assert tmux_channel.command == (
         'env LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u '
-        'new-session -A -s existing_session'
+        'new-session -A -s existing_session \\; set-option -t =existing_session: mouse on'
     )
 
 
@@ -618,7 +655,9 @@ def test_password_tmux_preserves_remote_locale(monkeypatch):
         channel for channel in channels
         if channel.command and 'new-session' in channel.command
     )
-    assert tmux_channel.command == 'tmux new-session -A -s existing_session'
+    assert tmux_channel.command == (
+        'tmux new-session -A -s existing_session \\; set-option -t =existing_session: mouse on'
+    )
 
 
 def test_tmux_reconnect_quotes_session_name_at_ssh_boundary(monkeypatch):
@@ -639,6 +678,7 @@ def test_tmux_reconnect_quotes_session_name_at_ssh_boundary(monkeypatch):
     )
     assert tmux_channel.command == (
         "tmux new-session -A -s 'name; touch /tmp/marker'"
+        " \\; set-option -t '=name; touch /tmp/marker:' mouse on"
     )
 
 
@@ -659,7 +699,13 @@ def test_tmux_connect_preserves_remote_clipboard_policy(monkeypatch, reconnect_t
     assert len(commands) == 2
     assert commands[0] == 'command -v tmux'
     assert commands[1].startswith('tmux new-session ')
-    assert not any('set-option' in command for command in commands)
+    # The one intentional session-local mouse option must not broaden into
+    # clipboard, global or server policy changes.
+    name = ssh_manager.get_session(session_id)['tmux_session_name']
+    assert shlex.split(commands[1]) == [
+        'tmux', 'new-session', *(['-A'] if reconnect_tmux_name else []),
+        '-s', name, ';', 'set-option', '-t', '=' + name + ':', 'mouse', 'on',
+    ]
 
 
 def test_proxy_jump_password_opens_direct_tcpip_channel(monkeypatch):

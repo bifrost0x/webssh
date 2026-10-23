@@ -25,6 +25,27 @@ On macOS, use the platform's Command equivalents for copy and paste.
 `Ctrl+C` copies selected text. With no selection, it sends the normal interrupt
 character to the remote process.
 
+### Scrolling in persistent tmux sessions
+
+When starting or reattaching a persistent session, WebSSH enables tmux's `mouse`
+option for that exact session. With tmux's standard bindings, scrolling up enters
+copy mode and reads the remote history; scrolling down returns towards the live
+screen. Press `q` to leave copy mode. Mouse-aware applications keep receiving
+their own mouse input. Custom tmux mouse bindings remain authoritative.
+
+This changes no global or server options, `.tmux.conf`, history limits, or
+clipboard policy. Reattaching preserves the existing shell process and history;
+other clients attached to the same tmux session share its session-local mouse
+setting. Other sessions are unchanged. Existing connections receive this setting
+on their next connection or reattachment. To activate it immediately from the
+current tmux session without disconnecting, run `tmux set-option mouse on`.
+
+tmux now handles ordinary mouse selection in that session. Hold Shift while
+dragging to use the browser terminal's selection instead. The remote tmux history
+is separate from WebSSH's configurable local scrollback; its scrollbar does not
+represent tmux's remote history. The remote tmux must support the session-local
+`mouse` option.
+
 When tmux mouse mode owns the selection, WebSSH accepts tmux's bounded OSC 52
 clipboard request for that persistent session. A visible WebSSH notification
 requires a fresh **Copy** click before the remote text reaches the browser
@@ -37,7 +58,7 @@ they can accumulate unbounded browser memory.
 
 ### Remote tmux clipboard configuration
 
-WebSSH preserves the remote tmux configuration on both new connections and
+WebSSH preserves the remote tmux clipboard configuration on both new connections and
 reconnects. It does not change `set-clipboard` or `allow-passthrough` automatically.
 Existing persistent sessions keep using the same tmux server and session names.
 
@@ -164,12 +185,14 @@ Configuration:
 
 ```bash
 TMUX_ENABLED=true
-TMUX_DEFAULT=true
+TMUX_DEFAULT=false
 TMUX_SESSION_PREFIX=webssh
 ```
 
-The base Compose file enables and preselects tmux. Source installations default
-to disabled unless configured.
+The base Compose file makes tmux available without preselecting it. Users opt in
+per connection or saved host. `TMUX_DEFAULT=true` explicitly preselects it for new
+connections; saved host preferences remain unchanged. Source installations
+disable tmux unless configured.
 
 ### Requirements
 

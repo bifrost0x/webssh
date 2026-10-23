@@ -563,7 +563,10 @@ def test_create_ssh_connection_kills_new_tmux_when_startup_delivery_fails(monkey
     tmux_session_name = (
         f'{ssh_manager.config.TMUX_SESSION_PREFIX}_alice_target_example_22_deadbeef'
     )
-    assert tmux_channel.command == f'tmux new-session -s {tmux_session_name}'
+    assert tmux_channel.command == (
+        f'tmux new-session -s {tmux_session_name}'
+        f' \\; set-option -t ={tmux_session_name}: mouse on'
+    )
     assert kill_channel.command == f'tmux kill-session -t {tmux_session_name}'
     assert probe_channel.close_calls == 1
     assert tmux_channel.close_calls == 1
@@ -611,6 +614,8 @@ def test_output_reader_start_failure_detaches_existing_tmux(monkeypatch):
         if channel.command and 'new-session' in channel.command
     )
     assert probe_channel.command == 'command -v tmux'
-    assert tmux_channel.command == 'tmux new-session -A -s existing_session'
+    assert tmux_channel.command == (
+        'tmux new-session -A -s existing_session \\; set-option -t =existing_session: mouse on'
+    )
     assert tmux_channel.closed
     assert client.closed

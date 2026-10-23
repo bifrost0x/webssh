@@ -27,6 +27,16 @@ def compose(files, environment=None):
     return json.loads(result.stdout)['services']['webssh']
 
 
+@pytest.mark.parametrize('production', [False, True])
+def test_tmux_is_available_but_not_preselected_in_compose(production):
+    files = ['docker-compose.yml']
+    if production:
+        files.append('docker-compose.production.yml')
+    environment = compose(files)['environment']
+    assert environment['TMUX_ENABLED'] == 'true'
+    assert environment['TMUX_DEFAULT'] == 'false'
+
+
 @pytest.mark.parametrize('ldap', [False, True])
 def test_production_upgrade_does_not_silently_restrict_existing_resources(ldap):
     files = ['docker-compose.yml']
